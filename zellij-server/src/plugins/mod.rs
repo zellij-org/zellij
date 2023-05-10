@@ -55,12 +55,15 @@ pub enum PluginInstruction {
         ClientId,
     ),
     ApplyCachedEvents(Vec<PluginId>),
-    PostMessageToPluginWorker(
+    ApplyCachedWorkerMessages(PluginId),
+    PostMessagesToPluginWorker(
         PluginId,
         ClientId,
         String, // worker name
-        String, // serialized message
-        String, // serialized payload
+        Vec<(
+            String, // serialized message name
+            String, // serialized payload
+        )>
     ),
     PostMessageToPlugin(
         PluginId,
@@ -84,7 +87,8 @@ impl From<&PluginInstruction> for PluginContext {
             PluginInstruction::RemoveClient(_) => PluginContext::RemoveClient,
             PluginInstruction::NewTab(..) => PluginContext::NewTab,
             PluginInstruction::ApplyCachedEvents(..) => PluginContext::ApplyCachedEvents,
-            PluginInstruction::PostMessageToPluginWorker(..) => PluginContext::PostMessageToPluginWorker,
+            PluginInstruction::ApplyCachedWorkerMessages(..) => PluginContext::ApplyCachedWorkerMessages,
+            PluginInstruction::PostMessagesToPluginWorker(..) => PluginContext::PostMessageToPluginWorker,
             PluginInstruction::PostMessageToPlugin(..) => PluginContext::PostMessageToPlugin,
         }
     }
@@ -216,8 +220,11 @@ pub(crate) fn plugin_thread_main(
             PluginInstruction::ApplyCachedEvents(plugin_id) => {
                 wasm_bridge.apply_cached_events(plugin_id)?;
             },
-            PluginInstruction::PostMessageToPluginWorker(plugin_id, client_id, worker_name, message, payload) => {
-                wasm_bridge.post_message_to_plugin_worker(plugin_id, client_id, worker_name, message, payload)?;
+            PluginInstruction::ApplyCachedWorkerMessages(plugin_id) => {
+                wasm_bridge.apply_cached_worker_messages(plugin_id)?;
+            },
+            PluginInstruction::PostMessagesToPluginWorker(plugin_id, client_id, worker_name, messages) => {
+                wasm_bridge.post_messages_to_plugin_worker(plugin_id, client_id, worker_name, messages)?;
             },
             PluginInstruction::PostMessageToPlugin(plugin_id, client_id, message, payload) => {
                 let updates = vec![(

@@ -20,7 +20,7 @@ use crate::{
 };
 
 use zellij_utils::{
-    consts::{VERSION, ZELLIJ_CACHE_DIR, ZELLIJ_TMP_DIR},
+    consts::{VERSION, ZELLIJ_CACHE_DIR, ZELLIJ_SESSION_CACHE_DIR, ZELLIJ_TMP_DIR},
     errors::prelude::*,
     input::plugins::PluginConfig,
     pane_size::Size,
@@ -199,7 +199,6 @@ impl<'a> PluginLoader<'a> {
                 plugin_loader.create_plugin_environment(module)
             })
             .and_then(|(instance, plugin_env, subscriptions)| {
-                log::info!("load_plugin_instance reload_plugin_from_memory");
                 plugin_loader.load_plugin_instance(
                     &instance,
                     &plugin_env,
@@ -250,7 +249,6 @@ impl<'a> PluginLoader<'a> {
                 plugin_loader.create_plugin_environment(module)
             })
             .and_then(|(instance, plugin_env, subscriptions)| {
-                log::info!("load_plugin_instance start plugin");
                 plugin_loader.load_plugin_instance(
                     &instance,
                     &plugin_env,
@@ -279,7 +277,7 @@ impl<'a> PluginLoader<'a> {
         loading_indication: &mut LoadingIndication,
     ) -> Result<()> {
         let mut new_plugins = HashSet::new();
-        for (&(plugin_id, _), _) in &*plugin_map.lock().unwrap() {
+        for plugin_id in plugin_map.lock().unwrap().plugin_ids() {
             new_plugins.insert((plugin_id, client_id));
         }
         for (plugin_id, existing_client_id) in new_plugins {
@@ -299,7 +297,6 @@ impl<'a> PluginLoader<'a> {
                     plugin_loader.create_plugin_environment(module)
                 })
                 .and_then(|(instance, plugin_env, subscriptions)| {
-                    log::info!("load_plugin_instance add_client");
                     plugin_loader.load_plugin_instance(
                         &instance,
                         &plugin_env,
@@ -347,7 +344,6 @@ impl<'a> PluginLoader<'a> {
                 plugin_loader.create_plugin_environment(module)
             })
             .and_then(|(instance, plugin_env, subscriptions)| {
-                log::info!("load_plugin_instance reload plugin");
                 plugin_loader.load_plugin_instance(
                     &instance,
                     &plugin_env,
@@ -374,7 +370,7 @@ impl<'a> PluginLoader<'a> {
         tab_index: usize,
         size: Size,
     ) -> Result<Self> {
-        let plugin_own_data_dir = ZELLIJ_CACHE_DIR.join(Url::from(&plugin.location).to_string());
+        let plugin_own_data_dir = ZELLIJ_SESSION_CACHE_DIR.join(Url::from(&plugin.location).to_string()).join(format!("{}-{}", plugin_id, client_id));
         create_plugin_fs_entries(&plugin_own_data_dir)?;
         let plugin_path = plugin.path.clone();
         Ok(PluginLoader {
@@ -407,7 +403,7 @@ impl<'a> PluginLoader<'a> {
         let (running_plugin, _subscriptions, workers) = {
             let mut plugin_map = plugin_map.lock().unwrap();
             plugin_map
-                .remove(&(plugin_id, client_id))
+                .remove_single_plugin(plugin_id, client_id)
                 .with_context(err_context)?
         };
         let running_plugin = running_plugin.lock().unwrap();
@@ -442,13 +438,14 @@ impl<'a> PluginLoader<'a> {
         plugin_dir: &'a PathBuf,
     ) -> Result<Self> {
         let err_context = || "Failed to find existing plugin";
-        let (running_plugin, _subscriptions, workers) = {
+        let running_plugin = {
             let plugin_map = plugin_map.lock().unwrap();
             plugin_map
-                .iter()
-                .find(|((p_id, _c_id), _)| p_id == &plugin_id)
-                .with_context(err_context)?
-                .1
+                .get_running_plugin(plugin_id, None)
+//                 .iter()
+//                 .find(|((p_id, _c_id), _)| p_id == &plugin_id)
+                 .with_context(err_context)?
+//                 .1
                 .clone()
         };
         let running_plugin = running_plugin.lock().unwrap();
@@ -596,7 +593,6 @@ impl<'a> PluginLoader<'a> {
         plugin_map: &Arc<Mutex<PluginMap>>,
         subscriptions: &Arc<Mutex<Subscriptions>>,
     ) -> Result<()> {
-        log::info!("load_plugin_instance");
         let err_context = || format!("failed to load plugin from instance {instance:#?}");
         let main_user_instance = instance.clone();
         let main_user_env = plugin_env.clone();
@@ -637,17 +633,16 @@ impl<'a> PluginLoader<'a> {
             self.plugin_id
         );
         plugin_map.lock().unwrap().insert(
-            (self.plugin_id, self.client_id),
-            (
-                Arc::new(Mutex::new(RunningPlugin::new(
-                    main_user_instance,
-                    main_user_env,
-                    self.size.rows,
-                    self.size.cols,
-                ))),
-                subscriptions.clone(),
-                workers,
-            ),
+            self.plugin_id,
+            self.client_id,
+            Arc::new(Mutex::new(RunningPlugin::new(
+                main_user_instance,
+                main_user_env,
+                self.size.rows,
+                self.size.cols,
+            ))),
+            subscriptions.clone(),
+            workers,
         );
         display_loading_stage!(
             indicate_writing_plugin_to_cache_success,
@@ -662,7 +657,6 @@ impl<'a> PluginLoader<'a> {
         connected_clients: &[ClientId],
         plugin_map: &Arc<Mutex<PluginMap>>,
     ) -> Result<()> {
-        log::info!("own client id in clone_instance_for_other_clients: {:?}", self.client_id);
         if !connected_clients.is_empty() {
             display_loading_stage!(
                 indicate_cloning_plugin_for_other_clients,
@@ -693,7 +687,6 @@ impl<'a> PluginLoader<'a> {
                             .create_plugin_environment(module)
                     })
                     .and_then(|(instance, plugin_env, subscriptions)| {
-                        log::info!("load_plugin_instance for other clients...");
                         plugin_loader_for_client.load_plugin_instance(
                             &instance,
                             &plugin_env,

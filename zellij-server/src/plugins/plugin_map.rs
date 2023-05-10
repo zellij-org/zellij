@@ -12,6 +12,7 @@ use wasmer_wasi::WasiEnv;
 use crate::{thread_bus::ThreadSenders, ClientId};
 
 use zellij_utils::{
+    input::layout::RunPluginLocation,
     consts::VERSION,
     data::EventType, input::plugins::PluginConfig
 };
@@ -22,8 +23,108 @@ use zellij_utils::errors::prelude::*;
 // so when adding/removing from the map - everything is halted, that's life
 // but when cloning the internal RunningPlugin and Subscriptions atomics, we can call methods on
 // them without blocking other instances
-pub type PluginMap =
-    HashMap<(PluginId, ClientId), (Arc<Mutex<RunningPlugin>>, Arc<Mutex<Subscriptions>>, HashMap<String, Arc<Mutex<RunningWorker>>>)>;
+#[derive(Default)]
+pub struct PluginMap  {
+    // TODO: types
+    plugin_assets: HashMap<(PluginId, ClientId), (Arc<Mutex<RunningPlugin>>, Arc<Mutex<Subscriptions>>, HashMap<String, Arc<Mutex<RunningWorker>>>)>,
+}
+
+impl PluginMap {
+    pub fn remove_plugins(&mut self, pid: PluginId) -> Vec<(Arc<Mutex<RunningPlugin>>, Arc<Mutex<Subscriptions>>, HashMap<String, Arc<Mutex<RunningWorker>>>)> {
+        let mut removed = vec![];
+        let ids_in_plugin_map: Vec<(PluginId, ClientId)> = self.plugin_assets.keys().copied().collect();
+        for (plugin_id, client_id) in ids_in_plugin_map {
+            if pid == plugin_id {
+                if let Some(plugin_asset) = self.plugin_assets.remove(&(plugin_id, client_id)) {
+                    removed.push(plugin_asset);
+                }
+            }
+        }
+        removed
+    }
+    // TODO: CONTINUE HERE - implement these
+    pub fn remove_single_plugin(&mut self, plugin_id: PluginId, client_id: ClientId) -> Option<(Arc<Mutex<RunningPlugin>>, Arc<Mutex<Subscriptions>>, HashMap<String, Arc<Mutex<RunningWorker>>>)> {
+        self.plugin_assets.remove(&(plugin_id, client_id))
+    }
+    pub fn plugin_ids(&self) -> Vec<PluginId> {
+        let mut unique_plugins: HashSet<PluginId> = self.plugin_assets.keys().map(|(plugin_id, _client_id)| *plugin_id).collect();
+        unique_plugins.drain().into_iter().collect()
+    }
+    pub fn running_plugins(&mut self) -> Vec<(PluginId, ClientId, Arc<Mutex<RunningPlugin>>)>  {
+        self.plugin_assets
+            .iter()
+            .map(|((plugin_id, client_id), (running_plugin, _, _))| (*plugin_id, *client_id, running_plugin.clone()))
+            .collect()
+    }
+    pub fn running_plugins_and_subscriptions(&mut self) -> Vec<(PluginId, ClientId, Arc<Mutex<RunningPlugin>>, Arc<Mutex<Subscriptions>>)>  {
+        self.plugin_assets
+            .iter()
+            .map(|((plugin_id, client_id), (running_plugin, subscriptions, _))| (*plugin_id, *client_id, running_plugin.clone(), subscriptions.clone()))
+            .collect()
+    }
+    pub fn get_running_plugin_and_subscriptions(&self, plugin_id: PluginId, client_id: ClientId) -> Option<(Arc<Mutex<RunningPlugin>>, Arc<Mutex<Subscriptions>>)>  {
+        self.plugin_assets
+            .get(&(plugin_id, client_id))
+            .and_then(|(running_plugin, subscriptions, _)| Some((running_plugin.clone(), subscriptions.clone())))
+    }
+    pub fn get_running_plugin(&self, plugin_id: PluginId, client_id: Option<ClientId>) -> Option<Arc<Mutex<RunningPlugin>>>  {
+        match client_id {
+            Some(client_id) => {
+                self.plugin_assets
+                    .get(&(plugin_id, client_id))
+                    .and_then(|(running_plugin, _, _)| Some(running_plugin.clone()))
+            },
+            None => {
+                self.plugin_assets
+                    .iter()
+                    .find(|((p_id, _), _)| *p_id == plugin_id)
+                    .and_then(|(_, (running_plugin, _, _))| Some(running_plugin.clone()))
+            }
+        }
+    }
+    pub fn clone_worker(&self, plugin_id: PluginId, client_id: ClientId, worker_name: &str) -> Option<Arc<Mutex<RunningWorker>>> {
+        self.plugin_assets
+            .iter()
+            .find(|((p_id, c_id), _)| p_id == &plugin_id && c_id == &client_id)
+            .and_then(|(_, (_running_plugin, _subscriptions, workers))| {
+                if let Some(worker) = workers.get(&format!("{}_worker", worker_name)) {
+                    Some(worker.clone())
+                } else {
+                    None
+                }
+            }).clone()
+    }
+    pub fn all_plugin_ids_for_plugin_location(
+        &self,
+        plugin_location: &RunPluginLocation,
+    ) -> Result<Vec<PluginId>> {
+        let err_context = || format!("Failed to get plugin ids for location {plugin_location}");
+        let plugin_ids: Vec<PluginId> = self
+            .plugin_assets
+            .iter()
+            .filter(|(_, (running_plugin, _subscriptions, _workers))| {
+                &running_plugin.lock().unwrap().plugin_env.plugin.location == plugin_location
+            })
+            .map(|((plugin_id, _client_id), _)| *plugin_id)
+            .collect();
+        if plugin_ids.is_empty() {
+            return Err(ZellijError::PluginDoesNotExist).with_context(err_context);
+        }
+        Ok(plugin_ids)
+    }
+    pub fn insert(
+        &mut self,
+        plugin_id: PluginId,
+        client_id: ClientId,
+        running_plugin: Arc<Mutex<RunningPlugin>>,
+        subscriptions: Arc<Mutex<Subscriptions>>,
+        running_workers: HashMap<String, Arc<Mutex<RunningWorker>>>
+    ) {
+        self.plugin_assets.insert((plugin_id, client_id), (running_plugin, subscriptions, running_workers));
+    }
+
+}
+
 pub type Subscriptions = HashSet<EventType>;
 
 #[derive(Clone)]

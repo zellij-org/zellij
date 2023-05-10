@@ -287,12 +287,11 @@ fn host_post_message_to(env: &ForeignFunctionEnv) {
         .and_then(|(worker_name, message, payload)| {
             env.plugin_env
                 .senders
-                .send_to_plugin(PluginInstruction::PostMessageToPluginWorker(
+                .send_to_plugin(PluginInstruction::PostMessagesToPluginWorker(
                     env.plugin_env.plugin_id,
                     env.plugin_env.client_id,
                     worker_name,
-                    message,
-                    payload
+                    vec![(message, payload)],
                 ))
         })
         .with_context(|| format!("failed to post message to worker {}", env.plugin_env.name()))

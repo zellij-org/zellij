@@ -3,6 +3,7 @@
 use crate::input::theme::Themes;
 use directories_next::ProjectDirs;
 use lazy_static::lazy_static;
+use uuid::Uuid;
 use once_cell::sync::OnceCell;
 use std::path::PathBuf;
 
@@ -29,6 +30,7 @@ lazy_static! {
     pub static ref ZELLIJ_PROJ_DIR: ProjectDirs =
         ProjectDirs::from("org", "Zellij Contributors", "Zellij").unwrap();
     pub static ref ZELLIJ_CACHE_DIR: PathBuf = ZELLIJ_PROJ_DIR.cache_dir().to_path_buf();
+    pub static ref ZELLIJ_SESSION_CACHE_DIR: PathBuf = ZELLIJ_PROJ_DIR.cache_dir().to_path_buf().join(format!("{}", Uuid::new_v4()));
     pub static ref ZELLIJ_DEFAULT_THEMES: Themes = {
         let mut default_themes = Themes::default();
 

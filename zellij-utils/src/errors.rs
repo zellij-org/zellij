@@ -365,6 +365,7 @@ pub enum PluginContext {
     RemoveClient,
     NewTab,
     ApplyCachedEvents,
+    ApplyCachedWorkerMessages,
     PostMessageToPluginWorker,
     PostMessageToPlugin,
 }

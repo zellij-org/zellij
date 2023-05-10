@@ -1,6 +1,6 @@
 use super::{PluginInstruction, PluginId};
 use crate::plugins::plugin_loader::{PluginLoader, VersionMismatchError};
-use crate::plugins::plugin_map::{AtomicEvent, PluginEnv, PluginMap};
+use crate::plugins::plugin_map::{AtomicEvent, PluginEnv, PluginMap, RunningWorker, RunningPlugin, Subscriptions};
 use crate::plugins::zellij_exports::{wasi_read_string, wasi_write_object};
 use log::info;
 use std::{
@@ -8,7 +8,7 @@ use std::{
     fmt::Display,
     path::PathBuf,
     str::FromStr,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, TryLockError},
 };
 use wasmer::{Instance, Module, Store, Value};
 use zellij_utils::async_std::task::{self, JoinHandle};
@@ -22,13 +22,14 @@ use zellij_utils::{
     consts::VERSION,
     data::{Event, EventType},
     errors::prelude::*,
-    errors::ZellijError,
     input::{
         layout::{RunPlugin, RunPluginLocation},
         plugins::PluginsConfig,
     },
     pane_size::Size,
 };
+
+const RETRY_INTERVAL_MS: u64 = 100;
 
 pub struct WasmBridge {
     connected_clients: Arc<Mutex<Vec<ClientId>>>,
@@ -56,7 +57,7 @@ impl WasmBridge {
         store: Store,
         plugin_dir: PathBuf,
     ) -> Self {
-        let plugin_map = Arc::new(Mutex::new(HashMap::new()));
+        let plugin_map = Arc::new(Mutex::new(PluginMap::default()));
         let connected_clients: Arc<Mutex<Vec<ClientId>>> = Arc::new(Mutex::new(vec![]));
         let plugin_cache: Arc<Mutex<HashMap<PathBuf, Module>>> =
             Arc::new(Mutex::new(HashMap::new()));
@@ -156,13 +157,14 @@ impl WasmBridge {
         Ok(plugin_id)
     }
     pub fn unload_plugin(&mut self, pid: PluginId) -> Result<()> {
+        // TODO: these should also be called on Zellij exit
         info!("Bye from plugin {}", &pid);
-        // TODO: remove plugin's own data directory
         let mut plugin_map = self.plugin_map.lock().unwrap();
-        let ids_in_plugin_map: Vec<(PluginId, ClientId)> = plugin_map.keys().copied().collect();
-        for (plugin_id, client_id) in ids_in_plugin_map {
-            if pid == plugin_id {
-                drop(plugin_map.remove(&(plugin_id, client_id)));
+        for (running_plugin, _, _) in plugin_map.remove_plugins(pid) {
+            let running_plugin = running_plugin.lock().unwrap();
+            let cache_dir = running_plugin.plugin_env.plugin_own_data_dir.clone();
+            if let Err(e) = std::fs::remove_dir_all(cache_dir) {
+                log::error!("Failed to remove cache dir for plugin: {:?}", e);
             }
         }
         Ok(())
@@ -273,16 +275,17 @@ impl WasmBridge {
     }
     pub fn resize_plugin(&mut self, pid: PluginId, new_columns: usize, new_rows: usize) -> Result<()> {
         let err_context = move || format!("failed to resize plugin {pid}");
-        for ((plugin_id, client_id), (running_plugin, _subscriptions, workers)) in
-            self.plugin_map.lock().unwrap().iter_mut()
-        {
-            if self
-                .cached_resizes_for_pending_plugins
-                .contains_key(&plugin_id)
-            {
-                continue;
-            }
-            if *plugin_id == pid {
+
+        let plugins_to_resize: Vec<(PluginId, ClientId, Arc<Mutex<RunningPlugin>>)> = self.plugin_map
+            .lock()
+            .unwrap()
+            .running_plugins()
+            .iter()
+            .cloned()
+            .filter(|(plugin_id, _client_id, _running_plugin)| !self.cached_resizes_for_pending_plugins.contains_key(&plugin_id))
+            .collect();
+        for (plugin_id, client_id, running_plugin) in plugins_to_resize {
+            if plugin_id == pid {
                 let event_id = running_plugin
                     .lock()
                     .unwrap()
@@ -290,8 +293,8 @@ impl WasmBridge {
                 task::spawn({
                     let senders = self.senders.clone();
                     let running_plugin = running_plugin.clone();
-                    let plugin_id = *plugin_id;
-                    let client_id = *client_id;
+                    let plugin_id = plugin_id;
+                    let client_id = client_id;
                     async move {
                         let mut running_plugin = running_plugin.lock().unwrap();
                         if running_plugin.apply_event_id(AtomicEvent::Resize, event_id) {
@@ -346,30 +349,32 @@ impl WasmBridge {
     ) -> Result<()> {
         let err_context = || "failed to update plugin state".to_string();
 
+        let plugins_to_update: Vec<(PluginId, ClientId, Arc<Mutex<RunningPlugin>>, Arc<Mutex<Subscriptions>>)> = self.plugin_map
+            .lock()
+            .unwrap()
+            .running_plugins_and_subscriptions()
+            .iter()
+            .cloned()
+            .filter(|(plugin_id, _client_id, _running_plugin, _subscriptions)| !&self.cached_events_for_pending_plugins.contains_key(&plugin_id))
+            .collect();
         for (pid, cid, event) in updates.drain(..) {
-            for (&(plugin_id, client_id), (running_plugin, subscriptions, workers)) in
-                &*self.plugin_map.lock().unwrap()
-            {
-                if self
-                    .cached_events_for_pending_plugins
-                    .contains_key(&plugin_id)
-                {
-                    continue;
-                }
+            for (plugin_id, client_id, running_plugin, subscriptions) in &plugins_to_update {
                 let subs = subscriptions.lock().unwrap().clone();
                 // FIXME: This is very janky... Maybe I should write my own macro for Event -> EventType?
                 let event_type =
                     EventType::from_str(&event.to_string()).with_context(err_context)?;
                 if subs.contains(&event_type)
                     && ((pid.is_none() && cid.is_none())
-                        || (pid.is_none() && cid == Some(client_id))
-                        || (cid.is_none() && pid == Some(plugin_id))
-                        || (cid == Some(client_id) && pid == Some(plugin_id)))
+                        || (pid.is_none() && cid == Some(*client_id))
+                        || (cid.is_none() && pid == Some(*plugin_id))
+                        || (cid == Some(*client_id) && pid == Some(*plugin_id)))
                 {
                     task::spawn({
                         let senders = self.senders.clone();
                         let running_plugin = running_plugin.clone();
                         let event = event.clone();
+                        let plugin_id = *plugin_id;
+                        let client_id = *client_id;
                         async move {
                             let running_plugin = running_plugin.lock().unwrap();
                             let mut plugin_bytes = vec![];
@@ -450,11 +455,11 @@ impl WasmBridge {
                 .copied()
                 .collect();
             for client_id in &all_connected_clients {
-                if let Some((running_plugin, subscriptions, workers)) = self
+                if let Some((running_plugin, subscriptions)) = self
                     .plugin_map
                     .lock()
                     .unwrap()
-                    .get_mut(&(plugin_id, *client_id))
+                    .get_running_plugin_and_subscriptions(plugin_id, *client_id)
                 {
                     let subs = subscriptions.lock().unwrap().clone();
                     for event in events.clone() {
@@ -498,10 +503,17 @@ impl WasmBridge {
         if let Some((rows, columns)) = self.cached_resizes_for_pending_plugins.remove(&plugin_id) {
             self.resize_plugin(plugin_id, columns, rows)?;
         }
+        self.apply_cached_worker_messages(plugin_id)?;
+        Ok(())
+    }
+    pub fn apply_cached_worker_messages(&mut self, plugin_id: PluginId) -> Result<()> {
         if let Some(mut messages) = self.cached_worker_messages.remove(&plugin_id) {
-            log::info!("can has cached_worker_messages");
+            let mut worker_messages: HashMap<(ClientId, String), Vec<(String, String)>> = HashMap::new();
             for (client_id, worker_name, message, payload) in messages.drain(..) {
-                self.post_message_to_plugin_worker(plugin_id, client_id, worker_name, message, payload)?;
+                worker_messages.entry((client_id, worker_name)).or_default().push((message, payload));
+            }
+            for ((client_id, worker_name), messages) in worker_messages.drain() {
+                self.post_messages_to_plugin_worker(plugin_id, client_id, worker_name, messages)?;
             }
         }
         Ok(())
@@ -516,34 +528,17 @@ impl WasmBridge {
         &self,
         plugin_location: &RunPluginLocation,
     ) -> Result<Vec<PluginId>> {
-        let err_context = || format!("Failed to get plugin ids for location {plugin_location}");
-        let plugin_ids: Vec<PluginId> = self
-            .plugin_map
-            .lock()
-            .unwrap()
-            .iter()
-            .filter(|(_, (running_plugin, _subscriptions, workers))| {
-                &running_plugin.lock().unwrap().plugin_env.plugin.location == plugin_location
-                // TODO:
-                // better
-            })
-            .map(|((plugin_id, _client_id), _)| *plugin_id)
-            .collect();
-        if plugin_ids.is_empty() {
-            return Err(ZellijError::PluginDoesNotExist).with_context(err_context);
-        }
-        Ok(plugin_ids)
+        self.plugin_map.lock().unwrap().all_plugin_ids_for_plugin_location(plugin_location)
     }
     fn size_of_plugin_id(&self, plugin_id: PluginId) -> Option<(usize, usize)> {
         // (rows/colums)
         self.plugin_map
             .lock()
             .unwrap()
-            .iter()
-            .find(|((p_id, _client_id), _)| *p_id == plugin_id)
-            .map(|(_, (running_plugin, _subscriptions, workers))| {
-                let running_plugin = running_plugin.lock().unwrap();
-                (running_plugin.rows, running_plugin.columns)
+            .get_running_plugin(plugin_id, None)
+            .map(|r| {
+                let r = r.lock().unwrap();
+                (r.rows, r.columns)
             })
     }
     fn start_plugin_loading_indication(
@@ -563,44 +558,31 @@ impl WasmBridge {
                 .send_to_background_jobs(BackgroundJob::AnimatePluginLoading(*plugin_id));
         }
     }
-    pub fn post_message_to_plugin_worker(&mut self, plugin_id: PluginId, client_id: ClientId, mut worker_name: String, message: String, payload: String) -> Result<()> {
-        let err_context = || format!("Failed to send message to worker");
-
-        let orig_worker_name = worker_name.clone(); // TODO: better
-        worker_name.push_str("_worker");
+    pub fn post_messages_to_plugin_worker(&mut self, plugin_id: PluginId, client_id: ClientId, worker_name: String, mut messages: Vec<(String, String)>) -> Result<()> {
         let worker = self
             .plugin_map
             .lock()
             .unwrap()
-            .iter()
-            .find(|((p_id, c_id), _)| p_id == &plugin_id && c_id == &client_id)
-            .and_then(|(_, (_running_plugin, _subscriptions, workers))| {
-                // TODO: better
-                if let Some(worker) = workers.get(&worker_name) {
-                    Some(worker.clone())
-                } else {
-                    None
-                }
-            }).clone();
+            .clone_worker(plugin_id, client_id, &worker_name);
+        let mut cache_messages = || {
+            for (message, payload) in messages.drain(..) {
+                self.cached_worker_messages.entry(plugin_id).or_default().push((client_id, worker_name.clone(), message, payload));
+            }
+        };
         match worker {
             Some(worker) => {
-                let worker_running_task = task::spawn({
-                    async move {
-                        // let worker = worker.lock().unwrap();
-                        match worker.try_lock() {
-                            Ok(worker) => {
-                                worker.send_message(message, payload).ok();
-                            },
-                            Err(e) => {
-                                log::warn!("Could not acquire lock on worker: {:?}", worker_name);
-                            }
-                        }
-                    }
-                });
+                let worker_is_busy = { worker.try_lock().is_err() };
+                if worker_is_busy {
+                    // most messages will be caught here, we do this once before the async task to
+                    // bulk most messages together and prevent them from cascading
+                    cache_messages();
+                } else {
+                    async_send_messages_to_worker(self.senders.clone(), messages, worker, plugin_id, client_id, worker_name);
+                }
             },
             None => {
-                log::warn!("Worker {orig_worker_name} not found, placing message in cache");
-                self.cached_worker_messages.entry(plugin_id).or_default().push((client_id, orig_worker_name, message, payload));
+                log::warn!("Worker {worker_name} not found, placing message in cache");
+                cache_messages();
             }
         }
         Ok(())
@@ -678,4 +660,38 @@ pub fn apply_event_to_plugin(
         plugin_bytes.push((plugin_id, client_id, rendered_bytes.as_bytes().to_vec()));
     }
     Ok(())
+}
+
+fn async_send_messages_to_worker(
+    senders: ThreadSenders,
+    mut messages: Vec<(String, String)>,
+    worker: Arc<Mutex<RunningWorker>>,
+    plugin_id: PluginId,
+    client_id: ClientId,
+    worker_name: String,
+) {
+    task::spawn({
+        async move {
+            match worker.try_lock() {
+                Ok(worker) => {
+                    for (message, payload) in messages.drain(..) {
+                        worker.send_message(message, payload).ok();
+                    }
+                    let _ = senders.send_to_plugin(PluginInstruction::ApplyCachedWorkerMessages(plugin_id));
+                },
+                Err(TryLockError::WouldBlock) => {
+                    task::spawn({
+                        async move {
+                            log::warn!("Worker {} busy, retrying sending message after: {}ms", worker_name, RETRY_INTERVAL_MS);
+                            task::sleep(std::time::Duration::from_millis(RETRY_INTERVAL_MS)).await;
+                            let _ = senders.send_to_plugin(PluginInstruction::PostMessagesToPluginWorker(plugin_id, client_id, worker_name, messages));
+                        }
+                    });
+                }
+                Err(e) => {
+                    log::error!("Failed to send message to worker \"{}\": {:?}", worker_name, e);
+                }
+            }
+        }
+    });
 }

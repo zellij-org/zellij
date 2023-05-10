@@ -14,20 +14,7 @@ use zellij_tile::prelude::*;
 use serde_json;
 
 register_plugin!(State);
-
-thread_local! {
-    static SEARCH_WORKER: std::cell::RefCell<SearchWorker> = std::cell::RefCell::new(SearchWorker::new());
-}
-
-#[no_mangle]
-pub fn search_worker() {
-    let mut json = String::new();
-    std::io::stdin().read_line(&mut json).unwrap();
-    let (message, payload): (String, String) = serde_json::from_str(&json).unwrap(); // TODO: no unwrap
-    SEARCH_WORKER.with(|search_worker| {
-        search_worker.borrow_mut().on_message(message, payload);
-    });
-}
+register_worker!(SearchWorker, search_worker);
 
 impl ZellijPlugin for State {
     fn load(&mut self) {

@@ -4129,6 +4129,7 @@ dependencies = [
  "thiserror",
  "unicode-width",
  "url",
+ "uuid",
  "vte 0.11.0",
 ]
 
