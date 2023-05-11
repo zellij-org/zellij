@@ -80,18 +80,20 @@ pub fn object_to_stdout(object: &impl Serialize) {
 }
 
 #[doc(hidden)]
-pub fn post_message_to(worker_name: &str, message: String, payload: String) { // TODO: change name
-                                                                              // to
-                                                                              // post_message_to_worker?
-    println!("{}", serde_json::to_string(&(worker_name, message, payload)).unwrap()); // TODO:
-                                                                                     // better
+pub fn post_message_to(worker_name: &str, message: String, payload: String) {
+    match serde_json::to_string(&(worker_name, message, payload)) {
+        Ok(serialized) => println!("{}", serialized),
+        Err(e) => eprintln!("Failed to serialize message: {:?}", e),
+    }
     unsafe { host_post_message_to() };
 }
 
 #[doc(hidden)]
 pub fn post_message_to_plugin(message: String, payload: String) {
-    println!("{}", serde_json::to_string(&(message, payload)).unwrap()); // TODO:
-                                                                                     // better
+    match serde_json::to_string(&(message, payload)) {
+        Ok(serialized) => println!("{}", serialized),
+        Err(e) => eprintln!("Failed to serialize message: {:?}", e),
+    }
     unsafe { host_post_message_to_plugin() };
 }
 

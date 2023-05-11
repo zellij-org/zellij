@@ -436,6 +436,10 @@ impl WasmBridge {
         for (_plugin_id, loading_plugin_task) in self.loading_plugins.drain() {
             drop(loading_plugin_task.cancel());
         }
+        let plugin_ids = self.plugin_map.lock().unwrap().plugin_ids();
+        for plugin_id in &plugin_ids {
+            drop(self.unload_plugin(*plugin_id));
+        }
     }
     fn run_plugin_of_plugin_id(&self, plugin_id: PluginId) -> Option<&RunPlugin> {
         self.loading_plugins
@@ -444,7 +448,6 @@ impl WasmBridge {
             .map(|((_p_id, run_plugin), _)| run_plugin)
     }
     fn apply_cached_events_and_resizes_for_plugin(&mut self, plugin_id: PluginId) -> Result<()> {
-        log::info!("apply_cached_events_and_resizes_for_plugin, {plugin_id}");
         let err_context = || format!("Failed to apply cached events to plugin");
         if let Some(events) = self.cached_events_for_pending_plugins.remove(&plugin_id) {
             let all_connected_clients: Vec<ClientId> = self
