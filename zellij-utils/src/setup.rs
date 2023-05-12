@@ -452,7 +452,12 @@ impl Setup {
             .unwrap();
             match Config::from_path(&config_file, None) {
                 Ok(_) => message.push_str("[CONFIG FILE]: Well defined.\n"),
-                Err(e) => writeln!(&mut message, "[CONFIG ERROR]: {}", e).unwrap(),
+                Err(e) => writeln!(
+                    &mut message,
+                    "[CONFIG ERROR]: {}. \n By default, zellij loads default configuration",
+                    e
+                )
+                .unwrap(),
             }
         } else {
             message.push_str("[CONFIG FILE]: Not Found\n");
