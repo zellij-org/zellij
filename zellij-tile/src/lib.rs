@@ -119,7 +119,7 @@ macro_rules! register_worker {
                         &format!("/data/{}", worker_display_name),
                         serialized_state.as_bytes(),
                     )
-                    .map_err(|e| format!("Failed to persist state to HD"))
+                    .map_err(|e| format!("Failed to persist state to HD: {:?}", e))
                 }) {
                 Ok(()) => {},
                 Err(e) => eprintln!(

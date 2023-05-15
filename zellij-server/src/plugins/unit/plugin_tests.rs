@@ -118,7 +118,8 @@ fn create_plugin_thread() -> (
 
 lazy_static! {
     static ref PLUGIN_FIXTURE: String = format!(
-        // "{}/../target/wasm32-wasi/debug/fixture-plugin-for-tests.wasm",
+        // to populate this file, make sure to run the build-e2e CI job
+        // (or compile the fixture plugin and copy the resulting .wasm blob to the below location)
         "{}/../target/e2e-data/plugins/fixture-plugin-for-tests.wasm",
         std::env::var_os("CARGO_MANIFEST_DIR")
             .unwrap()
