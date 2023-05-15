@@ -32,6 +32,7 @@ macro_rules! log_actions_in_thread {
                     let (event, _err_ctx) = $receiver
                         .recv()
                         .expect("failed to receive event on channel");
+                    eprintln!("received event: {:#?}", event);
                     match event {
                         $exit_event(..) => {
                             exit_event_count += 1;
