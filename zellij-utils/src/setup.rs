@@ -444,11 +444,20 @@ impl Setup {
             }
         }
         if let Some(config_file) = config_file {
-            writeln!(&mut message, "[CONFIG FILE]: {:?}", config_file).unwrap();
-            // match Config::new(&config_file) {
+            writeln!(
+                &mut message,
+                "[LOOKING FOR CONFIG FILE FROM]: {:?}",
+                config_file
+            )
+            .unwrap();
             match Config::from_path(&config_file, None) {
                 Ok(_) => message.push_str("[CONFIG FILE]: Well defined.\n"),
-                Err(e) => writeln!(&mut message, "[CONFIG ERROR]: {}", e).unwrap(),
+                Err(e) => writeln!(
+                    &mut message,
+                    "[CONFIG ERROR]: {}. \n By default, zellij loads default configuration",
+                    e
+                )
+                .unwrap(),
             }
         } else {
             message.push_str("[CONFIG FILE]: Not Found\n");
