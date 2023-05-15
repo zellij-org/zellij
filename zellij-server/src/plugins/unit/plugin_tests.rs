@@ -118,7 +118,8 @@ fn create_plugin_thread() -> (
 
 lazy_static! {
     static ref PLUGIN_FIXTURE: String = format!(
-        "{}/../target/wasm32-wasi/debug/fixture-plugin-for-tests.wasm",
+        // "{}/../target/wasm32-wasi/debug/fixture-plugin-for-tests.wasm",
+        "{}/../target/e2e-data/plugins/fixture-plugin-for-tests.wasm",
         std::env::var_os("CARGO_MANIFEST_DIR")
             .unwrap()
             .to_string_lossy()
