@@ -438,10 +438,7 @@ impl<'a> PluginLoader<'a> {
             let plugin_map = plugin_map.lock().unwrap();
             plugin_map
                 .get_running_plugin(plugin_id, None)
-                //                 .iter()
-                //                 .find(|((p_id, _c_id), _)| p_id == &plugin_id)
                 .with_context(err_context)?
-                //                 .1
                 .clone()
         };
         let running_plugin = running_plugin.lock().unwrap();

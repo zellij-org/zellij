@@ -249,3 +249,72 @@ pub fn plugin_workers() {
         });
     assert_snapshot!(format!("{:#?}", plugin_bytes_event));
 }
+
+#[test]
+#[ignore]
+pub fn plugin_workers_persist_state() {
+    let (plugin_thread_sender, screen_receiver, mut teardown) = create_plugin_thread();
+    let plugin_should_float = Some(false);
+    let plugin_title = Some("test_plugin".to_owned());
+    let run_plugin = RunPlugin {
+        _allow_exec_host_cmd: false,
+        location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+    };
+    let tab_index = 1;
+    let client_id = 1;
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let received_screen_instructions = Arc::new(Mutex::new(vec![]));
+    let screen_thread = log_actions_in_thread!(
+        received_screen_instructions,
+        ScreenInstruction::PluginBytes,
+        screen_receiver,
+        5
+    );
+
+    let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
+    let _ = plugin_thread_sender.send(PluginInstruction::Load(
+        plugin_should_float,
+        plugin_title,
+        run_plugin,
+        tab_index,
+        client_id,
+        size,
+    ));
+    // we send a SystemClipboardFailure to trigger the custom handler in the fixture plugin that
+    // will send a message to the worker and in turn back to the plugin to be rendered, so we know
+    // that this cycle is working
+    // we do this a second time so that the worker will log the first message on its own state and
+    // then send us the "received 2 messages" indication we check for below, letting us know it
+    // managed to persist its own state and act upon it
+    let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
+        None,
+        Some(client_id),
+        Event::SystemClipboardFailure,
+    )]));
+    let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
+        None,
+        Some(client_id),
+        Event::SystemClipboardFailure,
+    )]));
+    screen_thread.join().unwrap(); // this might take a while if the cache is cold
+    teardown();
+    let plugin_bytes_event = received_screen_instructions
+        .lock()
+        .unwrap()
+        .iter()
+        .find_map(|i| {
+            if let ScreenInstruction::PluginBytes(plugin_bytes) = i {
+                for (plugin_id, client_id, plugin_bytes) in plugin_bytes {
+                    let plugin_bytes = String::from_utf8_lossy(plugin_bytes).to_string();
+                    if plugin_bytes.contains("received 2 messages") {
+                        return Some((*plugin_id, *client_id, plugin_bytes));
+                    }
+                }
+            }
+            None
+        });
+    assert_snapshot!(format!("{:#?}", plugin_bytes_event));
+}

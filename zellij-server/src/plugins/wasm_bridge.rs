@@ -158,7 +158,6 @@ impl WasmBridge {
         Ok(plugin_id)
     }
     pub fn unload_plugin(&mut self, pid: PluginId) -> Result<()> {
-        // TODO: these should also be called on Zellij exit
         info!("Bye from plugin {}", &pid);
         let mut plugin_map = self.plugin_map.lock().unwrap();
         for (running_plugin, _, _) in plugin_map.remove_plugins(pid) {

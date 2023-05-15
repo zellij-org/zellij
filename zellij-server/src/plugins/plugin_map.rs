@@ -24,7 +24,6 @@ use zellij_utils::{
 // them without blocking other instances
 #[derive(Default)]
 pub struct PluginMap {
-    // TODO: types
     plugin_assets: HashMap<
         (PluginId, ClientId),
         (
@@ -56,7 +55,6 @@ impl PluginMap {
         }
         removed
     }
-    // TODO: CONTINUE HERE - implement these
     pub fn remove_single_plugin(
         &mut self,
         plugin_id: PluginId,
@@ -259,18 +257,11 @@ impl RunningPlugin {
     }
 }
 
-// TODO: CONTINUE HERE (30/04) - implement this and then populate it for Strider and then get the message
-// to pass
 pub struct RunningWorker {
     pub instance: Instance,
     pub name: String,
     pub plugin_config: PluginConfig,
     pub plugin_env: PluginEnv,
-    //     pub plugin_env: PluginEnv,
-    //     pub rows: usize,
-    //     pub columns: usize,
-    //     next_event_ids: HashMap<AtomicEvent, usize>,
-    //     last_applied_event_ids: HashMap<AtomicEvent, usize>,
 }
 
 impl RunningWorker {
