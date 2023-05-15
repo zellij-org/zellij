@@ -1,5 +1,5 @@
+use serde::{Deserialize, Serialize};
 use zellij_tile::prelude::*;
-use serde::{Serialize, Deserialize};
 
 // This is a fixture plugin used only for tests in Zellij
 // it is not (and should not!) be included in the mainline executable
@@ -14,7 +14,7 @@ struct State {
 #[derive(Default, Serialize, Deserialize)]
 struct TestWorker {}
 
-impl <'de> ZellijWorker<'de> for TestWorker {
+impl<'de> ZellijWorker<'de> for TestWorker {
     fn on_message(&mut self, message: String, payload: String) {
         if message == "ping" {
             post_message_to_plugin("pong".into(), payload);
@@ -36,21 +36,20 @@ impl ZellijPlugin for State {
 
     fn update(&mut self, event: Event) -> bool {
         match &event {
-            Event::CustomMessage(message, payload)=> {
+            Event::CustomMessage(message, payload) => {
                 if message == "pong" {
                     self.received_payload = Some(payload.clone());
                 }
-
-            }
+            },
             Event::SystemClipboardFailure => {
                 // this is just to trigger the worker message
                 post_message_to(
                     "test",
                     "ping".to_owned(),
-                    "gimme_back_my_payload".to_owned()
+                    "gimme_back_my_payload".to_owned(),
                 );
             },
-            _ => {}
+            _ => {},
         }
         let should_render = true;
         self.received_events.push(event);
@@ -61,7 +60,10 @@ impl ZellijPlugin for State {
         if let Some(payload) = self.received_payload.as_ref() {
             println!("Payload from worker: {:?}", payload);
         } else {
-            println!("Rows: {:?}, Cols: {:?}, Received events: {:?}", rows, cols, self.received_events);
+            println!(
+                "Rows: {:?}, Cols: {:?}, Received events: {:?}",
+                rows, cols, self.received_events
+            );
         }
     }
 }

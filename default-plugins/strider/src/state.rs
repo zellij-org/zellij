@@ -44,8 +44,8 @@ impl State {
                         self.typing_search_term = false;
                     }
                 }
-            }
-            _ => {}
+            },
+            _ => {},
         }
     }
     pub fn accept_search_term(&mut self) {
@@ -106,18 +106,28 @@ impl State {
     }
     pub fn open_search_result(&mut self) {
         match self.search_results.get(self.selected_search_result) {
-            Some(SearchResult::File{ path, score, indices }) => {
+            Some(SearchResult::File {
+                path,
+                score,
+                indices,
+            }) => {
                 let file_path = PathBuf::from(path);
                 open_file(file_path.strip_prefix(ROOT).unwrap());
-            }
-            Some(SearchResult::LineInFile{ path, score, indices, line, line_number }) => {
+            },
+            Some(SearchResult::LineInFile {
+                path,
+                score,
+                indices,
+                line,
+                line_number,
+            }) => {
                 let file_path = PathBuf::from(path);
                 open_file_with_line(file_path.strip_prefix(ROOT).unwrap(), *line_number);
                 // open_file_with_line(&file_path, *line_number); // TODO: no!!
             },
             None => {
                 eprintln!("Search result not found");
-            }
+            },
         }
     }
 }

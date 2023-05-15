@@ -63,7 +63,7 @@ pub enum PluginInstruction {
         Vec<(
             String, // serialized message name
             String, // serialized payload
-        )>
+        )>,
     ),
     PostMessageToPlugin(
         PluginId,
@@ -87,8 +87,12 @@ impl From<&PluginInstruction> for PluginContext {
             PluginInstruction::RemoveClient(_) => PluginContext::RemoveClient,
             PluginInstruction::NewTab(..) => PluginContext::NewTab,
             PluginInstruction::ApplyCachedEvents(..) => PluginContext::ApplyCachedEvents,
-            PluginInstruction::ApplyCachedWorkerMessages(..) => PluginContext::ApplyCachedWorkerMessages,
-            PluginInstruction::PostMessagesToPluginWorker(..) => PluginContext::PostMessageToPluginWorker,
+            PluginInstruction::ApplyCachedWorkerMessages(..) => {
+                PluginContext::ApplyCachedWorkerMessages
+            },
+            PluginInstruction::PostMessagesToPluginWorker(..) => {
+                PluginContext::PostMessageToPluginWorker
+            },
             PluginInstruction::PostMessageToPlugin(..) => PluginContext::PostMessageToPlugin,
         }
     }
@@ -223,14 +227,24 @@ pub(crate) fn plugin_thread_main(
             PluginInstruction::ApplyCachedWorkerMessages(plugin_id) => {
                 wasm_bridge.apply_cached_worker_messages(plugin_id)?;
             },
-            PluginInstruction::PostMessagesToPluginWorker(plugin_id, client_id, worker_name, messages) => {
-                wasm_bridge.post_messages_to_plugin_worker(plugin_id, client_id, worker_name, messages)?;
+            PluginInstruction::PostMessagesToPluginWorker(
+                plugin_id,
+                client_id,
+                worker_name,
+                messages,
+            ) => {
+                wasm_bridge.post_messages_to_plugin_worker(
+                    plugin_id,
+                    client_id,
+                    worker_name,
+                    messages,
+                )?;
             },
             PluginInstruction::PostMessageToPlugin(plugin_id, client_id, message, payload) => {
                 let updates = vec![(
                     Some(plugin_id),
                     Some(client_id),
-                    Event::CustomMessage(message, payload)
+                    Event::CustomMessage(message, payload),
                 )];
                 wasm_bridge.update_plugins(updates)?;
             },

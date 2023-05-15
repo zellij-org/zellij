@@ -3,10 +3,10 @@ use std::{
     io::{Read, Seek, Write},
 };
 
+use crate::plugins::PluginId;
 use log::{debug, error};
 use wasmer_wasi::{WasiFile, WasiFsError};
 use zellij_utils::{errors::prelude::*, serde};
-use crate::plugins::PluginId;
 
 use chrono::prelude::*;
 use serde::{Deserialize, Serialize};

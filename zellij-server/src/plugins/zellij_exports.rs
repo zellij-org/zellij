@@ -307,7 +307,7 @@ fn host_post_message_to_plugin(env: &ForeignFunctionEnv) {
                     env.plugin_env.plugin_id,
                     env.plugin_env.client_id,
                     message,
-                    payload
+                    payload,
                 ))
         })
         .with_context(|| format!("failed to post message to plugin {}", env.plugin_env.name()))

@@ -1,12 +1,12 @@
-mod state;
 mod search;
+mod state;
 
 use colored::*;
+use search::{ResultsOfSearch, SearchWorker};
+use serde_json;
 use state::{refresh_directory, FsEntry, State, CURRENT_SEARCH_TERM};
-use search::{SearchWorker, ResultsOfSearch};
 use std::{cmp::min, time::Instant};
 use zellij_tile::prelude::*;
-use serde_json;
 
 register_plugin!(State);
 register_worker!(SearchWorker, search_worker);
@@ -41,27 +41,29 @@ impl ZellijPlugin for State {
                     if self.loading_animation_offset == u8::MAX {
                         self.loading_animation_offset = 0;
                     } else {
-                        self.loading_animation_offset = self.loading_animation_offset.saturating_add(1);
+                        self.loading_animation_offset =
+                            self.loading_animation_offset.saturating_add(1);
                     }
                 }
-            }
-            Event::CustomMessage(message, payload) => {
-                match message.as_str() {
-                    "update_search_results" => {
-                        if let Ok(mut results_of_search) = serde_json::from_str::<ResultsOfSearch>(&payload) {
-                            if Some(results_of_search.search_term) == self.search_term {
-                                self.search_results = results_of_search.search_results.drain(..).collect();
-                                should_render = true;
-                            }
+            },
+            Event::CustomMessage(message, payload) => match message.as_str() {
+                "update_search_results" => {
+                    if let Ok(mut results_of_search) =
+                        serde_json::from_str::<ResultsOfSearch>(&payload)
+                    {
+                        if Some(results_of_search.search_term) == self.search_term {
+                            self.search_results =
+                                results_of_search.search_results.drain(..).collect();
+                            should_render = true;
                         }
-                    },
-                    "done_scanning_folder" => {
-                        self.loading = false;
-                        should_render = true;
-                    },
-                    _ => {}
-                }
-            }
+                    }
+                },
+                "done_scanning_folder" => {
+                    self.loading = false;
+                    should_render = true;
+                },
+                _ => {},
+            },
             Event::Key(key) => match key {
                 // modes:
                 // 1. typing_search_term
@@ -69,27 +71,31 @@ impl ZellijPlugin for State {
                 // 3. normal
                 Key::Esc | Key::Char('\n') if self.typing_search_term() => {
                     self.accept_search_term();
-                }
+                },
                 _ if self.typing_search_term() => {
                     self.append_to_search_term(key);
                     if let Some(search_term) = self.search_term.as_ref() {
                         std::fs::write(CURRENT_SEARCH_TERM, search_term.as_bytes()).unwrap();
-                        post_message_to("search", String::from("search"), String::from(&self.search_term.clone().unwrap()));
+                        post_message_to(
+                            "search",
+                            String::from("search"),
+                            String::from(&self.search_term.clone().unwrap()),
+                        );
                     }
                     should_render = true;
-                }
+                },
                 Key::Esc if self.exploring_search_results() => {
                     self.stop_exploring_search_results();
                     should_render = true;
-                }
+                },
                 Key::Char('/') => {
                     self.start_typing_search_term();
                     should_render = true;
-                }
+                },
                 Key::Esc => {
                     self.stop_typing_search_term();
                     should_render = true;
-                }
+                },
                 Key::Up | Key::Char('k') => {
                     if self.exploring_search_results() {
                         self.move_search_selection_up();
@@ -192,7 +198,6 @@ impl ZellijPlugin for State {
     }
 
     fn render(&mut self, rows: usize, cols: usize) {
-
         if self.typing_search_term() || self.exploring_search_results() {
             return self.render_search(rows, cols);
         }

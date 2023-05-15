@@ -1,8 +1,8 @@
 pub mod prelude;
 pub mod shim;
 
+use serde::{Deserialize, Serialize};
 use zellij_utils::data::Event;
-use serde::{Serialize, Deserialize};
 
 #[allow(unused_variables)]
 pub trait ZellijPlugin {
@@ -82,22 +82,30 @@ macro_rules! register_worker {
             let worker_display_name = std::stringify!($worker_name);
 
             // read message from STDIN
-            let (message, payload): (String, String) = $crate::shim::object_from_stdin().unwrap_or_else(|e| {
-                eprintln!("Failed to deserialize message to worker \"{}\": {:?}", worker_display_name, e);
-                Default::default()
-            });
+            let (message, payload): (String, String) = $crate::shim::object_from_stdin()
+                .unwrap_or_else(|e| {
+                    eprintln!(
+                        "Failed to deserialize message to worker \"{}\": {:?}",
+                        worker_display_name, e
+                    );
+                    Default::default()
+                });
 
             // read previous worker state from HD if it exists
             let mut worker_instance = match std::fs::read(&format!("/data/{}", worker_display_name))
                 .map_err(|e| format!("Failed to read file: {:?}", e))
                 .and_then(|s| {
-                serde_json::from_str::<$worker>(&String::from_utf8_lossy(&s)).map_err(|e| format!("Failed to deserialize: {:?}", e))
-            }) {
+                    serde_json::from_str::<$worker>(&String::from_utf8_lossy(&s))
+                        .map_err(|e| format!("Failed to deserialize: {:?}", e))
+                }) {
                 Ok(s) => s,
                 Err(e) => {
-                    eprintln!("Failed to read existing state ({:?}), creating new state for worker", e);
+                    eprintln!(
+                        "Failed to read existing state ({:?}), creating new state for worker",
+                        e
+                    );
                     <$worker>::default()
-                }
+                },
             };
 
             // invoke worker
@@ -106,11 +114,19 @@ macro_rules! register_worker {
             // persist worker state to HD for next run
             match serde_json::to_string(&worker_instance)
                 .map_err(|e| format!("Failed to serialize worker state"))
-                .and_then(|serialized_state| std::fs::write(&format!("/data/{}", worker_display_name), serialized_state.as_bytes())
-                .map_err(|e| format!("Failed to persist state to HD"))) {
-                    Ok(()) => {},
-                    Err(e) => eprintln!("Failed to serialize and persist worker state to hd: {:?}", e),
+                .and_then(|serialized_state| {
+                    std::fs::write(
+                        &format!("/data/{}", worker_display_name),
+                        serialized_state.as_bytes(),
+                    )
+                    .map_err(|e| format!("Failed to persist state to HD"))
+                }) {
+                Ok(()) => {},
+                Err(e) => eprintln!(
+                    "Failed to serialize and persist worker state to hd: {:?}",
+                    e
+                ),
             }
         }
-    }
+    };
 }

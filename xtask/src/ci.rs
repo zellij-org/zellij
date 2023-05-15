@@ -4,7 +4,10 @@ use crate::{
     flags::{self, CiCmd, Cross, E2e},
 };
 use anyhow::Context;
-use std::{ffi::OsString, path::{Path, PathBuf}};
+use std::{
+    ffi::OsString,
+    path::{Path, PathBuf},
+};
 use xshell::{cmd, Shell};
 
 pub fn main(sh: &Shell, flags: flags::Ci) -> anyhow::Result<()> {

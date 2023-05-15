@@ -1,14 +1,14 @@
-use crate::state::{State, ROOT, CURRENT_SEARCH_TERM};
+use crate::state::{State, CURRENT_SEARCH_TERM, ROOT};
 
-use zellij_tile::prelude::*;
 use unicode_width::UnicodeWidthStr;
+use zellij_tile::prelude::*;
 
-use walkdir::WalkDir;
-use fuzzy_matcher::FuzzyMatcher;
 use fuzzy_matcher::skim::SkimMatcherV2;
-use serde::{Serialize, Deserialize};
+use fuzzy_matcher::FuzzyMatcher;
+use serde::{Deserialize, Serialize};
+use walkdir::WalkDir;
 
-use std::io::{ self, BufRead };
+use std::io::{self, BufRead};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum SearchResult {
@@ -23,7 +23,7 @@ pub enum SearchResult {
         line_number: usize,
         score: i64,
         indices: Vec<usize>,
-    }
+    },
 }
 
 impl SearchResult {
@@ -31,10 +31,16 @@ impl SearchResult {
         SearchResult::File {
             path,
             score,
-            indices
+            indices,
         }
     }
-    pub fn new_file_line(score: i64, indices: Vec<usize>, path: String, line: String, line_number: usize) -> Self {
+    pub fn new_file_line(
+        score: i64,
+        indices: Vec<usize>,
+        path: String,
+        line: String,
+        line_number: usize,
+    ) -> Self {
         SearchResult::LineInFile {
             path,
             score,
@@ -64,52 +70,121 @@ impl SearchResult {
         let reset_code = "\u{1b}[m";
         let max_width = max_width.saturating_sub(3); // for the UI left line separator
         match self {
-            SearchResult::File { path, indices, .. } =>  {
+            SearchResult::File { path, indices, .. } => {
                 if is_selected {
-                    let line = self.render_line_with_indices(path, indices, max_width, None, Some(green_code), true);
+                    let line = self.render_line_with_indices(
+                        path,
+                        indices,
+                        max_width,
+                        None,
+                        Some(green_code),
+                        true,
+                    );
                     format!("{} | {}{}", green_foreground, reset_code, line)
                 } else {
-                    let line = self.render_line_with_indices(path, indices, max_width, None, None, true);
+                    let line =
+                        self.render_line_with_indices(path, indices, max_width, None, None, true);
                     format!(" | {}", line)
                 }
-            }
-            SearchResult::LineInFile { path, line, line_number, indices, .. } => {
+            },
+            SearchResult::LineInFile {
+                path,
+                line,
+                line_number,
+                indices,
+                ..
+            } => {
                 if is_selected {
-                    let first_line = self.render_line_with_indices(path, &vec![], max_width, None, Some(green_code), true);
+                    let first_line = self.render_line_with_indices(
+                        path,
+                        &vec![],
+                        max_width,
+                        None,
+                        Some(green_code),
+                        true,
+                    );
                     let line_indication_text = format!("{}-> {}", bold_code, line_number);
-                    let line_indication = format!("{}{}{}", orange_foreground, line_indication_text, reset_code); // TODO: also truncate
-                    let second_line = self.render_line_with_indices(line, indices, max_width.saturating_sub(line_indication_text.width()), None, Some(orange_code), false);
-                    format!(" {}│{} {}\n {}│{} {} {}", green_foreground, reset_code, first_line, green_foreground, reset_code, line_indication, second_line)
+                    let line_indication = format!(
+                        "{}{}{}",
+                        orange_foreground, line_indication_text, reset_code
+                    ); // TODO: also truncate
+                    let second_line = self.render_line_with_indices(
+                        line,
+                        indices,
+                        max_width.saturating_sub(line_indication_text.width()),
+                        None,
+                        Some(orange_code),
+                        false,
+                    );
+                    format!(
+                        " {}│{} {}\n {}│{} {} {}",
+                        green_foreground,
+                        reset_code,
+                        first_line,
+                        green_foreground,
+                        reset_code,
+                        line_indication,
+                        second_line
+                    )
                 } else {
-                    let first_line = self.render_line_with_indices(path, &vec![], max_width, None, None, true); // TODO:
+                    let first_line =
+                        self.render_line_with_indices(path, &vec![], max_width, None, None, true); // TODO:
                     let line_indication_text = format!("{}-> {}", bold_code, line_number);
-                    let second_line = self.render_line_with_indices(line, indices, max_width.saturating_sub(line_indication_text.width()), None, None, false);
-                    format!(" │ {}\n │ {} {}", first_line, line_indication_text, second_line)
+                    let second_line = self.render_line_with_indices(
+                        line,
+                        indices,
+                        max_width.saturating_sub(line_indication_text.width()),
+                        None,
+                        None,
+                        false,
+                    );
+                    format!(
+                        " │ {}\n │ {} {}",
+                        first_line, line_indication_text, second_line
+                    )
                 }
-            }
+            },
         }
     }
-    fn render_line_with_indices(&self, line_to_render: &String, indices: &Vec<usize>, max_width: usize, background_color: Option<usize>, foreground_color: Option<usize>, is_bold: bool) -> String {
+    fn render_line_with_indices(
+        &self,
+        line_to_render: &String,
+        indices: &Vec<usize>,
+        max_width: usize,
+        background_color: Option<usize>,
+        foreground_color: Option<usize>,
+        is_bold: bool,
+    ) -> String {
         // TODO: get these from Zellij
         let reset_code = "\u{1b}[m";
         let underline_code = "\u{1b}[4m";
-        let foreground_color = foreground_color.map(|c| format!("\u{1b}[38;5;{}m", c)).unwrap_or_else(|| format!(""));
-        let background_color = background_color.map(|c| format!("\u{1b}[48;5;{}m", c)).unwrap_or_else(|| format!(""));
+        let foreground_color = foreground_color
+            .map(|c| format!("\u{1b}[38;5;{}m", c))
+            .unwrap_or_else(|| format!(""));
+        let background_color = background_color
+            .map(|c| format!("\u{1b}[48;5;{}m", c))
+            .unwrap_or_else(|| format!(""));
         let bold = if is_bold { "\u{1b}[1m" } else { "" };
         let non_index_character_style = format!("{}{}{}", background_color, foreground_color, bold);
-        let index_character_style = format!("{}{}{}{}", background_color, foreground_color, bold, underline_code);
+        let index_character_style = format!(
+            "{}{}{}{}",
+            background_color, foreground_color, bold, underline_code
+        );
 
         let mut truncate_start_position = None;
         let mut truncate_end_position = None;
         if line_to_render.width() > max_width {
             let length_of_each_half = max_width.saturating_sub(4) / 2;
             truncate_start_position = Some(length_of_each_half);
-            truncate_end_position = Some(line_to_render.width().saturating_sub(length_of_each_half));
+            truncate_end_position =
+                Some(line_to_render.width().saturating_sub(length_of_each_half));
         }
         let mut first_half = format!("{}", reset_code);
         let mut second_half = format!("{}", reset_code);
         for (i, character) in line_to_render.chars().enumerate() {
-            if (truncate_start_position.is_none() && truncate_end_position.is_none()) || Some(i) < truncate_start_position {
+            if (truncate_start_position.is_none() && truncate_end_position.is_none())
+                || Some(i) < truncate_start_position
+            {
                 if indices.contains(&i) {
                     first_half.push_str(&index_character_style);
                     first_half.push(character);
@@ -132,7 +207,10 @@ impl SearchResult {
             }
         }
         if let Some(_truncate_start_position) = truncate_start_position {
-            format!("{}{}{}[..]{}{}{}", first_half, reset_code, foreground_color, reset_code, second_half, reset_code)
+            format!(
+                "{}{}{}[..]{}{}{}",
+                first_half, reset_code, foreground_color, reset_code, second_half, reset_code
+            )
         } else {
             format!("{}{}", first_half, reset_code)
         }
@@ -153,7 +231,8 @@ impl ResultsOfSearch {
         }
     }
     pub fn limit_search_results(mut self, max_results: usize) -> Self {
-        self.search_results.sort_by(|a, b| b.score().cmp(&a.score()));
+        self.search_results
+            .sort_by(|a, b| b.score().cmp(&a.score()));
         self.search_results = if self.search_results.len() > max_results {
             self.search_results.drain(..max_results).collect()
         } else {
@@ -170,31 +249,34 @@ pub struct SearchWorker {
     skip_hidden_files: bool,
 }
 
-impl <'de> ZellijWorker<'de> for SearchWorker {
+impl<'de> ZellijWorker<'de> for SearchWorker {
     // TODO: handle out of order messages, likely when rendering
     fn on_message(&mut self, message: String, payload: String) {
-        match message.as_str() { // TODO: deserialize to type
+        match message.as_str() {
+            // TODO: deserialize to type
             "scan_folder" => {
                 self.populate_search_paths();
                 post_message_to_plugin("done_scanning_folder".into(), "".into());
-            }
+            },
             "search" => {
                 let search_term = payload;
                 let (search_term, matches) = self.search(search_term);
-                let search_results = ResultsOfSearch::new(search_term, matches).limit_search_results(100);
-                post_message_to_plugin("update_search_results".into(), serde_json::to_string(&search_results).unwrap());
-            }
-            "skip_hidden_files" => {
-                match serde_json::from_str::<bool>(&payload) {
-                    Ok(should_skip_hidden_files) => {
-                        self.skip_hidden_files = should_skip_hidden_files;
-                    },
-                    Err(e) => {
-                        eprintln!("Failed to deserialize payload: {:?}", e);
-                    }
-                }
-            }
-            _ => {}
+                let search_results =
+                    ResultsOfSearch::new(search_term, matches).limit_search_results(100);
+                post_message_to_plugin(
+                    "update_search_results".into(),
+                    serde_json::to_string(&search_results).unwrap(),
+                );
+            },
+            "skip_hidden_files" => match serde_json::from_str::<bool>(&payload) {
+                Ok(should_skip_hidden_files) => {
+                    self.skip_hidden_files = should_skip_hidden_files;
+                },
+                Err(e) => {
+                    eprintln!("Failed to deserialize payload: {:?}", e);
+                },
+            },
+            _ => {},
         }
     }
 }
@@ -206,7 +288,7 @@ impl SearchWorker {
         }
         let mut matches = vec![];
         let mut matcher = SkimMatcherV2::default().use_cache(true).element_limit(100); // TODO: no hard
-                                                                                   // coded limit!
+                                                                                       // coded limit!
         self.search_file_names(&search_term, &mut matcher, &mut matches);
         self.search_file_contents(&search_term, &mut matcher, &mut matches);
 
@@ -221,7 +303,13 @@ impl SearchWorker {
     }
     fn populate_search_paths(&mut self) {
         for entry in WalkDir::new(ROOT).into_iter().filter_map(|e| e.ok()) {
-            if self.skip_hidden_files && entry.file_name().to_str().map(|s| s.starts_with('.')).unwrap_or(false) {
+            if self.skip_hidden_files
+                && entry
+                    .file_name()
+                    .to_str()
+                    .map(|s| s.starts_with('.'))
+                    .unwrap_or(false)
+            {
                 continue;
             }
             let file_path = entry.path().display().to_string();
@@ -232,11 +320,15 @@ impl SearchWorker {
                     for (index, line) in lines.enumerate() {
                         match line {
                             Ok(line) => {
-                                self.search_file_contents.push((file_path.clone(), index + 1, line));
+                                self.search_file_contents.push((
+                                    file_path.clone(),
+                                    index + 1,
+                                    line,
+                                ));
                             },
                             Err(_) => {
                                 break; // probably a binary file, skip it
-                            }
+                            },
                         }
                     }
                 }
@@ -245,17 +337,37 @@ impl SearchWorker {
             self.search_paths.push(file_path);
         }
     }
-    fn search_file_names(&self, search_term: &str, matcher: &mut SkimMatcherV2, matches: &mut Vec<SearchResult>) {
+    fn search_file_names(
+        &self,
+        search_term: &str,
+        matcher: &mut SkimMatcherV2,
+        matches: &mut Vec<SearchResult>,
+    ) {
         for entry in &self.search_paths {
             if let Some((score, indices)) = matcher.fuzzy_indices(&entry, &search_term) {
-                matches.push(SearchResult::new_file_name(score, indices, entry.to_owned()));
+                matches.push(SearchResult::new_file_name(
+                    score,
+                    indices,
+                    entry.to_owned(),
+                ));
             }
         }
     }
-    fn search_file_contents(&self, search_term: &str, matcher: &mut SkimMatcherV2, matches: &mut Vec<SearchResult>) {
+    fn search_file_contents(
+        &self,
+        search_term: &str,
+        matcher: &mut SkimMatcherV2,
+        matches: &mut Vec<SearchResult>,
+    ) {
         for (file_name, line_number, line_entry) in &self.search_file_contents {
             if let Some((score, indices)) = matcher.fuzzy_indices(&line_entry, &search_term) {
-                matches.push(SearchResult::new_file_line(score, indices, file_name.clone(), line_entry.clone(), *line_number));
+                matches.push(SearchResult::new_file_line(
+                    score,
+                    indices,
+                    file_name.clone(),
+                    line_entry.clone(),
+                    *line_number,
+                ));
             }
         }
     }
@@ -265,12 +377,20 @@ impl State {
     pub fn render_search(&mut self, rows: usize, cols: usize) {
         if let Some(search_term) = self.search_term.as_ref() {
             let mut to_render = String::new();
-            to_render.push_str(&format!(" \u{1b}[38;5;51;1mSEARCH:\u{1b}[m {}\n", search_term));
+            to_render.push_str(&format!(
+                " \u{1b}[38;5;51;1mSEARCH:\u{1b}[m {}\n",
+                search_term
+            ));
             let mut rows_left_to_render = rows.saturating_sub(3);
             if self.loading && self.search_results.is_empty() {
                 to_render.push_str(&self.render_loading());
             }
-            for (i, result) in self.search_results.iter().enumerate().take(rows.saturating_sub(3)) {
+            for (i, result) in self
+                .search_results
+                .iter()
+                .enumerate()
+                .take(rows.saturating_sub(3))
+            {
                 let result_height = result.rendered_height();
                 if result_height + 1 > rows_left_to_render {
                     break;

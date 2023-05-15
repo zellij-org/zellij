@@ -1,6 +1,8 @@
-use crate::plugins::PluginId;
-use crate::plugins::plugin_map::{PluginEnv, PluginMap, RunningPlugin, RunningWorker, Subscriptions};
+use crate::plugins::plugin_map::{
+    PluginEnv, PluginMap, RunningPlugin, RunningWorker, Subscriptions,
+};
 use crate::plugins::zellij_exports::{wasi_read_string, zellij_exports};
+use crate::plugins::PluginId;
 use highway::{HighwayHash, PortableHash};
 use log::info;
 use semver::Version;
@@ -195,9 +197,7 @@ impl<'a> PluginLoader<'a> {
         )?;
         plugin_loader
             .load_module_from_memory()
-            .and_then(|module| {
-                plugin_loader.create_plugin_environment(module)
-            })
+            .and_then(|module| plugin_loader.create_plugin_environment(module))
             .and_then(|(instance, plugin_env, subscriptions)| {
                 plugin_loader.load_plugin_instance(
                     &instance,
@@ -245,9 +245,7 @@ impl<'a> PluginLoader<'a> {
             .load_module_from_memory()
             .or_else(|_e| plugin_loader.load_module_from_hd_cache())
             .or_else(|_e| plugin_loader.compile_module())
-            .and_then(|module| {
-                plugin_loader.create_plugin_environment(module)
-            })
+            .and_then(|module| plugin_loader.create_plugin_environment(module))
             .and_then(|(instance, plugin_env, subscriptions)| {
                 plugin_loader.load_plugin_instance(
                     &instance,
@@ -293,9 +291,7 @@ impl<'a> PluginLoader<'a> {
             )?;
             plugin_loader
                 .load_module_from_memory()
-                .and_then(|module| {
-                    plugin_loader.create_plugin_environment(module)
-                })
+                .and_then(|module| plugin_loader.create_plugin_environment(module))
                 .and_then(|(instance, plugin_env, subscriptions)| {
                     plugin_loader.load_plugin_instance(
                         &instance,
@@ -340,9 +336,7 @@ impl<'a> PluginLoader<'a> {
         )?;
         plugin_loader
             .compile_module()
-            .and_then(|module| {
-                plugin_loader.create_plugin_environment(module)
-            })
+            .and_then(|module| plugin_loader.create_plugin_environment(module))
             .and_then(|(instance, plugin_env, subscriptions)| {
                 plugin_loader.load_plugin_instance(
                     &instance,
@@ -370,7 +364,9 @@ impl<'a> PluginLoader<'a> {
         tab_index: usize,
         size: Size,
     ) -> Result<Self> {
-        let plugin_own_data_dir = ZELLIJ_SESSION_CACHE_DIR.join(Url::from(&plugin.location).to_string()).join(format!("{}-{}", plugin_id, client_id));
+        let plugin_own_data_dir = ZELLIJ_SESSION_CACHE_DIR
+            .join(Url::from(&plugin.location).to_string())
+            .join(format!("{}-{}", plugin_id, client_id));
         create_plugin_fs_entries(&plugin_own_data_dir)?;
         let plugin_path = plugin.path.clone();
         Ok(PluginLoader {
@@ -442,10 +438,10 @@ impl<'a> PluginLoader<'a> {
             let plugin_map = plugin_map.lock().unwrap();
             plugin_map
                 .get_running_plugin(plugin_id, None)
-//                 .iter()
-//                 .find(|((p_id, _c_id), _)| p_id == &plugin_id)
-                 .with_context(err_context)?
-//                 .1
+                //                 .iter()
+                //                 .find(|((p_id, _c_id), _)| p_id == &plugin_id)
+                .with_context(err_context)?
+                //                 .1
                 .clone()
         };
         let running_plugin = running_plugin.lock().unwrap();
@@ -560,7 +556,8 @@ impl<'a> PluginLoader<'a> {
         module: Module,
     ) -> Result<(Instance, PluginEnv, Arc<Mutex<Subscriptions>>)> {
         let err_context = || format!("Failed to create environment for plugin");
-        let (instance, plugin_env, subscriptions) = self.create_plugin_instance_env_and_subscriptions(&module)?;
+        let (instance, plugin_env, subscriptions) =
+            self.create_plugin_instance_env_and_subscriptions(&module)?;
         assert_plugin_version(&instance, &plugin_env).with_context(err_context)?;
         // Only do an insert when everything went well!
         let cloned_plugin = self.plugin.clone();
@@ -570,20 +567,24 @@ impl<'a> PluginLoader<'a> {
             .insert(cloned_plugin.path, module);
         Ok((instance, plugin_env, subscriptions))
     }
-    pub fn create_plugin_instance_and_wasi_env_for_worker(&mut self) -> Result<(Instance, PluginEnv)> {
+    pub fn create_plugin_instance_and_wasi_env_for_worker(
+        &mut self,
+    ) -> Result<(Instance, PluginEnv)> {
         let err_context = || {
             format!(
                 "Failed to create instance and plugin env for worker {}",
                 self.plugin_id
             )
         };
-        let module = self.plugin_cache
+        let module = self
+            .plugin_cache
             .lock()
             .unwrap()
             .get(&self.plugin.path)
             .with_context(err_context)?
             .clone();
-        let (instance, plugin_env, _subscriptions) = self.create_plugin_instance_env_and_subscriptions(&module)?;
+        let (instance, plugin_env, _subscriptions) =
+            self.create_plugin_instance_env_and_subscriptions(&module)?;
         Ok((instance, plugin_env))
     }
     pub fn load_plugin_instance(
@@ -613,8 +614,10 @@ impl<'a> PluginLoader<'a> {
                 // 1. clone plugin config and pass it to constructor
                 // 2. get module somehow, create wasi_env instance and pass it to constructor
                 let plugin_config = self.plugin.clone();
-                let (instance, plugin_env) = self.create_plugin_instance_and_wasi_env_for_worker()?;
-                let worker = RunningWorker::new(instance, &function_name, plugin_config, plugin_env);
+                let (instance, plugin_env) =
+                    self.create_plugin_instance_and_wasi_env_for_worker()?;
+                let worker =
+                    RunningWorker::new(instance, &function_name, plugin_config, plugin_env);
                 workers.insert(function_name.into(), Arc::new(Mutex::new(worker)));
             }
         }
@@ -682,10 +685,7 @@ impl<'a> PluginLoader<'a> {
                 )?;
                 plugin_loader_for_client
                     .load_module_from_memory()
-                    .and_then(|module| {
-                        plugin_loader_for_client
-                            .create_plugin_environment(module)
-                    })
+                    .and_then(|module| plugin_loader_for_client.create_plugin_environment(module))
                     .and_then(|(instance, plugin_env, subscriptions)| {
                         plugin_loader_for_client.load_plugin_instance(
                             &instance,
@@ -727,7 +727,10 @@ impl<'a> PluginLoader<'a> {
             },
         }
     }
-    fn create_plugin_instance_env_and_subscriptions(&self, module: &Module) -> Result<(Instance, PluginEnv, Arc<Mutex<Subscriptions>>)> {
+    fn create_plugin_instance_env_and_subscriptions(
+        &self,
+        module: &Module,
+    ) -> Result<(Instance, PluginEnv, Arc<Mutex<Subscriptions>>)> {
         let err_context = || {
             format!(
                 "Failed to create instance, plugin env and subscriptions for plugin {}",

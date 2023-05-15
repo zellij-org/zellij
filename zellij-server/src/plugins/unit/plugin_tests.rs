@@ -1,19 +1,15 @@
-use wasmer::Store;
-use zellij_utils::lazy_static::lazy_static;
-use tempfile::tempdir;
-use super::{plugin_thread_main};
+use super::plugin_thread_main;
 use crate::screen::ScreenInstruction;
-use crate::{
-    channels::SenderWithContext,
-    thread_bus::Bus,
-    ServerInstruction,
-};
+use crate::{channels::SenderWithContext, thread_bus::Bus, ServerInstruction};
 use insta::assert_snapshot;
 use std::path::PathBuf;
+use tempfile::tempdir;
+use wasmer::Store;
 use zellij_utils::data::Event;
 use zellij_utils::errors::ErrorContext;
+use zellij_utils::input::layout::{Layout, RunPlugin, RunPluginLocation};
 use zellij_utils::input::plugins::PluginsConfig;
-use zellij_utils::input::layout::{Layout, RunPluginLocation, RunPlugin};
+use zellij_utils::lazy_static::lazy_static;
 use zellij_utils::pane_size::Size;
 
 use crate::background_jobs::BackgroundJob;
@@ -23,9 +19,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::{plugins::PluginInstruction, pty::PtyInstruction};
 
-use zellij_utils::{
-    channels::{self, ChannelWithContext, Receiver},
-};
+use zellij_utils::channels::{self, ChannelWithContext, Receiver};
 
 macro_rules! log_actions_in_thread {
     ( $arc_mutex_log:expr, $exit_event:path, $receiver:expr, $exit_after_count:expr ) => {
@@ -56,17 +50,19 @@ macro_rules! log_actions_in_thread {
     };
 }
 
-fn create_plugin_thread() -> (SenderWithContext<PluginInstruction>, Receiver<(ScreenInstruction, ErrorContext)>, Box<dyn FnMut()>) {
+fn create_plugin_thread() -> (
+    SenderWithContext<PluginInstruction>,
+    Receiver<(ScreenInstruction, ErrorContext)>,
+    Box<dyn FnMut()>,
+) {
     let (to_server, _server_receiver): ChannelWithContext<ServerInstruction> =
         channels::bounded(50);
     let to_server = SenderWithContext::new(to_server);
 
-    let (to_screen, screen_receiver): ChannelWithContext<ScreenInstruction> =
-        channels::unbounded();
+    let (to_screen, screen_receiver): ChannelWithContext<ScreenInstruction> = channels::unbounded();
     let to_screen = SenderWithContext::new(to_screen);
 
-    let (to_plugin, plugin_receiver): ChannelWithContext<PluginInstruction> =
-        channels::unbounded();
+    let (to_plugin, plugin_receiver): ChannelWithContext<PluginInstruction> = channels::unbounded();
     let to_plugin = SenderWithContext::new(to_plugin);
     let (to_pty, _pty_receiver): ChannelWithContext<PtyInstruction> = channels::unbounded();
     let to_pty = SenderWithContext::new(to_pty);
@@ -106,21 +102,26 @@ fn create_plugin_thread() -> (SenderWithContext<PluginInstruction>, Receiver<(Sc
             .expect("TEST")
         })
         .unwrap();
-        let teardown = {
-            let to_plugin = to_plugin.clone();
-            move || {
-                let _ = to_pty.send(PtyInstruction::Exit);
-                let _ = to_pty_writer.send(PtyWriteInstruction::Exit);
-                let _ = to_screen.send(ScreenInstruction::Exit);
-                let _ = to_server.send(ServerInstruction::KillSession);
-                let _ = to_plugin.send(PluginInstruction::Exit);
-            }
-        };
-        (to_plugin, screen_receiver, Box::new(teardown))
+    let teardown = {
+        let to_plugin = to_plugin.clone();
+        move || {
+            let _ = to_pty.send(PtyInstruction::Exit);
+            let _ = to_pty_writer.send(PtyWriteInstruction::Exit);
+            let _ = to_screen.send(ScreenInstruction::Exit);
+            let _ = to_server.send(ServerInstruction::KillSession);
+            let _ = to_plugin.send(PluginInstruction::Exit);
+        }
+    };
+    (to_plugin, screen_receiver, Box::new(teardown))
 }
 
 lazy_static! {
-    static ref PLUGIN_FIXTURE: String = format!("{}/../target/wasm32-wasi/debug/fixture-plugin-for-tests.wasm", std::env::var_os("CARGO_MANIFEST_DIR").unwrap().to_string_lossy());
+    static ref PLUGIN_FIXTURE: String = format!(
+        "{}/../target/wasm32-wasi/debug/fixture-plugin-for-tests.wasm",
+        std::env::var_os("CARGO_MANIFEST_DIR")
+            .unwrap()
+            .to_string_lossy()
+    );
 }
 
 #[test]
@@ -153,8 +154,19 @@ pub fn load_new_plugin_from_hd() {
     );
 
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
-    let _ = plugin_thread_sender.send(PluginInstruction::Load(plugin_should_float, plugin_title, run_plugin, tab_index, client_id, size));
-    let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(None, Some(client_id), Event::InputReceived)])); // will be cached and sent to the plugin once it's loaded
+    let _ = plugin_thread_sender.send(PluginInstruction::Load(
+        plugin_should_float,
+        plugin_title,
+        run_plugin,
+        tab_index,
+        client_id,
+        size,
+    ));
+    let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
+        None,
+        Some(client_id),
+        Event::InputReceived,
+    )])); // will be cached and sent to the plugin once it's loaded
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
     let plugin_bytes_event = received_screen_instructions
@@ -200,11 +212,22 @@ pub fn plugin_workers() {
     );
 
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
-    let _ = plugin_thread_sender.send(PluginInstruction::Load(plugin_should_float, plugin_title, run_plugin, tab_index, client_id, size));
+    let _ = plugin_thread_sender.send(PluginInstruction::Load(
+        plugin_should_float,
+        plugin_title,
+        run_plugin,
+        tab_index,
+        client_id,
+        size,
+    ));
     // we send a SystemClipboardFailure to trigger the custom handler in the fixture plugin that
     // will send a message to the worker and in turn back to the plugin to be rendered, so we know
     // that this cycle is working
-    let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(None, Some(client_id), Event::SystemClipboardFailure)])); // will be cached and sent to the plugin once it's loaded
+    let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
+        None,
+        Some(client_id),
+        Event::SystemClipboardFailure,
+    )])); // will be cached and sent to the plugin once it's loaded
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
     let plugin_bytes_event = received_screen_instructions
