@@ -43,7 +43,10 @@ macro_rules! register_plugin {
             std::panic::set_hook(Box::new(|info| {
                 report_panic(info);
             }));
+        }
 
+        #[no_mangle]
+        fn load () {
             STATE.with(|state| {
                 state.borrow_mut().load();
             });

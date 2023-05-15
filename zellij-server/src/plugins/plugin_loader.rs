@@ -396,7 +396,7 @@ impl<'a> PluginLoader<'a> {
         plugin_dir: &'a PathBuf,
     ) -> Result<Self> {
         let err_context = || "Failed to find existing plugin";
-        let (running_plugin, _subscriptions, workers) = {
+        let (running_plugin, _subscriptions, _workers) = {
             let mut plugin_map = plugin_map.lock().unwrap();
             plugin_map
                 .remove_single_plugin(plugin_id, client_id)
@@ -603,25 +603,30 @@ impl<'a> PluginLoader<'a> {
             self.senders,
             self.plugin_id
         );
-        let load_function = instance
+        let start_function = instance
             .exports
             .get_function("_start")
             .with_context(err_context)?;
+        let load_function = instance
+            .exports
+            .get_function("load")
+            .with_context(err_context)?;
         let mut workers = HashMap::new();
-        for (function_name, exported_function) in instance.exports.iter().functions() {
+        for (function_name, _exported_function) in instance.exports.iter().functions() {
             if function_name.ends_with("_worker") {
-                // TODO:
-                // 1. clone plugin config and pass it to constructor
-                // 2. get module somehow, create wasi_env instance and pass it to constructor
                 let plugin_config = self.plugin.clone();
                 let (instance, plugin_env) =
                     self.create_plugin_instance_and_wasi_env_for_worker()?;
+
+                let start_function_for_worker = instance.exports.get_function("_start").with_context(err_context)?;
+                start_function_for_worker.call(&[]).with_context(err_context)?;
+
                 let worker =
                     RunningWorker::new(instance, &function_name, plugin_config, plugin_env);
                 workers.insert(function_name.into(), Arc::new(Mutex::new(worker)));
             }
         }
-        // This eventually calls the `.load()` method
+        start_function.call(&[]).with_context(err_context)?;
         load_function.call(&[]).with_context(err_context)?;
         display_loading_stage!(
             indicate_starting_plugin_success,
