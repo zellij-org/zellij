@@ -1,5 +1,5 @@
 //! Handle running `cargo clippy` on the sources.
-use crate::{build, flags};
+use crate::{build, flags, WorkspaceMember};
 use anyhow::Context;
 use std::path::{Path, PathBuf};
 use xshell::{cmd, Shell};
@@ -21,17 +21,17 @@ pub fn clippy(sh: &Shell, _flags: flags::Clippy) -> anyhow::Result<()> {
         .and_then(|_| crate::cargo())
         .context("failed to run task 'clippy'")?;
 
-    for subcrate in crate::WORKSPACE_MEMBERS.iter() {
-        let _pd = sh.push_dir(Path::new(subcrate));
+    for WorkspaceMember { crate_name, .. } in crate::WORKSPACE_MEMBERS.iter() {
+        let _pd = sh.push_dir(Path::new(crate_name));
         // Tell the user where we are now
         println!();
-        let msg = format!(">> Running clippy on '{subcrate}'");
+        let msg = format!(">> Running clippy on '{crate_name}'");
         crate::status(&msg);
         println!("{}", msg);
 
         cmd!(sh, "{cargo} clippy --all-targets --all-features")
             .run()
-            .with_context(|| format!("failed to run task 'clippy' on '{subcrate}'"))?;
+            .with_context(|| format!("failed to run task 'clippy' on '{crate_name}'"))?;
     }
     Ok(())
 }

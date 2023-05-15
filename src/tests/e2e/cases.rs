@@ -190,8 +190,7 @@ pub fn cannot_split_terminals_vertically_when_active_terminal_is_too_small() {
             name: "Split pane to the right",
             instruction: |mut remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.status_bar_appears() && remote_terminal.cursor_position_is(3, 2)
-                {
+                if remote_terminal.cursor_position_is(3, 2) {
                     remote_terminal.send_key(&PANE_MODE);
                     remote_terminal.send_key(&SPLIT_RIGHT_IN_PANE_MODE);
                     // back to normal mode after split
@@ -205,7 +204,12 @@ pub fn cannot_split_terminals_vertically_when_active_terminal_is_too_small() {
             name: "Make sure only one pane appears",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.cursor_position_is(3, 2) {
+                if remote_terminal.cursor_position_is(3, 2)
+                //two empty lines at the bottom to make sure there is no plugin output
+                    && remote_terminal
+                        .current_snapshot()
+                        .ends_with("        \n        ")
+                {
                     // ... is the truncated tip line
                     step_is_complete = true;
                 }
@@ -967,7 +971,7 @@ pub fn detach_and_attach_session() {
             name: "Wait for session to be attached",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.status_bar_appears() && remote_terminal.cursor_position_is(3, 2)
+                if remote_terminal.status_bar_appears() && remote_terminal.cursor_position_is(77, 2)
                 {
                     // we're back inside the session
                     step_is_complete = true;
@@ -1003,9 +1007,7 @@ pub fn status_bar_loads_custom_keybindings() {
             name: "Wait for app to load",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.cursor_position_is(3, 1)
-                    && remote_terminal.snapshot_contains("$ █                   ││$")
-                    && remote_terminal.snapshot_contains("$                                                                                                                     ") {
+                if remote_terminal.cursor_position_is(3, 2) && remote_terminal.tip_appears() {
                     step_is_complete = true;
                 }
                 step_is_complete
@@ -1316,7 +1318,7 @@ pub fn mirrored_sessions() {
             name: "take snapshot after",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.cursor_position_is(3, 2)
+                if remote_terminal.cursor_position_is(63, 2)
                     && remote_terminal.snapshot_contains("┐┌")
                 {
                     // cursor is back in the first tab
@@ -1329,7 +1331,7 @@ pub fn mirrored_sessions() {
             name: "take snapshot after",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.cursor_position_is(3, 2)
+                if remote_terminal.cursor_position_is(63, 2)
                     && remote_terminal.snapshot_contains("┐┌")
                 {
                     // cursor is back in the first tab
@@ -1592,6 +1594,7 @@ pub fn multiple_users_in_different_tabs() {
                 let mut step_is_complete = false;
                 if remote_terminal.cursor_position_is(3, 2)
                     && remote_terminal.tip_appears()
+                    && remote_terminal.snapshot_contains("Tab #1 [ ]")
                     && remote_terminal.snapshot_contains("Tab #2")
                     && remote_terminal.status_bar_appears()
                 {
@@ -1608,7 +1611,7 @@ pub fn multiple_users_in_different_tabs() {
                 let mut step_is_complete = false;
                 if remote_terminal.cursor_position_is(3, 2)
                     && remote_terminal.tip_appears()
-                    && remote_terminal.snapshot_contains("Tab #2")
+                    && remote_terminal.snapshot_contains("Tab #2 [ ]")
                     && remote_terminal.status_bar_appears()
                 {
                     // cursor is in the newly opened second tab
@@ -1649,7 +1652,9 @@ pub fn bracketed_paste() {
             name: "Send pasted text followed by normal text",
             instruction: |mut remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.status_bar_appears() && remote_terminal.cursor_position_is(3, 2)
+                if remote_terminal.status_bar_appears()
+                    && remote_terminal.tab_bar_appears()
+                    && remote_terminal.cursor_position_is(3, 2)
                 {
                     remote_terminal.send_key(&BRACKETED_PASTE_START);
                     remote_terminal.send_key(&TAB_MODE);
@@ -1717,7 +1722,9 @@ pub fn toggle_floating_panes() {
             name: "Wait for new pane to appear",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.cursor_position_is(33, 7) && remote_terminal.tip_appears() {
+                if remote_terminal.cursor_position_is(33, 7)
+                    && remote_terminal.snapshot_contains("FLOATING PANES VISIBLE")
+                {
                     // cursor is in the newly opened second pane
                     step_is_complete = true;
                 }
