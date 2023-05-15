@@ -142,11 +142,11 @@ impl WasmBridge {
                 ) {
                     Ok(_) => handle_plugin_successful_loading(&senders, plugin_id),
                     Err(e) => handle_plugin_loading_failure(
-                            &senders,
-                            plugin_id,
-                            &mut loading_indication,
-                            e,
-                        )
+                        &senders,
+                        plugin_id,
+                        &mut loading_indication,
+                        e,
+                    ),
                 }
                 let _ =
                     senders.send_to_plugin(PluginInstruction::ApplyCachedEvents(vec![plugin_id]));

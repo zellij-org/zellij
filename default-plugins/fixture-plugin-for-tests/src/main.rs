@@ -13,14 +13,20 @@ struct State {
 
 #[derive(Default, Serialize, Deserialize)]
 struct TestWorker {
-    number_of_messages_received: usize
+    number_of_messages_received: usize,
 }
 
 impl<'de> ZellijWorker<'de> for TestWorker {
     fn on_message(&mut self, message: String, payload: String) {
         if message == "ping" {
             self.number_of_messages_received += 1;
-            post_message_to_plugin("pong".into(), format!("{}, received {} messages", payload, self.number_of_messages_received));
+            post_message_to_plugin(
+                "pong".into(),
+                format!(
+                    "{}, received {} messages",
+                    payload, self.number_of_messages_received
+                ),
+            );
         }
     }
 }

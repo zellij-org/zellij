@@ -46,7 +46,7 @@ macro_rules! register_plugin {
         }
 
         #[no_mangle]
-        fn load () {
+        fn load() {
             STATE.with(|state| {
                 state.borrow_mut().load();
             });

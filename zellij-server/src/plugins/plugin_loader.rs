@@ -615,8 +615,13 @@ impl<'a> PluginLoader<'a> {
                 let (instance, plugin_env) =
                     self.create_plugin_instance_and_wasi_env_for_worker()?;
 
-                let start_function_for_worker = instance.exports.get_function("_start").with_context(err_context)?;
-                start_function_for_worker.call(&[]).with_context(err_context)?;
+                let start_function_for_worker = instance
+                    .exports
+                    .get_function("_start")
+                    .with_context(err_context)?;
+                start_function_for_worker
+                    .call(&[])
+                    .with_context(err_context)?;
 
                 let worker =
                     RunningWorker::new(instance, &function_name, plugin_config, plugin_env);
