@@ -200,13 +200,6 @@ impl <'de> ZellijWorker<'de> for SearchWorker {
 }
 
 impl SearchWorker {
-    pub fn new() -> Self {
-        SearchWorker {
-            search_paths: vec![],
-            search_file_contents: vec![],
-            skip_hidden_files: true,
-        }
-    }
     fn search(&mut self, search_term: String) -> (String, Vec<SearchResult>) {
         if self.search_paths.is_empty() {
             self.populate_search_paths();
@@ -227,12 +220,6 @@ impl SearchWorker {
         (search_term, matches)
     }
     fn populate_search_paths(&mut self) {
-//         if let Ok(search_data) = std::fs::read("/data/search_data") { // TODO: add cwd to here
-//             if let Ok(mut existing_state) = serde_json::from_str::<Self>(&String::from_utf8_lossy(&search_data)) {
-//                 std::mem::swap(self, &mut existing_state);
-//                 return;
-//             }
-//         }
         for entry in WalkDir::new(ROOT).into_iter().filter_map(|e| e.ok()) {
             if self.skip_hidden_files && entry.file_name().to_str().map(|s| s.starts_with('.')).unwrap_or(false) {
                 continue;
@@ -257,14 +244,6 @@ impl SearchWorker {
 
             self.search_paths.push(file_path);
         }
-//         let serialized_state = serde_json::to_string(&self).unwrap(); // TODO: unwrap city
-//         std::fs::write("/data/search_data", serialized_state.as_bytes()).unwrap();
-//         if let Ok(search_data) = std::fs::read("/data/search_data") {
-//             if let Ok(mut existing_state) = serde_json::from_str::<Self>(&String::from_utf8_lossy(&search_data)) {
-//                 std::mem::swap(self, &mut existing_state);
-//                 return;
-//             }
-//         }
     }
     fn search_file_names(&self, search_term: &str, matcher: &mut SkimMatcherV2, matches: &mut Vec<SearchResult>) {
         for entry in &self.search_paths {
