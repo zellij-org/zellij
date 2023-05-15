@@ -32,7 +32,6 @@ macro_rules! log_actions_in_thread {
                     let (event, _err_ctx) = $receiver
                         .recv()
                         .expect("failed to receive event on channel");
-                    eprintln!("received event: {:#?}", event);
                     match event {
                         $exit_event(..) => {
                             exit_event_count += 1;
@@ -135,9 +134,7 @@ pub fn load_new_plugin_from_hd() {
     // message (this is what the fixture plugin does)
     // we then listen on our mock screen receiver to make sure we got a PluginBytes instruction
     // that contains said render, and assert against it
-    eprintln!("load_new_plugin_from_hd debug 1");
     let (plugin_thread_sender, screen_receiver, mut teardown) = create_plugin_thread();
-    eprintln!("load_new_plugin_from_hd debug 2");
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
     let run_plugin = RunPlugin {
@@ -157,10 +154,8 @@ pub fn load_new_plugin_from_hd() {
         screen_receiver,
         2
     );
-    eprintln!("load_new_plugin_from_hd debug 3");
 
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
-    eprintln!("load_new_plugin_from_hd debug 4");
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
         plugin_title,
@@ -169,17 +164,13 @@ pub fn load_new_plugin_from_hd() {
         client_id,
         size,
     ));
-    eprintln!("load_new_plugin_from_hd debug 5");
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),
         Event::InputReceived,
     )])); // will be cached and sent to the plugin once it's loaded
-    eprintln!("load_new_plugin_from_hd debug 6");
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
-    eprintln!("load_new_plugin_from_hd debug 7");
     teardown();
-    eprintln!("load_new_plugin_from_hd debug 8");
     let plugin_bytes_event = received_screen_instructions
         .lock()
         .unwrap()
@@ -195,9 +186,7 @@ pub fn load_new_plugin_from_hd() {
             }
             None
         });
-    eprintln!("load_new_plugin_from_hd debug 9");
     assert_snapshot!(format!("{:#?}", plugin_bytes_event));
-    eprintln!("load_new_plugin_from_hd debug 10");
 }
 
 #[test]
