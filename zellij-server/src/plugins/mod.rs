@@ -253,3 +253,7 @@ pub(crate) fn plugin_thread_main(
         })
         .context("failed to cleanup plugin data directory")
 }
+
+#[path = "./unit/plugin_tests.rs"]
+#[cfg(test)]
+mod plugin_tests;

@@ -29,6 +29,7 @@ lazy_static::lazy_static! {
         "default-plugins/status-bar",
         "default-plugins/strider",
         "default-plugins/tab-bar",
+        "default-plugins/fixture-plugin-for-tests",
         "zellij-utils",
         "zellij-tile-utils",
         "zellij-tile",

@@ -78,6 +78,7 @@ macro_rules! register_worker {
     ($worker:ty, $worker_name:ident) => {
         #[no_mangle]
         pub fn $worker_name() {
+            use serde_json::*;
             let worker_display_name = std::stringify!($worker_name);
 
             // read message from STDIN

@@ -1,8 +1,3 @@
-// TODO:
-// 1. worker to different file - DONE
-// 2. separate search rendering to different rendering function - DONE
-// 3. make hd scanning happen on startup and show loading indication - DONE
-// 4. make selection and opening files work - TODO: CONTINUE HERE (04/05)
 mod state;
 mod search;
 
@@ -40,7 +35,6 @@ impl ZellijPlugin for State {
         self.ev_history.push_back((event.clone(), Instant::now()));
         match event {
             Event::Timer(_elapsed) => {
-                // eprintln!("got timer event");
                 should_render = true;
                 if self.loading {
                     set_timeout(0.5);
