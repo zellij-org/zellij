@@ -14,5 +14,5 @@ walkdir = "2.3.3"
 fuzzy-matcher = "0.3.7"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-unicode-width = "0.1.8" # TODO: version number!
-ansi_term = "0.12.1" # TODO: version number!
+unicode-width = "0.1.8"
+ansi_term = "0.12.1"
