@@ -1,6 +1,7 @@
 pub mod prelude;
 pub mod shim;
 
+use serde::{Deserialize, Serialize};
 use zellij_utils::data::Event;
 
 #[allow(unused_variables)]
@@ -10,6 +11,12 @@ pub trait ZellijPlugin {
         false
     } // return true if it should render
     fn render(&mut self, rows: usize, cols: usize) {}
+}
+
+#[allow(unused_variables)]
+// TODO: can we get rid of the lifetime? maybe with generics?
+pub trait ZellijWorker<'de>: Default + Serialize + Deserialize<'de> {
+    fn on_message(&mut self, message: String, payload: String) {}
 }
 
 pub const PLUGIN_MISMATCH: &str =
@@ -36,7 +43,10 @@ macro_rules! register_plugin {
             std::panic::set_hook(Box::new(|info| {
                 report_panic(info);
             }));
+        }
 
+        #[no_mangle]
+        fn load() {
             STATE.with(|state| {
                 state.borrow_mut().load();
             });
@@ -62,6 +72,64 @@ macro_rules! register_plugin {
         #[no_mangle]
         pub fn plugin_version() {
             println!("{}", $crate::prelude::VERSION);
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! register_worker {
+    ($worker:ty, $worker_name:ident) => {
+        #[no_mangle]
+        pub fn $worker_name() {
+            use serde_json::*;
+            let worker_display_name = std::stringify!($worker_name);
+
+            // read message from STDIN
+            let (message, payload): (String, String) = $crate::shim::object_from_stdin()
+                .unwrap_or_else(|e| {
+                    eprintln!(
+                        "Failed to deserialize message to worker \"{}\": {:?}",
+                        worker_display_name, e
+                    );
+                    Default::default()
+                });
+
+            // read previous worker state from HD if it exists
+            let mut worker_instance = match std::fs::read(&format!("/data/{}", worker_display_name))
+                .map_err(|e| format!("Failed to read file: {:?}", e))
+                .and_then(|s| {
+                    serde_json::from_str::<$worker>(&String::from_utf8_lossy(&s))
+                        .map_err(|e| format!("Failed to deserialize: {:?}", e))
+                }) {
+                Ok(s) => s,
+                Err(e) => {
+                    eprintln!(
+                        "Failed to read existing state ({:?}), creating new state for worker",
+                        e
+                    );
+                    <$worker>::default()
+                },
+            };
+
+            // invoke worker
+            worker_instance.on_message(message, payload);
+
+            // persist worker state to HD for next run
+            match serde_json::to_string(&worker_instance)
+                .map_err(|e| format!("Failed to serialize worker state"))
+                .and_then(|serialized_state| {
+                    std::fs::write(
+                        &format!("/data/{}", worker_display_name),
+                        serialized_state.as_bytes(),
+                    )
+                    .map_err(|e| format!("Failed to persist state to HD: {:?}", e))
+                }) {
+                Ok(()) => {},
+                Err(e) => eprintln!(
+                    "Failed to serialize and persist worker state to hd: {:?}",
+                    e
+                ),
+            }
         }
     };
 }

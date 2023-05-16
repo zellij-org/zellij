@@ -32,6 +32,7 @@ fn main() {
         {
             let command_cli_action = CliAction::NewPane {
                 command,
+                plugin: None,
                 direction,
                 cwd,
                 floating,

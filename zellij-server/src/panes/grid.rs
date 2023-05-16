@@ -1109,7 +1109,16 @@ impl Grid {
             Some((self.cursor.x, self.cursor.y))
         }
     }
-
+    /// Clears all buffers with text for a current screen
+    pub fn clear_screen(&mut self) {
+        if self.alternate_screen_state.is_some() {
+            log::warn!("Tried to clear pane with alternate_screen_state");
+            return;
+        }
+        self.reset_terminal_state();
+        self.mark_for_rerender();
+    }
+    /// Dumps all lines above terminal vieport and the viewport itself to a string
     pub fn dump_screen(&mut self, full: bool) -> String {
         let viewport: String = dump_screen!(self.viewport);
         if !full {
@@ -1245,7 +1254,7 @@ impl Grid {
             let new_row = Row::new(self.width).canonical();
             self.viewport.push(new_row);
         }
-        if self.cursor.y == self.height - 1 {
+        if self.cursor.y == self.height.saturating_sub(1) {
             if self.scroll_region.is_none() {
                 if self.alternate_screen_state.is_none() {
                     self.transfer_rows_to_lines_above(1);
@@ -1397,7 +1406,7 @@ impl Grid {
     }
     fn line_wrap(&mut self) {
         self.cursor.x = 0;
-        if self.cursor.y == self.height - 1 {
+        if self.cursor.y == self.height.saturating_sub(1) {
             if self.alternate_screen_state.is_none() {
                 self.transfer_rows_to_lines_above(1);
             } else {
@@ -1616,10 +1625,17 @@ impl Grid {
         }
         self.output_buffer.update_line(self.cursor.y);
     }
-    pub fn erase_characters(&mut self, count: usize, empty_char_style: CharacterStyles) {
+    fn erase_characters(&mut self, count: usize, empty_char_style: CharacterStyles) {
         let mut empty_character = EMPTY_TERMINAL_CHARACTER;
         empty_character.styles = empty_char_style;
         let current_row = self.viewport.get_mut(self.cursor.y).unwrap();
+
+        // pad row if needed
+        if current_row.width_cached() < self.width {
+            let padding_count = self.width - current_row.width_cached();
+            let mut columns_padding = VecDeque::from(vec![EMPTY_TERMINAL_CHARACTER; padding_count]);
+            current_row.columns.append(&mut columns_padding);
+        }
         for _ in 0..count {
             let deleted_character = current_row.delete_and_return_character(self.cursor.x);
             let excess_width = deleted_character
@@ -1629,6 +1645,7 @@ impl Grid {
             for _ in 0..excess_width {
                 current_row.insert_character_at(empty_character, self.cursor.x);
             }
+            current_row.push(empty_character);
         }
         self.output_buffer.update_line(self.cursor.y);
     }

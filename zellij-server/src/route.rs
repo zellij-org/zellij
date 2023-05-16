@@ -16,6 +16,7 @@ use zellij_utils::{
         actions::{Action, SearchDirection, SearchOption},
         command::TerminalAction,
         get_mode_info,
+        layout::RunPluginLocation,
     },
     ipc::{ClientToServerMsg, ExitReason, IpcReceiverWithContext, ServerToClientMsg},
 };
@@ -170,6 +171,12 @@ pub(crate) fn route_action(
             session
                 .senders
                 .send_to_screen(ScreenInstruction::MovePaneBackwards(client_id))
+                .with_context(err_context)?;
+        },
+        Action::ClearScreen => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::ClearScreen(client_id))
                 .with_context(err_context)?;
         },
         Action::DumpScreen(val, full) => {
@@ -464,6 +471,7 @@ pub(crate) fn route_action(
             session
                 .senders
                 .send_to_screen(ScreenInstruction::NewTab(
+                    None,
                     shell,
                     tab_layout,
                     floating_panes_layout,
@@ -671,6 +679,33 @@ pub(crate) fn route_action(
             session
                 .senders
                 .send_to_screen(ScreenInstruction::QueryTabNames(client_id))
+                .with_context(err_context)?;
+        },
+        Action::NewTiledPluginPane(run_plugin, name) => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::NewTiledPluginPane(
+                    run_plugin, name, client_id,
+                ))
+                .with_context(err_context)?;
+        },
+        Action::NewFloatingPluginPane(run_plugin, name) => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::NewFloatingPluginPane(
+                    run_plugin, name, client_id,
+                ))
+                .with_context(err_context)?;
+        },
+        Action::StartOrReloadPlugin(url) => {
+            let run_plugin_location =
+                RunPluginLocation::parse(url.as_str()).with_context(err_context)?;
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::StartOrReloadPluginPane(
+                    run_plugin_location,
+                    None,
+                ))
                 .with_context(err_context)?;
         },
     }

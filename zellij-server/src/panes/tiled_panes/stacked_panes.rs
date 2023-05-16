@@ -102,9 +102,8 @@ impl<'a> StackedPanes<'a> {
         }
         Ok(())
     }
-    pub fn focus_pane(&mut self, pane_id: &PaneId) -> Result<()> {
-        // this function doesn't actually change the focus (since it is controlled elsewhere)
-        // but rather makes sure pane_id is flexible if it were a one-liner before
+    pub fn expand_pane(&mut self, pane_id: &PaneId) -> Result<Vec<PaneId>> {
+        // returns all the pane ids in the stack
         let err_context = || format!("Failed to focus stacked pane");
         let all_stacked_pane_positions =
             self.positions_in_stack(pane_id).with_context(err_context)?;
@@ -158,7 +157,10 @@ impl<'a> StackedPanes<'a> {
                 }
             }
         }
-        Ok(())
+        Ok(all_stacked_pane_positions
+            .iter()
+            .map(|(pane_id, _pane_position)| *pane_id)
+            .collect())
     }
     pub fn flexible_pane_id_in_stack(&self, pane_id_in_stack: &PaneId) -> Option<PaneId> {
         let all_stacked_pane_positions = self.positions_in_stack(pane_id_in_stack).ok()?;
@@ -429,6 +431,58 @@ impl<'a> StackedPanes<'a> {
             stacked_pane_ids_under_flexible_panes,
             stacked_pane_ids_over_flexible_panes,
         ))
+    }
+    pub fn make_room_for_new_pane(&mut self) -> Result<PaneGeom> {
+        let err_context = || format!("Failed to add pane to stack");
+        let all_stacks = self.get_all_stacks()?;
+        for stack in all_stacks {
+            if let Some((id_of_flexible_pane_in_stack, _flexible_pane_in_stack)) = stack
+                .iter()
+                .find(|(_p_id, p)| !p.rows.is_fixed() && p.rows.as_usize() > 1)
+            {
+                self.make_lowest_pane_in_stack_flexible(id_of_flexible_pane_in_stack)?;
+                let all_stacked_pane_positions =
+                    self.positions_in_stack(id_of_flexible_pane_in_stack)?;
+                let position_of_flexible_pane =
+                    self.position_of_flexible_pane(&all_stacked_pane_positions)?;
+                let (flexible_pane_id, mut flexible_pane_geom) = *all_stacked_pane_positions
+                    .iter()
+                    .nth(position_of_flexible_pane)
+                    .with_context(err_context)?;
+                let mut position_for_new_pane = flexible_pane_geom.clone();
+                position_for_new_pane
+                    .rows
+                    .set_inner(position_for_new_pane.rows.as_usize() - 1);
+                position_for_new_pane.y = position_for_new_pane.y + 1;
+                flexible_pane_geom.rows = Dimension::fixed(1);
+                self.panes
+                    .borrow_mut()
+                    .get_mut(&flexible_pane_id)
+                    .with_context(err_context)?
+                    .set_geom(flexible_pane_geom);
+                return Ok(position_for_new_pane);
+            }
+        }
+        Err(anyhow!("Not enough room for another pane!"))
+    }
+    fn get_all_stacks(&self) -> Result<Vec<Vec<(PaneId, PaneGeom)>>> {
+        let err_context = || "Failed to get positions in stack";
+        let panes = self.panes.borrow();
+        let all_flexible_panes_in_stack: Vec<PaneId> = panes
+            .iter()
+            .filter(|(_pid, p)| {
+                p.position_and_size().is_stacked && !p.position_and_size().rows.is_fixed()
+            })
+            .map(|(pid, _p)| *pid)
+            .collect();
+        let mut stacks = vec![];
+        for pane_id in all_flexible_panes_in_stack {
+            stacks.push(
+                self.positions_in_stack(&pane_id)
+                    .with_context(err_context)?,
+            );
+        }
+        Ok(stacks)
     }
     fn fill_space_over_one_liner_pane(&mut self, id: &PaneId) -> Result<bool> {
         let (position_of_current_pane, position_of_flexible_pane) =

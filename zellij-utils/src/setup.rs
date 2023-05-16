@@ -5,7 +5,7 @@ use crate::{
     cli::{CliArgs, Command},
     consts::{
         FEATURES, SYSTEM_DEFAULT_CONFIG_DIR, SYSTEM_DEFAULT_DATA_DIR_PREFIX, VERSION,
-        ZELLIJ_PROJ_DIR,
+        ZELLIJ_DEFAULT_THEMES, ZELLIJ_PROJ_DIR,
     },
     errors::prelude::*,
     input::{
@@ -61,6 +61,16 @@ pub fn get_default_data_dir() -> PathBuf {
     .into_iter()
     .find(|p| p.exists())
     .unwrap_or_else(xdg_data_dir)
+}
+
+#[cfg(not(test))]
+fn get_default_themes() -> Themes {
+    ZELLIJ_DEFAULT_THEMES.to_owned()
+}
+
+#[cfg(test)]
+fn get_default_themes() -> Themes {
+    Themes::default()
 }
 
 pub fn xdg_config_dir() -> PathBuf {
@@ -311,24 +321,17 @@ impl Setup {
             None => config.options.clone(),
         };
 
-        if let Some(theme_dir) = config_options
-            .theme_dir
-            .clone()
-            .or_else(|| get_theme_dir(cli_args.config_dir.clone().or_else(find_default_config_dir)))
-        {
-            if theme_dir.is_dir() {
-                for entry in (theme_dir.read_dir()?).flatten() {
-                    if let Some(extension) = entry.path().extension() {
-                        if extension == "kdl" {
-                            match Themes::from_path(entry.path()) {
-                                Ok(themes) => config.themes = config.themes.merge(themes),
-                                Err(e) => {
-                                    log::error!("error loading theme file: {:?}", e);
-                                },
-                            }
-                        }
-                    }
-                }
+        config.themes = get_default_themes().merge(config.themes);
+
+        if let Some(Command::Setup(Setup { clean: false, .. })) = &cli_args.command {
+            let user_theme_dir = config_options.theme_dir.clone().or_else(|| {
+                get_theme_dir(cli_args.config_dir.clone().or_else(find_default_config_dir))
+                    // If theme dir is not explicitly specified in config_options,
+                    // only try to use it if it exists.
+                    .filter(|dir| dir.exists())
+            });
+            if let Some(user_theme_dir) = user_theme_dir {
+                config.themes = config.themes.merge(Themes::from_dir(user_theme_dir)?);
             }
         }
 
@@ -442,11 +445,20 @@ impl Setup {
             }
         }
         if let Some(config_file) = config_file {
-            writeln!(&mut message, "[CONFIG FILE]: {:?}", config_file).unwrap();
-            // match Config::new(&config_file) {
+            writeln!(
+                &mut message,
+                "[LOOKING FOR CONFIG FILE FROM]: {:?}",
+                config_file
+            )
+            .unwrap();
             match Config::from_path(&config_file, None) {
                 Ok(_) => message.push_str("[CONFIG FILE]: Well defined.\n"),
-                Err(e) => writeln!(&mut message, "[CONFIG ERROR]: {}", e).unwrap(),
+                Err(e) => writeln!(
+                    &mut message,
+                    "[CONFIG ERROR]: {}. \n By default, zellij loads default configuration",
+                    e
+                )
+                .unwrap(),
             }
         } else {
             message.push_str("[CONFIG FILE]: Not Found\n");

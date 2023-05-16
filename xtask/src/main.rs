@@ -23,18 +23,24 @@ use std::{
 };
 use xshell::Shell;
 
+pub struct WorkspaceMember {
+    crate_name: &'static str,
+    build: bool,
+}
+
 lazy_static::lazy_static! {
-    pub static ref WORKSPACE_MEMBERS: Vec<&'static str> = vec![
-        "default-plugins/compact-bar",
-        "default-plugins/status-bar",
-        "default-plugins/strider",
-        "default-plugins/tab-bar",
-        "zellij-utils",
-        "zellij-tile-utils",
-        "zellij-tile",
-        "zellij-client",
-        "zellij-server",
-        ".",
+    pub static ref WORKSPACE_MEMBERS: Vec<WorkspaceMember> = vec![
+        WorkspaceMember{crate_name: "default-plugins/compact-bar", build: true},
+        WorkspaceMember{crate_name: "default-plugins/status-bar", build: true},
+        WorkspaceMember{crate_name: "default-plugins/strider", build: true},
+        WorkspaceMember{crate_name: "default-plugins/tab-bar", build: true},
+        WorkspaceMember{crate_name: "default-plugins/fixture-plugin-for-tests", build: true},
+        WorkspaceMember{crate_name: "zellij-utils", build: false},
+        WorkspaceMember{crate_name: "zellij-tile-utils", build: false},
+        WorkspaceMember{crate_name: "zellij-tile", build: false},
+        WorkspaceMember{crate_name: "zellij-client", build: false},
+        WorkspaceMember{crate_name: "zellij-server", build: false},
+        WorkspaceMember{crate_name: ".", build: true},
     ];
 }
 
@@ -75,6 +81,10 @@ fn project_root() -> PathBuf {
     .nth(1)
     .unwrap()
     .to_path_buf()
+}
+
+fn asset_dir() -> PathBuf {
+    crate::project_root().join("zellij-utils").join("assets")
 }
 
 pub fn cargo() -> anyhow::Result<PathBuf> {

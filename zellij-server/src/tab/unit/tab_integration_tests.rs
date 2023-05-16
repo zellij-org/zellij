@@ -2,7 +2,7 @@ use super::{Output, Tab};
 use crate::panes::sixel::SixelImageStore;
 use crate::screen::CopyOptions;
 use crate::Arc;
-use crate::Mutex;
+
 use crate::{
     os_input_output::{AsyncReader, Pid, ServerOsApi},
     panes::PaneId,
@@ -11,6 +11,8 @@ use crate::{
     ClientId,
 };
 use std::path::PathBuf;
+use std::sync::Mutex;
+
 use zellij_utils::channels::Receiver;
 use zellij_utils::data::Direction;
 use zellij_utils::data::Resize;
@@ -705,6 +707,35 @@ fn dump_screen() {
         map.lock().unwrap().get(file).unwrap(),
         "scratch",
         "screen was dumped properly"
+    );
+}
+
+#[test]
+fn clear_screen() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    let map = Arc::new(Mutex::new(HashMap::new()));
+    tab.os_api = Box::new(FakeInputOutput {
+        file_dumps: map.clone(),
+        ..Default::default()
+    });
+    let new_pane_id = PaneId::Terminal(2);
+    tab.new_pane(new_pane_id, None, None, Some(client_id))
+        .unwrap();
+    tab.handle_pty_bytes(2, Vec::from("scratch".as_bytes()))
+        .unwrap();
+    let file = "/tmp/log-clear-screen.sh";
+    tab.clear_active_terminal_screen(client_id).unwrap();
+    tab.dump_active_terminal_screen(Some(file.to_string()), client_id, false)
+        .unwrap();
+    assert_eq!(
+        map.lock().unwrap().get(file).unwrap(),
+        "",
+        "screen was cleared properly"
     );
 }
 
@@ -3172,6 +3203,53 @@ fn swap_tiled_layout_with_stacked_children() {
                         pane focus=true
                         pane stacked=true { children; }
                     }
+                }
+            }
+        }
+    "#;
+    let layout = Layout::from_kdl(swap_layouts, "file_name.kdl".into(), None, None).unwrap();
+    let swap_tiled_layouts = layout.swap_tiled_layouts.clone();
+    let swap_floating_layouts = layout.swap_floating_layouts.clone();
+    let mut tab = create_new_tab_with_swap_layouts(
+        size,
+        ModeInfo::default(),
+        (swap_tiled_layouts, swap_floating_layouts),
+        None,
+        true,
+    );
+    let new_pane_id_1 = PaneId::Terminal(2);
+    let new_pane_id_2 = PaneId::Terminal(3);
+    let new_pane_id_3 = PaneId::Terminal(4);
+
+    tab.new_pane(new_pane_id_1, None, None, Some(client_id))
+        .unwrap();
+    tab.new_pane(new_pane_id_2, None, None, Some(client_id))
+        .unwrap();
+    tab.new_pane(new_pane_id_3, None, None, Some(client_id))
+        .unwrap();
+    tab.render(&mut output, None).unwrap();
+    let snapshot = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_snapshot!(snapshot);
+}
+
+#[test]
+fn swap_tiled_layout_with_only_stacked_children() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut output = Output::default();
+    let swap_layouts = r#"
+        layout {
+            swap_tiled_layout {
+                tab {
+                    pane stacked=true { children; }
                 }
             }
         }
@@ -6680,6 +6758,72 @@ fn when_resizing_whole_tab_with_auto_layout_and_floating_panes_the_layout_is_mai
         cursor_coordinates,
         Some((43, 13)),
         "cursor coordinates moved to the new pane",
+    );
+    assert_snapshot!(snapshot);
+}
+
+#[test]
+fn when_applying_a_truncated_swap_layout_child_attributes_are_not_ignored() {
+    // here we want to make sure that the nested borderless is preserved on resize (when the layout
+    // is reapplied, and thus is truncated to just one pane rather than a logical container pane
+    // and an actual pane as it is described here)
+    let layout = r#"
+        layout {
+            pane {
+                pane borderless=true
+            }
+        }
+    "#;
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab_with_layout(size, ModeInfo::default(), layout);
+    let mut output = Output::default();
+    let new_size = Size {
+        cols: 122,
+        rows: 20,
+    };
+    let _ = tab.resize_whole_tab(new_size);
+    tab.render(&mut output, None).unwrap();
+    let snapshot = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        new_size.rows,
+        new_size.cols,
+        Palette::default(),
+    );
+    assert_snapshot!(snapshot);
+}
+
+#[test]
+fn can_define_expanded_pane_in_stack() {
+    let layout = r#"
+        layout {
+            pane split_direction="Vertical" {
+                pane
+                pane stacked=true {
+                    pane
+                    pane expanded=true
+                    pane
+                    pane
+                }
+            }
+        }
+    "#;
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab_with_layout(size, ModeInfo::default(), layout);
+    let mut output = Output::default();
+    tab.render(&mut output, None).unwrap();
+    let snapshot = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
     );
     assert_snapshot!(snapshot);
 }

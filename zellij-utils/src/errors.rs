@@ -255,6 +255,7 @@ pub enum ScreenContext {
     MovePaneRight,
     MovePaneLeft,
     Exit,
+    ClearScreen,
     DumpScreen,
     DumpLayout,
     EditScrollback,
@@ -325,6 +326,14 @@ pub enum ScreenContext {
     PreviousSwapLayout,
     NextSwapLayout,
     QueryTabNames,
+    NewTiledPluginPane,
+    StartOrReloadPluginPane,
+    NewFloatingPluginPane,
+    AddPlugin,
+    UpdatePluginLoadingStage,
+    ProgressPluginLoadingOffset,
+    StartPluginLoadingIndication,
+    RequestStateUpdateForPlugins,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.
@@ -350,11 +359,16 @@ pub enum PluginContext {
     Update,
     Render,
     Unload,
+    Reload,
     Resize,
     Exit,
     AddClient,
     RemoveClient,
     NewTab,
+    ApplyCachedEvents,
+    ApplyCachedWorkerMessages,
+    PostMessageToPluginWorker,
+    PostMessageToPlugin,
 }
 
 /// Stack call representations corresponding to the different types of [`ClientInstruction`]s.
@@ -400,6 +414,8 @@ pub enum PtyWriteContext {
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum BackgroundJobContext {
     DisplayPaneError,
+    AnimatePluginLoading,
+    StopPluginLoadingAnimation,
     Exit,
 }
 
@@ -481,6 +497,9 @@ open an issue on GitHub:
 
     #[error("Client {client_id} is too slow to handle incoming messages")]
     ClientTooSlow { client_id: u16 },
+
+    #[error("The plugin does not exist")]
+    PluginDoesNotExist,
 }
 
 #[cfg(not(target_family = "wasm"))]

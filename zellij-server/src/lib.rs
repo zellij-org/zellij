@@ -20,7 +20,7 @@ use pty_writer::{pty_writer_main, PtyWriteInstruction};
 use std::collections::{HashMap, HashSet};
 use std::{
     path::PathBuf,
-    sync::{Arc, Mutex, RwLock},
+    sync::{Arc, RwLock},
     thread,
 };
 use zellij_utils::envs;
@@ -260,8 +260,6 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
         })
     });
 
-    let thread_handles = Arc::new(Mutex::new(Vec::new()));
-
     let _ = thread::Builder::new()
         .name("server_listener".to_string())
         .spawn({
@@ -274,11 +272,14 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
             let session_state = session_state.clone();
             let to_server = to_server.clone();
             let socket_path = socket_path.clone();
-            let thread_handles = thread_handles.clone();
             move || {
                 drop(std::fs::remove_file(&socket_path));
                 let listener = LocalSocketListener::bind(&*socket_path).unwrap();
-                set_permissions(&socket_path, 0o700).unwrap();
+                // set the sticky bit to avoid the socket file being potentially cleaned up
+                // https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html states that for XDG_RUNTIME_DIR:
+                // "To ensure that your files are not removed, they should have their access time timestamp modified at least once every 6 hours of monotonic time or the 'sticky' bit should be set on the file. "
+                // It is not guaranteed that all platforms allow setting the sticky bit on sockets!
+                drop(set_permissions(&socket_path, 0o1700));
                 for stream in listener.incoming() {
                     match stream {
                         Ok(stream) => {
@@ -288,22 +289,20 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                             let session_data = session_data.clone();
                             let session_state = session_state.clone();
                             let to_server = to_server.clone();
-                            thread_handles.lock().unwrap().push(
-                                thread::Builder::new()
-                                    .name("server_router".to_string())
-                                    .spawn(move || {
-                                        route_thread_main(
-                                            session_data,
-                                            session_state,
-                                            os_input,
-                                            to_server,
-                                            receiver,
-                                            client_id,
-                                        )
-                                        .fatal()
-                                    })
-                                    .unwrap(),
-                            );
+                            thread::Builder::new()
+                                .name("server_router".to_string())
+                                .spawn(move || {
+                                    route_thread_main(
+                                        session_data,
+                                        session_state,
+                                        os_input,
+                                        to_server,
+                                        receiver,
+                                        client_id,
+                                    )
+                                    .fatal()
+                                })
+                                .unwrap();
                         },
                         Err(err) => {
                             panic!("err {:?}", err);
@@ -345,9 +344,11 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 let default_shell = config_options.default_shell.map(|shell| {
                     TerminalAction::RunCommand(RunCommand {
                         command: shell,
+                        cwd: config_options.default_cwd.clone(),
                         ..Default::default()
                     })
                 });
+                let cwd = config_options.default_cwd;
 
                 let spawn_tabs = |tab_layout, floating_panes_layout, tab_name, swap_layouts| {
                     session_data
@@ -357,6 +358,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                         .unwrap()
                         .senders
                         .send_to_screen(ScreenInstruction::NewTab(
+                            cwd.clone(),
                             default_shell.clone(),
                             tab_layout,
                             floating_panes_layout,
@@ -639,11 +641,6 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
     // Drop cached session data before exit.
     *session_data.write().unwrap() = None;
 
-    thread_handles
-        .lock()
-        .unwrap()
-        .drain(..)
-        .for_each(|h| drop(h.join()));
     drop(std::fs::remove_file(&socket_path));
 }
 
@@ -768,7 +765,7 @@ fn init_session(
                 Some(&to_screen),
                 Some(&to_pty),
                 Some(&to_plugin),
-                None,
+                Some(&to_server),
                 Some(&to_pty_writer),
                 Some(&to_background_jobs),
                 None,

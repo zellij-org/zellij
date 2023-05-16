@@ -469,6 +469,10 @@ pub enum Event {
     SystemClipboardFailure,
     InputReceived,
     Visible(bool),
+    CustomMessage(
+        String, // message
+        String, // payload
+    ),
 }
 
 /// Describes the different input modes, which change the way that keystrokes will be interpreted.
@@ -643,6 +647,7 @@ pub struct Palette {
 pub struct Style {
     pub colors: Palette,
     pub rounded_corners: bool,
+    pub hide_session_name: bool,
 }
 
 // FIXME: Poor devs hashtable since HashTable can't derive `Default`...

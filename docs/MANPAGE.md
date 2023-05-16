@@ -153,6 +153,7 @@ ACTIONS
   next ID.
 * __MoveFocus: <Direction\>__ -  moves focus in the specified direction (Left,
   Right, Up, Down).
+* __Clear__ - clears current screen.
 * __DumpScreen: <File\>__ - dumps the screen in the specified file.
 * __DumpLayout: <File\>__ - dumps the screen in the specified or default file.
 * __EditScrollback__ - replaces the current pane with the scrollback buffer.

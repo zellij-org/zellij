@@ -4,6 +4,7 @@ use ::insta::assert_snapshot;
 use zellij_utils::{pane_size::Size, position::Position};
 
 use rand::Rng;
+use regex::Regex;
 
 use std::fmt::Write;
 use std::path::Path;
@@ -74,6 +75,26 @@ pub fn sgr_mouse_report(position: Position, button: u8) -> Vec<u8> {
         .to_vec()
 }
 
+// what we do here is adjust snapshots for various race conditions that should hopefully be
+// temporary until we can fix them - when adding stuff here, please add a detailed comment
+// explaining the race condition and what needs to be done to solve it
+fn account_for_races_in_snapshot(snapshot: String) -> String {
+    // these replacements need to be done because plugins set themselves as "unselectable" at runtime
+    // when they are loaded - since they are loaded asynchronously, sometimes the "BASE" indication
+    // (which should only happen if there's more than one selectable pane) is rendered and
+    // sometimes it isn't - this removes it entirely
+    //
+    // to fix this, we should set plugins as unselectable in the layout (before they are loaded),
+    // once that happens, we should be able to remove this hack (and adjust the snapshots for the
+    // trailing spaces that we had to get rid of here)
+    let base_replace = Regex::new(r" BASE \s*\n").unwrap();
+    let eol_arrow_replace = Regex::new(r"\s*\n").unwrap();
+    let snapshot = base_replace.replace_all(&snapshot, "\n").to_string();
+    let snapshot = eol_arrow_replace.replace_all(&snapshot, "\n").to_string();
+
+    snapshot
+}
+
 // All the E2E tests are marked as "ignored" so that they can be run separately from the normal
 // tests
 
@@ -105,6 +126,8 @@ pub fn starts_with_one_terminal() {
             break last_snapshot;
         }
     };
+
+    let last_snapshot = account_for_races_in_snapshot(last_snapshot);
     assert_snapshot!(last_snapshot);
 }
 
@@ -152,6 +175,7 @@ pub fn split_terminals_vertically() {
             break last_snapshot;
         }
     };
+    let last_snapshot = account_for_races_in_snapshot(last_snapshot);
     assert_snapshot!(last_snapshot);
 }
 
@@ -166,8 +190,7 @@ pub fn cannot_split_terminals_vertically_when_active_terminal_is_too_small() {
             name: "Split pane to the right",
             instruction: |mut remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.status_bar_appears() && remote_terminal.cursor_position_is(3, 2)
-                {
+                if remote_terminal.cursor_position_is(3, 2) {
                     remote_terminal.send_key(&PANE_MODE);
                     remote_terminal.send_key(&SPLIT_RIGHT_IN_PANE_MODE);
                     // back to normal mode after split
@@ -181,7 +204,12 @@ pub fn cannot_split_terminals_vertically_when_active_terminal_is_too_small() {
             name: "Make sure only one pane appears",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.cursor_position_is(3, 2) {
+                if remote_terminal.cursor_position_is(3, 2)
+                //two empty lines at the bottom to make sure there is no plugin output
+                    && remote_terminal
+                        .current_snapshot()
+                        .ends_with("        \n        ")
+                {
                     // ... is the truncated tip line
                     step_is_complete = true;
                 }
@@ -195,6 +223,7 @@ pub fn cannot_split_terminals_vertically_when_active_terminal_is_too_small() {
             break last_snapshot;
         }
     };
+    let last_snapshot = account_for_races_in_snapshot(last_snapshot);
     assert_snapshot!(last_snapshot);
 }
 
@@ -272,6 +301,7 @@ pub fn scrolling_inside_a_pane() {
             break last_snapshot;
         }
     };
+    let last_snapshot = account_for_races_in_snapshot(last_snapshot);
     assert_snapshot!(last_snapshot);
 }
 
@@ -332,6 +362,7 @@ pub fn toggle_pane_fullscreen() {
             break last_snapshot;
         }
     };
+    let last_snapshot = account_for_races_in_snapshot(last_snapshot);
     assert_snapshot!(last_snapshot);
 }
 
@@ -396,6 +427,7 @@ pub fn open_new_tab() {
             break last_snapshot;
         }
     };
+    let last_snapshot = account_for_races_in_snapshot(last_snapshot);
     assert_snapshot!(last_snapshot);
 }
 
@@ -536,6 +568,7 @@ pub fn close_pane() {
             break last_snapshot;
         }
     };
+    let last_snapshot = account_for_races_in_snapshot(last_snapshot);
     assert_snapshot!(last_snapshot);
 }
 
@@ -680,6 +713,7 @@ pub fn typing_exit_closes_pane() {
             break last_snapshot;
         }
     };
+    let last_snapshot = account_for_races_in_snapshot(last_snapshot);
     assert_snapshot!(last_snapshot);
 }
 
@@ -742,6 +776,7 @@ pub fn resize_pane() {
             break last_snapshot;
         }
     };
+    let last_snapshot = account_for_races_in_snapshot(last_snapshot);
     assert_snapshot!(last_snapshot);
 }
 
@@ -801,6 +836,7 @@ pub fn lock_mode() {
             break last_snapshot;
         }
     };
+    let last_snapshot = account_for_races_in_snapshot(last_snapshot);
     assert_snapshot!(last_snapshot);
 }
 
@@ -864,6 +900,7 @@ pub fn resize_terminal_window() {
             break last_snapshot;
         }
     };
+    let last_snapshot = account_for_races_in_snapshot(last_snapshot);
     assert_snapshot!(last_snapshot);
 }
 
@@ -934,7 +971,7 @@ pub fn detach_and_attach_session() {
             name: "Wait for session to be attached",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.status_bar_appears() && remote_terminal.cursor_position_is(3, 2)
+                if remote_terminal.status_bar_appears() && remote_terminal.cursor_position_is(77, 2)
                 {
                     // we're back inside the session
                     step_is_complete = true;
@@ -949,6 +986,7 @@ pub fn detach_and_attach_session() {
             break last_snapshot;
         }
     };
+    let last_snapshot = account_for_races_in_snapshot(last_snapshot);
     assert_snapshot!(last_snapshot);
 }
 
@@ -969,9 +1007,7 @@ pub fn status_bar_loads_custom_keybindings() {
             name: "Wait for app to load",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.cursor_position_is(3, 1)
-                    && remote_terminal.snapshot_contains("$ █                   ││$")
-                    && remote_terminal.snapshot_contains("$                                                                                                                     ") {
+                if remote_terminal.cursor_position_is(3, 2) && remote_terminal.tip_appears() {
                     step_is_complete = true;
                 }
                 step_is_complete
@@ -984,6 +1020,7 @@ pub fn status_bar_loads_custom_keybindings() {
             break last_snapshot;
         }
     };
+    let last_snapshot = account_for_races_in_snapshot(last_snapshot);
     assert_snapshot!(last_snapshot);
 }
 
@@ -1043,6 +1080,7 @@ fn focus_pane_with_mouse() {
             break last_snapshot;
         }
     };
+    let last_snapshot = account_for_races_in_snapshot(last_snapshot);
     assert_snapshot!(last_snapshot);
 }
 
@@ -1118,6 +1156,7 @@ pub fn scrolling_inside_a_pane_with_mouse() {
             break last_snapshot;
         }
     };
+    let last_snapshot = account_for_races_in_snapshot(last_snapshot);
     assert_snapshot!(last_snapshot);
 }
 
@@ -1164,6 +1203,7 @@ pub fn start_without_pane_frames() {
             break last_snapshot;
         }
     };
+    let last_snapshot = account_for_races_in_snapshot(last_snapshot);
     assert_snapshot!(last_snapshot);
 }
 
@@ -1278,7 +1318,7 @@ pub fn mirrored_sessions() {
             name: "take snapshot after",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.cursor_position_is(3, 2)
+                if remote_terminal.cursor_position_is(63, 2)
                     && remote_terminal.snapshot_contains("┐┌")
                 {
                     // cursor is back in the first tab
@@ -1291,7 +1331,7 @@ pub fn mirrored_sessions() {
             name: "take snapshot after",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.cursor_position_is(3, 2)
+                if remote_terminal.cursor_position_is(63, 2)
                     && remote_terminal.snapshot_contains("┐┌")
                 {
                     // cursor is back in the first tab
@@ -1308,6 +1348,8 @@ pub fn mirrored_sessions() {
             break (first_runner_snapshot, second_runner_snapshot);
         }
     };
+    let first_runner_snapshot = account_for_races_in_snapshot(first_runner_snapshot);
+    let second_runner_snapshot = account_for_races_in_snapshot(second_runner_snapshot);
     assert_snapshot!(first_runner_snapshot);
     assert_snapshot!(second_runner_snapshot);
 }
@@ -1396,6 +1438,8 @@ pub fn multiple_users_in_same_pane_and_tab() {
             break (first_runner_snapshot, second_runner_snapshot);
         }
     };
+    let first_runner_snapshot = account_for_races_in_snapshot(first_runner_snapshot);
+    let second_runner_snapshot = account_for_races_in_snapshot(second_runner_snapshot);
     assert_snapshot!(first_runner_snapshot);
     assert_snapshot!(second_runner_snapshot);
 }
@@ -1486,6 +1530,8 @@ pub fn multiple_users_in_different_panes_and_same_tab() {
             break (first_runner_snapshot, second_runner_snapshot);
         }
     };
+    let first_runner_snapshot = account_for_races_in_snapshot(first_runner_snapshot);
+    let second_runner_snapshot = account_for_races_in_snapshot(second_runner_snapshot);
     assert_snapshot!(first_runner_snapshot);
     assert_snapshot!(second_runner_snapshot);
 }
@@ -1548,6 +1594,7 @@ pub fn multiple_users_in_different_tabs() {
                 let mut step_is_complete = false;
                 if remote_terminal.cursor_position_is(3, 2)
                     && remote_terminal.tip_appears()
+                    && remote_terminal.snapshot_contains("Tab #1 [ ]")
                     && remote_terminal.snapshot_contains("Tab #2")
                     && remote_terminal.status_bar_appears()
                 {
@@ -1564,7 +1611,7 @@ pub fn multiple_users_in_different_tabs() {
                 let mut step_is_complete = false;
                 if remote_terminal.cursor_position_is(3, 2)
                     && remote_terminal.tip_appears()
-                    && remote_terminal.snapshot_contains("Tab #2")
+                    && remote_terminal.snapshot_contains("Tab #2 [ ]")
                     && remote_terminal.status_bar_appears()
                 {
                     // cursor is in the newly opened second tab
@@ -1581,6 +1628,8 @@ pub fn multiple_users_in_different_tabs() {
             break (first_runner_snapshot, second_runner_snapshot);
         }
     };
+    let first_runner_snapshot = account_for_races_in_snapshot(first_runner_snapshot);
+    let second_runner_snapshot = account_for_races_in_snapshot(second_runner_snapshot);
     assert_snapshot!(first_runner_snapshot);
     assert_snapshot!(second_runner_snapshot);
 }
@@ -1603,7 +1652,9 @@ pub fn bracketed_paste() {
             name: "Send pasted text followed by normal text",
             instruction: |mut remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.status_bar_appears() && remote_terminal.cursor_position_is(3, 2)
+                if remote_terminal.status_bar_appears()
+                    && remote_terminal.tab_bar_appears()
+                    && remote_terminal.cursor_position_is(3, 2)
                 {
                     remote_terminal.send_key(&BRACKETED_PASTE_START);
                     remote_terminal.send_key(&TAB_MODE);
@@ -1637,6 +1688,7 @@ pub fn bracketed_paste() {
             break last_snapshot;
         }
     };
+    let last_snapshot = account_for_races_in_snapshot(last_snapshot);
     assert_snapshot!(last_snapshot);
 }
 
@@ -1670,7 +1722,9 @@ pub fn toggle_floating_panes() {
             name: "Wait for new pane to appear",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.cursor_position_is(33, 7) && remote_terminal.tip_appears() {
+                if remote_terminal.cursor_position_is(33, 7)
+                    && remote_terminal.snapshot_contains("FLOATING PANES VISIBLE")
+                {
                     // cursor is in the newly opened second pane
                     step_is_complete = true;
                 }
@@ -1684,6 +1738,7 @@ pub fn toggle_floating_panes() {
             break last_snapshot;
         }
     };
+    let last_snapshot = account_for_races_in_snapshot(last_snapshot);
     assert_snapshot!(last_snapshot);
 }
 
@@ -1731,6 +1786,7 @@ pub fn tmux_mode() {
             break last_snapshot;
         }
     };
+    let last_snapshot = account_for_races_in_snapshot(last_snapshot);
     assert_snapshot!(last_snapshot);
 }
 
@@ -1829,6 +1885,7 @@ pub fn undo_rename_tab() {
             break last_snapshot;
         }
     };
+    let last_snapshot = account_for_races_in_snapshot(last_snapshot);
     assert_snapshot!(last_snapshot);
 }
 
@@ -1878,6 +1935,7 @@ pub fn undo_rename_pane() {
             break last_snapshot;
         }
     };
+    let last_snapshot = account_for_races_in_snapshot(last_snapshot);
     assert_snapshot!(last_snapshot);
 }
 
@@ -1987,5 +2045,6 @@ pub fn send_command_through_the_cli() {
             break last_snapshot;
         }
     };
+    let last_snapshot = account_for_races_in_snapshot(last_snapshot);
     assert_snapshot!(last_snapshot);
 }

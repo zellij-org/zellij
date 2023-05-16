@@ -6,7 +6,10 @@ use crate::panes::{grid::Grid, sixel::SixelImageStore, LinkHandler, PaneId};
 use crate::plugins::PluginInstruction;
 use crate::pty::VteBytes;
 use crate::tab::Pane;
-use crate::ui::pane_boundaries_frame::{FrameParams, PaneFrame};
+use crate::ui::{
+    loading_indication::LoadingIndication,
+    pane_boundaries_frame::{FrameParams, PaneFrame},
+};
 use crate::ClientId;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -65,8 +68,10 @@ pub(crate) struct PluginPane {
     prev_pane_name: String,
     frame: HashMap<ClientId, PaneFrame>,
     borderless: bool,
+    exclude_from_sync: bool,
     pane_frame_color_override: Option<(PaletteColor, Option<String>)>,
     invoked_with: Option<Run>,
+    loading_indication: LoadingIndication,
 }
 
 impl PluginPane {
@@ -81,10 +86,13 @@ impl PluginPane {
         terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
         link_handler: Rc<RefCell<LinkHandler>>,
         character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
+        currently_connected_clients: Vec<ClientId>,
         style: Style,
         invoked_with: Option<Run>,
     ) -> Self {
-        Self {
+        let loading_indication = LoadingIndication::new(title.clone()).with_colors(style.colors);
+        let initial_loading_message = loading_indication.to_string();
+        let mut plugin = PluginPane {
             pid,
             should_render: HashMap::new(),
             selectable: true,
@@ -100,6 +108,7 @@ impl PluginPane {
             prev_pane_name: pane_name,
             terminal_emulator_colors,
             terminal_emulator_color_codes,
+            exclude_from_sync: false,
             link_handler,
             character_cell_size,
             sixel_image_store,
@@ -108,7 +117,12 @@ impl PluginPane {
             style,
             pane_frame_color_override: None,
             invoked_with,
+            loading_indication,
+        };
+        for client_id in currently_connected_clients {
+            plugin.handle_plugin_bytes(client_id, initial_loading_message.as_bytes().to_vec());
         }
+        plugin
     }
 }
 
@@ -421,6 +435,9 @@ impl Pane for PluginPane {
             )]))
             .unwrap();
     }
+    fn clear_screen(&mut self) {
+        // do nothing
+    }
     fn clear_scroll(&mut self) {
         // noop
     }
@@ -487,6 +504,12 @@ impl Pane for PluginPane {
     fn borderless(&self) -> bool {
         self.borderless
     }
+    fn set_exclude_from_sync(&mut self, exclude_from_sync: bool) {
+        self.exclude_from_sync = exclude_from_sync;
+    }
+    fn exclude_from_sync(&self) -> bool {
+        self.exclude_from_sync
+    }
     fn handle_right_click(&mut self, to: &Position, client_id: ClientId) {
         self.send_plugin_instructions
             .send(PluginInstruction::Update(vec![(
@@ -513,6 +536,30 @@ impl Pane for PluginPane {
     fn set_title(&mut self, title: String) {
         self.pane_title = title;
     }
+    fn update_loading_indication(&mut self, loading_indication: LoadingIndication) {
+        if self.loading_indication.ended {
+            return;
+        }
+        self.loading_indication.merge(loading_indication);
+        self.handle_plugin_bytes_for_all_clients(
+            self.loading_indication.to_string().as_bytes().to_vec(),
+        );
+    }
+    fn start_loading_indication(&mut self, loading_indication: LoadingIndication) {
+        self.loading_indication.merge(loading_indication);
+        self.handle_plugin_bytes_for_all_clients(
+            self.loading_indication.to_string().as_bytes().to_vec(),
+        );
+    }
+    fn progress_animation_offset(&mut self) {
+        if self.loading_indication.ended {
+            return;
+        }
+        self.loading_indication.progress_animation_offset();
+        self.handle_plugin_bytes_for_all_clients(
+            self.loading_indication.to_string().as_bytes().to_vec(),
+        );
+    }
 }
 
 impl PluginPane {
@@ -526,5 +573,11 @@ impl PluginPane {
     }
     fn set_client_should_render(&mut self, client_id: ClientId, should_render: bool) {
         self.should_render.insert(client_id, should_render);
+    }
+    fn handle_plugin_bytes_for_all_clients(&mut self, bytes: VteBytes) {
+        let client_ids: Vec<ClientId> = self.grids.keys().copied().collect();
+        for client_id in client_ids {
+            self.handle_plugin_bytes(client_id, bytes.clone());
+        }
     }
 }
