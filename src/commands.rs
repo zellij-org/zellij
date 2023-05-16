@@ -116,6 +116,9 @@ fn find_indexed_session(
     }
 }
 
+/// Client entrypoint for all [`zellij_utils::cli::CliAction`]
+///
+/// Checks session to send the action to and attaches with client
 pub(crate) fn send_action_to_session(
     cli_action: zellij_utils::cli::CliAction,
     requested_session_name: Option<String>,

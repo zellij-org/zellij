@@ -456,6 +456,7 @@ impl Action {
             },
             "MovePaneBackwards" => Ok(Action::MovePaneBackwards),
             "DumpScreen" => Ok(Action::DumpScreen(string, false)),
+            "DumpLayout" => Ok(Action::DumpLayout(Some(string))),
             "NewPane" => {
                 if string.is_empty() {
                     return Ok(Action::NewPane(None, None));
@@ -738,6 +739,11 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                 kdl_action
             ),
             "DumpScreen" => parse_kdl_action_char_or_string_arguments!(
+                action_name,
+                action_arguments,
+                kdl_action
+            ),
+            "DumpLayout" => parse_kdl_action_char_or_string_arguments!(
                 action_name,
                 action_arguments,
                 kdl_action

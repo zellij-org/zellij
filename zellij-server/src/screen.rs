@@ -1716,6 +1716,17 @@ pub(crate) fn screen_thread_main(
                 screen.render()?;
                 screen.unblock_input()?;
             },
+            ScreenInstruction::DumpLayout(client_id, layout) => {
+                let layout: Vec<(&Tab, Vec<PaneId>)> = screen
+                    .tabs
+                    .values()
+                    .map(|t| (t, t.get_all_pane_ids()))
+                    .collect();
+                let tab_names: Vec<String> = layout.iter().map(|(t, _)| t.name.clone()).collect();
+                println!("TABS: {:?}", tab_names);
+                screen.unblock_input()?;
+                screen.render()?;
+            },
             ScreenInstruction::EditScrollback(client_id) => {
                 active_tab_and_connected_client_id!(
                     screen,
@@ -2066,18 +2077,6 @@ pub(crate) fn screen_thread_main(
                         screen.go_to_tab(tab_index as usize, client_id)?;
                     }
                 }
-                screen.unblock_input()?;
-                screen.render()?;
-            },
-            ScreenInstruction::DumpLayout(client_id, layout) => {
-                let layout_ids: Vec<(Tab, Vec<PaneId>)> = screen
-                    .tabs
-                    .values()
-                    .cloned()
-                    .map(|t| (t.1, t.get_all_pane_ids()))
-                    .collect();
-                let pane_ids = tab.get_all_pane_ids();
-                println!("TABS: {:?}", clients);
                 screen.unblock_input()?;
                 screen.render()?;
             },

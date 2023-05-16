@@ -186,6 +186,10 @@ pub fn dump_specified_layout(layout: &str) -> std::io::Result<()> {
         "default" => dump_asset(DEFAULT_LAYOUT),
         "compact" => dump_asset(COMPACT_BAR_LAYOUT),
         "disable-status" => dump_asset(NO_STATUS_LAYOUT),
+        "current" => {
+            log::info!("DUMP CURRENT");
+            Ok(())
+        },
         current => todo!(),
     }
 }
@@ -253,7 +257,7 @@ pub struct Setup {
     #[clap(long, value_parser)]
     pub check: bool,
 
-    /// Dump the specified layout file to stdout
+    /// Dump specified layout to stdout
     #[clap(long, value_parser)]
     pub dump_layout: Option<String>,
 
@@ -364,7 +368,7 @@ impl Setup {
         }
 
         if let Some(layout) = &self.dump_layout {
-            dump_specified_layout(layout)?;
+            dump_specified_layout(&layout)?;
             std::process::exit(0);
         }
 
