@@ -39,6 +39,7 @@ regex = "1.5.5"
 tempfile = "3.2.0"
 kdl = { version = "4.5.0", features = ["span"] }
 shellexpand = "3.0.0"
+uuid = { version = "0.8.2", features = ["serde", "v4"] }
 
 #[cfg(not(target_family = "wasm"))]
 [target.'cfg(not(target_family = "wasm"))'.dependencies]

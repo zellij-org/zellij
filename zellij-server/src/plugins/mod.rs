@@ -22,6 +22,8 @@ use zellij_utils::{
     pane_size::Size,
 };
 
+pub type PluginId = u32;
+
 #[derive(Clone, Debug)]
 pub enum PluginInstruction {
     Load(
@@ -32,8 +34,8 @@ pub enum PluginInstruction {
         ClientId,
         Size,
     ),
-    Update(Vec<(Option<u32>, Option<ClientId>, Event)>), // Focused plugin / broadcast, client_id, event data
-    Unload(u32),                                         // plugin_id
+    Update(Vec<(Option<PluginId>, Option<ClientId>, Event)>), // Focused plugin / broadcast, client_id, event data
+    Unload(PluginId),                                         // plugin_id
     Reload(
         Option<bool>,   // should float
         Option<String>, // pane title
@@ -41,7 +43,7 @@ pub enum PluginInstruction {
         usize, // tab index
         Size,
     ),
-    Resize(u32, usize, usize), // plugin_id, columns, rows
+    Resize(PluginId, usize, usize), // plugin_id, columns, rows
     AddClient(ClientId),
     RemoveClient(ClientId),
     NewTab(
@@ -52,7 +54,23 @@ pub enum PluginInstruction {
         usize, // tab_index
         ClientId,
     ),
-    ApplyCachedEvents(Vec<u32>), // a list of plugin id
+    ApplyCachedEvents(Vec<PluginId>),
+    ApplyCachedWorkerMessages(PluginId),
+    PostMessagesToPluginWorker(
+        PluginId,
+        ClientId,
+        String, // worker name
+        Vec<(
+            String, // serialized message name
+            String, // serialized payload
+        )>,
+    ),
+    PostMessageToPlugin(
+        PluginId,
+        ClientId,
+        String, // serialized message
+        String, // serialized payload
+    ),
     Exit,
 }
 
@@ -69,6 +87,13 @@ impl From<&PluginInstruction> for PluginContext {
             PluginInstruction::RemoveClient(_) => PluginContext::RemoveClient,
             PluginInstruction::NewTab(..) => PluginContext::NewTab,
             PluginInstruction::ApplyCachedEvents(..) => PluginContext::ApplyCachedEvents,
+            PluginInstruction::ApplyCachedWorkerMessages(..) => {
+                PluginContext::ApplyCachedWorkerMessages
+            },
+            PluginInstruction::PostMessagesToPluginWorker(..) => {
+                PluginContext::PostMessageToPluginWorker
+            },
+            PluginInstruction::PostMessageToPlugin(..) => PluginContext::PostMessageToPlugin,
         }
     }
 }
@@ -163,7 +188,7 @@ pub(crate) fn plugin_thread_main(
                 tab_index,
                 client_id,
             ) => {
-                let mut plugin_ids: HashMap<RunPluginLocation, Vec<u32>> = HashMap::new();
+                let mut plugin_ids: HashMap<RunPluginLocation, Vec<PluginId>> = HashMap::new();
                 let mut extracted_run_instructions = tab_layout
                     .clone()
                     .unwrap_or_else(|| layout.new_tab().0)
@@ -199,6 +224,30 @@ pub(crate) fn plugin_thread_main(
             PluginInstruction::ApplyCachedEvents(plugin_id) => {
                 wasm_bridge.apply_cached_events(plugin_id)?;
             },
+            PluginInstruction::ApplyCachedWorkerMessages(plugin_id) => {
+                wasm_bridge.apply_cached_worker_messages(plugin_id)?;
+            },
+            PluginInstruction::PostMessagesToPluginWorker(
+                plugin_id,
+                client_id,
+                worker_name,
+                messages,
+            ) => {
+                wasm_bridge.post_messages_to_plugin_worker(
+                    plugin_id,
+                    client_id,
+                    worker_name,
+                    messages,
+                )?;
+            },
+            PluginInstruction::PostMessageToPlugin(plugin_id, client_id, message, payload) => {
+                let updates = vec![(
+                    Some(plugin_id),
+                    Some(client_id),
+                    Event::CustomMessage(message, payload),
+                )];
+                wasm_bridge.update_plugins(updates)?;
+            },
             PluginInstruction::Exit => {
                 wasm_bridge.cleanup();
                 break;
@@ -218,3 +267,7 @@ pub(crate) fn plugin_thread_main(
         })
         .context("failed to cleanup plugin data directory")
 }
+
+#[path = "./unit/plugin_tests.rs"]
+#[cfg(test)]
+mod plugin_tests;

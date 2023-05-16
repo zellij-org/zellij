@@ -469,6 +469,10 @@ pub enum Event {
     SystemClipboardFailure,
     InputReceived,
     Visible(bool),
+    CustomMessage(
+        String, // message
+        String, // payload
+    ),
 }
 
 /// Describes the different input modes, which change the way that keystrokes will be interpreted.
