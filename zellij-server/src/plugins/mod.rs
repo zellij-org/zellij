@@ -1,5 +1,6 @@
 mod plugin_loader;
 mod plugin_map;
+mod plugin_worker;
 mod wasm_bridge;
 mod zellij_exports;
 use log::info;

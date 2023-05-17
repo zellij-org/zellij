@@ -1,8 +1,9 @@
 use super::{PluginId, PluginInstruction};
 use crate::plugins::plugin_loader::{PluginLoader, VersionMismatchError};
 use crate::plugins::plugin_map::{
-    AtomicEvent, PluginEnv, PluginMap, RunningPlugin, RunningWorker, Subscriptions,
+    AtomicEvent, PluginEnv, PluginMap, RunningPlugin, Subscriptions,
 };
+use crate::plugins::plugin_worker::{RunningWorker, MessageToWorker};
 use crate::plugins::zellij_exports::{wasi_read_string, wasi_write_object};
 use log::info;
 use std::{
@@ -599,38 +600,58 @@ impl WasmBridge {
             self.plugin_map
                 .lock()
                 .unwrap()
-                .clone_worker(plugin_id, client_id, &worker_name);
-        let mut cache_messages = || {
-            for (message, payload) in messages.drain(..) {
-                self.cached_worker_messages
-                    .entry(plugin_id)
-                    .or_default()
-                    .push((client_id, worker_name.clone(), message, payload));
-            }
-        };
+                .worker_sender(plugin_id, client_id, &worker_name);
         match worker {
             Some(worker) => {
-                let worker_is_busy = { worker.try_lock().is_err() };
-                if worker_is_busy {
-                    // most messages will be caught here, we do this once before the async task to
-                    // bulk most messages together and prevent them from cascading
-                    cache_messages();
-                } else {
-                    async_send_messages_to_worker(
-                        self.senders.clone(),
-                        messages,
-                        worker,
-                        plugin_id,
-                        client_id,
-                        worker_name,
-                    );
+                for (message, payload) in messages.drain(..) {
+                    if let Err(e) = worker.send(MessageToWorker::Message(message, payload)) {
+                        log::error!("Failed to send message to worker: {:?}", e);
+                    }
                 }
             },
             None => {
-                log::warn!("Worker {worker_name} not found, placing message in cache");
-                cache_messages();
-            },
+                // TODO: this happens on first message in strider (probably because it's in the
+                // load function?) let's handle this!
+                log::warn!("Worker {worker_name} not found, caching messages");
+                for (message, payload) in messages.drain(..) {
+                    self.cached_worker_messages
+                        .entry(plugin_id)
+                        .or_default()
+                        .push((client_id, worker_name.clone(), message, payload));
+                }
+            }
         }
+//         let mut cache_messages = || {
+//             for (message, payload) in messages.drain(..) {
+//                 self.cached_worker_messages
+//                     .entry(plugin_id)
+//                     .or_default()
+//                     .push((client_id, worker_name.clone(), message, payload));
+//             }
+//         };
+//         match worker {
+//             Some(worker) => {
+//                 let worker_is_busy = { worker.try_lock().is_err() };
+//                 if worker_is_busy {
+//                     // most messages will be caught here, we do this once before the async task to
+//                     // bulk most messages together and prevent them from cascading
+//                     cache_messages();
+//                 } else {
+//                     async_send_messages_to_worker(
+//                         self.senders.clone(),
+//                         messages,
+//                         worker,
+//                         plugin_id,
+//                         client_id,
+//                         worker_name,
+//                     );
+//                 }
+//             },
+//             None => {
+//                 log::warn!("Worker {worker_name} not found, placing message in cache");
+//                 cache_messages();
+//             },
+//         }
         Ok(())
     }
 }

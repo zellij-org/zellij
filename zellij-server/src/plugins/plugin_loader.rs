@@ -1,6 +1,7 @@
 use crate::plugins::plugin_map::{
-    PluginEnv, PluginMap, RunningPlugin, RunningWorker, Subscriptions,
+    PluginEnv, PluginMap, RunningPlugin, Subscriptions,
 };
+use crate::plugins::plugin_worker::{RunningWorker, MessageToWorker, plugin_worker};
 use crate::plugins::zellij_exports::{wasi_read_string, zellij_exports};
 use crate::plugins::PluginId;
 use highway::{HighwayHash, PortableHash};
@@ -625,7 +626,8 @@ impl<'a> PluginLoader<'a> {
 
                 let worker =
                     RunningWorker::new(instance, &function_name, plugin_config, plugin_env);
-                workers.insert(function_name.into(), Arc::new(Mutex::new(worker)));
+                let worker_sender = plugin_worker(worker);
+                workers.insert(function_name.into(), worker_sender);
             }
         }
         start_function.call(&[]).with_context(err_context)?;

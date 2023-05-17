@@ -79,8 +79,16 @@ macro_rules! register_plugin {
 #[macro_export]
 macro_rules! register_worker {
     ($worker:ty, $worker_name:ident) => {
+        // TODO: overloading
+        // 1. if we get just worker and a function name, we persist state from the hd
+        // 2. if we get a worker and a function name and a state name, we persist state from memory
+        //    (as is the current implementation, only with a custom static name that we are given)
+        thread_local! {
+            static MY_WORKER: std::cell::RefCell<$worker> = std::cell::RefCell::new(Default::default()); // TODO CONTINUE HERE: proper name instead of MY_WORKER, then do the first message caching thign
+        }
         #[no_mangle]
         pub fn $worker_name() {
+
             use serde_json::*;
             let worker_display_name = std::stringify!($worker_name);
 
@@ -93,43 +101,47 @@ macro_rules! register_worker {
                     );
                     Default::default()
                 });
+            MY_WORKER.with(|worker_instance| {
+                let mut worker_instance = worker_instance.borrow_mut();
+                worker_instance.on_message(message, payload);
+            });
 
-            // read previous worker state from HD if it exists
-            let mut worker_instance = match std::fs::read(&format!("/data/{}", worker_display_name))
-                .map_err(|e| format!("Failed to read file: {:?}", e))
-                .and_then(|s| {
-                    serde_json::from_str::<$worker>(&String::from_utf8_lossy(&s))
-                        .map_err(|e| format!("Failed to deserialize: {:?}", e))
-                }) {
-                Ok(s) => s,
-                Err(e) => {
-                    eprintln!(
-                        "Failed to read existing state ({:?}), creating new state for worker",
-                        e
-                    );
-                    <$worker>::default()
-                },
-            };
-
-            // invoke worker
-            worker_instance.on_message(message, payload);
-
-            // persist worker state to HD for next run
-            match serde_json::to_string(&worker_instance)
-                .map_err(|e| format!("Failed to serialize worker state"))
-                .and_then(|serialized_state| {
-                    std::fs::write(
-                        &format!("/data/{}", worker_display_name),
-                        serialized_state.as_bytes(),
-                    )
-                    .map_err(|e| format!("Failed to persist state to HD: {:?}", e))
-                }) {
-                Ok(()) => {},
-                Err(e) => eprintln!(
-                    "Failed to serialize and persist worker state to hd: {:?}",
-                    e
-                ),
-            }
-        }
+//             // read previous worker state from HD if it exists
+//             let mut worker_instance = match std::fs::read(&format!("/data/{}", worker_display_name))
+//                 .map_err(|e| format!("Failed to read file: {:?}", e))
+//                 .and_then(|s| {
+//                     serde_json::from_str::<$worker>(&String::from_utf8_lossy(&s))
+//                         .map_err(|e| format!("Failed to deserialize: {:?}", e))
+//                 }) {
+//                 Ok(s) => s,
+//                 Err(e) => {
+//                     eprintln!(
+//                         "Failed to read existing state ({:?}), creating new state for worker",
+//                         e
+//                     );
+//                     <$worker>::default()
+//                 },
+//             };
+//
+//             // invoke worker
+//             worker_instance.on_message(message, payload);
+//
+//             // persist worker state to HD for next run
+//             match serde_json::to_string(&worker_instance)
+//                 .map_err(|e| format!("Failed to serialize worker state"))
+//                 .and_then(|serialized_state| {
+//                     std::fs::write(
+//                         &format!("/data/{}", worker_display_name),
+//                         serialized_state.as_bytes(),
+//                     )
+//                     .map_err(|e| format!("Failed to persist state to HD: {:?}", e))
+//                 }) {
+//                 Ok(()) => {},
+//                 Err(e) => eprintln!(
+//                     "Failed to serialize and persist worker state to hd: {:?}",
+//                     e
+//                 ),
+//             }
+         }
     };
 }
