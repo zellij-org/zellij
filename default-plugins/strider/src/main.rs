@@ -51,10 +51,18 @@ impl ZellijPlugin for State {
                     if let Ok(mut results_of_search) =
                         serde_json::from_str::<ResultsOfSearch>(&payload)
                     {
-                        if Some(results_of_search.search_term) == self.search_term {
-                            self.search_results =
-                                results_of_search.search_results.drain(..).collect();
-                            should_render = true;
+                        let results_of_search_clone = results_of_search.clone();
+                        if let Some(search_term) = self.search_term.as_ref() {
+                            if search_term == &results_of_search.search_term.0 {
+                                self.search_results =
+                                    results_of_search.search_results.drain(..).collect();
+                                should_render = true;
+                                eprintln!("RENDERING");
+                            } else {
+                                eprintln!("not rendering 1?! results_of_search.search_term: {:?} != self.search_term: {:?}", results_of_search_clone.search_term, self.search_term);
+                            }
+                        } else {
+                            eprintln!("not rendering 2?! results_of_search.search_term: {:?} != self.search_term: {:?}", results_of_search_clone.search_term, self.search_term);
                         }
                     }
                 },
@@ -75,11 +83,22 @@ impl ZellijPlugin for State {
                 _ if self.typing_search_term() => {
                     self.append_to_search_term(key);
                     if let Some(search_term) = self.search_term.as_ref() {
-                        std::fs::write(CURRENT_SEARCH_TERM, search_term.as_bytes()).unwrap();
+                        // TODO:
+                        // 1. write an incrementing number to CURRENT_SEARCH_TERM as well as the
+                        //    search term itself
+                        // 2. read this incrementing number in the worker and log it whenever
+                        //    sending search results
+                        // 3. in the worker, do not process any message with a lower message index
+                        //    than the one already sent
+                        // 4. send a "perform search" with no payload message instead, we'll just
+                        //    keep the payload on the hd
+                        self.processed_search_index += 1;
+                        std::fs::write(CURRENT_SEARCH_TERM, self.stringify_search_term().unwrap()).unwrap();
                         post_message_to(
-                            "search",
+                            "search", // TODO: more indicative name
                             String::from("search"),
-                            String::from(&self.search_term.clone().unwrap()),
+                            String::from(""),
+                            // String::from(&self.search_term.clone().unwrap()),
                         );
                     }
                     should_render = true;

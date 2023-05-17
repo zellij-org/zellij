@@ -1,4 +1,5 @@
 use crate::state::{State, CURRENT_SEARCH_TERM, ROOT};
+use std::time::Instant;
 
 use unicode_width::UnicodeWidthStr;
 use zellij_tile::prelude::*;
@@ -219,12 +220,12 @@ impl SearchResult {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ResultsOfSearch {
-    pub search_term: String,
+    pub search_term: (String, usize),
     pub search_results: Vec<SearchResult>,
 }
 
 impl ResultsOfSearch {
-    pub fn new(search_term: String, search_results: Vec<SearchResult>) -> Self {
+    pub fn new(search_term: (String, usize), search_results: Vec<SearchResult>) -> Self {
         ResultsOfSearch {
             search_term,
             search_results,
@@ -247,6 +248,7 @@ pub struct SearchWorker {
     pub search_paths: Vec<String>,
     pub search_file_contents: Vec<(String, usize, String)>, // file_name, line_number, line
     skip_hidden_files: bool,
+    processed_search_index: usize,
 }
 
 impl<'de> ZellijWorker<'de> for SearchWorker {
@@ -259,14 +261,22 @@ impl<'de> ZellijWorker<'de> for SearchWorker {
                 post_message_to_plugin("done_scanning_folder".into(), "".into());
             },
             "search" => {
-                let search_term = payload;
-                let (search_term, matches) = self.search(search_term);
-                let search_results =
-                    ResultsOfSearch::new(search_term, matches).limit_search_results(100);
-                post_message_to_plugin(
-                    "update_search_results".into(),
-                    serde_json::to_string(&search_results).unwrap(),
-                );
+                if let Some((search_term, search_index)) = self.read_search_term_from_hd_cache() {
+                    eprintln!("on_message, search_term: {:?}, search_index: {:?}, processed_search_index: {:?}", search_term, search_index, self.processed_search_index);
+                    if search_index > self.processed_search_index {
+                        eprintln!("doing the search");
+                        let (search_term, matches) = self.search(search_term);
+                        let search_results =
+                            ResultsOfSearch::new((search_term, search_index), matches).limit_search_results(100);
+                        self.processed_search_index = search_index;
+                        post_message_to_plugin(
+                            "update_search_results".into(),
+                            serde_json::to_string(&search_results).unwrap(),
+                        );
+                    } else {
+                        eprintln!("NOT doing the search");
+                    }
+                }
             },
             "skip_hidden_files" => match serde_json::from_str::<bool>(&payload) {
                 Ok(should_skip_hidden_files) => {
@@ -283,23 +293,39 @@ impl<'de> ZellijWorker<'de> for SearchWorker {
 
 impl SearchWorker {
     fn search(&mut self, search_term: String) -> (String, Vec<SearchResult>) {
+        let search_start = Instant::now();
         if self.search_paths.is_empty() {
             self.populate_search_paths();
         }
+        eprintln!("populated search paths in: {:?}", search_start.elapsed());
+        let matcher_constructor_start = Instant::now();
         let mut matches = vec![];
         let mut matcher = SkimMatcherV2::default().use_cache(true).element_limit(100); // TODO: no hard
+        eprintln!("constructed matcher in: {:?}", matcher_constructor_start.elapsed());
                                                                                        // coded limit!
+        let file_names_start = Instant::now();
         self.search_file_names(&search_term, &mut matcher, &mut matches);
+        eprintln!("searched file names in: {:?}", file_names_start.elapsed());
+        let file_contents_start = Instant::now();
         self.search_file_contents(&search_term, &mut matcher, &mut matches);
+        eprintln!("searched file contents in: {:?}", file_contents_start.elapsed());
 
         // if the search term changed before we finished, let's search again!
-        if let Ok(current_search_term) = std::fs::read(CURRENT_SEARCH_TERM) {
-            let current_search_term = String::from_utf8_lossy(&current_search_term); // TODO: not lossy, search can be lots of stuff
+        if let Some((current_search_term, _current_search_index)) = self.read_search_term_from_hd_cache() {
             if current_search_term != search_term {
+                eprintln!("\nRECURSING!\n");
                 return self.search(current_search_term.into());
             }
         }
         (search_term, matches)
+    }
+    fn read_search_term_from_hd_cache(&self) -> Option<(String, usize)> {
+        if let Ok(current_search_term) = std::fs::read(CURRENT_SEARCH_TERM) {
+            if let Ok(current_search_term) = serde_json::from_str::<(String, usize)>(&String::from_utf8_lossy(&current_search_term)) {
+                return Some(current_search_term)
+            }
+        }
+        None
     }
     fn populate_search_paths(&mut self) {
         for entry in WalkDir::new(ROOT).into_iter().filter_map(|e| e.ok()) {

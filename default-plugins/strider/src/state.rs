@@ -9,6 +9,7 @@ use std::{
 use zellij_tile::prelude::*;
 
 pub const ROOT: &str = "/host";
+// pub const ROOT: &str = "/tmp"; // TODO: no!!
 pub const CURRENT_SEARCH_TERM: &str = "/data/current_search_term";
 
 #[derive(Default)]
@@ -26,6 +27,7 @@ pub struct State {
     pub typing_search_term: bool,
     pub exploring_search_results: bool,
     pub selected_search_result: usize,
+    pub processed_search_index: usize,
 }
 
 impl State {
@@ -41,6 +43,11 @@ impl State {
                     search_term.pop();
                     if search_term.len() == 0 {
                         self.search_term = None;
+                        // TODO: CONTINUE HERE
+                        // * take search_index out of search_term and put it in
+                        // self.processed_search_index instead
+                        // * use self.processed_search_index whenever creating a search_index and
+                        // increment it when appending
                         self.typing_search_term = false;
                     }
                 }
@@ -128,6 +135,13 @@ impl State {
             None => {
                 eprintln!("Search result not found");
             },
+        }
+    }
+    pub fn stringify_search_term(&self) -> Option<String> {
+        if let Some(search_term) = self.search_term.as_ref() {
+            serde_json::to_string(&(search_term, self.processed_search_index)).ok()
+        } else {
+            None
         }
     }
 }
