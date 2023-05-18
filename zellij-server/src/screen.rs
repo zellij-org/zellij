@@ -2030,7 +2030,8 @@ pub(crate) fn screen_thread_main(
                 screen.unblock_input()?;
             },
             ScreenInstruction::HoldPane(id, exit_status, run_command, tab_index, client_id) => {
-                let is_first_run = false;
+                // If the pane is set to hold_on_close, we always want to display the banner, rather than never showing it.
+                let is_first_run = true;
                 match (client_id, tab_index) {
                     (Some(client_id), _) => {
                         active_tab!(screen, client_id, |tab: &mut Tab| tab.hold_pane(
