@@ -10,7 +10,7 @@ pub enum TerminalAction {
     RunCommand(RunCommand),
 }
 
-#[derive(Clone, Debug, Deserialize, Default, Serialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Deserialize, Default, Serialize, PartialEq, Eq, Hash)]
 pub struct RunCommand {
     #[serde(alias = "cmd")]
     pub command: PathBuf,
