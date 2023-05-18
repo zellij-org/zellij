@@ -1506,6 +1506,7 @@ pub(crate) fn screen_thread_main(
         copy_options,
     );
 
+    let mut command_rerun_history: HashMap<RunCommand, u16> = HashMap::new();
     let mut pending_tab_ids: HashSet<usize> = HashSet::new();
     let mut pending_tab_switches: HashSet<(usize, ClientId)> = HashSet::new(); // usize is the
                                                                                // tab_index
@@ -2030,7 +2031,16 @@ pub(crate) fn screen_thread_main(
                 screen.unblock_input()?;
             },
             ScreenInstruction::HoldPane(id, exit_status, run_command, tab_index, client_id) => {
-                let is_first_run = false;
+                let is_first_run = match command_rerun_history.get_mut(&run_command) {
+                    Some(count) => {
+                        *count += 1;
+                        false
+                    },
+                    None => {
+                        command_rerun_history.insert(run_command.clone(), 1);
+                        true
+                    },
+                };
                 match (client_id, tab_index) {
                     (Some(client_id), _) => {
                         active_tab!(screen, client_id, |tab: &mut Tab| tab.hold_pane(
