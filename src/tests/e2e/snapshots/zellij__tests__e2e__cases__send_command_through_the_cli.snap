@@ -7,7 +7,8 @@ expression: last_snapshot
 ┌ Pane #1 ─────────────────────────────────────────────────┐┌ /usr/src/zellij/fixtures/append-echo-script.sh ──────────┐
 │$ /usr/src/zellij/x86_64-unknown-linux-musl/release/zellij││foo                                                       │
 │ run -s -- "/usr/src/zellij/fixtures/append-echo-script.sh││                                                          │
-│                                                          ││                                                          │
+│"                                                         ││                                                          │
+│$                                                         ││                                                          │
 │                                                          ││                                                          │
 │                                                          ││                                                          │
 │                                                          ││                                                          │
@@ -23,7 +24,6 @@ expression: last_snapshot
 │                                                          ││                                                          │
 │                                                          ││                                                          │
 │                                                          ││                                                          │
-│                                                          ││                                                          │
-└──────────────────────────────────────────────────────────┘└  <ENTER> to run, <Ctrl-c> to exit ───────────────────────┘
+└──────────────────────────────────────────────────────────┘└─ <ENTER> to run, <Ctrl-c> to exit ───────────────────────┘
  Ctrl + <g> LOCK  <p> PANE  <t> TAB  <n> RESIZE  <h> MOVE  <s> SEARCH  <o> SESSION  <q> QUIT 
  Tip: Alt + <n> => new pane. Alt + <←↓↑→> or Alt + <hjkl> => navigate. Alt + <+|-> => resize pane.                      
