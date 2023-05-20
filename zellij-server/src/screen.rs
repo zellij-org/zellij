@@ -1187,7 +1187,7 @@ impl Screen {
                 tab.visible(false).with_context(err_context)?;
             }
         }
-        if self.active_tab_indices.contains_key(&client_id) {
+        if self.active_tab_indices.len() > 1 && self.active_tab_indices.contains_key(&client_id) {
             self.active_tab_indices.remove(&client_id);
         }
         if self.tab_history.contains_key(&client_id) {
