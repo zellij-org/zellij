@@ -105,13 +105,14 @@ pub(crate) fn plugin_thread_main(
     data_dir: PathBuf,
     plugins: PluginsConfig,
     layout: Box<Layout>,
+    path_to_default_shell: PathBuf,
 ) -> Result<()> {
     info!("Wasm main thread starts");
 
     let plugin_dir = data_dir.join("plugins/");
     let plugin_global_data_dir = plugin_dir.join("data");
 
-    let mut wasm_bridge = WasmBridge::new(plugins, bus.senders.clone(), store, plugin_dir);
+    let mut wasm_bridge = WasmBridge::new(plugins, bus.senders.clone(), store, plugin_dir, path_to_default_shell);
 
     loop {
         let (event, mut err_ctx) = bus.recv().expect("failed to receive event on channel");

@@ -23,7 +23,7 @@ use zellij_utils::{
     consts::VERSION,
     data::{Event, EventType, PluginIds},
     errors::prelude::*,
-    input::{command::TerminalAction, plugins::PluginType},
+    input::{command::{TerminalAction, RunCommand}, plugins::PluginType},
     serde,
 };
 
@@ -50,7 +50,11 @@ pub fn zellij_exports(
         host_get_plugin_ids,
         host_get_zellij_version,
         host_open_file,
+        host_open_file_floating,
         host_open_file_with_line,
+        host_open_file_with_line_floating,
+        host_open_terminal,
+        host_open_terminal_floating,
         host_switch_tab_to,
         host_set_timeout,
         host_exec_cmd,
@@ -160,9 +164,30 @@ fn host_open_file(env: &ForeignFunctionEnv) {
                 .senders
                 .send_to_pty(PtyInstruction::SpawnTerminal(
                     Some(TerminalAction::OpenFile(path, None, None)),
+                    Some(false),
                     None,
+                    ClientOrTabIndex::ClientId(env.plugin_env.client_id),
+                ))
+        })
+        .with_context(|| {
+            format!(
+                "failed to open file on host from plugin {}",
+                env.plugin_env.name()
+            )
+        })
+        .non_fatal();
+}
+
+fn host_open_file_floating(env: &ForeignFunctionEnv) {
+    wasi_read_object::<PathBuf>(&env.plugin_env.wasi_env)
+        .and_then(|path| {
+            env.plugin_env
+                .senders
+                .send_to_pty(PtyInstruction::SpawnTerminal(
+                    Some(TerminalAction::OpenFile(path, None, None)),
+                    Some(true),
                     None,
-                    ClientOrTabIndex::TabIndex(env.plugin_env.tab_index),
+                    ClientOrTabIndex::ClientId(env.plugin_env.client_id),
                 ))
         })
         .with_context(|| {
@@ -181,14 +206,77 @@ fn host_open_file_with_line(env: &ForeignFunctionEnv) {
                 .senders
                 .send_to_pty(PtyInstruction::SpawnTerminal(
                     Some(TerminalAction::OpenFile(path, Some(line), None)), // TODO: add cwd
+                    Some(false),
                     None,
-                    None,
-                    ClientOrTabIndex::TabIndex(env.plugin_env.tab_index),
+                    ClientOrTabIndex::ClientId(env.plugin_env.client_id),
                 ))
         })
         .with_context(|| {
             format!(
                 "failed to open file on host from plugin {}",
+                env.plugin_env.name()
+            )
+        })
+        .non_fatal();
+}
+
+fn host_open_file_with_line_floating(env: &ForeignFunctionEnv) {
+    wasi_read_object::<(PathBuf, usize)>(&env.plugin_env.wasi_env)
+        .and_then(|(path, line)| {
+            env.plugin_env
+                .senders
+                .send_to_pty(PtyInstruction::SpawnTerminal(
+                    Some(TerminalAction::OpenFile(path, Some(line), None)), // TODO: add cwd
+                    Some(true),
+                    None,
+                    ClientOrTabIndex::ClientId(env.plugin_env.client_id),
+                ))
+        })
+        .with_context(|| {
+            format!(
+                "failed to open file on host from plugin {}",
+                env.plugin_env.name()
+            )
+        })
+        .non_fatal();
+}
+
+fn host_open_terminal(env: &ForeignFunctionEnv) {
+    wasi_read_object::<PathBuf>(&env.plugin_env.wasi_env)
+        .and_then(|path| {
+            env.plugin_env
+                .senders
+                .send_to_pty(PtyInstruction::SpawnTerminal(
+                    Some(TerminalAction::RunCommand(RunCommand::new(env.plugin_env.path_to_default_shell.clone()).with_cwd(path))),
+                    Some(false),
+                    None,
+                    ClientOrTabIndex::ClientId(env.plugin_env.client_id),
+                ))
+        })
+        .with_context(|| {
+            format!(
+                "failed to open terminal on host from plugin {}",
+                env.plugin_env.name()
+            )
+        })
+        .non_fatal();
+}
+
+fn host_open_terminal_floating(env: &ForeignFunctionEnv) {
+    wasi_read_object::<PathBuf>(&env.plugin_env.wasi_env)
+        .and_then(|path| {
+            env.plugin_env
+                .senders
+                .send_to_pty(PtyInstruction::SpawnTerminal(
+                    Some(TerminalAction::RunCommand(RunCommand::new(env.plugin_env.path_to_default_shell.clone()).with_cwd(path))),
+                    Some(true),
+                    None,
+                    ClientOrTabIndex::ClientId(env.plugin_env.client_id),
+                ))
+        })
+        .with_context(|| {
+            format!(
+                "failed to open terminal on host from plugin {}",
                 env.plugin_env.name()
             )
         })

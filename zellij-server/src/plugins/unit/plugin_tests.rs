@@ -88,6 +88,7 @@ fn create_plugin_thread() -> (
     .should_silently_fail();
     let store = Store::new(&wasmer::Universal::new(wasmer::Singlepass::default()).engine());
     let data_dir = PathBuf::from(tempdir().unwrap().path());
+    let default_shell = PathBuf::from(".");
     let _plugin_thread = std::thread::Builder::new()
         .name("plugin_thread".to_string())
         .spawn(move || {
@@ -98,6 +99,7 @@ fn create_plugin_thread() -> (
                 data_dir,
                 PluginsConfig::default(),
                 Box::new(Layout::default()),
+                default_shell,
             )
             .expect("TEST")
         })

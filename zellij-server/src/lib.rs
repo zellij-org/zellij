@@ -705,6 +705,13 @@ fn init_session(
             ..Default::default()
         })
     });
+    let path_to_default_shell = config_options.default_shell.clone().unwrap_or_else(|| {
+        // TODO: export this functionality from pty.rs
+        PathBuf::from(std::env::var("SHELL").unwrap_or_else(|_| {
+            log::warn!("Cannot read SHELL env, falling back to use /bin/sh");
+            "/bin/sh".to_string()
+        }))
+    });
 
     let pty_thread = thread::Builder::new()
         .name("pty".to_string())
@@ -780,6 +787,7 @@ fn init_session(
                     data_dir,
                     plugins.unwrap_or_default(),
                     layout,
+                    path_to_default_shell,
                 )
                 .fatal()
             }

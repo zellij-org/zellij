@@ -68,3 +68,16 @@ impl From<RunCommandAction> for RunCommand {
         }
     }
 }
+
+impl RunCommand {
+    pub fn new(command: PathBuf) -> Self {
+        RunCommand {
+            command,
+            ..Default::default()
+        }
+    }
+    pub fn with_cwd(mut self, cwd: PathBuf) -> Self {
+        self.cwd = Some(cwd);
+        self
+    }
+}

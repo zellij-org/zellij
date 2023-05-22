@@ -48,24 +48,41 @@ macro_rules! register_plugin {
         #[no_mangle]
         fn load() {
             STATE.with(|state| {
+                eprintln!("borrowing state 1");
                 state.borrow_mut().load();
+                eprintln!("successfully borrowed state 1");
             });
         }
 
         #[no_mangle]
         pub fn update() -> bool {
-            let object = $crate::shim::object_from_stdin()
-                .context($crate::PLUGIN_MISMATCH)
-                .to_stdout()
-                .unwrap();
-
-            STATE.with(|state| state.borrow_mut().update(object))
+            STATE.with(|state| {
+                let object = $crate::shim::object_from_stdin()
+                    .context($crate::PLUGIN_MISMATCH)
+                    .to_stdout()
+                    .unwrap();
+                eprintln!("borrowing state for UPDATE");
+                let ret = state.borrow_mut().update(object);
+                eprintln!("successfully borrowed state for UPDATE");
+                ret
+            })
+//             let object = $crate::shim::object_from_stdin()
+//                 .context($crate::PLUGIN_MISMATCH)
+//                 .to_stdout()
+//                 .unwrap();
+//
+//             eprintln!("borrowing state for UPDATE");
+//             let ret = STATE.with(|state| state.borrow_mut().update(object));
+//             eprintln!("successfully borrowed state for UPDATE");
+//             ret
         }
 
         #[no_mangle]
         pub fn render(rows: i32, cols: i32) {
             STATE.with(|state| {
+                eprintln!("borrowing state for RENDER");
                 state.borrow_mut().render(rows as usize, cols as usize);
+                eprintln!("successfully borrowed state for RENDER");
             });
         }
 
@@ -78,13 +95,13 @@ macro_rules! register_plugin {
 
 #[macro_export]
 macro_rules! register_worker {
-    ($worker:ty, $worker_name:ident) => {
+    ($worker:ty, $worker_name:ident, $worker_static_name:ident) => {
         // TODO: overloading
         // 1. if we get just worker and a function name, we persist state from the hd
         // 2. if we get a worker and a function name and a state name, we persist state from memory
         //    (as is the current implementation, only with a custom static name that we are given)
         thread_local! {
-            static MY_WORKER: std::cell::RefCell<$worker> = std::cell::RefCell::new(Default::default()); // TODO CONTINUE HERE: proper name instead of MY_WORKER, then do the first message caching thign
+            static $worker_static_name: std::cell::RefCell<$worker> = std::cell::RefCell::new(Default::default()); // TODO CONTINUE HERE: proper name instead of MY_WORKER, then do the first message caching thign
         }
         #[no_mangle]
         pub fn $worker_name() {
@@ -101,7 +118,7 @@ macro_rules! register_worker {
                     );
                     Default::default()
                 });
-            MY_WORKER.with(|worker_instance| {
+            $worker_static_name.with(|worker_instance| {
                 let mut worker_instance = worker_instance.borrow_mut();
                 worker_instance.on_message(message, payload);
             });

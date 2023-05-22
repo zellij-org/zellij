@@ -50,6 +50,7 @@ pub struct WasmBridge {
     // payload>
     loading_plugins: HashMap<(PluginId, RunPlugin), JoinHandle<()>>, // plugin_id to join-handle
     pending_plugin_reloads: HashSet<RunPlugin>,
+    path_to_default_shell: PathBuf,
 }
 
 impl WasmBridge {
@@ -58,6 +59,7 @@ impl WasmBridge {
         senders: ThreadSenders,
         store: Store,
         plugin_dir: PathBuf,
+        path_to_default_shell: PathBuf,
     ) -> Self {
         let plugin_map = Arc::new(Mutex::new(PluginMap::default()));
         let connected_clients: Arc<Mutex<Vec<ClientId>>> = Arc::new(Mutex::new(vec![]));
@@ -71,6 +73,7 @@ impl WasmBridge {
             plugin_dir,
             plugin_cache,
             plugin_map,
+            path_to_default_shell,
             next_plugin_id: 0,
             cached_events_for_pending_plugins: HashMap::new(),
             cached_resizes_for_pending_plugins: HashMap::new(),
@@ -123,6 +126,7 @@ impl WasmBridge {
             let store = self.store.clone();
             let plugin_map = self.plugin_map.clone();
             let connected_clients = self.connected_clients.clone();
+            let path_to_default_shell = self.path_to_default_shell.clone();
             async move {
                 let _ =
                     senders.send_to_background_jobs(BackgroundJob::AnimatePluginLoading(plugin_id));
@@ -140,6 +144,7 @@ impl WasmBridge {
                     size,
                     connected_clients.clone(),
                     &mut loading_indication,
+                    path_to_default_shell,
                 ) {
                     Ok(_) => handle_plugin_successful_loading(&senders, plugin_id),
                     Err(e) => handle_plugin_loading_failure(
@@ -196,6 +201,7 @@ impl WasmBridge {
             let store = self.store.clone();
             let plugin_map = self.plugin_map.clone();
             let connected_clients = self.connected_clients.clone();
+            let path_to_default_shell = self.path_to_default_shell.clone();
             async move {
                 match PluginLoader::reload_plugin(
                     first_plugin_id,
@@ -206,6 +212,7 @@ impl WasmBridge {
                     plugin_map.clone(),
                     connected_clients.clone(),
                     &mut loading_indication,
+                    path_to_default_shell.clone(),
                 ) {
                     Ok(_) => {
                         handle_plugin_successful_loading(&senders, first_plugin_id);
@@ -224,6 +231,7 @@ impl WasmBridge {
                                 plugin_map.clone(),
                                 connected_clients.clone(),
                                 &mut loading_indication,
+                                path_to_default_shell.clone(),
                             ) {
                                 Ok(_) => handle_plugin_successful_loading(&senders, *plugin_id),
                                 Err(e) => handle_plugin_loading_failure(
@@ -264,6 +272,7 @@ impl WasmBridge {
             self.plugin_map.clone(),
             self.connected_clients.clone(),
             &mut loading_indication,
+            self.path_to_default_shell.clone(),
         ) {
             Ok(_) => {
                 let _ = self
@@ -415,7 +424,11 @@ impl WasmBridge {
                                     ));
                                 },
                                 Err(e) => {
-                                    log::error!("{}", e);
+                                    // TODO: if this (and similar) happens (eg. plugin crashes with
+                                    // stack overflow of recursion), we need to unload the plugin,
+                                    // send the stack trace to be rendered on screen and offer to
+                                    // reload it with ENTER
+                                    log::error!("{:?}", e);
                                 },
                             }
                         }

@@ -1,4 +1,4 @@
-use crate::search::SearchResult;
+use crate::search::{SearchResult, SearchFilter};
 use pretty_bytes::converter as pb;
 use std::{
     collections::{HashMap, VecDeque},
@@ -21,13 +21,15 @@ pub struct State {
     pub ev_history: VecDeque<(Event, Instant)>, // stores last event, can be expanded in future
     pub search_paths: Vec<String>,
     pub search_term: Option<String>,
-    pub search_results: Vec<SearchResult>,
+    pub file_name_search_results: Vec<SearchResult>,
+    pub file_contents_search_results: Vec<SearchResult>,
     pub loading: bool,
     pub loading_animation_offset: u8,
     pub typing_search_term: bool,
-    pub exploring_search_results: bool,
     pub selected_search_result: usize,
     pub processed_search_index: usize,
+    pub should_open_floating: bool,
+    pub search_filter: SearchFilter,
 }
 
 impl State {
@@ -43,6 +45,8 @@ impl State {
                     search_term.pop();
                     if search_term.len() == 0 {
                         self.search_term = None;
+                        self.file_name_search_results.clear();
+                        self.file_contents_search_results.clear();
                         // TODO: CONTINUE HERE
                         // * take search_index out of search_term and put it in
                         // self.processed_search_index instead
@@ -55,18 +59,8 @@ impl State {
             _ => {},
         }
     }
-    pub fn accept_search_term(&mut self) {
-        self.typing_search_term = false;
-        self.exploring_search_results = true;
-    }
     pub fn typing_search_term(&self) -> bool {
         self.typing_search_term
-    }
-    pub fn exploring_search_results(&self) -> bool {
-        self.exploring_search_results
-    }
-    pub fn stop_exploring_search_results(&mut self) {
-        self.exploring_search_results = false;
     }
     pub fn start_typing_search_term(&mut self) {
         if self.search_term.is_none() {
@@ -81,7 +75,7 @@ impl State {
         self.selected_search_result = self.selected_search_result.saturating_sub(1);
     }
     pub fn move_search_selection_down(&mut self) {
-        if self.selected_search_result < self.search_results.len() {
+        if self.selected_search_result < self.file_name_search_results.len() + self.file_contents_search_results.len() {
             self.selected_search_result = self.selected_search_result.saturating_add(1);
         }
     }
@@ -111,15 +105,59 @@ impl State {
             }
         }
     }
-    pub fn open_search_result(&mut self) {
-        match self.search_results.get(self.selected_search_result) {
+    pub fn open_search_result_in_editor(&mut self) {
+        let all_search_results = self.all_search_results();
+        match all_search_results.get(self.selected_search_result) {
+            Some(SearchResult::File {
+                path,
+                score,
+                indices,
+            }) => {
+                if self.should_open_floating {
+                    open_file_floating(&PathBuf::from(path));
+                } else {
+                    open_file(&PathBuf::from(path));
+                }
+            },
+            Some(SearchResult::LineInFile {
+                path,
+                score,
+                indices,
+                line,
+                line_number,
+            }) => {
+                // open_file_with_line(file_path.strip_prefix(ROOT).unwrap(), *line_number);
+                if self.should_open_floating {
+                    open_file_with_line_floating(&PathBuf::from(path), *line_number);
+                } else {
+                    open_file_with_line(&PathBuf::from(path), *line_number);
+                }
+                // open_file_with_line(&file_path, *line_number); // TODO: no!!
+            },
+            None => {
+                eprintln!("Search result not found");
+            },
+        }
+    }
+    pub fn open_search_result_in_terminal(&mut self) {
+        // TODO: actually open in terminal and not in editor
+        let all_search_results = self.all_search_results();
+        match all_search_results.get(self.selected_search_result) {
             Some(SearchResult::File {
                 path,
                 score,
                 indices,
             }) => {
                 let file_path = PathBuf::from(path);
-                open_file(file_path.strip_prefix(ROOT).unwrap());
+                let mut dir_path = file_path.components();
+                drop(dir_path.next_back()); // remove file name to stay with just the folder
+                let dir_path = dir_path.as_path();
+                eprintln!("dir_path: {:?}", dir_path);
+                if self.should_open_floating {
+                    open_terminal_floating(&dir_path);
+                } else {
+                    open_terminal(&dir_path);
+                }
             },
             Some(SearchResult::LineInFile {
                 path,
@@ -129,7 +167,15 @@ impl State {
                 line_number,
             }) => {
                 let file_path = PathBuf::from(path);
-                open_file_with_line(file_path.strip_prefix(ROOT).unwrap(), *line_number);
+                let mut dir_path = file_path.components();
+                drop(dir_path.next_back()); // remove file name to stay with just the folder
+                let dir_path = dir_path.as_path();
+                eprintln!("dir_path: {:?}", dir_path);
+                if self.should_open_floating {
+                    open_terminal_floating(dir_path);
+                } else {
+                    open_terminal(dir_path);
+                }
                 // open_file_with_line(&file_path, *line_number); // TODO: no!!
             },
             None => {
