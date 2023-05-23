@@ -47,7 +47,7 @@ use zellij_utils::{
     input::{
         command::TerminalAction,
         layout::{
-            FloatingPaneLayout, Run, RunPluginLocation, SwapFloatingLayout, SwapTiledLayout,
+            FloatingPaneLayout, Run, RunPlugin, RunPluginLocation, SwapFloatingLayout, SwapTiledLayout,
             TiledPaneLayout,
         },
         parse_keys,
@@ -1514,6 +1514,7 @@ impl Tab {
                     .find(|s_p| s_p.pid() == PaneId::Plugin(pid))
             })
         {
+            log::info!("can has plugin pane, bytes: {:?}", bytes);
             plugin_pane.handle_plugin_bytes(client_id, bytes);
         }
         Ok(())
@@ -3425,6 +3426,108 @@ impl Tab {
         // floating_panes.toggle_show_panes(false)
         self.floating_panes.toggle_show_panes(false);
         self.tiled_panes.focus_all_panes();
+    }
+
+    pub fn find_plugin(&self, run_plugin: &RunPlugin) -> Option<PaneId> {
+        self.tiled_panes.get_plugin_pane_id(run_plugin)
+            .or_else(|| self
+                .floating_panes
+                .get_plugin_pane_id(run_plugin)
+            ).or_else(|| {
+                let run = Some(Run::Plugin(run_plugin.clone()));
+                self
+                    .suppressed_panes
+                    .iter()
+                    .find(|(_id, s_p)| s_p.invoked_with() == &run)
+                    .map(|(id, _)| *id)
+            })
+    }
+
+    pub fn focus_pane_with_id(&mut self, pane_id: PaneId, should_float: bool, client_id: ClientId) -> Result<()> {
+        self.tiled_panes.focus_pane_if_exists(pane_id, client_id)
+            .or_else(|_| {
+                let focused_floating_pane = self.floating_panes.focus_pane_if_exists(pane_id, client_id);
+                if focused_floating_pane.is_ok() {
+                    self.show_floating_panes();
+                }
+                focused_floating_pane
+            })
+            .or_else(|_| {
+                if let Some(mut pane) = self.suppressed_panes.remove(&pane_id) {
+
+                    let err_context = || format!("failed to to focus pane with id {pane_id:?}");
+
+                    if should_float {
+                        self.show_floating_panes();
+                    } else {
+                        self.hide_floating_panes();
+                    }
+                    if self.floating_panes.panes_are_visible() {
+                        if let Some(new_pane_geom) = self.floating_panes.find_room_for_new_pane() {
+                            pane.set_active_at(Instant::now());
+                            pane.set_geom(new_pane_geom);
+                            log::info!("set geom to: {:?}", new_pane_geom);
+                            pane.set_content_offset(Offset::frame(1)); // floating panes always have a frame
+                            resize_pty!(
+                                pane,
+                                self.os_api,
+                                self.senders,
+                                self.character_cell_size
+                            )
+                            .with_context(err_context)?;
+                            self.floating_panes.add_pane(pane_id, pane);
+                            self.floating_panes.focus_pane_for_all_clients(pane_id);
+                        }
+                        if self.auto_layout && !self.swap_layouts.is_floating_damaged() {
+                            // only do this if we're already in this layout, otherwise it might be
+                            // confusing and not what the user intends
+                            self.swap_layouts.set_is_floating_damaged(); // we do this so that we won't skip to the
+                                                                         // next layout
+                            self.next_swap_layout(Some(client_id), true)?;
+                        }
+                    } else {
+                        if self.tiled_panes.fullscreen_is_active() {
+                            self.tiled_panes.unset_fullscreen();
+                        }
+                        let should_auto_layout = self.auto_layout && !self.swap_layouts.is_tiled_damaged();
+                        if self.tiled_panes.has_room_for_new_pane() {
+                            pane.set_active_at(Instant::now());
+                            if should_auto_layout {
+                                // no need to relayout here, we'll do it when reapplying the swap layout
+                                // below
+                                self.tiled_panes
+                                    .insert_pane_without_relayout(pane_id, pane);
+                            } else {
+                                self.tiled_panes.insert_pane(pane_id, pane);
+                            }
+                            self.should_clear_display_before_rendering = true;
+                            self.tiled_panes.focus_pane(pane_id, client_id);
+                        }
+                        if should_auto_layout {
+                            // only do this if we're already in this layout, otherwise it might be
+                            // confusing and not what the user intends
+                            self.swap_layouts.set_is_tiled_damaged(); // we do this so that we won't skip to the
+                                                                      // next layout
+                            self.next_swap_layout(Some(client_id), true)?;
+                        }
+                    }
+                }
+                Ok(())
+            })
+    }
+    pub fn suppress_pane(&mut self, pane_id: PaneId, client_id: ClientId) {
+        if let Some(pane) = self.close_pane(pane_id, true, Some(client_id)) {
+            self.suppressed_panes.insert(pane_id, pane);
+        }
+//         if self.tiled_panes.panes_contain(&pane_id) {
+//             if let Some(pane) = self.tiled_panes.remove_pane(pane_id) {
+//                 self.suppressed_panes.insert(pane_id, pane);
+//             }
+//         } else if self.floating_panes.panes_contain(&pane_id) {
+//             if let Some(pane) = self.floating_panes.remove_pane(pane_id) {
+//                 self.suppressed_panes.insert(pane_id, pane);
+//             }
+//         }
     }
 }
 

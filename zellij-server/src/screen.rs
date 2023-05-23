@@ -273,6 +273,8 @@ pub enum ScreenInstruction {
     StartPluginLoadingIndication(u32, LoadingIndication), // u32 - plugin_id
     ProgressPluginLoadingOffset(u32),                 // u32 - plugin id
     RequestStateUpdateForPlugins,
+    LaunchOrFocusPlugin(RunPlugin, bool, ClientId), // bool is should_float
+    SuppressPane(PaneId, ClientId),
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -435,6 +437,8 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::RequestStateUpdateForPlugins => {
                 ScreenContext::RequestStateUpdateForPlugins
             },
+            ScreenInstruction::LaunchOrFocusPlugin(..) => ScreenContext::LaunchOrFocusPlugin,
+            ScreenInstruction::SuppressPane(..) => ScreenContext::SuppressPane
         }
     }
 }
@@ -1529,10 +1533,12 @@ pub(crate) fn screen_thread_main(
                 }
             },
             ScreenInstruction::PluginBytes(mut plugin_bytes) => {
+                log::info!("got plugin bytes");
                 for (pid, client_id, vte_bytes) in plugin_bytes.drain(..) {
                     let all_tabs = screen.get_tabs_mut();
                     for tab in all_tabs.values_mut() {
                         if tab.has_plugin(pid) {
+                            log::info!("found plugin in tab");
                             tab.handle_plugin_bytes(pid, client_id, vte_bytes)
                                 .context("failed to process plugin bytes")?;
                             break;
@@ -2608,6 +2614,48 @@ pub(crate) fn screen_thread_main(
                 screen.update_tabs()?;
                 screen.render()?;
             },
+            ScreenInstruction::LaunchOrFocusPlugin(run_plugin, should_float, client_id) => {
+                let all_tabs = screen.get_tabs_mut();
+                let mut found = false;
+                for tab in all_tabs.values_mut() {
+                    if let Some(plugin_pane_id) = tab.find_plugin(&run_plugin) {
+                        tab.focus_pane_with_id(plugin_pane_id, should_float, client_id)
+                            .context("failed to focus plugin pane")?;
+                        found = true;
+                        break;
+                    }
+                }
+                if found {
+                    // TODO: update tabs?
+                    screen.render()?;
+                } else {
+                    match screen.active_tab_indices.get(&client_id) {
+                        Some(tab_index) => {
+                            let size = Size::default();
+                            screen.bus.senders.send_to_plugin(PluginInstruction::Load(
+                                Some(should_float),
+                                None,
+                                run_plugin,
+                                *tab_index,
+                                client_id,
+                                size,
+                            ))?;
+                        },
+                        None => {
+                            log::error!("Failed to find tab for client: {:?}", client_id);
+                        }
+                    }
+                }
+            }
+            ScreenInstruction::SuppressPane(pane_id, client_id) => {
+                let all_tabs = screen.get_tabs_mut();
+                for tab in all_tabs.values_mut() {
+                    if tab.has_pane_with_pid(&pane_id) {
+                        tab.suppress_pane(pane_id, client_id);
+                        break;
+                    }
+                }
+            }
         }
     }
     Ok(())

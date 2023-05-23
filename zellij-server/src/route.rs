@@ -702,6 +702,16 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
         },
+        Action::LaunchOrFocusPlugin(run_plugin, should_float) => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::LaunchOrFocusPlugin(
+                    run_plugin,
+                    should_float,
+                    client_id,
+                ))
+                .with_context(err_context)?;
+        }
     }
     Ok(should_break)
 }

@@ -8,8 +8,8 @@ use std::{
 };
 use zellij_tile::prelude::*;
 
-pub const ROOT: &str = "/host";
-// pub const ROOT: &str = "/tmp"; // TODO: no!!
+// pub const ROOT: &str = "/host";
+pub const ROOT: &str = "/tmp"; // TODO: no!!
 pub const CURRENT_SEARCH_TERM: &str = "/data/current_search_term";
 
 #[derive(Default)]
@@ -69,7 +69,7 @@ impl State {
         self.typing_search_term = true;
     }
     pub fn stop_typing_search_term(&mut self) {
-        self.typing_search_term = true;
+        self.typing_search_term = false;
     }
     pub fn move_search_selection_up(&mut self) {
         self.selected_search_result = self.selected_search_result.saturating_sub(1);

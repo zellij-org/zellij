@@ -125,6 +125,10 @@ impl ZellijPlugin for State {
                     self.toggle_search_filter();
                     should_render = true;
                 },
+                Key::Esc if self.typing_search_term() => {
+                    hide_self();
+                    self.stop_typing_search_term();
+                }
                 _ if self.typing_search_term() => {
                     self.append_to_search_term(key);
                     if let Some(search_term) = self.search_term.as_ref() {
@@ -151,6 +155,7 @@ impl ZellijPlugin for State {
                 },
                 Key::Esc => {
                     self.stop_typing_search_term();
+                    hide_self();
                     should_render = true;
                 },
                 Key::Up | Key::Char('k') => {
@@ -265,10 +270,8 @@ impl ZellijPlugin for State {
                 if i == self.selected() {
                     if is_last_row {
                         print!("{}", path.clone().reversed());
-                        eprintln!("{:?}", path.reversed().to_string());
                     } else {
                         println!("{}", path.clone().reversed());
-                        eprintln!("{:?}", path.reversed().to_string());
                     }
                 } else {
                     if is_last_row {

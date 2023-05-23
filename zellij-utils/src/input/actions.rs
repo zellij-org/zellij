@@ -2,7 +2,7 @@
 
 use super::command::RunCommandAction;
 use super::layout::{
-    FloatingPaneLayout, Layout, RunPluginLocation, SwapFloatingLayout, SwapTiledLayout,
+    FloatingPaneLayout, Layout, RunPlugin, RunPluginLocation, SwapFloatingLayout, SwapTiledLayout,
     TiledPaneLayout,
 };
 use crate::cli::CliAction;
@@ -205,6 +205,7 @@ pub enum Action {
     LeftClick(Position),
     RightClick(Position),
     MiddleClick(Position),
+    LaunchOrFocusPlugin(RunPlugin, bool), // bool => should float
     LeftMouseRelease(Position),
     RightMouseRelease(Position),
     MiddleMouseRelease(Position),

@@ -76,6 +76,10 @@ pub fn exec_cmd(cmd: &[&str]) {
     unsafe { host_exec_cmd() };
 }
 
+pub fn hide_self() {
+    unsafe { host_hide_self() };
+}
+
 pub fn report_panic(info: &std::panic::PanicInfo) {
     println!("");
     println!("A panic occured in a plugin");
@@ -136,4 +140,5 @@ extern "C" {
     fn host_report_panic();
     fn host_post_message_to();
     fn host_post_message_to_plugin();
+    fn host_hide_self();
 }

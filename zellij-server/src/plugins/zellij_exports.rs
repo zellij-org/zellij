@@ -61,6 +61,7 @@ pub fn zellij_exports(
         host_report_panic,
         host_post_message_to,
         host_post_message_to_plugin,
+        host_hide_self,
     }
 }
 
@@ -400,6 +401,17 @@ fn host_post_message_to_plugin(env: &ForeignFunctionEnv) {
         })
         .with_context(|| format!("failed to post message to plugin {}", env.plugin_env.name()))
         .fatal();
+}
+
+fn host_hide_self(env: &ForeignFunctionEnv) {
+    env.plugin_env
+        .senders
+        .send_to_screen(ScreenInstruction::SuppressPane(
+            PaneId::Plugin(env.plugin_env.plugin_id),
+            env.plugin_env.client_id,
+        ))
+    .with_context(|| format!("failed to hide self"))
+    .fatal();
 }
 
 // Custom panic handler for plugins.
