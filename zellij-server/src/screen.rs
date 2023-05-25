@@ -1533,12 +1533,10 @@ pub(crate) fn screen_thread_main(
                 }
             },
             ScreenInstruction::PluginBytes(mut plugin_bytes) => {
-                log::info!("got plugin bytes");
                 for (pid, client_id, vte_bytes) in plugin_bytes.drain(..) {
                     let all_tabs = screen.get_tabs_mut();
                     for tab in all_tabs.values_mut() {
                         if tab.has_plugin(pid) {
-                            log::info!("found plugin in tab");
                             tab.handle_plugin_bytes(pid, client_id, vte_bytes)
                                 .context("failed to process plugin bytes")?;
                             break;

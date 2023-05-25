@@ -8,8 +8,9 @@ use std::{
 };
 use zellij_tile::prelude::*;
 
-// pub const ROOT: &str = "/host";
-pub const ROOT: &str = "/tmp"; // TODO: no!!
+pub const ROOT: &str = "/host";
+// pub const ROOT: &str = "/tmp"; // TODO: no!!
+// pub const ROOT: &str = "/tmp/fake-home-folder"; // TODO: no!!
 pub const CURRENT_SEARCH_TERM: &str = "/data/current_search_term";
 
 #[derive(Default)]

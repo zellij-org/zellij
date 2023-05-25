@@ -6,7 +6,9 @@ use search::{ResultsOfSearch, FileNameSearchWorker, FileContentsSearchWorker};
 use serde_json;
 use state::{refresh_directory, FsEntry, State, CURRENT_SEARCH_TERM};
 use std::{cmp::min, time::Instant};
+use std::path::PathBuf;
 use zellij_tile::prelude::*;
+use std::fmt::Display;
 
 register_plugin!(State);
 register_worker!(FileNameSearchWorker, file_name_search_worker, FILE_NAME_WORKER);
@@ -21,6 +23,7 @@ impl ZellijPlugin for State {
             EventType::Mouse,
             EventType::CustomMessage,
             EventType::Timer,
+            EventType::FileSystem,
         ]);
         post_message_to("file_name_search", String::from("scan_folder"), String::new());
         post_message_to("file_contents_search", String::from("scan_folder"), String::new());
@@ -238,6 +241,20 @@ impl ZellijPlugin for State {
                 },
                 _ => {},
             },
+            Event::FileSystem(event) => {
+                let (event_name, paths) = match event {
+                    FileSystemUpdate::Create(paths) => ("create", paths),
+                    FileSystemUpdate::Read(paths) => ("read", paths),
+                    FileSystemUpdate::Update(paths) => ("update", paths),
+                    FileSystemUpdate::Delete(paths) => ("delete", paths),
+                };
+                if event_name != "read" {
+                    // TODO: better
+                    let paths: Vec<String> = paths.iter().map(|p| p.to_string_lossy().to_string()).collect();
+                    post_message_to("file_name_search", format!("filesystem_{}", event_name), serde_json::to_string(&paths).unwrap());
+                    post_message_to("file_contents_search", format!("filesystem_{}", event_name), serde_json::to_string(&paths).unwrap());
+                }
+            }
             _ => {
                 dbg!("Unknown event {:?}", event);
             },

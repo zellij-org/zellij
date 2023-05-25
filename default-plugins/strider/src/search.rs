@@ -1,6 +1,7 @@
 use crate::state::{State, CURRENT_SEARCH_TERM, ROOT};
 use std::time::Instant;
-use std::path::PathBuf;
+use std::path::{PathBuf, Path};
+use std::collections::{BTreeMap, BTreeSet};
 
 use unicode_width::UnicodeWidthStr;
 use zellij_tile::prelude::*;
@@ -301,7 +302,6 @@ impl SearchResult {
         } else if !indices.is_empty() {
             let mut new_indices = indices.clone();
             drop(new_indices.pop());
-            eprintln!("recursing...");
             self.truncate_file_contents_line(line_to_render, &new_indices, max_width)
         } else {
             // not really sure how this happens...
@@ -353,8 +353,7 @@ impl ResultsOfSearch {
 
 #[derive(Default, Serialize, Deserialize)]
 pub struct FileNameSearchWorker {
-    pub search_paths: Vec<String>,
-    pub search_file_contents: Vec<(String, usize, String)>, // file_name, line_number, line
+    pub search_paths: BTreeSet<String>,
     skip_hidden_files: bool,
     processed_search_index: usize,
 }
@@ -370,16 +369,28 @@ impl<'de> ZellijWorker<'de> for FileNameSearchWorker {
             },
             "search" => {
                 if let Some((search_term, search_index)) = self.read_search_term_from_hd_cache() {
-                    eprintln!("on_message, search_term: {:?}, search_index: {:?}, processed_search_index: {:?}", search_term, search_index, self.processed_search_index);
                     if search_index > self.processed_search_index {
-                        eprintln!("doing the search");
                         self.search(search_term, search_index);
                         self.processed_search_index = search_index;
-                    } else {
-                        eprintln!("NOT doing the search");
                     }
                 }
             },
+            // "filesystem_create" | "filesystem_read" | "filesystem_update" | "filesystem_delete" => {
+            "filesystem_create" | "filesystem_update" | "filesystem_delete" => {
+                match serde_json::from_str::<Vec<PathBuf>>(&payload) {
+                    Ok(paths) => {
+                        self.remove_existing_entries(&paths);
+                        if message.as_str() != "filesystem_delete" {
+                            for path in paths {
+                                self.add_file_entry(&path, path.metadata().ok());
+                            }
+                        }
+                    },
+                    Err(e) => {
+                        eprintln!("Failed to deserialize payload for message: {:?}: {:?}", message, e);
+                    }
+                }
+            }
             "skip_hidden_files" => match serde_json::from_str::<bool>(&payload) {
                 Ok(should_skip_hidden_files) => {
                     self.skip_hidden_files = should_skip_hidden_files;
@@ -435,45 +446,32 @@ impl FileNameSearchWorker {
     }
     fn populate_search_paths(&mut self) {
         for entry in WalkDir::new(ROOT).into_iter().filter_map(|e| e.ok()) {
-            if self.skip_hidden_files
-                && entry
-                    .file_name()
-                    .to_str()
-                    .map(|s| s.starts_with('.'))
-                    .unwrap_or(false)
-            {
-                continue;
-            }
-            let file_path = entry.path().display().to_string();
-            let mut file_path_stripped_prefix = entry.path().display().to_string().split_off(ROOT.width());
-            if file_path_stripped_prefix.starts_with('/') {
-                file_path_stripped_prefix.remove(0);
-            }
-
-            if entry.metadata().unwrap().is_file() {
-                if let Ok(file) = std::fs::File::open(&file_path) {
-                    let lines = io::BufReader::new(file).lines();
-                    for (index, line) in lines.enumerate() {
-                        match line {
-                            Ok(line) => {
-                                self.search_file_contents.push((
-                                    // file_path.clone(),
-                                    file_path_stripped_prefix.clone(),
-                                    index + 1,
-                                    line,
-                                ));
-                            },
-                            Err(_) => {
-                                break; // probably a binary file, skip it
-                            },
-                        }
-                    }
-                }
-            }
-
-            // self.search_paths.push(file_path);
-            self.search_paths.push(file_path_stripped_prefix);
+            self.add_file_entry(entry.path(), entry.metadata().ok());
         }
+    }
+    fn add_file_entry(&mut self, file_name: &Path, file_metadata: Option<std::fs::Metadata>) {
+        if self.skip_hidden_files && file_name
+                .to_str()
+                .map(|s| s.starts_with('.'))
+                .unwrap_or(false)
+        {
+            return;
+        }
+        let file_path = file_name.display().to_string();
+        let file_path_stripped_prefix = self.strip_file_prefix(&file_name);
+
+        self.search_paths.insert(file_path_stripped_prefix);
+    }
+    fn strip_file_prefix(&self, file_name: &Path) -> String {
+        let mut file_path_stripped_prefix = file_name.display().to_string().split_off(ROOT.width());
+        if file_path_stripped_prefix.starts_with('/') {
+            file_path_stripped_prefix.remove(0);
+        }
+        file_path_stripped_prefix
+    }
+    fn remove_existing_entries(&mut self, paths: &Vec<PathBuf>) {
+        let file_path_stripped_prefixes: Vec<String> = paths.iter().map(|p| self.strip_file_prefix(&p)).collect();
+        self.search_paths.retain(|file_name| !file_path_stripped_prefixes.contains(file_name));
     }
     fn search_file_names(
         &self,
@@ -495,8 +493,7 @@ impl FileNameSearchWorker {
 
 #[derive(Default, Serialize, Deserialize)]
 pub struct FileContentsSearchWorker {
-    pub search_paths: Vec<String>,
-    pub search_file_contents: Vec<(String, usize, String)>, // file_name, line_number, line
+    pub search_file_contents: BTreeMap<(String, usize), String>, // file_name, line_number, line
     skip_hidden_files: bool,
     processed_search_index: usize,
 }
@@ -512,16 +509,31 @@ impl<'de> ZellijWorker<'de> for FileContentsSearchWorker {
             },
             "search" => {
                 if let Some((search_term, search_index)) = self.read_search_term_from_hd_cache() {
-                    eprintln!("on_message, search_term: {:?}, search_index: {:?}, processed_search_index: {:?}", search_term, search_index, self.processed_search_index);
                     if search_index > self.processed_search_index {
-                        eprintln!("doing the search");
                         self.search(search_term, search_index);
                         self.processed_search_index = search_index;
-                    } else {
-                        eprintln!("NOT doing the search");
                     }
                 }
             },
+            "filesystem_create" | "filesystem_update" | "filesystem_delete" => {
+                // TODO: CONTINUE HERE - remove the various eprintln's and log::infos and then try
+                // a release build to see how it behaves
+                // then let's use the rest of this week's time to think of a way to test this
+                // (filesystem events) as well as the other API methods
+                match serde_json::from_str::<Vec<PathBuf>>(&payload) {
+                    Ok(paths) => {
+                        self.remove_existing_entries(&paths);
+                        if message.as_str() != "filesystem_delete" {
+                            for path in paths {
+                                self.add_file_entry(&path, path.metadata().ok());
+                            }
+                        }
+                    },
+                    Err(e) => {
+                        eprintln!("Failed to deserialize payload for message: {:?}: {:?}", message, e);
+                    }
+                }
+            }
             "skip_hidden_files" => match serde_json::from_str::<bool>(&payload) {
                 Ok(should_skip_hidden_files) => {
                     self.skip_hidden_files = should_skip_hidden_files;
@@ -538,7 +550,7 @@ impl<'de> ZellijWorker<'de> for FileContentsSearchWorker {
 impl FileContentsSearchWorker {
     fn search(&mut self, search_term: String, search_index: usize) {
         let search_start = Instant::now();
-        if self.search_paths.is_empty() {
+        if self.search_file_contents.is_empty() {
             self.populate_search_paths();
         }
         eprintln!("populated search paths in: {:?}", search_start.elapsed());
@@ -548,17 +560,6 @@ impl FileContentsSearchWorker {
         let mut matcher = SkimMatcherV2::default().use_cache(true).element_limit(100); // TODO: no hard
         eprintln!("constructed matcher in: {:?}", matcher_constructor_start.elapsed());
                                                                                        // coded limit!
-//         let file_names_start = Instant::now();
-//         self.search_file_names(&search_term, &mut matcher, &mut file_name_matches);
-//         eprintln!("searched file names in: {:?}", file_names_start.elapsed());
-//
-//         let file_name_search_results =
-//             ResultsOfSearch::new((search_term.clone(), search_index), file_name_matches).limit_search_results(100);
-//         post_message_to_plugin(
-//             "update_file_name_search_results".into(),
-//             serde_json::to_string(&file_name_search_results).unwrap(),
-//         );
-
         let file_contents_start = Instant::now();
         self.search_file_contents(&search_term, &mut matcher, &mut file_contents_matches);
         eprintln!("searched file contents in: {:?}", file_contents_start.elapsed());
@@ -588,46 +589,56 @@ impl FileContentsSearchWorker {
     }
     fn populate_search_paths(&mut self) {
         for entry in WalkDir::new(ROOT).into_iter().filter_map(|e| e.ok()) {
-            if self.skip_hidden_files
-                && entry
-                    .file_name()
-                    .to_str()
-                    .map(|s| s.starts_with('.'))
-                    .unwrap_or(false)
-            {
-                continue;
-            }
-            let file_path = entry.path().display().to_string();
-            let mut file_path_stripped_prefix = entry.path().display().to_string().split_off(ROOT.width());
-            if file_path_stripped_prefix.starts_with('/') {
-                file_path_stripped_prefix.remove(0);
-            }
-            // let file_path_stripped_prefix = file_path_stripped_prefix.split_off(ROOT.width());
+            self.add_file_entry(entry.path(), entry.metadata().ok());
+        }
+    }
+    fn remove_existing_entries(&mut self, paths: &Vec<PathBuf>) {
+        // TODO: CONTINUE HERE (24/05) - implement this, then copy the functionality to the other worker,
+        // then test it (I have a feeling we might be missing some stuff (<ROOT>/./...?) when root
+        // stripping...)
+        let file_path_stripped_prefixes: Vec<String> = paths.iter().map(|p| self.strip_file_prefix(&p)).collect();
+        self.search_file_contents.retain(|(file_name, _line_in_file), _| !file_path_stripped_prefixes.contains(file_name));
+    }
+    fn add_file_entry(&mut self, file_name: &Path, file_metadata: Option<std::fs::Metadata>) {
+        if self.skip_hidden_files && file_name
+                .to_str()
+                .map(|s| s.starts_with('.'))
+                .unwrap_or(false)
+        {
+            return;
+        }
+        let file_path = file_name.display().to_string();
+        let file_path_stripped_prefix = self.strip_file_prefix(&file_name);
 
-            if entry.metadata().unwrap().is_file() {
-                if let Ok(file) = std::fs::File::open(&file_path) {
-                    let lines = io::BufReader::new(file).lines();
-                    for (index, line) in lines.enumerate() {
-                        match line {
-                            Ok(line) => {
-                                self.search_file_contents.push((
-                                    // file_path.clone(),
+        if file_metadata.map(|f| f.is_file()).unwrap_or(false) {
+            if let Ok(file) = std::fs::File::open(&file_path) {
+                let lines = io::BufReader::new(file).lines();
+                for (index, line) in lines.enumerate() {
+                    match line {
+                        Ok(line) => {
+                            self.search_file_contents.insert(
+                                (
                                     file_path_stripped_prefix.clone(),
                                     index + 1,
-                                    line,
-                                ));
-                            },
-                            Err(_) => {
-                                break; // probably a binary file, skip it
-                            },
-                        }
+                                ),
+                                line,
+                            );
+                        },
+                        Err(_) => {
+                            break; // probably a binary file, skip it
+                        },
                     }
                 }
             }
-
-            // self.search_paths.push(file_path);
-            self.search_paths.push(file_path_stripped_prefix);
         }
+
+    }
+    fn strip_file_prefix(&self, file_name: &Path) -> String {
+        let mut file_path_stripped_prefix = file_name.display().to_string().split_off(ROOT.width());
+        if file_path_stripped_prefix.starts_with('/') {
+            file_path_stripped_prefix.remove(0);
+        }
+        file_path_stripped_prefix
     }
     fn search_file_contents(
         &self,
@@ -635,7 +646,7 @@ impl FileContentsSearchWorker {
         matcher: &mut SkimMatcherV2,
         matches: &mut Vec<SearchResult>,
     ) {
-        for (file_name, line_number, line_entry) in &self.search_file_contents {
+        for ((file_name, line_number), line_entry) in &self.search_file_contents {
             if let Some((score, indices)) = matcher.fuzzy_indices(&line_entry, &search_term) {
                 matches.push(SearchResult::new_file_line(
                     score,
@@ -714,7 +725,6 @@ impl State {
         }
     }
     fn render_controls(&self, rows: usize, columns: usize) -> String {
-        eprintln!("render_controls, columns: {:?}", columns);
         let keycode_color = 238;
         let ribbon_color = 245;
         let ribbon_style = format!("\u{1b}[48;5;{};38;5;16;1m", ribbon_color);
@@ -896,7 +906,6 @@ impl State {
                 let mid_length = loading_animation.mid_len() + self.controls.iter().map(|c| c.mid_len()).sum::<usize>();
                 let short_length = loading_animation.short_len() + self.controls.iter().map(|c| c.short_len()).sum::<usize>();
                 if max_width >= full_length {
-                    eprintln!("max_width: {:?}, full_length: {:?}, loading_animation len: {:?}, controls lengths: {:?}", max_width, full_length, loading_animation.full_len(), self.controls.iter().map(|c| c.full_len().to_string()).collect::<Vec<String>>().join(", "));
                     let mut to_render = String::new();
                     for control in &self.controls {
                         to_render.push_str(&control.render_full_length());

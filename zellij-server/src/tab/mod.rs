@@ -1514,7 +1514,6 @@ impl Tab {
                     .find(|s_p| s_p.pid() == PaneId::Plugin(pid))
             })
         {
-            log::info!("can has plugin pane, bytes: {:?}", bytes);
             plugin_pane.handle_plugin_bytes(client_id, bytes);
         }
         Ok(())
@@ -3466,7 +3465,6 @@ impl Tab {
                         if let Some(new_pane_geom) = self.floating_panes.find_room_for_new_pane() {
                             pane.set_active_at(Instant::now());
                             pane.set_geom(new_pane_geom);
-                            log::info!("set geom to: {:?}", new_pane_geom);
                             pane.set_content_offset(Offset::frame(1)); // floating panes always have a frame
                             resize_pty!(
                                 pane,

@@ -19,10 +19,11 @@ use crate::{
     background_jobs::BackgroundJob, screen::ScreenInstruction, thread_bus::ThreadSenders,
     ui::loading_indication::LoadingIndication, ClientId,
 };
+use std::path::Path;
 
 use zellij_utils::{
     consts::VERSION,
-    data::{Event, EventType},
+    data::{Event, EventType, FileSystemUpdate},
     errors::prelude::*,
     input::{
         layout::{RunPlugin, RunPluginLocation},
@@ -30,8 +31,6 @@ use zellij_utils::{
     },
     pane_size::Size,
 };
-
-const RETRY_INTERVAL_MS: u64 = 100;
 
 pub struct WasmBridge {
     connected_clients: Arc<Mutex<Vec<ClientId>>>,
@@ -51,6 +50,7 @@ pub struct WasmBridge {
     loading_plugins: HashMap<(PluginId, RunPlugin), JoinHandle<()>>, // plugin_id to join-handle
     pending_plugin_reloads: HashSet<RunPlugin>,
     path_to_default_shell: PathBuf,
+    watcher: RecommendedWatcher,
 }
 
 impl WasmBridge {
@@ -65,6 +65,7 @@ impl WasmBridge {
         let connected_clients: Arc<Mutex<Vec<ClientId>>> = Arc::new(Mutex::new(vec![]));
         let plugin_cache: Arc<Mutex<HashMap<PathBuf, Module>>> =
             Arc::new(Mutex::new(HashMap::new()));
+        let watcher = watch_home_folder(senders.clone());
         WasmBridge {
             connected_clients,
             plugins,
@@ -74,6 +75,7 @@ impl WasmBridge {
             plugin_cache,
             plugin_map,
             path_to_default_shell,
+            watcher,
             next_plugin_id: 0,
             cached_events_for_pending_plugins: HashMap::new(),
             cached_resizes_for_pending_plugins: HashMap::new(),
@@ -634,37 +636,6 @@ impl WasmBridge {
                 }
             }
         }
-//         let mut cache_messages = || {
-//             for (message, payload) in messages.drain(..) {
-//                 self.cached_worker_messages
-//                     .entry(plugin_id)
-//                     .or_default()
-//                     .push((client_id, worker_name.clone(), message, payload));
-//             }
-//         };
-//         match worker {
-//             Some(worker) => {
-//                 let worker_is_busy = { worker.try_lock().is_err() };
-//                 if worker_is_busy {
-//                     // most messages will be caught here, we do this once before the async task to
-//                     // bulk most messages together and prevent them from cascading
-//                     cache_messages();
-//                 } else {
-//                     async_send_messages_to_worker(
-//                         self.senders.clone(),
-//                         messages,
-//                         worker,
-//                         plugin_id,
-//                         client_id,
-//                         worker_name,
-//                     );
-//                 }
-//             },
-//             None => {
-//                 log::warn!("Worker {worker_name} not found, placing message in cache");
-//                 cache_messages();
-//             },
-//         }
         Ok(())
     }
 }
@@ -742,52 +713,57 @@ pub fn apply_event_to_plugin(
     Ok(())
 }
 
-fn async_send_messages_to_worker(
-    senders: ThreadSenders,
-    mut messages: Vec<(String, String)>,
-    worker: Arc<Mutex<RunningWorker>>,
-    plugin_id: PluginId,
-    client_id: ClientId,
-    worker_name: String,
-) {
-    task::spawn({
-        async move {
-            match worker.try_lock() {
-                Ok(worker) => {
-                    for (message, payload) in messages.drain(..) {
-                        worker.send_message(message, payload).ok();
-                    }
-                    let _ = senders
-                        .send_to_plugin(PluginInstruction::ApplyCachedWorkerMessages(plugin_id));
-                },
-                Err(TryLockError::WouldBlock) => {
-                    task::spawn({
-                        async move {
-                            log::warn!(
-                                "Worker {} busy, retrying sending message after: {}ms",
-                                worker_name,
-                                RETRY_INTERVAL_MS
-                            );
-                            task::sleep(std::time::Duration::from_millis(RETRY_INTERVAL_MS)).await;
-                            let _ = senders.send_to_plugin(
-                                PluginInstruction::PostMessagesToPluginWorker(
-                                    plugin_id,
-                                    client_id,
-                                    worker_name,
-                                    messages,
-                                ),
-                            );
-                        }
-                    });
-                },
-                Err(e) => {
-                    log::error!(
-                        "Failed to send message to worker \"{}\": {:?}",
-                        worker_name,
-                        e
-                    );
-                },
+use notify::{Watcher, RecommendedWatcher, RecursiveMode, EventKind};
+fn watch_home_folder(senders: ThreadSenders) -> RecommendedWatcher {
+    // TODO:
+    // 1. Create an Event::CRUD in zellij-utils data
+    // 2. receive a thread bus copy and use it to send PluginInstruction::Update(Evnet::CRUD)
+    // 3. subscribe to fs events from strider and send them to the worker
+    let path_prefix_in_plugins = PathBuf::from("/host");
+    let current_dir = std::env::current_dir().unwrap(); // TODO: this might not be accurate, can't we pass a
+                                               // custom
+                                               // cwd?
+    let mut watcher = notify::recommended_watcher({
+        // let current_dir = current_dir.clone();
+        move |res: notify::Result<notify::Event>| {
+            // log::info!("can has watcher event: {:?}", res);
+            match res {
+               Ok(event) => {
+                   let paths: Vec<PathBuf> = event.paths.iter().map(|p| {
+                       let stripped_prefix_path = p.strip_prefix(&current_dir).unwrap();
+                       path_prefix_in_plugins.join(stripped_prefix_path)
+                   }).collect(); // TODO: better, no unwrap, etc.
+                   match event.kind {
+                       EventKind::Access(_) => {
+                           let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(None, None, Event::FileSystem(FileSystemUpdate::Read(paths)))]));
+                       }
+                       EventKind::Create(_) => {
+                           let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(None, None, Event::FileSystem(FileSystemUpdate::Create(paths)))]));
+                       }
+                       EventKind::Modify(_) => {
+                           let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(None, None, Event::FileSystem(FileSystemUpdate::Update(paths)))]));
+                       }
+                       EventKind::Remove(_) => {
+                           let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(None, None, Event::FileSystem(FileSystemUpdate::Delete(paths)))]));
+                       }
+                       _ => {}
+                   }
+               }
+               Err(e) => log::error!("watch error: {:?}", e),
             }
         }
-    });
+    }).unwrap(); // TODO: no unwrap
+
+    // Add a path to be watched. All files and directories at that path and
+    // below will be monitored for changes.
+    match watcher.watch(Path::new("."), RecursiveMode::Recursive) {
+    // match watcher.watch(Path::new("/tmp/zellij-1000/fake-home-folder"), RecursiveMode::Recursive) { // TODO: NO!!!
+        Ok(thing) => {
+            log::info!("done watched: {:?}", thing);
+        },
+        Err(e) => {
+            log::error!("Failed to watch home folder: {:?}", e);
+        }
+    };
+    watcher
 }

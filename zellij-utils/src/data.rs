@@ -4,6 +4,7 @@ use clap::ArgEnum;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::str::FromStr;
+use std::path::PathBuf;
 use strum_macros::{EnumDiscriminants, EnumIter, EnumString, ToString};
 
 pub type ClientId = u16; // TODO: merge with crate type?
@@ -473,6 +474,15 @@ pub enum Event {
         String, // message
         String, // payload
     ),
+    FileSystem(FileSystemUpdate)
+}
+
+#[derive(Debug, Clone, PartialEq, EnumDiscriminants, ToString, Serialize, Deserialize)]
+pub enum FileSystemUpdate {
+    Create(Vec<PathBuf>),
+    Read(Vec<PathBuf>),
+    Update(Vec<PathBuf>),
+    Delete(Vec<PathBuf>),
 }
 
 /// Describes the different input modes, which change the way that keystrokes will be interpreted.

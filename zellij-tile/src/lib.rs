@@ -48,9 +48,7 @@ macro_rules! register_plugin {
         #[no_mangle]
         fn load() {
             STATE.with(|state| {
-                eprintln!("borrowing state 1");
                 state.borrow_mut().load();
-                eprintln!("successfully borrowed state 1");
             });
         }
 
@@ -61,10 +59,7 @@ macro_rules! register_plugin {
                     .context($crate::PLUGIN_MISMATCH)
                     .to_stdout()
                     .unwrap();
-                eprintln!("borrowing state for UPDATE");
-                let ret = state.borrow_mut().update(object);
-                eprintln!("successfully borrowed state for UPDATE");
-                ret
+                state.borrow_mut().update(object)
             })
 //             let object = $crate::shim::object_from_stdin()
 //                 .context($crate::PLUGIN_MISMATCH)
@@ -80,9 +75,7 @@ macro_rules! register_plugin {
         #[no_mangle]
         pub fn render(rows: i32, cols: i32) {
             STATE.with(|state| {
-                eprintln!("borrowing state for RENDER");
                 state.borrow_mut().render(rows as usize, cols as usize);
-                eprintln!("successfully borrowed state for RENDER");
             });
         }
 
