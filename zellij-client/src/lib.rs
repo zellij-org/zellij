@@ -23,7 +23,7 @@ use crate::{
 };
 use zellij_utils::{
     channels::{self, ChannelWithContext, SenderWithContext},
-    consts::ZELLIJ_IPC_PIPE,
+    consts::{ZELLIJ_IPC_PIPE, ZELLIJ_TMP_LOG_FILE},
     data::{ClientId, InputMode, Style},
     envs,
     errors::{ClientContext, ContextType, ErrorInstruction},
@@ -155,6 +155,7 @@ pub fn start_client(
         .write(clear_client_terminal_attributes.as_bytes())
         .unwrap();
     envs::set_zellij("0".to_string());
+    envs::set_tmp_log_file(ZELLIJ_TMP_LOG_FILE.display().to_string());
     config.env.set_vars();
 
     let palette = config
