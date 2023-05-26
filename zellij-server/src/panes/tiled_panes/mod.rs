@@ -617,7 +617,7 @@ impl TiledPanes {
         } else {
             self.active_panes
                 .iter()
-                .filter(|(client_id, _pane_id)| connected_clients.contains(client_id))
+                .filter(|(client_id, _)| connected_clients.contains(client_id))
                 .map(|(client_id, pane_id)| (*client_id, *pane_id))
                 .collect()
         };

@@ -702,6 +702,12 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
         },
+        Action::CurrentPaneInfo => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::CurrentPaneInfo(client_id))
+                .with_context(err_context)?;
+        },
     }
     Ok(should_break)
 }

@@ -46,6 +46,7 @@ pub(crate) enum ClientInstruction {
     StartedParsingStdinQuery,
     DoneParsingStdinQuery,
     Log(Vec<String>),
+    CurrentPaneDetail(Vec<u8>),
 }
 
 impl From<ServerToClientMsg> for ClientInstruction {
@@ -60,6 +61,9 @@ impl From<ServerToClientMsg> for ClientInstruction {
             ServerToClientMsg::Connected => ClientInstruction::Connected,
             ServerToClientMsg::ActiveClients(clients) => ClientInstruction::ActiveClients(clients),
             ServerToClientMsg::Log(log_lines) => ClientInstruction::Log(log_lines),
+            ServerToClientMsg::CurrentPaneDetail(bytes) => {
+                ClientInstruction::CurrentPaneDetail(bytes)
+            },
         }
     }
 }
@@ -77,6 +81,7 @@ impl From<&ClientInstruction> for ClientContext {
             ClientInstruction::Log(_) => ClientContext::Log,
             ClientInstruction::StartedParsingStdinQuery => ClientContext::StartedParsingStdinQuery,
             ClientInstruction::DoneParsingStdinQuery => ClientContext::DoneParsingStdinQuery,
+            ClientInstruction::CurrentPaneDetail(_) => ClientContext::CurrentPaneDetail,
         }
     }
 }

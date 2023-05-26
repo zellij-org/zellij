@@ -329,6 +329,7 @@ pub enum CliAction {
     },
     /// Remove a previously set pane name
     UndoRenamePane,
+    CurrentPaneInfo,
     /// Go to the next tab.
     GoToNextTab,
     /// Go to the previous tab.

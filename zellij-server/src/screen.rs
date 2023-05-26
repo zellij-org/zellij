@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::str;
 
+use log::info;
 use zellij_utils::data::{Direction, Resize, ResizeStrategy};
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
@@ -273,6 +274,7 @@ pub enum ScreenInstruction {
     StartPluginLoadingIndication(u32, LoadingIndication), // u32 - plugin_id
     ProgressPluginLoadingOffset(u32),                 // u32 - plugin id
     RequestStateUpdateForPlugins,
+    CurrentPaneInfo(ClientId),
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -435,6 +437,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::RequestStateUpdateForPlugins => {
                 ScreenContext::RequestStateUpdateForPlugins
             },
+            ScreenInstruction::CurrentPaneInfo(..) => ScreenContext::CurrentPaneInfo,
         }
     }
 }
@@ -1692,6 +1695,39 @@ pub(crate) fn screen_thread_main(
                 if should_update_tabs {
                     screen.update_tabs()?;
                 }
+            },
+            ScreenInstruction::CurrentPaneInfo(client_id) => {
+                let current_tab = screen.get_active_tab_mut(client_id);
+                match current_tab {
+                    Ok(tab) => {
+                        let bytes = tab.get_active_pane_details(client_id);
+                        if let Some(bytes) = bytes {
+                            let _ = screen
+                                .bus
+                                .senders
+                                .send_to_server(ServerInstruction::CurrentPaneDetail(bytes));
+                        }
+                    },
+                    Err(_) => {
+                        if let Some(client_id) = screen.get_first_client_id() {
+                            match screen.get_active_tab_mut(client_id) {
+                                Ok(tab) => {
+                                    let bytes = tab.get_active_pane_details(client_id);
+                                    if let Some(bytes) = bytes {
+                                        let _ = screen.bus.senders.send_to_server(
+                                            ServerInstruction::CurrentPaneDetail(bytes),
+                                        );
+                                    }
+                                },
+                                Err(err) => Err::<(), _>(err).non_fatal(),
+                            }
+                        } else {
+                            log::error!("No client ids in screen found");
+                        }
+                    },
+                }
+
+                screen.unblock_input()?;
             },
             ScreenInstruction::Resize(client_id, strategy) => {
                 active_tab_and_connected_client_id!(

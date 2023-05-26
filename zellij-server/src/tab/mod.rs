@@ -1409,6 +1409,22 @@ impl Tab {
             }
         })
     }
+    pub fn get_active_pane_details(&mut self, client_id: ClientId) -> Option<Vec<u8>> {
+        let mut bytes = Vec::new();
+        if let Some(pane) = self.get_active_pane(client_id) {
+            if let PaneId::Terminal(pid) = pane.pid() {
+                let msg = format!(
+                    "client #{} : Current active pane id is {}. <WIP>",
+                    client_id, pid
+                );
+                bytes.append(&mut msg.as_bytes().to_vec());
+
+                return Some(bytes);
+            }
+        }
+
+        None
+    }
     pub fn get_active_pane_mut(&mut self, client_id: ClientId) -> Option<&mut Box<dyn Pane>> {
         self.get_active_pane_id(client_id).and_then(|ap| {
             if self.floating_panes.panes_are_visible() {

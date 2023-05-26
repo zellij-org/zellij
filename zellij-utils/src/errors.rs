@@ -333,6 +333,7 @@ pub enum ScreenContext {
     ProgressPluginLoadingOffset,
     StartPluginLoadingIndication,
     RequestStateUpdateForPlugins,
+    CurrentPaneInfo,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.
@@ -385,6 +386,7 @@ pub enum ClientContext {
     OwnClientId,
     StartedParsingStdinQuery,
     DoneParsingStdinQuery,
+    CurrentPaneDetail,
 }
 
 /// Stack call representations corresponding to the different types of [`ServerInstruction`]s.
@@ -402,6 +404,7 @@ pub enum ServerContext {
     ConnStatus,
     ActiveClients,
     Log,
+    CurrentPaneDetail,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
