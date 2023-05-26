@@ -484,12 +484,9 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 }
             },
             ServerInstruction::ClientExit(client_id) => {
-                info!("client {} exited", client_id);
                 let _ =
                     os_input.send_to_client(client_id, ServerToClientMsg::Exit(ExitReason::Normal));
-                info!("sending exit to client {}", client_id);
                 remove_client!(client_id, os_input, session_state);
-                info!("remove client {}", client_id);
                 if let Some(min_size) = session_state.read().unwrap().min_client_terminal_size() {
                     info!("resizing to {:?}", min_size);
                     session_data
