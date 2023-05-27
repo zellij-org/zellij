@@ -36,22 +36,28 @@ fn vte_goto_instruction(x_coords: usize, y_coords: usize, vte_output: &mut Strin
 }
 
 fn adjust_styles_for_possible_selection(
-    chunk_selection_and_colors: Vec<(Selection, AnsiCode, Option<AnsiCode>)>,
+    chunk_selection_and_colors: &[(Selection, AnsiCode, Option<AnsiCode>, bool)],
     character_styles: CharacterStyles,
     chunk_y: usize,
     chunk_width: usize,
 ) -> CharacterStyles {
     chunk_selection_and_colors
         .iter()
-        .find(|(selection, _background_color, _foreground_color)| {
-            selection.contains(chunk_y, chunk_width)
-        })
-        .map(|(_selection, background_color, foreground_color)| {
-            let mut character_styles = character_styles.background(Some(*background_color));
-            if let Some(foreground_color) = foreground_color {
-                character_styles = character_styles.foreground(Some(*foreground_color));
+        .find(
+            |(selection, _background_color, _foreground_color, _invert)| {
+                selection.contains(chunk_y, chunk_width)
+            },
+        )
+        .map(|(_selection, background_color, foreground_color, invert)| {
+            if *invert {
+                character_styles.reverse(Some(AnsiCode::On))
+            } else {
+                let mut character_styles = character_styles.background(Some(*background_color));
+                if let Some(foreground_color) = foreground_color {
+                    character_styles = character_styles.foreground(Some(*foreground_color));
+                }
+                character_styles
             }
-            character_styles
         })
         .unwrap_or(character_styles)
 }
@@ -701,7 +707,7 @@ pub struct CharacterChunk {
     pub x: usize,
     pub y: usize,
     pub changed_colors: Option<[Option<AnsiCode>; 256]>,
-    selection_and_colors: Vec<(Selection, AnsiCode, Option<AnsiCode>)>, // Selection, background color, optional foreground color
+    selection_and_colors: Vec<(Selection, AnsiCode, Option<AnsiCode>, bool)>, // Selection, background color, optional foreground color, invert
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -729,6 +735,7 @@ impl CharacterChunk {
         selection: Selection,
         background_color: AnsiCode,
         foreground_color: Option<AnsiCode>,
+        invert: bool,
         offset_x: usize,
         offset_y: usize,
     ) {
@@ -736,11 +743,12 @@ impl CharacterChunk {
             selection.offset(offset_x, offset_y),
             background_color,
             foreground_color,
+            invert,
         ));
     }
-    pub fn selection_and_colors(&self) -> Vec<(Selection, AnsiCode, Option<AnsiCode>)> {
-        // Selection, background color, optional foreground color
-        self.selection_and_colors.clone()
+    pub fn selection_and_colors(&self) -> &[(Selection, AnsiCode, Option<AnsiCode>, bool)] {
+        // Selection, background color, optional foreground color, invert
+        &self.selection_and_colors
     }
     pub fn add_changed_colors(&mut self, changed_colors: Option<[Option<AnsiCode>; 256]>) {
         self.changed_colors = changed_colors;

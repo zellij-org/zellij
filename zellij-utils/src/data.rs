@@ -648,6 +648,7 @@ pub struct Style {
     pub colors: Palette,
     pub rounded_corners: bool,
     pub hide_session_name: bool,
+    pub invert_selection_colors: bool,
 }
 
 // FIXME: Poor devs hashtable since HashTable can't derive `Default`...

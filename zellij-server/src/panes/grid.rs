@@ -1060,6 +1060,7 @@ impl Grid {
                     self.selection,
                     background_color,
                     None,
+                    style.invert_selection_colors,
                     content_x,
                     content_y,
                 );
@@ -1084,6 +1085,7 @@ impl Grid {
                             *res,
                             background_color,
                             Some(foreground_color),
+                            false,
                             content_x,
                             content_y,
                         );
