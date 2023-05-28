@@ -29,7 +29,7 @@ pub const MAX_TITLE_STACK_SIZE: usize = 1000;
 use vte::{Params, Perform};
 use zellij_utils::{consts::VERSION, shared::version_number};
 
-use crate::output::{CharacterChunk, OutputBuffer, SixelImageChunk};
+use crate::output::{CharacterChunk, OutputBuffer, SelectionColors, SixelImageChunk};
 use crate::panes::alacritty_functions::{parse_number, xparse_color};
 use crate::panes::link_handler::LinkHandler;
 use crate::panes::search::SearchResult;
@@ -1052,21 +1052,21 @@ impl Grid {
                 .selection
                 .contains_row(character_chunk.y.saturating_sub(content_y))
             {
-                let background_color = match style.colors.bg {
-                    PaletteColor::Rgb(rgb) => AnsiCode::RgbCode(rgb),
-                    PaletteColor::EightBit(col) => AnsiCode::ColorIndex(col),
+                let selection = self.selection.offset(content_x, content_y);
+                let selection_colors = if style.invert_selection_colors {
+                    SelectionColors::invert(selection)
+                } else {
+                    let background_color = match style.colors.bg {
+                        PaletteColor::Rgb(rgb) => AnsiCode::RgbCode(rgb),
+                        PaletteColor::EightBit(col) => AnsiCode::ColorIndex(col),
+                    };
+                    SelectionColors::discrete(selection, background_color, None)
                 };
-                character_chunk.add_selection_and_colors(
-                    self.selection,
-                    background_color,
-                    None,
-                    style.invert_selection_colors,
-                    content_x,
-                    content_y,
-                );
+                character_chunk.add_selection_colors(selection_colors);
             } else if !self.search_results.selections.is_empty() {
                 for res in self.search_results.selections.iter() {
                     if res.contains_row(character_chunk.y.saturating_sub(content_y)) {
+                        let selection = res.offset(content_x, content_y);
                         let (select_background_palette, select_foreground_palette) =
                             if Some(res) == self.search_results.active.as_ref() {
                                 (style.colors.orange, style.colors.black)
@@ -1081,14 +1081,11 @@ impl Grid {
                             PaletteColor::Rgb(rgb) => AnsiCode::RgbCode(rgb),
                             PaletteColor::EightBit(col) => AnsiCode::ColorIndex(col),
                         };
-                        character_chunk.add_selection_and_colors(
-                            *res,
+                        character_chunk.add_selection_colors(SelectionColors::discrete(
+                            selection,
                             background_color,
                             Some(foreground_color),
-                            false,
-                            content_x,
-                            content_y,
-                        );
+                        ));
                     }
                 }
             }
