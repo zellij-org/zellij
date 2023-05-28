@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-use crate::panes::selection::Selection;
+use crate::panes::selection::{OffsetSelection, Selection};
 use crate::panes::Row;
 
 use crate::{
@@ -703,16 +703,16 @@ impl FloatingPanesStack {
 #[derive(Debug, Clone)]
 pub enum SelectionColors {
     Discrete {
-        selection: Selection,
+        selection: OffsetSelection,
         background_color: AnsiCode,
         foreground_color: Option<AnsiCode>,
     },
-    Invert(Selection),
+    Invert(OffsetSelection),
 }
 
 impl SelectionColors {
     pub fn discrete(
-        selection: Selection,
+        selection: OffsetSelection,
         background_color: AnsiCode,
         foreground_color: Option<AnsiCode>,
     ) -> Self {
@@ -722,10 +722,10 @@ impl SelectionColors {
             foreground_color,
         }
     }
-    pub fn invert(selection: Selection) -> Self {
+    pub fn invert(selection: OffsetSelection) -> Self {
         Self::Invert(selection)
     }
-    pub fn selection(&self) -> &Selection {
+    pub fn selection(&self) -> &OffsetSelection {
         match self {
             SelectionColors::Discrete { selection, .. } => selection,
             SelectionColors::Invert(selection) => selection,

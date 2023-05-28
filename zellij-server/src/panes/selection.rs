@@ -107,12 +107,13 @@ impl Selection {
             self.end.line.0 += lines as isize;
         }
     }
-    pub fn offset(mut self, offset_x: usize, offset_y: usize) -> Self {
-        self.start.line.0 += offset_y as isize;
-        self.end.line.0 += offset_y as isize;
-        self.start.column.0 += offset_x;
-        self.end.column.0 += offset_x;
-        self
+    pub fn offset(&self, offset_x: usize, offset_y: usize) -> OffsetSelection {
+        let mut offset = *self;
+        offset.start.line.0 += offset_y as isize;
+        offset.end.line.0 += offset_y as isize;
+        offset.start.column.0 += offset_x;
+        offset.end.column.0 += offset_x;
+        OffsetSelection(offset)
     }
 
     /// Return an iterator over the line indices, up to max, that are not present in both self and other,
@@ -142,6 +143,16 @@ impl Selection {
         let start = start.line.0.max(0);
         let end = end.line.0.min(max as isize);
         start..end
+    }
+}
+
+/// A [`Selection`] with a [`Selection::offset`] applied
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OffsetSelection(Selection);
+
+impl OffsetSelection {
+    pub fn contains(&self, row: usize, col: usize) -> bool {
+        self.0.contains(row, col)
     }
 }
 
