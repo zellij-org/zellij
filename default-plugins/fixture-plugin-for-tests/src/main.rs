@@ -40,6 +40,7 @@ impl ZellijPlugin for State {
             EventType::InputReceived,
             EventType::SystemClipboardFailure,
             EventType::CustomMessage,
+            EventType::FileSystem,
         ]);
     }
 

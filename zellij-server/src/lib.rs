@@ -764,6 +764,7 @@ fn init_session(
         })
         .unwrap();
 
+    let zellij_cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
     let plugin_thread = thread::Builder::new()
         .name("wasm".to_string())
         .spawn({
@@ -788,6 +789,7 @@ fn init_session(
                     plugins.unwrap_or_default(),
                     layout,
                     path_to_default_shell,
+                    zellij_cwd,
                 )
                 .fatal()
             }

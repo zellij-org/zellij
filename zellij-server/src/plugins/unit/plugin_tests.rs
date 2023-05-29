@@ -50,11 +50,12 @@ macro_rules! log_actions_in_thread {
     };
 }
 
-fn create_plugin_thread() -> (
+fn create_plugin_thread(zellij_cwd: Option<PathBuf>) -> (
     SenderWithContext<PluginInstruction>,
     Receiver<(ScreenInstruction, ErrorContext)>,
     Box<dyn FnMut()>,
 ) {
+    let zellij_cwd = zellij_cwd.unwrap_or_else(|| PathBuf::from("."));
     let (to_server, _server_receiver): ChannelWithContext<ServerInstruction> =
         channels::bounded(50);
     let to_server = SenderWithContext::new(to_server);
@@ -100,6 +101,7 @@ fn create_plugin_thread() -> (
                 PluginsConfig::default(),
                 Box::new(Layout::default()),
                 default_shell,
+                zellij_cwd,
             )
             .expect("TEST")
         })
@@ -136,7 +138,7 @@ pub fn load_new_plugin_from_hd() {
     // message (this is what the fixture plugin does)
     // we then listen on our mock screen receiver to make sure we got a PluginBytes instruction
     // that contains said render, and assert against it
-    let (plugin_thread_sender, screen_receiver, mut teardown) = create_plugin_thread();
+    let (plugin_thread_sender, screen_receiver, mut teardown) = create_plugin_thread(None);
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
     let run_plugin = RunPlugin {
@@ -194,7 +196,7 @@ pub fn load_new_plugin_from_hd() {
 #[test]
 #[ignore]
 pub fn plugin_workers() {
-    let (plugin_thread_sender, screen_receiver, mut teardown) = create_plugin_thread();
+    let (plugin_thread_sender, screen_receiver, mut teardown) = create_plugin_thread(None);
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
     let run_plugin = RunPlugin {
@@ -255,7 +257,7 @@ pub fn plugin_workers() {
 #[test]
 #[ignore]
 pub fn plugin_workers_persist_state() {
-    let (plugin_thread_sender, screen_receiver, mut teardown) = create_plugin_thread();
+    let (plugin_thread_sender, screen_receiver, mut teardown) = create_plugin_thread(None);
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
     let run_plugin = RunPlugin {
@@ -312,6 +314,70 @@ pub fn plugin_workers_persist_state() {
                 for (plugin_id, client_id, plugin_bytes) in plugin_bytes {
                     let plugin_bytes = String::from_utf8_lossy(plugin_bytes).to_string();
                     if plugin_bytes.contains("received 2 messages") {
+                        return Some((*plugin_id, *client_id, plugin_bytes));
+                    }
+                }
+            }
+            None
+        });
+    assert_snapshot!(format!("{:#?}", plugin_bytes_event));
+}
+
+#[test]
+#[ignore]
+pub fn can_subscribe_to_hd_events() {
+    let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
+                                          // destructor removes the directory
+    let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let (plugin_thread_sender, screen_receiver, mut teardown) = create_plugin_thread(Some(plugin_host_folder));
+    // let (plugin_thread_sender, screen_receiver, mut teardown) = create_plugin_thread(None);
+    let plugin_should_float = Some(false);
+    let plugin_title = Some("test_plugin".to_owned());
+    let run_plugin = RunPlugin {
+        _allow_exec_host_cmd: false,
+        location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+    };
+    let tab_index = 1;
+    let client_id = 1;
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let received_screen_instructions = Arc::new(Mutex::new(vec![]));
+    let screen_thread = log_actions_in_thread!(
+        received_screen_instructions,
+        ScreenInstruction::PluginBytes,
+        screen_receiver,
+        3
+    );
+
+    let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
+    let _ = plugin_thread_sender.send(PluginInstruction::Load(
+        plugin_should_float,
+        plugin_title,
+        run_plugin,
+        tab_index,
+        client_id,
+        size,
+    ));
+    let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
+        None,
+        Some(client_id),
+        Event::InputReceived,
+    )])); // will be cached and sent to the plugin once it's loaded
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::fs::OpenOptions::new().create(true).write(true).open(PathBuf::from(temp_folder.path()).join("test1")).unwrap();
+    screen_thread.join().unwrap(); // this might take a while if the cache is cold
+    teardown();
+    let plugin_bytes_event = received_screen_instructions
+        .lock()
+        .unwrap()
+        .iter()
+        .find_map(|i| {
+            if let ScreenInstruction::PluginBytes(plugin_bytes) = i {
+                for (plugin_id, client_id, plugin_bytes) in plugin_bytes {
+                    let plugin_bytes = String::from_utf8_lossy(plugin_bytes).to_string();
+                    if plugin_bytes.contains("FileSystem") {
                         return Some((*plugin_id, *client_id, plugin_bytes));
                     }
                 }

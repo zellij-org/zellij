@@ -106,13 +106,17 @@ pub(crate) fn plugin_thread_main(
     plugins: PluginsConfig,
     layout: Box<Layout>,
     path_to_default_shell: PathBuf,
+    zellij_cwd: PathBuf,
 ) -> Result<()> {
+    // TODO: CONTINUE HERE - receive zellij_cwd here and then make sure eveerything still works
+    // (use it for wasi binding, fs watching, etc.)
+    // then use a random temp dir for it in the tests and test fs events
     info!("Wasm main thread starts");
 
     let plugin_dir = data_dir.join("plugins/");
     let plugin_global_data_dir = plugin_dir.join("data");
 
-    let mut wasm_bridge = WasmBridge::new(plugins, bus.senders.clone(), store, plugin_dir, path_to_default_shell);
+    let mut wasm_bridge = WasmBridge::new(plugins, bus.senders.clone(), store, plugin_dir, path_to_default_shell, zellij_cwd);
 
     loop {
         let (event, mut err_ctx) = bus.recv().expect("failed to receive event on channel");

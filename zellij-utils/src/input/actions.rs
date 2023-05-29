@@ -475,6 +475,16 @@ impl Action {
             CliAction::NextSwapLayout => Ok(vec![Action::NextSwapLayout]),
             CliAction::QueryTabNames => Ok(vec![Action::QueryTabNames]),
             CliAction::StartOrReloadPlugin { url } => Ok(vec![Action::StartOrReloadPlugin(url)]),
+            CliAction::LaunchOrFocusPlugin { url, should_float } => {
+                let run_plugin_location = RunPluginLocation::parse(url.as_str()).map_err(|e| {
+                    format!("Failed to parse plugin location: {}", e)
+                })?;
+                let run_plugin = RunPlugin {
+                    location: run_plugin_location,
+                    _allow_exec_host_cmd: false,
+                };
+                Ok(vec![Action::LaunchOrFocusPlugin(run_plugin, should_float)])
+            }
         }
     }
 }

@@ -377,4 +377,8 @@ pub enum CliAction {
     StartOrReloadPlugin {
         url: Url,
     },
+    LaunchOrFocusPlugin {
+        should_float: bool,
+        url: Url,
+    },
 }

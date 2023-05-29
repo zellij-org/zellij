@@ -166,6 +166,7 @@ pub struct PluginLoader<'a> {
     size: Size,
     wasm_blob_on_hd: Option<(Vec<u8>, PathBuf)>,
     path_to_default_shell: PathBuf,
+    zellij_cwd: PathBuf,
 }
 
 impl<'a> PluginLoader<'a> {
@@ -179,6 +180,7 @@ impl<'a> PluginLoader<'a> {
         connected_clients: Arc<Mutex<Vec<ClientId>>>,
         loading_indication: &mut LoadingIndication,
         path_to_default_shell: PathBuf,
+        zellij_cwd: PathBuf,
     ) -> Result<()> {
         let err_context = || format!("failed to reload plugin {plugin_id} from memory");
         let mut connected_clients: Vec<ClientId> =
@@ -198,6 +200,7 @@ impl<'a> PluginLoader<'a> {
             &store,
             &plugin_dir,
             path_to_default_shell,
+            zellij_cwd,
         )?;
         plugin_loader
             .load_module_from_memory()
@@ -232,6 +235,7 @@ impl<'a> PluginLoader<'a> {
         connected_clients: Arc<Mutex<Vec<ClientId>>>,
         loading_indication: &mut LoadingIndication,
         path_to_default_shell: PathBuf,
+        zellij_cwd: PathBuf,
     ) -> Result<()> {
         let err_context = || format!("failed to start plugin {plugin_id} for client {client_id}");
         let mut plugin_loader = PluginLoader::new(
@@ -246,6 +250,7 @@ impl<'a> PluginLoader<'a> {
             tab_index,
             size,
             path_to_default_shell,
+            zellij_cwd,
         )?;
         plugin_loader
             .load_module_from_memory()
@@ -280,6 +285,7 @@ impl<'a> PluginLoader<'a> {
         connected_clients: Arc<Mutex<Vec<ClientId>>>,
         loading_indication: &mut LoadingIndication,
         path_to_default_shell: PathBuf,
+        zellij_cwd: PathBuf,
     ) -> Result<()> {
         let mut new_plugins = HashSet::new();
         for plugin_id in plugin_map.lock().unwrap().plugin_ids() {
@@ -296,6 +302,7 @@ impl<'a> PluginLoader<'a> {
                 &store,
                 &plugin_dir,
                 path_to_default_shell.clone(),
+                zellij_cwd.clone(),
             )?;
             plugin_loader
                 .load_module_from_memory()
@@ -323,6 +330,7 @@ impl<'a> PluginLoader<'a> {
         connected_clients: Arc<Mutex<Vec<ClientId>>>,
         loading_indication: &mut LoadingIndication,
         path_to_default_shell: PathBuf,
+        zellij_cwd: PathBuf,
     ) -> Result<()> {
         let err_context = || format!("failed to reload plugin id {plugin_id}");
 
@@ -343,6 +351,7 @@ impl<'a> PluginLoader<'a> {
             &store,
             &plugin_dir,
             path_to_default_shell,
+            zellij_cwd,
         )?;
         plugin_loader
             .compile_module()
@@ -374,6 +383,7 @@ impl<'a> PluginLoader<'a> {
         tab_index: usize,
         size: Size,
         path_to_default_shell: PathBuf,
+        zellij_cwd: PathBuf,
     ) -> Result<Self> {
         let plugin_own_data_dir = ZELLIJ_SESSION_CACHE_DIR
             .join(Url::from(&plugin.location).to_string())
@@ -395,6 +405,7 @@ impl<'a> PluginLoader<'a> {
             size,
             wasm_blob_on_hd: None,
             path_to_default_shell,
+            zellij_cwd,
         })
     }
     pub fn new_from_existing_plugin_attributes(
@@ -407,6 +418,7 @@ impl<'a> PluginLoader<'a> {
         store: &Store,
         plugin_dir: &'a PathBuf,
         path_to_default_shell: PathBuf,
+        zellij_cwd: PathBuf,
     ) -> Result<Self> {
         let err_context = || "Failed to find existing plugin";
         let (running_plugin, _subscriptions, _workers) = {
@@ -435,6 +447,7 @@ impl<'a> PluginLoader<'a> {
             tab_index,
             size,
             path_to_default_shell,
+            zellij_cwd,
         )
     }
     pub fn new_from_different_client_id(
@@ -447,6 +460,7 @@ impl<'a> PluginLoader<'a> {
         store: &Store,
         plugin_dir: &'a PathBuf,
         path_to_default_shell: PathBuf,
+        zellij_cwd: PathBuf,
     ) -> Result<Self> {
         let err_context = || "Failed to find existing plugin";
         let running_plugin = {
@@ -476,6 +490,7 @@ impl<'a> PluginLoader<'a> {
             tab_index,
             size,
             path_to_default_shell,
+            zellij_cwd,
         )
     }
     pub fn load_module_from_memory(&mut self) -> Result<Module> {
@@ -707,6 +722,7 @@ impl<'a> PluginLoader<'a> {
                     &self.store,
                     &self.plugin_dir,
                     self.path_to_default_shell.clone(),
+                    self.zellij_cwd.clone(),
                 )?;
                 plugin_loader_for_client
                     .load_module_from_memory()
@@ -764,7 +780,8 @@ impl<'a> PluginLoader<'a> {
         };
         let mut wasi_env = WasiState::new("Zellij")
             .env("CLICOLOR_FORCE", "1")
-            .map_dir("/host", ".")
+            // .map_dir("/host", ".")
+            .map_dir("/host", self.zellij_cwd.clone())
             .and_then(|wasi| wasi.map_dir("/data", &self.plugin_own_data_dir))
             .and_then(|wasi| wasi.map_dir("/tmp", ZELLIJ_TMP_DIR.as_path()))
             .and_then(|wasi| {

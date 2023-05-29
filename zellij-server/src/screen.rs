@@ -2613,43 +2613,55 @@ pub(crate) fn screen_thread_main(
                 screen.render()?;
             },
             ScreenInstruction::LaunchOrFocusPlugin(run_plugin, should_float, client_id) => {
-                let all_tabs = screen.get_tabs_mut();
-                let mut found = false;
-                for tab in all_tabs.values_mut() {
-                    if let Some(plugin_pane_id) = tab.find_plugin(&run_plugin) {
-                        tab.focus_pane_with_id(plugin_pane_id, should_float, client_id)
-                            .context("failed to focus plugin pane")?;
-                        found = true;
-                        break;
-                    }
-                }
-                if found {
-                    // TODO: update tabs?
-                    screen.render()?;
-                } else {
-                    match screen.active_tab_indices.get(&client_id) {
-                        Some(tab_index) => {
-                            let size = Size::default();
-                            screen.bus.senders.send_to_plugin(PluginInstruction::Load(
-                                Some(should_float),
-                                None,
-                                run_plugin,
-                                *tab_index,
-                                client_id,
-                                size,
-                            ))?;
-                        },
-                        None => {
-                            log::error!("Failed to find tab for client: {:?}", client_id);
+                let client_id = if screen.active_tab_indices.contains_key(&client_id) { Some(client_id) } else { screen.get_first_client_id() };
+                match client_id {
+                    Some(client_id) => {
+                        let all_tabs = screen.get_tabs_mut();
+                        let mut found = false;
+                        for tab in all_tabs.values_mut() {
+                            if let Some(plugin_pane_id) = tab.find_plugin(&run_plugin) {
+                                tab.focus_pane_with_id(plugin_pane_id, should_float, client_id)
+                                    .context("failed to focus plugin pane")?;
+                                found = true;
+                                break;
+                            }
                         }
+                        if found {
+                            // TODO: update tabs?
+                            screen.render()?;
+                        } else {
+                            match screen.active_tab_indices.get(&client_id) {
+                                Some(tab_index) => {
+                                    let size = Size::default();
+                                    screen.bus.senders.send_to_plugin(PluginInstruction::Load(
+                                        Some(should_float),
+                                        None,
+                                        run_plugin,
+                                        *tab_index,
+                                        client_id,
+                                        size,
+                                    ))?;
+                                },
+                                None => {
+                                    log::error!("Failed to find tab for client: {:?}", client_id);
+                                }
+                            }
+                        }
+                    },
+                    None => {
+                        log::error!("No connected clients found - cannot load or focus plugin");
                     }
                 }
             }
             ScreenInstruction::SuppressPane(pane_id, client_id) => {
+                println!("suppress, pane_id: {:?}, client_id: {:?}", pane_id, client_id);
                 let all_tabs = screen.get_tabs_mut();
                 for tab in all_tabs.values_mut() {
+                    println!("looping through tab...");
                     if tab.has_pane_with_pid(&pane_id) {
+                        println!("can has!");
                         tab.suppress_pane(pane_id, client_id);
+                        drop(screen.render());
                         break;
                     }
                 }

@@ -51,6 +51,7 @@ pub struct WasmBridge {
     pending_plugin_reloads: HashSet<RunPlugin>,
     path_to_default_shell: PathBuf,
     watcher: RecommendedWatcher,
+    zellij_cwd: PathBuf,
 }
 
 impl WasmBridge {
@@ -60,12 +61,13 @@ impl WasmBridge {
         store: Store,
         plugin_dir: PathBuf,
         path_to_default_shell: PathBuf,
+        zellij_cwd: PathBuf,
     ) -> Self {
         let plugin_map = Arc::new(Mutex::new(PluginMap::default()));
         let connected_clients: Arc<Mutex<Vec<ClientId>>> = Arc::new(Mutex::new(vec![]));
         let plugin_cache: Arc<Mutex<HashMap<PathBuf, Module>>> =
             Arc::new(Mutex::new(HashMap::new()));
-        let watcher = watch_home_folder(senders.clone());
+        let watcher = watch_home_folder(senders.clone(), &zellij_cwd);
         WasmBridge {
             connected_clients,
             plugins,
@@ -82,6 +84,7 @@ impl WasmBridge {
             cached_worker_messages: HashMap::new(),
             loading_plugins: HashMap::new(),
             pending_plugin_reloads: HashSet::new(),
+            zellij_cwd,
         }
     }
     pub fn load_plugin(
@@ -129,6 +132,7 @@ impl WasmBridge {
             let plugin_map = self.plugin_map.clone();
             let connected_clients = self.connected_clients.clone();
             let path_to_default_shell = self.path_to_default_shell.clone();
+            let zellij_cwd = self.zellij_cwd.clone();
             async move {
                 let _ =
                     senders.send_to_background_jobs(BackgroundJob::AnimatePluginLoading(plugin_id));
@@ -147,6 +151,7 @@ impl WasmBridge {
                     connected_clients.clone(),
                     &mut loading_indication,
                     path_to_default_shell,
+                    zellij_cwd.clone(),
                 ) {
                     Ok(_) => handle_plugin_successful_loading(&senders, plugin_id),
                     Err(e) => handle_plugin_loading_failure(
@@ -168,7 +173,10 @@ impl WasmBridge {
     pub fn unload_plugin(&mut self, pid: PluginId) -> Result<()> {
         info!("Bye from plugin {}", &pid);
         let mut plugin_map = self.plugin_map.lock().unwrap();
-        for (running_plugin, _, _) in plugin_map.remove_plugins(pid) {
+        for (running_plugin, _, workers) in plugin_map.remove_plugins(pid) {
+            for (_worker_name, worker_sender) in workers {
+                drop(worker_sender.send(MessageToWorker::Exit));
+            }
             let running_plugin = running_plugin.lock().unwrap();
             let cache_dir = running_plugin.plugin_env.plugin_own_data_dir.clone();
             if let Err(e) = std::fs::remove_dir_all(cache_dir) {
@@ -204,6 +212,7 @@ impl WasmBridge {
             let plugin_map = self.plugin_map.clone();
             let connected_clients = self.connected_clients.clone();
             let path_to_default_shell = self.path_to_default_shell.clone();
+            let zellij_cwd = self.zellij_cwd.clone();
             async move {
                 match PluginLoader::reload_plugin(
                     first_plugin_id,
@@ -215,6 +224,7 @@ impl WasmBridge {
                     connected_clients.clone(),
                     &mut loading_indication,
                     path_to_default_shell.clone(),
+                    zellij_cwd.clone(),
                 ) {
                     Ok(_) => {
                         handle_plugin_successful_loading(&senders, first_plugin_id);
@@ -234,6 +244,7 @@ impl WasmBridge {
                                 connected_clients.clone(),
                                 &mut loading_indication,
                                 path_to_default_shell.clone(),
+                                zellij_cwd.clone(),
                             ) {
                                 Ok(_) => handle_plugin_successful_loading(&senders, *plugin_id),
                                 Err(e) => handle_plugin_loading_failure(
@@ -275,6 +286,7 @@ impl WasmBridge {
             self.connected_clients.clone(),
             &mut loading_indication,
             self.path_to_default_shell.clone(),
+            self.zellij_cwd.clone(),
         ) {
             Ok(_) => {
                 let _ = self
@@ -714,15 +726,13 @@ pub fn apply_event_to_plugin(
 }
 
 use notify::{Watcher, RecommendedWatcher, RecursiveMode, EventKind};
-fn watch_home_folder(senders: ThreadSenders) -> RecommendedWatcher {
+fn watch_home_folder(senders: ThreadSenders, zellij_cwd: &Path) -> RecommendedWatcher {
     // TODO:
     // 1. Create an Event::CRUD in zellij-utils data
     // 2. receive a thread bus copy and use it to send PluginInstruction::Update(Evnet::CRUD)
     // 3. subscribe to fs events from strider and send them to the worker
     let path_prefix_in_plugins = PathBuf::from("/host");
-    let current_dir = std::env::current_dir().unwrap(); // TODO: this might not be accurate, can't we pass a
-                                               // custom
-                                               // cwd?
+    let current_dir = PathBuf::from(zellij_cwd);
     let mut watcher = notify::recommended_watcher({
         // let current_dir = current_dir.clone();
         move |res: notify::Result<notify::Event>| {
@@ -730,7 +740,7 @@ fn watch_home_folder(senders: ThreadSenders) -> RecommendedWatcher {
             match res {
                Ok(event) => {
                    let paths: Vec<PathBuf> = event.paths.iter().map(|p| {
-                       let stripped_prefix_path = p.strip_prefix(&current_dir).unwrap();
+                       let stripped_prefix_path = p.strip_prefix(&current_dir).unwrap_or_else(|_| p);
                        path_prefix_in_plugins.join(stripped_prefix_path)
                    }).collect(); // TODO: better, no unwrap, etc.
                    match event.kind {
@@ -756,7 +766,8 @@ fn watch_home_folder(senders: ThreadSenders) -> RecommendedWatcher {
 
     // Add a path to be watched. All files and directories at that path and
     // below will be monitored for changes.
-    match watcher.watch(Path::new("."), RecursiveMode::Recursive) {
+    // match watcher.watch(Path::new("."), RecursiveMode::Recursive) {
+    match watcher.watch(zellij_cwd, RecursiveMode::Recursive) {
     // match watcher.watch(Path::new("/tmp/zellij-1000/fake-home-folder"), RecursiveMode::Recursive) { // TODO: NO!!!
         Ok(thing) => {
             log::info!("done watched: {:?}", thing);
