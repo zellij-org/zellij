@@ -4,7 +4,8 @@ use std::{fs::File, io::prelude::*, path::PathBuf, process};
 use crate::sessions::{
     assert_session, assert_session_ne, get_active_session, get_sessions,
     get_sessions_sorted_by_mtime, kill_session as kill_session_impl, match_session_name,
-    print_sessions, print_sessions_with_index, session_exists, ActiveSession, SessionNameMatch,
+    print_sessions, print_sessions_with_index, session_exists, session_is_attached, ActiveSession,
+    SessionNameMatch,
 };
 use zellij_client::{
     old_config_converter::{
@@ -30,7 +31,7 @@ use zellij_utils::{
 pub(crate) use crate::sessions::list_sessions;
 
 pub(crate) fn kill_all_sessions(yes: bool) {
-    match get_sessions() {
+    match get_sessions(false) {
         Ok(sessions) if sessions.is_empty() => {
             eprintln!("No active zellij sessions found.");
             process::exit(1);
@@ -121,7 +122,7 @@ pub(crate) fn send_action_to_session(
     requested_session_name: Option<String>,
     config: Option<Config>,
 ) {
-    match get_active_session() {
+    match get_active_session(false) {
         ActiveSession::None => {
             eprintln!("There is no active session!");
             std::process::exit(1);
@@ -140,7 +141,7 @@ pub(crate) fn send_action_to_session(
             attach_with_cli_client(cli_action, &session_name, config);
         },
         ActiveSession::Many => {
-            let existing_sessions = get_sessions().unwrap();
+            let existing_sessions = get_sessions(false).unwrap();
             if let Some(session_name) = requested_session_name {
                 if existing_sessions.contains(&session_name) {
                     attach_with_cli_client(cli_action, &session_name, config);
@@ -251,9 +252,14 @@ fn attach_with_cli_client(
     }
 }
 
-fn attach_with_session_index(config_options: Options, index: usize, create: bool) -> ClientInfo {
+fn attach_with_session_index(
+    config_options: Options,
+    index: usize,
+    create: bool,
+    only_unattached: bool,
+) -> ClientInfo {
     // Ignore the session_name when `--index` is provided
-    match get_sessions_sorted_by_mtime() {
+    match get_sessions_sorted_by_mtime(only_unattached) {
         Ok(sessions) if sessions.is_empty() => {
             if create {
                 create_new_client()
@@ -274,16 +280,21 @@ fn attach_with_session_name(
     session_name: Option<String>,
     config_options: Options,
     create: bool,
+    only_unattached: bool,
 ) -> ClientInfo {
     match &session_name {
         Some(session) if create => {
             if session_exists(session).unwrap() {
+                if only_unattached && session_is_attached(session) {
+                    eprintln!("Session '{}' is already attached.", session);
+                    process::exit(1);
+                }
                 ClientInfo::Attach(session_name.unwrap(), config_options)
             } else {
                 ClientInfo::New(session_name.unwrap())
             }
         },
-        Some(prefix) => match match_session_name(prefix).unwrap() {
+        Some(prefix) => match match_session_name(prefix, only_unattached).unwrap() {
             SessionNameMatch::UniquePrefix(s) | SessionNameMatch::Exact(s) => {
                 ClientInfo::Attach(s, config_options)
             },
@@ -300,7 +311,7 @@ fn attach_with_session_name(
                 process::exit(1);
             },
         },
-        None => match get_active_session() {
+        None => match get_active_session(only_unattached) {
             ActiveSession::None if create => create_new_client(),
             ActiveSession::None => {
                 eprintln!("No active zellij sessions found.");
@@ -309,7 +320,7 @@ fn attach_with_session_name(
             ActiveSession::One(session_name) => ClientInfo::Attach(session_name, config_options),
             ActiveSession::Many => {
                 println!("Please specify the session to attach to, either by using the full name or a unique prefix.\nThe following sessions are active:");
-                print_sessions(get_sessions().unwrap());
+                print_sessions(get_sessions(false).unwrap());
                 process::exit(1);
             },
         },
@@ -340,6 +351,7 @@ pub(crate) fn start_client(opts: CliArgs) {
     if let Some(Command::Sessions(Sessions::Attach {
         session_name,
         create,
+        only_unattached,
         index,
         options,
     })) = opts.command.clone()
@@ -350,7 +362,7 @@ pub(crate) fn start_client(opts: CliArgs) {
         };
 
         let client = if let Some(idx) = index {
-            attach_with_session_index(config_options.clone(), idx, create)
+            attach_with_session_index(config_options.clone(), idx, create, only_unattached)
         } else {
             let session_exists = session_name
                 .as_ref()
@@ -359,7 +371,12 @@ pub(crate) fn start_client(opts: CliArgs) {
             if create && !session_exists {
                 session_name.clone().map(start_client_plan);
             }
-            attach_with_session_name(session_name, config_options.clone(), create)
+            attach_with_session_name(
+                session_name,
+                config_options.clone(),
+                create,
+                only_unattached,
+            )
         };
 
         if let Ok(val) = std::env::var(envs::SESSION_NAME_ENV_KEY) {
@@ -414,6 +431,7 @@ pub(crate) fn start_client(opts: CliArgs) {
                             Some(session_name.clone()),
                             config_options.clone(),
                             true,
+                            false,
                         );
                         let attach_layout = match client {
                             ClientInfo::Attach(_, _) => None,
