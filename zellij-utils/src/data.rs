@@ -474,15 +474,10 @@ pub enum Event {
         String, // message
         String, // payload
     ),
-    FileSystem(FileSystemUpdate)
-}
-
-#[derive(Debug, Clone, PartialEq, EnumDiscriminants, ToString, Serialize, Deserialize)]
-pub enum FileSystemUpdate {
-    Create(Vec<PathBuf>),
-    Read(Vec<PathBuf>),
-    Update(Vec<PathBuf>),
-    Delete(Vec<PathBuf>),
+    FileSystemCreate(Vec<PathBuf>),
+    FileSystemRead(Vec<PathBuf>),
+    FileSystemUpdate(Vec<PathBuf>),
+    FileSystemDelete(Vec<PathBuf>),
 }
 
 /// Describes the different input modes, which change the way that keystrokes will be interpreted.

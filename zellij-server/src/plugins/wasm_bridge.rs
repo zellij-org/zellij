@@ -23,7 +23,7 @@ use std::path::Path;
 
 use zellij_utils::{
     consts::VERSION,
-    data::{Event, EventType, FileSystemUpdate},
+    data::{Event, EventType},
     errors::prelude::*,
     input::{
         layout::{RunPlugin, RunPluginLocation},
@@ -745,16 +745,16 @@ fn watch_home_folder(senders: ThreadSenders, zellij_cwd: &Path) -> RecommendedWa
                    }).collect(); // TODO: better, no unwrap, etc.
                    match event.kind {
                        EventKind::Access(_) => {
-                           let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(None, None, Event::FileSystem(FileSystemUpdate::Read(paths)))]));
+                           let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(None, None, Event::FileSystemRead(paths))]));
                        }
                        EventKind::Create(_) => {
-                           let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(None, None, Event::FileSystem(FileSystemUpdate::Create(paths)))]));
+                           let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(None, None, Event::FileSystemCreate(paths))]));
                        }
                        EventKind::Modify(_) => {
-                           let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(None, None, Event::FileSystem(FileSystemUpdate::Update(paths)))]));
+                           let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(None, None, Event::FileSystemUpdate(paths))]));
                        }
                        EventKind::Remove(_) => {
-                           let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(None, None, Event::FileSystem(FileSystemUpdate::Delete(paths)))]));
+                           let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(None, None, Event::FileSystemDelete(paths))]));
                        }
                        _ => {}
                    }

@@ -23,7 +23,9 @@ impl ZellijPlugin for State {
             EventType::Mouse,
             EventType::CustomMessage,
             EventType::Timer,
-            EventType::FileSystem,
+            EventType::FileSystemCreate,
+            EventType::FileSystemUpdate,
+            EventType::FileSystemDelete,
         ]);
         post_message_to("file_name_search", String::from("scan_folder"), String::new());
         post_message_to("file_contents_search", String::from("scan_folder"), String::new());
@@ -241,19 +243,20 @@ impl ZellijPlugin for State {
                 },
                 _ => {},
             },
-            Event::FileSystem(event) => {
-                let (event_name, paths) = match event {
-                    FileSystemUpdate::Create(paths) => ("create", paths),
-                    FileSystemUpdate::Read(paths) => ("read", paths),
-                    FileSystemUpdate::Update(paths) => ("update", paths),
-                    FileSystemUpdate::Delete(paths) => ("delete", paths),
-                };
-                if event_name != "read" {
-                    // TODO: better
-                    let paths: Vec<String> = paths.iter().map(|p| p.to_string_lossy().to_string()).collect();
-                    post_message_to("file_name_search", format!("filesystem_{}", event_name), serde_json::to_string(&paths).unwrap());
-                    post_message_to("file_contents_search", format!("filesystem_{}", event_name), serde_json::to_string(&paths).unwrap());
-                }
+            Event::FileSystemCreate(paths) =>  {
+                let paths: Vec<String> = paths.iter().map(|p| p.to_string_lossy().to_string()).collect();
+                post_message_to("file_name_search", "filesystem_create".to_owned(), serde_json::to_string(&paths).unwrap());
+                post_message_to("file_contents_search", "filesystem_create".to_owned(), serde_json::to_string(&paths).unwrap());
+            }
+            Event::FileSystemUpdate(paths) =>  {
+                let paths: Vec<String> = paths.iter().map(|p| p.to_string_lossy().to_string()).collect();
+                post_message_to("file_name_search", "filesystem_update".to_owned(), serde_json::to_string(&paths).unwrap());
+                post_message_to("file_contents_search", "filesystem_update".to_owned(), serde_json::to_string(&paths).unwrap());
+            }
+            Event::FileSystemDelete(paths) =>  {
+                let paths: Vec<String> = paths.iter().map(|p| p.to_string_lossy().to_string()).collect();
+                post_message_to("file_name_search", "filesystem_delete".to_owned(), serde_json::to_string(&paths).unwrap());
+                post_message_to("file_contents_search", "filesystem_delete".to_owned(), serde_json::to_string(&paths).unwrap());
             }
             _ => {
                 dbg!("Unknown event {:?}", event);
