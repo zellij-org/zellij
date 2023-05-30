@@ -45,9 +45,15 @@ impl LoadingIndication {
     pub fn merge(&mut self, other: LoadingIndication) {
         let current_animation_offset = self.animation_offset;
         let current_terminal_emulator_colors = self.terminal_emulator_colors.take();
+        let mut current_error = self.error.take();
         drop(std::mem::replace(self, other));
         self.animation_offset = current_animation_offset;
         self.terminal_emulator_colors = current_terminal_emulator_colors;
+        if let Some(current_error) = current_error.take() {
+            // we do this so that only the first error (usually the root cause) will be shown
+            // when plugins support scrolling, we might want to do an append here
+            self.error = Some(current_error);
+        }
     }
     pub fn indicate_loading_plugin_from_memory(&mut self) {
         self.loading_from_memory = Some(LoadingStatus::InProgress);
@@ -103,6 +109,9 @@ impl LoadingIndication {
     }
     pub fn indicate_loading_error(&mut self, error_text: String) {
         self.error = Some(error_text);
+    }
+    pub fn is_error(&self) -> bool {
+        self.error.is_some()
     }
     fn started_loading(&self) -> bool {
         self.loading_from_memory.is_some()
@@ -257,6 +266,9 @@ impl Display for LoadingIndication {
         }
         if let Some(error_text) = &self.error {
             stringified.push_str(&format!("\n\r{} {error_text}", red.bold().paint("ERROR:")));
+            // we add this additional line explicitly to make it easier to realize when something
+            // is wrong in very small plugins (eg. the tab-bar and status-bar)
+            stringified.push_str(&format!("\n\r{}", red.bold().paint("ERROR IN PLUGIN - check logs for more info")));
         }
         write!(f, "{}", stringified)
     }

@@ -1,5 +1,6 @@
 use super::PluginInstruction;
 use crate::plugins::plugin_map::{PluginEnv, Subscriptions};
+use crate::plugins::wasm_bridge::handle_plugin_crash;
 use log::{debug, warn};
 use serde::{de::DeserializeOwned, Serialize};
 use std::{
@@ -428,7 +429,8 @@ fn host_report_panic(env: &ForeignFunctionEnv) {
             )
         })
         .fatal();
-    panic!("{}", msg);
+    log::error!("PANIC IN PLUGIN! {}", msg);
+    handle_plugin_crash(env.plugin_env.plugin_id, msg, env.plugin_env.senders.clone());
 }
 
 // Helper Functions ---------------------------------------------------------------------------------------------------

@@ -438,11 +438,12 @@ impl WasmBridge {
                                     ));
                                 },
                                 Err(e) => {
-                                    // TODO: if this (and similar) happens (eg. plugin crashes with
-                                    // stack overflow of recursion), we need to unload the plugin,
-                                    // send the stack trace to be rendered on screen and offer to
-                                    // reload it with ENTER
                                     log::error!("{:?}", e);
+
+                                    // https://stackoverflow.com/questions/66450942/in-rust-is-there-a-way-to-make-literal-newlines-in-r-using-windows-c
+                                    let stringified_error = format!("{:?}", e).replace("\n", "\n\r");
+
+                                    handle_plugin_crash(plugin_id, stringified_error, senders.clone());
                                 },
                             }
                         }
@@ -723,6 +724,16 @@ pub fn apply_event_to_plugin(
         plugin_bytes.push((plugin_id, client_id, rendered_bytes.as_bytes().to_vec()));
     }
     Ok(())
+}
+
+pub fn handle_plugin_crash(plugin_id: PluginId, message: String, senders: ThreadSenders) {
+    let mut loading_indication = LoadingIndication::new("Panic!".to_owned());
+    loading_indication.indicate_loading_error(message);
+    let _ = senders.send_to_screen(ScreenInstruction::UpdatePluginLoadingStage(
+        plugin_id,
+        loading_indication,
+    ));
+    let _ = senders.send_to_plugin(PluginInstruction::Unload(plugin_id));
 }
 
 use notify::{Watcher, RecommendedWatcher, RecursiveMode, EventKind};

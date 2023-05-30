@@ -537,7 +537,7 @@ impl Pane for PluginPane {
         self.pane_title = title;
     }
     fn update_loading_indication(&mut self, loading_indication: LoadingIndication) {
-        if self.loading_indication.ended {
+        if self.loading_indication.ended && !loading_indication.is_error() {
             return;
         }
         self.loading_indication.merge(loading_indication);
