@@ -632,7 +632,7 @@ impl WasmBridge {
         match worker {
             Some(worker) => {
                 for (message, payload) in messages.drain(..) {
-                    if let Err(e) = worker.send(MessageToWorker::Message(message, payload)) {
+                    if let Err(e) = worker.try_send(MessageToWorker::Message(message, payload)) {
                         log::error!("Failed to send message to worker: {:?}", e);
                     }
                 }
@@ -736,7 +736,7 @@ pub fn handle_plugin_crash(plugin_id: PluginId, message: String, senders: Thread
     let _ = senders.send_to_plugin(PluginInstruction::Unload(plugin_id));
 }
 
-use notify::{Watcher, RecommendedWatcher, RecursiveMode, EventKind};
+use zellij_utils::notify::{self, Watcher, RecommendedWatcher, RecursiveMode, EventKind};
 fn watch_home_folder(senders: ThreadSenders, zellij_cwd: &Path) -> RecommendedWatcher {
     // TODO:
     // 1. Create an Event::CRUD in zellij-utils data

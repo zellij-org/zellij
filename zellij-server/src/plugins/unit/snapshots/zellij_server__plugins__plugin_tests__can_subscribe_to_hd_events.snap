@@ -7,6 +7,6 @@ Some(
     (
         0,
         1,
-        "Rows: 20, Cols: 121, Received events: [InputReceived, FileSystem(Read([\"/host/test1\"]))]\n\r",
+        "Rows: 20, Cols: 121, Received events: [InputReceived, FileSystemRead([\"/host/test1\"])]\n\r",
     ),
 )

@@ -17,15 +17,8 @@ use zellij_utils::{
     consts::VERSION, data::EventType, input::layout::RunPluginLocation,
     input::plugins::PluginConfig,
 };
-use zellij_utils::{channels::{unbounded, Receiver, Sender}, channels::SenderWithContext, errors::ErrorContext};
+use zellij_utils::{channels::SenderWithContext, errors::ErrorContext, async_channel::{Sender, Receiver, unbounded}};
 use zellij_utils::async_std::task::{self, JoinHandle};
-
-// TODO:
-// 1. instead of Arc<Mutex<RunningWorker>> have a channel sender
-//  * move RunningWorker to running_worker.rs
-//  * move the worker async task stuff to an async_worker_handler function which will listen to
-//  messages and keep the worker alive, call this task whenever instantiating workers
-//  * implement a Drop on RunningWorker so that it sends an exit to this task
 
 pub struct RunningWorker {
     pub instance: Instance,
@@ -87,7 +80,7 @@ pub fn plugin_worker(worker: RunningWorker) -> Sender<MessageToWorker> {
     task::spawn({
         async move {
             loop {
-                match receiver.recv() {
+                match receiver.recv().await {
                     Ok(MessageToWorker::Message(message, payload)) => {
                         if let Err(e) = worker.send_message(message, payload) {
                             log::error!("Failed to send message to worker: {:?}", e);

@@ -14,8 +14,8 @@ use zellij_utils::errors::prelude::*;
 use zellij_utils::{
     data::EventType, input::layout::RunPluginLocation,
     input::plugins::PluginConfig,
-    channels::Sender,
 };
+use zellij_utils::async_channel::Sender;
 
 // the idea here is to provide atomicity when adding/removing plugins from the map (eg. when a new
 // client connects) but to also allow updates/renders not to block each other
