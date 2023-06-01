@@ -378,7 +378,8 @@ pub enum CliAction {
         url: Url,
     },
     LaunchOrFocusPlugin {
-        should_float: bool,
+        #[clap(short, long, value_parser)]
+        floating: bool,
         url: Url,
     },
 }

@@ -72,7 +72,7 @@ impl RunningWorker {
 
 pub enum MessageToWorker {
     Message(String, String), // message, payload
-    Exit, // TODO: send exit message to the task when unloading plugins
+    Exit,
 }
 
 pub fn plugin_worker(worker: RunningWorker) -> Sender<MessageToWorker> {
@@ -91,6 +91,7 @@ pub fn plugin_worker(worker: RunningWorker) -> Sender<MessageToWorker> {
                     },
                     Err(e) => {
                         log::error!("Failed to receive worker message on channel: {:?}", e);
+                        break;
                     }
                 }
             }
