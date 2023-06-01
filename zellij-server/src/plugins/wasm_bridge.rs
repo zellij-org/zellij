@@ -1,5 +1,6 @@
 use super::{PluginId, PluginInstruction};
 use crate::plugins::plugin_loader::{PluginLoader, VersionMismatchError};
+use crate::plugins::watch_filesystem::watch_filesystem;
 use crate::plugins::plugin_map::{
     AtomicEvent, PluginEnv, PluginMap, RunningPlugin, Subscriptions,
 };
@@ -14,13 +15,12 @@ use std::{
 };
 use wasmer::{Instance, Module, Store, Value};
 use zellij_utils::async_std::task::{self, JoinHandle};
+use zellij_utils::notify::{RecommendedWatcher, Watcher};
 
 use crate::{
     background_jobs::BackgroundJob, screen::ScreenInstruction, thread_bus::ThreadSenders,
     ui::loading_indication::LoadingIndication, ClientId,
 };
-use std::path::Path;
-
 use zellij_utils::{
     consts::VERSION,
     data::{Event, EventType},
@@ -50,7 +50,7 @@ pub struct WasmBridge {
     loading_plugins: HashMap<(PluginId, RunPlugin), JoinHandle<()>>, // plugin_id to join-handle
     pending_plugin_reloads: HashSet<RunPlugin>,
     path_to_default_shell: PathBuf,
-    watcher: RecommendedWatcher,
+    watcher: Option<RecommendedWatcher>,
     zellij_cwd: PathBuf,
 }
 
@@ -67,7 +67,13 @@ impl WasmBridge {
         let connected_clients: Arc<Mutex<Vec<ClientId>>> = Arc::new(Mutex::new(vec![]));
         let plugin_cache: Arc<Mutex<HashMap<PathBuf, Module>>> =
             Arc::new(Mutex::new(HashMap::new()));
-        let watcher = watch_home_folder(senders.clone(), &zellij_cwd);
+        let watcher = match watch_filesystem(senders.clone(), &zellij_cwd) {
+            Ok(watcher) => Some(watcher),
+            Err(e) => {
+                log::error!("Failed to watch filesystem: {:?}", e);
+                None
+            }
+        };
         WasmBridge {
             connected_clients,
             plugins,
@@ -489,6 +495,7 @@ impl WasmBridge {
         for plugin_id in &plugin_ids {
             drop(self.unload_plugin(*plugin_id));
         }
+        drop(self.watcher.as_mut().map(|w| w.unwatch(&self.zellij_cwd)));
     }
     fn run_plugin_of_plugin_id(&self, plugin_id: PluginId) -> Option<&RunPlugin> {
         self.loading_plugins
@@ -734,58 +741,4 @@ pub fn handle_plugin_crash(plugin_id: PluginId, message: String, senders: Thread
         loading_indication,
     ));
     let _ = senders.send_to_plugin(PluginInstruction::Unload(plugin_id));
-}
-
-use zellij_utils::notify::{self, Watcher, RecommendedWatcher, RecursiveMode, EventKind};
-fn watch_home_folder(senders: ThreadSenders, zellij_cwd: &Path) -> RecommendedWatcher {
-    // TODO:
-    // 1. Create an Event::CRUD in zellij-utils data
-    // 2. receive a thread bus copy and use it to send PluginInstruction::Update(Evnet::CRUD)
-    // 3. subscribe to fs events from strider and send them to the worker
-    let path_prefix_in_plugins = PathBuf::from("/host");
-    let current_dir = PathBuf::from(zellij_cwd);
-    let mut watcher = notify::recommended_watcher({
-        // let current_dir = current_dir.clone();
-        move |res: notify::Result<notify::Event>| {
-            // log::info!("can has watcher event: {:?}", res);
-            match res {
-               Ok(event) => {
-                   let paths: Vec<PathBuf> = event.paths.iter().map(|p| {
-                       let stripped_prefix_path = p.strip_prefix(&current_dir).unwrap_or_else(|_| p);
-                       path_prefix_in_plugins.join(stripped_prefix_path)
-                   }).collect(); // TODO: better, no unwrap, etc.
-                   match event.kind {
-                       EventKind::Access(_) => {
-                           let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(None, None, Event::FileSystemRead(paths))]));
-                       }
-                       EventKind::Create(_) => {
-                           let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(None, None, Event::FileSystemCreate(paths))]));
-                       }
-                       EventKind::Modify(_) => {
-                           let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(None, None, Event::FileSystemUpdate(paths))]));
-                       }
-                       EventKind::Remove(_) => {
-                           let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(None, None, Event::FileSystemDelete(paths))]));
-                       }
-                       _ => {}
-                   }
-               }
-               Err(e) => log::error!("watch error: {:?}", e),
-            }
-        }
-    }).unwrap(); // TODO: no unwrap
-
-    // Add a path to be watched. All files and directories at that path and
-    // below will be monitored for changes.
-    // match watcher.watch(Path::new("."), RecursiveMode::Recursive) {
-    match watcher.watch(zellij_cwd, RecursiveMode::Recursive) {
-    // match watcher.watch(Path::new("/tmp/zellij-1000/fake-home-folder"), RecursiveMode::Recursive) { // TODO: NO!!!
-        Ok(thing) => {
-            log::info!("done watched: {:?}", thing);
-        },
-        Err(e) => {
-            log::error!("Failed to watch home folder: {:?}", e);
-        }
-    };
-    watcher
 }
