@@ -1,7 +1,7 @@
 use crate::plugins::plugin_map::{
     PluginEnv, PluginMap, RunningPlugin, Subscriptions,
 };
-use crate::plugins::plugin_worker::{RunningWorker, MessageToWorker, plugin_worker};
+use crate::plugins::plugin_worker::{RunningWorker, plugin_worker};
 use crate::plugins::zellij_exports::{wasi_read_string, zellij_exports};
 use crate::plugins::PluginId;
 use highway::{HighwayHash, PortableHash};

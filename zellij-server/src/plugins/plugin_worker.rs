@@ -1,24 +1,16 @@
-use crate::plugins::plugin_loader::{PluginLoader, VersionMismatchError};
+use crate::plugins::plugin_loader::VersionMismatchError;
 use crate::plugins::plugin_map::{PluginEnv};
 use crate::plugins::zellij_exports::wasi_write_object;
-use crate::plugins::PluginId;
-use std::{
-    collections::{HashMap, HashSet},
-    path::PathBuf,
-    sync::{Arc, Mutex},
-};
 use wasmer::Instance;
-use wasmer_wasi::WasiEnv;
 
-use crate::{thread_bus::ThreadSenders, ClientId};
 
 use zellij_utils::errors::prelude::*;
 use zellij_utils::{
-    consts::VERSION, data::EventType, input::layout::RunPluginLocation,
+    consts::VERSION,
     input::plugins::PluginConfig,
 };
-use zellij_utils::{channels::SenderWithContext, errors::ErrorContext, async_channel::{Sender, Receiver, unbounded}};
-use zellij_utils::async_std::task::{self, JoinHandle};
+use zellij_utils::async_channel::{Sender, Receiver, unbounded};
+use zellij_utils::async_std::task;
 
 pub struct RunningWorker {
     pub instance: Instance,

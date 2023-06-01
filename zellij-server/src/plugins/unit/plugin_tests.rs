@@ -330,7 +330,6 @@ pub fn can_subscribe_to_hd_events() {
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
     let (plugin_thread_sender, screen_receiver, mut teardown) = create_plugin_thread(Some(plugin_host_folder));
-    // let (plugin_thread_sender, screen_receiver, mut teardown) = create_plugin_thread(None);
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
     let run_plugin = RunPlugin {

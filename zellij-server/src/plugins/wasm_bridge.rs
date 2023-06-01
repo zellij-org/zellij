@@ -4,14 +4,14 @@ use crate::plugins::watch_filesystem::watch_filesystem;
 use crate::plugins::plugin_map::{
     AtomicEvent, PluginEnv, PluginMap, RunningPlugin, Subscriptions,
 };
-use crate::plugins::plugin_worker::{RunningWorker, MessageToWorker};
+use crate::plugins::plugin_worker::MessageToWorker;
 use crate::plugins::zellij_exports::{wasi_read_string, wasi_write_object};
 use log::info;
 use std::{
     collections::{HashMap, HashSet},
     path::PathBuf,
     str::FromStr,
-    sync::{Arc, Mutex, TryLockError},
+    sync::{Arc, Mutex},
 };
 use wasmer::{Instance, Module, Store, Value};
 use zellij_utils::async_std::task::{self, JoinHandle};
@@ -645,8 +645,6 @@ impl WasmBridge {
                 }
             },
             None => {
-                // TODO: this happens on first message in strider (probably because it's in the
-                // load function?) let's handle this!
                 log::warn!("Worker {worker_name} not found, caching messages");
                 for (message, payload) in messages.drain(..) {
                     self.cached_worker_messages

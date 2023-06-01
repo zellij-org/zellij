@@ -109,9 +109,6 @@ pub(crate) fn plugin_thread_main(
     path_to_default_shell: PathBuf,
     zellij_cwd: PathBuf,
 ) -> Result<()> {
-    // TODO: CONTINUE HERE - receive zellij_cwd here and then make sure eveerything still works
-    // (use it for wasi binding, fs watching, etc.)
-    // then use a random temp dir for it in the tests and test fs events
     info!("Wasm main thread starts");
 
     let plugin_dir = data_dir.join("plugins/");
