@@ -32,7 +32,7 @@ use wasmer::Store;
 use crate::{
     os_input_output::ServerOsApi,
     plugins::{plugin_thread_main, PluginInstruction},
-    pty::{pty_thread_main, Pty, PtyInstruction},
+    pty::{pty_thread_main, Pty, PtyInstruction, get_default_shell},
     screen::{screen_thread_main, ScreenInstruction},
     thread_bus::{Bus, ThreadSenders},
 };
@@ -705,13 +705,7 @@ fn init_session(
             ..Default::default()
         })
     });
-    let path_to_default_shell = config_options.default_shell.clone().unwrap_or_else(|| {
-        // TODO: export this functionality from pty.rs
-        PathBuf::from(std::env::var("SHELL").unwrap_or_else(|_| {
-            log::warn!("Cannot read SHELL env, falling back to use /bin/sh");
-            "/bin/sh".to_string()
-        }))
-    });
+    let path_to_default_shell = config_options.default_shell.clone().unwrap_or_else(|| get_default_shell());
 
     let pty_thread = thread::Builder::new()
         .name("pty".to_string())

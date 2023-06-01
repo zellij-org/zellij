@@ -468,10 +468,7 @@ impl Pty {
                 default_shell
             },
             None => {
-                let shell = PathBuf::from(env::var("SHELL").unwrap_or_else(|_| {
-                    log::warn!("Cannot read SHELL env, falling back to use /bin/sh");
-                    "/bin/sh".to_string()
-                }));
+                let shell = get_default_shell();
                 TerminalAction::RunCommand(RunCommand {
                     args: vec![],
                     command: shell,
@@ -1042,4 +1039,11 @@ fn send_command_not_found_to_screen(
         ))
         .with_context(err_context)?;
     Ok(())
+}
+
+pub fn get_default_shell() -> PathBuf {
+    PathBuf::from(std::env::var("SHELL").unwrap_or_else(|_| {
+        log::warn!("Cannot read SHELL env, falling back to use /bin/sh");
+        "/bin/sh".to_string()
+    }))
 }
