@@ -865,7 +865,7 @@ fn switch_to_tab_with_fullscreen() {
     {
         let active_tab = screen.get_active_tab_mut(1).unwrap();
         active_tab
-            .new_pane(PaneId::Terminal(2), None, None, Some(1))
+            .new_pane(PaneId::Terminal(2), None, None, None, Some(1))
             .unwrap();
         active_tab.toggle_active_pane_fullscreen(1);
     }
@@ -980,7 +980,7 @@ fn attach_after_first_tab_closed() {
     {
         let active_tab = screen.get_active_tab_mut(1).unwrap();
         active_tab
-            .new_pane(PaneId::Terminal(2), None, None, Some(1))
+            .new_pane(PaneId::Terminal(2), None, None, None, Some(1))
             .unwrap();
         active_tab.toggle_active_pane_fullscreen(1);
     }
@@ -2735,7 +2735,7 @@ pub fn send_cli_launch_or_focus_plugin_action() {
         plugin_receiver
     );
     let cli_action = CliAction::LaunchOrFocusPlugin {
-        should_float: true,
+        floating: true,
         url: url::Url::parse("file:/path/to/fake/plugin").unwrap()
     };
     send_cli_action_to_server(&session_metadata, cli_action, &mut mock_screen, client_id);
@@ -2790,7 +2790,7 @@ pub fn send_cli_launch_or_focus_plugin_action_when_plugin_is_already_loaded() {
         server_receiver
     );
     let cli_action = CliAction::LaunchOrFocusPlugin {
-        should_float: true,
+        floating: true,
         url: url::Url::parse("file:/path/to/fake/plugin").unwrap()
     };
     send_cli_action_to_server(&session_metadata, cli_action, &mut mock_screen, client_id);

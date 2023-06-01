@@ -1561,6 +1561,7 @@ pub(crate) fn screen_thread_main(
                                                             client_id: ClientId| tab .new_pane(pid,
                                                                                                initial_pane_title,
                                                                                                should_float,
+                                                                                               None,
                                                                                                Some(client_id)),
                                                                                                ?);
                         if let Some(hold_for_command) = hold_for_command {
@@ -1579,7 +1580,7 @@ pub(crate) fn screen_thread_main(
                     },
                     ClientOrTabIndex::TabIndex(tab_index) => {
                         if let Some(active_tab) = screen.tabs.get_mut(&tab_index) {
-                            active_tab.new_pane(pid, initial_pane_title, should_float, None)?;
+                            active_tab.new_pane(pid, initial_pane_title, should_float, None, None)?;
                             if let Some(hold_for_command) = hold_for_command {
                                 let is_first_run = true;
                                 active_tab.hold_pane(pid, None, is_first_run, hold_for_command);
@@ -2562,11 +2563,11 @@ pub(crate) fn screen_thread_main(
                     pane_title.unwrap_or_else(|| run_plugin_location.location.to_string());
                 let run_plugin = Run::Plugin(run_plugin_location);
                 if let Some(active_tab) = screen.tabs.get_mut(&tab_index) {
-                    active_tab.new_plugin_pane(
+                    active_tab.new_pane(
                         PaneId::Plugin(plugin_id),
-                        pane_title,
+                        Some(pane_title),
                         should_float,
-                        run_plugin,
+                        Some(run_plugin),
                         None,
                     )?;
                 } else {

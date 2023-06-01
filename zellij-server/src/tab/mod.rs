@@ -901,7 +901,6 @@ impl Tab {
     pub fn toggle_pane_embed_or_floating(&mut self, client_id: ClientId) -> Result<()> {
         let err_context =
             || format!("failed to toggle embedded/floating pane for client {client_id}");
-
         if self.tiled_panes.fullscreen_is_active() {
             self.tiled_panes.unset_fullscreen();
         }
@@ -914,55 +913,18 @@ impl Tab {
                         "failed to find floating pane (ID: {focused_floating_pane_id:?}) to embed for client {client_id}",
                     ))
                         .with_context(err_context)?;
-                    self.tiled_panes
-                        .insert_pane(focused_floating_pane_id, floating_pane_to_embed);
-                    self.should_clear_display_before_rendering = true;
-                    self.tiled_panes
-                        .focus_pane(focused_floating_pane_id, client_id);
                     self.hide_floating_panes();
-                    if self.auto_layout && !self.swap_layouts.is_tiled_damaged() {
-                        // only do this if we're already in this layout, otherwise it might be
-                        // confusing and not what the user intends
-                        self.swap_layouts.set_is_tiled_damaged(); // we do this so that we won't skip to the
-                                                                  // next layout
-                        self.next_swap_layout(Some(client_id), true)?;
-                    }
+                    self.add_tiled_pane(floating_pane_to_embed, focused_floating_pane_id, Some(client_id))?;
                 }
             }
         } else if let Some(focused_pane_id) = self.tiled_panes.focused_pane_id(client_id) {
-            if let Some(new_pane_geom) = self.floating_panes.find_room_for_new_pane() {
-                if self.get_selectable_tiled_panes().count() <= 1 {
-                    // don't close the only pane on screen...
-                    return Ok(());
-                }
-                if let Some(mut embedded_pane_to_float) =
-                    self.close_pane(focused_pane_id, true, Some(client_id))
-                {
-                    if !embedded_pane_to_float.borderless() {
-                        // floating panes always have a frame unless they're explicitly borderless
-                        embedded_pane_to_float.set_content_offset(Offset::frame(1));
-                    }
-                    embedded_pane_to_float.set_geom(new_pane_geom);
-                    resize_pty!(
-                        embedded_pane_to_float,
-                        self.os_api,
-                        self.senders,
-                        self.character_cell_size
-                    )
-                    .with_context(err_context)?;
-                    embedded_pane_to_float.set_active_at(Instant::now());
-                    self.floating_panes
-                        .add_pane(focused_pane_id, embedded_pane_to_float);
-                    self.floating_panes.focus_pane(focused_pane_id, client_id);
-                    self.show_floating_panes();
-                    if self.auto_layout && !self.swap_layouts.is_floating_damaged() {
-                        // only do this if we're already in this layout, otherwise it might be
-                        // confusing and not what the user intends
-                        self.swap_layouts.set_is_floating_damaged(); // we do this so that we won't skip to the
-                                                                     // next layout
-                        self.next_swap_layout(Some(client_id), true)?;
-                    }
-                }
+            if self.get_selectable_tiled_panes().count() <= 1 {
+                // don't close the only pane on screen...
+                return Ok(());
+            }
+            if let Some(embedded_pane_to_float) = self.close_pane(focused_pane_id, true, Some(client_id)) {
+                self.show_floating_panes();
+                self.add_floating_pane(embedded_pane_to_float, focused_pane_id, Some(client_id))?;
             }
         }
         Ok(())
@@ -1018,10 +980,10 @@ impl Tab {
         pid: PaneId,
         initial_pane_title: Option<String>,
         should_float: Option<bool>,
+        run_plugin: Option<Run>, // only relevant if this is a plugin pane
         client_id: Option<ClientId>,
     ) -> Result<()> {
         let err_context = || format!("failed to create new pane with id {pid:?}");
-
         match should_float {
             Some(true) => self.show_floating_panes(),
             Some(false) => self.hide_floating_panes(),
@@ -1029,198 +991,51 @@ impl Tab {
         };
         self.close_down_to_max_terminals()
             .with_context(err_context)?;
-        if self.floating_panes.panes_are_visible() {
-            if let Some(new_pane_geom) = self.floating_panes.find_room_for_new_pane() {
+        let new_pane = match pid {
+            PaneId::Terminal(term_pid) => {
                 let next_terminal_position = self.get_next_terminal_position();
-                if let PaneId::Terminal(term_pid) = pid {
-                    let mut new_pane = TerminalPane::new(
-                        term_pid,
-                        new_pane_geom,
-                        self.style,
-                        next_terminal_position,
-                        String::new(),
-                        self.link_handler.clone(),
-                        self.character_cell_size.clone(),
-                        self.sixel_image_store.clone(),
-                        self.terminal_emulator_colors.clone(),
-                        self.terminal_emulator_color_codes.clone(),
-                        initial_pane_title,
-                        None,
-                    );
-                    new_pane.set_active_at(Instant::now());
-                    new_pane.set_content_offset(Offset::frame(1)); // floating panes always have a frame
-                    resize_pty!(
-                        new_pane,
-                        self.os_api,
-                        self.senders,
-                        self.character_cell_size
-                    )
-                    .with_context(err_context)?;
-                    self.floating_panes.add_pane(pid, Box::new(new_pane));
-                    self.floating_panes.focus_pane_for_all_clients(pid);
-                }
-                if self.auto_layout && !self.swap_layouts.is_floating_damaged() {
-                    // only do this if we're already in this layout, otherwise it might be
-                    // confusing and not what the user intends
-                    self.swap_layouts.set_is_floating_damaged(); // we do this so that we won't skip to the
-                                                                 // next layout
-                    self.next_swap_layout(client_id, true)?;
-                }
+                Box::new(TerminalPane::new(
+                    term_pid,
+                    PaneGeom::default(), // this will be filled out later
+                    self.style,
+                    next_terminal_position,
+                    String::new(),
+                    self.link_handler.clone(),
+                    self.character_cell_size.clone(),
+                    self.sixel_image_store.clone(),
+                    self.terminal_emulator_colors.clone(),
+                    self.terminal_emulator_color_codes.clone(),
+                    initial_pane_title,
+                    None,
+                )) as Box<dyn Pane>
+            },
+            PaneId::Plugin(plugin_pid) => {
+                Box::new(PluginPane::new(
+                    plugin_pid,
+                    PaneGeom::default(), // this will be filled out later
+                    self.senders
+                        .to_plugin
+                        .as_ref()
+                        .with_context(err_context)?
+                        .clone(),
+                    initial_pane_title.unwrap_or("".to_owned()),
+                    String::new(),
+                    self.sixel_image_store.clone(),
+                    self.terminal_emulator_colors.clone(),
+                    self.terminal_emulator_color_codes.clone(),
+                    self.link_handler.clone(),
+                    self.character_cell_size.clone(),
+                    self.connected_clients.borrow().iter().copied().collect(),
+                    self.style,
+                    run_plugin,
+                )) as Box<dyn Pane>
             }
-        } else {
-            if self.tiled_panes.fullscreen_is_active() {
-                self.tiled_panes.unset_fullscreen();
-            }
-            let should_auto_layout = self.auto_layout && !self.swap_layouts.is_tiled_damaged();
-            if self.tiled_panes.has_room_for_new_pane() {
-                if let PaneId::Terminal(term_pid) = pid {
-                    let next_terminal_position = self.get_next_terminal_position();
-                    let mut new_terminal = TerminalPane::new(
-                        term_pid,
-                        PaneGeom::default(), // the initial size will be set later
-                        self.style,
-                        next_terminal_position,
-                        String::new(),
-                        self.link_handler.clone(),
-                        self.character_cell_size.clone(),
-                        self.sixel_image_store.clone(),
-                        self.terminal_emulator_colors.clone(),
-                        self.terminal_emulator_color_codes.clone(),
-                        initial_pane_title,
-                        None,
-                    );
-                    new_terminal.set_active_at(Instant::now());
-                    if should_auto_layout {
-                        // no need to relayout here, we'll do it when reapplying the swap layout
-                        // below
-                        self.tiled_panes
-                            .insert_pane_without_relayout(pid, Box::new(new_terminal));
-                    } else {
-                        self.tiled_panes.insert_pane(pid, Box::new(new_terminal));
-                    }
-                    self.should_clear_display_before_rendering = true;
-                    if let Some(client_id) = client_id {
-                        self.tiled_panes.focus_pane(pid, client_id);
-                    }
-                }
-            }
-            if should_auto_layout {
-                // only do this if we're already in this layout, otherwise it might be
-                // confusing and not what the user intends
-                self.swap_layouts.set_is_tiled_damaged(); // we do this so that we won't skip to the
-                                                          // next layout
-                self.next_swap_layout(client_id, true)?;
-            }
-        }
-        Ok(())
-    }
-    pub fn new_plugin_pane(
-        &mut self,
-        pid: PaneId,
-        initial_pane_title: String,
-        should_float: Option<bool>,
-        run_plugin: Run,
-        client_id: Option<ClientId>,
-    ) -> Result<()> {
-        let err_context = || format!("failed to create new pane with id {pid:?}");
-
-        match should_float {
-            Some(true) => self.show_floating_panes(),
-            Some(false) => self.hide_floating_panes(),
-            None => {},
         };
         if self.floating_panes.panes_are_visible() {
-            if let Some(new_pane_geom) = self.floating_panes.find_room_for_new_pane() {
-                if let PaneId::Plugin(plugin_pid) = pid {
-                    let mut new_pane = PluginPane::new(
-                        plugin_pid,
-                        new_pane_geom,
-                        self.senders
-                            .to_plugin
-                            .as_ref()
-                            .with_context(err_context)?
-                            .clone(),
-                        initial_pane_title,
-                        String::new(),
-                        self.sixel_image_store.clone(),
-                        self.terminal_emulator_colors.clone(),
-                        self.terminal_emulator_color_codes.clone(),
-                        self.link_handler.clone(),
-                        self.character_cell_size.clone(),
-                        self.connected_clients.borrow().iter().copied().collect(),
-                        self.style,
-                        Some(run_plugin),
-                    );
-                    new_pane.set_active_at(Instant::now());
-                    new_pane.set_content_offset(Offset::frame(1)); // floating panes always have a frame
-                    resize_pty!(
-                        new_pane,
-                        self.os_api,
-                        self.senders,
-                        self.character_cell_size
-                    )
-                    .with_context(err_context)?;
-                    self.floating_panes.add_pane(pid, Box::new(new_pane));
-                    self.floating_panes.focus_pane_for_all_clients(pid);
-                }
-                if self.auto_layout && !self.swap_layouts.is_floating_damaged() {
-                    // only do this if we're already in this layout, otherwise it might be
-                    // confusing and not what the user intends
-                    self.swap_layouts.set_is_floating_damaged(); // we do this so that we won't skip to the
-                                                                 // next layout
-                    self.next_swap_layout(client_id, true)?;
-                }
-            }
+            self.add_floating_pane(new_pane, pid, client_id)
         } else {
-            if self.tiled_panes.fullscreen_is_active() {
-                self.tiled_panes.unset_fullscreen();
-            }
-            let should_auto_layout = self.auto_layout && !self.swap_layouts.is_tiled_damaged();
-            if self.tiled_panes.has_room_for_new_pane() {
-                if let PaneId::Plugin(plugin_pid) = pid {
-                    let mut new_pane = PluginPane::new(
-                        plugin_pid,
-                        PaneGeom::default(), // the initial size will be set later
-                        self.senders
-                            .to_plugin
-                            .as_ref()
-                            .with_context(err_context)?
-                            .clone(),
-                        initial_pane_title,
-                        String::new(),
-                        self.sixel_image_store.clone(),
-                        self.terminal_emulator_colors.clone(),
-                        self.terminal_emulator_color_codes.clone(),
-                        self.link_handler.clone(),
-                        self.character_cell_size.clone(),
-                        self.connected_clients.borrow().iter().copied().collect(),
-                        self.style,
-                        Some(run_plugin),
-                    );
-                    new_pane.set_active_at(Instant::now());
-                    if should_auto_layout {
-                        // no need to relayout here, we'll do it when reapplying the swap layout
-                        // below
-                        self.tiled_panes
-                            .insert_pane_without_relayout(pid, Box::new(new_pane));
-                    } else {
-                        self.tiled_panes.insert_pane(pid, Box::new(new_pane));
-                    }
-                    self.should_clear_display_before_rendering = true;
-                    if let Some(client_id) = client_id {
-                        self.tiled_panes.focus_pane(pid, client_id);
-                    }
-                }
-            }
-            if should_auto_layout {
-                // only do this if we're already in this layout, otherwise it might be
-                // confusing and not what the user intends
-                self.swap_layouts.set_is_tiled_damaged(); // we do this so that we won't skip to the
-                                                          // next layout
-                self.next_swap_layout(client_id, true)?;
-            }
+            self.add_tiled_pane(new_pane, pid, client_id)
         }
-        Ok(())
     }
     pub fn suppress_active_pane(&mut self, pid: PaneId, client_id: ClientId) -> Result<()> {
         // this method creates a new pane from pid and replaces it with the active pane
@@ -3446,86 +3261,82 @@ impl Tab {
         self.tiled_panes.focus_pane_if_exists(pane_id, client_id)
             .or_else(|_| {
                 let focused_floating_pane = self.floating_panes.focus_pane_if_exists(pane_id, client_id);
-                if focused_floating_pane.is_ok() {
-                    self.show_floating_panes();
-                }
+                if focused_floating_pane.is_ok() { self.show_floating_panes() };
                 focused_floating_pane
             })
             .or_else(|_| {
-                if let Some(mut pane) = self.suppressed_panes.remove(&pane_id) {
-
-                    let err_context = || format!("failed to to focus pane with id {pane_id:?}");
-
-                    if should_float {
-                        self.show_floating_panes();
-                    } else {
-                        self.hide_floating_panes();
-                    }
-                    if self.floating_panes.panes_are_visible() {
-                        if let Some(new_pane_geom) = self.floating_panes.find_room_for_new_pane() {
-                            pane.set_active_at(Instant::now());
-                            pane.set_geom(new_pane_geom);
-                            pane.set_content_offset(Offset::frame(1)); // floating panes always have a frame
-                            resize_pty!(
-                                pane,
-                                self.os_api,
-                                self.senders,
-                                self.character_cell_size
-                            )
-                            .with_context(err_context)?;
-                            self.floating_panes.add_pane(pane_id, pane);
-                            self.floating_panes.focus_pane_for_all_clients(pane_id);
-                        }
-                        if self.auto_layout && !self.swap_layouts.is_floating_damaged() {
-                            // only do this if we're already in this layout, otherwise it might be
-                            // confusing and not what the user intends
-                            self.swap_layouts.set_is_floating_damaged(); // we do this so that we won't skip to the
-                                                                         // next layout
-                            self.next_swap_layout(Some(client_id), true)?;
-                        }
-                    } else {
-                        if self.tiled_panes.fullscreen_is_active() {
-                            self.tiled_panes.unset_fullscreen();
-                        }
-                        let should_auto_layout = self.auto_layout && !self.swap_layouts.is_tiled_damaged();
-                        if self.tiled_panes.has_room_for_new_pane() {
-                            pane.set_active_at(Instant::now());
-                            if should_auto_layout {
-                                // no need to relayout here, we'll do it when reapplying the swap layout
-                                // below
-                                self.tiled_panes
-                                    .insert_pane_without_relayout(pane_id, pane);
-                            } else {
-                                self.tiled_panes.insert_pane(pane_id, pane);
-                            }
-                            self.should_clear_display_before_rendering = true;
-                            self.tiled_panes.focus_pane(pane_id, client_id);
-                        }
-                        if should_auto_layout {
-                            // only do this if we're already in this layout, otherwise it might be
-                            // confusing and not what the user intends
-                            self.swap_layouts.set_is_tiled_damaged(); // we do this so that we won't skip to the
-                                                                      // next layout
-                            self.next_swap_layout(Some(client_id), true)?;
+                match self.suppressed_panes.remove(&pane_id) {
+                    Some(pane) => {
+                        if should_float {
+                            self.show_floating_panes();
+                            self.add_floating_pane(pane, pane_id, Some(client_id))
+                        } else {
+                            self.hide_floating_panes();
+                            self.add_tiled_pane(pane, pane_id, Some(client_id))
                         }
                     }
+                    None => Ok(())
                 }
-                Ok(())
             })
     }
     pub fn suppress_pane(&mut self, pane_id: PaneId, client_id: ClientId) {
         if let Some(pane) = self.close_pane(pane_id, true, Some(client_id)) {
             self.suppressed_panes.insert(pane_id, pane);
         }
-//         if self.tiled_panes.panes_contain(&pane_id) {
-//             if let Some(pane) = self.tiled_panes.remove_pane(pane_id) {
-//                 self.suppressed_panes.insert(pane_id, pane);
-//             }
-//         } else if self.floating_panes.panes_contain(&pane_id) {
-//             if let Some(pane) = self.floating_panes.remove_pane(pane_id) {
-//                 self.suppressed_panes.insert(pane_id, pane);
-//             }
-//         }
+    }
+    fn add_floating_pane(&mut self, mut pane: Box<dyn Pane>, pane_id: PaneId, client_id: Option<ClientId>) -> Result<()> {
+        let err_context = || format!("failed to add floating pane");
+        if let Some(new_pane_geom) = self.floating_panes.find_room_for_new_pane() {
+            pane.set_active_at(Instant::now());
+            pane.set_geom(new_pane_geom);
+            pane.set_content_offset(Offset::frame(1)); // floating panes always have a frame
+            resize_pty!(
+                pane,
+                self.os_api,
+                self.senders,
+                self.character_cell_size
+            )
+            .with_context(err_context)?;
+            self.floating_panes.add_pane(pane_id, pane);
+            self.floating_panes.focus_pane_for_all_clients(pane_id);
+        }
+        if self.auto_layout && !self.swap_layouts.is_floating_damaged() {
+            // only do this if we're already in this layout, otherwise it might be
+            // confusing and not what the user intends
+            self.swap_layouts.set_is_floating_damaged(); // we do this so that we won't skip to the
+                                                         // next layout
+            self.next_swap_layout(client_id, true)?;
+        }
+        Ok(())
+    }
+    fn add_tiled_pane(&mut self, mut pane: Box<dyn Pane>, pane_id: PaneId, client_id: Option<ClientId>) -> Result<()> {
+        if self.tiled_panes.fullscreen_is_active() {
+            self.tiled_panes.unset_fullscreen();
+        }
+        let should_auto_layout = self.auto_layout && !self.swap_layouts.is_tiled_damaged();
+        if self.tiled_panes.has_room_for_new_pane() {
+            pane.set_active_at(Instant::now());
+            if should_auto_layout {
+                // no need to relayout here, we'll do it when reapplying the swap layout
+                // below
+                self.tiled_panes
+                    .insert_pane_without_relayout(pane_id, pane);
+            } else {
+                self.tiled_panes.insert_pane(pane_id, pane);
+            }
+            self.should_clear_display_before_rendering = true;
+            if let Some(client_id) = client_id {
+                self.tiled_panes.focus_pane(pane_id, client_id);
+            }
+        }
+        if should_auto_layout {
+            // only do this if we're already in this layout, otherwise it might be
+            // confusing and not what the user intends
+            self.swap_layouts.set_is_tiled_damaged(); // we do this so that we won't skip to the
+                                                      // next layout
+            self.next_swap_layout(client_id, true)?;
+        }
+        Ok(())
     }
 }
 
