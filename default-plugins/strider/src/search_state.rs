@@ -10,7 +10,8 @@ use zellij_tile::prelude::{
     open_terminal_floating,
 };
 use std::path::PathBuf;
-use crate::search::{SearchType, MessageToSearch, ResultsOfSearch};
+use serde::{Serialize, Deserialize};
+use crate::search::{MessageToSearch, ResultsOfSearch};
 use crate::search_results::SearchResult;
 
 pub const CURRENT_SEARCH_TERM: &str = "/data/current_search_term";
@@ -72,6 +73,9 @@ impl SearchState {
                 self.loading_animation_offset.saturating_add(1);
         }
     }
+    pub fn number_of_lines_in_displayed_search_results(&self) -> usize {
+        self.displayed_search_results.1.iter().map(|l| l.rendered_height()).sum()
+    }
     fn move_search_selection_down(&mut self) {
         if self.displayed_search_results.0 < self.max_search_selection_index() {
             self.displayed_search_results.0 += 1;
@@ -117,11 +121,13 @@ impl SearchState {
         }
     }
     fn toggle_search_filter(&mut self) {
-        self.search_filter.progress()
+        self.search_filter.progress();
+        self.send_search_query();
     }
     fn clear_state(&mut self) {
         self.file_name_search_results.clear();
         self.file_contents_search_results.clear();
+        self.displayed_search_results = (0, vec![]);
         self.search_term.clear();
     }
     fn append_to_search_term(&mut self, key: Key) {
@@ -137,10 +143,15 @@ impl SearchState {
             },
             _ => {},
         }
+        self.send_search_query();
+    }
+    fn send_search_query(&mut self) {
         match std::fs::write(CURRENT_SEARCH_TERM, &self.search_term) {
             Ok(_) => if !self.search_term.is_empty() {
                 post_message_to("file_name_search", serde_json::to_string(&MessageToSearch::Search).unwrap(), "".to_owned());
                 post_message_to("file_contents_search", serde_json::to_string(&MessageToSearch::Search).unwrap(), "".to_owned());
+                self.file_name_search_results.clear();
+                self.file_contents_search_results.clear();
             },
             Err(e) => eprintln!("Failed to write search term to HD, aborting search: {}", e)
         }
@@ -149,6 +160,10 @@ impl SearchState {
         self.displayed_search_results.1.len().saturating_sub(1)
     }
     fn update_displayed_search_results(&mut self) {
+        if self.search_term.is_empty() {
+            self.clear_state();
+            return;
+        }
         let mut search_results_of_interest = match self.search_filter {
             SearchType::NamesAndContents => {
                 let mut all_search_results = self.file_name_search_results.clone();
@@ -167,7 +182,7 @@ impl SearchState {
         };
         let mut height_taken_up_by_results = 0;
         let mut displayed_search_results = vec![];
-        while let Some(search_result) = search_results_of_interest.pop() {
+        for search_result in search_results_of_interest.drain(..) {
             if height_taken_up_by_results + search_result.rendered_height() > self.rows_for_results() {
                 break;
             }
@@ -182,7 +197,31 @@ impl SearchState {
     fn selected_search_result_entry(&self) -> Option<SearchResult> {
         self.displayed_search_results.1.get(self.displayed_search_results.0).cloned()
     }
-    fn rows_for_results(&self) -> usize {
+    pub fn rows_for_results(&self) -> usize {
         self.display_rows.saturating_sub(3) // search line and 2 controls lines
     }
 }
+
+#[derive(Serialize, Deserialize)]
+pub enum SearchType {
+    NamesAndContents,
+    Names,
+    Contents,
+}
+
+impl SearchType {
+    pub fn progress(&mut self) {
+        match &self {
+            &SearchType::NamesAndContents => *self = SearchType::Names,
+            &SearchType::Names => *self = SearchType::Contents,
+            &SearchType::Contents => *self = SearchType::NamesAndContents,
+        }
+    }
+}
+
+impl Default for SearchType {
+    fn default() -> Self {
+        SearchType::NamesAndContents
+    }
+}
+

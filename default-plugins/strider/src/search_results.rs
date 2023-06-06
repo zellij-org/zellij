@@ -1,5 +1,5 @@
 use serde::{Serialize, Deserialize};
-use crate::ui::{GREEN, ORANGE, GRAY_LIGHT, bold, underline, styled_text, styled_text_foreground};
+use crate::ui::{GREEN, ORANGE, GRAY_LIGHT, bold, underline, styled_text, styled_text_foreground, styled_text_background};
 use unicode_width::UnicodeWidthStr;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -77,30 +77,30 @@ impl SearchResult {
     }
     fn render_file_result(&self, path: &String, indices: &Vec<usize>, is_selected: bool, is_below_search_result: bool, max_width: usize) -> String {
         if is_selected {
-            let line = self.render_line_with_indices(path, indices, max_width, Some(GREEN));
+            let line = self.render_line_with_indices(path, indices, max_width.saturating_sub(3), Some(GREEN));
             let selection_arrow = styled_text_foreground(ORANGE, "┌>");
             format!("{} {}", selection_arrow, line)
         } else {
             let line_prefix = if is_below_search_result { "│ " } else { "  " };
             let line =
-                self.render_line_with_indices(path, indices, max_width, None);
+                self.render_line_with_indices(path, indices, max_width.saturating_sub(3), None);
             format!("{} {}", line_prefix, line)
         }
     }
     fn render_line_in_file_result(&self, path: &String, line: &String, line_number: usize, indices: &Vec<usize>, is_selected: bool, is_below_search_result: bool, max_width: usize) -> String {
-        let line_number_prefix_text = format!("└{}", line_number);
+        let line_number_prefix_text = format!("└ {} ", line_number);
         let max_width_of_line_in_file = max_width.saturating_sub(3).saturating_sub(line_number_prefix_text.width());
         if is_selected {
-            let file_name_line = self.render_line_with_indices(path, &vec![], max_width.saturating_sub(2), Some(GREEN));
+            let file_name_line = self.render_line_with_indices(path, &vec![], max_width.saturating_sub(3), Some(GREEN));
             let line_in_file = self.render_line_with_indices(line, indices, max_width_of_line_in_file, Some(GREEN));
-            let line_number_prefix = styled_text_foreground(GREEN, &line_number_prefix_text);
-            format!("{} {}\n│  {} {}", styled_text_foreground(ORANGE, "┌>"), file_name_line, line_number_prefix, line_in_file)
+            let line_number_prefix = styled_text_foreground(GREEN, &bold(&line_number_prefix_text));
+            format!("{} {}\n│  {}{}", styled_text_foreground(ORANGE, "┌>"), file_name_line, line_number_prefix, line_in_file)
         } else {
-            let file_name_line = self.render_line_with_indices(path, &vec![], max_width.saturating_sub(2), None);
+            let file_name_line = self.render_line_with_indices(path, &vec![], max_width.saturating_sub(3), None);
             let line_in_file = self.render_line_with_indices(line, indices, max_width_of_line_in_file, None);
-            let line_number_prefix = styled_text_foreground(GREEN, &line_number_prefix_text);
-            let line_prefix = if is_below_search_result { "| " } else { "  "};
-            format!("{} {}\n│  {} {}", line_prefix, file_name_line, line_number_prefix, line_in_file)
+            let line_number_prefix = bold(&line_number_prefix_text);
+            let line_prefix = if is_below_search_result { "│ " } else { "  "};
+            format!("{} {}\n{} {}{}", line_prefix, file_name_line, line_prefix, line_number_prefix, line_in_file)
         }
     }
     fn render_line_with_indices(
@@ -116,7 +116,7 @@ impl SearchResult {
         };
         let index_character_style = |c: &str| match foreground_color {
             Some(foreground_color) => styled_text(foreground_color, GRAY_LIGHT, &bold(&underline(c))),
-            None => bold(c),
+            None => styled_text_background(GRAY_LIGHT, &bold(&underline(c))),
         };
 
         let truncate_positions = self.truncate_line_with_indices(line_to_render, indices, max_width);

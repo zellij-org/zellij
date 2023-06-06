@@ -3,6 +3,7 @@ mod state;
 mod search_state;
 mod ui; // TODO: make folder and nest other modules in it
 mod controls_line;
+mod selection_controls_area;
 mod search_results;
 
 use colored::*;
@@ -20,7 +21,7 @@ register_worker!(FileContentsWorker, file_contents_search_worker, FILE_CONTENTS_
 impl ZellijPlugin for State {
     fn load(&mut self) {
         refresh_directory(self);
-        self.loading = true;
+        self.search_state.loading = true;
         subscribe(&[
             EventType::Key,
             EventType::Mouse,
@@ -40,6 +41,7 @@ impl ZellijPlugin for State {
             serde_json::to_string(&MessageToSearch::ScanFolder).unwrap(),
             "".to_owned(),
         );
+        self.search_state.loading = true;
         set_timeout(0.5); // for displaying loading animation
     }
 
@@ -53,7 +55,7 @@ impl ZellijPlugin for State {
         self.ev_history.push_back((event.clone(), Instant::now()));
         match event {
             Event::Timer(_elapsed) => {
-                if self.loading {
+                if self.search_state.loading {
                     set_timeout(0.5);
                     self.search_state.progress_animation();
                     should_render = true;
@@ -73,7 +75,7 @@ impl ZellijPlugin for State {
                     }
                 },
                 Ok(MessageToPlugin::DoneScanningFolder) => {
-                    self.loading = false;
+                    self.search_state.loading = false;
                     should_render = true;
                 },
                 Err(e) => eprintln!("Failed to deserialize custom message: {:?}", e),
@@ -179,18 +181,18 @@ impl ZellijPlugin for State {
             },
             Event::FileSystemCreate(paths) =>  {
                 let paths: Vec<String> = paths.iter().map(|p| p.to_string_lossy().to_string()).collect();
-                post_message_to("file_name_search", "filesystem_create".to_owned(), serde_json::to_string(&paths).unwrap());
-                post_message_to("file_contents_search", "filesystem_create".to_owned(), serde_json::to_string(&paths).unwrap());
+                post_message_to("file_name_search", serde_json::to_string(&MessageToSearch::FileSystemCreate).unwrap(), serde_json::to_string(&paths).unwrap());
+                post_message_to("file_contents_search", serde_json::to_string(&MessageToSearch::FileSystemCreate).unwrap(), serde_json::to_string(&paths).unwrap());
             }
             Event::FileSystemUpdate(paths) =>  {
                 let paths: Vec<String> = paths.iter().map(|p| p.to_string_lossy().to_string()).collect();
-                post_message_to("file_name_search", "filesystem_update".to_owned(), serde_json::to_string(&paths).unwrap());
-                post_message_to("file_contents_search", "filesystem_update".to_owned(), serde_json::to_string(&paths).unwrap());
+                post_message_to("file_name_search", serde_json::to_string(&MessageToSearch::FileSystemUpdate).unwrap(), serde_json::to_string(&paths).unwrap());
+                post_message_to("file_contents_search", serde_json::to_string(&MessageToSearch::FileSystemUpdate).unwrap(), serde_json::to_string(&paths).unwrap());
             }
             Event::FileSystemDelete(paths) =>  {
                 let paths: Vec<String> = paths.iter().map(|p| p.to_string_lossy().to_string()).collect();
-                post_message_to("file_name_search", "filesystem_delete".to_owned(), serde_json::to_string(&paths).unwrap());
-                post_message_to("file_contents_search", "filesystem_delete".to_owned(), serde_json::to_string(&paths).unwrap());
+                post_message_to("file_name_search", serde_json::to_string(&MessageToSearch::FileSystemDelete).unwrap(), serde_json::to_string(&paths).unwrap());
+                post_message_to("file_contents_search", serde_json::to_string(&MessageToSearch::FileSystemDelete).unwrap(), serde_json::to_string(&paths).unwrap());
             }
             _ => {
                 dbg!("Unknown event {:?}", event);
@@ -202,7 +204,7 @@ impl ZellijPlugin for State {
     fn render(&mut self, rows: usize, cols: usize) {
         if self.typing_search_term() {
             self.search_state.change_size(rows, cols);
-            println!("{}", self.search_state);
+            print!("{}", self.search_state);
             return;
         }
 
