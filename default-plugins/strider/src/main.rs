@@ -1,10 +1,5 @@
 mod search;
 mod state;
-mod search_state;
-mod ui; // TODO: make folder and nest other modules in it
-mod controls_line;
-mod selection_controls_area;
-mod search_results;
 
 use colored::*;
 use search::{ResultsOfSearch, FileNameWorker, FileContentsWorker, MessageToSearch};

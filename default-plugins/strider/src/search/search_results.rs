@@ -1,5 +1,5 @@
 use serde::{Serialize, Deserialize};
-use crate::ui::{GREEN, ORANGE, GRAY_LIGHT, bold, underline, styled_text, styled_text_foreground, styled_text_background};
+use crate::search::ui::{GREEN, ORANGE, GRAY_LIGHT, bold, underline, styled_text, styled_text_foreground, styled_text_background};
 use unicode_width::UnicodeWidthStr;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

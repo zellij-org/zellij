@@ -1,5 +1,11 @@
+pub mod controls_line;
+pub mod search_results;
+pub mod search_state;
+pub mod selection_controls_area;
+pub mod ui;
+
 use crate::state::{CURRENT_SEARCH_TERM, ROOT};
-use crate::search_state::SearchType;
+use search_state::SearchType;
 use std::path::{PathBuf, Path};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use crate::MessageToPlugin;
@@ -11,7 +17,7 @@ use fuzzy_matcher::skim::SkimMatcherV2;
 use fuzzy_matcher::FuzzyMatcher;
 use serde::{Deserialize, Serialize};
 use walkdir::WalkDir;
-use crate::search_results::SearchResult;
+use search_results::SearchResult;
 
 use std::io::{self, BufRead};
 

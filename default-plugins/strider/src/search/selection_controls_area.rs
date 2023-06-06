@@ -1,4 +1,4 @@
-use crate::ui::{ORANGE, styled_text_foreground, bold};
+use crate::search::ui::{ORANGE, styled_text_foreground, bold};
 
 pub struct SelectionControlsArea {
     display_lines: usize,

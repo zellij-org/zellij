@@ -1,6 +1,6 @@
-use crate::search_state::SearchType;
-use crate::search_state::SearchState;
-use crate::search_results::SearchResult;
+use crate::search::search_state::SearchType;
+use crate::search::search_state::SearchState;
+use crate::search::search_results::SearchResult;
 use pretty_bytes::converter as pb;
 use std::{
     collections::{HashMap, VecDeque},
@@ -11,7 +11,6 @@ use std::{
 use zellij_tile::prelude::*;
 
 pub const ROOT: &str = "/host";
-// pub const ROOT: &str = "/tmp"; // TODO: no!!
 pub const CURRENT_SEARCH_TERM: &str = "/data/current_search_term";
 
 #[derive(Default)]

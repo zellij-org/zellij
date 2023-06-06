@@ -1,6 +1,6 @@
-use crate::search_state::SearchState;
-use crate::controls_line::{ControlsLine, Control};
-use crate::selection_controls_area::SelectionControlsArea;
+use crate::search::search_state::SearchState;
+use crate::search::controls_line::{ControlsLine, Control};
+use crate::search::selection_controls_area::SelectionControlsArea;
 use std::fmt::{Display, Formatter, Result};
 
 pub const CYAN: u8 = 51;

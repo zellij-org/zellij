@@ -12,7 +12,7 @@ use zellij_tile::prelude::{
 use std::path::PathBuf;
 use serde::{Serialize, Deserialize};
 use crate::search::{MessageToSearch, ResultsOfSearch};
-use crate::search_results::SearchResult;
+use crate::search::search_results::SearchResult;
 
 pub const CURRENT_SEARCH_TERM: &str = "/data/current_search_term";
 

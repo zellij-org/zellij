@@ -2937,6 +2937,7 @@ dependencies = [
  "pretty-bytes",
  "serde",
  "serde_json",
+ "strip-ansi-escapes",
  "unicode-width",
  "walkdir",
  "zellij-tile",

@@ -1,5 +1,5 @@
-use crate::search_state::SearchType;
-use crate::ui::{GRAY_DARK, GRAY_LIGHT, WHITE, BLACK, RED, bold, arrow, dot, styled_text, color_line_to_end};
+use crate::search::search_state::SearchType;
+use crate::search::ui::{GRAY_DARK, GRAY_LIGHT, WHITE, BLACK, RED, bold, arrow, dot, styled_text, color_line_to_end};
 
 #[derive(Default)]
 pub struct ControlsLine {
