@@ -7,7 +7,7 @@ use crate::{
     ClientId, ServerInstruction,
 };
 use async_std::task::{self, JoinHandle};
-use std::{collections::HashMap, env, os::unix::io::RawFd, path::PathBuf};
+use std::{collections::HashMap, os::unix::io::RawFd, path::PathBuf};
 use zellij_utils::nix::unistd::Pid;
 use zellij_utils::{
     async_std,
