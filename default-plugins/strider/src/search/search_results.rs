@@ -299,7 +299,7 @@ impl SearchResult {
         } else if !indices.is_empty() {
             // no room for all indices, remove the last one and try again
             let mut new_indices = indices.clone();
-            drop(new_indices.pop());
+            new_indices.pop();
             self.truncate_line_with_indices(line_to_render, &new_indices, max_width)
         } else {
             Some((first_index, last_index))

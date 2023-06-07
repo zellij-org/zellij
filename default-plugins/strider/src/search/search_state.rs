@@ -106,7 +106,7 @@ impl SearchState {
         let dir_path_of_result = |path: &str| -> PathBuf {
             let file_path = PathBuf::from(path);
             let mut dir_path = file_path.components();
-            drop(dir_path.next_back()); // remove file name to stay with just the folder
+            dir_path.next_back(); // remove file name to stay with just the folder
             dir_path.as_path().into()
         };
         let selected_search_result_entry = self.selected_search_result_entry();
