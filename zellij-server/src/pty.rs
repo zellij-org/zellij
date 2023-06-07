@@ -739,7 +739,7 @@ impl Pty {
             }
         });
         match run_instruction {
-            Some(Run::Command(command)) => {
+            Some(Run::Command(mut command)) => {
                 let starts_held = command.hold_on_start;
                 let hold_on_close = command.hold_on_close;
                 let quit_cb = Box::new({
@@ -759,6 +759,11 @@ impl Pty {
                         }
                     }
                 });
+                if command.cwd.is_none() {
+                    if let TerminalAction::RunCommand(cmd) = default_shell {
+                        command.cwd = cmd.cwd;
+                    }
+                }
                 let cmd = TerminalAction::RunCommand(command.clone());
                 if starts_held {
                     // we don't actually open a terminal in this case, just wait for the user to run it
