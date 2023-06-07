@@ -14,7 +14,9 @@ use zellij_utils::data::Resize;
 use zellij_utils::errors::{prelude::*, ErrorContext};
 use zellij_utils::input::actions::Action;
 use zellij_utils::input::command::{RunCommand, TerminalAction};
-use zellij_utils::input::layout::{Layout, SplitDirection, TiledPaneLayout};
+use zellij_utils::input::layout::{
+    Layout, Run, RunPlugin, RunPluginLocation, SplitDirection, TiledPaneLayout,
+};
 use zellij_utils::input::options::Options;
 use zellij_utils::ipc::IpcReceiverWithContext;
 use zellij_utils::pane_size::{Size, SizeInPixels};
@@ -291,7 +293,11 @@ impl MockScreen {
         let pane_layout = initial_layout.unwrap_or_default();
         let pane_count = pane_layout.extract_run_instructions().len();
         let mut pane_ids = vec![];
-        let plugin_ids = HashMap::new();
+        let mut plugin_ids = HashMap::new();
+        plugin_ids.insert(
+            RunPluginLocation::File(PathBuf::from("/path/to/fake/plugin")),
+            vec![1],
+        );
         for i in 0..pane_count {
             pane_ids.push((i as u32, None));
         }
@@ -864,7 +870,7 @@ fn switch_to_tab_with_fullscreen() {
     {
         let active_tab = screen.get_active_tab_mut(1).unwrap();
         active_tab
-            .new_pane(PaneId::Terminal(2), None, None, Some(1))
+            .new_pane(PaneId::Terminal(2), None, None, None, Some(1))
             .unwrap();
         active_tab.toggle_active_pane_fullscreen(1);
     }
@@ -979,7 +985,7 @@ fn attach_after_first_tab_closed() {
     {
         let active_tab = screen.get_active_tab_mut(1).unwrap();
         active_tab
-            .new_pane(PaneId::Terminal(2), None, None, Some(1))
+            .new_pane(PaneId::Terminal(2), None, None, None, Some(1))
             .unwrap();
         active_tab.toggle_active_pane_fullscreen(1);
     }
@@ -2714,4 +2720,146 @@ pub fn send_cli_query_tab_names_action() {
         })
         .cloned();
     assert_snapshot!(format!("{:#?}", log_tab_names_instruction));
+}
+
+#[test]
+pub fn send_cli_launch_or_focus_plugin_action() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 10; // fake client id should not appear in the screen's state
+    let mut mock_screen = MockScreen::new(size);
+    let plugin_receiver = mock_screen.plugin_receiver.take().unwrap();
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(None);
+    let received_plugin_instructions = Arc::new(Mutex::new(vec![]));
+    let plugin_thread = log_actions_in_thread!(
+        received_plugin_instructions,
+        PluginInstruction::Exit,
+        plugin_receiver
+    );
+    let cli_action = CliAction::LaunchOrFocusPlugin {
+        floating: true,
+        url: url::Url::parse("file:/path/to/fake/plugin").unwrap(),
+    };
+    send_cli_action_to_server(&session_metadata, cli_action, &mut mock_screen, client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
+    mock_screen.teardown(vec![plugin_thread, screen_thread]);
+
+    let plugin_load_instruction = received_plugin_instructions
+        .lock()
+        .unwrap()
+        .iter()
+        .find(|instruction| match instruction {
+            PluginInstruction::Load(..) => true,
+            _ => false,
+        })
+        .cloned();
+
+    assert_snapshot!(format!("{:#?}", plugin_load_instruction));
+}
+
+#[test]
+pub fn send_cli_launch_or_focus_plugin_action_when_plugin_is_already_loaded() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 10; // fake client id should not appear in the screen's state
+    let mut mock_screen = MockScreen::new(size);
+    let plugin_receiver = mock_screen.plugin_receiver.take().unwrap();
+    let session_metadata = mock_screen.clone_session_metadata();
+    let mut initial_layout = TiledPaneLayout::default();
+    let existing_plugin_pane = TiledPaneLayout {
+        run: Some(Run::Plugin(RunPlugin {
+            _allow_exec_host_cmd: false,
+            location: RunPluginLocation::File(PathBuf::from("/path/to/fake/plugin")),
+        })),
+        ..Default::default()
+    };
+    initial_layout.children_split_direction = SplitDirection::Vertical;
+    initial_layout.children = vec![TiledPaneLayout::default(), existing_plugin_pane];
+    let screen_thread = mock_screen.run(Some(initial_layout));
+    let received_plugin_instructions = Arc::new(Mutex::new(vec![]));
+    let plugin_thread = log_actions_in_thread!(
+        received_plugin_instructions,
+        PluginInstruction::Exit,
+        plugin_receiver
+    );
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+    let cli_action = CliAction::LaunchOrFocusPlugin {
+        floating: true,
+        url: url::Url::parse("file:/path/to/fake/plugin").unwrap(),
+    };
+    send_cli_action_to_server(&session_metadata, cli_action, &mut mock_screen, client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
+    mock_screen.teardown(vec![plugin_thread, server_thread, screen_thread]);
+
+    let plugin_load_instruction_sent = received_plugin_instructions
+        .lock()
+        .unwrap()
+        .iter()
+        .find(|instruction| match instruction {
+            PluginInstruction::Load(..) => true,
+            _ => false,
+        })
+        .is_some();
+    assert!(
+        !plugin_load_instruction_sent,
+        "Plugin Load instruction should not be sent for an already loaded plugin"
+    );
+    let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
+        received_server_instructions.lock().unwrap().iter(),
+        size,
+    );
+    let snapshot_count = snapshots.len();
+    assert_eq!(
+        snapshot_count, 2,
+        "Another render was sent for focusing the already loaded plugin"
+    );
+    for (cursor_coordinates, _snapshot) in snapshots.iter().skip(1) {
+        assert!(
+            cursor_coordinates.is_none(),
+            "Cursor moved to existing plugin in final snapshot indicating focus changed"
+        );
+    }
+}
+
+#[test]
+pub fn screen_can_suppress_pane() {
+    let size = Size { cols: 80, rows: 20 };
+    let mut initial_layout = TiledPaneLayout::default();
+    initial_layout.children_split_direction = SplitDirection::Vertical;
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
+    let mut mock_screen = MockScreen::new(size);
+    let screen_thread = mock_screen.run(Some(initial_layout));
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::SuppressPane(PaneId::Terminal(1), 1));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+
+    let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
+        received_server_instructions.lock().unwrap().iter(),
+        size,
+    );
+    let snapshot_count = snapshots.len();
+    for (_cursor_coordinates, snapshot) in snapshots {
+        assert_snapshot!(format!("{}", snapshot));
+    }
+    assert_snapshot!(format!("{}", snapshot_count));
 }

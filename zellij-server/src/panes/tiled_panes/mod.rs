@@ -20,7 +20,10 @@ use stacked_panes::StackedPanes;
 use zellij_utils::{
     data::{Direction, ModeInfo, ResizeStrategy, Style},
     errors::prelude::*,
-    input::{command::RunCommand, layout::SplitDirection},
+    input::{
+        command::RunCommand,
+        layout::{Run, RunPlugin, SplitDirection},
+    },
     pane_size::{Offset, PaneGeom, Size, SizeInPixels, Viewport},
 };
 
@@ -528,6 +531,14 @@ impl TiledPanes {
             }
         }
         self.reset_boundaries();
+    }
+    pub fn focus_pane_if_exists(&mut self, pane_id: PaneId, client_id: ClientId) -> Result<()> {
+        if self.panes.get(&pane_id).is_some() {
+            self.focus_pane(pane_id, client_id);
+            Ok(())
+        } else {
+            Err(anyhow!("Pane not found"))
+        }
     }
     pub fn focus_pane_at_position(&mut self, position_and_size: PaneGeom, client_id: ClientId) {
         if let Some(pane_id) = self
@@ -1690,6 +1701,13 @@ impl TiledPanes {
     }
     fn reset_boundaries(&mut self) {
         self.client_id_to_boundaries.clear();
+    }
+    pub fn get_plugin_pane_id(&self, run_plugin: &RunPlugin) -> Option<PaneId> {
+        let run = Some(Run::Plugin(run_plugin.clone()));
+        self.panes
+            .iter()
+            .find(|(_id, s_p)| s_p.invoked_with() == &run)
+            .map(|(id, _)| *id)
     }
 }
 

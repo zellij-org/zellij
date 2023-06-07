@@ -39,9 +39,29 @@ pub fn open_file(path: &Path) {
     unsafe { host_open_file() };
 }
 
+pub fn open_file_floating(path: &Path) {
+    object_to_stdout(&path);
+    unsafe { host_open_file_floating() };
+}
+
 pub fn open_file_with_line(path: &Path, line: usize) {
     object_to_stdout(&(path, line));
     unsafe { host_open_file_with_line() };
+}
+
+pub fn open_file_with_line_floating(path: &Path, line: usize) {
+    object_to_stdout(&(path, line));
+    unsafe { host_open_file_with_line_floating() };
+}
+
+pub fn open_terminal(path: &Path) {
+    object_to_stdout(&path);
+    unsafe { host_open_terminal() };
+}
+
+pub fn open_terminal_floating(path: &Path) {
+    object_to_stdout(&path);
+    unsafe { host_open_terminal_floating() };
 }
 
 pub fn switch_tab_to(tab_idx: u32) {
@@ -54,6 +74,10 @@ pub fn set_timeout(secs: f64) {
 pub fn exec_cmd(cmd: &[&str]) {
     object_to_stdout(&cmd);
     unsafe { host_exec_cmd() };
+}
+
+pub fn hide_self() {
+    unsafe { host_hide_self() };
 }
 
 pub fn report_panic(info: &std::panic::PanicInfo) {
@@ -105,11 +129,16 @@ extern "C" {
     fn host_get_plugin_ids();
     fn host_get_zellij_version();
     fn host_open_file();
+    fn host_open_file_floating();
     fn host_open_file_with_line();
+    fn host_open_file_with_line_floating();
+    fn host_open_terminal();
+    fn host_open_terminal_floating();
     fn host_switch_tab_to(tab_idx: u32);
     fn host_set_timeout(secs: f64);
     fn host_exec_cmd();
     fn host_report_panic();
     fn host_post_message_to();
     fn host_post_message_to_plugin();
+    fn host_hide_self();
 }
