@@ -1,10 +1,8 @@
 use super::{PluginId, PluginInstruction};
 use crate::plugins::plugin_loader::{PluginLoader, VersionMismatchError};
-use crate::plugins::watch_filesystem::watch_filesystem;
-use crate::plugins::plugin_map::{
-    AtomicEvent, PluginEnv, PluginMap, RunningPlugin, Subscriptions,
-};
+use crate::plugins::plugin_map::{AtomicEvent, PluginEnv, PluginMap, RunningPlugin, Subscriptions};
 use crate::plugins::plugin_worker::MessageToWorker;
+use crate::plugins::watch_filesystem::watch_filesystem;
 use crate::plugins::zellij_exports::{wasi_read_string, wasi_write_object};
 use log::info;
 use std::{
@@ -72,7 +70,7 @@ impl WasmBridge {
             Err(e) => {
                 log::error!("Failed to watch filesystem: {:?}", e);
                 None
-            }
+            },
         };
         WasmBridge {
             connected_clients,
@@ -447,9 +445,14 @@ impl WasmBridge {
                                     log::error!("{:?}", e);
 
                                     // https://stackoverflow.com/questions/66450942/in-rust-is-there-a-way-to-make-literal-newlines-in-r-using-windows-c
-                                    let stringified_error = format!("{:?}", e).replace("\n", "\n\r");
+                                    let stringified_error =
+                                        format!("{:?}", e).replace("\n", "\n\r");
 
-                                    handle_plugin_crash(plugin_id, stringified_error, senders.clone());
+                                    handle_plugin_crash(
+                                        plugin_id,
+                                        stringified_error,
+                                        senders.clone(),
+                                    );
                                 },
                             }
                         }
@@ -652,7 +655,7 @@ impl WasmBridge {
                         .or_default()
                         .push((client_id, worker_name.clone(), message, payload));
                 }
-            }
+            },
         }
         Ok(())
     }

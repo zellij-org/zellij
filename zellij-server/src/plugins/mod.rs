@@ -114,7 +114,14 @@ pub(crate) fn plugin_thread_main(
     let plugin_dir = data_dir.join("plugins/");
     let plugin_global_data_dir = plugin_dir.join("data");
 
-    let mut wasm_bridge = WasmBridge::new(plugins, bus.senders.clone(), store, plugin_dir, path_to_default_shell, zellij_cwd);
+    let mut wasm_bridge = WasmBridge::new(
+        plugins,
+        bus.senders.clone(),
+        store,
+        plugin_dir,
+        path_to_default_shell,
+        zellij_cwd,
+    );
 
     loop {
         let (event, mut err_ctx) = bus.recv().expect("failed to receive event on channel");

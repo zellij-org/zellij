@@ -1,15 +1,15 @@
-use crate::search::ui::{ORANGE, styled_text_foreground, bold};
+use crate::search::ui::{bold, styled_text_foreground, ORANGE};
 
 pub struct SelectionControlsArea {
     display_lines: usize,
-    display_columns: usize
+    display_columns: usize,
 }
 
 impl SelectionControlsArea {
     pub fn new(display_lines: usize, display_columns: usize) -> Self {
         SelectionControlsArea {
             display_lines,
-            display_columns
+            display_columns,
         }
     }
     pub fn render(&self, result_count: usize) -> String {
@@ -59,4 +59,3 @@ impl SelectionControlsArea {
         format!("{}{}{}{}{}", arrow_tail, enter, enter_tip, tab, tab_tip)
     }
 }
-

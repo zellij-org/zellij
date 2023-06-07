@@ -711,7 +711,7 @@ pub(crate) fn route_action(
                     client_id,
                 ))
                 .with_context(err_context)?;
-        }
+        },
     }
     Ok(should_break)
 }

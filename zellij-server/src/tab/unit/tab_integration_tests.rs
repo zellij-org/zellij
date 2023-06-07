@@ -3474,8 +3474,14 @@ fn move_focus_right_into_stacked_panes() {
     );
     for i in 0..12 {
         let new_pane_id = i + 2;
-        tab.new_pane(PaneId::Terminal(new_pane_id), None, None, None, Some(client_id))
-            .unwrap();
+        tab.new_pane(
+            PaneId::Terminal(new_pane_id),
+            None,
+            None,
+            None,
+            Some(client_id),
+        )
+        .unwrap();
     }
     tab.move_focus_left(client_id);
     tab.horizontal_split(PaneId::Terminal(16), None, client_id)
@@ -3535,8 +3541,14 @@ fn move_focus_left_into_stacked_panes() {
     );
     for i in 0..13 {
         let new_pane_id = i + 2;
-        tab.new_pane(PaneId::Terminal(new_pane_id), None, None, None, Some(client_id))
-            .unwrap();
+        tab.new_pane(
+            PaneId::Terminal(new_pane_id),
+            None,
+            None,
+            None,
+            Some(client_id),
+        )
+        .unwrap();
     }
     tab.move_focus_right(client_id);
     tab.horizontal_split(PaneId::Terminal(1), None, client_id)
@@ -3598,8 +3610,14 @@ fn move_focus_up_into_stacked_panes() {
     );
     for i in 0..4 {
         let new_pane_id = i + 3;
-        tab.new_pane(PaneId::Terminal(new_pane_id), None, None, None, Some(client_id))
-            .unwrap();
+        tab.new_pane(
+            PaneId::Terminal(new_pane_id),
+            None,
+            None,
+            None,
+            Some(client_id),
+        )
+        .unwrap();
     }
     tab.move_focus_right(client_id);
     tab.move_focus_up(client_id);
@@ -3662,8 +3680,14 @@ fn move_focus_down_into_stacked_panes() {
     );
     for i in 0..4 {
         let new_pane_id = i + 3;
-        tab.new_pane(PaneId::Terminal(new_pane_id), None, None, None, Some(client_id))
-            .unwrap();
+        tab.new_pane(
+            PaneId::Terminal(new_pane_id),
+            None,
+            None,
+            None,
+            Some(client_id),
+        )
+        .unwrap();
     }
     tab.move_focus_left(client_id);
     tab.move_focus_up(client_id);
@@ -5467,8 +5491,14 @@ fn new_pane_in_auto_layout() {
     ];
     for i in 0..7 {
         let new_pane_id = i + 2;
-        tab.new_pane(PaneId::Terminal(new_pane_id), None, None, None, Some(client_id))
-            .unwrap();
+        tab.new_pane(
+            PaneId::Terminal(new_pane_id),
+            None,
+            None,
+            None,
+            Some(client_id),
+        )
+        .unwrap();
         tab.render(&mut output, None).unwrap();
 
         let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(

@@ -32,7 +32,7 @@ use wasmer::Store;
 use crate::{
     os_input_output::ServerOsApi,
     plugins::{plugin_thread_main, PluginInstruction},
-    pty::{pty_thread_main, Pty, PtyInstruction, get_default_shell},
+    pty::{get_default_shell, pty_thread_main, Pty, PtyInstruction},
     screen::{screen_thread_main, ScreenInstruction},
     thread_bus::{Bus, ThreadSenders},
 };
@@ -705,7 +705,10 @@ fn init_session(
             ..Default::default()
         })
     });
-    let path_to_default_shell = config_options.default_shell.clone().unwrap_or_else(|| get_default_shell());
+    let path_to_default_shell = config_options
+        .default_shell
+        .clone()
+        .unwrap_or_else(|| get_default_shell());
 
     let pty_thread = thread::Builder::new()
         .name("pty".to_string())

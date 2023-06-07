@@ -1,16 +1,12 @@
 use crate::plugins::plugin_loader::VersionMismatchError;
-use crate::plugins::plugin_map::{PluginEnv};
+use crate::plugins::plugin_map::PluginEnv;
 use crate::plugins::zellij_exports::wasi_write_object;
 use wasmer::Instance;
 
-
-use zellij_utils::errors::prelude::*;
-use zellij_utils::{
-    consts::VERSION,
-    input::plugins::PluginConfig,
-};
-use zellij_utils::async_channel::{Sender, Receiver, unbounded};
+use zellij_utils::async_channel::{unbounded, Receiver, Sender};
 use zellij_utils::async_std::task;
+use zellij_utils::errors::prelude::*;
+use zellij_utils::{consts::VERSION, input::plugins::PluginConfig};
 
 pub struct RunningWorker {
     pub instance: Instance,
@@ -77,14 +73,14 @@ pub fn plugin_worker(worker: RunningWorker) -> Sender<MessageToWorker> {
                         if let Err(e) = worker.send_message(message, payload) {
                             log::error!("Failed to send message to worker: {:?}", e);
                         }
-                    }
+                    },
                     Ok(MessageToWorker::Exit) => {
                         break;
                     },
                     Err(e) => {
                         log::error!("Failed to receive worker message on channel: {:?}", e);
                         break;
-                    }
+                    },
                 }
             }
         }

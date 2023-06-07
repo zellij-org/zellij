@@ -537,7 +537,8 @@ fn split_largest_pane() {
     let mut tab = create_new_tab(size);
     for i in 2..5 {
         let new_pane_id = PaneId::Terminal(i);
-        tab.new_pane(new_pane_id, None, None, None, Some(1)).unwrap();
+        tab.new_pane(new_pane_id, None, None, None, Some(1))
+            .unwrap();
     }
     assert_eq!(tab.tiled_panes.panes.len(), 4, "The tab has four panes");
 
@@ -786,7 +787,8 @@ pub fn toggle_focused_pane_fullscreen() {
     let mut tab = create_new_tab(size);
     for i in 2..5 {
         let new_pane_id = PaneId::Terminal(i);
-        tab.new_pane(new_pane_id, None, None, None, Some(1)).unwrap();
+        tab.new_pane(new_pane_id, None, None, None, Some(1))
+            .unwrap();
     }
     tab.toggle_active_pane_fullscreen(1);
     assert_eq!(

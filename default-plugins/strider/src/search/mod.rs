@@ -5,19 +5,19 @@ pub mod selection_controls_area;
 pub mod ui;
 
 use crate::state::{CURRENT_SEARCH_TERM, ROOT};
-use search_state::SearchType;
-use std::path::{PathBuf, Path};
-use std::collections::{BTreeMap, BTreeSet, HashMap};
 use crate::MessageToPlugin;
+use search_state::SearchType;
+use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::path::{Path, PathBuf};
 
 use unicode_width::UnicodeWidthStr;
 use zellij_tile::prelude::*;
 
 use fuzzy_matcher::skim::SkimMatcherV2;
 use fuzzy_matcher::FuzzyMatcher;
+use search_results::SearchResult;
 use serde::{Deserialize, Serialize};
 use walkdir::WalkDir;
-use search_results::SearchResult;
 
 use std::io::{self, BufRead};
 
@@ -43,20 +43,20 @@ impl Search {
                 self.scan_hd();
                 post_message_to_plugin(
                     serde_json::to_string(&MessageToPlugin::DoneScanningFolder).unwrap(),
-                    "".to_owned()
+                    "".to_owned(),
                 );
-            }
+            },
             Ok(MessageToSearch::Search) => {
                 if let Some(current_search_term) = self.read_search_term_from_hd_cache() {
                     self.search(current_search_term);
                 }
-            }
+            },
             Ok(MessageToSearch::FileSystemCreate) => {
                 self.rescan_files(payload);
-            }
+            },
             Ok(MessageToSearch::FileSystemUpdate) => {
                 self.rescan_files(payload);
-            }
+            },
             Ok(MessageToSearch::FileSystemDelete) => {
                 self.delete_files(payload);
             },
@@ -70,7 +70,7 @@ impl Search {
     }
     pub fn search(&mut self, search_term: String) {
         let search_results_limit = 100; // artificial limit to prevent probably unwanted chaos
-        // let mut matcher = SkimMatcherV2::default().use_cache(true).element_limit(search_results_limit);
+                                        // let mut matcher = SkimMatcherV2::default().use_cache(true).element_limit(search_results_limit);
         let mut file_names_search_results = None;
         let mut file_contents_search_results = None;
         if let SearchType::Names | SearchType::NamesAndContents = self.search_type {
@@ -79,12 +79,14 @@ impl Search {
                 None => {
                     let mut matcher = SkimMatcherV2::default().use_cache(true);
                     let results = self.search_file_names(&search_term, &mut matcher);
-                    self.cached_file_name_results.insert(search_term.clone(), results.clone());
+                    self.cached_file_name_results
+                        .insert(search_term.clone(), results.clone());
                     results
-                }
+                },
             };
             file_names_search_results = Some(
-                ResultsOfSearch::new(search_term.clone(), file_names_matches).limit_search_results(search_results_limit)
+                ResultsOfSearch::new(search_term.clone(), file_names_matches)
+                    .limit_search_results(search_results_limit),
             );
         };
         if let SearchType::Contents | SearchType::NamesAndContents = self.search_type {
@@ -93,12 +95,14 @@ impl Search {
                 None => {
                     let mut matcher = SkimMatcherV2::default().use_cache(true);
                     let results = self.search_file_contents(&search_term, &mut matcher);
-                    self.cached_file_contents_results.insert(search_term.clone(), results.clone());
+                    self.cached_file_contents_results
+                        .insert(search_term.clone(), results.clone());
                     results
-                }
+                },
             };
             file_contents_search_results = Some(
-                ResultsOfSearch::new(search_term.clone(), file_contents_matches).limit_search_results(search_results_limit)
+                ResultsOfSearch::new(search_term.clone(), file_contents_matches)
+                    .limit_search_results(search_results_limit),
             );
         };
 
@@ -114,7 +118,7 @@ impl Search {
                 serde_json::to_string(&file_names_search_results).unwrap(),
             );
         }
-        if let Some(file_contents_search_results) = file_contents_search_results{
+        if let Some(file_contents_search_results) = file_contents_search_results {
             post_message_to_plugin(
                 serde_json::to_string(&MessageToPlugin::UpdateFileContentsSearchResults).unwrap(),
                 serde_json::to_string(&file_contents_search_results).unwrap(),
@@ -130,7 +134,7 @@ impl Search {
                 self.cached_file_name_results.clear();
                 self.cached_file_contents_results.clear();
             },
-            Err(e) => eprintln!("Failed to deserialize paths: {:?}", e)
+            Err(e) => eprintln!("Failed to deserialize paths: {:?}", e),
         }
     }
     pub fn delete_files(&mut self, paths: String) {
@@ -139,8 +143,8 @@ impl Search {
                 self.remove_existing_entries(&paths);
                 self.cached_file_name_results.clear();
                 self.cached_file_contents_results.clear();
-            }
-            Err(e) => eprintln!("Failed to deserialize paths: {:?}", e)
+            },
+            Err(e) => eprintln!("Failed to deserialize paths: {:?}", e),
         }
     }
     fn add_file_entry(&mut self, file_name: &Path, file_metadata: Option<std::fs::Metadata>) {
@@ -161,7 +165,10 @@ impl Search {
                                         file_path_stripped_prefix.clone(),
                                         index + 1,
                                     ),
-                                    String::from_utf8_lossy(&strip_ansi_escapes::strip(line).unwrap()).to_string(),
+                                    String::from_utf8_lossy(
+                                        &strip_ansi_escapes::strip(line).unwrap(),
+                                    )
+                                    .to_string(),
                                 );
                             },
                             Err(_) => {
@@ -232,14 +239,20 @@ impl Search {
     }
     fn read_search_term_from_hd_cache(&self) -> Option<String> {
         match std::fs::read(CURRENT_SEARCH_TERM) {
-            Ok(current_search_term) => Some(String::from_utf8_lossy(&current_search_term).to_string()),
+            Ok(current_search_term) => {
+                Some(String::from_utf8_lossy(&current_search_term).to_string())
+            },
             _ => None,
         }
     }
     fn remove_existing_entries(&mut self, paths: &Vec<PathBuf>) {
-        let file_path_stripped_prefixes: Vec<String> = paths.iter().map(|p| self.strip_file_prefix(&p)).collect();
-        self.file_names.retain(|file_name| !file_path_stripped_prefixes.contains(file_name));
-        self.file_contents.retain(|(file_name, _line_in_file), _| !file_path_stripped_prefixes.contains(file_name));
+        let file_path_stripped_prefixes: Vec<String> =
+            paths.iter().map(|p| self.strip_file_prefix(&p)).collect();
+        self.file_names
+            .retain(|file_name| !file_path_stripped_prefixes.contains(file_name));
+        self.file_contents.retain(|(file_name, _line_in_file), _| {
+            !file_path_stripped_prefixes.contains(file_name)
+        });
     }
 }
 
@@ -260,7 +273,7 @@ pub struct FileNameWorker {
 impl Default for FileNameWorker {
     fn default() -> Self {
         FileNameWorker {
-            search: Search::new(SearchType::Names)
+            search: Search::new(SearchType::Names),
         }
     }
 }
@@ -273,12 +286,12 @@ pub struct FileContentsWorker {
 impl Default for FileContentsWorker {
     fn default() -> Self {
         FileContentsWorker {
-            search: Search::new(SearchType::Contents)
+            search: Search::new(SearchType::Contents),
         }
     }
 }
 
-impl<'de> ZellijWorker<'de> for FileNameWorker{
+impl<'de> ZellijWorker<'de> for FileNameWorker {
     fn on_message(&mut self, message: String, payload: String) {
         self.search.on_message(message, payload);
     }
@@ -314,4 +327,3 @@ impl ResultsOfSearch {
         self
     }
 }
-

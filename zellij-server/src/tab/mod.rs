@@ -47,8 +47,8 @@ use zellij_utils::{
     input::{
         command::TerminalAction,
         layout::{
-            FloatingPaneLayout, Run, RunPlugin, RunPluginLocation, SwapFloatingLayout, SwapTiledLayout,
-            TiledPaneLayout,
+            FloatingPaneLayout, Run, RunPlugin, RunPluginLocation, SwapFloatingLayout,
+            SwapTiledLayout, TiledPaneLayout,
         },
         parse_keys,
     },
@@ -914,7 +914,11 @@ impl Tab {
                     ))
                         .with_context(err_context)?;
                     self.hide_floating_panes();
-                    self.add_tiled_pane(floating_pane_to_embed, focused_floating_pane_id, Some(client_id))?;
+                    self.add_tiled_pane(
+                        floating_pane_to_embed,
+                        focused_floating_pane_id,
+                        Some(client_id),
+                    )?;
                 }
             }
         } else if let Some(focused_pane_id) = self.tiled_panes.focused_pane_id(client_id) {
@@ -922,7 +926,9 @@ impl Tab {
                 // don't close the only pane on screen...
                 return Ok(());
             }
-            if let Some(embedded_pane_to_float) = self.close_pane(focused_pane_id, true, Some(client_id)) {
+            if let Some(embedded_pane_to_float) =
+                self.close_pane(focused_pane_id, true, Some(client_id))
+            {
                 self.show_floating_panes();
                 self.add_floating_pane(embedded_pane_to_float, focused_pane_id, Some(client_id))?;
             }
@@ -1029,7 +1035,7 @@ impl Tab {
                     self.style,
                     run_plugin,
                 )) as Box<dyn Pane>
-            }
+            },
         };
         if self.floating_panes.panes_are_visible() {
             self.add_floating_pane(new_pane, pid, client_id)
@@ -3243,40 +3249,45 @@ impl Tab {
     }
 
     pub fn find_plugin(&self, run_plugin: &RunPlugin) -> Option<PaneId> {
-        self.tiled_panes.get_plugin_pane_id(run_plugin)
-            .or_else(|| self
-                .floating_panes
-                .get_plugin_pane_id(run_plugin)
-            ).or_else(|| {
+        self.tiled_panes
+            .get_plugin_pane_id(run_plugin)
+            .or_else(|| self.floating_panes.get_plugin_pane_id(run_plugin))
+            .or_else(|| {
                 let run = Some(Run::Plugin(run_plugin.clone()));
-                self
-                    .suppressed_panes
+                self.suppressed_panes
                     .iter()
                     .find(|(_id, s_p)| s_p.invoked_with() == &run)
                     .map(|(id, _)| *id)
             })
     }
 
-    pub fn focus_pane_with_id(&mut self, pane_id: PaneId, should_float: bool, client_id: ClientId) -> Result<()> {
-        self.tiled_panes.focus_pane_if_exists(pane_id, client_id)
+    pub fn focus_pane_with_id(
+        &mut self,
+        pane_id: PaneId,
+        should_float: bool,
+        client_id: ClientId,
+    ) -> Result<()> {
+        self.tiled_panes
+            .focus_pane_if_exists(pane_id, client_id)
             .or_else(|_| {
-                let focused_floating_pane = self.floating_panes.focus_pane_if_exists(pane_id, client_id);
-                if focused_floating_pane.is_ok() { self.show_floating_panes() };
+                let focused_floating_pane =
+                    self.floating_panes.focus_pane_if_exists(pane_id, client_id);
+                if focused_floating_pane.is_ok() {
+                    self.show_floating_panes()
+                };
                 focused_floating_pane
             })
-            .or_else(|_| {
-                match self.suppressed_panes.remove(&pane_id) {
-                    Some(pane) => {
-                        if should_float {
-                            self.show_floating_panes();
-                            self.add_floating_pane(pane, pane_id, Some(client_id))
-                        } else {
-                            self.hide_floating_panes();
-                            self.add_tiled_pane(pane, pane_id, Some(client_id))
-                        }
+            .or_else(|_| match self.suppressed_panes.remove(&pane_id) {
+                Some(pane) => {
+                    if should_float {
+                        self.show_floating_panes();
+                        self.add_floating_pane(pane, pane_id, Some(client_id))
+                    } else {
+                        self.hide_floating_panes();
+                        self.add_tiled_pane(pane, pane_id, Some(client_id))
                     }
-                    None => Ok(())
-                }
+                },
+                None => Ok(()),
             })
     }
     pub fn suppress_pane(&mut self, pane_id: PaneId, client_id: ClientId) {
@@ -3284,19 +3295,19 @@ impl Tab {
             self.suppressed_panes.insert(pane_id, pane);
         }
     }
-    fn add_floating_pane(&mut self, mut pane: Box<dyn Pane>, pane_id: PaneId, client_id: Option<ClientId>) -> Result<()> {
+    fn add_floating_pane(
+        &mut self,
+        mut pane: Box<dyn Pane>,
+        pane_id: PaneId,
+        client_id: Option<ClientId>,
+    ) -> Result<()> {
         let err_context = || format!("failed to add floating pane");
         if let Some(new_pane_geom) = self.floating_panes.find_room_for_new_pane() {
             pane.set_active_at(Instant::now());
             pane.set_geom(new_pane_geom);
             pane.set_content_offset(Offset::frame(1)); // floating panes always have a frame
-            resize_pty!(
-                pane,
-                self.os_api,
-                self.senders,
-                self.character_cell_size
-            )
-            .with_context(err_context)?;
+            resize_pty!(pane, self.os_api, self.senders, self.character_cell_size)
+                .with_context(err_context)?;
             self.floating_panes.add_pane(pane_id, pane);
             self.floating_panes.focus_pane_for_all_clients(pane_id);
         }
@@ -3309,7 +3320,12 @@ impl Tab {
         }
         Ok(())
     }
-    fn add_tiled_pane(&mut self, mut pane: Box<dyn Pane>, pane_id: PaneId, client_id: Option<ClientId>) -> Result<()> {
+    fn add_tiled_pane(
+        &mut self,
+        mut pane: Box<dyn Pane>,
+        pane_id: PaneId,
+        client_id: Option<ClientId>,
+    ) -> Result<()> {
         if self.tiled_panes.fullscreen_is_active() {
             self.tiled_panes.unset_fullscreen();
         }
@@ -3319,8 +3335,7 @@ impl Tab {
             if should_auto_layout {
                 // no need to relayout here, we'll do it when reapplying the swap layout
                 // below
-                self.tiled_panes
-                    .insert_pane_without_relayout(pane_id, pane);
+                self.tiled_panes.insert_pane_without_relayout(pane_id, pane);
             } else {
                 self.tiled_panes.insert_pane(pane_id, pane);
             }

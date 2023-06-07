@@ -438,7 +438,7 @@ impl From<&ScreenInstruction> for ScreenContext {
                 ScreenContext::RequestStateUpdateForPlugins
             },
             ScreenInstruction::LaunchOrFocusPlugin(..) => ScreenContext::LaunchOrFocusPlugin,
-            ScreenInstruction::SuppressPane(..) => ScreenContext::SuppressPane
+            ScreenInstruction::SuppressPane(..) => ScreenContext::SuppressPane,
         }
     }
 }
@@ -1466,7 +1466,12 @@ impl Screen {
         self.render()
     }
 
-    pub fn focus_plugin_pane(&mut self, run_plugin: &RunPlugin, should_float: bool, client_id: ClientId) -> Result<bool> {
+    pub fn focus_plugin_pane(
+        &mut self,
+        run_plugin: &RunPlugin,
+        should_float: bool,
+        client_id: ClientId,
+    ) -> Result<bool> {
         // true => found and focused, false => not
         let all_tabs = self.get_tabs_mut();
         for tab in all_tabs.values_mut() {
@@ -1593,7 +1598,13 @@ pub(crate) fn screen_thread_main(
                     },
                     ClientOrTabIndex::TabIndex(tab_index) => {
                         if let Some(active_tab) = screen.tabs.get_mut(&tab_index) {
-                            active_tab.new_pane(pid, initial_pane_title, should_float, None, None)?;
+                            active_tab.new_pane(
+                                pid,
+                                initial_pane_title,
+                                should_float,
+                                None,
+                                None,
+                            )?;
                             if let Some(hold_for_command) = hold_for_command {
                                 let is_first_run = true;
                                 active_tab.hold_pane(pid, None, is_first_run, hold_for_command);
@@ -2627,12 +2638,17 @@ pub(crate) fn screen_thread_main(
                 screen.render()?;
             },
             ScreenInstruction::LaunchOrFocusPlugin(run_plugin, should_float, client_id) => {
-                let client_id = if screen.active_tab_indices.contains_key(&client_id) { Some(client_id) } else { screen.get_first_client_id() };
-                let client_id_and_focused_tab = client_id
-                    .and_then(|client_id| screen.active_tab_indices
+                let client_id = if screen.active_tab_indices.contains_key(&client_id) {
+                    Some(client_id)
+                } else {
+                    screen.get_first_client_id()
+                };
+                let client_id_and_focused_tab = client_id.and_then(|client_id| {
+                    screen
+                        .active_tab_indices
                         .get(&client_id)
                         .map(|tab_index| (*tab_index, client_id))
-                    );
+                });
                 match client_id_and_focused_tab {
                     Some((tab_index, client_id)) => {
                         if screen.focus_plugin_pane(&run_plugin, should_float, client_id)? {
@@ -2647,10 +2663,10 @@ pub(crate) fn screen_thread_main(
                                 Size::default(),
                             ))?;
                         }
-                    }
+                    },
                     None => log::error!("No connected clients found - cannot load or focus plugin"),
                 }
-            }
+            },
             ScreenInstruction::SuppressPane(pane_id, client_id) => {
                 let all_tabs = screen.get_tabs_mut();
                 for tab in all_tabs.values_mut() {
@@ -2660,7 +2676,7 @@ pub(crate) fn screen_thread_main(
                         break;
                     }
                 }
-            }
+            },
         }
     }
     Ok(())

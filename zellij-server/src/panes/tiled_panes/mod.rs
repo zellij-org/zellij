@@ -20,7 +20,10 @@ use stacked_panes::StackedPanes;
 use zellij_utils::{
     data::{Direction, ModeInfo, ResizeStrategy, Style},
     errors::prelude::*,
-    input::{command::RunCommand, layout::{SplitDirection, Run, RunPlugin}},
+    input::{
+        command::RunCommand,
+        layout::{Run, RunPlugin, SplitDirection},
+    },
     pane_size::{Offset, PaneGeom, Size, SizeInPixels, Viewport},
 };
 
@@ -1701,8 +1704,7 @@ impl TiledPanes {
     }
     pub fn get_plugin_pane_id(&self, run_plugin: &RunPlugin) -> Option<PaneId> {
         let run = Some(Run::Plugin(run_plugin.clone()));
-        self
-            .panes
+        self.panes
             .iter()
             .find(|(_id, s_p)| s_p.invoked_with() == &run)
             .map(|(id, _)| *id)

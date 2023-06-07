@@ -1,5 +1,7 @@
 use crate::search::search_state::SearchType;
-use crate::search::ui::{GRAY_DARK, GRAY_LIGHT, WHITE, BLACK, RED, bold, arrow, dot, styled_text, color_line_to_end};
+use crate::search::ui::{
+    arrow, bold, color_line_to_end, dot, styled_text, BLACK, GRAY_DARK, GRAY_LIGHT, RED, WHITE,
+};
 
 #[derive(Default)]
 pub struct ControlsLine {
@@ -28,10 +30,14 @@ impl ControlsLine {
         }
     }
     pub fn render_controls(&self, max_width: usize) -> String {
-        let loading_animation = LoadingAnimation::new(&self.scanning_indication, self.animation_offset);
-        let full_length = loading_animation.full_len() + self.controls.iter().map(|c| c.full_len()).sum::<usize>();
-        let mid_length = loading_animation.mid_len() + self.controls.iter().map(|c| c.mid_len()).sum::<usize>();
-        let short_length = loading_animation.short_len() + self.controls.iter().map(|c| c.short_len()).sum::<usize>();
+        let loading_animation =
+            LoadingAnimation::new(&self.scanning_indication, self.animation_offset);
+        let full_length = loading_animation.full_len()
+            + self.controls.iter().map(|c| c.full_len()).sum::<usize>();
+        let mid_length =
+            loading_animation.mid_len() + self.controls.iter().map(|c| c.mid_len()).sum::<usize>();
+        let short_length = loading_animation.short_len()
+            + self.controls.iter().map(|c| c.short_len()).sum::<usize>();
         if max_width >= full_length {
             let mut to_render = String::new();
             for control in &self.controls {
@@ -61,16 +67,23 @@ impl ControlsLine {
         }
     }
     pub fn render_empty_line(&self, max_width: usize) -> String {
-        let loading_animation = LoadingAnimation::new(&self.scanning_indication, self.animation_offset);
+        let loading_animation =
+            LoadingAnimation::new(&self.scanning_indication, self.animation_offset);
         let mut to_render = String::new();
         if max_width >= loading_animation.full_len() {
-            to_render.push_str(&self.render_padding(max_width.saturating_sub(loading_animation.full_len())));
+            to_render.push_str(
+                &self.render_padding(max_width.saturating_sub(loading_animation.full_len())),
+            );
             to_render.push_str(&loading_animation.render_full_length());
         } else if max_width >= loading_animation.mid_len() {
-            to_render.push_str(&self.render_padding(max_width.saturating_sub(loading_animation.mid_len())));
+            to_render.push_str(
+                &self.render_padding(max_width.saturating_sub(loading_animation.mid_len())),
+            );
             to_render.push_str(&loading_animation.render_mid_length());
         } else if max_width >= loading_animation.short_len() {
-            to_render.push_str(&self.render_padding(max_width.saturating_sub(loading_animation.short_len())));
+            to_render.push_str(
+                &self.render_padding(max_width.saturating_sub(loading_animation.short_len())),
+            );
             to_render.push_str(&loading_animation.render_short_length());
         }
         to_render
@@ -102,73 +115,83 @@ impl Default for Control {
             keycode_foreground_color: WHITE,
             control_text_background_color: GRAY_DARK,
             control_text_foreground_color: BLACK,
-            active_dot_color: RED
+            active_dot_color: RED,
         }
     }
 }
 
 impl Control {
-    pub fn new(key: &'static str, options: Vec<&'static str>, option_index: (usize, usize)) -> Self {
-        Control { key, options, option_index, ..Default::default() }
+    pub fn new(
+        key: &'static str,
+        options: Vec<&'static str>,
+        option_index: (usize, usize),
+    ) -> Self {
+        Control {
+            key,
+            options,
+            option_index,
+            ..Default::default()
+        }
     }
     pub fn new_floating_control(key: &'static str, should_open_floating: bool) -> Self {
         if should_open_floating {
-            Control::new(
-                key,
-                vec!["OPEN FLOATING", "FLOATING", "F"],
-                (2, 2)
-            )
+            Control::new(key, vec!["OPEN FLOATING", "FLOATING", "F"], (2, 2))
         } else {
-            Control::new(
-                key,
-                vec!["OPEN TILED", "TILED", "T"],
-                (1, 2)
-            )
+            Control::new(key, vec!["OPEN TILED", "TILED", "T"], (1, 2))
         }
     }
     pub fn new_filter_control(key: &'static str, search_filter: &SearchType) -> Self {
         match search_filter {
-            SearchType::NamesAndContents => {
-                Control::new(
-                    key,
-                    vec!["FILE NAMES AND CONTENTS", "NAMES + CONTENTS", "N+C"],
-                    (1, 3)
-                )
-            }
-            SearchType::Names => {
-                Control::new(
-                    key,
-                    vec!["FILE NAMES", "NAMES", "N"],
-                    (2, 3)
-                )
-            }
+            SearchType::NamesAndContents => Control::new(
+                key,
+                vec!["FILE NAMES AND CONTENTS", "NAMES + CONTENTS", "N+C"],
+                (1, 3),
+            ),
+            SearchType::Names => Control::new(key, vec!["FILE NAMES", "NAMES", "N"], (2, 3)),
             SearchType::Contents => {
-                Control::new(
-                    key,
-                    vec!["FILE CONTENTS", "CONTENTS", "C"],
-                    (3, 3)
-                )
-            }
+                Control::new(key, vec!["FILE CONTENTS", "CONTENTS", "C"], (3, 3))
+            },
         }
     }
     pub fn short_len(&self) -> usize {
-        let short_text = self.options.get(2).or_else(|| self.options.get(1)).or_else(|| self.options.get(0)).unwrap_or(&"");
-        short_text.chars().count() + self.key.chars().count() + self.option_index.1 + 7 // 7 for all the spaces and decorations
+        let short_text = self
+            .options
+            .get(2)
+            .or_else(|| self.options.get(1))
+            .or_else(|| self.options.get(0))
+            .unwrap_or(&"");
+        short_text.chars().count() + self.key.chars().count() + self.option_index.1 + 7
+        // 7 for all the spaces and decorations
     }
     pub fn mid_len(&self) -> usize {
-        let mid_text = self.options.get(1).or_else(|| self.options.get(0)).unwrap_or(&"");
-        mid_text.chars().count() + self.key.chars().count() + self.option_index.1 + 7 // 7 for all the spaces and decorations
+        let mid_text = self
+            .options
+            .get(1)
+            .or_else(|| self.options.get(0))
+            .unwrap_or(&"");
+        mid_text.chars().count() + self.key.chars().count() + self.option_index.1 + 7
+        // 7 for all the spaces and decorations
     }
     pub fn full_len(&self) -> usize {
         let full_text = self.options.get(0).unwrap_or(&"");
-        full_text.chars().count() + self.key.chars().count() + self.option_index.1 + 7 // 7 for all the spaces and decorations
+        full_text.chars().count() + self.key.chars().count() + self.option_index.1 + 7
+        // 7 for all the spaces and decorations
     }
     pub fn render_short_length(&self) -> String {
-        let short_text = self.options.get(2).or_else(|| self.options.get(1)).or_else(|| self.options.get(0)).unwrap_or(&"");
+        let short_text = self
+            .options
+            .get(2)
+            .or_else(|| self.options.get(1))
+            .or_else(|| self.options.get(0))
+            .unwrap_or(&"");
         self.render(short_text)
     }
     pub fn render_mid_length(&self) -> String {
-        let mid_text = self.options.get(1).or_else(|| self.options.get(0)).unwrap_or(&"");
+        let mid_text = self
+            .options
+            .get(1)
+            .or_else(|| self.options.get(0))
+            .unwrap_or(&"");
         self.render(mid_text)
     }
     pub fn render_full_length(&self) -> String {
@@ -179,26 +202,46 @@ impl Control {
         format!(
             "{}{}{}{}{}{}",
             self.render_keycode(&format!(" {} ", self.key)),
-            arrow(self.keycode_background_color, self.control_text_background_color),
+            arrow(
+                self.keycode_background_color,
+                self.control_text_background_color
+            ),
             self.render_selection_dots(),
             self.render_control_text(&format!("{} ", text)),
-            arrow(self.control_text_background_color, self.keycode_background_color),
+            arrow(
+                self.control_text_background_color,
+                self.keycode_background_color
+            ),
             color_line_to_end(self.keycode_background_color),
         )
     }
     fn render_keycode(&self, text: &str) -> String {
-        styled_text(self.keycode_foreground_color, self.keycode_background_color, &bold(text))
+        styled_text(
+            self.keycode_foreground_color,
+            self.keycode_background_color,
+            &bold(text),
+        )
     }
     fn render_control_text(&self, text: &str) -> String {
-        styled_text(self.control_text_foreground_color, self.control_text_background_color, &bold(text))
+        styled_text(
+            self.control_text_foreground_color,
+            self.control_text_background_color,
+            &bold(text),
+        )
     }
     fn render_selection_dots(&self) -> String {
         let mut selection_dots = String::from(" ");
         for i in 1..=self.option_index.1 {
             if i == self.option_index.0 {
-                selection_dots.push_str(&dot(self.active_dot_color, self.control_text_background_color));
+                selection_dots.push_str(&dot(
+                    self.active_dot_color,
+                    self.control_text_background_color,
+                ));
             } else {
-                selection_dots.push_str(&dot(self.control_text_foreground_color, self.control_text_background_color));
+                selection_dots.push_str(&dot(
+                    self.control_text_foreground_color,
+                    self.control_text_background_color,
+                ));
             }
         }
         selection_dots.push_str(" ");
@@ -211,7 +254,6 @@ struct LoadingAnimation {
     animation_offset: u8,
     background_color: u8,
     foreground_color: u8,
-
 }
 impl LoadingAnimation {
     pub fn new(scanning_indication: &Option<Vec<&'static str>>, animation_offset: u8) -> Self {
@@ -223,49 +265,81 @@ impl LoadingAnimation {
         }
     }
     pub fn full_len(&self) -> usize {
-        self.scanning_indication.as_ref()
+        self.scanning_indication
+            .as_ref()
             .and_then(|scanning_indication| scanning_indication.get(0))
             .map(|s| s.chars().count() + 3) // 3 for animation dots
             .unwrap_or(0)
     }
     pub fn mid_len(&self) -> usize {
-        self.scanning_indication.as_ref()
-            .and_then(|scanning_indication| scanning_indication.get(1)
-                .or_else(|| scanning_indication.get(0))
-            )
+        self.scanning_indication
+            .as_ref()
+            .and_then(|scanning_indication| {
+                scanning_indication
+                    .get(1)
+                    .or_else(|| scanning_indication.get(0))
+            })
             .map(|s| s.chars().count() + 3) // 3 for animation dots
             .unwrap_or(0)
     }
     pub fn short_len(&self) -> usize {
-        self.scanning_indication.as_ref()
-            .and_then(|scanning_indication| scanning_indication.get(2)
-                .or_else(|| scanning_indication.get(1))
-                .or_else(|| scanning_indication.get(0))
-            )
+        self.scanning_indication
+            .as_ref()
+            .and_then(|scanning_indication| {
+                scanning_indication
+                    .get(2)
+                    .or_else(|| scanning_indication.get(1))
+                    .or_else(|| scanning_indication.get(0))
+            })
             .map(|s| s.chars().count() + 3) // 3 for animation dots
             .unwrap_or(0)
     }
     pub fn render_full_length(&self) -> String {
-        self.scanning_indication.as_ref()
+        self.scanning_indication
+            .as_ref()
             .and_then(|scanning_indication| scanning_indication.get(0))
-            .map(|s| styled_text(self.foreground_color, self.background_color, &bold(&(s.to_string() + &self.animation_dots()))))
+            .map(|s| {
+                styled_text(
+                    self.foreground_color,
+                    self.background_color,
+                    &bold(&(s.to_string() + &self.animation_dots())),
+                )
+            })
             .unwrap_or_else(String::new)
     }
     pub fn render_mid_length(&self) -> String {
-        self.scanning_indication.as_ref()
-            .and_then(|scanning_indication| scanning_indication.get(1)
-                .or_else(|| scanning_indication.get(0))
-            )
-            .map(|s| styled_text(self.background_color, self.foreground_color, &bold(&(s.to_string() + &self.animation_dots()))))
+        self.scanning_indication
+            .as_ref()
+            .and_then(|scanning_indication| {
+                scanning_indication
+                    .get(1)
+                    .or_else(|| scanning_indication.get(0))
+            })
+            .map(|s| {
+                styled_text(
+                    self.background_color,
+                    self.foreground_color,
+                    &bold(&(s.to_string() + &self.animation_dots())),
+                )
+            })
             .unwrap_or_else(String::new)
     }
     pub fn render_short_length(&self) -> String {
-        self.scanning_indication.as_ref()
-            .and_then(|scanning_indication| scanning_indication.get(2)
-                .or_else(|| scanning_indication.get(1))
-                .or_else(|| scanning_indication.get(0))
-            )
-            .map(|s| styled_text(self.background_color, self.foreground_color, &bold(&(s.to_string() + &self.animation_dots()))))
+        self.scanning_indication
+            .as_ref()
+            .and_then(|scanning_indication| {
+                scanning_indication
+                    .get(2)
+                    .or_else(|| scanning_indication.get(1))
+                    .or_else(|| scanning_indication.get(0))
+            })
+            .map(|s| {
+                styled_text(
+                    self.background_color,
+                    self.foreground_color,
+                    &bold(&(s.to_string() + &self.animation_dots())),
+                )
+            })
             .unwrap_or_else(String::new)
     }
     fn animation_dots(&self) -> String {

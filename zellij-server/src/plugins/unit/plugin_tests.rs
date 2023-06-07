@@ -50,7 +50,9 @@ macro_rules! log_actions_in_thread {
     };
 }
 
-fn create_plugin_thread(zellij_cwd: Option<PathBuf>) -> (
+fn create_plugin_thread(
+    zellij_cwd: Option<PathBuf>,
+) -> (
     SenderWithContext<PluginInstruction>,
     Receiver<(ScreenInstruction, ErrorContext)>,
     Box<dyn FnMut()>,
@@ -329,7 +331,8 @@ pub fn can_subscribe_to_hd_events() {
     let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
-    let (plugin_thread_sender, screen_receiver, mut teardown) = create_plugin_thread(Some(plugin_host_folder));
+    let (plugin_thread_sender, screen_receiver, mut teardown) =
+        create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
     let run_plugin = RunPlugin {
@@ -365,7 +368,11 @@ pub fn can_subscribe_to_hd_events() {
         Event::InputReceived,
     )])); // will be cached and sent to the plugin once it's loaded
     std::thread::sleep(std::time::Duration::from_millis(100));
-    std::fs::OpenOptions::new().create(true).write(true).open(PathBuf::from(temp_folder.path()).join("test1")).unwrap();
+    std::fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .open(PathBuf::from(temp_folder.path()).join("test1"))
+        .unwrap();
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
     let plugin_bytes_event = received_screen_instructions

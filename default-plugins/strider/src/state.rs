@@ -1,6 +1,6 @@
-use crate::search::search_state::SearchType;
-use crate::search::search_state::SearchState;
 use crate::search::search_results::SearchResult;
+use crate::search::search_state::SearchState;
+use crate::search::search_state::SearchType;
 use pretty_bytes::converter as pb;
 use std::{
     collections::{HashMap, VecDeque},

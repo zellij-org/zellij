@@ -14,7 +14,9 @@ use zellij_utils::data::Resize;
 use zellij_utils::errors::{prelude::*, ErrorContext};
 use zellij_utils::input::actions::Action;
 use zellij_utils::input::command::{RunCommand, TerminalAction};
-use zellij_utils::input::layout::{Layout, SplitDirection, TiledPaneLayout, Run, RunPlugin, RunPluginLocation};
+use zellij_utils::input::layout::{
+    Layout, Run, RunPlugin, RunPluginLocation, SplitDirection, TiledPaneLayout,
+};
 use zellij_utils::input::options::Options;
 use zellij_utils::ipc::IpcReceiverWithContext;
 use zellij_utils::pane_size::{Size, SizeInPixels};
@@ -292,7 +294,10 @@ impl MockScreen {
         let pane_count = pane_layout.extract_run_instructions().len();
         let mut pane_ids = vec![];
         let mut plugin_ids = HashMap::new();
-        plugin_ids.insert(RunPluginLocation::File(PathBuf::from("/path/to/fake/plugin")), vec![1]);
+        plugin_ids.insert(
+            RunPluginLocation::File(PathBuf::from("/path/to/fake/plugin")),
+            vec![1],
+        );
         for i in 0..pane_count {
             pane_ids.push((i as u32, None));
         }
@@ -2736,7 +2741,7 @@ pub fn send_cli_launch_or_focus_plugin_action() {
     );
     let cli_action = CliAction::LaunchOrFocusPlugin {
         floating: true,
-        url: url::Url::parse("file:/path/to/fake/plugin").unwrap()
+        url: url::Url::parse("file:/path/to/fake/plugin").unwrap(),
     };
     send_cli_action_to_server(&session_metadata, cli_action, &mut mock_screen, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -2791,7 +2796,7 @@ pub fn send_cli_launch_or_focus_plugin_action_when_plugin_is_already_loaded() {
     );
     let cli_action = CliAction::LaunchOrFocusPlugin {
         floating: true,
-        url: url::Url::parse("file:/path/to/fake/plugin").unwrap()
+        url: url::Url::parse("file:/path/to/fake/plugin").unwrap(),
     };
     send_cli_action_to_server(&session_metadata, cli_action, &mut mock_screen, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -2806,18 +2811,26 @@ pub fn send_cli_launch_or_focus_plugin_action_when_plugin_is_already_loaded() {
             _ => false,
         })
         .is_some();
-    assert!(!plugin_load_instruction_sent, "Plugin Load instruction should not be sent for an already loaded plugin");
+    assert!(
+        !plugin_load_instruction_sent,
+        "Plugin Load instruction should not be sent for an already loaded plugin"
+    );
     let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
         received_server_instructions.lock().unwrap().iter(),
         size,
     );
     let snapshot_count = snapshots.len();
-    assert_eq!(snapshot_count, 2, "Another render was sent for focusing the already loaded plugin");
+    assert_eq!(
+        snapshot_count, 2,
+        "Another render was sent for focusing the already loaded plugin"
+    );
     for (cursor_coordinates, _snapshot) in snapshots.iter().skip(1) {
-        assert!(cursor_coordinates.is_none(), "Cursor moved to existing plugin in final snapshot indicating focus changed");
+        assert!(
+            cursor_coordinates.is_none(),
+            "Cursor moved to existing plugin in final snapshot indicating focus changed"
+        );
     }
 }
-
 
 #[test]
 pub fn screen_can_suppress_pane() {
@@ -2834,7 +2847,9 @@ pub fn screen_can_suppress_pane() {
         ServerInstruction::KillSession,
         server_receiver
     );
-    let _ = mock_screen.to_screen.send(ScreenInstruction::SuppressPane(PaneId::Terminal(1), 1));
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::SuppressPane(PaneId::Terminal(1), 1));
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![server_thread, screen_thread]);
 
@@ -2847,5 +2862,4 @@ pub fn screen_can_suppress_pane() {
         assert_snapshot!(format!("{}", snapshot));
     }
     assert_snapshot!(format!("{}", snapshot_count));
-
 }

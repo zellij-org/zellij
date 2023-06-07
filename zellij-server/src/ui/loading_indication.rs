@@ -268,7 +268,11 @@ impl Display for LoadingIndication {
             stringified.push_str(&format!("\n\r{} {error_text}", red.bold().paint("ERROR:")));
             // we add this additional line explicitly to make it easier to realize when something
             // is wrong in very small plugins (eg. the tab-bar and status-bar)
-            stringified.push_str(&format!("\n\r{}", red.bold().paint("ERROR IN PLUGIN - check logs for more info")));
+            stringified.push_str(&format!(
+                "\n\r{}",
+                red.bold()
+                    .paint("ERROR IN PLUGIN - check logs for more info")
+            ));
         }
         write!(f, "{}", stringified)
     }

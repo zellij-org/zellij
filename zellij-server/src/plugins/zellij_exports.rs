@@ -24,7 +24,10 @@ use zellij_utils::{
     consts::VERSION,
     data::{Event, EventType, PluginIds},
     errors::prelude::*,
-    input::{command::{TerminalAction, RunCommand}, plugins::PluginType},
+    input::{
+        command::{RunCommand, TerminalAction},
+        plugins::PluginType,
+    },
     serde,
 };
 
@@ -249,7 +252,10 @@ fn host_open_terminal(env: &ForeignFunctionEnv) {
             env.plugin_env
                 .senders
                 .send_to_pty(PtyInstruction::SpawnTerminal(
-                    Some(TerminalAction::RunCommand(RunCommand::new(env.plugin_env.path_to_default_shell.clone()).with_cwd(path))),
+                    Some(TerminalAction::RunCommand(
+                        RunCommand::new(env.plugin_env.path_to_default_shell.clone())
+                            .with_cwd(path),
+                    )),
                     Some(false),
                     None,
                     ClientOrTabIndex::ClientId(env.plugin_env.client_id),
@@ -270,7 +276,10 @@ fn host_open_terminal_floating(env: &ForeignFunctionEnv) {
             env.plugin_env
                 .senders
                 .send_to_pty(PtyInstruction::SpawnTerminal(
-                    Some(TerminalAction::RunCommand(RunCommand::new(env.plugin_env.path_to_default_shell.clone()).with_cwd(path))),
+                    Some(TerminalAction::RunCommand(
+                        RunCommand::new(env.plugin_env.path_to_default_shell.clone())
+                            .with_cwd(path),
+                    )),
                     Some(true),
                     None,
                     ClientOrTabIndex::ClientId(env.plugin_env.client_id),
@@ -411,8 +420,8 @@ fn host_hide_self(env: &ForeignFunctionEnv) {
             PaneId::Plugin(env.plugin_env.plugin_id),
             env.plugin_env.client_id,
         ))
-    .with_context(|| format!("failed to hide self"))
-    .fatal();
+        .with_context(|| format!("failed to hide self"))
+        .fatal();
 }
 
 // Custom panic handler for plugins.
@@ -430,7 +439,11 @@ fn host_report_panic(env: &ForeignFunctionEnv) {
         })
         .fatal();
     log::error!("PANIC IN PLUGIN! {}", msg);
-    handle_plugin_crash(env.plugin_env.plugin_id, msg, env.plugin_env.senders.clone());
+    handle_plugin_crash(
+        env.plugin_env.plugin_id,
+        msg,
+        env.plugin_env.senders.clone(),
+    );
 }
 
 // Helper Functions ---------------------------------------------------------------------------------------------------

@@ -1,7 +1,5 @@
-use crate::plugins::plugin_map::{
-    PluginEnv, PluginMap, RunningPlugin, Subscriptions,
-};
-use crate::plugins::plugin_worker::{RunningWorker, plugin_worker};
+use crate::plugins::plugin_map::{PluginEnv, PluginMap, RunningPlugin, Subscriptions};
+use crate::plugins::plugin_worker::{plugin_worker, RunningWorker};
 use crate::plugins::zellij_exports::{wasi_read_string, zellij_exports};
 use crate::plugins::PluginId;
 use highway::{HighwayHash, PortableHash};
@@ -780,7 +778,6 @@ impl<'a> PluginLoader<'a> {
         };
         let mut wasi_env = WasiState::new("Zellij")
             .env("CLICOLOR_FORCE", "1")
-            // .map_dir("/host", ".")
             .map_dir("/host", self.zellij_cwd.clone())
             .and_then(|wasi| wasi.map_dir("/data", &self.plugin_own_data_dir))
             .and_then(|wasi| wasi.map_dir("/tmp", ZELLIJ_TMP_DIR.as_path()))
