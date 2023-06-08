@@ -524,14 +524,6 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .as_ref()
                     .unwrap()
                     .senders
-                    .send_to_screen(ScreenInstruction::RemoveClient(client_id))
-                    .unwrap();
-                session_data
-                    .write()
-                    .unwrap()
-                    .as_ref()
-                    .unwrap()
-                    .senders
                     .send_to_plugin(PluginInstruction::RemoveClient(client_id))
                     .unwrap();
             },
