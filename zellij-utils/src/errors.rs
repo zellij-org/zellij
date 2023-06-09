@@ -334,6 +334,7 @@ pub enum ScreenContext {
     StartPluginLoadingIndication,
     RequestStateUpdateForPlugins,
     CurrentPaneInfo,
+    CurrentPaneAtEdge,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.

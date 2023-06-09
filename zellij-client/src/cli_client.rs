@@ -32,7 +32,7 @@ pub fn start_cli_client(os_input: Box<dyn ClientOsApi>, session_name: &str, acti
                 log_lines.iter().for_each(|line| println!("{line}"));
                 process::exit(0);
             },
-            Some((ServerToClientMsg::CurrentPaneDetail(bytes), _)) => {
+            Some((ServerToClientMsg::CurrentPaneStatus(bytes), _)) => {
                 let mut stdout = os_input.get_stdout_writer();
                 let _ = stdout.write(&bytes).unwrap();
                 stdout.flush().unwrap();

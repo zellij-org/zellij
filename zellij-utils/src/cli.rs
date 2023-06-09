@@ -329,10 +329,13 @@ pub enum CliAction {
     },
     /// Remove a previously set pane name
     UndoRenamePane,
-    CurrentPaneInfo {
+    CurrentPaneId {
         /// Format the output as JSON
         #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
         format_json: bool,
+    },
+    CurrentPaneAtEdge {
+        direction: Direction,
     },
     /// Go to the next tab.
     GoToNextTab,

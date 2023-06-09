@@ -1675,6 +1675,70 @@ impl TiledPanes {
     pub fn set_active_panes(&mut self, active_panes: ActivePanes) {
         self.active_panes = active_panes;
     }
+    pub fn is_focus_at_edge_left(&mut self, client_id: ClientId) -> bool {
+        match self.get_active_pane_id(client_id) {
+            Some(active_pane_id) => {
+                let pane_grid = TiledPaneGrid::new(
+                    &mut self.panes,
+                    &self.panes_to_hide,
+                    *self.display_area.borrow(),
+                    *self.viewport.borrow(),
+                );
+                pane_grid
+                    .next_selectable_pane_id_to_the_left(&active_pane_id)
+                    .is_none()
+            },
+            None => false,
+        }
+    }
+    pub fn is_focus_at_edge_right(&mut self, client_id: ClientId) -> bool {
+        match self.get_active_pane_id(client_id) {
+            Some(active_pane_id) => {
+                let pane_grid = TiledPaneGrid::new(
+                    &mut self.panes,
+                    &self.panes_to_hide,
+                    *self.display_area.borrow(),
+                    *self.viewport.borrow(),
+                );
+                pane_grid
+                    .next_selectable_pane_id_to_the_right(&active_pane_id)
+                    .is_none()
+            },
+            None => false,
+        }
+    }
+    pub fn is_focus_at_edge_up(&mut self, client_id: ClientId) -> bool {
+        match self.get_active_pane_id(client_id) {
+            Some(active_pane_id) => {
+                let pane_grid = TiledPaneGrid::new(
+                    &mut self.panes,
+                    &self.panes_to_hide,
+                    *self.display_area.borrow(),
+                    *self.viewport.borrow(),
+                );
+                pane_grid
+                    .next_selectable_pane_id_above(&active_pane_id)
+                    .is_none()
+            },
+            None => false,
+        }
+    }
+    pub fn is_focus_at_edge_down(&mut self, client_id: ClientId) -> bool {
+        match self.get_active_pane_id(client_id) {
+            Some(active_pane_id) => {
+                let pane_grid = TiledPaneGrid::new(
+                    &mut self.panes,
+                    &self.panes_to_hide,
+                    *self.display_area.borrow(),
+                    *self.viewport.borrow(),
+                );
+                pane_grid
+                    .next_selectable_pane_id_below(&active_pane_id)
+                    .is_none()
+            },
+            None => false,
+        }
+    }
     fn move_clients_between_panes(&mut self, from_pane_id: PaneId, to_pane_id: PaneId) {
         let clients_in_pane: Vec<ClientId> = self
             .active_panes

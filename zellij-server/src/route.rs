@@ -705,7 +705,13 @@ pub(crate) fn route_action(
         Action::CurrentPaneInfo(bool) => {
             session
                 .senders
-                .send_to_screen(ScreenInstruction::CurrentPaneInfo(client_id, bool))
+                .send_to_screen(ScreenInstruction::CurrentPaneId(client_id, bool))
+                .with_context(err_context)?;
+        },
+        Action::CurrentPaneAtEdge(direction) => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::CurrentPaneAtEdge(direction, client_id))
                 .with_context(err_context)?;
         },
     }

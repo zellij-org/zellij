@@ -61,7 +61,7 @@ impl From<ServerToClientMsg> for ClientInstruction {
             ServerToClientMsg::Connected => ClientInstruction::Connected,
             ServerToClientMsg::ActiveClients(clients) => ClientInstruction::ActiveClients(clients),
             ServerToClientMsg::Log(log_lines) => ClientInstruction::Log(log_lines),
-            ServerToClientMsg::CurrentPaneDetail(bytes) => {
+            ServerToClientMsg::CurrentPaneStatus(bytes) => {
                 ClientInstruction::CurrentPaneDetail(bytes)
             },
         }

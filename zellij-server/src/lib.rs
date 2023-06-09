@@ -78,7 +78,7 @@ pub enum ServerInstruction {
     ConnStatus(ClientId),
     ActiveClients(ClientId),
     Log(Vec<String>, ClientId),
-    CurrentPaneDetail(Vec<u8>),
+    CurrentPaneStatus(Vec<u8>),
 }
 
 impl From<&ServerInstruction> for ServerContext {
@@ -96,7 +96,7 @@ impl From<&ServerInstruction> for ServerContext {
             ServerInstruction::ConnStatus(..) => ServerContext::ConnStatus,
             ServerInstruction::ActiveClients(_) => ServerContext::ActiveClients,
             ServerInstruction::Log(..) => ServerContext::Log,
-            ServerInstruction::CurrentPaneDetail(..) => ServerContext::CurrentPaneDetail,
+            ServerInstruction::CurrentPaneStatus(..) => ServerContext::CurrentPaneDetail,
         }
     }
 }
@@ -473,12 +473,12 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     );
                 }
             },
-            ServerInstruction::CurrentPaneDetail(bytes) => {
+            ServerInstruction::CurrentPaneStatus(bytes) => {
                 for client_id in session_state.read().unwrap().clients.keys() {
                     send_to_client!(
                         *client_id,
                         os_input,
-                        ServerToClientMsg::CurrentPaneDetail(bytes.clone()),
+                        ServerToClientMsg::CurrentPaneStatus(bytes.clone()),
                         session_state
                     );
                 }

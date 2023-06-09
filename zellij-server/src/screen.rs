@@ -273,7 +273,8 @@ pub enum ScreenInstruction {
     StartPluginLoadingIndication(u32, LoadingIndication), // u32 - plugin_id
     ProgressPluginLoadingOffset(u32),                 // u32 - plugin id
     RequestStateUpdateForPlugins,
-    CurrentPaneInfo(ClientId, bool), // bool - should_use_json_format
+    CurrentPaneAtEdge(Direction, ClientId),
+    CurrentPaneId(ClientId, bool), // bool - should_use_json_format
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -436,7 +437,8 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::RequestStateUpdateForPlugins => {
                 ScreenContext::RequestStateUpdateForPlugins
             },
-            ScreenInstruction::CurrentPaneInfo(..) => ScreenContext::CurrentPaneInfo,
+            ScreenInstruction::CurrentPaneId(..) => ScreenContext::CurrentPaneInfo,
+            ScreenInstruction::CurrentPaneAtEdge(..) => ScreenContext::CurrentPaneAtEdge,
         }
     }
 }
@@ -1695,7 +1697,7 @@ pub(crate) fn screen_thread_main(
                     screen.update_tabs()?;
                 }
             },
-            ScreenInstruction::CurrentPaneInfo(client_id, bool) => {
+            ScreenInstruction::CurrentPaneId(client_id, bool) => {
                 let current_tab = screen.get_active_tab_mut(client_id);
                 match current_tab {
                     Ok(tab) => {
@@ -1704,7 +1706,7 @@ pub(crate) fn screen_thread_main(
                             let _ = screen
                                 .bus
                                 .senders
-                                .send_to_server(ServerInstruction::CurrentPaneDetail(bytes));
+                                .send_to_server(ServerInstruction::CurrentPaneStatus(bytes));
                         }
                     },
                     Err(_) => {
@@ -1714,7 +1716,7 @@ pub(crate) fn screen_thread_main(
                                     let bytes = tab.get_active_pane_details(client_id, bool);
                                     if let Some(bytes) = bytes {
                                         let _ = screen.bus.senders.send_to_server(
-                                            ServerInstruction::CurrentPaneDetail(bytes),
+                                            ServerInstruction::CurrentPaneStatus(bytes),
                                         );
                                     }
                                 },
@@ -1726,6 +1728,34 @@ pub(crate) fn screen_thread_main(
                     },
                 }
 
+                screen.unblock_input()?;
+            },
+            ScreenInstruction::CurrentPaneAtEdge(direction, client_id) => {
+                let current_tab = screen.get_active_tab_mut(client_id);
+                match current_tab {
+                    Ok(tab) => {
+                        let bytes = tab.is_active_pane_at_edge(client_id, direction);
+                        let _ = screen
+                            .bus
+                            .senders
+                            .send_to_server(ServerInstruction::CurrentPaneStatus(bytes));
+                    },
+                    Err(_) => {
+                        if let Some(client_id) = screen.get_first_client_id() {
+                            match screen.get_active_tab_mut(client_id) {
+                                Ok(tab) => {
+                                    let bytes = tab.is_active_pane_at_edge(client_id, direction);
+                                    let _ = screen.bus.senders.send_to_server(
+                                        ServerInstruction::CurrentPaneStatus(bytes),
+                                    );
+                                },
+                                Err(err) => Err::<(), _>(err).non_fatal(),
+                            }
+                        } else {
+                            log::error!("No client ids in screen found");
+                        }
+                    },
+                }
                 screen.unblock_input()?;
             },
             ScreenInstruction::Resize(client_id, strategy) => {
