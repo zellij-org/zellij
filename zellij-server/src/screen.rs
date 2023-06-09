@@ -273,7 +273,7 @@ pub enum ScreenInstruction {
     StartPluginLoadingIndication(u32, LoadingIndication), // u32 - plugin_id
     ProgressPluginLoadingOffset(u32),                 // u32 - plugin id
     RequestStateUpdateForPlugins,
-    CurrentPaneInfo(ClientId),
+    CurrentPaneInfo(ClientId, bool), // bool - should_use_json_format
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -1695,11 +1695,11 @@ pub(crate) fn screen_thread_main(
                     screen.update_tabs()?;
                 }
             },
-            ScreenInstruction::CurrentPaneInfo(client_id) => {
+            ScreenInstruction::CurrentPaneInfo(client_id, bool) => {
                 let current_tab = screen.get_active_tab_mut(client_id);
                 match current_tab {
                     Ok(tab) => {
-                        let bytes = tab.get_active_pane_details(client_id);
+                        let bytes = tab.get_active_pane_details(client_id, bool);
                         if let Some(bytes) = bytes {
                             let _ = screen
                                 .bus
@@ -1711,7 +1711,7 @@ pub(crate) fn screen_thread_main(
                         if let Some(client_id) = screen.get_first_client_id() {
                             match screen.get_active_tab_mut(client_id) {
                                 Ok(tab) => {
-                                    let bytes = tab.get_active_pane_details(client_id);
+                                    let bytes = tab.get_active_pane_details(client_id, bool);
                                     if let Some(bytes) = bytes {
                                         let _ = screen.bus.senders.send_to_server(
                                             ServerInstruction::CurrentPaneDetail(bytes),

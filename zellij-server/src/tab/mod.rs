@@ -1409,10 +1409,20 @@ impl Tab {
             }
         })
     }
-    pub fn get_active_pane_details(&mut self, client_id: ClientId) -> Option<Vec<u8>> {
+    pub fn get_active_pane_details(
+        &mut self,
+        client_id: ClientId,
+        format_json: bool,
+    ) -> Option<Vec<u8>> {
         let mut bytes = Vec::new();
         if let Some(pane) = self.get_active_pane(client_id) {
             if let PaneId::Terminal(pid) = pane.pid() {
+                if format_json {
+                    let msg = format!(r#"{{"pane_id": "{}"}}"#, pid);
+                    bytes.append(&mut msg.as_bytes().to_vec());
+                    return Some(bytes);
+                }
+
                 let msg = format!(
                     "client #{} : Current active pane id is {}. <WIP>",
                     client_id, pid

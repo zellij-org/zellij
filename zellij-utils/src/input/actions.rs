@@ -233,7 +233,7 @@ pub enum Action {
     NewTiledPluginPane(RunPluginLocation, Option<String>), // String is an optional name
     NewFloatingPluginPane(RunPluginLocation, Option<String>), // String is an optional name
     StartOrReloadPlugin(Url),
-    CurrentPaneInfo,
+    CurrentPaneInfo(bool),
 }
 
 impl Action {
@@ -475,7 +475,9 @@ impl Action {
             CliAction::NextSwapLayout => Ok(vec![Action::NextSwapLayout]),
             CliAction::QueryTabNames => Ok(vec![Action::QueryTabNames]),
             CliAction::StartOrReloadPlugin { url } => Ok(vec![Action::StartOrReloadPlugin(url)]),
-            CliAction::CurrentPaneInfo => Ok(vec![Action::CurrentPaneInfo]),
+            CliAction::CurrentPaneInfo { format_json } => {
+                Ok(vec![Action::CurrentPaneInfo(format_json)])
+            },
         }
     }
 }
