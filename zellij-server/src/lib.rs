@@ -778,6 +778,9 @@ fn init_session(
             let store = get_store();
 
             let layout = layout.clone();
+            let client_attributes = client_attributes.clone();
+            let default_shell = default_shell.clone();
+            let capabilities = capabilities.clone();
             move || {
                 plugin_thread_main(
                     plugin_bus,
@@ -787,6 +790,9 @@ fn init_session(
                     layout,
                     path_to_default_shell,
                     zellij_cwd,
+                    capabilities,
+                    client_attributes,
+                    default_shell,
                 )
                 .fatal()
             }
@@ -834,7 +840,7 @@ fn init_session(
             to_plugin: Some(to_plugin),
             to_pty_writer: Some(to_pty_writer),
             to_background_jobs: Some(to_background_jobs),
-            to_server: None,
+            to_server: Some(to_server),
             should_silently_fail: false,
         },
         capabilities,
