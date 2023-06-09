@@ -1,6 +1,7 @@
 use std::collections::VecDeque;
 use std::sync::{Arc, RwLock};
 
+use crate::thread_bus::ThreadSenders;
 use crate::{
     os_input_output::ServerOsApi,
     plugins::PluginInstruction,
@@ -10,7 +11,7 @@ use crate::{
 };
 use zellij_utils::{
     channels::SenderWithContext,
-    data::{Direction, Event, ResizeStrategy, PluginCapabilities},
+    data::{Direction, Event, PluginCapabilities, ResizeStrategy},
     errors::prelude::*,
     input::{
         actions::{Action, SearchDirection, SearchOption},
@@ -18,9 +19,10 @@ use zellij_utils::{
         get_mode_info,
         layout::{Layout, RunPluginLocation},
     },
-    ipc::{ClientToServerMsg, ClientAttributes, ExitReason, IpcReceiverWithContext, ServerToClientMsg},
+    ipc::{
+        ClientAttributes, ClientToServerMsg, ExitReason, IpcReceiverWithContext, ServerToClientMsg,
+    },
 };
-use crate::thread_bus::ThreadSenders;
 
 use crate::ClientId;
 
@@ -35,7 +37,6 @@ pub(crate) fn route_action(
 ) -> Result<bool> {
     let mut should_break = false;
     let err_context = || format!("failed to route action for client {client_id}");
-
 
     // forward the action to plugins unless it is a mousehold
     // this is a bit of a hack around the unfortunate architecture we use with plugins
@@ -258,9 +259,7 @@ pub(crate) fn route_action(
                     ClientOrTabIndex::ClientId(client_id),
                 ),
             };
-            senders
-                .send_to_pty(pty_instr)
-                .with_context(err_context)?;
+            senders.send_to_pty(pty_instr).with_context(err_context)?;
         },
         Action::EditFile(path_to_file, line_number, cwd, split_direction, should_float) => {
             let title = format!("Editing: {}", path_to_file.display());
@@ -290,9 +289,7 @@ pub(crate) fn route_action(
                     ClientOrTabIndex::ClientId(client_id),
                 ),
             };
-            senders
-                .send_to_pty(pty_instr)
-                .with_context(err_context)?;
+            senders.send_to_pty(pty_instr).with_context(err_context)?;
         },
         Action::SwitchModeForAllClients(input_mode) => {
             let attrs = &client_attributes;
@@ -351,9 +348,7 @@ pub(crate) fn route_action(
                     ClientOrTabIndex::ClientId(client_id),
                 ),
             };
-            senders
-                .send_to_pty(pty_instr)
-                .with_context(err_context)?;
+            senders.send_to_pty(pty_instr).with_context(err_context)?;
         },
         Action::TogglePaneEmbedOrFloating => {
             senders
@@ -401,9 +396,7 @@ pub(crate) fn route_action(
                     ClientOrTabIndex::ClientId(client_id),
                 ),
             };
-            senders
-                .send_to_pty(pty_instr)
-                .with_context(err_context)?;
+            senders.send_to_pty(pty_instr).with_context(err_context)?;
         },
         Action::CloseFocus => {
             senders
@@ -484,12 +477,14 @@ pub(crate) fn route_action(
                 .with_context(err_context)?;
         },
         Action::Quit => {
-            senders.send_to_server(ServerInstruction::ClientExit(client_id))
+            senders
+                .send_to_server(ServerInstruction::ClientExit(client_id))
                 .with_context(err_context)?;
             should_break = true;
         },
         Action::Detach => {
-            senders.send_to_server(ServerInstruction::DetachSession(vec![client_id]))
+            senders
+                .send_to_server(ServerInstruction::DetachSession(vec![client_id]))
                 .with_context(err_context)?;
             should_break = true;
         },
@@ -556,7 +551,8 @@ pub(crate) fn route_action(
         #[allow(clippy::single_match)]
         Action::SkipConfirm(action) => match *action {
             Action::Quit => {
-                senders.send_to_server(ServerInstruction::ClientExit(client_id))
+                senders
+                    .send_to_server(ServerInstruction::ClientExit(client_id))
                     .with_context(err_context)?;
                 should_break = true;
             },

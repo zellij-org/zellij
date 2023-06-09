@@ -1,7 +1,7 @@
 use super::PluginInstruction;
-use crate::route::route_action;
 use crate::plugins::plugin_map::{PluginEnv, Subscriptions};
 use crate::plugins::wasm_bridge::handle_plugin_crash;
+use crate::route::route_action;
 use log::{debug, warn};
 use serde::{de::DeserializeOwned, Serialize};
 use std::{
@@ -17,19 +17,16 @@ use wasmer_wasi::WasiEnv;
 
 use url::Url;
 
-use crate::{
-    panes::PaneId,
-    screen::ScreenInstruction,
-};
+use crate::{panes::PaneId, screen::ScreenInstruction};
 
 use zellij_utils::{
     consts::VERSION,
-    data::{Event, EventType, PluginIds, InputMode, Resize, Direction},
+    data::{Direction, Event, EventType, InputMode, PluginIds, Resize},
     errors::prelude::*,
     input::{
-        layout::{Layout, RunPlugin, RunPluginLocation},
         actions::Action,
         command::{RunCommand, RunCommandAction, TerminalAction},
+        layout::{Layout, RunPlugin, RunPluginLocation},
         plugins::PluginType,
     },
     serde,
@@ -48,7 +45,7 @@ macro_rules! apply_action {
         ) {
             log::error!("{}: {:?}", $error_message(), e);
         }
-    }
+    };
 }
 
 pub fn zellij_exports(
@@ -227,7 +224,12 @@ fn host_get_zellij_version(env: &ForeignFunctionEnv) {
 fn host_open_file(env: &ForeignFunctionEnv) {
     wasi_read_object::<PathBuf>(&env.plugin_env.wasi_env)
         .and_then(|path| {
-            let error_msg = || format!("failed to open floating file in plugin {}", env.plugin_env.name());
+            let error_msg = || {
+                format!(
+                    "failed to open floating file in plugin {}",
+                    env.plugin_env.name()
+                )
+            };
             let floating = false;
             let action = Action::EditFile(path, None, None, None, floating); // TODO: add cwd
             apply_action!(action, error_msg, env);
@@ -300,12 +302,14 @@ fn host_open_terminal(env: &ForeignFunctionEnv) {
     wasi_read_object::<PathBuf>(&env.plugin_env.wasi_env)
         .and_then(|path| {
             let error_msg = || format!("failed to open file in plugin {}", env.plugin_env.name());
-            let mut default_shell = env.plugin_env.default_shell.clone().unwrap_or_else(|| TerminalAction::RunCommand(RunCommand::default()));
+            let mut default_shell = env
+                .plugin_env
+                .default_shell
+                .clone()
+                .unwrap_or_else(|| TerminalAction::RunCommand(RunCommand::default()));
             default_shell.change_cwd(path);
             let run_command_action: Option<RunCommandAction> = match default_shell {
-                TerminalAction::RunCommand(run_command) => {
-                    Some(run_command.into())
-                },
+                TerminalAction::RunCommand(run_command) => Some(run_command.into()),
                 _ => None,
             };
             let action = Action::NewTiledPane(None, run_command_action, None);
@@ -325,12 +329,14 @@ fn host_open_terminal_floating(env: &ForeignFunctionEnv) {
     wasi_read_object::<PathBuf>(&env.plugin_env.wasi_env)
         .and_then(|path| {
             let error_msg = || format!("failed to open file in plugin {}", env.plugin_env.name());
-            let mut default_shell = env.plugin_env.default_shell.clone().unwrap_or_else(|| TerminalAction::RunCommand(RunCommand::default()));
+            let mut default_shell = env
+                .plugin_env
+                .default_shell
+                .clone()
+                .unwrap_or_else(|| TerminalAction::RunCommand(RunCommand::default()));
             default_shell.change_cwd(path);
             let run_command_action: Option<RunCommandAction> = match default_shell {
-                TerminalAction::RunCommand(run_command) => {
-                    Some(run_command.into())
-                },
+                TerminalAction::RunCommand(run_command) => Some(run_command.into()),
                 _ => None,
             };
             let action = Action::NewFloatingPane(run_command_action, None);
@@ -363,7 +369,7 @@ fn host_open_command_pane(env: &ForeignFunctionEnv) {
                 hold_on_close,
                 hold_on_start,
             };
-            let action = Action::NewTiledPane(direction, Some(run_command_action), name,);
+            let action = Action::NewTiledPane(direction, Some(run_command_action), name);
             apply_action!(action, error_msg, env);
             Ok(())
         })
@@ -526,12 +532,16 @@ fn host_hide_self(env: &ForeignFunctionEnv) {
         .fatal();
 }
 
-
 fn host_switch_to_mode(env: &ForeignFunctionEnv) {
     wasi_read_object::<InputMode>(&env.plugin_env.wasi_env)
         .and_then(|input_mode| {
             let action = Action::SwitchToMode(input_mode);
-            let error_msg = || format!("failed to switch to mode in plugin {}", env.plugin_env.name());
+            let error_msg = || {
+                format!(
+                    "failed to switch to mode in plugin {}",
+                    env.plugin_env.name()
+                )
+            };
             apply_action!(action, error_msg, env);
             Ok(())
         })
@@ -541,18 +551,38 @@ fn host_switch_to_mode(env: &ForeignFunctionEnv) {
 
 fn host_new_tabs_with_layout(env: &ForeignFunctionEnv) {
     wasi_read_string(&env.plugin_env.wasi_env)
-        .and_then(|raw_layout| Layout::from_str(&raw_layout, format!("Layout from plugin: {}", env.plugin_env.name()), None, None).map_err(|e| anyhow!("Failed to parse layout: {:?}", e))) // TODO: cwd?
+        .and_then(|raw_layout| {
+            Layout::from_str(
+                &raw_layout,
+                format!("Layout from plugin: {}", env.plugin_env.name()),
+                None,
+                None,
+            )
+            .map_err(|e| anyhow!("Failed to parse layout: {:?}", e))
+        }) // TODO: cwd?
         .and_then(|layout| {
             let mut tabs_to_open = vec![];
             let tabs = layout.tabs();
             if tabs.is_empty() {
-                let action = Action::NewTab(layout.template.as_ref().map(|t| t.0.clone()), layout.template.map(|t| t.1).unwrap_or_default(), None, None, None);
+                let action = Action::NewTab(
+                    layout.template.as_ref().map(|t| t.0.clone()),
+                    layout.template.map(|t| t.1).unwrap_or_default(),
+                    None,
+                    None,
+                    None,
+                );
                 tabs_to_open.push(action);
             } else {
                 for (tab_name, tiled_pane_layout, floating_pane_layout) in layout.tabs() {
-                    let action = Action::NewTab(Some(tiled_pane_layout), floating_pane_layout, None, None, tab_name);
+                    let action = Action::NewTab(
+                        Some(tiled_pane_layout),
+                        floating_pane_layout,
+                        None,
+                        None,
+                        tab_name,
+                    );
                     tabs_to_open.push(action);
-                };
+                }
             }
             for action in tabs_to_open {
                 let error_msg = || format!("Failed to create layout tab");
@@ -591,7 +621,6 @@ fn host_resize(env: &ForeignFunctionEnv) {
         })
         .with_context(error_msg)
         .fatal();
-
 }
 
 fn host_resize_with_direction(env: &ForeignFunctionEnv) {
@@ -744,49 +773,89 @@ fn host_page_scroll_down(env: &ForeignFunctionEnv) {
 }
 
 fn host_toggle_focus_fullscreen(env: &ForeignFunctionEnv) {
-    let error_msg = || format!("failed to toggle full screen in plugin {}", env.plugin_env.name());
+    let error_msg = || {
+        format!(
+            "failed to toggle full screen in plugin {}",
+            env.plugin_env.name()
+        )
+    };
     let action = Action::ToggleFocusFullscreen;
     apply_action!(action, error_msg, env);
 }
 
 fn host_toggle_pane_frames(env: &ForeignFunctionEnv) {
-    let error_msg = || format!("failed to toggle full screen in plugin {}", env.plugin_env.name());
+    let error_msg = || {
+        format!(
+            "failed to toggle full screen in plugin {}",
+            env.plugin_env.name()
+        )
+    };
     let action = Action::TogglePaneFrames;
     apply_action!(action, error_msg, env);
 }
 
 fn host_toggle_pane_embed_or_eject(env: &ForeignFunctionEnv) {
-    let error_msg = || format!("failed to toggle pane embed or eject in plugin {}", env.plugin_env.name());
+    let error_msg = || {
+        format!(
+            "failed to toggle pane embed or eject in plugin {}",
+            env.plugin_env.name()
+        )
+    };
     let action = Action::TogglePaneEmbedOrFloating;
     apply_action!(action, error_msg, env);
 }
 
 fn host_undo_rename_pane(env: &ForeignFunctionEnv) {
-    let error_msg = || format!("failed to undo rename pane in plugin {}", env.plugin_env.name());
+    let error_msg = || {
+        format!(
+            "failed to undo rename pane in plugin {}",
+            env.plugin_env.name()
+        )
+    };
     let action = Action::UndoRenamePane;
     apply_action!(action, error_msg, env);
 }
 
 fn host_close_focus(env: &ForeignFunctionEnv) {
-    let error_msg = || format!("failed to close focused pane in plugin {}", env.plugin_env.name());
+    let error_msg = || {
+        format!(
+            "failed to close focused pane in plugin {}",
+            env.plugin_env.name()
+        )
+    };
     let action = Action::CloseFocus;
     apply_action!(action, error_msg, env);
 }
 
 fn host_toggle_active_tab_sync(env: &ForeignFunctionEnv) {
-    let error_msg = || format!("failed to toggle active tab sync in plugin {}", env.plugin_env.name());
+    let error_msg = || {
+        format!(
+            "failed to toggle active tab sync in plugin {}",
+            env.plugin_env.name()
+        )
+    };
     let action = Action::ToggleActiveSyncTab;
     apply_action!(action, error_msg, env);
 }
 
 fn host_close_focused_tab(env: &ForeignFunctionEnv) {
-    let error_msg = || format!("failed to close active tab in plugin {}", env.plugin_env.name());
+    let error_msg = || {
+        format!(
+            "failed to close active tab in plugin {}",
+            env.plugin_env.name()
+        )
+    };
     let action = Action::CloseTab;
     apply_action!(action, error_msg, env);
 }
 
 fn host_undo_rename_tab(env: &ForeignFunctionEnv) {
-    let error_msg = || format!("failed to undo rename tab in plugin {}", env.plugin_env.name());
+    let error_msg = || {
+        format!(
+            "failed to undo rename tab in plugin {}",
+            env.plugin_env.name()
+        )
+    };
     let action = Action::UndoRenameTab;
     apply_action!(action, error_msg, env);
 }
@@ -798,13 +867,23 @@ fn host_quit_zellij(env: &ForeignFunctionEnv) {
 }
 
 fn host_previous_swap_layout(env: &ForeignFunctionEnv) {
-    let error_msg = || format!("failed to switch swap layout in plugin {}", env.plugin_env.name());
+    let error_msg = || {
+        format!(
+            "failed to switch swap layout in plugin {}",
+            env.plugin_env.name()
+        )
+    };
     let action = Action::PreviousSwapLayout;
     apply_action!(action, error_msg, env);
 }
 
 fn host_next_swap_layout(env: &ForeignFunctionEnv) {
-    let error_msg = || format!("failed to switch swap layout in plugin {}", env.plugin_env.name());
+    let error_msg = || {
+        format!(
+            "failed to switch swap layout in plugin {}",
+            env.plugin_env.name()
+        )
+    };
     let action = Action::NextSwapLayout;
     apply_action!(action, error_msg, env);
 }
@@ -823,7 +902,12 @@ fn host_go_to_tab_name(env: &ForeignFunctionEnv) {
 }
 
 fn host_focus_or_create_tab(env: &ForeignFunctionEnv) {
-    let error_msg = || format!("failed to change or create tab in plugin {}", env.plugin_env.name());
+    let error_msg = || {
+        format!(
+            "failed to change or create tab in plugin {}",
+            env.plugin_env.name()
+        )
+    };
     wasi_read_string(&env.plugin_env.wasi_env)
         .and_then(|tab_name| {
             let create = true;
@@ -836,13 +920,23 @@ fn host_focus_or_create_tab(env: &ForeignFunctionEnv) {
 }
 
 fn host_go_to_tab(env: &ForeignFunctionEnv, tab_index: i32) {
-    let error_msg = || format!("failed to change tab focus in plugin {}", env.plugin_env.name());
+    let error_msg = || {
+        format!(
+            "failed to change tab focus in plugin {}",
+            env.plugin_env.name()
+        )
+    };
     let action = Action::GoToTab(tab_index as u32);
     apply_action!(action, error_msg, env);
 }
 
 fn host_start_or_reload_plugin(env: &ForeignFunctionEnv) {
-    let error_msg = || format!("failed to start or reload plugin in plugin {}", env.plugin_env.name());
+    let error_msg = || {
+        format!(
+            "failed to start or reload plugin in plugin {}",
+            env.plugin_env.name()
+        )
+    };
     wasi_read_string(&env.plugin_env.wasi_env)
         .and_then(|url| Url::parse(&url).map_err(|e| anyhow!("Failed to parse url: {}", e)))
         .and_then(|url| {

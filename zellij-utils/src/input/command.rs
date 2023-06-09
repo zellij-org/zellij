@@ -18,7 +18,7 @@ impl TerminalAction {
             },
             TerminalAction::RunCommand(run_command) => {
                 run_command.cwd = Some(new_cwd);
-            }
+            },
         }
     }
 }

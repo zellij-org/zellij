@@ -5,13 +5,13 @@ use insta::assert_snapshot;
 use std::path::PathBuf;
 use tempfile::tempdir;
 use wasmer::Store;
-use zellij_utils::data::{PluginCapabilities, Event, Key};
+use zellij_utils::data::{Event, Key, PluginCapabilities};
 use zellij_utils::errors::ErrorContext;
 use zellij_utils::input::layout::{Layout, RunPlugin, RunPluginLocation};
 use zellij_utils::input::plugins::PluginsConfig;
+use zellij_utils::ipc::ClientAttributes;
 use zellij_utils::lazy_static::lazy_static;
 use zellij_utils::pane_size::Size;
-use zellij_utils::ipc::ClientAttributes;
 
 use crate::background_jobs::BackgroundJob;
 use crate::pty_writer::PtyWriteInstruction;
@@ -169,11 +169,11 @@ fn create_plugin_thread_with_server_receiver(
     Box<dyn FnMut()>,
 ) {
     let zellij_cwd = zellij_cwd.unwrap_or_else(|| PathBuf::from("."));
-    let (to_server, server_receiver): ChannelWithContext<ServerInstruction> =
-        channels::bounded(50);
+    let (to_server, server_receiver): ChannelWithContext<ServerInstruction> = channels::bounded(50);
     let to_server = SenderWithContext::new(to_server);
 
-    let (to_screen, _screen_receiver): ChannelWithContext<ScreenInstruction> = channels::unbounded();
+    let (to_screen, _screen_receiver): ChannelWithContext<ScreenInstruction> =
+        channels::unbounded();
     let to_screen = SenderWithContext::new(to_screen);
 
     let (to_plugin, plugin_receiver): ChannelWithContext<PluginInstruction> = channels::unbounded();
@@ -254,7 +254,8 @@ fn create_plugin_thread_with_pty_receiver(
         channels::bounded(50);
     let to_server = SenderWithContext::new(to_server);
 
-    let (to_screen, _screen_receiver): ChannelWithContext<ScreenInstruction> = channels::unbounded();
+    let (to_screen, _screen_receiver): ChannelWithContext<ScreenInstruction> =
+        channels::unbounded();
     let to_screen = SenderWithContext::new(to_screen);
 
     let (to_plugin, plugin_receiver): ChannelWithContext<PluginInstruction> = channels::unbounded();
@@ -645,7 +646,13 @@ pub fn switch_to_mode_plugin_command() {
         .lock()
         .unwrap()
         .iter()
-        .find_map(|i| if let ScreenInstruction::ChangeMode(..) = i { Some(i.clone()) } else { None })
+        .find_map(|i| {
+            if let ScreenInstruction::ChangeMode(..) = i {
+                Some(i.clone())
+            } else {
+                None
+            }
+        })
         .clone();
     assert_snapshot!(format!("{:#?}", switch_to_mode_event));
 }
@@ -700,14 +707,26 @@ pub fn new_tabs_with_layout_plugin_command() {
         .lock()
         .unwrap()
         .iter()
-        .find_map(|i| if let ScreenInstruction::NewTab(..) = i { Some(i.clone()) } else { None })
+        .find_map(|i| {
+            if let ScreenInstruction::NewTab(..) = i {
+                Some(i.clone())
+            } else {
+                None
+            }
+        })
         .clone();
     let second_new_tab_event = received_screen_instructions
         .lock()
         .unwrap()
         .iter()
         .rev()
-        .find_map(|i| if let ScreenInstruction::NewTab(..) = i { Some(i.clone()) } else { None })
+        .find_map(|i| {
+            if let ScreenInstruction::NewTab(..) = i {
+                Some(i.clone())
+            } else {
+                None
+            }
+        })
         .clone();
     assert_snapshot!(format!("{:#?}", first_new_tab_event));
     assert_snapshot!(format!("{:#?}", second_new_tab_event));
@@ -763,7 +782,13 @@ pub fn new_tab_plugin_command() {
         .lock()
         .unwrap()
         .iter()
-        .find_map(|i| if let ScreenInstruction::NewTab(..) = i { Some(i.clone()) } else { None })
+        .find_map(|i| {
+            if let ScreenInstruction::NewTab(..) = i {
+                Some(i.clone())
+            } else {
+                None
+            }
+        })
         .clone();
     assert_snapshot!(format!("{:#?}", new_tab_event));
 }
@@ -817,7 +842,13 @@ pub fn go_to_next_tab_plugin_command() {
         .lock()
         .unwrap()
         .iter()
-        .find_map(|i| if let ScreenInstruction::SwitchTabNext(..) = i { Some(i.clone()) } else { None })
+        .find_map(|i| {
+            if let ScreenInstruction::SwitchTabNext(..) = i {
+                Some(i.clone())
+            } else {
+                None
+            }
+        })
         .clone();
     assert_snapshot!(format!("{:#?}", new_tab_event));
 }
@@ -871,7 +902,13 @@ pub fn go_to_previous_tab_plugin_command() {
         .lock()
         .unwrap()
         .iter()
-        .find_map(|i| if let ScreenInstruction::SwitchTabPrev(..) = i { Some(i.clone()) } else { None })
+        .find_map(|i| {
+            if let ScreenInstruction::SwitchTabPrev(..) = i {
+                Some(i.clone())
+            } else {
+                None
+            }
+        })
         .clone();
     assert_snapshot!(format!("{:#?}", new_tab_event));
 }
@@ -925,7 +962,13 @@ pub fn resize_focused_pane_plugin_command() {
         .lock()
         .unwrap()
         .iter()
-        .find_map(|i| if let ScreenInstruction::Resize(..) = i { Some(i.clone()) } else { None })
+        .find_map(|i| {
+            if let ScreenInstruction::Resize(..) = i {
+                Some(i.clone())
+            } else {
+                None
+            }
+        })
         .clone();
     assert_snapshot!(format!("{:#?}", new_tab_event));
 }
@@ -979,7 +1022,13 @@ pub fn resize_focused_pane_with_direction_plugin_command() {
         .lock()
         .unwrap()
         .iter()
-        .find_map(|i| if let ScreenInstruction::Resize(..) = i { Some(i.clone()) } else { None })
+        .find_map(|i| {
+            if let ScreenInstruction::Resize(..) = i {
+                Some(i.clone())
+            } else {
+                None
+            }
+        })
         .clone();
     assert_snapshot!(format!("{:#?}", new_tab_event));
 }
@@ -1033,7 +1082,13 @@ pub fn focus_next_pane_plugin_command() {
         .lock()
         .unwrap()
         .iter()
-        .find_map(|i| if let ScreenInstruction::FocusNextPane(..) = i { Some(i.clone()) } else { None })
+        .find_map(|i| {
+            if let ScreenInstruction::FocusNextPane(..) = i {
+                Some(i.clone())
+            } else {
+                None
+            }
+        })
         .clone();
     assert_snapshot!(format!("{:#?}", new_tab_event));
 }
@@ -1087,7 +1142,13 @@ pub fn focus_previous_pane_plugin_command() {
         .lock()
         .unwrap()
         .iter()
-        .find_map(|i| if let ScreenInstruction::FocusPreviousPane(..) = i { Some(i.clone()) } else { None })
+        .find_map(|i| {
+            if let ScreenInstruction::FocusPreviousPane(..) = i {
+                Some(i.clone())
+            } else {
+                None
+            }
+        })
         .clone();
     assert_snapshot!(format!("{:#?}", new_tab_event));
 }
@@ -1141,7 +1202,13 @@ pub fn move_focus_plugin_command() {
         .lock()
         .unwrap()
         .iter()
-        .find_map(|i| if let ScreenInstruction::MoveFocusLeft(..) = i { Some(i.clone()) } else { None })
+        .find_map(|i| {
+            if let ScreenInstruction::MoveFocusLeft(..) = i {
+                Some(i.clone())
+            } else {
+                None
+            }
+        })
         .clone();
     assert_snapshot!(format!("{:#?}", new_tab_event));
 }
@@ -1195,7 +1262,13 @@ pub fn move_focus_or_tab_plugin_command() {
         .lock()
         .unwrap()
         .iter()
-        .find_map(|i| if let ScreenInstruction::MoveFocusLeftOrPreviousTab(..) = i { Some(i.clone()) } else { None })
+        .find_map(|i| {
+            if let ScreenInstruction::MoveFocusLeftOrPreviousTab(..) = i {
+                Some(i.clone())
+            } else {
+                None
+            }
+        })
         .clone();
     assert_snapshot!(format!("{:#?}", new_tab_event));
 }
@@ -1249,7 +1322,13 @@ pub fn edit_scrollback_plugin_command() {
         .lock()
         .unwrap()
         .iter()
-        .find_map(|i| if let ScreenInstruction::EditScrollback(..) = i { Some(i.clone()) } else { None })
+        .find_map(|i| {
+            if let ScreenInstruction::EditScrollback(..) = i {
+                Some(i.clone())
+            } else {
+                None
+            }
+        })
         .clone();
     assert_snapshot!(format!("{:#?}", new_tab_event));
 }
@@ -1303,7 +1382,13 @@ pub fn write_plugin_command() {
         .lock()
         .unwrap()
         .iter()
-        .find_map(|i| if let ScreenInstruction::WriteCharacter(..) = i { Some(i.clone()) } else { None })
+        .find_map(|i| {
+            if let ScreenInstruction::WriteCharacter(..) = i {
+                Some(i.clone())
+            } else {
+                None
+            }
+        })
         .clone();
     assert_snapshot!(format!("{:#?}", new_tab_event));
 }
@@ -1357,7 +1442,13 @@ pub fn write_chars_plugin_command() {
         .lock()
         .unwrap()
         .iter()
-        .find_map(|i| if let ScreenInstruction::WriteCharacter(..) = i { Some(i.clone()) } else { None })
+        .find_map(|i| {
+            if let ScreenInstruction::WriteCharacter(..) = i {
+                Some(i.clone())
+            } else {
+                None
+            }
+        })
         .clone();
     assert_snapshot!(format!("{:#?}", new_tab_event));
 }
@@ -1411,7 +1502,13 @@ pub fn toggle_tab_plugin_command() {
         .lock()
         .unwrap()
         .iter()
-        .find_map(|i| if let ScreenInstruction::ToggleTab(..) = i { Some(i.clone()) } else { None })
+        .find_map(|i| {
+            if let ScreenInstruction::ToggleTab(..) = i {
+                Some(i.clone())
+            } else {
+                None
+            }
+        })
         .clone();
     assert_snapshot!(format!("{:#?}", new_tab_event));
 }
@@ -1465,7 +1562,13 @@ pub fn move_pane_plugin_command() {
         .lock()
         .unwrap()
         .iter()
-        .find_map(|i| if let ScreenInstruction::MovePane(..) = i { Some(i.clone()) } else { None })
+        .find_map(|i| {
+            if let ScreenInstruction::MovePane(..) = i {
+                Some(i.clone())
+            } else {
+                None
+            }
+        })
         .clone();
     assert_snapshot!(format!("{:#?}", new_tab_event));
 }
@@ -1519,7 +1622,13 @@ pub fn move_pane_with_direction_plugin_command() {
         .lock()
         .unwrap()
         .iter()
-        .find_map(|i| if let ScreenInstruction::MovePaneLeft(..) = i { Some(i.clone()) } else { None })
+        .find_map(|i| {
+            if let ScreenInstruction::MovePaneLeft(..) = i {
+                Some(i.clone())
+            } else {
+                None
+            }
+        })
         .clone();
     assert_snapshot!(format!("{:#?}", new_tab_event));
 }
@@ -1573,7 +1682,13 @@ pub fn clear_screen_plugin_command() {
         .lock()
         .unwrap()
         .iter()
-        .find_map(|i| if let ScreenInstruction::ClearScreen(..) = i { Some(i.clone()) } else { None })
+        .find_map(|i| {
+            if let ScreenInstruction::ClearScreen(..) = i {
+                Some(i.clone())
+            } else {
+                None
+            }
+        })
         .clone();
     assert_snapshot!(format!("{:#?}", new_tab_event));
 }
@@ -1627,7 +1742,13 @@ pub fn scroll_up_plugin_command() {
         .lock()
         .unwrap()
         .iter()
-        .find_map(|i| if let ScreenInstruction::ScrollUp(..) = i { Some(i.clone()) } else { None })
+        .find_map(|i| {
+            if let ScreenInstruction::ScrollUp(..) = i {
+                Some(i.clone())
+            } else {
+                None
+            }
+        })
         .clone();
     assert_snapshot!(format!("{:#?}", new_tab_event));
 }
@@ -1681,7 +1802,13 @@ pub fn scroll_down_plugin_command() {
         .lock()
         .unwrap()
         .iter()
-        .find_map(|i| if let ScreenInstruction::ScrollDown(..) = i { Some(i.clone()) } else { None })
+        .find_map(|i| {
+            if let ScreenInstruction::ScrollDown(..) = i {
+                Some(i.clone())
+            } else {
+                None
+            }
+        })
         .clone();
     assert_snapshot!(format!("{:#?}", new_tab_event));
 }
@@ -1735,7 +1862,13 @@ pub fn scroll_to_top_plugin_command() {
         .lock()
         .unwrap()
         .iter()
-        .find_map(|i| if let ScreenInstruction::ScrollToTop(..) = i { Some(i.clone()) } else { None })
+        .find_map(|i| {
+            if let ScreenInstruction::ScrollToTop(..) = i {
+                Some(i.clone())
+            } else {
+                None
+            }
+        })
         .clone();
     assert_snapshot!(format!("{:#?}", new_tab_event));
 }
@@ -1789,7 +1922,13 @@ pub fn scroll_to_bottom_plugin_command() {
         .lock()
         .unwrap()
         .iter()
-        .find_map(|i| if let ScreenInstruction::ScrollToBottom(..) = i { Some(i.clone()) } else { None })
+        .find_map(|i| {
+            if let ScreenInstruction::ScrollToBottom(..) = i {
+                Some(i.clone())
+            } else {
+                None
+            }
+        })
         .clone();
     assert_snapshot!(format!("{:#?}", new_tab_event));
 }
@@ -1843,7 +1982,13 @@ pub fn page_scroll_up_plugin_command() {
         .lock()
         .unwrap()
         .iter()
-        .find_map(|i| if let ScreenInstruction::PageScrollUp(..) = i { Some(i.clone()) } else { None })
+        .find_map(|i| {
+            if let ScreenInstruction::PageScrollUp(..) = i {
+                Some(i.clone())
+            } else {
+                None
+            }
+        })
         .clone();
     assert_snapshot!(format!("{:#?}", new_tab_event));
 }
@@ -1897,7 +2042,13 @@ pub fn page_scroll_down_plugin_command() {
         .lock()
         .unwrap()
         .iter()
-        .find_map(|i| if let ScreenInstruction::PageScrollDown(..) = i { Some(i.clone()) } else { None })
+        .find_map(|i| {
+            if let ScreenInstruction::PageScrollDown(..) = i {
+                Some(i.clone())
+            } else {
+                None
+            }
+        })
         .clone();
     assert_snapshot!(format!("{:#?}", new_tab_event));
 }
@@ -1951,7 +2102,13 @@ pub fn toggle_focus_fullscreen_plugin_command() {
         .lock()
         .unwrap()
         .iter()
-        .find_map(|i| if let ScreenInstruction::ToggleActiveTerminalFullscreen(..) = i { Some(i.clone()) } else { None })
+        .find_map(|i| {
+            if let ScreenInstruction::ToggleActiveTerminalFullscreen(..) = i {
+                Some(i.clone())
+            } else {
+                None
+            }
+        })
         .clone();
     assert_snapshot!(format!("{:#?}", new_tab_event));
 }
@@ -2005,7 +2162,13 @@ pub fn toggle_pane_frames_plugin_command() {
         .lock()
         .unwrap()
         .iter()
-        .find_map(|i| if let ScreenInstruction::TogglePaneFrames = i { Some(i.clone()) } else { None })
+        .find_map(|i| {
+            if let ScreenInstruction::TogglePaneFrames = i {
+                Some(i.clone())
+            } else {
+                None
+            }
+        })
         .clone();
     assert_snapshot!(format!("{:#?}", new_tab_event));
 }
@@ -2059,7 +2222,13 @@ pub fn toggle_pane_embed_or_eject_plugin_command() {
         .lock()
         .unwrap()
         .iter()
-        .find_map(|i| if let ScreenInstruction::TogglePaneEmbedOrFloating(..) = i { Some(i.clone()) } else { None })
+        .find_map(|i| {
+            if let ScreenInstruction::TogglePaneEmbedOrFloating(..) = i {
+                Some(i.clone())
+            } else {
+                None
+            }
+        })
         .clone();
     assert_snapshot!(format!("{:#?}", new_tab_event));
 }
@@ -2113,7 +2282,13 @@ pub fn undo_rename_pane_plugin_command() {
         .lock()
         .unwrap()
         .iter()
-        .find_map(|i| if let ScreenInstruction::UndoRenamePane(..) = i { Some(i.clone()) } else { None })
+        .find_map(|i| {
+            if let ScreenInstruction::UndoRenamePane(..) = i {
+                Some(i.clone())
+            } else {
+                None
+            }
+        })
         .clone();
     assert_snapshot!(format!("{:#?}", new_tab_event));
 }
@@ -2167,7 +2342,13 @@ pub fn close_focus_plugin_command() {
         .lock()
         .unwrap()
         .iter()
-        .find_map(|i| if let ScreenInstruction::CloseFocusedPane(..) = i { Some(i.clone()) } else { None })
+        .find_map(|i| {
+            if let ScreenInstruction::CloseFocusedPane(..) = i {
+                Some(i.clone())
+            } else {
+                None
+            }
+        })
         .clone();
     assert_snapshot!(format!("{:#?}", new_tab_event));
 }
@@ -2221,7 +2402,13 @@ pub fn toggle_active_tab_sync_plugin_command() {
         .lock()
         .unwrap()
         .iter()
-        .find_map(|i| if let ScreenInstruction::ToggleActiveSyncTab(..) = i { Some(i.clone()) } else { None })
+        .find_map(|i| {
+            if let ScreenInstruction::ToggleActiveSyncTab(..) = i {
+                Some(i.clone())
+            } else {
+                None
+            }
+        })
         .clone();
     assert_snapshot!(format!("{:#?}", new_tab_event));
 }
@@ -2275,7 +2462,13 @@ pub fn close_focused_tab_plugin_command() {
         .lock()
         .unwrap()
         .iter()
-        .find_map(|i| if let ScreenInstruction::CloseTab(..) = i { Some(i.clone()) } else { None })
+        .find_map(|i| {
+            if let ScreenInstruction::CloseTab(..) = i {
+                Some(i.clone())
+            } else {
+                None
+            }
+        })
         .clone();
     assert_snapshot!(format!("{:#?}", new_tab_event));
 }
@@ -2329,7 +2522,13 @@ pub fn undo_rename_tab_plugin_command() {
         .lock()
         .unwrap()
         .iter()
-        .find_map(|i| if let ScreenInstruction::UndoRenameTab(..) = i { Some(i.clone()) } else { None })
+        .find_map(|i| {
+            if let ScreenInstruction::UndoRenameTab(..) = i {
+                Some(i.clone())
+            } else {
+                None
+            }
+        })
         .clone();
     assert_snapshot!(format!("{:#?}", new_tab_event));
 }
@@ -2383,7 +2582,13 @@ pub fn previous_swap_layout_plugin_command() {
         .lock()
         .unwrap()
         .iter()
-        .find_map(|i| if let ScreenInstruction::PreviousSwapLayout(..) = i { Some(i.clone()) } else { None })
+        .find_map(|i| {
+            if let ScreenInstruction::PreviousSwapLayout(..) = i {
+                Some(i.clone())
+            } else {
+                None
+            }
+        })
         .clone();
     assert_snapshot!(format!("{:#?}", new_tab_event));
 }
@@ -2437,7 +2642,13 @@ pub fn next_swap_layout_plugin_command() {
         .lock()
         .unwrap()
         .iter()
-        .find_map(|i| if let ScreenInstruction::NextSwapLayout(..) = i { Some(i.clone()) } else { None })
+        .find_map(|i| {
+            if let ScreenInstruction::NextSwapLayout(..) = i {
+                Some(i.clone())
+            } else {
+                None
+            }
+        })
         .clone();
     assert_snapshot!(format!("{:#?}", new_tab_event));
 }
@@ -2491,7 +2702,13 @@ pub fn go_to_tab_name_plugin_command() {
         .lock()
         .unwrap()
         .iter()
-        .find_map(|i| if let ScreenInstruction::GoToTabName(..) = i { Some(i.clone()) } else { None })
+        .find_map(|i| {
+            if let ScreenInstruction::GoToTabName(..) = i {
+                Some(i.clone())
+            } else {
+                None
+            }
+        })
         .clone();
     assert_snapshot!(format!("{:#?}", new_tab_event));
 }
@@ -2545,7 +2762,13 @@ pub fn focus_or_create_tab_plugin_command() {
         .lock()
         .unwrap()
         .iter()
-        .find_map(|i| if let ScreenInstruction::GoToTabName(..) = i { Some(i.clone()) } else { None })
+        .find_map(|i| {
+            if let ScreenInstruction::GoToTabName(..) = i {
+                Some(i.clone())
+            } else {
+                None
+            }
+        })
         .clone();
     assert_snapshot!(format!("{:#?}", new_tab_event));
 }
@@ -2599,7 +2822,13 @@ pub fn go_to_tab() {
         .lock()
         .unwrap()
         .iter()
-        .find_map(|i| if let ScreenInstruction::GoToTab(..) = i { Some(i.clone()) } else { None })
+        .find_map(|i| {
+            if let ScreenInstruction::GoToTab(..) = i {
+                Some(i.clone())
+            } else {
+                None
+            }
+        })
         .clone();
     assert_snapshot!(format!("{:#?}", new_tab_event));
 }
@@ -2653,7 +2882,13 @@ pub fn start_or_reload_plugin() {
         .lock()
         .unwrap()
         .iter()
-        .find_map(|i| if let ScreenInstruction::StartOrReloadPluginPane(..) = i { Some(i.clone()) } else { None })
+        .find_map(|i| {
+            if let ScreenInstruction::StartOrReloadPluginPane(..) = i {
+                Some(i.clone())
+            } else {
+                None
+            }
+        })
         .clone();
     assert_snapshot!(format!("{:#?}", new_tab_event));
 }
@@ -2707,7 +2942,13 @@ pub fn quit_zellij_plugin_command() {
         .lock()
         .unwrap()
         .iter()
-        .find_map(|i| if let ServerInstruction::ClientExit(..) = i { Some(i.clone()) } else { None })
+        .find_map(|i| {
+            if let ServerInstruction::ClientExit(..) = i {
+                Some(i.clone())
+            } else {
+                None
+            }
+        })
         .clone();
     assert_snapshot!(format!("{:#?}", new_tab_event));
 }
@@ -2761,7 +3002,13 @@ pub fn detach_plugin_command() {
         .lock()
         .unwrap()
         .iter()
-        .find_map(|i| if let ServerInstruction::DetachSession(..) = i { Some(i.clone()) } else { None })
+        .find_map(|i| {
+            if let ServerInstruction::DetachSession(..) = i {
+                Some(i.clone())
+            } else {
+                None
+            }
+        })
         .clone();
     assert_snapshot!(format!("{:#?}", new_tab_event));
 }
@@ -2815,7 +3062,13 @@ pub fn open_file_floating_plugin_command() {
         .lock()
         .unwrap()
         .iter()
-        .find_map(|i| if let PtyInstruction::SpawnTerminal(..) = i { Some(i.clone()) } else { None })
+        .find_map(|i| {
+            if let PtyInstruction::SpawnTerminal(..) = i {
+                Some(i.clone())
+            } else {
+                None
+            }
+        })
         .clone();
     assert_snapshot!(format!("{:#?}", new_tab_event));
 }
@@ -2869,7 +3122,13 @@ pub fn open_file_plugin_command() {
         .lock()
         .unwrap()
         .iter()
-        .find_map(|i| if let PtyInstruction::SpawnTerminal(..) = i { Some(i.clone()) } else { None })
+        .find_map(|i| {
+            if let PtyInstruction::SpawnTerminal(..) = i {
+                Some(i.clone())
+            } else {
+                None
+            }
+        })
         .clone();
     assert_snapshot!(format!("{:#?}", new_tab_event));
 }
@@ -2923,7 +3182,13 @@ pub fn open_file_with_line_plugin_command() {
         .lock()
         .unwrap()
         .iter()
-        .find_map(|i| if let PtyInstruction::SpawnTerminal(..) = i { Some(i.clone()) } else { None })
+        .find_map(|i| {
+            if let PtyInstruction::SpawnTerminal(..) = i {
+                Some(i.clone())
+            } else {
+                None
+            }
+        })
         .clone();
     assert_snapshot!(format!("{:#?}", new_tab_event));
 }
@@ -2977,7 +3242,13 @@ pub fn open_file_with_line_floating_plugin_command() {
         .lock()
         .unwrap()
         .iter()
-        .find_map(|i| if let PtyInstruction::SpawnTerminal(..) = i { Some(i.clone()) } else { None })
+        .find_map(|i| {
+            if let PtyInstruction::SpawnTerminal(..) = i {
+                Some(i.clone())
+            } else {
+                None
+            }
+        })
         .clone();
     assert_snapshot!(format!("{:#?}", new_tab_event));
 }
@@ -3031,7 +3302,13 @@ pub fn open_terminal_plugin_command() {
         .lock()
         .unwrap()
         .iter()
-        .find_map(|i| if let PtyInstruction::SpawnTerminal(..) = i { Some(i.clone()) } else { None })
+        .find_map(|i| {
+            if let PtyInstruction::SpawnTerminal(..) = i {
+                Some(i.clone())
+            } else {
+                None
+            }
+        })
         .clone();
     assert_snapshot!(format!("{:#?}", new_tab_event));
 }
@@ -3085,7 +3362,13 @@ pub fn open_terminal_floating_plugin_command() {
         .lock()
         .unwrap()
         .iter()
-        .find_map(|i| if let PtyInstruction::SpawnTerminal(..) = i { Some(i.clone()) } else { None })
+        .find_map(|i| {
+            if let PtyInstruction::SpawnTerminal(..) = i {
+                Some(i.clone())
+            } else {
+                None
+            }
+        })
         .clone();
     assert_snapshot!(format!("{:#?}", new_tab_event));
 }
@@ -3139,7 +3422,13 @@ pub fn open_command_pane_plugin_command() {
         .lock()
         .unwrap()
         .iter()
-        .find_map(|i| if let PtyInstruction::SpawnTerminal(..) = i { Some(i.clone()) } else { None })
+        .find_map(|i| {
+            if let PtyInstruction::SpawnTerminal(..) = i {
+                Some(i.clone())
+            } else {
+                None
+            }
+        })
         .clone();
     assert_snapshot!(format!("{:#?}", new_tab_event));
 }
@@ -3193,7 +3482,13 @@ pub fn open_command_pane_floating_plugin_command() {
         .lock()
         .unwrap()
         .iter()
-        .find_map(|i| if let PtyInstruction::SpawnTerminal(..) = i { Some(i.clone()) } else { None })
+        .find_map(|i| {
+            if let PtyInstruction::SpawnTerminal(..) = i {
+                Some(i.clone())
+            } else {
+                None
+            }
+        })
         .clone();
     assert_snapshot!(format!("{:#?}", new_tab_event));
 }
@@ -3247,7 +3542,13 @@ pub fn switch_to_tab_plugin_command() {
         .lock()
         .unwrap()
         .iter()
-        .find_map(|i| if let ScreenInstruction::GoToTab(..) = i { Some(i.clone()) } else { None })
+        .find_map(|i| {
+            if let ScreenInstruction::GoToTab(..) = i {
+                Some(i.clone())
+            } else {
+                None
+            }
+        })
         .clone();
     assert_snapshot!(format!("{:#?}", new_tab_event));
 }
@@ -3301,7 +3602,13 @@ pub fn hide_self_plugin_command() {
         .lock()
         .unwrap()
         .iter()
-        .find_map(|i| if let ScreenInstruction::SuppressPane(..) = i { Some(i.clone()) } else { None })
+        .find_map(|i| {
+            if let ScreenInstruction::SuppressPane(..) = i {
+                Some(i.clone())
+            } else {
+                None
+            }
+        })
         .clone();
     assert_snapshot!(format!("{:#?}", new_tab_event));
 }

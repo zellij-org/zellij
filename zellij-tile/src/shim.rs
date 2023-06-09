@@ -171,7 +171,6 @@ pub fn toggle_tab() {
 
 pub fn move_pane() {
     unsafe { host_move_pane() };
-
 }
 
 pub fn move_pane_with_direction(direction: Direction) {

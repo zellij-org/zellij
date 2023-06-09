@@ -28,8 +28,8 @@ use zellij_utils::{
         layout::{Layout, RunPlugin, RunPluginLocation},
         plugins::PluginsConfig,
     },
-    pane_size::Size,
     ipc::ClientAttributes,
+    pane_size::Size,
 };
 
 pub struct WasmBridge {

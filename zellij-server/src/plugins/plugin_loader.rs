@@ -21,14 +21,14 @@ use crate::{
 };
 
 use zellij_utils::{
-    data::PluginCapabilities,
     consts::{VERSION, ZELLIJ_CACHE_DIR, ZELLIJ_SESSION_CACHE_DIR, ZELLIJ_TMP_DIR},
+    data::PluginCapabilities,
     errors::prelude::*,
-    input::plugins::PluginConfig,
     input::command::TerminalAction,
     input::layout::Layout,
-    pane_size::Size,
+    input::plugins::PluginConfig,
     ipc::ClientAttributes,
+    pane_size::Size,
 };
 
 macro_rules! display_loading_stage {

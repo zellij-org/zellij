@@ -13,9 +13,11 @@ use crate::{thread_bus::ThreadSenders, ClientId};
 use zellij_utils::async_channel::Sender;
 use zellij_utils::errors::prelude::*;
 use zellij_utils::{
-    data::EventType, input::layout::{Layout, RunPluginLocation}, input::plugins::PluginConfig,
-    input::command::TerminalAction,
+    data::EventType,
     data::PluginCapabilities,
+    input::command::TerminalAction,
+    input::layout::{Layout, RunPluginLocation},
+    input::plugins::PluginConfig,
     ipc::ClientAttributes,
 };
 

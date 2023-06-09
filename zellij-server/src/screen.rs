@@ -1366,8 +1366,8 @@ impl Screen {
         }
 
         if let Some(os_input) = &mut self.bus.os_input {
-            let _ = os_input
-                .send_to_client(client_id, ServerToClientMsg::SwitchToMode(mode_info.mode));
+            let _ =
+                os_input.send_to_client(client_id, ServerToClientMsg::SwitchToMode(mode_info.mode));
         }
 
         Ok(())
