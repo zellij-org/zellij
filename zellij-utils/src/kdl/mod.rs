@@ -876,6 +876,29 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                 };
                 Ok(Action::Run(run_command_action))
             },
+            "LaunchOrFocusPlugin" => {
+                let arguments = action_arguments.iter().copied();
+                let mut args = kdl_arguments_that_are_strings(arguments)?;
+                if args.is_empty() {
+                    return Err(ConfigError::new_kdl_error(
+                        "No plugin found to launch in LaunchOrFocusPlugin".into(),
+                        kdl_action.span().offset(),
+                        kdl_action.span().len(),
+                    ));
+                }
+                let plugin_path = args.remove(0);
+
+                let command_metadata = action_children.iter().next();
+                let should_float = command_metadata
+                    .and_then(|c_m| kdl_child_bool_value_for_entry(c_m, "floating"))
+                    .unwrap_or(false);
+                let location = RunPluginLocation::parse(&plugin_path)?;
+                let run_plugin = RunPlugin {
+                    location,
+                    _allow_exec_host_cmd: false,
+                };
+                Ok(Action::LaunchOrFocusPlugin(run_plugin, should_float))
+            },
             "PreviousSwapLayout" => Ok(Action::PreviousSwapLayout),
             "NextSwapLayout" => Ok(Action::NextSwapLayout),
             _ => Err(ConfigError::new_kdl_error(

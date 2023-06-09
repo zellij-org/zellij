@@ -2,26 +2,45 @@ mod search;
 mod state;
 
 use colored::*;
-use search::{ResultsOfSearch, SearchWorker};
+use search::{FileContentsWorker, FileNameWorker, MessageToSearch, ResultsOfSearch};
+use serde::{Deserialize, Serialize};
 use serde_json;
-use state::{refresh_directory, FsEntry, State, CURRENT_SEARCH_TERM};
+use state::{refresh_directory, FsEntry, State};
 use std::{cmp::min, time::Instant};
 use zellij_tile::prelude::*;
 
 register_plugin!(State);
-register_worker!(SearchWorker, search_worker);
+register_worker!(FileNameWorker, file_name_search_worker, FILE_NAME_WORKER);
+register_worker!(
+    FileContentsWorker,
+    file_contents_search_worker,
+    FILE_CONTENTS_WORKER
+);
 
 impl ZellijPlugin for State {
     fn load(&mut self) {
         refresh_directory(self);
-        self.loading = true;
+        self.search_state.loading = true;
         subscribe(&[
             EventType::Key,
             EventType::Mouse,
             EventType::CustomMessage,
             EventType::Timer,
+            EventType::FileSystemCreate,
+            EventType::FileSystemUpdate,
+            EventType::FileSystemDelete,
         ]);
-        post_message_to("search", String::from("scan_folder"), String::new());
+        post_message_to(
+            "file_name_search",
+            serde_json::to_string(&MessageToSearch::ScanFolder).unwrap(),
+            "".to_owned(),
+        );
+        post_message_to(
+            "file_contents_search",
+            serde_json::to_string(&MessageToSearch::ScanFolder).unwrap(),
+            "".to_owned(),
+        );
+        self.search_state.loading = true;
         set_timeout(0.5); // for displaying loading animation
     }
 
@@ -35,57 +54,43 @@ impl ZellijPlugin for State {
         self.ev_history.push_back((event.clone(), Instant::now()));
         match event {
             Event::Timer(_elapsed) => {
-                should_render = true;
-                if self.loading {
+                if self.search_state.loading {
                     set_timeout(0.5);
-                    if self.loading_animation_offset == u8::MAX {
-                        self.loading_animation_offset = 0;
-                    } else {
-                        self.loading_animation_offset =
-                            self.loading_animation_offset.saturating_add(1);
-                    }
+                    self.search_state.progress_animation();
+                    should_render = true;
                 }
             },
-            Event::CustomMessage(message, payload) => match message.as_str() {
-                "update_search_results" => {
-                    if let Ok(mut results_of_search) =
-                        serde_json::from_str::<ResultsOfSearch>(&payload)
+            Event::CustomMessage(message, payload) => match serde_json::from_str(&message) {
+                Ok(MessageToPlugin::UpdateFileNameSearchResults) => {
+                    if let Ok(results_of_search) = serde_json::from_str::<ResultsOfSearch>(&payload)
                     {
-                        if Some(results_of_search.search_term) == self.search_term {
-                            self.search_results =
-                                results_of_search.search_results.drain(..).collect();
-                            should_render = true;
-                        }
+                        self.search_state
+                            .update_file_name_search_results(results_of_search);
+                        should_render = true;
                     }
                 },
-                "done_scanning_folder" => {
-                    self.loading = false;
+                Ok(MessageToPlugin::UpdateFileContentsSearchResults) => {
+                    if let Ok(results_of_search) = serde_json::from_str::<ResultsOfSearch>(&payload)
+                    {
+                        self.search_state
+                            .update_file_contents_search_results(results_of_search);
+                        should_render = true;
+                    }
+                },
+                Ok(MessageToPlugin::DoneScanningFolder) => {
+                    self.search_state.loading = false;
                     should_render = true;
                 },
-                _ => {},
+                Err(e) => eprintln!("Failed to deserialize custom message: {:?}", e),
             },
             Event::Key(key) => match key {
-                // modes:
-                // 1. typing_search_term
-                // 2. exploring_search_results
-                // 3. normal
-                Key::Esc | Key::Char('\n') if self.typing_search_term() => {
-                    self.accept_search_term();
-                },
-                _ if self.typing_search_term() => {
-                    self.append_to_search_term(key);
-                    if let Some(search_term) = self.search_term.as_ref() {
-                        std::fs::write(CURRENT_SEARCH_TERM, search_term.as_bytes()).unwrap();
-                        post_message_to(
-                            "search",
-                            String::from("search"),
-                            String::from(&self.search_term.clone().unwrap()),
-                        );
-                    }
+                Key::Esc if self.typing_search_term() => {
+                    self.stop_typing_search_term();
+                    self.search_state.handle_key(key);
                     should_render = true;
                 },
-                Key::Esc if self.exploring_search_results() => {
-                    self.stop_exploring_search_results();
+                _ if self.typing_search_term() => {
+                    self.search_state.handle_key(key);
                     should_render = true;
                 },
                 Key::Char('/') => {
@@ -94,40 +99,27 @@ impl ZellijPlugin for State {
                 },
                 Key::Esc => {
                     self.stop_typing_search_term();
+                    hide_self();
                     should_render = true;
                 },
                 Key::Up | Key::Char('k') => {
-                    if self.exploring_search_results() {
-                        self.move_search_selection_up();
+                    let currently_selected = self.selected();
+                    *self.selected_mut() = self.selected().saturating_sub(1);
+                    if currently_selected != self.selected() {
                         should_render = true;
-                    } else {
-                        let currently_selected = self.selected();
-                        *self.selected_mut() = self.selected().saturating_sub(1);
-                        if currently_selected != self.selected() {
-                            should_render = true;
-                        }
                     }
                 },
                 Key::Down | Key::Char('j') => {
-                    if self.exploring_search_results() {
-                        self.move_search_selection_down();
+                    let currently_selected = self.selected();
+                    let next = self.selected().saturating_add(1);
+                    *self.selected_mut() = min(self.files.len().saturating_sub(1), next);
+                    if currently_selected != self.selected() {
                         should_render = true;
-                    } else {
-                        let currently_selected = self.selected();
-                        let next = self.selected().saturating_add(1);
-                        *self.selected_mut() = min(self.files.len().saturating_sub(1), next);
-                        if currently_selected != self.selected() {
-                            should_render = true;
-                        }
                     }
                 },
                 Key::Right | Key::Char('\n') | Key::Char('l') if !self.files.is_empty() => {
-                    if self.exploring_search_results() {
-                        self.open_search_result();
-                    } else {
-                        self.traverse_dir_or_open_file();
-                        self.ev_history.clear();
-                    }
+                    self.traverse_dir_or_open_file();
+                    self.ev_history.clear();
                     should_render = true;
                 },
                 Key::Left | Key::Char('h') => {
@@ -190,6 +182,54 @@ impl ZellijPlugin for State {
                 },
                 _ => {},
             },
+            Event::FileSystemCreate(paths) => {
+                let paths: Vec<String> = paths
+                    .iter()
+                    .map(|p| p.to_string_lossy().to_string())
+                    .collect();
+                post_message_to(
+                    "file_name_search",
+                    serde_json::to_string(&MessageToSearch::FileSystemCreate).unwrap(),
+                    serde_json::to_string(&paths).unwrap(),
+                );
+                post_message_to(
+                    "file_contents_search",
+                    serde_json::to_string(&MessageToSearch::FileSystemCreate).unwrap(),
+                    serde_json::to_string(&paths).unwrap(),
+                );
+            },
+            Event::FileSystemUpdate(paths) => {
+                let paths: Vec<String> = paths
+                    .iter()
+                    .map(|p| p.to_string_lossy().to_string())
+                    .collect();
+                post_message_to(
+                    "file_name_search",
+                    serde_json::to_string(&MessageToSearch::FileSystemUpdate).unwrap(),
+                    serde_json::to_string(&paths).unwrap(),
+                );
+                post_message_to(
+                    "file_contents_search",
+                    serde_json::to_string(&MessageToSearch::FileSystemUpdate).unwrap(),
+                    serde_json::to_string(&paths).unwrap(),
+                );
+            },
+            Event::FileSystemDelete(paths) => {
+                let paths: Vec<String> = paths
+                    .iter()
+                    .map(|p| p.to_string_lossy().to_string())
+                    .collect();
+                post_message_to(
+                    "file_name_search",
+                    serde_json::to_string(&MessageToSearch::FileSystemDelete).unwrap(),
+                    serde_json::to_string(&paths).unwrap(),
+                );
+                post_message_to(
+                    "file_contents_search",
+                    serde_json::to_string(&MessageToSearch::FileSystemDelete).unwrap(),
+                    serde_json::to_string(&paths).unwrap(),
+                );
+            },
             _ => {
                 dbg!("Unknown event {:?}", event);
             },
@@ -198,8 +238,10 @@ impl ZellijPlugin for State {
     }
 
     fn render(&mut self, rows: usize, cols: usize) {
-        if self.typing_search_term() || self.exploring_search_results() {
-            return self.render_search(rows, cols);
+        if self.typing_search_term() {
+            self.search_state.change_size(rows, cols);
+            print!("{}", self.search_state);
+            return;
         }
 
         for i in 0..rows {
@@ -221,9 +263,9 @@ impl ZellijPlugin for State {
 
                 if i == self.selected() {
                     if is_last_row {
-                        print!("{}", path.reversed());
+                        print!("{}", path.clone().reversed());
                     } else {
-                        println!("{}", path.reversed());
+                        println!("{}", path.clone().reversed());
                     }
                 } else {
                     if is_last_row {
@@ -237,4 +279,11 @@ impl ZellijPlugin for State {
             }
         }
     }
+}
+
+#[derive(Serialize, Deserialize)]
+pub enum MessageToPlugin {
+    UpdateFileNameSearchResults,
+    UpdateFileContentsSearchResults,
+    DoneScanningFolder,
 }

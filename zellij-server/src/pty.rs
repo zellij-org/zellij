@@ -7,7 +7,7 @@ use crate::{
     ClientId, ServerInstruction,
 };
 use async_std::task::{self, JoinHandle};
-use std::{collections::HashMap, env, os::unix::io::RawFd, path::PathBuf};
+use std::{collections::HashMap, os::unix::io::RawFd, path::PathBuf};
 use zellij_utils::nix::unistd::Pid;
 use zellij_utils::{
     async_std,
@@ -468,10 +468,7 @@ impl Pty {
                 default_shell
             },
             None => {
-                let shell = PathBuf::from(env::var("SHELL").unwrap_or_else(|_| {
-                    log::warn!("Cannot read SHELL env, falling back to use /bin/sh");
-                    "/bin/sh".to_string()
-                }));
+                let shell = get_default_shell();
                 TerminalAction::RunCommand(RunCommand {
                     args: vec![],
                     command: shell,
@@ -742,7 +739,7 @@ impl Pty {
             }
         });
         match run_instruction {
-            Some(Run::Command(command)) => {
+            Some(Run::Command(mut command)) => {
                 let starts_held = command.hold_on_start;
                 let hold_on_close = command.hold_on_close;
                 let quit_cb = Box::new({
@@ -762,6 +759,11 @@ impl Pty {
                         }
                     }
                 });
+                if command.cwd.is_none() {
+                    if let TerminalAction::RunCommand(cmd) = default_shell {
+                        command.cwd = cmd.cwd;
+                    }
+                }
                 let cmd = TerminalAction::RunCommand(command.clone());
                 if starts_held {
                     // we don't actually open a terminal in this case, just wait for the user to run it
@@ -1042,4 +1044,11 @@ fn send_command_not_found_to_screen(
         ))
         .with_context(err_context)?;
     Ok(())
+}
+
+pub fn get_default_shell() -> PathBuf {
+    PathBuf::from(std::env::var("SHELL").unwrap_or_else(|_| {
+        log::warn!("Cannot read SHELL env, falling back to use /bin/sh");
+        "/bin/sh".to_string()
+    }))
 }

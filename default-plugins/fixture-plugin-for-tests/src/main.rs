@@ -32,7 +32,7 @@ impl<'de> ZellijWorker<'de> for TestWorker {
 }
 
 register_plugin!(State);
-register_worker!(TestWorker, test_worker);
+register_worker!(TestWorker, test_worker, TEST_WORKER);
 
 impl ZellijPlugin for State {
     fn load(&mut self) {
@@ -40,6 +40,10 @@ impl ZellijPlugin for State {
             EventType::InputReceived,
             EventType::SystemClipboardFailure,
             EventType::CustomMessage,
+            EventType::FileSystemCreate,
+            EventType::FileSystemRead,
+            EventType::FileSystemUpdate,
+            EventType::FileSystemDelete,
         ]);
     }
 

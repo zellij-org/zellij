@@ -1,0 +1,25 @@
+---
+source: zellij-server/src/./unit/screen_tests.rs
+assertion_line: 2758
+expression: "format!(\"{:#?}\", plugin_load_instruction)"
+---
+Some(
+    Load(
+        Some(
+            true,
+        ),
+        None,
+        RunPlugin {
+            _allow_exec_host_cmd: false,
+            location: File(
+                "/path/to/fake/plugin",
+            ),
+        },
+        0,
+        1,
+        Size {
+            rows: 0,
+            cols: 0,
+        },
+    ),
+)

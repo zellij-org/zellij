@@ -3,6 +3,7 @@ use crate::input::config::ConversionError;
 use clap::ArgEnum;
 use serde::{Deserialize, Serialize};
 use std::fmt;
+use std::path::PathBuf;
 use std::str::FromStr;
 use strum_macros::{EnumDiscriminants, EnumIter, EnumString, ToString};
 
@@ -473,6 +474,10 @@ pub enum Event {
         String, // message
         String, // payload
     ),
+    FileSystemCreate(Vec<PathBuf>),
+    FileSystemRead(Vec<PathBuf>),
+    FileSystemUpdate(Vec<PathBuf>),
+    FileSystemDelete(Vec<PathBuf>),
 }
 
 /// Describes the different input modes, which change the way that keystrokes will be interpreted.

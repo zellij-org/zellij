@@ -273,6 +273,8 @@ pub enum ScreenInstruction {
     StartPluginLoadingIndication(u32, LoadingIndication), // u32 - plugin_id
     ProgressPluginLoadingOffset(u32),                 // u32 - plugin id
     RequestStateUpdateForPlugins,
+    LaunchOrFocusPlugin(RunPlugin, bool, ClientId), // bool is should_float
+    SuppressPane(PaneId, ClientId),
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -435,6 +437,8 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::RequestStateUpdateForPlugins => {
                 ScreenContext::RequestStateUpdateForPlugins
             },
+            ScreenInstruction::LaunchOrFocusPlugin(..) => ScreenContext::LaunchOrFocusPlugin,
+            ScreenInstruction::SuppressPane(..) => ScreenContext::SuppressPane,
         }
     }
 }
@@ -1462,6 +1466,24 @@ impl Screen {
         self.render()
     }
 
+    pub fn focus_plugin_pane(
+        &mut self,
+        run_plugin: &RunPlugin,
+        should_float: bool,
+        client_id: ClientId,
+    ) -> Result<bool> {
+        // true => found and focused, false => not
+        let all_tabs = self.get_tabs_mut();
+        for tab in all_tabs.values_mut() {
+            if let Some(plugin_pane_id) = tab.find_plugin(&run_plugin) {
+                tab.focus_pane_with_id(plugin_pane_id, should_float, client_id)
+                    .context("failed to focus plugin pane")?;
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
     fn unblock_input(&self) -> Result<()> {
         self.bus
             .senders
@@ -1558,6 +1580,7 @@ pub(crate) fn screen_thread_main(
                                                             client_id: ClientId| tab .new_pane(pid,
                                                                                                initial_pane_title,
                                                                                                should_float,
+                                                                                               None,
                                                                                                Some(client_id)),
                                                                                                ?);
                         if let Some(hold_for_command) = hold_for_command {
@@ -1576,7 +1599,13 @@ pub(crate) fn screen_thread_main(
                     },
                     ClientOrTabIndex::TabIndex(tab_index) => {
                         if let Some(active_tab) = screen.tabs.get_mut(&tab_index) {
-                            active_tab.new_pane(pid, initial_pane_title, should_float, None)?;
+                            active_tab.new_pane(
+                                pid,
+                                initial_pane_title,
+                                should_float,
+                                None,
+                                None,
+                            )?;
                             if let Some(hold_for_command) = hold_for_command {
                                 let is_first_run = true;
                                 active_tab.hold_pane(pid, None, is_first_run, hold_for_command);
@@ -2568,11 +2597,11 @@ pub(crate) fn screen_thread_main(
                     pane_title.unwrap_or_else(|| run_plugin_location.location.to_string());
                 let run_plugin = Run::Plugin(run_plugin_location);
                 if let Some(active_tab) = screen.tabs.get_mut(&tab_index) {
-                    active_tab.new_plugin_pane(
+                    active_tab.new_pane(
                         PaneId::Plugin(plugin_id),
-                        pane_title,
+                        Some(pane_title),
                         should_float,
-                        run_plugin,
+                        Some(run_plugin),
                         None,
                     )?;
                 } else {
@@ -2617,6 +2646,46 @@ pub(crate) fn screen_thread_main(
                 }
                 screen.update_tabs()?;
                 screen.render()?;
+            },
+            ScreenInstruction::LaunchOrFocusPlugin(run_plugin, should_float, client_id) => {
+                let client_id = if screen.active_tab_indices.contains_key(&client_id) {
+                    Some(client_id)
+                } else {
+                    screen.get_first_client_id()
+                };
+                let client_id_and_focused_tab = client_id.and_then(|client_id| {
+                    screen
+                        .active_tab_indices
+                        .get(&client_id)
+                        .map(|tab_index| (*tab_index, client_id))
+                });
+                match client_id_and_focused_tab {
+                    Some((tab_index, client_id)) => {
+                        if screen.focus_plugin_pane(&run_plugin, should_float, client_id)? {
+                            screen.render()?;
+                        } else {
+                            screen.bus.senders.send_to_plugin(PluginInstruction::Load(
+                                Some(should_float),
+                                None,
+                                run_plugin,
+                                tab_index,
+                                client_id,
+                                Size::default(),
+                            ))?;
+                        }
+                    },
+                    None => log::error!("No connected clients found - cannot load or focus plugin"),
+                }
+            },
+            ScreenInstruction::SuppressPane(pane_id, client_id) => {
+                let all_tabs = screen.get_tabs_mut();
+                for tab in all_tabs.values_mut() {
+                    if tab.has_pane_with_pid(&pane_id) {
+                        tab.suppress_pane(pane_id, client_id);
+                        drop(screen.render());
+                        break;
+                    }
+                }
             },
         }
     }
