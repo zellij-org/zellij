@@ -1,4 +1,5 @@
 use super::PluginInstruction;
+use crate::route::route_action;
 use crate::plugins::plugin_map::{PluginEnv, Subscriptions};
 use crate::plugins::wasm_bridge::handle_plugin_crash;
 use log::{debug, warn};
@@ -14,22 +15,41 @@ use std::{
 use wasmer::{imports, Function, ImportObject, Store, WasmerEnv};
 use wasmer_wasi::WasiEnv;
 
+use url::Url;
+
 use crate::{
     panes::PaneId,
-    pty::{ClientOrTabIndex, PtyInstruction},
     screen::ScreenInstruction,
 };
 
 use zellij_utils::{
     consts::VERSION,
-    data::{Event, EventType, PluginIds},
+    data::{Event, EventType, PluginIds, InputMode, Resize, Direction},
     errors::prelude::*,
     input::{
-        command::{RunCommand, TerminalAction},
+        layout::{Layout, RunPlugin, RunPluginLocation},
+        actions::Action,
+        command::{RunCommand, RunCommandAction, TerminalAction},
         plugins::PluginType,
     },
     serde,
 };
+
+macro_rules! apply_action {
+    ($action:ident, $error_message:ident, $env: ident) => {
+        if let Err(e) = route_action(
+            $action,
+            $env.plugin_env.client_id,
+            $env.plugin_env.senders.clone(),
+            $env.plugin_env.capabilities.clone(),
+            $env.plugin_env.client_attributes.clone(),
+            $env.plugin_env.default_shell.clone(),
+            $env.plugin_env.default_layout.clone(),
+        ) {
+            log::error!("{}: {:?}", $error_message(), e);
+        }
+    }
+}
 
 pub fn zellij_exports(
     store: &Store,
@@ -59,6 +79,8 @@ pub fn zellij_exports(
         host_open_file_with_line_floating,
         host_open_terminal,
         host_open_terminal_floating,
+        host_open_command_pane,
+        host_open_command_pane_floating,
         host_switch_tab_to,
         host_set_timeout,
         host_exec_cmd,
@@ -66,6 +88,46 @@ pub fn zellij_exports(
         host_post_message_to,
         host_post_message_to_plugin,
         host_hide_self,
+        host_switch_to_mode,
+        host_new_tabs_with_layout,
+        host_new_tab,
+        host_go_to_next_tab,
+        host_go_to_previous_tab,
+        host_resize,
+        host_resize_with_direction,
+        host_focus_next_pane,
+        host_focus_previous_pane,
+        host_move_focus,
+        host_move_focus_or_tab,
+        host_detach,
+        host_edit_scrollback,
+        host_write,
+        host_write_chars,
+        host_toggle_tab,
+        host_move_pane,
+        host_move_pane_with_direction,
+        host_clear_screen,
+        host_scroll_up,
+        host_scroll_down,
+        host_scroll_to_top,
+        host_scroll_to_bottom,
+        host_page_scroll_up,
+        host_page_scroll_down,
+        host_toggle_focus_fullscreen,
+        host_toggle_pane_frames,
+        host_toggle_pane_embed_or_eject,
+        host_undo_rename_pane,
+        host_close_focus,
+        host_toggle_active_tab_sync,
+        host_close_focused_tab,
+        host_undo_rename_tab,
+        host_quit_zellij,
+        host_previous_swap_layout,
+        host_next_swap_layout,
+        host_go_to_tab_name,
+        host_focus_or_create_tab,
+        host_go_to_tab,
+        host_start_or_reload_plugin,
     }
 }
 
@@ -165,14 +227,11 @@ fn host_get_zellij_version(env: &ForeignFunctionEnv) {
 fn host_open_file(env: &ForeignFunctionEnv) {
     wasi_read_object::<PathBuf>(&env.plugin_env.wasi_env)
         .and_then(|path| {
-            env.plugin_env
-                .senders
-                .send_to_pty(PtyInstruction::SpawnTerminal(
-                    Some(TerminalAction::OpenFile(path, None, None)),
-                    Some(false),
-                    None,
-                    ClientOrTabIndex::ClientId(env.plugin_env.client_id),
-                ))
+            let error_msg = || format!("failed to open floating file in plugin {}", env.plugin_env.name());
+            let floating = false;
+            let action = Action::EditFile(path, None, None, None, floating); // TODO: add cwd
+            apply_action!(action, error_msg, env);
+            Ok(())
         })
         .with_context(|| {
             format!(
@@ -186,14 +245,11 @@ fn host_open_file(env: &ForeignFunctionEnv) {
 fn host_open_file_floating(env: &ForeignFunctionEnv) {
     wasi_read_object::<PathBuf>(&env.plugin_env.wasi_env)
         .and_then(|path| {
-            env.plugin_env
-                .senders
-                .send_to_pty(PtyInstruction::SpawnTerminal(
-                    Some(TerminalAction::OpenFile(path, None, None)),
-                    Some(true),
-                    None,
-                    ClientOrTabIndex::ClientId(env.plugin_env.client_id),
-                ))
+            let error_msg = || format!("failed to open file in plugin {}", env.plugin_env.name());
+            let floating = true;
+            let action = Action::EditFile(path, None, None, None, floating); // TODO: add cwd
+            apply_action!(action, error_msg, env);
+            Ok(())
         })
         .with_context(|| {
             format!(
@@ -207,14 +263,11 @@ fn host_open_file_floating(env: &ForeignFunctionEnv) {
 fn host_open_file_with_line(env: &ForeignFunctionEnv) {
     wasi_read_object::<(PathBuf, usize)>(&env.plugin_env.wasi_env)
         .and_then(|(path, line)| {
-            env.plugin_env
-                .senders
-                .send_to_pty(PtyInstruction::SpawnTerminal(
-                    Some(TerminalAction::OpenFile(path, Some(line), None)), // TODO: add cwd
-                    Some(false),
-                    None,
-                    ClientOrTabIndex::ClientId(env.plugin_env.client_id),
-                ))
+            let error_msg = || format!("failed to open file in plugin {}", env.plugin_env.name());
+            let floating = false;
+            let action = Action::EditFile(path, Some(line), None, None, floating); // TODO: add cwd
+            apply_action!(action, error_msg, env);
+            Ok(())
         })
         .with_context(|| {
             format!(
@@ -228,14 +281,11 @@ fn host_open_file_with_line(env: &ForeignFunctionEnv) {
 fn host_open_file_with_line_floating(env: &ForeignFunctionEnv) {
     wasi_read_object::<(PathBuf, usize)>(&env.plugin_env.wasi_env)
         .and_then(|(path, line)| {
-            env.plugin_env
-                .senders
-                .send_to_pty(PtyInstruction::SpawnTerminal(
-                    Some(TerminalAction::OpenFile(path, Some(line), None)), // TODO: add cwd
-                    Some(true),
-                    None,
-                    ClientOrTabIndex::ClientId(env.plugin_env.client_id),
-                ))
+            let error_msg = || format!("failed to open file in plugin {}", env.plugin_env.name());
+            let floating = true;
+            let action = Action::EditFile(path, Some(line), None, None, floating); // TODO: add cwd
+            apply_action!(action, error_msg, env);
+            Ok(())
         })
         .with_context(|| {
             format!(
@@ -249,21 +299,22 @@ fn host_open_file_with_line_floating(env: &ForeignFunctionEnv) {
 fn host_open_terminal(env: &ForeignFunctionEnv) {
     wasi_read_object::<PathBuf>(&env.plugin_env.wasi_env)
         .and_then(|path| {
-            env.plugin_env
-                .senders
-                .send_to_pty(PtyInstruction::SpawnTerminal(
-                    Some(TerminalAction::RunCommand(
-                        RunCommand::new(env.plugin_env.path_to_default_shell.clone())
-                            .with_cwd(path),
-                    )),
-                    Some(false),
-                    None,
-                    ClientOrTabIndex::ClientId(env.plugin_env.client_id),
-                ))
+            let error_msg = || format!("failed to open file in plugin {}", env.plugin_env.name());
+            let mut default_shell = env.plugin_env.default_shell.clone().unwrap_or_else(|| TerminalAction::RunCommand(RunCommand::default()));
+            default_shell.change_cwd(path);
+            let run_command_action: Option<RunCommandAction> = match default_shell {
+                TerminalAction::RunCommand(run_command) => {
+                    Some(run_command.into())
+                },
+                _ => None,
+            };
+            let action = Action::NewTiledPane(None, run_command_action, None);
+            apply_action!(action, error_msg, env);
+            Ok(())
         })
         .with_context(|| {
             format!(
-                "failed to open terminal on host from plugin {}",
+                "failed to open file on host from plugin {}",
                 env.plugin_env.name()
             )
         })
@@ -273,24 +324,75 @@ fn host_open_terminal(env: &ForeignFunctionEnv) {
 fn host_open_terminal_floating(env: &ForeignFunctionEnv) {
     wasi_read_object::<PathBuf>(&env.plugin_env.wasi_env)
         .and_then(|path| {
-            env.plugin_env
-                .senders
-                .send_to_pty(PtyInstruction::SpawnTerminal(
-                    Some(TerminalAction::RunCommand(
-                        RunCommand::new(env.plugin_env.path_to_default_shell.clone())
-                            .with_cwd(path),
-                    )),
-                    Some(true),
-                    None,
-                    ClientOrTabIndex::ClientId(env.plugin_env.client_id),
-                ))
+            let error_msg = || format!("failed to open file in plugin {}", env.plugin_env.name());
+            let mut default_shell = env.plugin_env.default_shell.clone().unwrap_or_else(|| TerminalAction::RunCommand(RunCommand::default()));
+            default_shell.change_cwd(path);
+            let run_command_action: Option<RunCommandAction> = match default_shell {
+                TerminalAction::RunCommand(run_command) => {
+                    Some(run_command.into())
+                },
+                _ => None,
+            };
+            let action = Action::NewFloatingPane(run_command_action, None);
+            apply_action!(action, error_msg, env);
+            Ok(())
         })
         .with_context(|| {
             format!(
-                "failed to open terminal on host from plugin {}",
+                "failed to open file on host from plugin {}",
                 env.plugin_env.name()
             )
         })
+        .non_fatal();
+}
+
+fn host_open_command_pane(env: &ForeignFunctionEnv) {
+    let error_msg = || format!("failed to run command in plugin {}", env.plugin_env.name());
+    wasi_read_object::<(PathBuf, Vec<String>)>(&env.plugin_env.wasi_env)
+        .and_then(|(command, args)| {
+            let cwd = None;
+            let direction = None;
+            let hold_on_close = true;
+            let hold_on_start = false;
+            let name = None;
+            let run_command_action = RunCommandAction {
+                command,
+                args,
+                cwd,
+                direction,
+                hold_on_close,
+                hold_on_start,
+            };
+            let action = Action::NewTiledPane(direction, Some(run_command_action), name,);
+            apply_action!(action, error_msg, env);
+            Ok(())
+        })
+        .with_context(error_msg)
+        .non_fatal();
+}
+
+fn host_open_command_pane_floating(env: &ForeignFunctionEnv) {
+    let error_msg = || format!("failed to run command in plugin {}", env.plugin_env.name());
+    wasi_read_object::<(PathBuf, Vec<String>)>(&env.plugin_env.wasi_env)
+        .and_then(|(command, args)| {
+            let cwd = None;
+            let direction = None;
+            let hold_on_close = true;
+            let hold_on_start = false;
+            let name = None;
+            let run_command_action = RunCommandAction {
+                command,
+                args,
+                cwd,
+                direction,
+                hold_on_close,
+                hold_on_start,
+            };
+            let action = Action::NewFloatingPane(Some(run_command_action), name);
+            apply_action!(action, error_msg, env);
+            Ok(())
+        })
+        .with_context(error_msg)
         .non_fatal();
 }
 
@@ -421,6 +523,334 @@ fn host_hide_self(env: &ForeignFunctionEnv) {
             env.plugin_env.client_id,
         ))
         .with_context(|| format!("failed to hide self"))
+        .fatal();
+}
+
+
+fn host_switch_to_mode(env: &ForeignFunctionEnv) {
+    wasi_read_object::<InputMode>(&env.plugin_env.wasi_env)
+        .and_then(|input_mode| {
+            let action = Action::SwitchToMode(input_mode);
+            let error_msg = || format!("failed to switch to mode in plugin {}", env.plugin_env.name());
+            apply_action!(action, error_msg, env);
+            Ok(())
+        })
+        .with_context(|| format!("failed to subscribe for plugin {}", env.plugin_env.name()))
+        .fatal();
+}
+
+fn host_new_tabs_with_layout(env: &ForeignFunctionEnv) {
+    wasi_read_string(&env.plugin_env.wasi_env)
+        .and_then(|raw_layout| Layout::from_str(&raw_layout, format!("Layout from plugin: {}", env.plugin_env.name()), None, None).map_err(|e| anyhow!("Failed to parse layout: {:?}", e))) // TODO: cwd?
+        .and_then(|layout| {
+            let mut tabs_to_open = vec![];
+            let tabs = layout.tabs();
+            if tabs.is_empty() {
+                let action = Action::NewTab(layout.template.as_ref().map(|t| t.0.clone()), layout.template.map(|t| t.1).unwrap_or_default(), None, None, None);
+                tabs_to_open.push(action);
+            } else {
+                for (tab_name, tiled_pane_layout, floating_pane_layout) in layout.tabs() {
+                    let action = Action::NewTab(Some(tiled_pane_layout), floating_pane_layout, None, None, tab_name);
+                    tabs_to_open.push(action);
+                };
+            }
+            for action in tabs_to_open {
+                let error_msg = || format!("Failed to create layout tab");
+                apply_action!(action, error_msg, env);
+            }
+            Ok(())
+        })
+        .non_fatal();
+}
+
+fn host_new_tab(env: &ForeignFunctionEnv) {
+    let action = Action::NewTab(None, vec![], None, None, None);
+    let error_msg = || format!("Failed to open new tab");
+    apply_action!(action, error_msg, env);
+}
+
+fn host_go_to_next_tab(env: &ForeignFunctionEnv) {
+    let action = Action::GoToNextTab;
+    let error_msg = || format!("Failed to go to next tab");
+    apply_action!(action, error_msg, env);
+}
+
+fn host_go_to_previous_tab(env: &ForeignFunctionEnv) {
+    let action = Action::GoToPreviousTab;
+    let error_msg = || format!("Failed to go to previous tab");
+    apply_action!(action, error_msg, env);
+}
+
+fn host_resize(env: &ForeignFunctionEnv) {
+    let error_msg = || format!("failed to resize in plugin {}", env.plugin_env.name());
+    wasi_read_object::<Resize>(&env.plugin_env.wasi_env)
+        .and_then(|resize| {
+            let action = Action::Resize(resize, None);
+            apply_action!(action, error_msg, env);
+            Ok(())
+        })
+        .with_context(error_msg)
+        .fatal();
+
+}
+
+fn host_resize_with_direction(env: &ForeignFunctionEnv) {
+    let error_msg = || format!("failed to resize in plugin {}", env.plugin_env.name());
+    wasi_read_object::<(Resize, Direction)>(&env.plugin_env.wasi_env)
+        .and_then(|(resize, direction)| {
+            let action = Action::Resize(resize, Some(direction));
+            apply_action!(action, error_msg, env);
+            Ok(())
+        })
+        .with_context(error_msg)
+        .fatal();
+}
+
+fn host_focus_next_pane(env: &ForeignFunctionEnv) {
+    let action = Action::FocusNextPane;
+    let error_msg = || format!("Failed to focus next pane");
+    apply_action!(action, error_msg, env);
+}
+
+fn host_focus_previous_pane(env: &ForeignFunctionEnv) {
+    let action = Action::FocusPreviousPane;
+    let error_msg = || format!("Failed to focus previous pane");
+    apply_action!(action, error_msg, env);
+}
+
+fn host_move_focus(env: &ForeignFunctionEnv) {
+    let error_msg = || format!("failed to move focus in plugin {}", env.plugin_env.name());
+    wasi_read_object::<Direction>(&env.plugin_env.wasi_env)
+        .and_then(|direction| {
+            let action = Action::MoveFocus(direction);
+            apply_action!(action, error_msg, env);
+            Ok(())
+        })
+        .with_context(error_msg)
+        .fatal();
+}
+
+fn host_move_focus_or_tab(env: &ForeignFunctionEnv) {
+    let error_msg = || format!("failed to move focus in plugin {}", env.plugin_env.name());
+    wasi_read_object::<Direction>(&env.plugin_env.wasi_env)
+        .and_then(|direction| {
+            let action = Action::MoveFocusOrTab(direction);
+            apply_action!(action, error_msg, env);
+            Ok(())
+        })
+        .with_context(error_msg)
+        .fatal();
+}
+
+fn host_detach(env: &ForeignFunctionEnv) {
+    let action = Action::Detach;
+    let error_msg = || format!("Failed to detach");
+    apply_action!(action, error_msg, env);
+}
+
+fn host_edit_scrollback(env: &ForeignFunctionEnv) {
+    let action = Action::EditScrollback;
+    let error_msg = || format!("Failed to edit scrollback");
+    apply_action!(action, error_msg, env);
+}
+
+fn host_write(env: &ForeignFunctionEnv) {
+    let error_msg = || format!("failed to write in plugin {}", env.plugin_env.name());
+    wasi_read_object::<Vec<u8>>(&env.plugin_env.wasi_env)
+        .and_then(|bytes| {
+            let action = Action::Write(bytes);
+            apply_action!(action, error_msg, env);
+            Ok(())
+        })
+        .with_context(error_msg)
+        .fatal();
+}
+
+fn host_write_chars(env: &ForeignFunctionEnv) {
+    let error_msg = || format!("failed to write in plugin {}", env.plugin_env.name());
+    wasi_read_string(&env.plugin_env.wasi_env)
+        .and_then(|chars_to_write| {
+            let action = Action::WriteChars(chars_to_write);
+            apply_action!(action, error_msg, env);
+            Ok(())
+        })
+        .with_context(error_msg)
+        .fatal();
+}
+
+fn host_toggle_tab(env: &ForeignFunctionEnv) {
+    let action = Action::ToggleTab;
+    let error_msg = || format!("Failed to toggle tab");
+    apply_action!(action, error_msg, env);
+}
+
+fn host_move_pane(env: &ForeignFunctionEnv) {
+    let error_msg = || format!("failed to move pane in plugin {}", env.plugin_env.name());
+    let action = Action::MovePane(None);
+    apply_action!(action, error_msg, env);
+}
+
+fn host_move_pane_with_direction(env: &ForeignFunctionEnv) {
+    let error_msg = || format!("failed to move pane in plugin {}", env.plugin_env.name());
+    wasi_read_object::<Direction>(&env.plugin_env.wasi_env)
+        .and_then(|direction| {
+            let action = Action::MovePane(Some(direction));
+            apply_action!(action, error_msg, env);
+            Ok(())
+        })
+        .with_context(error_msg)
+        .fatal();
+}
+
+fn host_clear_screen(env: &ForeignFunctionEnv) {
+    let error_msg = || format!("failed to clear screen in plugin {}", env.plugin_env.name());
+    let action = Action::ClearScreen;
+    apply_action!(action, error_msg, env);
+}
+fn host_scroll_up(env: &ForeignFunctionEnv) {
+    let error_msg = || format!("failed to scroll up in plugin {}", env.plugin_env.name());
+    let action = Action::ScrollUp;
+    apply_action!(action, error_msg, env);
+}
+
+fn host_scroll_down(env: &ForeignFunctionEnv) {
+    let error_msg = || format!("failed to scroll down in plugin {}", env.plugin_env.name());
+    let action = Action::ScrollDown;
+    apply_action!(action, error_msg, env);
+}
+
+fn host_scroll_to_top(env: &ForeignFunctionEnv) {
+    let error_msg = || format!("failed to scroll in plugin {}", env.plugin_env.name());
+    let action = Action::ScrollToTop;
+    apply_action!(action, error_msg, env);
+}
+
+fn host_scroll_to_bottom(env: &ForeignFunctionEnv) {
+    let error_msg = || format!("failed to scroll in plugin {}", env.plugin_env.name());
+    let action = Action::ScrollToBottom;
+    apply_action!(action, error_msg, env);
+}
+
+fn host_page_scroll_up(env: &ForeignFunctionEnv) {
+    let error_msg = || format!("failed to scroll in plugin {}", env.plugin_env.name());
+    let action = Action::PageScrollUp;
+    apply_action!(action, error_msg, env);
+}
+
+fn host_page_scroll_down(env: &ForeignFunctionEnv) {
+    let error_msg = || format!("failed to scroll in plugin {}", env.plugin_env.name());
+    let action = Action::PageScrollDown;
+    apply_action!(action, error_msg, env);
+}
+
+fn host_toggle_focus_fullscreen(env: &ForeignFunctionEnv) {
+    let error_msg = || format!("failed to toggle full screen in plugin {}", env.plugin_env.name());
+    let action = Action::ToggleFocusFullscreen;
+    apply_action!(action, error_msg, env);
+}
+
+fn host_toggle_pane_frames(env: &ForeignFunctionEnv) {
+    let error_msg = || format!("failed to toggle full screen in plugin {}", env.plugin_env.name());
+    let action = Action::TogglePaneFrames;
+    apply_action!(action, error_msg, env);
+}
+
+fn host_toggle_pane_embed_or_eject(env: &ForeignFunctionEnv) {
+    let error_msg = || format!("failed to toggle pane embed or eject in plugin {}", env.plugin_env.name());
+    let action = Action::TogglePaneEmbedOrFloating;
+    apply_action!(action, error_msg, env);
+}
+
+fn host_undo_rename_pane(env: &ForeignFunctionEnv) {
+    let error_msg = || format!("failed to undo rename pane in plugin {}", env.plugin_env.name());
+    let action = Action::UndoRenamePane;
+    apply_action!(action, error_msg, env);
+}
+
+fn host_close_focus(env: &ForeignFunctionEnv) {
+    let error_msg = || format!("failed to close focused pane in plugin {}", env.plugin_env.name());
+    let action = Action::CloseFocus;
+    apply_action!(action, error_msg, env);
+}
+
+fn host_toggle_active_tab_sync(env: &ForeignFunctionEnv) {
+    let error_msg = || format!("failed to toggle active tab sync in plugin {}", env.plugin_env.name());
+    let action = Action::ToggleActiveSyncTab;
+    apply_action!(action, error_msg, env);
+}
+
+fn host_close_focused_tab(env: &ForeignFunctionEnv) {
+    let error_msg = || format!("failed to close active tab in plugin {}", env.plugin_env.name());
+    let action = Action::CloseTab;
+    apply_action!(action, error_msg, env);
+}
+
+fn host_undo_rename_tab(env: &ForeignFunctionEnv) {
+    let error_msg = || format!("failed to undo rename tab in plugin {}", env.plugin_env.name());
+    let action = Action::UndoRenameTab;
+    apply_action!(action, error_msg, env);
+}
+
+fn host_quit_zellij(env: &ForeignFunctionEnv) {
+    let error_msg = || format!("failed to quit zellij in plugin {}", env.plugin_env.name());
+    let action = Action::Quit;
+    apply_action!(action, error_msg, env);
+}
+
+fn host_previous_swap_layout(env: &ForeignFunctionEnv) {
+    let error_msg = || format!("failed to switch swap layout in plugin {}", env.plugin_env.name());
+    let action = Action::PreviousSwapLayout;
+    apply_action!(action, error_msg, env);
+}
+
+fn host_next_swap_layout(env: &ForeignFunctionEnv) {
+    let error_msg = || format!("failed to switch swap layout in plugin {}", env.plugin_env.name());
+    let action = Action::NextSwapLayout;
+    apply_action!(action, error_msg, env);
+}
+
+fn host_go_to_tab_name(env: &ForeignFunctionEnv) {
+    let error_msg = || format!("failed to change tab in plugin {}", env.plugin_env.name());
+    wasi_read_string(&env.plugin_env.wasi_env)
+        .and_then(|tab_name| {
+            let create = false;
+            let action = Action::GoToTabName(tab_name, create);
+            apply_action!(action, error_msg, env);
+            Ok(())
+        })
+        .with_context(error_msg)
+        .fatal();
+}
+
+fn host_focus_or_create_tab(env: &ForeignFunctionEnv) {
+    let error_msg = || format!("failed to change or create tab in plugin {}", env.plugin_env.name());
+    wasi_read_string(&env.plugin_env.wasi_env)
+        .and_then(|tab_name| {
+            let create = true;
+            let action = Action::GoToTabName(tab_name, create);
+            apply_action!(action, error_msg, env);
+            Ok(())
+        })
+        .with_context(error_msg)
+        .fatal();
+}
+
+fn host_go_to_tab(env: &ForeignFunctionEnv, tab_index: i32) {
+    let error_msg = || format!("failed to change tab focus in plugin {}", env.plugin_env.name());
+    let action = Action::GoToTab(tab_index as u32);
+    apply_action!(action, error_msg, env);
+}
+
+fn host_start_or_reload_plugin(env: &ForeignFunctionEnv) {
+    let error_msg = || format!("failed to start or reload plugin in plugin {}", env.plugin_env.name());
+    wasi_read_string(&env.plugin_env.wasi_env)
+        .and_then(|url| Url::parse(&url).map_err(|e| anyhow!("Failed to parse url: {}", e)))
+        .and_then(|url| {
+            let action = Action::StartOrReloadPlugin(url);
+            apply_action!(action, error_msg, env);
+            Ok(())
+        })
+        .with_context(error_msg)
         .fatal();
 }
 

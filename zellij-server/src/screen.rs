@@ -1364,6 +1364,12 @@ impl Screen {
             tab.change_mode_info(mode_info.clone(), client_id);
             tab.mark_active_pane_for_rerender(client_id);
         }
+
+        if let Some(os_input) = &mut self.bus.os_input {
+            let _ = os_input
+                .send_to_client(client_id, ServerToClientMsg::SwitchToMode(mode_info.mode));
+        }
+
         Ok(())
     }
     pub fn change_mode_for_all_clients(&mut self, mode_info: ModeInfo) -> Result<()> {
@@ -1378,10 +1384,6 @@ impl Screen {
         for client_id in connected_client_ids {
             self.change_mode(mode_info.clone(), client_id)
                 .with_context(err_context)?;
-            if let Some(os_input) = &mut self.bus.os_input {
-                let _ = os_input
-                    .send_to_client(client_id, ServerToClientMsg::SwitchToMode(mode_info.mode));
-            }
         }
         Ok(())
     }

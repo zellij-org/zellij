@@ -99,20 +99,24 @@ fn take_snapshots_and_cursor_coordinates_from_render_events<'a>(
 fn send_cli_action_to_server(
     session_metadata: &SessionMetaData,
     cli_action: CliAction,
-    mock_screen: &mut MockScreen,
     client_id: ClientId,
 ) {
-    let os_input = Box::new(mock_screen.os_input.clone());
-    let to_server = mock_screen.to_server.clone();
     let get_current_dir = || PathBuf::from(".");
     let actions = Action::actions_from_cli(cli_action, Box::new(get_current_dir), None).unwrap();
+    let senders = session_metadata.senders.clone();
+    let capabilities = PluginCapabilities::default();
+    let client_attributes = ClientAttributes::default();
+    let default_shell = None;
+    let default_layout = Box::new(Layout::default());
     for action in actions {
         route_action(
             action,
-            &session_metadata,
-            &*os_input,
-            &to_server.clone(),
             client_id,
+            senders.clone(),
+            capabilities,
+            client_attributes.clone(),
+            default_shell.clone(),
+            default_layout.clone(),
         )
         .unwrap();
     }
@@ -1023,7 +1027,7 @@ pub fn send_cli_write_chars_action_to_screen() {
     let cli_action = CliAction::WriteChars {
         chars: "input from the cli".into(),
     };
-    send_cli_action_to_server(&session_metadata, cli_action, &mut mock_screen, client_id);
+    send_cli_action_to_server(&session_metadata, cli_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
     mock_screen.teardown(vec![pty_writer_thread, screen_thread]);
     assert_snapshot!(format!("{:?}", *received_pty_instructions.lock().unwrap()));
@@ -1049,7 +1053,7 @@ pub fn send_cli_write_action_to_screen() {
     let cli_action = CliAction::Write {
         bytes: vec![102, 111, 111],
     };
-    send_cli_action_to_server(&session_metadata, cli_action, &mut mock_screen, client_id);
+    send_cli_action_to_server(&session_metadata, cli_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
     mock_screen.teardown(vec![pty_writer_thread, screen_thread]);
     assert_snapshot!(format!("{:?}", *received_pty_instructions.lock().unwrap()));
@@ -1079,7 +1083,6 @@ pub fn send_cli_resize_action_to_screen() {
     send_cli_action_to_server(
         &session_metadata,
         resize_cli_action,
-        &mut mock_screen,
         client_id,
     );
     mock_screen.teardown(vec![pty_writer_thread, screen_thread]);
@@ -1115,7 +1118,6 @@ pub fn send_cli_focus_next_pane_action() {
     send_cli_action_to_server(
         &session_metadata,
         focus_next_pane_action,
-        &mut mock_screen,
         client_id,
     );
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -1153,7 +1155,6 @@ pub fn send_cli_focus_previous_pane_action() {
     send_cli_action_to_server(
         &session_metadata,
         focus_next_pane_action,
-        &mut mock_screen,
         client_id,
     );
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -1193,7 +1194,6 @@ pub fn send_cli_move_focus_pane_action() {
     send_cli_action_to_server(
         &session_metadata,
         move_focus_action,
-        &mut mock_screen,
         client_id,
     );
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -1233,7 +1233,6 @@ pub fn send_cli_move_focus_or_tab_pane_action() {
     send_cli_action_to_server(
         &session_metadata,
         move_focus_action,
-        &mut mock_screen,
         client_id,
     );
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -1270,7 +1269,7 @@ pub fn send_cli_move_pane_action() {
     let cli_action = CliAction::MovePane {
         direction: Some(Direction::Right),
     };
-    send_cli_action_to_server(&session_metadata, cli_action, &mut mock_screen, client_id);
+    send_cli_action_to_server(&session_metadata, cli_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![server_instruction, screen_thread]);
     let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
@@ -1309,7 +1308,7 @@ pub fn send_cli_dump_screen_action() {
         0,
         "fill pane up with something".as_bytes().to_vec(),
     ));
-    send_cli_action_to_server(&session_metadata, cli_action, &mut mock_screen, client_id);
+    send_cli_action_to_server(&session_metadata, cli_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![server_thread, screen_thread]);
     assert_snapshot!(format!(
@@ -1340,7 +1339,7 @@ pub fn send_cli_edit_scrollback_action() {
         0,
         "fill pane up with something".as_bytes().to_vec(),
     ));
-    send_cli_action_to_server(&session_metadata, cli_action, &mut mock_screen, client_id);
+    send_cli_action_to_server(&session_metadata, cli_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![pty_thread, screen_thread]);
     let dumped_file_name = mock_screen
@@ -1398,13 +1397,11 @@ pub fn send_cli_scroll_up_action() {
     send_cli_action_to_server(
         &session_metadata,
         cli_action.clone(),
-        &mut mock_screen,
         client_id,
     );
     send_cli_action_to_server(
         &session_metadata,
         cli_action.clone(),
-        &mut mock_screen,
         client_id,
     );
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -1452,25 +1449,21 @@ pub fn send_cli_scroll_down_action() {
     send_cli_action_to_server(
         &session_metadata,
         scroll_up_cli_action.clone(),
-        &mut mock_screen,
         client_id,
     );
     send_cli_action_to_server(
         &session_metadata,
         scroll_up_cli_action.clone(),
-        &mut mock_screen,
         client_id,
     );
     send_cli_action_to_server(
         &session_metadata,
         scroll_up_cli_action.clone(),
-        &mut mock_screen,
         client_id,
     );
     send_cli_action_to_server(
         &session_metadata,
         scroll_up_cli_action.clone(),
-        &mut mock_screen,
         client_id,
     );
 
@@ -1478,13 +1471,11 @@ pub fn send_cli_scroll_down_action() {
     send_cli_action_to_server(
         &session_metadata,
         scroll_down_cli_action.clone(),
-        &mut mock_screen,
         client_id,
     );
     send_cli_action_to_server(
         &session_metadata,
         scroll_down_cli_action.clone(),
-        &mut mock_screen,
         client_id,
     );
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -1532,25 +1523,21 @@ pub fn send_cli_scroll_to_bottom_action() {
     send_cli_action_to_server(
         &session_metadata,
         scroll_up_cli_action.clone(),
-        &mut mock_screen,
         client_id,
     );
     send_cli_action_to_server(
         &session_metadata,
         scroll_up_cli_action.clone(),
-        &mut mock_screen,
         client_id,
     );
     send_cli_action_to_server(
         &session_metadata,
         scroll_up_cli_action.clone(),
-        &mut mock_screen,
         client_id,
     );
     send_cli_action_to_server(
         &session_metadata,
         scroll_up_cli_action.clone(),
-        &mut mock_screen,
         client_id,
     );
 
@@ -1558,7 +1545,6 @@ pub fn send_cli_scroll_to_bottom_action() {
     send_cli_action_to_server(
         &session_metadata,
         scroll_to_bottom_action.clone(),
-        &mut mock_screen,
         client_id,
     );
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -1605,7 +1591,6 @@ pub fn send_cli_scroll_to_top_action() {
     send_cli_action_to_server(
         &session_metadata,
         scroll_to_top_action.clone(),
-        &mut mock_screen,
         client_id,
     );
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -1651,7 +1636,6 @@ pub fn send_cli_page_scroll_up_action() {
     send_cli_action_to_server(
         &session_metadata,
         page_scroll_up_action,
-        &mut mock_screen,
         client_id,
     );
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -1700,13 +1684,11 @@ pub fn send_cli_page_scroll_down_action() {
     send_cli_action_to_server(
         &session_metadata,
         page_scroll_up_action.clone(),
-        &mut mock_screen,
         client_id,
     );
     send_cli_action_to_server(
         &session_metadata,
         page_scroll_up_action.clone(),
-        &mut mock_screen,
         client_id,
     );
 
@@ -1714,7 +1696,6 @@ pub fn send_cli_page_scroll_down_action() {
     send_cli_action_to_server(
         &session_metadata,
         page_scroll_down_action,
-        &mut mock_screen,
         client_id,
     );
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -1760,7 +1741,6 @@ pub fn send_cli_half_page_scroll_up_action() {
     send_cli_action_to_server(
         &session_metadata,
         half_page_scroll_up_action,
-        &mut mock_screen,
         client_id,
     );
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -1809,13 +1789,11 @@ pub fn send_cli_half_page_scroll_down_action() {
     send_cli_action_to_server(
         &session_metadata,
         half_page_scroll_up_action.clone(),
-        &mut mock_screen,
         client_id,
     );
     send_cli_action_to_server(
         &session_metadata,
         half_page_scroll_up_action.clone(),
-        &mut mock_screen,
         client_id,
     );
 
@@ -1823,7 +1801,6 @@ pub fn send_cli_half_page_scroll_down_action() {
     send_cli_action_to_server(
         &session_metadata,
         half_page_scroll_down_action,
-        &mut mock_screen,
         client_id,
     );
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -1860,7 +1837,6 @@ pub fn send_cli_toggle_full_screen_action() {
     send_cli_action_to_server(
         &session_metadata,
         toggle_full_screen_action,
-        &mut mock_screen,
         client_id,
     );
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -1897,7 +1873,6 @@ pub fn send_cli_toggle_pane_frames_action() {
     send_cli_action_to_server(
         &session_metadata,
         toggle_pane_frames_action,
-        &mut mock_screen,
         client_id,
     );
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -1940,13 +1915,11 @@ pub fn send_cli_toggle_active_tab_sync_action() {
     send_cli_action_to_server(
         &session_metadata,
         cli_toggle_active_tab_sync_action,
-        &mut mock_screen,
         client_id,
     );
     send_cli_action_to_server(
         &session_metadata,
         cli_write_action,
-        &mut mock_screen,
         client_id,
     );
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -1987,7 +1960,6 @@ pub fn send_cli_new_pane_action_with_default_parameters() {
     send_cli_action_to_server(
         &session_metadata,
         cli_new_pane_action,
-        &mut mock_screen,
         client_id,
     );
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -2028,7 +2000,6 @@ pub fn send_cli_new_pane_action_with_split_direction() {
     send_cli_action_to_server(
         &session_metadata,
         cli_new_pane_action,
-        &mut mock_screen,
         client_id,
     );
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -2069,7 +2040,6 @@ pub fn send_cli_new_pane_action_with_command_and_cwd() {
     send_cli_action_to_server(
         &session_metadata,
         cli_new_pane_action,
-        &mut mock_screen,
         client_id,
     );
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -2107,7 +2077,6 @@ pub fn send_cli_edit_action_with_default_parameters() {
     send_cli_action_to_server(
         &session_metadata,
         cli_edit_action,
-        &mut mock_screen,
         client_id,
     );
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -2145,7 +2114,6 @@ pub fn send_cli_edit_action_with_line_number() {
     send_cli_action_to_server(
         &session_metadata,
         cli_edit_action,
-        &mut mock_screen,
         client_id,
     );
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -2183,7 +2151,6 @@ pub fn send_cli_edit_action_with_split_direction() {
     send_cli_action_to_server(
         &session_metadata,
         cli_edit_action,
-        &mut mock_screen,
         client_id,
     );
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -2210,7 +2177,6 @@ pub fn send_cli_switch_mode_action() {
     send_cli_action_to_server(
         &session_metadata,
         cli_switch_mode,
-        &mut mock_screen,
         client_id,
     );
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -2247,7 +2213,6 @@ pub fn send_cli_toggle_pane_embed_or_float() {
     send_cli_action_to_server(
         &session_metadata,
         toggle_pane_embed_or_floating.clone(),
-        &mut mock_screen,
         client_id,
     );
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -2255,7 +2220,6 @@ pub fn send_cli_toggle_pane_embed_or_float() {
     send_cli_action_to_server(
         &session_metadata,
         toggle_pane_embed_or_floating.clone(),
-        &mut mock_screen,
         client_id,
     );
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -2294,7 +2258,6 @@ pub fn send_cli_toggle_floating_panes() {
     send_cli_action_to_server(
         &session_metadata,
         toggle_pane_embed_or_floating,
-        &mut mock_screen,
         client_id,
     );
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -2302,7 +2265,6 @@ pub fn send_cli_toggle_floating_panes() {
     send_cli_action_to_server(
         &session_metadata,
         toggle_floating_panes.clone(),
-        &mut mock_screen,
         client_id,
     );
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -2310,7 +2272,6 @@ pub fn send_cli_toggle_floating_panes() {
     send_cli_action_to_server(
         &session_metadata,
         toggle_floating_panes.clone(),
-        &mut mock_screen,
         client_id,
     );
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -2347,7 +2308,6 @@ pub fn send_cli_close_pane_action() {
     send_cli_action_to_server(
         &session_metadata,
         close_pane_action,
-        &mut mock_screen,
         client_id,
     );
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -2389,7 +2349,6 @@ pub fn send_cli_new_tab_action_default_params() {
     send_cli_action_to_server(
         &session_metadata,
         new_tab_action,
-        &mut mock_screen,
         client_id,
     );
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -2434,7 +2393,6 @@ pub fn send_cli_new_tab_action_with_name_and_layout() {
     send_cli_action_to_server(
         &session_metadata,
         new_tab_action,
-        &mut mock_screen,
         client_id,
     );
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -2481,7 +2439,6 @@ pub fn send_cli_next_tab_action() {
     send_cli_action_to_server(
         &session_metadata,
         goto_next_tab,
-        &mut mock_screen,
         client_id,
     );
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -2522,7 +2479,6 @@ pub fn send_cli_previous_tab_action() {
     send_cli_action_to_server(
         &session_metadata,
         goto_previous_tab,
-        &mut mock_screen,
         client_id,
     );
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -2560,7 +2516,7 @@ pub fn send_cli_goto_tab_action() {
         server_receiver
     );
     let goto_tab = CliAction::GoToTab { index: 1 };
-    send_cli_action_to_server(&session_metadata, goto_tab, &mut mock_screen, client_id);
+    send_cli_action_to_server(&session_metadata, goto_tab, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![server_thread, screen_thread]);
     let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
@@ -2596,7 +2552,7 @@ pub fn send_cli_close_tab_action() {
         server_receiver
     );
     let close_tab = CliAction::CloseTab;
-    send_cli_action_to_server(&session_metadata, close_tab, &mut mock_screen, client_id);
+    send_cli_action_to_server(&session_metadata, close_tab, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![server_thread, screen_thread]);
     let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
@@ -2634,7 +2590,7 @@ pub fn send_cli_rename_tab() {
     let rename_tab = CliAction::RenameTab {
         name: "new-tab-name".into(),
     };
-    send_cli_action_to_server(&session_metadata, rename_tab, &mut mock_screen, client_id);
+    send_cli_action_to_server(&session_metadata, rename_tab, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![plugin_thread, screen_thread]);
     assert_snapshot!(format!(
@@ -2669,13 +2625,12 @@ pub fn send_cli_undo_rename_tab() {
     };
     let undo_rename_tab = CliAction::UndoRenameTab;
     // first rename the tab
-    send_cli_action_to_server(&session_metadata, rename_tab, &mut mock_screen, client_id);
+    send_cli_action_to_server(&session_metadata, rename_tab, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
     // then undo the tab rename to go back to the default name
     send_cli_action_to_server(
         &session_metadata,
         undo_rename_tab,
-        &mut mock_screen,
         client_id,
     );
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -2705,7 +2660,6 @@ pub fn send_cli_query_tab_names_action() {
     send_cli_action_to_server(
         &session_metadata,
         query_tab_names,
-        &mut mock_screen,
         client_id,
     );
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -2743,7 +2697,7 @@ pub fn send_cli_launch_or_focus_plugin_action() {
         floating: true,
         url: url::Url::parse("file:/path/to/fake/plugin").unwrap(),
     };
-    send_cli_action_to_server(&session_metadata, cli_action, &mut mock_screen, client_id);
+    send_cli_action_to_server(&session_metadata, cli_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
     mock_screen.teardown(vec![plugin_thread, screen_thread]);
 
@@ -2798,7 +2752,7 @@ pub fn send_cli_launch_or_focus_plugin_action_when_plugin_is_already_loaded() {
         floating: true,
         url: url::Url::parse("file:/path/to/fake/plugin").unwrap(),
     };
-    send_cli_action_to_server(&session_metadata, cli_action, &mut mock_screen, client_id);
+    send_cli_action_to_server(&session_metadata, cli_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
     mock_screen.teardown(vec![plugin_thread, server_thread, screen_thread]);
 

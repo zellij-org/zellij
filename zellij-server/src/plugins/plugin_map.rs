@@ -13,7 +13,10 @@ use crate::{thread_bus::ThreadSenders, ClientId};
 use zellij_utils::async_channel::Sender;
 use zellij_utils::errors::prelude::*;
 use zellij_utils::{
-    data::EventType, input::layout::RunPluginLocation, input::plugins::PluginConfig,
+    data::EventType, input::layout::{Layout, RunPluginLocation}, input::plugins::PluginConfig,
+    input::command::TerminalAction,
+    data::PluginCapabilities,
+    ipc::ClientAttributes,
 };
 
 // the idea here is to provide atomicity when adding/removing plugins from the map (eg. when a new
@@ -195,6 +198,10 @@ pub struct PluginEnv {
     #[allow(dead_code)]
     pub plugin_own_data_dir: PathBuf,
     pub path_to_default_shell: PathBuf,
+    pub capabilities: PluginCapabilities,
+    pub client_attributes: ClientAttributes,
+    pub default_shell: Option<TerminalAction>,
+    pub default_layout: Box<Layout>,
 }
 
 impl PluginEnv {

@@ -1,0 +1,13 @@
+---
+source: zellij-server/src/plugins/./unit/plugin_tests.rs
+assertion_line: 3306
+expression: "format!(\"{:#?}\", new_tab_event)"
+---
+Some(
+    SuppressPane(
+        Plugin(
+            0,
+        ),
+        1,
+    ),
+)

@@ -1,0 +1,17 @@
+---
+source: zellij-server/src/plugins/./unit/plugin_tests.rs
+assertion_line: 1171
+expression: "format!(\"{:#?}\", new_tab_event)"
+---
+Some(
+    WriteCharacter(
+        [
+            102,
+            111,
+            111,
+            10,
+            13,
+        ],
+        1,
+    ),
+)

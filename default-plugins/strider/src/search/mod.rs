@@ -204,17 +204,7 @@ impl Search {
     ) -> Vec<SearchResult> {
         let mut matches = vec![];
         for ((file_name, line_number), line_entry) in &self.file_contents {
-            if line_entry.contains("struct") {
-                if line_entry.len() < 400 {
-                    eprintln!("matching against: {:?}", line_entry)
-                } else {
-                    eprintln!("matching again line that has struct but is very long")
-                }
-            }
             if let Some((score, indices)) = matcher.fuzzy_indices(&line_entry, &search_term) {
-                if line_entry.contains("struct") {
-                    eprintln!("score: {:?}", score)
-                }
                 matches.push(SearchResult::new_file_line(
                     score,
                     indices,
@@ -222,10 +212,6 @@ impl Search {
                     line_entry.clone(),
                     *line_number,
                 ));
-            } else {
-                if line_entry.contains("struct") {
-                    eprintln!("no score!")
-                }
             }
         }
         matches
