@@ -840,7 +840,7 @@ fn init_session(
             to_plugin: Some(to_plugin),
             to_pty_writer: Some(to_pty_writer),
             to_background_jobs: Some(to_background_jobs),
-            to_server: None,
+            to_server: Some(to_server),
             should_silently_fail: false,
         },
         capabilities,
