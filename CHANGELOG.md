@@ -23,6 +23,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat: plugin workers for background tasks (https://github.com/zellij-org/zellij/pull/2449)
 * fix: cwd of newtab action (https://github.com/zellij-org/zellij/pull/2455)
 * feat: plugin system overhaul (https://github.com/zellij-org/zellij/pull/2510)
+* feat: add virtually all of Zellij's API to plugins (https://github.com/zellij-org/zellij/pull/2516)
 
 ## [0.36.0] - 2023-04-13
 * fix: when moving pane focus off screen edge to the next tab, the pane on the screen edge is now focused (https://github.com/zellij-org/zellij/pull/2293)
