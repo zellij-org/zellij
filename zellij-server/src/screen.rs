@@ -9,6 +9,7 @@ use std::str;
 use zellij_utils::data::{Direction, Resize, ResizeStrategy};
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
+use zellij_utils::input::layout::Layout;
 use zellij_utils::input::options::Clipboard;
 use zellij_utils::pane_size::{Size, SizeInPixels};
 use zellij_utils::{
@@ -23,6 +24,7 @@ use zellij_utils::{
 use crate::panes::alacritty_functions::xparse_color;
 use crate::panes::terminal_character::AnsiCode;
 
+use crate::tab::Pane;
 use crate::{
     output::Output,
     panes::sixel::SixelImageStore,
@@ -275,6 +277,7 @@ pub enum ScreenInstruction {
     RequestStateUpdateForPlugins,
     LaunchOrFocusPlugin(RunPlugin, bool, ClientId), // bool is should_float
     SuppressPane(PaneId, ClientId),
+    EjectTab(PaneId),
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -439,6 +442,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             },
             ScreenInstruction::LaunchOrFocusPlugin(..) => ScreenContext::LaunchOrFocusPlugin,
             ScreenInstruction::SuppressPane(..) => ScreenContext::SuppressPane,
+            ScreenInstruction::EjectTab(..) => ScreenContext::EjectTab,
         }
     }
 }
@@ -1500,6 +1504,7 @@ pub(crate) fn screen_thread_main(
     max_panes: Option<usize>,
     client_attributes: ClientAttributes,
     config_options: Box<Options>,
+    default_layout: Box<Layout>,
 ) -> Result<()> {
     let capabilities = config_options.simplified_ui;
     let draw_pane_frames = config_options.pane_frames.unwrap_or(true);
@@ -2038,23 +2043,45 @@ pub(crate) fn screen_thread_main(
                 screen.render()?;
             },
             ScreenInstruction::ClosePane(id, client_id) => {
+                let mut closed_pane: Option<Box<dyn Pane>> = None;
                 match client_id {
                     Some(client_id) => {
-                        active_tab!(screen, client_id, |tab: &mut Tab| tab.close_pane(
+                        // active_tab!(screen, client_id, |tab: &mut Tab| tab.close_pane(
+                        //     id,
+                        //     false,
+                        //     Some(client_id)
+                        // ));
+                        closed_pane = screen.get_active_tab_mut(client_id).unwrap().close_pane(
                             id,
                             false,
-                            Some(client_id)
-                        ));
+                            Some(client_id),
+                        );
                     },
                     None => {
                         for tab in screen.tabs.values_mut() {
                             if tab.get_all_pane_ids().contains(&id) {
-                                tab.close_pane(id, false, None);
+                                closed_pane = tab.close_pane(id, false, None);
                                 break;
                             }
                         }
                     },
                 }
+                let tab_index = screen.get_new_tab_index();
+                pending_tab_ids.insert(tab_index);
+                screen.new_tab(
+                    tab_index,
+                    (
+                        default_layout.swap_tiled_layouts.clone(),
+                        default_layout.swap_floating_layouts.clone(),
+                    ),
+                    None,
+                    1,
+                )?;
+
+                screen.switch_active_tab(tab_index, None, 1)?;
+                let tab = screen.get_active_tab_mut(1)?;
+                tab.add_tiled_pane(closed_pane.unwrap(), id, Some(1))?;
+
                 screen.update_tabs()?;
                 screen.unblock_input()?;
             },
@@ -2677,6 +2704,7 @@ pub(crate) fn screen_thread_main(
                     }
                 }
             },
+            ScreenInstruction::EjectTab(pane_id) => {},
         }
     }
     Ok(())

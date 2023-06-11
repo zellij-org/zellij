@@ -335,6 +335,7 @@ pub enum ScreenContext {
     RequestStateUpdateForPlugins,
     LaunchOrFocusPlugin,
     SuppressPane,
+    EjectTab,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.

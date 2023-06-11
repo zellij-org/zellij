@@ -736,6 +736,7 @@ fn init_session(
     let screen_thread = thread::Builder::new()
         .name("screen".to_string())
         .spawn({
+            let layout = layout.clone();
             let screen_bus = Bus::new(
                 vec![screen_receiver, bounded_screen_receiver],
                 None,
@@ -755,6 +756,7 @@ fn init_session(
                     max_panes,
                     client_attributes_clone,
                     config_options,
+                    layout,
                 )
                 .fatal();
             }

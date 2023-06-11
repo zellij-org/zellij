@@ -3320,7 +3320,7 @@ impl Tab {
         }
         Ok(())
     }
-    fn add_tiled_pane(
+    pub fn add_tiled_pane(
         &mut self,
         mut pane: Box<dyn Pane>,
         pane_id: PaneId,
