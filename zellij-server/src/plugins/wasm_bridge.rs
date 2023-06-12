@@ -75,13 +75,7 @@ impl WasmBridge {
         let connected_clients: Arc<Mutex<Vec<ClientId>>> = Arc::new(Mutex::new(vec![]));
         let plugin_cache: Arc<Mutex<HashMap<PathBuf, Module>>> =
             Arc::new(Mutex::new(HashMap::new()));
-        let watcher = match watch_filesystem(senders.clone(), &zellij_cwd) {
-            Ok(watcher) => Some(watcher),
-            Err(e) => {
-                log::error!("Failed to watch filesystem: {:?}", e);
-                None
-            },
-        };
+        let watcher = None;
         WasmBridge {
             connected_clients,
             plugins,
@@ -696,6 +690,17 @@ impl WasmBridge {
             },
         }
         Ok(())
+    }
+    pub fn start_fs_watcher_if_not_started(&mut self) {
+        if self.watcher.is_none() {
+            self.watcher = match watch_filesystem(self.senders.clone(), &self.zellij_cwd) {
+                Ok(watcher) => Some(watcher),
+                Err(e) => {
+                    log::error!("Failed to watch filesystem: {:?}", e);
+                    None
+                },
+            };
+        }
     }
 }
 
