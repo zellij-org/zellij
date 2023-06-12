@@ -566,7 +566,7 @@ pub fn can_subscribe_to_hd_events() {
         size,
     ));
     // extra long time because we only start the fs watcher on plugin load
-    std::thread::sleep(std::time::Duration::from_millis(1000));
+    std::thread::sleep(std::time::Duration::from_millis(5000));
     std::fs::OpenOptions::new()
         .create(true)
         .write(true)
