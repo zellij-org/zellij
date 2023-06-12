@@ -932,8 +932,7 @@ impl Screen {
         let size = self.size;
         for (tab_index, tab) in &mut self.tabs {
             if tab.has_selectable_tiled_panes() {
-                tab.render(&mut output)
-                    .context(err_context)?;
+                tab.render(&mut output).context(err_context)?;
             } else if !tab.is_pending() {
                 tabs_to_close.push(*tab_index);
             }

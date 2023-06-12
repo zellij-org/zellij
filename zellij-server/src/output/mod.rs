@@ -405,7 +405,7 @@ impl Output {
     pub fn has_rendered_assets(&self) -> bool {
         // pre_vte and post_vte are not considered rendered assets as they should not be visible
         self.client_character_chunks.values().any(|c| !c.is_empty())
-        || self.sixel_chunks.values().any(|c| !c.is_empty())
+            || self.sixel_chunks.values().any(|c| !c.is_empty())
     }
 }
 
