@@ -333,6 +333,8 @@ pub enum ScreenContext {
     ProgressPluginLoadingOffset,
     StartPluginLoadingIndication,
     RequestStateUpdateForPlugins,
+    LaunchOrFocusPlugin,
+    SuppressPane,
     CurrentPaneInfo,
     CurrentPaneAtEdge,
 }

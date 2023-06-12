@@ -273,6 +273,8 @@ pub enum ScreenInstruction {
     StartPluginLoadingIndication(u32, LoadingIndication), // u32 - plugin_id
     ProgressPluginLoadingOffset(u32),                 // u32 - plugin id
     RequestStateUpdateForPlugins,
+    LaunchOrFocusPlugin(RunPlugin, bool, ClientId), // bool is should_float
+    SuppressPane(PaneId, ClientId),
     CurrentPaneAtEdge(Direction, ClientId),
     CurrentPaneId(ClientId, bool), // bool - should_use_json_format
 }
@@ -437,6 +439,8 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::RequestStateUpdateForPlugins => {
                 ScreenContext::RequestStateUpdateForPlugins
             },
+            ScreenInstruction::LaunchOrFocusPlugin(..) => ScreenContext::LaunchOrFocusPlugin,
+            ScreenInstruction::SuppressPane(..) => ScreenContext::SuppressPane,
             ScreenInstruction::CurrentPaneId(..) => ScreenContext::CurrentPaneInfo,
             ScreenInstruction::CurrentPaneAtEdge(..) => ScreenContext::CurrentPaneAtEdge,
         }
@@ -2132,16 +2136,7 @@ pub(crate) fn screen_thread_main(
                 screen.unblock_input()?;
             },
             ScreenInstruction::HoldPane(id, exit_status, run_command, tab_index, client_id) => {
-                let is_first_run = match command_rerun_history.get_mut(&run_command) {
-                    Some(count) => {
-                        *count += 1;
-                        false
-                    },
-                    None => {
-                        command_rerun_history.insert(run_command.clone(), 1);
-                        true
-                    },
-                };
+                let is_first_run = false;
                 match (client_id, tab_index) {
                     (Some(client_id), _) => {
                         active_tab!(screen, client_id, |tab: &mut Tab| tab.hold_pane(

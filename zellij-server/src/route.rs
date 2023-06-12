@@ -625,15 +625,22 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
         },
+        Action::LaunchOrFocusPlugin(run_plugin, should_float) => {
+            senders
+                .send_to_screen(ScreenInstruction::LaunchOrFocusPlugin(
+                    run_plugin,
+                    should_float,
+                    client_id,
+                ))
+                .with_context(err_context)?;
+        },
         Action::CurrentPaneInfo(bool) => {
-            session
-                .senders
+            senders
                 .send_to_screen(ScreenInstruction::CurrentPaneId(client_id, bool))
                 .with_context(err_context)?;
         },
         Action::CurrentPaneAtEdge(direction) => {
-            session
-                .senders
+            senders
                 .send_to_screen(ScreenInstruction::CurrentPaneAtEdge(direction, client_id))
                 .with_context(err_context)?;
         },
