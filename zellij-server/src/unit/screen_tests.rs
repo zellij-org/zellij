@@ -14,7 +14,9 @@ use zellij_utils::data::Resize;
 use zellij_utils::errors::{prelude::*, ErrorContext};
 use zellij_utils::input::actions::Action;
 use zellij_utils::input::command::{RunCommand, TerminalAction};
-use zellij_utils::input::layout::{Layout, SplitDirection, TiledPaneLayout};
+use zellij_utils::input::layout::{
+    Layout, Run, RunPlugin, RunPluginLocation, SplitDirection, TiledPaneLayout,
+};
 use zellij_utils::input::options::Options;
 use zellij_utils::ipc::IpcReceiverWithContext;
 use zellij_utils::pane_size::{Size, SizeInPixels};
@@ -97,20 +99,24 @@ fn take_snapshots_and_cursor_coordinates_from_render_events<'a>(
 fn send_cli_action_to_server(
     session_metadata: &SessionMetaData,
     cli_action: CliAction,
-    mock_screen: &mut MockScreen,
     client_id: ClientId,
 ) {
-    let os_input = Box::new(mock_screen.os_input.clone());
-    let to_server = mock_screen.to_server.clone();
     let get_current_dir = || PathBuf::from(".");
     let actions = Action::actions_from_cli(cli_action, Box::new(get_current_dir), None).unwrap();
+    let senders = session_metadata.senders.clone();
+    let capabilities = PluginCapabilities::default();
+    let client_attributes = ClientAttributes::default();
+    let default_shell = None;
+    let default_layout = Box::new(Layout::default());
     for action in actions {
         route_action(
             action,
-            &session_metadata,
-            &*os_input,
-            &to_server.clone(),
             client_id,
+            senders.clone(),
+            capabilities,
+            client_attributes.clone(),
+            default_shell.clone(),
+            default_layout.clone(),
         )
         .unwrap();
     }
@@ -291,7 +297,11 @@ impl MockScreen {
         let pane_layout = initial_layout.unwrap_or_default();
         let pane_count = pane_layout.extract_run_instructions().len();
         let mut pane_ids = vec![];
-        let plugin_ids = HashMap::new();
+        let mut plugin_ids = HashMap::new();
+        plugin_ids.insert(
+            RunPluginLocation::File(PathBuf::from("/path/to/fake/plugin")),
+            vec![1],
+        );
         for i in 0..pane_count {
             pane_ids.push((i as u32, None));
         }
@@ -864,7 +874,7 @@ fn switch_to_tab_with_fullscreen() {
     {
         let active_tab = screen.get_active_tab_mut(1).unwrap();
         active_tab
-            .new_pane(PaneId::Terminal(2), None, None, Some(1))
+            .new_pane(PaneId::Terminal(2), None, None, None, Some(1))
             .unwrap();
         active_tab.toggle_active_pane_fullscreen(1);
     }
@@ -979,7 +989,7 @@ fn attach_after_first_tab_closed() {
     {
         let active_tab = screen.get_active_tab_mut(1).unwrap();
         active_tab
-            .new_pane(PaneId::Terminal(2), None, None, Some(1))
+            .new_pane(PaneId::Terminal(2), None, None, None, Some(1))
             .unwrap();
         active_tab.toggle_active_pane_fullscreen(1);
     }
@@ -1017,7 +1027,7 @@ pub fn send_cli_write_chars_action_to_screen() {
     let cli_action = CliAction::WriteChars {
         chars: "input from the cli".into(),
     };
-    send_cli_action_to_server(&session_metadata, cli_action, &mut mock_screen, client_id);
+    send_cli_action_to_server(&session_metadata, cli_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
     mock_screen.teardown(vec![pty_writer_thread, screen_thread]);
     assert_snapshot!(format!("{:?}", *received_pty_instructions.lock().unwrap()));
@@ -1043,7 +1053,7 @@ pub fn send_cli_write_action_to_screen() {
     let cli_action = CliAction::Write {
         bytes: vec![102, 111, 111],
     };
-    send_cli_action_to_server(&session_metadata, cli_action, &mut mock_screen, client_id);
+    send_cli_action_to_server(&session_metadata, cli_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
     mock_screen.teardown(vec![pty_writer_thread, screen_thread]);
     assert_snapshot!(format!("{:?}", *received_pty_instructions.lock().unwrap()));
@@ -1070,12 +1080,7 @@ pub fn send_cli_resize_action_to_screen() {
         resize: Resize::Increase,
         direction: Some(Direction::Left),
     };
-    send_cli_action_to_server(
-        &session_metadata,
-        resize_cli_action,
-        &mut mock_screen,
-        client_id,
-    );
+    send_cli_action_to_server(&session_metadata, resize_cli_action, client_id);
     mock_screen.teardown(vec![pty_writer_thread, screen_thread]);
     let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
         received_server_instructions.lock().unwrap().iter(),
@@ -1106,12 +1111,7 @@ pub fn send_cli_focus_next_pane_action() {
         server_receiver
     );
     let focus_next_pane_action = CliAction::FocusNextPane;
-    send_cli_action_to_server(
-        &session_metadata,
-        focus_next_pane_action,
-        &mut mock_screen,
-        client_id,
-    );
+    send_cli_action_to_server(&session_metadata, focus_next_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![server_instruction, screen_thread]);
     let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
@@ -1144,12 +1144,7 @@ pub fn send_cli_focus_previous_pane_action() {
         server_receiver
     );
     let focus_next_pane_action = CliAction::FocusPreviousPane;
-    send_cli_action_to_server(
-        &session_metadata,
-        focus_next_pane_action,
-        &mut mock_screen,
-        client_id,
-    );
+    send_cli_action_to_server(&session_metadata, focus_next_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![server_instruction, screen_thread]);
     let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
@@ -1184,12 +1179,7 @@ pub fn send_cli_move_focus_pane_action() {
     let move_focus_action = CliAction::MoveFocus {
         direction: Direction::Right,
     };
-    send_cli_action_to_server(
-        &session_metadata,
-        move_focus_action,
-        &mut mock_screen,
-        client_id,
-    );
+    send_cli_action_to_server(&session_metadata, move_focus_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![server_instruction, screen_thread]);
     let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
@@ -1224,12 +1214,7 @@ pub fn send_cli_move_focus_or_tab_pane_action() {
     let move_focus_action = CliAction::MoveFocusOrTab {
         direction: Direction::Right,
     };
-    send_cli_action_to_server(
-        &session_metadata,
-        move_focus_action,
-        &mut mock_screen,
-        client_id,
-    );
+    send_cli_action_to_server(&session_metadata, move_focus_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![server_instruction, screen_thread]);
     let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
@@ -1264,7 +1249,7 @@ pub fn send_cli_move_pane_action() {
     let cli_action = CliAction::MovePane {
         direction: Some(Direction::Right),
     };
-    send_cli_action_to_server(&session_metadata, cli_action, &mut mock_screen, client_id);
+    send_cli_action_to_server(&session_metadata, cli_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![server_instruction, screen_thread]);
     let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
@@ -1303,7 +1288,7 @@ pub fn send_cli_dump_screen_action() {
         0,
         "fill pane up with something".as_bytes().to_vec(),
     ));
-    send_cli_action_to_server(&session_metadata, cli_action, &mut mock_screen, client_id);
+    send_cli_action_to_server(&session_metadata, cli_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![server_thread, screen_thread]);
     assert_snapshot!(format!(
@@ -1334,7 +1319,7 @@ pub fn send_cli_edit_scrollback_action() {
         0,
         "fill pane up with something".as_bytes().to_vec(),
     ));
-    send_cli_action_to_server(&session_metadata, cli_action, &mut mock_screen, client_id);
+    send_cli_action_to_server(&session_metadata, cli_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![pty_thread, screen_thread]);
     let dumped_file_name = mock_screen
@@ -1389,18 +1374,8 @@ pub fn send_cli_scroll_up_action() {
     std::thread::sleep(std::time::Duration::from_millis(100));
     // we send two actions here because only the last line in the pane is empty, so one action
     // won't show in a render
-    send_cli_action_to_server(
-        &session_metadata,
-        cli_action.clone(),
-        &mut mock_screen,
-        client_id,
-    );
-    send_cli_action_to_server(
-        &session_metadata,
-        cli_action.clone(),
-        &mut mock_screen,
-        client_id,
-    );
+    send_cli_action_to_server(&session_metadata, cli_action.clone(), client_id);
+    send_cli_action_to_server(&session_metadata, cli_action.clone(), client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![server_instruction, screen_thread]);
     let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
@@ -1443,44 +1418,14 @@ pub fn send_cli_scroll_down_action() {
     ));
     std::thread::sleep(std::time::Duration::from_millis(100));
     // scroll up some
-    send_cli_action_to_server(
-        &session_metadata,
-        scroll_up_cli_action.clone(),
-        &mut mock_screen,
-        client_id,
-    );
-    send_cli_action_to_server(
-        &session_metadata,
-        scroll_up_cli_action.clone(),
-        &mut mock_screen,
-        client_id,
-    );
-    send_cli_action_to_server(
-        &session_metadata,
-        scroll_up_cli_action.clone(),
-        &mut mock_screen,
-        client_id,
-    );
-    send_cli_action_to_server(
-        &session_metadata,
-        scroll_up_cli_action.clone(),
-        &mut mock_screen,
-        client_id,
-    );
+    send_cli_action_to_server(&session_metadata, scroll_up_cli_action.clone(), client_id);
+    send_cli_action_to_server(&session_metadata, scroll_up_cli_action.clone(), client_id);
+    send_cli_action_to_server(&session_metadata, scroll_up_cli_action.clone(), client_id);
+    send_cli_action_to_server(&session_metadata, scroll_up_cli_action.clone(), client_id);
 
     // scroll down some
-    send_cli_action_to_server(
-        &session_metadata,
-        scroll_down_cli_action.clone(),
-        &mut mock_screen,
-        client_id,
-    );
-    send_cli_action_to_server(
-        &session_metadata,
-        scroll_down_cli_action.clone(),
-        &mut mock_screen,
-        client_id,
-    );
+    send_cli_action_to_server(&session_metadata, scroll_down_cli_action.clone(), client_id);
+    send_cli_action_to_server(&session_metadata, scroll_down_cli_action.clone(), client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![server_instruction, screen_thread]);
     let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
@@ -1523,36 +1468,15 @@ pub fn send_cli_scroll_to_bottom_action() {
     ));
     std::thread::sleep(std::time::Duration::from_millis(100));
     // scroll up some
-    send_cli_action_to_server(
-        &session_metadata,
-        scroll_up_cli_action.clone(),
-        &mut mock_screen,
-        client_id,
-    );
-    send_cli_action_to_server(
-        &session_metadata,
-        scroll_up_cli_action.clone(),
-        &mut mock_screen,
-        client_id,
-    );
-    send_cli_action_to_server(
-        &session_metadata,
-        scroll_up_cli_action.clone(),
-        &mut mock_screen,
-        client_id,
-    );
-    send_cli_action_to_server(
-        &session_metadata,
-        scroll_up_cli_action.clone(),
-        &mut mock_screen,
-        client_id,
-    );
+    send_cli_action_to_server(&session_metadata, scroll_up_cli_action.clone(), client_id);
+    send_cli_action_to_server(&session_metadata, scroll_up_cli_action.clone(), client_id);
+    send_cli_action_to_server(&session_metadata, scroll_up_cli_action.clone(), client_id);
+    send_cli_action_to_server(&session_metadata, scroll_up_cli_action.clone(), client_id);
 
     // scroll to bottom
     send_cli_action_to_server(
         &session_metadata,
         scroll_to_bottom_action.clone(),
-        &mut mock_screen,
         client_id,
     );
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -1596,12 +1520,7 @@ pub fn send_cli_scroll_to_top_action() {
     ));
     std::thread::sleep(std::time::Duration::from_millis(100));
     // scroll to top
-    send_cli_action_to_server(
-        &session_metadata,
-        scroll_to_top_action.clone(),
-        &mut mock_screen,
-        client_id,
-    );
+    send_cli_action_to_server(&session_metadata, scroll_to_top_action.clone(), client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![server_instruction, screen_thread]);
     let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
@@ -1642,12 +1561,7 @@ pub fn send_cli_page_scroll_up_action() {
         pane_contents.as_bytes().to_vec(),
     ));
     std::thread::sleep(std::time::Duration::from_millis(100));
-    send_cli_action_to_server(
-        &session_metadata,
-        page_scroll_up_action,
-        &mut mock_screen,
-        client_id,
-    );
+    send_cli_action_to_server(&session_metadata, page_scroll_up_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![server_instruction, screen_thread]);
     let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
@@ -1691,26 +1605,11 @@ pub fn send_cli_page_scroll_down_action() {
     std::thread::sleep(std::time::Duration::from_millis(100));
 
     // scroll up some
-    send_cli_action_to_server(
-        &session_metadata,
-        page_scroll_up_action.clone(),
-        &mut mock_screen,
-        client_id,
-    );
-    send_cli_action_to_server(
-        &session_metadata,
-        page_scroll_up_action.clone(),
-        &mut mock_screen,
-        client_id,
-    );
+    send_cli_action_to_server(&session_metadata, page_scroll_up_action.clone(), client_id);
+    send_cli_action_to_server(&session_metadata, page_scroll_up_action.clone(), client_id);
 
     // scroll down
-    send_cli_action_to_server(
-        &session_metadata,
-        page_scroll_down_action,
-        &mut mock_screen,
-        client_id,
-    );
+    send_cli_action_to_server(&session_metadata, page_scroll_down_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![server_instruction, screen_thread]);
     let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
@@ -1751,12 +1650,7 @@ pub fn send_cli_half_page_scroll_up_action() {
         pane_contents.as_bytes().to_vec(),
     ));
     std::thread::sleep(std::time::Duration::from_millis(100));
-    send_cli_action_to_server(
-        &session_metadata,
-        half_page_scroll_up_action,
-        &mut mock_screen,
-        client_id,
-    );
+    send_cli_action_to_server(&session_metadata, half_page_scroll_up_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![server_instruction, screen_thread]);
     let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
@@ -1803,23 +1697,16 @@ pub fn send_cli_half_page_scroll_down_action() {
     send_cli_action_to_server(
         &session_metadata,
         half_page_scroll_up_action.clone(),
-        &mut mock_screen,
         client_id,
     );
     send_cli_action_to_server(
         &session_metadata,
         half_page_scroll_up_action.clone(),
-        &mut mock_screen,
         client_id,
     );
 
     // scroll down
-    send_cli_action_to_server(
-        &session_metadata,
-        half_page_scroll_down_action,
-        &mut mock_screen,
-        client_id,
-    );
+    send_cli_action_to_server(&session_metadata, half_page_scroll_down_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![server_instruction, screen_thread]);
     let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
@@ -1851,12 +1738,7 @@ pub fn send_cli_toggle_full_screen_action() {
         server_receiver
     );
     let toggle_full_screen_action = CliAction::ToggleFullscreen;
-    send_cli_action_to_server(
-        &session_metadata,
-        toggle_full_screen_action,
-        &mut mock_screen,
-        client_id,
-    );
+    send_cli_action_to_server(&session_metadata, toggle_full_screen_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![server_instruction, screen_thread]);
     let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
@@ -1888,12 +1770,7 @@ pub fn send_cli_toggle_pane_frames_action() {
         server_receiver
     );
     let toggle_pane_frames_action = CliAction::TogglePaneFrames;
-    send_cli_action_to_server(
-        &session_metadata,
-        toggle_pane_frames_action,
-        &mut mock_screen,
-        client_id,
-    );
+    send_cli_action_to_server(&session_metadata, toggle_pane_frames_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![server_instruction, screen_thread]);
     let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
@@ -1934,15 +1811,9 @@ pub fn send_cli_toggle_active_tab_sync_action() {
     send_cli_action_to_server(
         &session_metadata,
         cli_toggle_active_tab_sync_action,
-        &mut mock_screen,
         client_id,
     );
-    send_cli_action_to_server(
-        &session_metadata,
-        cli_write_action,
-        &mut mock_screen,
-        client_id,
-    );
+    send_cli_action_to_server(&session_metadata, cli_write_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
     mock_screen.teardown(vec![pty_writer_thread, screen_thread]);
     assert_snapshot!(format!("{:?}", *received_pty_instructions.lock().unwrap()));
@@ -1978,12 +1849,7 @@ pub fn send_cli_new_pane_action_with_default_parameters() {
         close_on_exit: false,
         start_suspended: false,
     };
-    send_cli_action_to_server(
-        &session_metadata,
-        cli_new_pane_action,
-        &mut mock_screen,
-        client_id,
-    );
+    send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
     mock_screen.teardown(vec![pty_thread, screen_thread]);
     assert_snapshot!(format!("{:?}", *received_pty_instructions.lock().unwrap()));
@@ -2019,12 +1885,7 @@ pub fn send_cli_new_pane_action_with_split_direction() {
         close_on_exit: false,
         start_suspended: false,
     };
-    send_cli_action_to_server(
-        &session_metadata,
-        cli_new_pane_action,
-        &mut mock_screen,
-        client_id,
-    );
+    send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
     mock_screen.teardown(vec![pty_thread, screen_thread]);
     assert_snapshot!(format!("{:?}", *received_pty_instructions.lock().unwrap()));
@@ -2060,12 +1921,7 @@ pub fn send_cli_new_pane_action_with_command_and_cwd() {
         close_on_exit: false,
         start_suspended: false,
     };
-    send_cli_action_to_server(
-        &session_metadata,
-        cli_new_pane_action,
-        &mut mock_screen,
-        client_id,
-    );
+    send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
     mock_screen.teardown(vec![pty_thread, screen_thread]);
     assert_snapshot!(format!("{:?}", *received_pty_instructions.lock().unwrap()));
@@ -2098,12 +1954,7 @@ pub fn send_cli_edit_action_with_default_parameters() {
         floating: false,
         cwd: None,
     };
-    send_cli_action_to_server(
-        &session_metadata,
-        cli_edit_action,
-        &mut mock_screen,
-        client_id,
-    );
+    send_cli_action_to_server(&session_metadata, cli_edit_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
     mock_screen.teardown(vec![pty_thread, screen_thread]);
     assert_snapshot!(format!("{:?}", *received_pty_instructions.lock().unwrap()));
@@ -2136,12 +1987,7 @@ pub fn send_cli_edit_action_with_line_number() {
         floating: false,
         cwd: None,
     };
-    send_cli_action_to_server(
-        &session_metadata,
-        cli_edit_action,
-        &mut mock_screen,
-        client_id,
-    );
+    send_cli_action_to_server(&session_metadata, cli_edit_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
     mock_screen.teardown(vec![pty_thread, screen_thread]);
     assert_snapshot!(format!("{:?}", *received_pty_instructions.lock().unwrap()));
@@ -2174,12 +2020,7 @@ pub fn send_cli_edit_action_with_split_direction() {
         floating: false,
         cwd: None,
     };
-    send_cli_action_to_server(
-        &session_metadata,
-        cli_edit_action,
-        &mut mock_screen,
-        client_id,
-    );
+    send_cli_action_to_server(&session_metadata, cli_edit_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
     mock_screen.teardown(vec![pty_thread, screen_thread]);
     assert_snapshot!(format!("{:?}", *received_pty_instructions.lock().unwrap()));
@@ -2201,12 +2042,7 @@ pub fn send_cli_switch_mode_action() {
     let cli_switch_mode = CliAction::SwitchMode {
         input_mode: InputMode::Locked,
     };
-    send_cli_action_to_server(
-        &session_metadata,
-        cli_switch_mode,
-        &mut mock_screen,
-        client_id,
-    );
+    send_cli_action_to_server(&session_metadata, cli_switch_mode, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
     mock_screen.teardown(vec![screen_thread]);
     assert_snapshot!(format!(
@@ -2241,7 +2077,6 @@ pub fn send_cli_toggle_pane_embed_or_float() {
     send_cli_action_to_server(
         &session_metadata,
         toggle_pane_embed_or_floating.clone(),
-        &mut mock_screen,
         client_id,
     );
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -2249,7 +2084,6 @@ pub fn send_cli_toggle_pane_embed_or_float() {
     send_cli_action_to_server(
         &session_metadata,
         toggle_pane_embed_or_floating.clone(),
-        &mut mock_screen,
         client_id,
     );
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -2285,28 +2119,13 @@ pub fn send_cli_toggle_floating_panes() {
     let toggle_pane_embed_or_floating = CliAction::TogglePaneEmbedOrFloating;
     let toggle_floating_panes = CliAction::ToggleFloatingPanes;
     // float the focused pane
-    send_cli_action_to_server(
-        &session_metadata,
-        toggle_pane_embed_or_floating,
-        &mut mock_screen,
-        client_id,
-    );
+    send_cli_action_to_server(&session_metadata, toggle_pane_embed_or_floating, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
     // toggle floating panes (will hide the floated pane from the previous action)
-    send_cli_action_to_server(
-        &session_metadata,
-        toggle_floating_panes.clone(),
-        &mut mock_screen,
-        client_id,
-    );
+    send_cli_action_to_server(&session_metadata, toggle_floating_panes.clone(), client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
     // toggle floating panes (will show the floated pane)
-    send_cli_action_to_server(
-        &session_metadata,
-        toggle_floating_panes.clone(),
-        &mut mock_screen,
-        client_id,
-    );
+    send_cli_action_to_server(&session_metadata, toggle_floating_panes.clone(), client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![server_instruction, screen_thread]);
     let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
@@ -2338,12 +2157,7 @@ pub fn send_cli_close_pane_action() {
         server_receiver
     );
     let close_pane_action = CliAction::ClosePane;
-    send_cli_action_to_server(
-        &session_metadata,
-        close_pane_action,
-        &mut mock_screen,
-        client_id,
-    );
+    send_cli_action_to_server(&session_metadata, close_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![server_instruction, screen_thread]);
     let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
@@ -2380,12 +2194,7 @@ pub fn send_cli_new_tab_action_default_params() {
         layout_dir: None,
         cwd: None,
     };
-    send_cli_action_to_server(
-        &session_metadata,
-        new_tab_action,
-        &mut mock_screen,
-        client_id,
-    );
+    send_cli_action_to_server(&session_metadata, new_tab_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![plugin_thread, screen_thread]);
     let received_plugin_instructions = received_plugin_instructions.lock().unwrap();
@@ -2425,12 +2234,7 @@ pub fn send_cli_new_tab_action_with_name_and_layout() {
         layout_dir: None,
         cwd: None,
     };
-    send_cli_action_to_server(
-        &session_metadata,
-        new_tab_action,
-        &mut mock_screen,
-        client_id,
-    );
+    send_cli_action_to_server(&session_metadata, new_tab_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![plugin_thread, screen_thread]);
     let new_tab_instruction = received_plugin_instructions
@@ -2472,12 +2276,7 @@ pub fn send_cli_next_tab_action() {
         server_receiver
     );
     let goto_next_tab = CliAction::GoToNextTab;
-    send_cli_action_to_server(
-        &session_metadata,
-        goto_next_tab,
-        &mut mock_screen,
-        client_id,
-    );
+    send_cli_action_to_server(&session_metadata, goto_next_tab, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![server_thread, screen_thread]);
     let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
@@ -2513,12 +2312,7 @@ pub fn send_cli_previous_tab_action() {
         server_receiver
     );
     let goto_previous_tab = CliAction::GoToPreviousTab;
-    send_cli_action_to_server(
-        &session_metadata,
-        goto_previous_tab,
-        &mut mock_screen,
-        client_id,
-    );
+    send_cli_action_to_server(&session_metadata, goto_previous_tab, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![server_thread, screen_thread]);
     let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
@@ -2554,7 +2348,7 @@ pub fn send_cli_goto_tab_action() {
         server_receiver
     );
     let goto_tab = CliAction::GoToTab { index: 1 };
-    send_cli_action_to_server(&session_metadata, goto_tab, &mut mock_screen, client_id);
+    send_cli_action_to_server(&session_metadata, goto_tab, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![server_thread, screen_thread]);
     let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
@@ -2590,7 +2384,7 @@ pub fn send_cli_close_tab_action() {
         server_receiver
     );
     let close_tab = CliAction::CloseTab;
-    send_cli_action_to_server(&session_metadata, close_tab, &mut mock_screen, client_id);
+    send_cli_action_to_server(&session_metadata, close_tab, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![server_thread, screen_thread]);
     let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
@@ -2628,7 +2422,7 @@ pub fn send_cli_rename_tab() {
     let rename_tab = CliAction::RenameTab {
         name: "new-tab-name".into(),
     };
-    send_cli_action_to_server(&session_metadata, rename_tab, &mut mock_screen, client_id);
+    send_cli_action_to_server(&session_metadata, rename_tab, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![plugin_thread, screen_thread]);
     assert_snapshot!(format!(
@@ -2663,15 +2457,10 @@ pub fn send_cli_undo_rename_tab() {
     };
     let undo_rename_tab = CliAction::UndoRenameTab;
     // first rename the tab
-    send_cli_action_to_server(&session_metadata, rename_tab, &mut mock_screen, client_id);
+    send_cli_action_to_server(&session_metadata, rename_tab, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
     // then undo the tab rename to go back to the default name
-    send_cli_action_to_server(
-        &session_metadata,
-        undo_rename_tab,
-        &mut mock_screen,
-        client_id,
-    );
+    send_cli_action_to_server(&session_metadata, undo_rename_tab, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![plugin_thread, screen_thread]);
     assert_snapshot!(format!(
@@ -2696,12 +2485,7 @@ pub fn send_cli_query_tab_names_action() {
         server_receiver
     );
     let query_tab_names = CliAction::QueryTabNames;
-    send_cli_action_to_server(
-        &session_metadata,
-        query_tab_names,
-        &mut mock_screen,
-        client_id,
-    );
+    send_cli_action_to_server(&session_metadata, query_tab_names, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![server_thread, screen_thread]);
     let log_tab_names_instruction = received_server_instructions
@@ -2714,4 +2498,146 @@ pub fn send_cli_query_tab_names_action() {
         })
         .cloned();
     assert_snapshot!(format!("{:#?}", log_tab_names_instruction));
+}
+
+#[test]
+pub fn send_cli_launch_or_focus_plugin_action() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 10; // fake client id should not appear in the screen's state
+    let mut mock_screen = MockScreen::new(size);
+    let plugin_receiver = mock_screen.plugin_receiver.take().unwrap();
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(None);
+    let received_plugin_instructions = Arc::new(Mutex::new(vec![]));
+    let plugin_thread = log_actions_in_thread!(
+        received_plugin_instructions,
+        PluginInstruction::Exit,
+        plugin_receiver
+    );
+    let cli_action = CliAction::LaunchOrFocusPlugin {
+        floating: true,
+        url: url::Url::parse("file:/path/to/fake/plugin").unwrap(),
+    };
+    send_cli_action_to_server(&session_metadata, cli_action, client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
+    mock_screen.teardown(vec![plugin_thread, screen_thread]);
+
+    let plugin_load_instruction = received_plugin_instructions
+        .lock()
+        .unwrap()
+        .iter()
+        .find(|instruction| match instruction {
+            PluginInstruction::Load(..) => true,
+            _ => false,
+        })
+        .cloned();
+
+    assert_snapshot!(format!("{:#?}", plugin_load_instruction));
+}
+
+#[test]
+pub fn send_cli_launch_or_focus_plugin_action_when_plugin_is_already_loaded() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 10; // fake client id should not appear in the screen's state
+    let mut mock_screen = MockScreen::new(size);
+    let plugin_receiver = mock_screen.plugin_receiver.take().unwrap();
+    let session_metadata = mock_screen.clone_session_metadata();
+    let mut initial_layout = TiledPaneLayout::default();
+    let existing_plugin_pane = TiledPaneLayout {
+        run: Some(Run::Plugin(RunPlugin {
+            _allow_exec_host_cmd: false,
+            location: RunPluginLocation::File(PathBuf::from("/path/to/fake/plugin")),
+        })),
+        ..Default::default()
+    };
+    initial_layout.children_split_direction = SplitDirection::Vertical;
+    initial_layout.children = vec![TiledPaneLayout::default(), existing_plugin_pane];
+    let screen_thread = mock_screen.run(Some(initial_layout));
+    let received_plugin_instructions = Arc::new(Mutex::new(vec![]));
+    let plugin_thread = log_actions_in_thread!(
+        received_plugin_instructions,
+        PluginInstruction::Exit,
+        plugin_receiver
+    );
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+    let cli_action = CliAction::LaunchOrFocusPlugin {
+        floating: true,
+        url: url::Url::parse("file:/path/to/fake/plugin").unwrap(),
+    };
+    send_cli_action_to_server(&session_metadata, cli_action, client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
+    mock_screen.teardown(vec![plugin_thread, server_thread, screen_thread]);
+
+    let plugin_load_instruction_sent = received_plugin_instructions
+        .lock()
+        .unwrap()
+        .iter()
+        .find(|instruction| match instruction {
+            PluginInstruction::Load(..) => true,
+            _ => false,
+        })
+        .is_some();
+    assert!(
+        !plugin_load_instruction_sent,
+        "Plugin Load instruction should not be sent for an already loaded plugin"
+    );
+    let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
+        received_server_instructions.lock().unwrap().iter(),
+        size,
+    );
+    let snapshot_count = snapshots.len();
+    assert_eq!(
+        snapshot_count, 2,
+        "Another render was sent for focusing the already loaded plugin"
+    );
+    for (cursor_coordinates, _snapshot) in snapshots.iter().skip(1) {
+        assert!(
+            cursor_coordinates.is_none(),
+            "Cursor moved to existing plugin in final snapshot indicating focus changed"
+        );
+    }
+}
+
+#[test]
+pub fn screen_can_suppress_pane() {
+    let size = Size { cols: 80, rows: 20 };
+    let mut initial_layout = TiledPaneLayout::default();
+    initial_layout.children_split_direction = SplitDirection::Vertical;
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
+    let mut mock_screen = MockScreen::new(size);
+    let screen_thread = mock_screen.run(Some(initial_layout));
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::SuppressPane(PaneId::Terminal(1), 1));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+
+    let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
+        received_server_instructions.lock().unwrap().iter(),
+        size,
+    );
+    let snapshot_count = snapshots.len();
+    for (_cursor_coordinates, snapshot) in snapshots {
+        assert_snapshot!(format!("{}", snapshot));
+    }
+    assert_snapshot!(format!("{}", snapshot_count));
 }

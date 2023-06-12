@@ -10,7 +10,7 @@ pub enum TerminalAction {
     RunCommand(RunCommand),
 }
 
-#[derive(Clone, Debug, Deserialize, Default, Serialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Deserialize, Default, Serialize, PartialEq, Eq, Hash)]
 pub struct RunCommand {
     #[serde(alias = "cmd")]
     pub command: PathBuf,
@@ -66,5 +66,18 @@ impl From<RunCommandAction> for RunCommand {
             hold_on_close: action.hold_on_close,
             hold_on_start: action.hold_on_start,
         }
+    }
+}
+
+impl RunCommand {
+    pub fn new(command: PathBuf) -> Self {
+        RunCommand {
+            command,
+            ..Default::default()
+        }
+    }
+    pub fn with_cwd(mut self, cwd: PathBuf) -> Self {
+        self.cwd = Some(cwd);
+        self
     }
 }

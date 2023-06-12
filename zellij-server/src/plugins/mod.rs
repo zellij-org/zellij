@@ -1,6 +1,8 @@
 mod plugin_loader;
 mod plugin_map;
+mod plugin_worker;
 mod wasm_bridge;
+mod watch_filesystem;
 mod zellij_exports;
 use log::info;
 use std::{collections::HashMap, fs, path::PathBuf};
@@ -12,13 +14,14 @@ use crate::{pty::PtyInstruction, thread_bus::Bus, ClientId, ServerInstruction};
 use wasm_bridge::WasmBridge;
 
 use zellij_utils::{
-    data::Event,
+    data::{Event, PluginCapabilities},
     errors::{prelude::*, ContextType, PluginContext},
     input::{
         command::TerminalAction,
         layout::{FloatingPaneLayout, Layout, Run, RunPlugin, RunPluginLocation, TiledPaneLayout},
         plugins::PluginsConfig,
     },
+    ipc::ClientAttributes,
     pane_size::Size,
 };
 
@@ -104,13 +107,29 @@ pub(crate) fn plugin_thread_main(
     data_dir: PathBuf,
     plugins: PluginsConfig,
     layout: Box<Layout>,
+    path_to_default_shell: PathBuf,
+    zellij_cwd: PathBuf,
+    capabilities: PluginCapabilities,
+    client_attributes: ClientAttributes,
+    default_shell: Option<TerminalAction>,
 ) -> Result<()> {
     info!("Wasm main thread starts");
 
     let plugin_dir = data_dir.join("plugins/");
     let plugin_global_data_dir = plugin_dir.join("data");
 
-    let mut wasm_bridge = WasmBridge::new(plugins, bus.senders.clone(), store, plugin_dir);
+    let mut wasm_bridge = WasmBridge::new(
+        plugins,
+        bus.senders.clone(),
+        store,
+        plugin_dir,
+        path_to_default_shell,
+        zellij_cwd,
+        capabilities,
+        client_attributes,
+        default_shell,
+        layout.clone(),
+    );
 
     loop {
         let (event, mut err_ctx) = bus.recv().expect("failed to receive event on channel");

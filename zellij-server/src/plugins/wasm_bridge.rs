@@ -1,36 +1,36 @@
 use super::{PluginId, PluginInstruction};
 use crate::plugins::plugin_loader::{PluginLoader, VersionMismatchError};
-use crate::plugins::plugin_map::{
-    AtomicEvent, PluginEnv, PluginMap, RunningPlugin, RunningWorker, Subscriptions,
-};
+use crate::plugins::plugin_map::{AtomicEvent, PluginEnv, PluginMap, RunningPlugin, Subscriptions};
+use crate::plugins::plugin_worker::MessageToWorker;
+use crate::plugins::watch_filesystem::watch_filesystem;
 use crate::plugins::zellij_exports::{wasi_read_string, wasi_write_object};
 use log::info;
 use std::{
     collections::{HashMap, HashSet},
     path::PathBuf,
     str::FromStr,
-    sync::{Arc, Mutex, TryLockError},
+    sync::{Arc, Mutex},
 };
 use wasmer::{Instance, Module, Store, Value};
 use zellij_utils::async_std::task::{self, JoinHandle};
+use zellij_utils::notify::{RecommendedWatcher, Watcher};
 
 use crate::{
     background_jobs::BackgroundJob, screen::ScreenInstruction, thread_bus::ThreadSenders,
     ui::loading_indication::LoadingIndication, ClientId,
 };
-
 use zellij_utils::{
     consts::VERSION,
-    data::{Event, EventType},
+    data::{Event, EventType, PluginCapabilities},
     errors::prelude::*,
     input::{
-        layout::{RunPlugin, RunPluginLocation},
+        command::TerminalAction,
+        layout::{Layout, RunPlugin, RunPluginLocation},
         plugins::PluginsConfig,
     },
+    ipc::ClientAttributes,
     pane_size::Size,
 };
-
-const RETRY_INTERVAL_MS: u64 = 100;
 
 pub struct WasmBridge {
     connected_clients: Arc<Mutex<Vec<ClientId>>>,
@@ -49,6 +49,13 @@ pub struct WasmBridge {
     // payload>
     loading_plugins: HashMap<(PluginId, RunPlugin), JoinHandle<()>>, // plugin_id to join-handle
     pending_plugin_reloads: HashSet<RunPlugin>,
+    path_to_default_shell: PathBuf,
+    watcher: Option<RecommendedWatcher>,
+    zellij_cwd: PathBuf,
+    capabilities: PluginCapabilities,
+    client_attributes: ClientAttributes,
+    default_shell: Option<TerminalAction>,
+    default_layout: Box<Layout>,
 }
 
 impl WasmBridge {
@@ -57,11 +64,24 @@ impl WasmBridge {
         senders: ThreadSenders,
         store: Store,
         plugin_dir: PathBuf,
+        path_to_default_shell: PathBuf,
+        zellij_cwd: PathBuf,
+        capabilities: PluginCapabilities,
+        client_attributes: ClientAttributes,
+        default_shell: Option<TerminalAction>,
+        default_layout: Box<Layout>,
     ) -> Self {
         let plugin_map = Arc::new(Mutex::new(PluginMap::default()));
         let connected_clients: Arc<Mutex<Vec<ClientId>>> = Arc::new(Mutex::new(vec![]));
         let plugin_cache: Arc<Mutex<HashMap<PathBuf, Module>>> =
             Arc::new(Mutex::new(HashMap::new()));
+        let watcher = match watch_filesystem(senders.clone(), &zellij_cwd) {
+            Ok(watcher) => Some(watcher),
+            Err(e) => {
+                log::error!("Failed to watch filesystem: {:?}", e);
+                None
+            },
+        };
         WasmBridge {
             connected_clients,
             plugins,
@@ -70,12 +90,19 @@ impl WasmBridge {
             plugin_dir,
             plugin_cache,
             plugin_map,
+            path_to_default_shell,
+            watcher,
             next_plugin_id: 0,
             cached_events_for_pending_plugins: HashMap::new(),
             cached_resizes_for_pending_plugins: HashMap::new(),
             cached_worker_messages: HashMap::new(),
             loading_plugins: HashMap::new(),
             pending_plugin_reloads: HashSet::new(),
+            zellij_cwd,
+            capabilities,
+            client_attributes,
+            default_shell,
+            default_layout,
         }
     }
     pub fn load_plugin(
@@ -122,6 +149,12 @@ impl WasmBridge {
             let store = self.store.clone();
             let plugin_map = self.plugin_map.clone();
             let connected_clients = self.connected_clients.clone();
+            let path_to_default_shell = self.path_to_default_shell.clone();
+            let zellij_cwd = self.zellij_cwd.clone();
+            let capabilities = self.capabilities.clone();
+            let client_attributes = self.client_attributes.clone();
+            let default_shell = self.default_shell.clone();
+            let default_layout = self.default_layout.clone();
             async move {
                 let _ =
                     senders.send_to_background_jobs(BackgroundJob::AnimatePluginLoading(plugin_id));
@@ -139,6 +172,12 @@ impl WasmBridge {
                     size,
                     connected_clients.clone(),
                     &mut loading_indication,
+                    path_to_default_shell,
+                    zellij_cwd.clone(),
+                    capabilities,
+                    client_attributes,
+                    default_shell,
+                    default_layout,
                 ) {
                     Ok(_) => handle_plugin_successful_loading(&senders, plugin_id),
                     Err(e) => handle_plugin_loading_failure(
@@ -160,7 +199,10 @@ impl WasmBridge {
     pub fn unload_plugin(&mut self, pid: PluginId) -> Result<()> {
         info!("Bye from plugin {}", &pid);
         let mut plugin_map = self.plugin_map.lock().unwrap();
-        for (running_plugin, _, _) in plugin_map.remove_plugins(pid) {
+        for (running_plugin, _, workers) in plugin_map.remove_plugins(pid) {
+            for (_worker_name, worker_sender) in workers {
+                drop(worker_sender.send(MessageToWorker::Exit));
+            }
             let running_plugin = running_plugin.lock().unwrap();
             let cache_dir = running_plugin.plugin_env.plugin_own_data_dir.clone();
             if let Err(e) = std::fs::remove_dir_all(cache_dir) {
@@ -195,6 +237,12 @@ impl WasmBridge {
             let store = self.store.clone();
             let plugin_map = self.plugin_map.clone();
             let connected_clients = self.connected_clients.clone();
+            let path_to_default_shell = self.path_to_default_shell.clone();
+            let zellij_cwd = self.zellij_cwd.clone();
+            let capabilities = self.capabilities.clone();
+            let client_attributes = self.client_attributes.clone();
+            let default_shell = self.default_shell.clone();
+            let default_layout = self.default_layout.clone();
             async move {
                 match PluginLoader::reload_plugin(
                     first_plugin_id,
@@ -205,6 +253,12 @@ impl WasmBridge {
                     plugin_map.clone(),
                     connected_clients.clone(),
                     &mut loading_indication,
+                    path_to_default_shell.clone(),
+                    zellij_cwd.clone(),
+                    capabilities.clone(),
+                    client_attributes.clone(),
+                    default_shell.clone(),
+                    default_layout.clone(),
                 ) {
                     Ok(_) => {
                         handle_plugin_successful_loading(&senders, first_plugin_id);
@@ -223,6 +277,12 @@ impl WasmBridge {
                                 plugin_map.clone(),
                                 connected_clients.clone(),
                                 &mut loading_indication,
+                                path_to_default_shell.clone(),
+                                zellij_cwd.clone(),
+                                capabilities.clone(),
+                                client_attributes.clone(),
+                                default_shell.clone(),
+                                default_layout.clone(),
                             ) {
                                 Ok(_) => handle_plugin_successful_loading(&senders, *plugin_id),
                                 Err(e) => handle_plugin_loading_failure(
@@ -263,6 +323,12 @@ impl WasmBridge {
             self.plugin_map.clone(),
             self.connected_clients.clone(),
             &mut loading_indication,
+            self.path_to_default_shell.clone(),
+            self.zellij_cwd.clone(),
+            self.capabilities.clone(),
+            self.client_attributes.clone(),
+            self.default_shell.clone(),
+            self.default_layout.clone(),
         ) {
             Ok(_) => {
                 let _ = self
@@ -414,7 +480,17 @@ impl WasmBridge {
                                     ));
                                 },
                                 Err(e) => {
-                                    log::error!("{}", e);
+                                    log::error!("{:?}", e);
+
+                                    // https://stackoverflow.com/questions/66450942/in-rust-is-there-a-way-to-make-literal-newlines-in-r-using-windows-c
+                                    let stringified_error =
+                                        format!("{:?}", e).replace("\n", "\n\r");
+
+                                    handle_plugin_crash(
+                                        plugin_id,
+                                        stringified_error,
+                                        senders.clone(),
+                                    );
                                 },
                             }
                         }
@@ -460,6 +536,7 @@ impl WasmBridge {
         for plugin_id in &plugin_ids {
             drop(self.unload_plugin(*plugin_id));
         }
+        drop(self.watcher.as_mut().map(|w| w.unwatch(&self.zellij_cwd)));
     }
     fn run_plugin_of_plugin_id(&self, plugin_id: PluginId) -> Option<&RunPlugin> {
         self.loading_plugins
@@ -599,36 +676,23 @@ impl WasmBridge {
             self.plugin_map
                 .lock()
                 .unwrap()
-                .clone_worker(plugin_id, client_id, &worker_name);
-        let mut cache_messages = || {
-            for (message, payload) in messages.drain(..) {
-                self.cached_worker_messages
-                    .entry(plugin_id)
-                    .or_default()
-                    .push((client_id, worker_name.clone(), message, payload));
-            }
-        };
+                .worker_sender(plugin_id, client_id, &worker_name);
         match worker {
             Some(worker) => {
-                let worker_is_busy = { worker.try_lock().is_err() };
-                if worker_is_busy {
-                    // most messages will be caught here, we do this once before the async task to
-                    // bulk most messages together and prevent them from cascading
-                    cache_messages();
-                } else {
-                    async_send_messages_to_worker(
-                        self.senders.clone(),
-                        messages,
-                        worker,
-                        plugin_id,
-                        client_id,
-                        worker_name,
-                    );
+                for (message, payload) in messages.drain(..) {
+                    if let Err(e) = worker.try_send(MessageToWorker::Message(message, payload)) {
+                        log::error!("Failed to send message to worker: {:?}", e);
+                    }
                 }
             },
             None => {
-                log::warn!("Worker {worker_name} not found, placing message in cache");
-                cache_messages();
+                log::warn!("Worker {worker_name} not found, caching messages");
+                for (message, payload) in messages.drain(..) {
+                    self.cached_worker_messages
+                        .entry(plugin_id)
+                        .or_default()
+                        .push((client_id, worker_name.clone(), message, payload));
+                }
             },
         }
         Ok(())
@@ -708,52 +772,12 @@ pub fn apply_event_to_plugin(
     Ok(())
 }
 
-fn async_send_messages_to_worker(
-    senders: ThreadSenders,
-    mut messages: Vec<(String, String)>,
-    worker: Arc<Mutex<RunningWorker>>,
-    plugin_id: PluginId,
-    client_id: ClientId,
-    worker_name: String,
-) {
-    task::spawn({
-        async move {
-            match worker.try_lock() {
-                Ok(worker) => {
-                    for (message, payload) in messages.drain(..) {
-                        worker.send_message(message, payload).ok();
-                    }
-                    let _ = senders
-                        .send_to_plugin(PluginInstruction::ApplyCachedWorkerMessages(plugin_id));
-                },
-                Err(TryLockError::WouldBlock) => {
-                    task::spawn({
-                        async move {
-                            log::warn!(
-                                "Worker {} busy, retrying sending message after: {}ms",
-                                worker_name,
-                                RETRY_INTERVAL_MS
-                            );
-                            task::sleep(std::time::Duration::from_millis(RETRY_INTERVAL_MS)).await;
-                            let _ = senders.send_to_plugin(
-                                PluginInstruction::PostMessagesToPluginWorker(
-                                    plugin_id,
-                                    client_id,
-                                    worker_name,
-                                    messages,
-                                ),
-                            );
-                        }
-                    });
-                },
-                Err(e) => {
-                    log::error!(
-                        "Failed to send message to worker \"{}\": {:?}",
-                        worker_name,
-                        e
-                    );
-                },
-            }
-        }
-    });
+pub fn handle_plugin_crash(plugin_id: PluginId, message: String, senders: ThreadSenders) {
+    let mut loading_indication = LoadingIndication::new("Panic!".to_owned());
+    loading_indication.indicate_loading_error(message);
+    let _ = senders.send_to_screen(ScreenInstruction::UpdatePluginLoadingStage(
+        plugin_id,
+        loading_indication,
+    ));
+    let _ = senders.send_to_plugin(PluginInstruction::Unload(plugin_id));
 }
