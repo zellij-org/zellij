@@ -26,6 +26,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat: add virtually all of Zellij's API to plugins (https://github.com/zellij-org/zellij/pull/2516)
 * fix: runtime panic because of local cache (https://github.com/zellij-org/zellij/pull/2522)
 * fix: cursor flickering (https://github.com/zellij-org/zellij/pull/2528)
+* fix: focus tab as well as pane when relaunching plugin (https://github.com/zellij-org/zellij/pull/2530)
 
 ## [0.36.0] - 2023-04-13
 * fix: when moving pane focus off screen edge to the next tab, the pane on the screen edge is now focused (https://github.com/zellij-org/zellij/pull/2293)
