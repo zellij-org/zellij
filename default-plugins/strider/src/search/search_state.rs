@@ -36,8 +36,11 @@ impl SearchState {
             },
             Key::Ctrl('r') => self.toggle_search_filter(),
             Key::Esc => {
-                hide_self();
-                self.clear_state();
+                if !self.search_term.is_empty() {
+                    self.clear_state();
+                } else {
+                    hide_self();
+                }
             },
             _ => self.append_to_search_term(key),
         }
