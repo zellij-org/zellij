@@ -1484,13 +1484,14 @@ impl Screen {
         match tab_index_and_plugin_pane_id {
             Some((tab_index, plugin_pane_id)) => {
                 self.go_to_tab(tab_index + 1, client_id)?;
-                self.tabs.get_mut(&tab_index)
+                self.tabs
+                    .get_mut(&tab_index)
                     .with_context(err_context)?
                     .focus_pane_with_id(plugin_pane_id, should_float, client_id)
                     .context("failed to focus plugin pane")?;
                 Ok(true)
             },
-            None => Ok(false)
+            None => Ok(false),
         }
     }
 
