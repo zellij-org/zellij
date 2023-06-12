@@ -33,7 +33,7 @@ use crate::{
     thread_bus::Bus,
     ui::{
         loading_indication::LoadingIndication,
-        overlay::{Overlay, OverlayWindow, Overlayable},
+        overlay::{Overlay, OverlayWindow},
     },
     ClientId, ServerInstruction,
 };
@@ -930,12 +930,9 @@ impl Screen {
         );
         let mut tabs_to_close = vec![];
         let size = self.size;
-        let overlay = self.overlay.clone();
         for (tab_index, tab) in &mut self.tabs {
             if tab.has_selectable_tiled_panes() {
-                let vte_overlay = overlay.generate_overlay(size).context(err_context)?;
-                tab.render(&mut output, Some(vte_overlay))
-                    .context(err_context)?;
+                tab.render(&mut output).context(err_context)?;
             } else if !tab.is_pending() {
                 tabs_to_close.push(*tab_index);
             }

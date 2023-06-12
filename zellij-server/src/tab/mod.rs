@@ -1648,7 +1648,7 @@ impl Tab {
         Ok(())
     }
 
-    pub fn render(&mut self, output: &mut Output, overlay: Option<String>) -> Result<()> {
+    pub fn render(&mut self, output: &mut Output) -> Result<()> {
         let err_context = || "failed to render tab".to_string();
 
         let connected_clients: HashSet<ClientId> =
@@ -1676,15 +1676,8 @@ impl Tab {
         }
 
         self.render_cursor(output);
-        if output.is_dirty() {
+        if output.has_rendered_assets() {
             self.hide_cursor_and_clear_display_as_needed(output);
-            // FIXME: Once clients can be distinguished
-            if let Some(overlay_vte) = &overlay {
-                output.add_post_vte_instruction_to_multiple_clients(
-                    connected_clients.iter().copied(),
-                    overlay_vte,
-                );
-            }
         }
 
         Ok(())
