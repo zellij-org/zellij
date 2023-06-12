@@ -1472,15 +1472,27 @@ impl Screen {
         client_id: ClientId,
     ) -> Result<bool> {
         // true => found and focused, false => not
+        let err_context = || format!("failed to focus_plugin_pane");
+        let mut tab_index_and_plugin_pane_id = None;
         let all_tabs = self.get_tabs_mut();
-        for tab in all_tabs.values_mut() {
+        for (tab_index, tab) in all_tabs.iter_mut() {
             if let Some(plugin_pane_id) = tab.find_plugin(&run_plugin) {
-                tab.focus_pane_with_id(plugin_pane_id, should_float, client_id)
-                    .context("failed to focus plugin pane")?;
-                return Ok(true);
+                tab_index_and_plugin_pane_id = Some((*tab_index, plugin_pane_id));
+                break;
             }
         }
-        Ok(false)
+        match tab_index_and_plugin_pane_id {
+            Some((tab_index, plugin_pane_id)) => {
+                self.go_to_tab(tab_index + 1, client_id)?;
+                self.tabs
+                    .get_mut(&tab_index)
+                    .with_context(err_context)?
+                    .focus_pane_with_id(plugin_pane_id, should_float, client_id)
+                    .context("failed to focus plugin pane")?;
+                Ok(true)
+            },
+            None => Ok(false),
+        }
     }
 
     fn unblock_input(&self) -> Result<()> {
