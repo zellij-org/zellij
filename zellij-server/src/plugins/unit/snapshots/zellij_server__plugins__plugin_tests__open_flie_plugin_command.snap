@@ -1,0 +1,25 @@
+---
+source: zellij-server/src/plugins/./unit/plugin_tests.rs
+assertion_line: 2820
+expression: "format!(\"{:#?}\", new_tab_event)"
+---
+Some(
+    SpawnTerminal(
+        Some(
+            OpenFile(
+                "/path/to/my/file.rs",
+                None,
+                None,
+            ),
+        ),
+        Some(
+            false,
+        ),
+        Some(
+            "Editing: /path/to/my/file.rs",
+        ),
+        ClientId(
+            1,
+        ),
+    ),
+)

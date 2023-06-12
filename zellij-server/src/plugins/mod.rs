@@ -14,13 +14,14 @@ use crate::{pty::PtyInstruction, thread_bus::Bus, ClientId, ServerInstruction};
 use wasm_bridge::WasmBridge;
 
 use zellij_utils::{
-    data::Event,
+    data::{Event, PluginCapabilities},
     errors::{prelude::*, ContextType, PluginContext},
     input::{
         command::TerminalAction,
         layout::{FloatingPaneLayout, Layout, Run, RunPlugin, RunPluginLocation, TiledPaneLayout},
         plugins::PluginsConfig,
     },
+    ipc::ClientAttributes,
     pane_size::Size,
 };
 
@@ -108,6 +109,9 @@ pub(crate) fn plugin_thread_main(
     layout: Box<Layout>,
     path_to_default_shell: PathBuf,
     zellij_cwd: PathBuf,
+    capabilities: PluginCapabilities,
+    client_attributes: ClientAttributes,
+    default_shell: Option<TerminalAction>,
 ) -> Result<()> {
     info!("Wasm main thread starts");
 
@@ -121,6 +125,10 @@ pub(crate) fn plugin_thread_main(
         plugin_dir,
         path_to_default_shell,
         zellij_cwd,
+        capabilities,
+        client_attributes,
+        default_shell,
+        layout.clone(),
     );
 
     loop {

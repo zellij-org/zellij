@@ -85,8 +85,11 @@ impl ZellijPlugin for State {
             },
             Event::Key(key) => match key {
                 Key::Esc if self.typing_search_term() => {
-                    self.stop_typing_search_term();
-                    self.search_state.handle_key(key);
+                    if self.search_state.search_term.is_empty() {
+                        self.stop_typing_search_term();
+                    } else {
+                        self.search_state.handle_key(key);
+                    }
                     should_render = true;
                 },
                 _ if self.typing_search_term() => {

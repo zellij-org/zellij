@@ -64,6 +64,16 @@ pub fn open_terminal_floating(path: &Path) {
     unsafe { host_open_terminal_floating() };
 }
 
+pub fn open_command_pane(path: &Path, args: Vec<String>) {
+    object_to_stdout(&(path, args));
+    unsafe { host_open_command_pane() };
+}
+
+pub fn open_command_pane_floating(path: &Path, args: Vec<String>) {
+    object_to_stdout(&(path, args));
+    unsafe { host_open_command_pane_floating() };
+}
+
 pub fn switch_tab_to(tab_idx: u32) {
     unsafe { host_switch_tab_to(tab_idx) };
 }
@@ -80,11 +90,183 @@ pub fn hide_self() {
     unsafe { host_hide_self() };
 }
 
+pub fn switch_to_input_mode(mode: &InputMode) {
+    object_to_stdout(&mode);
+    unsafe { host_switch_to_mode() };
+}
+
+pub fn new_tabs_with_layout(layout: &str) {
+    println!("{}", layout);
+    unsafe { host_new_tabs_with_layout() }
+}
+
+pub fn new_tab() {
+    unsafe { host_new_tab() }
+}
+
+pub fn go_to_next_tab() {
+    unsafe { host_go_to_next_tab() }
+}
+
+pub fn go_to_previous_tab() {
+    unsafe { host_go_to_previous_tab() }
+}
+
 pub fn report_panic(info: &std::panic::PanicInfo) {
     println!("");
     println!("A panic occured in a plugin");
     println!("{:#?}", info);
     unsafe { host_report_panic() };
+}
+
+pub fn resize_focused_pane(resize: Resize) {
+    object_to_stdout(&resize);
+    unsafe { host_resize() };
+}
+
+pub fn resize_focused_pane_with_direction(resize: Resize, direction: Direction) {
+    object_to_stdout(&(resize, direction));
+    unsafe { host_resize_with_direction() };
+}
+
+pub fn focus_next_pane() {
+    unsafe { host_focus_next_pane() };
+}
+
+pub fn focus_previous_pane() {
+    unsafe { host_focus_previous_pane() };
+}
+
+pub fn move_focus(direction: Direction) {
+    object_to_stdout(&direction);
+    unsafe { host_move_focus() };
+}
+
+pub fn move_focus_or_tab(direction: Direction) {
+    object_to_stdout(&direction);
+    unsafe { host_move_focus_or_tab() };
+}
+
+pub fn detach() {
+    unsafe { host_detach() };
+}
+
+pub fn edit_scrollback() {
+    unsafe { host_edit_scrollback() };
+}
+
+pub fn write(bytes: Vec<u8>) {
+    object_to_stdout(&bytes);
+    unsafe { host_write() };
+}
+
+pub fn write_chars(chars: &str) {
+    println!("{}", chars);
+    unsafe { host_write_chars() };
+}
+
+pub fn toggle_tab() {
+    unsafe { host_toggle_tab() };
+}
+
+pub fn move_pane() {
+    unsafe { host_move_pane() };
+}
+
+pub fn move_pane_with_direction(direction: Direction) {
+    object_to_stdout(&direction);
+    unsafe { host_move_pane_with_direction() };
+}
+
+pub fn clear_screen() {
+    unsafe { host_clear_screen() };
+}
+
+pub fn scroll_up() {
+    unsafe { host_scroll_up() };
+}
+
+pub fn scroll_down() {
+    unsafe { host_scroll_down() };
+}
+
+pub fn scroll_to_top() {
+    unsafe { host_scroll_to_top() };
+}
+
+pub fn scroll_to_bottom() {
+    unsafe { host_scroll_to_bottom() };
+}
+
+pub fn page_scroll_up() {
+    unsafe { host_page_scroll_up() };
+}
+
+pub fn page_scroll_down() {
+    unsafe { host_page_scroll_down() };
+}
+
+pub fn toggle_focus_fullscreen() {
+    unsafe { host_toggle_focus_fullscreen() };
+}
+
+pub fn toggle_pane_frames() {
+    unsafe { host_toggle_pane_frames() };
+}
+
+pub fn toggle_pane_embed_or_eject() {
+    unsafe { host_toggle_pane_embed_or_eject() };
+}
+
+pub fn undo_rename_pane() {
+    unsafe { host_undo_rename_pane() };
+}
+
+pub fn close_focus() {
+    unsafe { host_close_focus() };
+}
+
+pub fn toggle_active_tab_sync() {
+    unsafe { host_toggle_active_tab_sync() };
+}
+
+pub fn close_focused_tab() {
+    unsafe { host_close_focused_tab() };
+}
+
+pub fn undo_rename_tab() {
+    unsafe { host_undo_rename_tab() };
+}
+
+pub fn quit_zellij() {
+    unsafe { host_quit_zellij() };
+}
+
+pub fn previous_swap_layout() {
+    unsafe { host_previous_swap_layout() };
+}
+
+pub fn next_swap_layout() {
+    unsafe { host_next_swap_layout() };
+}
+
+pub fn go_to_tab_name(tab_name: &str) {
+    println!("{}", tab_name);
+    unsafe { host_go_to_tab_name() };
+}
+
+pub fn focus_or_create_tab(tab_name: &str) {
+    print!("{}", tab_name);
+    unsafe { host_focus_or_create_tab() };
+}
+
+pub fn go_to_tab(tab_index: i32) {
+    unsafe { host_go_to_tab(tab_index) };
+}
+
+pub fn start_or_reload_plugin(url: &str) {
+    println!("{}", url);
+    unsafe { host_start_or_reload_plugin() };
 }
 
 // Internal Functions
@@ -134,6 +316,8 @@ extern "C" {
     fn host_open_file_with_line_floating();
     fn host_open_terminal();
     fn host_open_terminal_floating();
+    fn host_open_command_pane();
+    fn host_open_command_pane_floating();
     fn host_switch_tab_to(tab_idx: u32);
     fn host_set_timeout(secs: f64);
     fn host_exec_cmd();
@@ -141,4 +325,44 @@ extern "C" {
     fn host_post_message_to();
     fn host_post_message_to_plugin();
     fn host_hide_self();
+    fn host_switch_to_mode();
+    fn host_new_tabs_with_layout();
+    fn host_new_tab();
+    fn host_go_to_next_tab();
+    fn host_go_to_previous_tab();
+    fn host_resize();
+    fn host_resize_with_direction();
+    fn host_focus_next_pane();
+    fn host_focus_previous_pane();
+    fn host_move_focus();
+    fn host_move_focus_or_tab();
+    fn host_detach();
+    fn host_edit_scrollback();
+    fn host_write();
+    fn host_write_chars();
+    fn host_toggle_tab();
+    fn host_move_pane();
+    fn host_move_pane_with_direction();
+    fn host_clear_screen();
+    fn host_scroll_up();
+    fn host_scroll_down();
+    fn host_scroll_to_top();
+    fn host_scroll_to_bottom();
+    fn host_page_scroll_up();
+    fn host_page_scroll_down();
+    fn host_toggle_focus_fullscreen();
+    fn host_toggle_pane_frames();
+    fn host_toggle_pane_embed_or_eject();
+    fn host_undo_rename_pane();
+    fn host_close_focus();
+    fn host_toggle_active_tab_sync();
+    fn host_close_focused_tab();
+    fn host_undo_rename_tab();
+    fn host_quit_zellij();
+    fn host_previous_swap_layout();
+    fn host_next_swap_layout();
+    fn host_go_to_tab_name();
+    fn host_focus_or_create_tab();
+    fn host_go_to_tab(tab_index: i32);
+    fn host_start_or_reload_plugin();
 }

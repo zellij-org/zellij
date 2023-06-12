@@ -1,6 +1,7 @@
 use std::collections::VecDeque;
 use std::sync::{Arc, RwLock};
 
+use crate::thread_bus::ThreadSenders;
 use crate::{
     os_input_output::ServerOsApi,
     plugins::PluginInstruction,
@@ -10,25 +11,29 @@ use crate::{
 };
 use zellij_utils::{
     channels::SenderWithContext,
-    data::{Direction, Event, ResizeStrategy},
+    data::{Direction, Event, PluginCapabilities, ResizeStrategy},
     errors::prelude::*,
     input::{
         actions::{Action, SearchDirection, SearchOption},
         command::TerminalAction,
         get_mode_info,
-        layout::RunPluginLocation,
+        layout::{Layout, RunPluginLocation},
     },
-    ipc::{ClientToServerMsg, ExitReason, IpcReceiverWithContext, ServerToClientMsg},
+    ipc::{
+        ClientAttributes, ClientToServerMsg, ExitReason, IpcReceiverWithContext, ServerToClientMsg,
+    },
 };
 
 use crate::ClientId;
 
 pub(crate) fn route_action(
     action: Action,
-    session: &SessionMetaData,
-    _os_input: &dyn ServerOsApi,
-    to_server: &SenderWithContext<ServerInstruction>,
     client_id: ClientId,
+    senders: ThreadSenders,
+    capabilities: PluginCapabilities,
+    client_attributes: ClientAttributes,
+    default_shell: Option<TerminalAction>,
+    default_layout: Box<Layout>,
 ) -> Result<bool> {
     let mut should_break = false;
     let err_context = || format!("failed to route action for client {client_id}");
@@ -39,8 +44,7 @@ pub(crate) fn route_action(
     match action {
         Action::MouseHoldLeft(..) | Action::MouseHoldRight(..) => {},
         _ => {
-            session
-                .senders
+            senders
                 .send_to_plugin(PluginInstruction::Update(vec![(
                     None,
                     Some(client_id),
@@ -52,81 +56,69 @@ pub(crate) fn route_action(
 
     match action {
         Action::ToggleTab => {
-            session
-                .senders
+            senders
                 .send_to_screen(ScreenInstruction::ToggleTab(client_id))
                 .with_context(err_context)?;
         },
         Action::Write(val) => {
-            session
-                .senders
+            senders
                 .send_to_screen(ScreenInstruction::ClearScroll(client_id))
                 .with_context(err_context)?;
-            session
-                .senders
+            senders
                 .send_to_screen(ScreenInstruction::WriteCharacter(val, client_id))
                 .with_context(err_context)?;
         },
         Action::WriteChars(val) => {
-            session
-                .senders
+            senders
                 .send_to_screen(ScreenInstruction::ClearScroll(client_id))
                 .with_context(err_context)?;
             let val = val.into_bytes();
-            session
-                .senders
+            senders
                 .send_to_screen(ScreenInstruction::WriteCharacter(val, client_id))
                 .with_context(err_context)?;
         },
         Action::SwitchToMode(mode) => {
-            let attrs = &session.client_attributes;
+            let attrs = &client_attributes;
             // TODO: use the palette from the client and remove it from the server os api
             // this is left here as a stop gap measure until we shift some code around
             // to allow for this
             // TODO: Need access to `ClientAttributes` here
-            session
-                .senders
+            senders
                 .send_to_plugin(PluginInstruction::Update(vec![(
                     None,
                     Some(client_id),
-                    Event::ModeUpdate(get_mode_info(mode, attrs, session.capabilities)),
+                    Event::ModeUpdate(get_mode_info(mode, attrs, capabilities)),
                 )]))
                 .with_context(err_context)?;
-            session
-                .senders
+            senders
                 .send_to_screen(ScreenInstruction::ChangeMode(
-                    get_mode_info(mode, attrs, session.capabilities),
+                    get_mode_info(mode, attrs, capabilities),
                     client_id,
                 ))
                 .with_context(err_context)?;
-            session
-                .senders
+            senders
                 .send_to_screen(ScreenInstruction::Render)
                 .with_context(err_context)?;
         },
         Action::Resize(resize, direction) => {
             let screen_instr =
                 ScreenInstruction::Resize(client_id, ResizeStrategy::new(resize, direction));
-            session
-                .senders
+            senders
                 .send_to_screen(screen_instr)
                 .with_context(err_context)?;
         },
         Action::SwitchFocus => {
-            session
-                .senders
+            senders
                 .send_to_screen(ScreenInstruction::SwitchFocus(client_id))
                 .with_context(err_context)?;
         },
         Action::FocusNextPane => {
-            session
-                .senders
+            senders
                 .send_to_screen(ScreenInstruction::FocusNextPane(client_id))
                 .with_context(err_context)?;
         },
         Action::FocusPreviousPane => {
-            session
-                .senders
+            senders
                 .send_to_screen(ScreenInstruction::FocusPreviousPane(client_id))
                 .with_context(err_context)?;
         },
@@ -137,8 +129,7 @@ pub(crate) fn route_action(
                 Direction::Up => ScreenInstruction::MoveFocusUp(client_id),
                 Direction::Down => ScreenInstruction::MoveFocusDown(client_id),
             };
-            session
-                .senders
+            senders
                 .send_to_screen(screen_instr)
                 .with_context(err_context)?;
         },
@@ -149,8 +140,7 @@ pub(crate) fn route_action(
                 Direction::Up => ScreenInstruction::SwitchTabNext(client_id),
                 Direction::Down => ScreenInstruction::SwitchTabPrev(client_id),
             };
-            session
-                .senders
+            senders
                 .send_to_screen(screen_instr)
                 .with_context(err_context)?;
         },
@@ -162,109 +152,92 @@ pub(crate) fn route_action(
                 Some(Direction::Down) => ScreenInstruction::MovePaneDown(client_id),
                 None => ScreenInstruction::MovePane(client_id),
             };
-            session
-                .senders
+            senders
                 .send_to_screen(screen_instr)
                 .with_context(err_context)?;
         },
         Action::MovePaneBackwards => {
-            session
-                .senders
+            senders
                 .send_to_screen(ScreenInstruction::MovePaneBackwards(client_id))
                 .with_context(err_context)?;
         },
         Action::ClearScreen => {
-            session
-                .senders
+            senders
                 .send_to_screen(ScreenInstruction::ClearScreen(client_id))
                 .with_context(err_context)?;
         },
         Action::DumpScreen(val, full) => {
-            session
-                .senders
+            senders
                 .send_to_screen(ScreenInstruction::DumpScreen(val, client_id, full))
                 .with_context(err_context)?;
         },
         Action::EditScrollback => {
-            session
-                .senders
+            senders
                 .send_to_screen(ScreenInstruction::EditScrollback(client_id))
                 .with_context(err_context)?;
         },
         Action::ScrollUp => {
-            session
-                .senders
+            senders
                 .send_to_screen(ScreenInstruction::ScrollUp(client_id))
                 .with_context(err_context)?;
         },
         Action::ScrollUpAt(point) => {
-            session
-                .senders
+            senders
                 .send_to_screen(ScreenInstruction::ScrollUpAt(point, client_id))
                 .with_context(err_context)?;
         },
         Action::ScrollDown => {
-            session
-                .senders
+            senders
                 .send_to_screen(ScreenInstruction::ScrollDown(client_id))
                 .with_context(err_context)?;
         },
         Action::ScrollDownAt(point) => {
-            session
-                .senders
+            senders
                 .send_to_screen(ScreenInstruction::ScrollDownAt(point, client_id))
                 .with_context(err_context)?;
         },
         Action::ScrollToBottom => {
-            session
-                .senders
+            senders
                 .send_to_screen(ScreenInstruction::ScrollToBottom(client_id))
                 .with_context(err_context)?;
         },
         Action::ScrollToTop => {
-            session
-                .senders
+            senders
                 .send_to_screen(ScreenInstruction::ScrollToTop(client_id))
                 .with_context(err_context)?;
         },
         Action::PageScrollUp => {
-            session
-                .senders
+            senders
                 .send_to_screen(ScreenInstruction::PageScrollUp(client_id))
                 .with_context(err_context)?;
         },
         Action::PageScrollDown => {
-            session
-                .senders
+            senders
                 .send_to_screen(ScreenInstruction::PageScrollDown(client_id))
                 .with_context(err_context)?;
         },
         Action::HalfPageScrollUp => {
-            session
-                .senders
+            senders
                 .send_to_screen(ScreenInstruction::HalfPageScrollUp(client_id))
                 .with_context(err_context)?;
         },
         Action::HalfPageScrollDown => {
-            session
-                .senders
+            senders
                 .send_to_screen(ScreenInstruction::HalfPageScrollDown(client_id))
                 .with_context(err_context)?;
         },
         Action::ToggleFocusFullscreen => {
-            session
-                .senders
+            senders
                 .send_to_screen(ScreenInstruction::ToggleActiveTerminalFullscreen(client_id))
                 .with_context(err_context)?;
         },
         Action::TogglePaneFrames => {
-            session
-                .senders
+            senders
                 .send_to_screen(ScreenInstruction::TogglePaneFrames)
                 .with_context(err_context)?;
         },
         Action::NewPane(direction, name) => {
-            let shell = session.default_shell.clone();
+            let shell = default_shell.clone();
             let pty_instr = match direction {
                 Some(Direction::Left) => {
                     PtyInstruction::SpawnTerminalVertically(shell, name, client_id)
@@ -286,10 +259,7 @@ pub(crate) fn route_action(
                     ClientOrTabIndex::ClientId(client_id),
                 ),
             };
-            session
-                .senders
-                .send_to_pty(pty_instr)
-                .with_context(err_context)?;
+            senders.send_to_pty(pty_instr).with_context(err_context)?;
         },
         Action::EditFile(path_to_file, line_number, cwd, split_direction, should_float) => {
             let title = format!("Editing: {}", path_to_file.display());
@@ -319,27 +289,22 @@ pub(crate) fn route_action(
                     ClientOrTabIndex::ClientId(client_id),
                 ),
             };
-            session
-                .senders
-                .send_to_pty(pty_instr)
-                .with_context(err_context)?;
+            senders.send_to_pty(pty_instr).with_context(err_context)?;
         },
         Action::SwitchModeForAllClients(input_mode) => {
-            let attrs = &session.client_attributes;
-            session
-                .senders
+            let attrs = &client_attributes;
+            senders
                 .send_to_plugin(PluginInstruction::Update(vec![(
                     None,
                     None,
-                    Event::ModeUpdate(get_mode_info(input_mode, attrs, session.capabilities)),
+                    Event::ModeUpdate(get_mode_info(input_mode, attrs, capabilities)),
                 )]))
                 .with_context(err_context)?;
-            session
-                .senders
+            senders
                 .send_to_screen(ScreenInstruction::ChangeModeForAllClients(get_mode_info(
                     input_mode,
                     attrs,
-                    session.capabilities,
+                    capabilities,
                 )))
                 .with_context(err_context)?;
         },
@@ -347,9 +312,8 @@ pub(crate) fn route_action(
             let should_float = true;
             let run_cmd = run_command
                 .map(|cmd| TerminalAction::RunCommand(cmd.into()))
-                .or_else(|| session.default_shell.clone());
-            session
-                .senders
+                .or_else(|| default_shell.clone());
+            senders
                 .send_to_pty(PtyInstruction::SpawnTerminal(
                     run_cmd,
                     Some(should_float),
@@ -362,7 +326,7 @@ pub(crate) fn route_action(
             let should_float = false;
             let run_cmd = run_command
                 .map(|cmd| TerminalAction::RunCommand(cmd.into()))
-                .or_else(|| session.default_shell.clone());
+                .or_else(|| default_shell.clone());
             let pty_instr = match direction {
                 Some(Direction::Left) => {
                     PtyInstruction::SpawnTerminalVertically(run_cmd, name, client_id)
@@ -384,35 +348,28 @@ pub(crate) fn route_action(
                     ClientOrTabIndex::ClientId(client_id),
                 ),
             };
-            session
-                .senders
-                .send_to_pty(pty_instr)
-                .with_context(err_context)?;
+            senders.send_to_pty(pty_instr).with_context(err_context)?;
         },
         Action::TogglePaneEmbedOrFloating => {
-            session
-                .senders
+            senders
                 .send_to_screen(ScreenInstruction::TogglePaneEmbedOrFloating(client_id))
                 .with_context(err_context)?;
         },
         Action::ToggleFloatingPanes => {
-            session
-                .senders
+            senders
                 .send_to_screen(ScreenInstruction::ToggleFloatingPanes(
                     client_id,
-                    session.default_shell.clone(),
+                    default_shell.clone(),
                 ))
                 .with_context(err_context)?;
         },
         Action::PaneNameInput(c) => {
-            session
-                .senders
+            senders
                 .send_to_screen(ScreenInstruction::UpdatePaneName(c, client_id))
                 .with_context(err_context)?;
         },
         Action::UndoRenamePane => {
-            session
-                .senders
+            senders
                 .send_to_screen(ScreenInstruction::UndoRenamePane(client_id))
                 .with_context(err_context)?;
         },
@@ -439,14 +396,10 @@ pub(crate) fn route_action(
                     ClientOrTabIndex::ClientId(client_id),
                 ),
             };
-            session
-                .senders
-                .send_to_pty(pty_instr)
-                .with_context(err_context)?;
+            senders.send_to_pty(pty_instr).with_context(err_context)?;
         },
         Action::CloseFocus => {
-            session
-                .senders
+            senders
                 .send_to_screen(ScreenInstruction::CloseFocusedPane(client_id))
                 .with_context(err_context)?;
         },
@@ -457,13 +410,12 @@ pub(crate) fn route_action(
             swap_floating_layouts,
             tab_name,
         ) => {
-            let shell = session.default_shell.clone();
+            let shell = default_shell.clone();
             let swap_tiled_layouts =
-                swap_tiled_layouts.unwrap_or_else(|| session.layout.swap_tiled_layouts.clone());
+                swap_tiled_layouts.unwrap_or_else(|| default_layout.swap_tiled_layouts.clone());
             let swap_floating_layouts = swap_floating_layouts
-                .unwrap_or_else(|| session.layout.swap_floating_layouts.clone());
-            session
-                .senders
+                .unwrap_or_else(|| default_layout.swap_floating_layouts.clone());
+            senders
                 .send_to_screen(ScreenInstruction::NewTab(
                     None,
                     shell,
@@ -476,41 +428,35 @@ pub(crate) fn route_action(
                 .with_context(err_context)?;
         },
         Action::GoToNextTab => {
-            session
-                .senders
+            senders
                 .send_to_screen(ScreenInstruction::SwitchTabNext(client_id))
                 .with_context(err_context)?;
         },
         Action::GoToPreviousTab => {
-            session
-                .senders
+            senders
                 .send_to_screen(ScreenInstruction::SwitchTabPrev(client_id))
                 .with_context(err_context)?;
         },
         Action::ToggleActiveSyncTab => {
-            session
-                .senders
+            senders
                 .send_to_screen(ScreenInstruction::ToggleActiveSyncTab(client_id))
                 .with_context(err_context)?;
         },
         Action::CloseTab => {
-            session
-                .senders
+            senders
                 .send_to_screen(ScreenInstruction::CloseTab(client_id))
                 .with_context(err_context)?;
         },
         Action::GoToTab(i) => {
-            session
-                .senders
+            senders
                 .send_to_screen(ScreenInstruction::GoToTab(i, Some(client_id)))
                 .with_context(err_context)?;
         },
         Action::GoToTabName(name, create) => {
-            let shell = session.default_shell.clone();
-            let swap_tiled_layouts = session.layout.swap_tiled_layouts.clone();
-            let swap_floating_layouts = session.layout.swap_floating_layouts.clone();
-            session
-                .senders
+            let shell = default_shell.clone();
+            let swap_tiled_layouts = default_layout.swap_tiled_layouts.clone();
+            let swap_floating_layouts = default_layout.swap_floating_layouts.clone();
+            senders
                 .send_to_screen(ScreenInstruction::GoToTabName(
                     name,
                     (swap_tiled_layouts, swap_floating_layouts),
@@ -521,106 +467,92 @@ pub(crate) fn route_action(
                 .with_context(err_context)?;
         },
         Action::TabNameInput(c) => {
-            session
-                .senders
+            senders
                 .send_to_screen(ScreenInstruction::UpdateTabName(c, client_id))
                 .with_context(err_context)?;
         },
         Action::UndoRenameTab => {
-            session
-                .senders
+            senders
                 .send_to_screen(ScreenInstruction::UndoRenameTab(client_id))
                 .with_context(err_context)?;
         },
         Action::Quit => {
-            to_server
-                .send(ServerInstruction::ClientExit(client_id))
+            senders
+                .send_to_server(ServerInstruction::ClientExit(client_id))
                 .with_context(err_context)?;
             should_break = true;
         },
         Action::Detach => {
-            to_server
-                .send(ServerInstruction::DetachSession(vec![client_id]))
+            senders
+                .send_to_server(ServerInstruction::DetachSession(vec![client_id]))
                 .with_context(err_context)?;
             should_break = true;
         },
         Action::LeftClick(point) => {
-            session
-                .senders
+            senders
                 .send_to_screen(ScreenInstruction::LeftClick(point, client_id))
                 .with_context(err_context)?;
         },
         Action::RightClick(point) => {
-            session
-                .senders
+            senders
                 .send_to_screen(ScreenInstruction::RightClick(point, client_id))
                 .with_context(err_context)?;
         },
         Action::MiddleClick(point) => {
-            session
-                .senders
+            senders
                 .send_to_screen(ScreenInstruction::MiddleClick(point, client_id))
                 .with_context(err_context)?;
         },
         Action::LeftMouseRelease(point) => {
-            session
-                .senders
+            senders
                 .send_to_screen(ScreenInstruction::LeftMouseRelease(point, client_id))
                 .with_context(err_context)?;
         },
         Action::RightMouseRelease(point) => {
-            session
-                .senders
+            senders
                 .send_to_screen(ScreenInstruction::RightMouseRelease(point, client_id))
                 .with_context(err_context)?;
         },
         Action::MiddleMouseRelease(point) => {
-            session
-                .senders
+            senders
                 .send_to_screen(ScreenInstruction::MiddleMouseRelease(point, client_id))
                 .with_context(err_context)?;
         },
         Action::MouseHoldLeft(point) => {
-            session
-                .senders
+            senders
                 .send_to_screen(ScreenInstruction::MouseHoldLeft(point, client_id))
                 .with_context(err_context)?;
         },
         Action::MouseHoldRight(point) => {
-            session
-                .senders
+            senders
                 .send_to_screen(ScreenInstruction::MouseHoldRight(point, client_id))
                 .with_context(err_context)?;
         },
         Action::MouseHoldMiddle(point) => {
-            session
-                .senders
+            senders
                 .send_to_screen(ScreenInstruction::MouseHoldMiddle(point, client_id))
                 .with_context(err_context)?;
         },
         Action::Copy => {
-            session
-                .senders
+            senders
                 .send_to_screen(ScreenInstruction::Copy(client_id))
                 .with_context(err_context)?;
         },
         Action::Confirm => {
-            session
-                .senders
+            senders
                 .send_to_screen(ScreenInstruction::ConfirmPrompt(client_id))
                 .with_context(err_context)?;
         },
         Action::Deny => {
-            session
-                .senders
+            senders
                 .send_to_screen(ScreenInstruction::DenyPrompt(client_id))
                 .with_context(err_context)?;
         },
         #[allow(clippy::single_match)]
         Action::SkipConfirm(action) => match *action {
             Action::Quit => {
-                to_server
-                    .send(ServerInstruction::ClientExit(client_id))
+                senders
+                    .send_to_server(ServerInstruction::ClientExit(client_id))
                     .with_context(err_context)?;
                 should_break = true;
             },
@@ -628,8 +560,7 @@ pub(crate) fn route_action(
         },
         Action::NoOp => {},
         Action::SearchInput(c) => {
-            session
-                .senders
+            senders
                 .send_to_screen(ScreenInstruction::UpdateSearch(c, client_id))
                 .with_context(err_context)?;
         },
@@ -638,8 +569,7 @@ pub(crate) fn route_action(
                 SearchDirection::Down => ScreenInstruction::SearchDown(client_id),
                 SearchDirection::Up => ScreenInstruction::SearchUp(client_id),
             };
-            session
-                .senders
+            senders
                 .send_to_screen(instruction)
                 .with_context(err_context)?;
         },
@@ -651,41 +581,35 @@ pub(crate) fn route_action(
                 SearchOption::WholeWord => ScreenInstruction::SearchToggleWholeWord(client_id),
                 SearchOption::Wrap => ScreenInstruction::SearchToggleWrap(client_id),
             };
-            session
-                .senders
+            senders
                 .send_to_screen(instruction)
                 .with_context(err_context)?;
         },
         Action::ToggleMouseMode => {}, // Handled client side
         Action::PreviousSwapLayout => {
-            session
-                .senders
+            senders
                 .send_to_screen(ScreenInstruction::PreviousSwapLayout(client_id))
                 .with_context(err_context)?;
         },
         Action::NextSwapLayout => {
-            session
-                .senders
+            senders
                 .send_to_screen(ScreenInstruction::NextSwapLayout(client_id))
                 .with_context(err_context)?;
         },
         Action::QueryTabNames => {
-            session
-                .senders
+            senders
                 .send_to_screen(ScreenInstruction::QueryTabNames(client_id))
                 .with_context(err_context)?;
         },
         Action::NewTiledPluginPane(run_plugin, name) => {
-            session
-                .senders
+            senders
                 .send_to_screen(ScreenInstruction::NewTiledPluginPane(
                     run_plugin, name, client_id,
                 ))
                 .with_context(err_context)?;
         },
         Action::NewFloatingPluginPane(run_plugin, name) => {
-            session
-                .senders
+            senders
                 .send_to_screen(ScreenInstruction::NewFloatingPluginPane(
                     run_plugin, name, client_id,
                 ))
@@ -694,8 +618,7 @@ pub(crate) fn route_action(
         Action::StartOrReloadPlugin(url) => {
             let run_plugin_location =
                 RunPluginLocation::parse(url.as_str()).with_context(err_context)?;
-            session
-                .senders
+            senders
                 .send_to_screen(ScreenInstruction::StartOrReloadPluginPane(
                     run_plugin_location,
                     None,
@@ -703,8 +626,7 @@ pub(crate) fn route_action(
                 .with_context(err_context)?;
         },
         Action::LaunchOrFocusPlugin(run_plugin, should_float) => {
-            session
-                .senders
+            senders
                 .send_to_screen(ScreenInstruction::LaunchOrFocusPlugin(
                     run_plugin,
                     should_float,
@@ -770,10 +692,12 @@ pub(crate) fn route_thread_main(
                                 }
                                 if route_action(
                                     action,
-                                    rlocked_sessions,
-                                    &*os_input,
-                                    &to_server,
                                     client_id,
+                                    rlocked_sessions.senders.clone(),
+                                    rlocked_sessions.capabilities.clone(),
+                                    rlocked_sessions.client_attributes.clone(),
+                                    rlocked_sessions.default_shell.clone(),
+                                    rlocked_sessions.layout.clone(),
                                 )? {
                                     should_break = true;
                                 }

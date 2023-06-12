@@ -1,0 +1,19 @@
+---
+source: zellij-server/src/plugins/./unit/plugin_tests.rs
+assertion_line: 2388
+expression: "format!(\"{:#?}\", new_tab_event)"
+---
+Some(
+    GoToTabName(
+        "my tab name",
+        (
+            [],
+            [],
+        ),
+        None,
+        true,
+        Some(
+            1,
+        ),
+    ),
+)

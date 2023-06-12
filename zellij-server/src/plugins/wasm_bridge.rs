@@ -21,12 +21,14 @@ use crate::{
 };
 use zellij_utils::{
     consts::VERSION,
-    data::{Event, EventType},
+    data::{Event, EventType, PluginCapabilities},
     errors::prelude::*,
     input::{
-        layout::{RunPlugin, RunPluginLocation},
+        command::TerminalAction,
+        layout::{Layout, RunPlugin, RunPluginLocation},
         plugins::PluginsConfig,
     },
+    ipc::ClientAttributes,
     pane_size::Size,
 };
 
@@ -50,6 +52,10 @@ pub struct WasmBridge {
     path_to_default_shell: PathBuf,
     watcher: Option<RecommendedWatcher>,
     zellij_cwd: PathBuf,
+    capabilities: PluginCapabilities,
+    client_attributes: ClientAttributes,
+    default_shell: Option<TerminalAction>,
+    default_layout: Box<Layout>,
 }
 
 impl WasmBridge {
@@ -60,6 +66,10 @@ impl WasmBridge {
         plugin_dir: PathBuf,
         path_to_default_shell: PathBuf,
         zellij_cwd: PathBuf,
+        capabilities: PluginCapabilities,
+        client_attributes: ClientAttributes,
+        default_shell: Option<TerminalAction>,
+        default_layout: Box<Layout>,
     ) -> Self {
         let plugin_map = Arc::new(Mutex::new(PluginMap::default()));
         let connected_clients: Arc<Mutex<Vec<ClientId>>> = Arc::new(Mutex::new(vec![]));
@@ -89,6 +99,10 @@ impl WasmBridge {
             loading_plugins: HashMap::new(),
             pending_plugin_reloads: HashSet::new(),
             zellij_cwd,
+            capabilities,
+            client_attributes,
+            default_shell,
+            default_layout,
         }
     }
     pub fn load_plugin(
@@ -137,6 +151,10 @@ impl WasmBridge {
             let connected_clients = self.connected_clients.clone();
             let path_to_default_shell = self.path_to_default_shell.clone();
             let zellij_cwd = self.zellij_cwd.clone();
+            let capabilities = self.capabilities.clone();
+            let client_attributes = self.client_attributes.clone();
+            let default_shell = self.default_shell.clone();
+            let default_layout = self.default_layout.clone();
             async move {
                 let _ =
                     senders.send_to_background_jobs(BackgroundJob::AnimatePluginLoading(plugin_id));
@@ -156,6 +174,10 @@ impl WasmBridge {
                     &mut loading_indication,
                     path_to_default_shell,
                     zellij_cwd.clone(),
+                    capabilities,
+                    client_attributes,
+                    default_shell,
+                    default_layout,
                 ) {
                     Ok(_) => handle_plugin_successful_loading(&senders, plugin_id),
                     Err(e) => handle_plugin_loading_failure(
@@ -217,6 +239,10 @@ impl WasmBridge {
             let connected_clients = self.connected_clients.clone();
             let path_to_default_shell = self.path_to_default_shell.clone();
             let zellij_cwd = self.zellij_cwd.clone();
+            let capabilities = self.capabilities.clone();
+            let client_attributes = self.client_attributes.clone();
+            let default_shell = self.default_shell.clone();
+            let default_layout = self.default_layout.clone();
             async move {
                 match PluginLoader::reload_plugin(
                     first_plugin_id,
@@ -229,6 +255,10 @@ impl WasmBridge {
                     &mut loading_indication,
                     path_to_default_shell.clone(),
                     zellij_cwd.clone(),
+                    capabilities.clone(),
+                    client_attributes.clone(),
+                    default_shell.clone(),
+                    default_layout.clone(),
                 ) {
                     Ok(_) => {
                         handle_plugin_successful_loading(&senders, first_plugin_id);
@@ -249,6 +279,10 @@ impl WasmBridge {
                                 &mut loading_indication,
                                 path_to_default_shell.clone(),
                                 zellij_cwd.clone(),
+                                capabilities.clone(),
+                                client_attributes.clone(),
+                                default_shell.clone(),
+                                default_layout.clone(),
                             ) {
                                 Ok(_) => handle_plugin_successful_loading(&senders, *plugin_id),
                                 Err(e) => handle_plugin_loading_failure(
@@ -291,6 +325,10 @@ impl WasmBridge {
             &mut loading_indication,
             self.path_to_default_shell.clone(),
             self.zellij_cwd.clone(),
+            self.capabilities.clone(),
+            self.client_attributes.clone(),
+            self.default_shell.clone(),
+            self.default_layout.clone(),
         ) {
             Ok(_) => {
                 let _ = self

@@ -33,7 +33,7 @@ use crate::{
     thread_bus::Bus,
     ui::{
         loading_indication::LoadingIndication,
-        overlay::{Overlay, OverlayWindow, Overlayable},
+        overlay::{Overlay, OverlayWindow},
     },
     ClientId, ServerInstruction,
 };
@@ -930,12 +930,9 @@ impl Screen {
         );
         let mut tabs_to_close = vec![];
         let size = self.size;
-        let overlay = self.overlay.clone();
         for (tab_index, tab) in &mut self.tabs {
             if tab.has_selectable_tiled_panes() {
-                let vte_overlay = overlay.generate_overlay(size).context(err_context)?;
-                tab.render(&mut output, Some(vte_overlay))
-                    .context(err_context)?;
+                tab.render(&mut output).context(err_context)?;
             } else if !tab.is_pending() {
                 tabs_to_close.push(*tab_index);
             }
@@ -1364,6 +1361,12 @@ impl Screen {
             tab.change_mode_info(mode_info.clone(), client_id);
             tab.mark_active_pane_for_rerender(client_id);
         }
+
+        if let Some(os_input) = &mut self.bus.os_input {
+            let _ =
+                os_input.send_to_client(client_id, ServerToClientMsg::SwitchToMode(mode_info.mode));
+        }
+
         Ok(())
     }
     pub fn change_mode_for_all_clients(&mut self, mode_info: ModeInfo) -> Result<()> {
@@ -1378,10 +1381,6 @@ impl Screen {
         for client_id in connected_client_ids {
             self.change_mode(mode_info.clone(), client_id)
                 .with_context(err_context)?;
-            if let Some(os_input) = &mut self.bus.os_input {
-                let _ = os_input
-                    .send_to_client(client_id, ServerToClientMsg::SwitchToMode(mode_info.mode));
-            }
         }
         Ok(())
     }
@@ -1473,15 +1472,27 @@ impl Screen {
         client_id: ClientId,
     ) -> Result<bool> {
         // true => found and focused, false => not
+        let err_context = || format!("failed to focus_plugin_pane");
+        let mut tab_index_and_plugin_pane_id = None;
         let all_tabs = self.get_tabs_mut();
-        for tab in all_tabs.values_mut() {
+        for (tab_index, tab) in all_tabs.iter_mut() {
             if let Some(plugin_pane_id) = tab.find_plugin(&run_plugin) {
-                tab.focus_pane_with_id(plugin_pane_id, should_float, client_id)
-                    .context("failed to focus plugin pane")?;
-                return Ok(true);
+                tab_index_and_plugin_pane_id = Some((*tab_index, plugin_pane_id));
+                break;
             }
         }
-        Ok(false)
+        match tab_index_and_plugin_pane_id {
+            Some((tab_index, plugin_pane_id)) => {
+                self.go_to_tab(tab_index + 1, client_id)?;
+                self.tabs
+                    .get_mut(&tab_index)
+                    .with_context(err_context)?
+                    .focus_pane_with_id(plugin_pane_id, should_float, client_id)
+                    .context("failed to focus plugin pane")?;
+                Ok(true)
+            },
+            None => Ok(false),
+        }
     }
 
     fn unblock_input(&self) -> Result<()> {

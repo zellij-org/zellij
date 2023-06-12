@@ -757,7 +757,7 @@ fn new_floating_pane() {
         Vec::from("\n\n\n                   I am scratch terminal".as_bytes()),
     )
     .unwrap();
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -789,7 +789,7 @@ fn floating_panes_persist_across_toggles() {
     )
     .unwrap();
     tab.toggle_floating_panes(Some(client_id), None).unwrap();
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -818,7 +818,7 @@ fn toggle_floating_panes_off() {
     )
     .unwrap();
     tab.toggle_floating_panes(Some(client_id), None).unwrap();
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -848,7 +848,7 @@ fn toggle_floating_panes_on() {
     .unwrap();
     tab.toggle_floating_panes(Some(client_id), None).unwrap();
     tab.toggle_floating_panes(Some(client_id), None).unwrap();
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -896,7 +896,7 @@ fn five_new_floating_panes() {
         .unwrap();
     tab.handle_pty_bytes(6, Vec::from("\u{1b}#8".as_bytes()))
         .unwrap();
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -926,7 +926,7 @@ fn increase_floating_pane_size() {
     .unwrap();
     tab.resize(client_id, ResizeStrategy::new(Resize::Increase, None))
         .unwrap();
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -956,7 +956,7 @@ fn decrease_floating_pane_size() {
     .unwrap();
     tab.resize(client_id, ResizeStrategy::new(Resize::Decrease, None))
         .unwrap();
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -989,7 +989,7 @@ fn resize_floating_pane_left() {
         ResizeStrategy::new(Resize::Increase, Some(Direction::Left)),
     )
     .unwrap();
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -1022,7 +1022,7 @@ fn resize_floating_pane_right() {
         ResizeStrategy::new(Resize::Increase, Some(Direction::Right)),
     )
     .unwrap();
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -1055,7 +1055,7 @@ fn resize_floating_pane_up() {
         ResizeStrategy::new(Resize::Increase, Some(Direction::Up)),
     )
     .unwrap();
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -1088,7 +1088,7 @@ fn resize_floating_pane_down() {
         ResizeStrategy::new(Resize::Increase, Some(Direction::Down)),
     )
     .unwrap();
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -1137,7 +1137,7 @@ fn move_floating_pane_focus_left() {
     tab.handle_pty_bytes(6, Vec::from("\u{1b}#8".as_bytes()))
         .unwrap();
     tab.move_focus_left(client_id).unwrap();
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -1193,7 +1193,7 @@ fn move_floating_pane_focus_right() {
         .unwrap();
     tab.move_focus_left(client_id).unwrap();
     tab.move_focus_right(client_id).unwrap();
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -1248,7 +1248,7 @@ fn move_floating_pane_focus_up() {
     tab.handle_pty_bytes(6, Vec::from("\u{1b}#8".as_bytes()))
         .unwrap();
     tab.move_focus_up(client_id).unwrap();
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -1304,7 +1304,7 @@ fn move_floating_pane_focus_down() {
         .unwrap();
     tab.move_focus_up(client_id).unwrap();
     tab.move_focus_down(client_id).unwrap();
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -1362,7 +1362,7 @@ fn move_floating_pane_focus_with_mouse() {
         .unwrap();
     tab.handle_left_mouse_release(&Position::new(9, 71), client_id)
         .unwrap();
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -1420,7 +1420,7 @@ fn move_pane_focus_with_mouse_to_non_floating_pane() {
         .unwrap();
     tab.handle_left_mouse_release(&Position::new(4, 71), client_id)
         .unwrap();
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -1478,7 +1478,7 @@ fn drag_pane_with_mouse() {
         .unwrap();
     tab.handle_left_mouse_release(&Position::new(7, 75), client_id)
         .unwrap();
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -1544,7 +1544,7 @@ fn mark_text_inside_floating_pane() {
         !tab.selecting_with_mouse,
         "stopped selecting with mouse on release"
     );
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -1603,7 +1603,7 @@ fn resize_tab_with_floating_panes() {
         rows: 10,
     })
     .unwrap();
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let (snapshot, _cursor_coordinates) = take_snapshot_and_cursor_position(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -1653,7 +1653,7 @@ fn shrink_whole_tab_with_floating_panes_horizontally_and_vertically() {
     tab.handle_pty_bytes(6, Vec::from("\u{1b}#8".as_bytes()))
         .unwrap();
     tab.resize_whole_tab(Size { cols: 50, rows: 10 }).unwrap();
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let (snapshot, _cursor_coordinates) = take_snapshot_and_cursor_position(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -1708,7 +1708,7 @@ fn shrink_whole_tab_with_floating_panes_horizontally_and_vertically_and_expand_b
         rows: 20,
     })
     .unwrap();
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let (snapshot, _cursor_coordinates) = take_snapshot_and_cursor_position(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -1738,7 +1738,7 @@ fn embed_floating_pane() {
     )
     .unwrap();
     tab.toggle_pane_embed_or_floating(client_id).unwrap();
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -1766,7 +1766,7 @@ fn float_embedded_pane() {
     )
     .unwrap();
     tab.toggle_pane_embed_or_floating(client_id).unwrap();
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -1796,7 +1796,7 @@ fn embed_floating_pane_without_pane_frames() {
     )
     .unwrap();
     tab.toggle_pane_embed_or_floating(client_id).unwrap();
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -1825,7 +1825,7 @@ fn float_embedded_pane_without_pane_frames() {
     )
     .unwrap();
     tab.toggle_pane_embed_or_floating(client_id).unwrap();
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -1850,7 +1850,7 @@ fn cannot_float_only_embedded_pane() {
     )
     .unwrap();
     tab.toggle_pane_embed_or_floating(client_id).unwrap();
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -1874,7 +1874,7 @@ fn replacing_existing_wide_characters() {
     let mut output = Output::default();
     let pane_content = read_fixture("ncmpcpp-wide-chars");
     tab.handle_pty_bytes(1, pane_content).unwrap();
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -1900,7 +1900,7 @@ fn rename_embedded_pane() {
     .unwrap();
     tab.update_active_pane_name("Renamed empedded pane".as_bytes().to_vec(), client_id)
         .unwrap();
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -1930,7 +1930,7 @@ fn rename_floating_pane() {
     tab.toggle_pane_embed_or_floating(client_id).unwrap();
     tab.update_active_pane_name("Renamed floating pane".as_bytes().to_vec(), client_id)
         .unwrap();
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -1952,7 +1952,7 @@ fn wide_characters_in_left_title_side() {
     let mut output = Output::default();
     let pane_content = read_fixture("title-wide-chars");
     tab.handle_pty_bytes(1, pane_content).unwrap();
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -1979,7 +1979,7 @@ fn save_cursor_position_across_resizes() {
     tab.handle_pty_bytes(1, Vec::from("\u{1b}[uthis overwrote me!".as_bytes()))
         .unwrap();
 
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -2015,7 +2015,7 @@ fn move_floating_pane_with_sixel_image() {
     tab.handle_left_mouse_release(&Position::new(7, 75), client_id)
         .unwrap();
 
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot_with_sixel(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -2053,7 +2053,7 @@ fn floating_pane_above_sixel_image() {
     tab.handle_left_mouse_release(&Position::new(7, 75), client_id)
         .unwrap();
 
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot_with_sixel(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -2078,7 +2078,7 @@ fn suppress_tiled_pane() {
     tab.suppress_active_pane(new_pane_id, client_id).unwrap();
     tab.handle_pty_bytes(2, Vec::from("\n\n\nI am an editor pane".as_bytes()))
         .unwrap();
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -2106,7 +2106,7 @@ fn suppress_floating_pane() {
     tab.suppress_active_pane(editor_pane_id, client_id).unwrap();
     tab.handle_pty_bytes(3, Vec::from("\n\n\nI am an editor pane".as_bytes()))
         .unwrap();
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -2132,7 +2132,7 @@ fn close_suppressing_tiled_pane() {
     tab.handle_pty_bytes(1, Vec::from("\n\n\nI am the original pane".as_bytes()))
         .unwrap();
     tab.close_pane(new_pane_id, false, None);
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -2163,7 +2163,7 @@ fn close_suppressing_floating_pane() {
     tab.handle_pty_bytes(2, Vec::from("\n\n\nI am the original pane".as_bytes()))
         .unwrap();
     tab.close_pane(editor_pane_id, false, None);
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -2190,7 +2190,7 @@ fn suppress_tiled_pane_float_it_and_close() {
         .unwrap();
     tab.toggle_pane_embed_or_floating(client_id).unwrap();
     tab.close_pane(new_pane_id, false, None);
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -2222,7 +2222,7 @@ fn suppress_floating_pane_embed_it_and_close_it() {
         .unwrap();
     tab.toggle_pane_embed_or_floating(client_id).unwrap();
     tab.close_pane(editor_pane_id, false, None);
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -2250,7 +2250,7 @@ fn resize_whole_tab_while_tiled_pane_is_suppressed() {
         rows: 10,
     })
     .unwrap();
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -2283,7 +2283,7 @@ fn resize_whole_tab_while_floting_pane_is_suppressed() {
         rows: 10,
     })
     .unwrap();
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -2308,7 +2308,7 @@ fn enter_search_pane() {
     let mut output = Output::default();
     let pane_content = read_fixture("grid_copy");
     tab.handle_pty_bytes(1, pane_content).unwrap();
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -2322,7 +2322,7 @@ fn enter_search_pane() {
     // only those are updated (search-styling is not visible here).
     tab.update_search_term("tortor".as_bytes().to_vec(), client_id)
         .unwrap();
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -2335,7 +2335,7 @@ fn enter_search_pane() {
     tab.toggle_search_wrap(client_id);
     tab.toggle_search_whole_words(client_id);
     tab.toggle_search_case_sensitivity(client_id);
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -2349,7 +2349,7 @@ fn enter_search_pane() {
     tab.toggle_search_whole_words(client_id);
     tab.toggle_search_case_sensitivity(client_id);
 
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -2379,7 +2379,7 @@ fn enter_search_floating_pane() {
 
     let pane_content = read_fixture("grid_copy");
     tab.handle_pty_bytes(2, pane_content).unwrap();
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -2391,7 +2391,7 @@ fn enter_search_floating_pane() {
     // Only the line inside the floating tab which contain 'fring' should be in the new snapshot
     tab.update_search_term("fring".as_bytes().to_vec(), client_id)
         .unwrap();
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -2669,7 +2669,7 @@ fn tab_with_basic_layout() {
     let client_id = 1;
     let mut tab = create_new_tab_with_layout(size, ModeInfo::default(), layout);
     let mut output = Output::default();
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -2697,7 +2697,7 @@ fn tab_with_layout_that_has_floating_panes() {
     let client_id = 1;
     let mut tab = create_new_tab_with_layout(size, ModeInfo::default(), layout);
     let mut output = Output::default();
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -2737,7 +2737,7 @@ fn tab_with_nested_layout() {
     let client_id = 1;
     let mut tab = create_new_tab_with_layout(size, ModeInfo::default(), layout);
     let mut output = Output::default();
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -2771,7 +2771,7 @@ fn tab_with_nested_uneven_layout() {
     let client_id = 1;
     let mut tab = create_new_tab_with_layout(size, ModeInfo::default(), layout);
     let mut output = Output::default();
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -3066,7 +3066,7 @@ fn can_swap_tiled_layout_at_runtime() {
     tab.new_pane(new_pane_id_1, None, None, None, Some(client_id))
         .unwrap();
     tab.next_swap_layout(Some(client_id), false).unwrap();
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -3123,7 +3123,7 @@ fn can_swap_floating_layout_at_runtime() {
     tab.new_pane(new_pane_id_2, None, None, None, Some(client_id))
         .unwrap();
     tab.next_swap_layout(Some(client_id), false).unwrap();
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -3177,7 +3177,7 @@ fn swapping_layouts_after_resize_snaps_to_current_layout() {
     tab.resize(client_id, ResizeStrategy::new(Resize::Increase, None))
         .unwrap();
     tab.next_swap_layout(Some(client_id), false).unwrap();
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -3227,7 +3227,7 @@ fn swap_tiled_layout_with_stacked_children() {
         .unwrap();
     tab.new_pane(new_pane_id_3, None, None, None, Some(client_id))
         .unwrap();
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -3274,7 +3274,7 @@ fn swap_tiled_layout_with_only_stacked_children() {
         .unwrap();
     tab.new_pane(new_pane_id_3, None, None, None, Some(client_id))
         .unwrap();
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -3324,7 +3324,7 @@ fn swap_tiled_layout_with_stacked_children_and_no_pane_frames() {
         .unwrap();
     tab.new_pane(new_pane_id_3, None, None, None, Some(client_id))
         .unwrap();
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -3376,7 +3376,7 @@ fn move_focus_up_with_stacked_panes() {
         .unwrap();
     tab.move_focus_right(client_id);
     tab.move_focus_up(client_id);
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -3429,7 +3429,7 @@ fn move_focus_down_with_stacked_panes() {
     tab.move_focus_right(client_id);
     tab.move_focus_up(client_id);
     tab.move_focus_down(client_id);
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -3489,7 +3489,7 @@ fn move_focus_right_into_stacked_panes() {
 
     tab.move_focus_up(client_id);
     tab.move_focus_right(client_id);
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
 
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -3556,7 +3556,7 @@ fn move_focus_left_into_stacked_panes() {
 
     tab.move_focus_up(client_id);
     tab.move_focus_left(client_id);
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
 
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -3627,7 +3627,7 @@ fn move_focus_up_into_stacked_panes() {
         .unwrap();
 
     tab.move_focus_up(client_id);
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
 
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -3695,7 +3695,7 @@ fn move_focus_down_into_stacked_panes() {
         .unwrap();
 
     tab.move_focus_down(client_id);
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
 
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -3753,7 +3753,7 @@ fn close_main_stacked_pane() {
     tab.new_pane(new_pane_id_3, None, None, None, Some(client_id))
         .unwrap();
     tab.close_pane(new_pane_id_2, false, None);
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -3813,7 +3813,7 @@ fn close_main_stacked_pane_in_mid_stack() {
     tab.move_focus_up(client_id);
     tab.move_focus_up(client_id);
     tab.close_pane(new_pane_id_3, false, None);
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -3874,7 +3874,7 @@ fn close_one_liner_stacked_pane_below_main_pane() {
     tab.move_focus_up(client_id);
     tab.move_focus_up(client_id);
     tab.close_pane(new_pane_id_2, false, None);
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -3934,7 +3934,7 @@ fn close_one_liner_stacked_pane_above_main_pane() {
     tab.move_focus_up(client_id);
     tab.move_focus_up(client_id);
     tab.close_pane(new_pane_id_1, false, None);
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -3996,7 +3996,7 @@ fn can_increase_size_of_main_pane_in_stack_horizontally() {
         ResizeStrategy::new(Resize::Increase, Some(Direction::Left)),
     )
     .unwrap();
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -4060,7 +4060,7 @@ fn can_increase_size_of_main_pane_in_stack_vertically() {
         ResizeStrategy::new(Resize::Increase, Some(Direction::Down)),
     )
     .unwrap();
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -4122,7 +4122,7 @@ fn can_increase_size_of_main_pane_in_stack_non_directionally() {
     let _ = tab.move_focus_right(client_id);
     tab.resize(client_id, ResizeStrategy::new(Resize::Increase, None))
         .unwrap();
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -4183,7 +4183,7 @@ fn can_increase_size_into_pane_stack_horizontally() {
         ResizeStrategy::new(Resize::Increase, Some(Direction::Right)),
     )
     .unwrap();
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -4248,7 +4248,7 @@ fn can_increase_size_into_pane_stack_vertically() {
         ResizeStrategy::new(Resize::Increase, Some(Direction::Up)),
     )
     .unwrap();
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -4309,7 +4309,7 @@ fn can_increase_size_into_pane_stack_non_directionally() {
     let _ = tab.move_focus_up(client_id);
     tab.resize(client_id, ResizeStrategy::new(Resize::Increase, None))
         .unwrap();
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -4369,7 +4369,7 @@ fn decreasing_size_of_whole_tab_treats_stacked_panes_properly() {
         cols: 100,
         rows: 10,
     });
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -4433,7 +4433,7 @@ fn increasing_size_of_whole_tab_treats_stacked_panes_properly() {
         cols: 121,
         rows: 20,
     });
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -4498,7 +4498,7 @@ fn cannot_decrease_stack_size_beyond_minimum_height() {
         )
         .unwrap();
     }
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -4557,7 +4557,7 @@ fn focus_stacked_pane_over_flexible_pane_with_the_mouse() {
         .unwrap();
     tab.handle_left_click(&Position::new(1, 71), client_id)
         .unwrap();
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -4618,7 +4618,7 @@ fn focus_stacked_pane_under_flexible_pane_with_the_mouse() {
         .unwrap();
     tab.handle_left_click(&Position::new(9, 71), client_id)
         .unwrap();
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -4680,7 +4680,7 @@ fn close_stacked_pane_with_previously_focused_other_pane() {
     tab.handle_left_click(&Position::new(1, 71), client_id)
         .unwrap();
     tab.close_pane(PaneId::Terminal(4), false, None);
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -4743,7 +4743,7 @@ fn close_pane_near_stacked_panes() {
     tab.new_pane(new_pane_id_5, None, None, None, Some(client_id))
         .unwrap();
     tab.close_pane(PaneId::Terminal(6), false, None);
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -4808,7 +4808,7 @@ fn focus_next_pane_expands_stacked_panes() {
         .unwrap();
     tab.move_focus_left(client_id);
     tab.focus_next_pane(client_id);
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -4868,7 +4868,7 @@ fn stacked_panes_can_become_fullscreen() {
         .unwrap();
     tab.move_focus_up(client_id);
     tab.toggle_active_pane_fullscreen(client_id);
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -4963,7 +4963,7 @@ fn layout_with_plugins_and_commands_swaped_properly() {
     let _ = tab.handle_plugin_bytes(1, 1, "I am a tab bar".as_bytes().to_vec());
     let _ = tab.handle_plugin_bytes(2, 1, "I am a\n\rstatus bar".as_bytes().to_vec());
     tab.next_swap_layout(Some(client_id), false).unwrap();
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -5059,7 +5059,7 @@ fn base_layout_is_included_in_swap_layouts() {
     let _ = tab.handle_plugin_bytes(2, 1, "I am a\n\rstatus bar".as_bytes().to_vec());
     tab.next_swap_layout(Some(client_id), false).unwrap();
     tab.previous_swap_layout(Some(client_id)).unwrap(); // move back to the base layout
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -5150,7 +5150,7 @@ fn swap_layouts_including_command_panes_absent_from_existing_layout() {
     let _ = tab.handle_plugin_bytes(1, 1, "I am a tab bar".as_bytes().to_vec());
     let _ = tab.handle_plugin_bytes(2, 1, "I am a\n\rstatus bar".as_bytes().to_vec());
     tab.next_swap_layout(Some(client_id), false).unwrap();
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -5245,7 +5245,7 @@ fn swap_layouts_not_including_command_panes_present_in_existing_layout() {
     let _ = tab.handle_plugin_bytes(1, 1, "I am a tab bar".as_bytes().to_vec());
     let _ = tab.handle_plugin_bytes(2, 1, "I am a\n\rstatus bar".as_bytes().to_vec());
     tab.next_swap_layout(Some(client_id), false).unwrap();
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -5322,7 +5322,7 @@ fn swap_layouts_including_plugin_panes_absent_from_existing_layout() {
         true,
     );
     tab.next_swap_layout(Some(client_id), false).unwrap();
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -5413,7 +5413,7 @@ fn swap_layouts_not_including_plugin_panes_present_in_existing_layout() {
     let _ = tab.handle_plugin_bytes(1, 1, "I am a tab bar".as_bytes().to_vec());
     let _ = tab.handle_plugin_bytes(2, 1, "I am a\n\rstatus bar".as_bytes().to_vec());
     tab.next_swap_layout(Some(client_id), false).unwrap();
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -5499,7 +5499,7 @@ fn new_pane_in_auto_layout() {
             Some(client_id),
         )
         .unwrap();
-        tab.render(&mut output, None).unwrap();
+        tab.render(&mut output).unwrap();
 
         let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
             output.serialize().unwrap().get(&client_id).unwrap(),
@@ -5578,7 +5578,7 @@ fn when_swapping_tiled_layouts_in_a_damaged_state_layout_and_pane_focus_are_unch
     )
     .unwrap();
     tab.next_swap_layout(Some(client_id), false).unwrap();
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
 
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -5651,7 +5651,7 @@ fn when_swapping_tiled_layouts_in_an_undamaged_state_pane_focuses_on_focused_nod
     );
     tab.move_focus_down(client_id);
     tab.next_swap_layout(Some(client_id), true).unwrap();
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
 
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -5725,7 +5725,7 @@ fn when_swapping_tiled_layouts_in_an_undamaged_state_with_no_focus_node_pane_foc
     );
     tab.move_focus_down(client_id);
     tab.next_swap_layout(Some(client_id), true).unwrap();
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
 
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -5799,7 +5799,7 @@ fn when_closing_a_pane_in_auto_layout_the_focus_goes_to_last_focused_pane() {
     let _ = tab.move_focus_down(client_id);
     let _ = tab.move_focus_down(client_id);
     tab.close_pane(PaneId::Terminal(3), false, Some(client_id));
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
 
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -5897,7 +5897,7 @@ fn floating_layout_with_plugins_and_commands_swaped_properly() {
     let _ = tab.handle_plugin_bytes(1, 1, "I am a tab bar".as_bytes().to_vec());
     let _ = tab.handle_plugin_bytes(2, 1, "I am a\n\rstatus bar".as_bytes().to_vec());
     tab.next_swap_layout(Some(client_id), false).unwrap();
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -5991,7 +5991,7 @@ fn base_floating_layout_is_included_in_swap_layouts() {
     let _ = tab.handle_plugin_bytes(2, 1, "I am a\n\rstatus bar".as_bytes().to_vec());
     tab.next_swap_layout(Some(client_id), false).unwrap();
     tab.previous_swap_layout(Some(client_id)).unwrap(); // move back to the base layout
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -6082,7 +6082,7 @@ fn swap_floating_layouts_including_command_panes_absent_from_existing_layout() {
     let _ = tab.handle_plugin_bytes(1, 1, "I am a tab bar".as_bytes().to_vec());
     let _ = tab.handle_plugin_bytes(2, 1, "I am a\n\rstatus bar".as_bytes().to_vec());
     tab.next_swap_layout(Some(client_id), false).unwrap();
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -6177,7 +6177,7 @@ fn swap_floating_layouts_not_including_command_panes_present_in_existing_layout(
     let _ = tab.handle_plugin_bytes(1, 1, "I am a tab bar".as_bytes().to_vec());
     let _ = tab.handle_plugin_bytes(2, 1, "I am a\n\rstatus bar".as_bytes().to_vec());
     tab.next_swap_layout(Some(client_id), false).unwrap();
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -6247,7 +6247,7 @@ fn swap_floating_layouts_including_plugin_panes_absent_from_existing_layout() {
         true,
     );
     tab.next_swap_layout(Some(client_id), false).unwrap();
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -6334,7 +6334,7 @@ fn swap_floating_layouts_not_including_plugin_panes_present_in_existing_layout()
     let _ = tab.handle_plugin_bytes(1, 1, "I am a tab bar".as_bytes().to_vec());
     let _ = tab.handle_plugin_bytes(2, 1, "I am a\n\rstatus bar".as_bytes().to_vec());
     tab.next_swap_layout(Some(client_id), false).unwrap();
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
@@ -6413,7 +6413,7 @@ fn new_floating_pane_in_auto_layout() {
             Some(client_id),
         )
         .unwrap();
-        tab.render(&mut output, None).unwrap();
+        tab.render(&mut output).unwrap();
 
         let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
             output.serialize().unwrap().get(&client_id).unwrap(),
@@ -6491,7 +6491,7 @@ fn when_swapping_floating_layouts_in_a_damaged_state_layout_and_pane_focus_are_u
     )
     .unwrap();
     tab.next_swap_layout(Some(client_id), true).unwrap();
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
 
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -6563,7 +6563,7 @@ fn when_swapping_floating_layouts_in_an_undamaged_state_pane_focuses_on_focused_
         true,
     );
     tab.next_swap_layout(Some(client_id), true).unwrap();
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
 
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -6636,7 +6636,7 @@ fn when_swapping_floating_layouts_in_an_undamaged_state_with_no_focus_node_pane_
         true,
     );
     tab.next_swap_layout(Some(client_id), true).unwrap();
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
 
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -6710,7 +6710,7 @@ fn when_closing_a_floating_pane_in_auto_layout_the_focus_goes_to_last_focused_pa
     tab.move_focus_up(client_id);
     tab.move_focus_up(client_id);
     tab.close_pane(PaneId::Terminal(1), false, Some(client_id));
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
 
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -6777,7 +6777,7 @@ fn when_resizing_whole_tab_with_auto_layout_and_floating_panes_the_layout_is_mai
         rows: 30,
     };
     tab.resize_whole_tab(new_size);
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
 
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -6817,7 +6817,7 @@ fn when_applying_a_truncated_swap_layout_child_attributes_are_not_ignored() {
         rows: 20,
     };
     let _ = tab.resize_whole_tab(new_size);
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         new_size.rows,
@@ -6849,7 +6849,7 @@ fn can_define_expanded_pane_in_stack() {
     let client_id = 1;
     let mut tab = create_new_tab_with_layout(size, ModeInfo::default(), layout);
     let mut output = Output::default();
-    tab.render(&mut output, None).unwrap();
+    tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
