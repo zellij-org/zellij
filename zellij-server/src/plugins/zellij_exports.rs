@@ -155,9 +155,8 @@ fn host_subscribe(env: &ForeignFunctionEnv) {
                 .send_to_plugin(PluginInstruction::PluginSubscribedToEvents(
                     env.plugin_env.plugin_id,
                     env.plugin_env.client_id,
-                    new
+                    new,
                 ))
-
         })
         .with_context(|| format!("failed to subscribe for plugin {}", env.plugin_env.name()))
         .fatal();
