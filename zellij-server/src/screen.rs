@@ -502,6 +502,7 @@ pub(crate) struct Screen {
     auto_layout: bool,
     session_is_mirrored: bool,
     copy_options: CopyOptions,
+    debug: bool,
 }
 
 impl Screen {
@@ -515,6 +516,7 @@ impl Screen {
         auto_layout: bool,
         session_is_mirrored: bool,
         copy_options: CopyOptions,
+        debug: bool,
     ) -> Self {
         Screen {
             bus,
@@ -537,6 +539,7 @@ impl Screen {
             auto_layout,
             session_is_mirrored,
             copy_options,
+            debug,
         }
     }
 
@@ -1055,6 +1058,7 @@ impl Screen {
             self.terminal_emulator_colors.clone(),
             self.terminal_emulator_color_codes.clone(),
             swap_layouts,
+            self.debug,
         );
         self.tabs.insert(tab_index, tab);
         Ok(())
@@ -1510,6 +1514,7 @@ pub(crate) fn screen_thread_main(
     max_panes: Option<usize>,
     client_attributes: ClientAttributes,
     config_options: Box<Options>,
+    debug: bool,
 ) -> Result<()> {
     let capabilities = config_options.simplified_ui;
     let draw_pane_frames = config_options.pane_frames.unwrap_or(true);
@@ -1536,6 +1541,7 @@ pub(crate) fn screen_thread_main(
         auto_layout,
         session_is_mirrored,
         copy_options,
+        debug,
     );
 
     let mut pending_tab_ids: HashSet<usize> = HashSet::new();

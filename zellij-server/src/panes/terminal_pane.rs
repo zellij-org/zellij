@@ -737,6 +737,7 @@ impl TerminalPane {
         terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
         initial_pane_title: Option<String>,
         invoked_with: Option<Run>,
+        debug: bool,
     ) -> TerminalPane {
         let initial_pane_title =
             initial_pane_title.unwrap_or_else(|| format!("Pane #{}", pane_index));
@@ -748,6 +749,7 @@ impl TerminalPane {
             link_handler,
             character_cell_size,
             sixel_image_store,
+            debug,
         );
         TerminalPane {
             frame: HashMap::new(),
