@@ -634,6 +634,16 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
         },
+        Action::CurrentPaneInfo(bool) => {
+            senders
+                .send_to_screen(ScreenInstruction::CurrentPaneId(client_id, bool))
+                .with_context(err_context)?;
+        },
+        Action::CurrentPaneAtEdge(direction) => {
+            senders
+                .send_to_screen(ScreenInstruction::CurrentPaneAtEdge(direction, client_id))
+                .with_context(err_context)?;
+        },
     }
     Ok(should_break)
 }

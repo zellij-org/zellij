@@ -275,6 +275,8 @@ pub enum ScreenInstruction {
     RequestStateUpdateForPlugins,
     LaunchOrFocusPlugin(RunPlugin, bool, ClientId), // bool is should_float
     SuppressPane(PaneId, ClientId),
+    CurrentPaneAtEdge(Direction, ClientId),
+    CurrentPaneId(ClientId, bool), // bool - should_use_json_format
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -439,6 +441,8 @@ impl From<&ScreenInstruction> for ScreenContext {
             },
             ScreenInstruction::LaunchOrFocusPlugin(..) => ScreenContext::LaunchOrFocusPlugin,
             ScreenInstruction::SuppressPane(..) => ScreenContext::SuppressPane,
+            ScreenInstruction::CurrentPaneId(..) => ScreenContext::CurrentPaneInfo,
+            ScreenInstruction::CurrentPaneAtEdge(..) => ScreenContext::CurrentPaneAtEdge,
         }
     }
 }
@@ -1544,6 +1548,7 @@ pub(crate) fn screen_thread_main(
         debug,
     );
 
+    let mut command_rerun_history: HashMap<RunCommand, u16> = HashMap::new();
     let mut pending_tab_ids: HashSet<usize> = HashSet::new();
     let mut pending_tab_switches: HashSet<(usize, ClientId)> = HashSet::new(); // usize is the
                                                                                // tab_index
@@ -1737,6 +1742,67 @@ pub(crate) fn screen_thread_main(
                 if should_update_tabs {
                     screen.update_tabs()?;
                 }
+            },
+            ScreenInstruction::CurrentPaneId(client_id, bool) => {
+                let current_tab = screen.get_active_tab_mut(client_id);
+                match current_tab {
+                    Ok(tab) => {
+                        let bytes = tab.get_active_pane_details(client_id, bool);
+                        if let Some(bytes) = bytes {
+                            let _ = screen
+                                .bus
+                                .senders
+                                .send_to_server(ServerInstruction::CurrentPaneStatus(bytes));
+                        }
+                    },
+                    Err(_) => {
+                        if let Some(client_id) = screen.get_first_client_id() {
+                            match screen.get_active_tab_mut(client_id) {
+                                Ok(tab) => {
+                                    let bytes = tab.get_active_pane_details(client_id, bool);
+                                    if let Some(bytes) = bytes {
+                                        let _ = screen.bus.senders.send_to_server(
+                                            ServerInstruction::CurrentPaneStatus(bytes),
+                                        );
+                                    }
+                                },
+                                Err(err) => Err::<(), _>(err).non_fatal(),
+                            }
+                        } else {
+                            log::error!("No client ids in screen found");
+                        }
+                    },
+                }
+
+                screen.unblock_input()?;
+            },
+            ScreenInstruction::CurrentPaneAtEdge(direction, client_id) => {
+                let current_tab = screen.get_active_tab_mut(client_id);
+                match current_tab {
+                    Ok(tab) => {
+                        let bytes = tab.is_active_pane_at_edge(client_id, direction);
+                        let _ = screen
+                            .bus
+                            .senders
+                            .send_to_server(ServerInstruction::CurrentPaneStatus(bytes));
+                    },
+                    Err(_) => {
+                        if let Some(client_id) = screen.get_first_client_id() {
+                            match screen.get_active_tab_mut(client_id) {
+                                Ok(tab) => {
+                                    let bytes = tab.is_active_pane_at_edge(client_id, direction);
+                                    let _ = screen.bus.senders.send_to_server(
+                                        ServerInstruction::CurrentPaneStatus(bytes),
+                                    );
+                                },
+                                Err(err) => Err::<(), _>(err).non_fatal(),
+                            }
+                        } else {
+                            log::error!("No client ids in screen found");
+                        }
+                    },
+                }
+                screen.unblock_input()?;
             },
             ScreenInstruction::Resize(client_id, strategy) => {
                 active_tab_and_connected_client_id!(

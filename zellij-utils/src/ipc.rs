@@ -110,6 +110,7 @@ pub enum ServerToClientMsg {
     Connected,
     ActiveClients(Vec<ClientId>),
     Log(Vec<String>),
+    CurrentPaneStatus(Vec<u8>),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

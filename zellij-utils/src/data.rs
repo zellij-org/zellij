@@ -221,6 +221,14 @@ impl Direction {
     pub fn is_vertical(&self) -> bool {
         matches!(self, Direction::Down | Direction::Up)
     }
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Direction::Left => "left",
+            Direction::Right => "right",
+            Direction::Up => "up",
+            Direction::Down => "down",
+        }
+    }
 }
 
 impl fmt::Display for Direction {

@@ -1241,6 +1241,26 @@ impl Tab {
             }
         })
     }
+    pub fn get_active_pane_details(
+        &mut self,
+        client_id: ClientId,
+        format_json: bool,
+    ) -> Option<Vec<u8>> {
+        if let Some(pane) = self.get_active_pane(client_id) {
+            if let PaneId::Terminal(pid) = pane.pid() {
+                if format_json {
+                    let msg = format!(r#"{{"pane_id": "{}"}}"#, pid);
+                    return Some(msg.into_bytes());
+                }
+
+                let msg = format!("client #{} : Current active pane id is {}", client_id, pid);
+
+                return Some(msg.into_bytes());
+            }
+        }
+
+        None
+    }
     pub fn get_active_pane_mut(&mut self, client_id: ClientId) -> Option<&mut Box<dyn Pane>> {
         self.get_active_pane_id(client_id).and_then(|ap| {
             if self.floating_panes.panes_are_visible() {
@@ -3225,6 +3245,17 @@ impl Tab {
             plugin_pane.start_loading_indication(loading_indication);
         }
     }
+    pub fn is_active_pane_at_edge(&mut self, client_id: ClientId, direction: Direction) -> Vec<u8> {
+        let ret = match direction {
+            Direction::Left => self.tiled_panes.is_focus_at_edge_left(client_id),
+            Direction::Right => self.tiled_panes.is_focus_at_edge_right(client_id),
+            Direction::Up => self.tiled_panes.is_focus_at_edge_up(client_id),
+            Direction::Down => self.tiled_panes.is_focus_at_edge_down(client_id),
+        };
+        let msg = format!(r#"{{"{}-edge": "{}"}}"#, direction.as_str(), ret);
+        msg.into_bytes()
+    }
+
     pub fn progress_plugin_loading_offset(&mut self, pid: u32) {
         if let Some(plugin_pane) = self
             .tiled_panes

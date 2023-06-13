@@ -234,6 +234,8 @@ pub enum Action {
     NewTiledPluginPane(RunPluginLocation, Option<String>), // String is an optional name
     NewFloatingPluginPane(RunPluginLocation, Option<String>), // String is an optional name
     StartOrReloadPlugin(Url),
+    CurrentPaneInfo(bool),
+    CurrentPaneAtEdge(Direction),
 }
 
 impl Action {
@@ -483,6 +485,12 @@ impl Action {
                     _allow_exec_host_cmd: false,
                 };
                 Ok(vec![Action::LaunchOrFocusPlugin(run_plugin, floating)])
+            },
+            CliAction::CurrentPaneAtEdge { direction } => {
+                Ok(vec![Action::CurrentPaneAtEdge(direction)])
+            },
+            CliAction::CurrentPaneId { format_json } => {
+                Ok(vec![Action::CurrentPaneInfo(format_json)])
             },
         }
     }
