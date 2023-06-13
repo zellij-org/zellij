@@ -39,6 +39,7 @@ macro_rules! get_or_create_grid {
                 $self.link_handler.clone(),
                 $self.character_cell_size.clone(),
                 $self.sixel_image_store.clone(),
+                $self.debug,
             );
             grid.hide_cursor();
             grid
@@ -72,6 +73,7 @@ pub(crate) struct PluginPane {
     pane_frame_color_override: Option<(PaletteColor, Option<String>)>,
     invoked_with: Option<Run>,
     loading_indication: LoadingIndication,
+    debug: bool,
 }
 
 impl PluginPane {
@@ -89,6 +91,7 @@ impl PluginPane {
         currently_connected_clients: Vec<ClientId>,
         style: Style,
         invoked_with: Option<Run>,
+        debug: bool,
     ) -> Self {
         let loading_indication = LoadingIndication::new(title.clone()).with_colors(style.colors);
         let initial_loading_message = loading_indication.to_string();
@@ -118,6 +121,7 @@ impl PluginPane {
             pane_frame_color_override: None,
             invoked_with,
             loading_indication,
+            debug,
         };
         for client_id in currently_connected_clients {
             plugin.handle_plugin_bytes(client_id, initial_loading_message.as_bytes().to_vec());
