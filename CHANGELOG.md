@@ -28,6 +28,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: cursor flickering (https://github.com/zellij-org/zellij/pull/2528)
 * fix: focus tab as well as pane when relaunching plugin (https://github.com/zellij-org/zellij/pull/2530)
 * feat: ui improvements for strider search (https://github.com/zellij-org/zellij/pull/2531)
+* fix: only watch fs if plugins explicitly request it (https://github.com/zellij-org/zellij/pull/2529)
 
 ## [0.36.0] - 2023-04-13
 * fix: when moving pane focus off screen edge to the next tab, the pane on the screen edge is now focused (https://github.com/zellij-org/zellij/pull/2293)
