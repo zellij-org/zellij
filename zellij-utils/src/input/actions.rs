@@ -194,7 +194,7 @@ pub enum Action {
     /// Close the current tab.
     CloseTab,
     GoToTab(u32),
-    GoToTabName(String, bool),
+    GoToTabName(String, bool, Option<PathBuf>),
     ToggleTab,
     TabNameInput(Vec<u8>),
     UndoRenameTab,

@@ -452,7 +452,7 @@ pub(crate) fn route_action(
                 .send_to_screen(ScreenInstruction::GoToTab(i, Some(client_id)))
                 .with_context(err_context)?;
         },
-        Action::GoToTabName(name, create) => {
+        Action::GoToTabName(name, create, cwd) => {
             let shell = default_shell.clone();
             let swap_tiled_layouts = default_layout.swap_tiled_layouts.clone();
             let swap_floating_layouts = default_layout.swap_floating_layouts.clone();
@@ -463,6 +463,7 @@ pub(crate) fn route_action(
                     shell,
                     create,
                     Some(client_id),
+                    cwd,
                 ))
                 .with_context(err_context)?;
         },
