@@ -345,6 +345,10 @@ pub enum CliAction {
         /// Create a tab if one does not exist.
         #[clap(short, long, value_parser)]
         create: bool,
+
+        /// Change the working directory of the new tab from create flag
+        #[clap(long, value_parser, requires("create"))]
+        cwd: Option<PathBuf>,
     },
     /// Renames the focused pane
     RenameTab {

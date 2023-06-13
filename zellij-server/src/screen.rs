@@ -219,6 +219,7 @@ pub enum ScreenInstruction {
         Option<TerminalAction>,                          // default_shell
         bool,
         Option<ClientId>,
+        Option<PathBuf>,
     ),
     ToggleTab(ClientId),
     UpdateTabName(Vec<u8>, ClientId),
@@ -2329,6 +2330,7 @@ pub(crate) fn screen_thread_main(
                 default_shell,
                 create,
                 client_id,
+                cwd,
             ) => {
                 let client_id = if client_id.is_none() {
                     None
@@ -2351,7 +2353,7 @@ pub(crate) fn screen_thread_main(
                                 .bus
                                 .senders
                                 .send_to_plugin(PluginInstruction::NewTab(
-                                    None,
+                                    cwd,
                                     default_shell,
                                     None,
                                     vec![],
