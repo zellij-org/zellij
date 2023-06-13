@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-use crate::panes::selection::Selection;
+use crate::panes::selection::{OffsetSelection, Selection};
 use crate::panes::Row;
 
 use crate::{
@@ -36,22 +36,27 @@ fn vte_goto_instruction(x_coords: usize, y_coords: usize, vte_output: &mut Strin
 }
 
 fn adjust_styles_for_possible_selection(
-    chunk_selection_and_colors: Vec<(Selection, AnsiCode, Option<AnsiCode>)>,
+    chunk_selection_colors: &[SelectionColors],
     character_styles: CharacterStyles,
     chunk_y: usize,
     chunk_width: usize,
 ) -> CharacterStyles {
-    chunk_selection_and_colors
+    chunk_selection_colors
         .iter()
-        .find(|(selection, _background_color, _foreground_color)| {
-            selection.contains(chunk_y, chunk_width)
-        })
-        .map(|(_selection, background_color, foreground_color)| {
-            let mut character_styles = character_styles.background(Some(*background_color));
-            if let Some(foreground_color) = foreground_color {
-                character_styles = character_styles.foreground(Some(*foreground_color));
-            }
-            character_styles
+        .find(|selection_colors| selection_colors.selection().contains(chunk_y, chunk_width))
+        .map(|selection_colors| match selection_colors {
+            SelectionColors::Discrete {
+                background_color,
+                foreground_color,
+                ..
+            } => {
+                let mut character_styles = character_styles.background(Some(*background_color));
+                if let Some(foreground_color) = foreground_color {
+                    character_styles = character_styles.foreground(Some(*foreground_color));
+                }
+                character_styles
+            },
+            SelectionColors::Invert(_) => character_styles.reverse(Some(AnsiCode::On)),
         })
         .unwrap_or(character_styles)
 }
@@ -98,7 +103,7 @@ fn serialize_chunks(
         let mut chunk_width = character_chunk.x;
         for t_character in character_chunk.terminal_characters.iter() {
             let current_character_styles = adjust_styles_for_possible_selection(
-                character_chunk.selection_and_colors(),
+                character_chunk.selection_colors(),
                 t_character.styles,
                 character_chunk.y,
                 chunk_width,
@@ -700,13 +705,46 @@ impl FloatingPanesStack {
     }
 }
 
+#[derive(Debug, Clone)]
+pub enum SelectionColors {
+    Discrete {
+        selection: OffsetSelection,
+        background_color: AnsiCode,
+        foreground_color: Option<AnsiCode>,
+    },
+    Invert(OffsetSelection),
+}
+
+impl SelectionColors {
+    pub fn discrete(
+        selection: OffsetSelection,
+        background_color: AnsiCode,
+        foreground_color: Option<AnsiCode>,
+    ) -> Self {
+        Self::Discrete {
+            selection,
+            background_color,
+            foreground_color,
+        }
+    }
+    pub fn invert(selection: OffsetSelection) -> Self {
+        Self::Invert(selection)
+    }
+    pub fn selection(&self) -> &OffsetSelection {
+        match self {
+            SelectionColors::Discrete { selection, .. } => selection,
+            SelectionColors::Invert(selection) => selection,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct CharacterChunk {
     pub terminal_characters: Vec<TerminalCharacter>,
     pub x: usize,
     pub y: usize,
     pub changed_colors: Option<[Option<AnsiCode>; 256]>,
-    selection_and_colors: Vec<(Selection, AnsiCode, Option<AnsiCode>)>, // Selection, background color, optional foreground color
+    selection_colors: Vec<SelectionColors>,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -729,23 +767,11 @@ impl CharacterChunk {
             ..Default::default()
         }
     }
-    pub fn add_selection_and_colors(
-        &mut self,
-        selection: Selection,
-        background_color: AnsiCode,
-        foreground_color: Option<AnsiCode>,
-        offset_x: usize,
-        offset_y: usize,
-    ) {
-        self.selection_and_colors.push((
-            selection.offset(offset_x, offset_y),
-            background_color,
-            foreground_color,
-        ));
+    pub fn add_selection_colors(&mut self, selection_colors: SelectionColors) {
+        self.selection_colors.push(selection_colors);
     }
-    pub fn selection_and_colors(&self) -> Vec<(Selection, AnsiCode, Option<AnsiCode>)> {
-        // Selection, background color, optional foreground color
-        self.selection_and_colors.clone()
+    pub fn selection_colors(&self) -> &[SelectionColors] {
+        &self.selection_colors
     }
     pub fn add_changed_colors(&mut self, changed_colors: Option<[Option<AnsiCode>; 256]>) {
         self.changed_colors = changed_colors;

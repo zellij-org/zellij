@@ -3541,6 +3541,7 @@ Config {
         session_name: None,
         attach_to_session: None,
         auto_layout: None,
+        invert_selection_colors: None,
     },
     themes: {
         "other-theme-from-config": Theme {

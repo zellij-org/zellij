@@ -1376,6 +1376,10 @@ impl Options {
         let attach_to_session =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "attach_to_session")
                 .map(|(v, _)| v);
+        let invert_selection_colors =
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "invert_selection_colors")
+                .map(|(v, _)| v);
+
         Ok(Options {
             simplified_ui,
             theme,
@@ -1397,6 +1401,7 @@ impl Options {
             session_name,
             attach_to_session,
             auto_layout,
+            invert_selection_colors,
         })
     }
 }

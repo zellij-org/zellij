@@ -168,6 +168,7 @@ pub fn start_client(
             colors: palette,
             rounded_corners: config.ui.pane_frames.rounded_corners,
             hide_session_name: config.ui.pane_frames.hide_session_name,
+            invert_selection_colors: config_options.invert_selection_colors.unwrap_or_default(),
         },
         keybinds: config.keybinds.clone(),
     };
