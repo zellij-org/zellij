@@ -929,7 +929,6 @@ impl Screen {
             self.character_cell_size.clone(),
         );
         let mut tabs_to_close = vec![];
-        let size = self.size;
         for (tab_index, tab) in &mut self.tabs {
             if tab.has_selectable_tiled_panes() {
                 tab.render(&mut output).context(err_context)?;

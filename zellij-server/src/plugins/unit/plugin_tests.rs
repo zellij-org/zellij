@@ -553,7 +553,7 @@ pub fn can_subscribe_to_hd_events() {
         received_screen_instructions,
         ScreenInstruction::PluginBytes,
         screen_receiver,
-        3
+        2
     );
 
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
@@ -565,12 +565,8 @@ pub fn can_subscribe_to_hd_events() {
         client_id,
         size,
     ));
-    let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
-        None,
-        Some(client_id),
-        Event::InputReceived,
-    )])); // will be cached and sent to the plugin once it's loaded
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    // extra long time because we only start the fs watcher on plugin load
+    std::thread::sleep(std::time::Duration::from_millis(5000));
     std::fs::OpenOptions::new()
         .create(true)
         .write(true)

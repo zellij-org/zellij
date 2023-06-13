@@ -370,6 +370,7 @@ pub enum PluginContext {
     ApplyCachedWorkerMessages,
     PostMessageToPluginWorker,
     PostMessageToPlugin,
+    PluginSubscribedToEvents,
 }
 
 /// Stack call representations corresponding to the different types of [`ClientInstruction`]s.

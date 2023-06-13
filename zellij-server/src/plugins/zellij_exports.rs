@@ -26,7 +26,7 @@ use zellij_utils::{
     input::{
         actions::Action,
         command::{RunCommand, RunCommandAction, TerminalAction},
-        layout::{Layout, RunPlugin, RunPluginLocation},
+        layout::Layout,
         plugins::PluginType,
     },
     serde,
@@ -146,8 +146,17 @@ impl ForeignFunctionEnv {
 fn host_subscribe(env: &ForeignFunctionEnv) {
     wasi_read_object::<HashSet<EventType>>(&env.plugin_env.wasi_env)
         .and_then(|new| {
-            env.subscriptions.lock().to_anyhow()?.extend(new);
-            Ok(())
+            env.subscriptions.lock().to_anyhow()?.extend(new.clone());
+            Ok(new)
+        })
+        .and_then(|new| {
+            env.plugin_env
+                .senders
+                .send_to_plugin(PluginInstruction::PluginSubscribedToEvents(
+                    env.plugin_env.plugin_id,
+                    env.plugin_env.client_id,
+                    new,
+                ))
         })
         .with_context(|| format!("failed to subscribe for plugin {}", env.plugin_env.name()))
         .fatal();

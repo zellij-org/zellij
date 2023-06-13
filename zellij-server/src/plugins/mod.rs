@@ -5,7 +5,11 @@ mod wasm_bridge;
 mod watch_filesystem;
 mod zellij_exports;
 use log::info;
-use std::{collections::HashMap, fs, path::PathBuf};
+use std::{
+    collections::{HashMap, HashSet},
+    fs,
+    path::PathBuf,
+};
 use wasmer::Store;
 
 use crate::screen::ScreenInstruction;
@@ -14,7 +18,7 @@ use crate::{pty::PtyInstruction, thread_bus::Bus, ClientId, ServerInstruction};
 use wasm_bridge::WasmBridge;
 
 use zellij_utils::{
-    data::{Event, PluginCapabilities},
+    data::{Event, EventType, PluginCapabilities},
     errors::{prelude::*, ContextType, PluginContext},
     input::{
         command::TerminalAction,
@@ -74,6 +78,7 @@ pub enum PluginInstruction {
         String, // serialized message
         String, // serialized payload
     ),
+    PluginSubscribedToEvents(PluginId, ClientId, HashSet<EventType>),
     Exit,
 }
 
@@ -97,6 +102,9 @@ impl From<&PluginInstruction> for PluginContext {
                 PluginContext::PostMessageToPluginWorker
             },
             PluginInstruction::PostMessageToPlugin(..) => PluginContext::PostMessageToPlugin,
+            PluginInstruction::PluginSubscribedToEvents(..) => {
+                PluginContext::PluginSubscribedToEvents
+            },
         }
     }
 }
@@ -266,6 +274,17 @@ pub(crate) fn plugin_thread_main(
                     Event::CustomMessage(message, payload),
                 )];
                 wasm_bridge.update_plugins(updates)?;
+            },
+            PluginInstruction::PluginSubscribedToEvents(_plugin_id, _client_id, events) => {
+                for event in events {
+                    if let EventType::FileSystemCreate
+                    | EventType::FileSystemRead
+                    | EventType::FileSystemUpdate
+                    | EventType::FileSystemDelete = event
+                    {
+                        wasm_bridge.start_fs_watcher_if_not_started();
+                    }
+                }
             },
             PluginInstruction::Exit => {
                 wasm_bridge.cleanup();
