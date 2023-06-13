@@ -66,6 +66,7 @@ fn take_snapshots_and_cursor_coordinates_from_render_events<'a>(
         width: 8,
         height: 21,
     })));
+    let debug = false;
     let mut grid = Grid::new(
         screen_size.rows,
         screen_size.cols,
@@ -74,6 +75,7 @@ fn take_snapshots_and_cursor_coordinates_from_render_events<'a>(
         Rc::new(RefCell::new(LinkHandler::new())),
         character_cell_size,
         sixel_image_store,
+        debug,
     );
     let snapshots: Vec<(Option<(usize, usize)>, String)> = all_events
         .filter_map(|server_instruction| {
@@ -232,6 +234,7 @@ fn create_new_screen(size: Size) -> Screen {
     let session_is_mirrored = true;
     let copy_options = CopyOptions::default();
 
+    let debug = false;
     let screen = Screen::new(
         bus,
         &client_attributes,
@@ -241,6 +244,7 @@ fn create_new_screen(size: Size) -> Screen {
         auto_layout,
         session_is_mirrored,
         copy_options,
+        debug,
     );
     screen
 }
@@ -281,6 +285,7 @@ impl MockScreen {
             Some(Box::new(self.os_input.clone())),
         )
         .should_silently_fail();
+        let debug = false;
         let screen_thread = std::thread::Builder::new()
             .name("screen_thread".to_string())
             .spawn(move || {
@@ -290,6 +295,7 @@ impl MockScreen {
                     None,
                     client_attributes,
                     Box::new(config_options),
+                    debug,
                 )
                 .expect("TEST")
             })

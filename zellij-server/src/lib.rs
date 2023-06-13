@@ -749,12 +749,14 @@ fn init_session(
             let max_panes = opts.max_panes;
 
             let client_attributes_clone = client_attributes.clone();
+            let debug = opts.debug;
             move || {
                 screen_thread_main(
                     screen_bus,
                     max_panes,
                     client_attributes_clone,
                     config_options,
+                    debug,
                 )
                 .fatal();
             }

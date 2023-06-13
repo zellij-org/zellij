@@ -370,6 +370,7 @@ pub struct Grid {
     pub focus_event_tracking: bool,
     pub search_results: SearchResult,
     pub pending_clipboard_update: Option<String>,
+    debug: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -457,6 +458,7 @@ impl Grid {
         link_handler: Rc<RefCell<LinkHandler>>,
         character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
         sixel_image_store: Rc<RefCell<SixelImageStore>>,
+        debug: bool,
     ) -> Self {
         let sixel_grid = SixelGrid::new(character_cell_size.clone(), sixel_image_store);
         Grid {
@@ -505,6 +507,7 @@ impl Grid {
             search_results: Default::default(),
             sixel_grid,
             pending_clipboard_update: None,
+            debug,
         }
     }
     pub fn render_full_viewport(&mut self) {
@@ -2157,7 +2160,9 @@ impl Perform for Grid {
                 self.set_active_charset(CharsetIndex::G0);
             },
             _ => {
-                log::warn!("Unhandled execute: {:?}", byte);
+                if self.debug {
+                    log::warn!("Unhandled execute: {:?}", byte);
+                }
             },
         }
     }
@@ -2386,7 +2391,9 @@ impl Perform for Grid {
             },
 
             _ => {
-                log::warn!("Unhandled osc: {:?}", params);
+                if self.debug {
+                    log::warn!("Unhandled osc: {:?}", params);
+                }
             },
         }
     }
@@ -2912,7 +2919,9 @@ impl Perform for Grid {
                 _ => {},
             }
         } else {
-            log::warn!("Unhandled csi: {}->{:?}", c, params);
+            if self.debug {
+                log::warn!("Unhandled csi: {}->{:?}", c, params);
+            }
         }
     }
 
@@ -2994,7 +3003,9 @@ impl Perform for Grid {
                 self.fill_viewport(fill_character);
             },
             _ => {
-                log::warn!("Unhandled esc_dispatch: {}->{:?}", byte, intermediates);
+                if self.debug {
+                    log::warn!("Unhandled esc_dispatch: {}->{:?}", byte, intermediates);
+                }
             },
         }
     }

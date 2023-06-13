@@ -170,6 +170,7 @@ pub(crate) struct Tab {
     pending_instructions: Vec<BufferedTabInstruction>, // instructions that came while the tab was
     // pending and need to be re-applied
     swap_layouts: SwapLayouts,
+    debug: bool,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -498,6 +499,7 @@ impl Tab {
         terminal_emulator_colors: Rc<RefCell<Palette>>,
         terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
         swap_layouts: (Vec<SwapTiledLayout>, Vec<SwapFloatingLayout>),
+        debug: bool,
     ) -> Self {
         let name = if name.is_empty() {
             format!("Tab #{}", index + 1)
@@ -584,6 +586,7 @@ impl Tab {
             is_pending: true, // will be switched to false once the layout is applied
             pending_instructions: vec![],
             swap_layouts,
+            debug,
         }
     }
 
@@ -614,6 +617,7 @@ impl Tab {
             self.draw_pane_frames,
             &mut self.focus_pane_id,
             &self.os_api,
+            self.debug,
         )
         .apply_layout(
             layout,
@@ -673,6 +677,7 @@ impl Tab {
                 self.draw_pane_frames,
                 &mut self.focus_pane_id,
                 &self.os_api,
+                self.debug,
             )
             .apply_floating_panes_layout_to_existing_panes(
                 &layout_candidate,
@@ -726,6 +731,7 @@ impl Tab {
                 self.draw_pane_frames,
                 &mut self.focus_pane_id,
                 &self.os_api,
+                self.debug,
             )
             .apply_tiled_panes_layout_to_existing_panes(
                 &layout_candidate,
@@ -1013,6 +1019,7 @@ impl Tab {
                     self.terminal_emulator_color_codes.clone(),
                     initial_pane_title,
                     None,
+                    self.debug,
                 )) as Box<dyn Pane>
             },
             PaneId::Plugin(plugin_pid) => {
@@ -1034,6 +1041,7 @@ impl Tab {
                     self.connected_clients.borrow().iter().copied().collect(),
                     self.style,
                     run_plugin,
+                    self.debug,
                 )) as Box<dyn Pane>
             },
         };
@@ -1065,6 +1073,7 @@ impl Tab {
                     self.terminal_emulator_color_codes.clone(),
                     None,
                     None,
+                    self.debug,
                 );
                 new_pane.update_name("EDITING SCROLLBACK"); // we do this here and not in the
                                                             // constructor so it won't be overrided
@@ -1140,6 +1149,7 @@ impl Tab {
                     self.terminal_emulator_color_codes.clone(),
                     initial_pane_title,
                     None,
+                    self.debug,
                 );
                 self.tiled_panes
                     .split_pane_horizontally(pid, Box::new(new_terminal), client_id);
@@ -1196,6 +1206,7 @@ impl Tab {
                     self.terminal_emulator_color_codes.clone(),
                     initial_pane_title,
                     None,
+                    self.debug,
                 );
                 self.tiled_panes
                     .split_pane_vertically(pid, Box::new(new_terminal), client_id);
