@@ -238,6 +238,13 @@ plugins {
 //     }
 // }
 
+// Define ui settings for Zellij
+// ui {
+//    pane_frames {
+//        rounded_corners false
+//        hide_session_name false
+//     }
+// }
 // Choose the theme that is specified in the themes section.
 // Default: default
 //
