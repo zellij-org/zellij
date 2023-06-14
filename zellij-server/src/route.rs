@@ -615,12 +615,10 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
         },
-        Action::StartOrReloadPlugin(url) => {
-            let run_plugin_location =
-                RunPluginLocation::parse(url.as_str()).with_context(err_context)?;
+        Action::StartOrReloadPlugin(run_plugin) => {
             senders
                 .send_to_screen(ScreenInstruction::StartOrReloadPluginPane(
-                    run_plugin_location,
+                    run_plugin,
                     None,
                 ))
                 .with_context(err_context)?;

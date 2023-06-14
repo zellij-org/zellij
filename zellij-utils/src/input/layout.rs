@@ -221,7 +221,7 @@ pub enum RunPluginLocation {
 }
 
 impl RunPluginLocation {
-    pub fn parse(location: &str) -> Result<Self, PluginsConfigError> {
+    pub fn parse(location: &str, cwd: Option<PathBuf>) -> Result<Self, PluginsConfigError> {
         let url = Url::parse(location)?;
 
         let decoded_path = percent_encoding::percent_decode_str(url.path()).decode_utf8_lossy();
@@ -233,16 +233,29 @@ impl RunPluginLocation {
                     // Path is absolute, its safe to use URL path.
                     //
                     // This is the case if the scheme and : delimiter are followed by a / slash
-                    decoded_path
+                    PathBuf::from(decoded_path.as_ref())
+                } else if location.starts_with("file:~") {
+                    // Unwrap is safe here since location is a valid URL
+                    PathBuf::from(location.strip_prefix("file:").unwrap())
                 } else {
                     // URL dep doesn't handle relative paths with `file` schema properly,
                     // it always makes them absolute. Use raw location string instead.
                     //
                     // Unwrap is safe here since location is a valid URL
-                    location.strip_prefix("file:").unwrap().into()
+                    let stripped = location.strip_prefix("file:").unwrap();
+                    match cwd {
+                        Some(cwd) => cwd.join(stripped),
+                        None => PathBuf::from(stripped)
+                    }
                 };
-
-                Ok(Self::File(PathBuf::from(path.as_ref())))
+                let path = match shellexpand::full(&path.to_string_lossy().to_string()) {
+                    Ok(s) => PathBuf::from(s.as_ref()),
+                    Err(e) =>  {
+                        log::error!("Failed to shell expand plugin path: {}", e);
+                        path
+                    }
+                };
+                Ok(Self::File(path))
             },
             _ => Err(PluginsConfigError::InvalidUrlScheme(url)),
         }

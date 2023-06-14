@@ -892,7 +892,8 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                 let should_float = command_metadata
                     .and_then(|c_m| kdl_child_bool_value_for_entry(c_m, "floating"))
                     .unwrap_or(false);
-                let location = RunPluginLocation::parse(&plugin_path)?;
+                let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+                let location = RunPluginLocation::parse(&plugin_path, Some(current_dir))?;
                 let run_plugin = RunPlugin {
                     location,
                     _allow_exec_host_cmd: false,
@@ -1402,7 +1403,7 @@ impl Options {
 }
 
 impl RunPlugin {
-    pub fn from_kdl(kdl_node: &KdlNode) -> Result<Self, ConfigError> {
+    pub fn from_kdl(kdl_node: &KdlNode, cwd: Option<PathBuf>) -> Result<Self, ConfigError> {
         let _allow_exec_host_cmd =
             kdl_get_child_entry_bool_value!(kdl_node, "_allow_exec_host_cmd").unwrap_or(false);
         let string_url = kdl_get_child_entry_string_value!(kdl_node, "location").ok_or(
@@ -1412,7 +1413,7 @@ impl RunPlugin {
                 kdl_node.span().len(),
             ),
         )?;
-        let location = RunPluginLocation::parse(string_url).map_err(|e| {
+        let location = RunPluginLocation::parse(string_url, cwd).map_err(|e| {
             ConfigError::new_layout_kdl_error(
                 e.to_string(),
                 kdl_node.span().offset(),
