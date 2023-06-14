@@ -17,7 +17,7 @@ use zellij_utils::{
         actions::{Action, SearchDirection, SearchOption},
         command::TerminalAction,
         get_mode_info,
-        layout::{Layout, RunPluginLocation},
+        layout::Layout,
     },
     ipc::{
         ClientAttributes, ClientToServerMsg, ExitReason, IpcReceiverWithContext, ServerToClientMsg,
@@ -617,10 +617,7 @@ pub(crate) fn route_action(
         },
         Action::StartOrReloadPlugin(run_plugin) => {
             senders
-                .send_to_screen(ScreenInstruction::StartOrReloadPluginPane(
-                    run_plugin,
-                    None,
-                ))
+                .send_to_screen(ScreenInstruction::StartOrReloadPluginPane(run_plugin, None))
                 .with_context(err_context)?;
         },
         Action::LaunchOrFocusPlugin(run_plugin, should_float) => {

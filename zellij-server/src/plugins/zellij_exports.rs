@@ -26,7 +26,7 @@ use zellij_utils::{
     input::{
         actions::Action,
         command::{RunCommand, RunCommandAction, TerminalAction},
-        layout::{RunPlugin, RunPluginLocation, Layout},
+        layout::{Layout, RunPlugin, RunPluginLocation},
         plugins::PluginType,
     },
     serde,
@@ -949,7 +949,10 @@ fn host_start_or_reload_plugin(env: &ForeignFunctionEnv) {
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     wasi_read_string(&env.plugin_env.wasi_env)
         .and_then(|url| Url::parse(&url).map_err(|e| anyhow!("Failed to parse url: {}", e)))
-        .and_then(|url| RunPluginLocation::parse(url.as_str(), Some(cwd)).map_err(|e| anyhow!("Failed to parse plugin location: {}", e)))
+        .and_then(|url| {
+            RunPluginLocation::parse(url.as_str(), Some(cwd))
+                .map_err(|e| anyhow!("Failed to parse plugin location: {}", e))
+        })
         .and_then(|run_plugin_location| {
             let run_plugin = RunPlugin {
                 location: run_plugin_location,

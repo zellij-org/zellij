@@ -482,7 +482,7 @@ impl Action {
                     _allow_exec_host_cmd: false,
                 };
                 Ok(vec![Action::StartOrReloadPlugin(run_plugin)])
-            }
+            },
             CliAction::LaunchOrFocusPlugin { url, floating } => {
                 let current_dir = get_current_dir();
                 let run_plugin_location = RunPluginLocation::parse(url.as_str(), Some(current_dir))

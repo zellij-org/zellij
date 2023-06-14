@@ -245,15 +245,15 @@ impl RunPluginLocation {
                     let stripped = location.strip_prefix("file:").unwrap();
                     match cwd {
                         Some(cwd) => cwd.join(stripped),
-                        None => PathBuf::from(stripped)
+                        None => PathBuf::from(stripped),
                     }
                 };
                 let path = match shellexpand::full(&path.to_string_lossy().to_string()) {
                     Ok(s) => PathBuf::from(s.as_ref()),
-                    Err(e) =>  {
+                    Err(e) => {
                         log::error!("Failed to shell expand plugin path: {}", e);
                         path
-                    }
+                    },
                 };
                 Ok(Self::File(path))
             },
