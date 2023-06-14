@@ -375,7 +375,7 @@ pub enum CliAction {
     /// Query all tab names
     QueryTabNames,
     StartOrReloadPlugin {
-        url: Url,
+        url: String,
     },
     LaunchOrFocusPlugin {
         #[clap(short, long, value_parser)]

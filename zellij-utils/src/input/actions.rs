@@ -16,7 +16,6 @@ use serde::{Deserialize, Serialize};
 
 use std::path::PathBuf;
 use std::str::FromStr;
-use url::Url;
 
 use crate::position::Position;
 
@@ -233,7 +232,7 @@ pub enum Action {
     /// Open a new tiled (embedded, non-floating) plugin pane
     NewTiledPluginPane(RunPluginLocation, Option<String>), // String is an optional name
     NewFloatingPluginPane(RunPluginLocation, Option<String>), // String is an optional name
-    StartOrReloadPlugin(Url),
+    StartOrReloadPlugin(RunPlugin),
 }
 
 impl Action {
@@ -287,14 +286,18 @@ impl Action {
                 close_on_exit,
                 start_suspended,
             } => {
+                let current_dir = get_current_dir();
+                let cwd = cwd
+                    .map(|cwd| current_dir.join(cwd))
+                    .or_else(|| Some(current_dir));
                 if let Some(plugin) = plugin {
                     if floating {
-                        let plugin = RunPluginLocation::parse(&plugin).map_err(|e| {
+                        let plugin = RunPluginLocation::parse(&plugin, cwd).map_err(|e| {
                             format!("Failed to parse plugin loction {plugin}: {}", e)
                         })?;
                         Ok(vec![Action::NewFloatingPluginPane(plugin, name)])
                     } else {
-                        let plugin = RunPluginLocation::parse(&plugin).map_err(|e| {
+                        let plugin = RunPluginLocation::parse(&plugin, cwd).map_err(|e| {
                             format!("Failed to parse plugin location {plugin}: {}", e)
                         })?;
                         // it is intentional that a new tiled plugin pane cannot include a
@@ -310,10 +313,6 @@ impl Action {
                 } else if !command.is_empty() {
                     let mut command = command.clone();
                     let (command, args) = (PathBuf::from(command.remove(0)), command);
-                    let current_dir = get_current_dir();
-                    let cwd = cwd
-                        .map(|cwd| current_dir.join(cwd))
-                        .or_else(|| Some(current_dir));
                     let hold_on_start = start_suspended;
                     let hold_on_close = !close_on_exit;
                     let run_command_action = RunCommandAction {
@@ -474,9 +473,19 @@ impl Action {
             CliAction::PreviousSwapLayout => Ok(vec![Action::PreviousSwapLayout]),
             CliAction::NextSwapLayout => Ok(vec![Action::NextSwapLayout]),
             CliAction::QueryTabNames => Ok(vec![Action::QueryTabNames]),
-            CliAction::StartOrReloadPlugin { url } => Ok(vec![Action::StartOrReloadPlugin(url)]),
+            CliAction::StartOrReloadPlugin { url } => {
+                let current_dir = get_current_dir();
+                let run_plugin_location = RunPluginLocation::parse(&url, Some(current_dir))
+                    .map_err(|e| format!("Failed to parse plugin location: {}", e))?;
+                let run_plugin = RunPlugin {
+                    location: run_plugin_location,
+                    _allow_exec_host_cmd: false,
+                };
+                Ok(vec![Action::StartOrReloadPlugin(run_plugin)])
+            },
             CliAction::LaunchOrFocusPlugin { url, floating } => {
-                let run_plugin_location = RunPluginLocation::parse(url.as_str())
+                let current_dir = get_current_dir();
+                let run_plugin_location = RunPluginLocation::parse(url.as_str(), Some(current_dir))
                     .map_err(|e| format!("Failed to parse plugin location: {}", e))?;
                 let run_plugin = RunPlugin {
                     location: run_plugin_location,

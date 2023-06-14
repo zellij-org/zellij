@@ -297,13 +297,14 @@ impl<'a> KdlLayoutParser<'a> {
                 plugin_block.span().len(),
             ),
         )?;
-        let location = RunPluginLocation::parse(&string_url).map_err(|e| {
-            ConfigError::new_layout_kdl_error(
-                e.to_string(),
-                url_node.span().offset(),
-                url_node.span().len(),
-            )
-        })?;
+        let location =
+            RunPluginLocation::parse(&string_url, self.cwd_prefix(None)?).map_err(|e| {
+                ConfigError::new_layout_kdl_error(
+                    e.to_string(),
+                    url_node.span().offset(),
+                    url_node.span().len(),
+                )
+            })?;
         Ok(Some(Run::Plugin(RunPlugin {
             _allow_exec_host_cmd,
             location,
