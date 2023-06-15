@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use zellij_utils::notify_debouncer_full::{
     new_debouncer,
-    notify::{EventKind, INotifyWatcher, RecursiveMode, Watcher},
+    notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher},
     DebounceEventResult, Debouncer, FileIdMap,
 };
 use zellij_utils::{data::Event, errors::prelude::Result};
@@ -17,7 +17,7 @@ const DEBOUNCE_DURATION_MS: u64 = 500;
 pub fn watch_filesystem(
     senders: ThreadSenders,
     zellij_cwd: &Path,
-) -> Result<Debouncer<INotifyWatcher, FileIdMap>> {
+) -> Result<Debouncer<RecommendedWatcher, FileIdMap>> {
     let path_prefix_in_plugins = PathBuf::from("/host");
     let current_dir = PathBuf::from(zellij_cwd);
     let mut debouncer = new_debouncer(
