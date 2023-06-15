@@ -707,13 +707,6 @@ pub struct PaneManifest {
     pub panes: HashMap<usize, Vec<PaneInfo>>, // usize is the tab position
 }
 
-impl PaneManifest {
-    // TODO: remove this and use panes directly
-    pub fn add_manifest_for_tab(&mut self, tab_position: usize, pane_infos: Vec<PaneInfo>) {
-        self.panes.insert(tab_position, pane_infos);
-    }
-}
-
 #[derive(Debug, Default, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub struct PaneInfo {
     pub id: u32,

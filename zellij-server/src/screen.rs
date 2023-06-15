@@ -714,7 +714,7 @@ impl Screen {
                             .non_fatal();
                     }
 
-                    self.update_tabs().with_context(err_context)?;
+                    self.report_tab_state().with_context(err_context)?;
                     self.report_pane_state().with_context(err_context)?;
                     return self.render().with_context(err_context);
                 },
@@ -844,7 +844,7 @@ impl Screen {
                     t.position -= 1;
                 }
             }
-            self.update_tabs().with_context(err_context)?;
+            self.report_tab_state().with_context(err_context)?;
             self.report_pane_state().with_context(err_context)?;
             self.render().with_context(err_context)
         }
@@ -1148,7 +1148,7 @@ impl Screen {
             self.add_client(client_id).with_context(err_context)?;
         }
 
-        self.update_tabs()
+        self.report_tab_state()
             .and_then(|_| self.render())
             .with_context(err_context)?;
         self.report_pane_state().with_context(err_context)
@@ -1202,10 +1202,10 @@ impl Screen {
             self.tab_history.remove(&client_id);
         }
         self.connected_clients.borrow_mut().remove(&client_id);
-        self.update_tabs().with_context(err_context)
+        self.report_tab_state().with_context(err_context)
     }
 
-    pub fn update_tabs(&self) -> Result<()> {
+    pub fn report_tab_state(&self) -> Result<()> {
         let mut plugin_updates = vec![];
         for (client_id, active_tab_index) in self.active_tab_indices.iter() {
             let mut tab_data = vec![];
@@ -1244,6 +1244,17 @@ impl Screen {
             .context("failed to update tabs")?;
         Ok(())
     }
+    fn report_pane_state(&self) -> Result<()> {
+        let mut pane_manifest = PaneManifest::default();
+        for tab in self.tabs.values() {
+            pane_manifest.panes.insert(tab.position, tab.pane_infos());
+        }
+        self.bus
+            .senders
+            .send_to_plugin(PluginInstruction::Update(vec![(None, None, Event::PaneUpdate(pane_manifest))]))
+            .context("failed to update tabs")?;
+        Ok(())
+    }
 
     pub fn update_active_tab_name(&mut self, buf: Vec<u8>, client_id: ClientId) -> Result<()> {
         let err_context =
@@ -1277,7 +1288,7 @@ impl Screen {
                                 }
                             },
                         }
-                        self.update_tabs().with_context(err_context)
+                        self.report_tab_state().with_context(err_context)
                     },
                     Err(err) => {
                         Err::<(), _>(err).with_context(err_context).non_fatal();
@@ -1302,7 +1313,7 @@ impl Screen {
                     Ok(active_tab) => {
                         if active_tab.name != active_tab.prev_name {
                             active_tab.name = active_tab.prev_name.clone();
-                            self.update_tabs()
+                            self.report_tab_state()
                                 .context("failed to undo renaming of active tab")?;
                         }
                     },
@@ -1470,7 +1481,7 @@ impl Screen {
                 .context("failed to toggle tabs")?;
         };
 
-        self.update_tabs().context("failed to toggle tabs")?;
+        self.report_tab_state().context("failed to toggle tabs")?;
         self.report_pane_state().context("failed to toggle tabs")?;
         self.render()
     }
@@ -1639,7 +1650,7 @@ pub(crate) fn screen_thread_main(
                     },
                 };
                 screen.unblock_input()?;
-                screen.update_tabs()?;
+                screen.report_tab_state()?;
                 screen.report_pane_state()?;
 
                 screen.render()?;
@@ -1648,7 +1659,7 @@ pub(crate) fn screen_thread_main(
                 active_tab!(screen, client_id, |tab: &mut Tab| tab
                     .suppress_active_pane(pid, client_id), ?);
                 screen.unblock_input()?;
-                screen.update_tabs()?;
+                screen.report_tab_state()?;
                 screen.report_pane_state()?;
 
                 screen.render()?;
@@ -1657,7 +1668,7 @@ pub(crate) fn screen_thread_main(
                 active_tab_and_connected_client_id!(screen, client_id, |tab: &mut Tab, client_id: ClientId| tab
                     .toggle_pane_embed_or_floating(client_id), ?);
                 screen.unblock_input()?;
-                screen.update_tabs()?; // update tabs so that the ui indication will be send to the plugins
+                screen.report_tab_state()?; // update tabs so that the ui indication will be send to the plugins
                 screen.report_pane_state()?;
 
                 screen.render()?;
@@ -1666,7 +1677,7 @@ pub(crate) fn screen_thread_main(
                 active_tab_and_connected_client_id!(screen, client_id, |tab: &mut Tab, client_id: ClientId| tab
                     .toggle_floating_panes(Some(client_id), default_shell), ?);
                 screen.unblock_input()?;
-                screen.update_tabs()?; // update tabs so that the ui indication will be send to the plugins
+                screen.report_tab_state()?; // update tabs so that the ui indication will be send to the plugins
                 screen.report_pane_state()?;
 
                 screen.render()?;
@@ -1697,7 +1708,7 @@ pub(crate) fn screen_thread_main(
                     );
                 }
                 screen.unblock_input()?;
-                screen.update_tabs()?;
+                screen.report_tab_state()?;
                 screen.report_pane_state()?;
                 screen.render()?;
             },
@@ -1727,7 +1738,7 @@ pub(crate) fn screen_thread_main(
                     );
                 }
                 screen.unblock_input()?;
-                screen.update_tabs()?;
+                screen.report_tab_state()?;
                 screen.report_pane_state()?;
                 screen.render()?;
             },
@@ -1749,7 +1760,7 @@ pub(crate) fn screen_thread_main(
                     ?
                 );
                 if state_changed {
-                    screen.update_tabs()?;
+                    screen.report_tab_state()?;
                     screen.report_pane_state()?;
                 }
             },
@@ -1762,7 +1773,7 @@ pub(crate) fn screen_thread_main(
                 );
                 screen.unblock_input()?;
                 screen.render()?;
-                screen.update_tabs()?;
+                screen.report_tab_state()?;
                 screen.report_pane_state()?;
             },
             ScreenInstruction::SwitchFocus(client_id) => {
@@ -1901,7 +1912,7 @@ pub(crate) fn screen_thread_main(
                     client_id,
                     |tab: &mut Tab, client_id: ClientId| tab.move_active_pane(client_id)
                 );
-                screen.update_tabs()?; // update tabs so that the ui indication will be send to the plugins
+                screen.report_tab_state()?; // update tabs so that the ui indication will be send to the plugins
                 screen.render()?;
                 screen.unblock_input()?;
                 screen.report_pane_state()?;
@@ -1912,7 +1923,7 @@ pub(crate) fn screen_thread_main(
                     client_id,
                     |tab: &mut Tab, client_id: ClientId| tab.move_active_pane_backwards(client_id)
                 );
-                screen.update_tabs()?; // update tabs so that the ui indication will be send to the plugins
+                screen.report_tab_state()?; // update tabs so that the ui indication will be send to the plugins
                 screen.render()?;
                 screen.unblock_input()?;
                 screen.report_pane_state()?;
@@ -1923,7 +1934,7 @@ pub(crate) fn screen_thread_main(
                     client_id,
                     |tab: &mut Tab, client_id: ClientId| tab.move_active_pane_down(client_id)
                 );
-                screen.update_tabs()?; // update tabs so that the ui indication will be send to the plugins
+                screen.report_tab_state()?; // update tabs so that the ui indication will be send to the plugins
                 screen.render()?;
                 screen.unblock_input()?;
                 screen.report_pane_state()?;
@@ -1934,7 +1945,7 @@ pub(crate) fn screen_thread_main(
                     client_id,
                     |tab: &mut Tab, client_id: ClientId| tab.move_active_pane_up(client_id)
                 );
-                screen.update_tabs()?; // update tabs so that the ui indication will be send to the plugins
+                screen.report_tab_state()?; // update tabs so that the ui indication will be send to the plugins
                 screen.render()?;
                 screen.unblock_input()?;
                 screen.report_pane_state()?;
@@ -1945,7 +1956,7 @@ pub(crate) fn screen_thread_main(
                     client_id,
                     |tab: &mut Tab, client_id: ClientId| tab.move_active_pane_right(client_id)
                 );
-                screen.update_tabs()?; // update tabs so that the ui indication will be send to the plugins
+                screen.report_tab_state()?; // update tabs so that the ui indication will be send to the plugins
                 screen.render()?;
                 screen.unblock_input()?;
                 screen.report_pane_state()?;
@@ -1956,7 +1967,7 @@ pub(crate) fn screen_thread_main(
                     client_id,
                     |tab: &mut Tab, client_id: ClientId| tab.move_active_pane_left(client_id)
                 );
-                screen.update_tabs()?; // update tabs so that the ui indication will be send to the plugins
+                screen.report_tab_state()?; // update tabs so that the ui indication will be send to the plugins
                 screen.render()?;
                 screen.unblock_input()?;
                 screen.report_pane_state()?;
@@ -2066,7 +2077,7 @@ pub(crate) fn screen_thread_main(
                     client_id,
                     |tab: &mut Tab, client_id: ClientId| tab.close_focused_pane(client_id), ?
                 );
-                screen.update_tabs()?;
+                screen.report_tab_state()?;
                 screen.render()?;
                 screen.unblock_input()?;
                 screen.report_pane_state()?;
@@ -2104,7 +2115,7 @@ pub(crate) fn screen_thread_main(
                         }
                     },
                 }
-                screen.update_tabs()?;
+                screen.report_tab_state()?;
                 screen.unblock_input()?;
                 screen.report_pane_state()?;
             },
@@ -2135,7 +2146,7 @@ pub(crate) fn screen_thread_main(
                         }
                     },
                 }
-                screen.update_tabs()?;
+                screen.report_tab_state()?;
                 screen.unblock_input()?;
                 screen.report_pane_state()?;
             },
@@ -2165,7 +2176,7 @@ pub(crate) fn screen_thread_main(
                     |tab: &mut Tab, client_id: ClientId| tab
                         .toggle_active_pane_fullscreen(client_id)
                 );
-                screen.update_tabs()?;
+                screen.report_tab_state()?;
                 screen.render()?;
                 screen.unblock_input()?;
                 screen.report_pane_state()?;
@@ -2325,7 +2336,7 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::TerminalResize(new_size) => {
                 screen.resize_to_screen(new_size)?;
-                screen.update_tabs()?; // update tabs so that the ui indication will be send to the plugins
+                screen.report_tab_state()?; // update tabs so that the ui indication will be send to the plugins
                 screen.render()?;
             },
             ScreenInstruction::TerminalPixelDimensions(pixel_dimensions) => {
@@ -2356,14 +2367,14 @@ pub(crate) fn screen_thread_main(
                     client_id,
                     |tab: &mut Tab, _client_id: ClientId| tab.toggle_sync_panes_is_active()
                 );
-                screen.update_tabs()?;
+                screen.report_tab_state()?;
                 screen.render()?;
                 screen.unblock_input()?;
             },
             ScreenInstruction::LeftClick(point, client_id) => {
                 active_tab!(screen, client_id, |tab: &mut Tab| tab
                     .handle_left_click(&point, client_id), ?);
-                screen.update_tabs()?;
+                screen.report_tab_state()?;
                 screen.report_pane_state()?;
                 screen.render()?;
                 screen.unblock_input()?;
@@ -2371,7 +2382,7 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::RightClick(point, client_id) => {
                 active_tab!(screen, client_id, |tab: &mut Tab| tab
                     .handle_right_click(&point, client_id), ?);
-                screen.update_tabs()?;
+                screen.report_tab_state()?;
                 screen.report_pane_state()?;
                 screen.render()?;
                 screen.unblock_input()?;
@@ -2379,7 +2390,7 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::MiddleClick(point, client_id) => {
                 active_tab!(screen, client_id, |tab: &mut Tab| tab
                     .handle_middle_click(&point, client_id), ?);
-                screen.update_tabs()?;
+                screen.report_tab_state()?;
                 screen.report_pane_state()?;
                 screen.render()?;
                 screen.unblock_input()?;
@@ -2430,7 +2441,7 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::AddClient(client_id) => {
                 screen.add_client(client_id)?;
-                screen.update_tabs()?;
+                screen.report_tab_state()?;
                 screen.report_pane_state()?;
                 screen.render()?;
             },
@@ -2551,7 +2562,7 @@ pub(crate) fn screen_thread_main(
                     ?
                 );
                 screen.render()?;
-                screen.update_tabs()?;
+                screen.report_tab_state()?;
                 screen.report_pane_state()?;
                 screen.unblock_input()?;
             },
@@ -2563,7 +2574,7 @@ pub(crate) fn screen_thread_main(
                     ?
                 );
                 screen.render()?;
-                screen.update_tabs()?;
+                screen.report_tab_state()?;
                 screen.report_pane_state()?;
                 screen.unblock_input()?;
             },
@@ -2692,7 +2703,8 @@ pub(crate) fn screen_thread_main(
                 for tab in all_tabs.values_mut() {
                     tab.update_input_modes()?;
                 }
-                screen.update_tabs()?;
+                screen.report_tab_state()?;
+                screen.report_pane_state()?;
                 screen.render()?;
             },
             ScreenInstruction::LaunchOrFocusPlugin(run_plugin, should_float, client_id) => {
