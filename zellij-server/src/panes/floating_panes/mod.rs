@@ -1,11 +1,11 @@
 mod floating_pane_grid;
 use zellij_utils::{
-    data::{Direction, ResizeStrategy},
+    data::{Direction, PaneInfo, ResizeStrategy},
     position::Position,
 };
 
 use crate::resize_pty;
-use crate::tab::Pane;
+use crate::tab::{pane_info_for_pane, Pane};
 use floating_pane_grid::FloatingPaneGrid;
 
 use crate::{
@@ -884,5 +884,18 @@ impl FloatingPanes {
         } else {
             Err(anyhow!("Pane not found"))
         }
+    }
+    pub fn pane_info(&self) -> Vec<PaneInfo> {
+        let mut pane_infos = vec![];
+        for (pane_id, pane) in self.panes.iter() {
+            let mut pane_info_for_pane = pane_info_for_pane(pane_id, pane);
+            let is_focused = self.active_panes.pane_id_is_focused(pane_id);
+            pane_info_for_pane.is_floating = true;
+            pane_info_for_pane.is_suppressed = false;
+            pane_info_for_pane.is_focused = is_focused;
+            pane_info_for_pane.is_fullscreen = false;
+            pane_infos.push(pane_info_for_pane);
+        }
+        pane_infos
     }
 }
