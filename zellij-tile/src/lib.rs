@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use zellij_utils::data::Event;
 
 #[allow(unused_variables)]
-pub trait ZellijPlugin {
+pub trait ZellijPlugin: Default {
     fn load(&mut self) {}
     fn update(&mut self, event: Event) -> bool {
         false

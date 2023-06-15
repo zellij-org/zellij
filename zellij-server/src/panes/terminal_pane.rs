@@ -720,6 +720,27 @@ impl Pane for TerminalPane {
     fn set_title(&mut self, title: String) {
         self.pane_title = title;
     }
+    fn current_title(&self) -> String {
+        if self.pane_name.is_empty() {
+            self.grid.title.as_deref().unwrap_or(&self.pane_title).into()
+        } else {
+            self.pane_name.to_owned()
+        }
+    }
+    fn exit_status(&self) -> Option<i32> {
+        self.is_held
+            .as_ref()
+            .and_then(|(exit_status, _, _)| *exit_status)
+    }
+    fn is_held(&self) -> bool {
+        self.is_held.is_some()
+    }
+    fn exited(&self) -> bool {
+        match self.is_held {
+            Some((_, is_first_run, _)) => !is_first_run,
+            None => false
+        }
+    }
 }
 
 impl TerminalPane {

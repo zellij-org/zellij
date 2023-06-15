@@ -9,7 +9,7 @@ mod swap_layouts;
 use copy_command::CopyCommand;
 use std::env::temp_dir;
 use uuid::Uuid;
-use zellij_utils::data::{Direction, ResizeStrategy};
+use zellij_utils::data::{Direction, ResizeStrategy, PaneInfo};
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
 use zellij_utils::position::{Column, Line};
@@ -446,6 +446,16 @@ pub trait Pane {
     fn update_loading_indication(&mut self, _loading_indication: LoadingIndication) {} // only relevant for plugins
     fn start_loading_indication(&mut self, _loading_indication: LoadingIndication) {} // only relevant for plugins
     fn progress_animation_offset(&mut self) {} // only relevant for plugins
+    fn current_title(&self) -> String;
+    fn is_held(&self) -> bool {
+        false
+    }
+    fn exited(&self) -> bool {
+        false
+    }
+    fn exit_status(&self) -> Option<i32> {
+        None
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -1532,6 +1542,7 @@ impl Tab {
                                 command,
                             ))
                             .with_context(err_context)?;
+                        should_update_ui = true;
                     },
                     Some(AdjustedInput::CloseThisPane) => {
                         self.close_pane(PaneId::Terminal(active_terminal_id), false, None);
@@ -3299,6 +3310,22 @@ impl Tab {
             self.suppressed_panes.insert(pane_id, pane);
         }
     }
+    pub fn pane_infos(&self) -> Vec<PaneInfo> {
+        let mut pane_info = vec![];
+        let mut tiled_pane_info = self.tiled_panes.pane_info();
+        let mut floating_pane_info = self.floating_panes.pane_info();
+        pane_info.append(&mut tiled_pane_info);
+        pane_info.append(&mut floating_pane_info);
+        for (pane_id, pane) in self.suppressed_panes.iter() {
+            let mut pane_info_for_suppressed_pane = pane_info_for_pane(pane_id, pane);
+            pane_info_for_suppressed_pane.is_floating = false;
+            pane_info_for_suppressed_pane.is_suppressed = true;
+            pane_info_for_suppressed_pane.is_focused = false;
+            pane_info_for_suppressed_pane.is_fullscreen = false;
+            pane_info.push(pane_info_for_suppressed_pane);
+        }
+        pane_info
+    }
     fn add_floating_pane(
         &mut self,
         mut pane: Box<dyn Pane>,
@@ -3357,6 +3384,50 @@ impl Tab {
         }
         Ok(())
     }
+}
+
+pub fn pane_info_for_pane(pane_id: &PaneId, pane: &Box<dyn Pane>) -> PaneInfo {
+    let mut pane_info = PaneInfo::default();
+    pane_info.pane_x = pane.x();
+    pane_info.pane_content_x = pane.get_content_x();
+    pane_info.pane_y = pane.y();
+    pane_info.pane_content_y = pane.get_content_y();
+    pane_info.pane_rows = pane.rows();
+    pane_info.pane_content_rows = pane.get_content_rows();
+    pane_info.pane_columns = pane.cols();
+    pane_info.pane_content_columns = pane.get_content_columns();
+    pane_info.cursor_coordinates_in_pane = pane.cursor_coordinates();
+    pane_info.is_selectable = pane.selectable();
+    pane_info.title = pane.current_title();
+    pane_info.exited = pane.exited();
+    pane_info.exit_status = pane.exit_status();
+    pane_info.is_held = pane.is_held();
+
+    match pane_id {
+        PaneId::Terminal(terminal_id) => {
+            pane_info.id = *terminal_id;
+            pane_info.is_plugin = false;
+            pane_info.terminal_command = pane.invoked_with().as_ref().and_then(|c| {
+                match c {
+                    Run::Command(run_command) => Some(run_command.to_string()),
+                    _ => None
+                }
+            });
+
+        }
+        PaneId::Plugin(plugin_id) => {
+            pane_info.id = *plugin_id;
+            pane_info.is_plugin = true;
+            pane_info.plugin_url = pane.invoked_with().as_ref().and_then(|c| {
+                match c {
+                    Run::Plugin(run_plugin) => Some(run_plugin.location.to_string()),
+                    _ => None
+                }
+            });
+
+        }
+    }
+    pane_info
 }
 
 #[cfg(test)]

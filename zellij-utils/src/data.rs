@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::path::PathBuf;
 use std::str::FromStr;
+use std::collections::HashMap;
 use strum_macros::{EnumDiscriminants, EnumIter, EnumString, ToString};
 
 pub type ClientId = u16; // TODO: merge with crate type?
@@ -463,6 +464,7 @@ pub enum Mouse {
 pub enum Event {
     ModeUpdate(ModeInfo),
     TabUpdate(Vec<TabInfo>),
+    PaneUpdate(PaneManifest),
     Key(Key),
     Mouse(Mouse),
     Timer(f64),
@@ -698,6 +700,44 @@ pub struct TabInfo {
     pub other_focused_clients: Vec<ClientId>,
     pub active_swap_layout_name: Option<String>,
     pub is_swap_layout_dirty: bool,
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct PaneManifest {
+    pub panes: HashMap<usize, Vec<PaneInfo>>, // usize is the tab position
+}
+
+impl PaneManifest {
+    // TODO: remove this and use panes directly
+    pub fn add_manifest_for_tab(&mut self, tab_position: usize, pane_infos: Vec<PaneInfo>) {
+        self.panes.insert(tab_position, pane_infos);
+    }
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
+pub struct PaneInfo {
+    pub id: u32,
+    pub is_plugin: bool,
+    pub is_focused: bool,
+    pub is_fullscreen: bool,
+    pub is_floating: bool,
+    pub is_suppressed: bool,
+    pub title: String,
+    pub exited: bool,
+    pub exit_status: Option<i32>,
+    pub is_held: bool,
+    pub pane_x: usize,
+    pub pane_content_x: usize,
+    pub pane_y: usize,
+    pub pane_content_y: usize,
+    pub pane_rows: usize,
+    pub pane_content_rows: usize,
+    pub pane_columns: usize,
+    pub pane_content_columns: usize,
+    pub cursor_coordinates_in_pane: Option<(usize, usize)>, // x, y if cursor is visible
+    pub terminal_command: Option<String>,
+    pub plugin_url: Option<String>,
+    pub is_selectable: bool,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]

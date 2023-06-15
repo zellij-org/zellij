@@ -564,6 +564,13 @@ impl Pane for PluginPane {
             self.loading_indication.to_string().as_bytes().to_vec(),
         );
     }
+    fn current_title(&self) -> String {
+        if self.pane_name.is_empty() {
+            self.pane_title.to_owned()
+        } else {
+            self.pane_name.to_owned()
+        }
+    }
 }
 
 impl PluginPane {

@@ -10,7 +10,7 @@ use crate::{
     output::Output,
     panes::{ActivePanes, PaneId},
     plugins::PluginInstruction,
-    tab::{Pane, MIN_TERMINAL_HEIGHT, MIN_TERMINAL_WIDTH},
+    tab::{Pane, MIN_TERMINAL_HEIGHT, MIN_TERMINAL_WIDTH, pane_info_for_pane},
     thread_bus::ThreadSenders,
     ui::boundaries::Boundaries,
     ui::pane_contents_and_ui::PaneContentsAndUi,
@@ -18,7 +18,7 @@ use crate::{
 };
 use stacked_panes::StackedPanes;
 use zellij_utils::{
-    data::{Direction, ModeInfo, ResizeStrategy, Style},
+    data::{Direction, ModeInfo, ResizeStrategy, Style, PaneInfo},
     errors::prelude::*,
     input::{
         command::RunCommand,
@@ -1708,6 +1708,19 @@ impl TiledPanes {
             .iter()
             .find(|(_id, s_p)| s_p.invoked_with() == &run)
             .map(|(id, _)| *id)
+    }
+    pub fn pane_info(&self) -> Vec<PaneInfo> {
+        let mut pane_infos = vec![];
+        for (pane_id, pane) in self.panes.iter() {
+            let mut pane_info_for_pane = pane_info_for_pane(pane_id, pane);
+            let is_focused = self.active_panes.pane_id_is_focused(pane_id);
+            pane_info_for_pane.is_floating = false;
+            pane_info_for_pane.is_suppressed = false;
+            pane_info_for_pane.is_focused = is_focused;
+            pane_info_for_pane.is_fullscreen = is_focused && self.fullscreen_is_active();
+            pane_infos.push(pane_info_for_pane);
+        }
+        pane_infos
     }
 }
 
