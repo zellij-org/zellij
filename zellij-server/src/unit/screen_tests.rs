@@ -10,7 +10,7 @@ use crate::{
 use insta::assert_snapshot;
 use std::path::PathBuf;
 use zellij_utils::cli::CliAction;
-use zellij_utils::data::Resize;
+use zellij_utils::data::{Event, Resize};
 use zellij_utils::errors::{prelude::*, ErrorContext};
 use zellij_utils::input::actions::Action;
 use zellij_utils::input::command::{RunCommand, TerminalAction};
@@ -2431,9 +2431,23 @@ pub fn send_cli_rename_tab() {
     send_cli_action_to_server(&session_metadata, rename_tab, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![plugin_thread, screen_thread]);
+    let plugin_rename_tab_instruction = received_plugin_instructions
+        .lock()
+        .unwrap()
+        .iter()
+        .find(|instruction| match instruction {
+            PluginInstruction::Update(updates) => updates.iter().find(|u| {
+                match u {
+                    (_, _, Event::TabUpdate(..)) => true,
+                    _ => false
+                }
+            }).is_some(),
+            _ => false,
+        })
+        .cloned();
     assert_snapshot!(format!(
         "{:#?}",
-        *received_plugin_instructions.lock().unwrap()
+        plugin_rename_tab_instruction
     ))
 }
 
@@ -2469,9 +2483,23 @@ pub fn send_cli_undo_rename_tab() {
     send_cli_action_to_server(&session_metadata, undo_rename_tab, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![plugin_thread, screen_thread]);
+    let plugin_undo_rename_tab_instruction = received_plugin_instructions
+        .lock()
+        .unwrap()
+        .iter()
+        .find(|instruction| match instruction {
+            PluginInstruction::Update(updates) => updates.iter().find(|u| {
+                match u {
+                    (_, _, Event::TabUpdate(..)) => true,
+                    _ => false
+                }
+            }).is_some(),
+            _ => false,
+        })
+        .cloned();
     assert_snapshot!(format!(
         "{:#?}",
-        *received_plugin_instructions.lock().unwrap()
+        plugin_undo_rename_tab_instruction
     ))
 }
 
