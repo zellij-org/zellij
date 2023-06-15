@@ -2,10 +2,10 @@ use crate::input::actions::Action;
 use crate::input::config::ConversionError;
 use clap::ArgEnum;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fmt;
 use std::path::PathBuf;
 use std::str::FromStr;
-use std::collections::HashMap;
 use strum_macros::{EnumDiscriminants, EnumIter, EnumString, ToString};
 
 pub type ClientId = u16; // TODO: merge with crate type?

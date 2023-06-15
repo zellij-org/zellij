@@ -10,7 +10,7 @@ use crate::{
     output::Output,
     panes::{ActivePanes, PaneId},
     plugins::PluginInstruction,
-    tab::{Pane, MIN_TERMINAL_HEIGHT, MIN_TERMINAL_WIDTH, pane_info_for_pane},
+    tab::{pane_info_for_pane, Pane, MIN_TERMINAL_HEIGHT, MIN_TERMINAL_WIDTH},
     thread_bus::ThreadSenders,
     ui::boundaries::Boundaries,
     ui::pane_contents_and_ui::PaneContentsAndUi,
@@ -18,7 +18,7 @@ use crate::{
 };
 use stacked_panes::StackedPanes;
 use zellij_utils::{
-    data::{Direction, ModeInfo, ResizeStrategy, Style, PaneInfo},
+    data::{Direction, ModeInfo, PaneInfo, ResizeStrategy, Style},
     errors::prelude::*,
     input::{
         command::RunCommand,

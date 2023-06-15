@@ -722,7 +722,11 @@ impl Pane for TerminalPane {
     }
     fn current_title(&self) -> String {
         if self.pane_name.is_empty() {
-            self.grid.title.as_deref().unwrap_or(&self.pane_title).into()
+            self.grid
+                .title
+                .as_deref()
+                .unwrap_or(&self.pane_title)
+                .into()
         } else {
             self.pane_name.to_owned()
         }
@@ -738,7 +742,7 @@ impl Pane for TerminalPane {
     fn exited(&self) -> bool {
         match self.is_held {
             Some((_, is_first_run, _)) => !is_first_run,
-            None => false
+            None => false,
         }
     }
 }

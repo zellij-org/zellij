@@ -99,6 +99,9 @@ impl ActivePanes {
         }
     }
     pub fn pane_id_is_focused(&self, pane_id: &PaneId) -> bool {
-        self.active_panes.values().find(|p_id| **p_id == *pane_id).is_some()
+        self.active_panes
+            .values()
+            .find(|p_id| **p_id == *pane_id)
+            .is_some()
     }
 }

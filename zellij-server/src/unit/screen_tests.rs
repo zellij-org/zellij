@@ -2436,19 +2436,17 @@ pub fn send_cli_rename_tab() {
         .unwrap()
         .iter()
         .find(|instruction| match instruction {
-            PluginInstruction::Update(updates) => updates.iter().find(|u| {
-                match u {
+            PluginInstruction::Update(updates) => updates
+                .iter()
+                .find(|u| match u {
                     (_, _, Event::TabUpdate(..)) => true,
-                    _ => false
-                }
-            }).is_some(),
+                    _ => false,
+                })
+                .is_some(),
             _ => false,
         })
         .cloned();
-    assert_snapshot!(format!(
-        "{:#?}",
-        plugin_rename_tab_instruction
-    ))
+    assert_snapshot!(format!("{:#?}", plugin_rename_tab_instruction))
 }
 
 #[test]
@@ -2488,19 +2486,17 @@ pub fn send_cli_undo_rename_tab() {
         .unwrap()
         .iter()
         .find(|instruction| match instruction {
-            PluginInstruction::Update(updates) => updates.iter().find(|u| {
-                match u {
+            PluginInstruction::Update(updates) => updates
+                .iter()
+                .find(|u| match u {
                     (_, _, Event::TabUpdate(..)) => true,
-                    _ => false
-                }
-            }).is_some(),
+                    _ => false,
+                })
+                .is_some(),
             _ => false,
         })
         .cloned();
-    assert_snapshot!(format!(
-        "{:#?}",
-        plugin_undo_rename_tab_instruction
-    ))
+    assert_snapshot!(format!("{:#?}", plugin_undo_rename_tab_instruction))
 }
 
 #[test]

@@ -1,11 +1,11 @@
 mod floating_pane_grid;
 use zellij_utils::{
-    data::{Direction, ResizeStrategy, PaneInfo},
+    data::{Direction, PaneInfo, ResizeStrategy},
     position::Position,
 };
 
 use crate::resize_pty;
-use crate::tab::{Pane, pane_info_for_pane};
+use crate::tab::{pane_info_for_pane, Pane};
 use floating_pane_grid::FloatingPaneGrid;
 
 use crate::{

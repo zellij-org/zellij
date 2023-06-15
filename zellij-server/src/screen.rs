@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::str;
 
-use zellij_utils::data::{Direction, Resize, ResizeStrategy, PaneManifest};
+use zellij_utils::data::{Direction, PaneManifest, Resize, ResizeStrategy};
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
 use zellij_utils::input::options::Clipboard;
@@ -1251,7 +1251,11 @@ impl Screen {
         }
         self.bus
             .senders
-            .send_to_plugin(PluginInstruction::Update(vec![(None, None, Event::PaneUpdate(pane_manifest))]))
+            .send_to_plugin(PluginInstruction::Update(vec![(
+                None,
+                None,
+                Event::PaneUpdate(pane_manifest),
+            )]))
             .context("failed to update tabs")?;
         Ok(())
     }

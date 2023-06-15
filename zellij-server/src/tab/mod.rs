@@ -9,7 +9,7 @@ mod swap_layouts;
 use copy_command::CopyCommand;
 use std::env::temp_dir;
 use uuid::Uuid;
-use zellij_utils::data::{Direction, ResizeStrategy, PaneInfo};
+use zellij_utils::data::{Direction, PaneInfo, ResizeStrategy};
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
 use zellij_utils::position::{Column, Line};
@@ -3407,25 +3407,19 @@ pub fn pane_info_for_pane(pane_id: &PaneId, pane: &Box<dyn Pane>) -> PaneInfo {
         PaneId::Terminal(terminal_id) => {
             pane_info.id = *terminal_id;
             pane_info.is_plugin = false;
-            pane_info.terminal_command = pane.invoked_with().as_ref().and_then(|c| {
-                match c {
-                    Run::Command(run_command) => Some(run_command.to_string()),
-                    _ => None
-                }
+            pane_info.terminal_command = pane.invoked_with().as_ref().and_then(|c| match c {
+                Run::Command(run_command) => Some(run_command.to_string()),
+                _ => None,
             });
-
-        }
+        },
         PaneId::Plugin(plugin_id) => {
             pane_info.id = *plugin_id;
             pane_info.is_plugin = true;
-            pane_info.plugin_url = pane.invoked_with().as_ref().and_then(|c| {
-                match c {
-                    Run::Plugin(run_plugin) => Some(run_plugin.location.to_string()),
-                    _ => None
-                }
+            pane_info.plugin_url = pane.invoked_with().as_ref().and_then(|c| match c {
+                Run::Plugin(run_plugin) => Some(run_plugin.location.to_string()),
+                _ => None,
             });
-
-        }
+        },
     }
     pane_info
 }
