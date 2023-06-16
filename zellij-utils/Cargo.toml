@@ -40,7 +40,6 @@ tempfile = "3.2.0"
 kdl = { version = "4.5.0", features = ["span"] }
 shellexpand = "3.0.0"
 uuid = { version = "0.8.2", features = ["serde", "v4"] }
-notify = "6.0.0"
 async-channel = "1.8.0"
 
 #[cfg(not(target_family = "wasm"))]
@@ -50,6 +49,7 @@ log4rs = "1.2.0"
 signal-hook = "0.3"
 interprocess = "1.2.1"
 async-std = { version = "1.3.0", features = ["unstable"] }
+notify-debouncer-full = "0.1.0"
 
 [dev-dependencies]
 insta = { version = "1.6.0", features = ["backtrace"] }

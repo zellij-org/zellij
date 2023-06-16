@@ -13,7 +13,7 @@ use std::{
 };
 use wasmer::{Instance, Module, Store, Value};
 use zellij_utils::async_std::task::{self, JoinHandle};
-use zellij_utils::notify::{RecommendedWatcher, Watcher};
+use zellij_utils::notify_debouncer_full::{notify::RecommendedWatcher, Debouncer, FileIdMap};
 
 use crate::{
     background_jobs::BackgroundJob, screen::ScreenInstruction, thread_bus::ThreadSenders,
@@ -50,7 +50,7 @@ pub struct WasmBridge {
     loading_plugins: HashMap<(PluginId, RunPlugin), JoinHandle<()>>, // plugin_id to join-handle
     pending_plugin_reloads: HashSet<RunPlugin>,
     path_to_default_shell: PathBuf,
-    watcher: Option<RecommendedWatcher>,
+    watcher: Option<Debouncer<RecommendedWatcher, FileIdMap>>,
     zellij_cwd: PathBuf,
     capabilities: PluginCapabilities,
     client_attributes: ClientAttributes,
@@ -530,7 +530,9 @@ impl WasmBridge {
         for plugin_id in &plugin_ids {
             drop(self.unload_plugin(*plugin_id));
         }
-        drop(self.watcher.as_mut().map(|w| w.unwatch(&self.zellij_cwd)));
+        if let Some(watcher) = self.watcher.take() {
+            watcher.stop_nonblocking();
+        }
     }
     fn run_plugin_of_plugin_id(&self, plugin_id: PluginId) -> Option<&RunPlugin> {
         self.loading_plugins
