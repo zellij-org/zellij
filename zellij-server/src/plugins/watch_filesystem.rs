@@ -12,7 +12,7 @@ use zellij_utils::notify_debouncer_full::{
 };
 use zellij_utils::{data::Event, errors::prelude::Result};
 
-const DEBOUNCE_DURATION_MS: u64 = 500;
+const DEBOUNCE_DURATION_MS: u64 = 400;
 
 pub fn watch_filesystem(
     senders: ThreadSenders,
