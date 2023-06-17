@@ -4,6 +4,7 @@ use std::sync::{Arc, RwLock};
 use crate::thread_bus::ThreadSenders;
 use crate::{
     os_input_output::ServerOsApi,
+    panes::PaneId,
     plugins::PluginInstruction,
     pty::{ClientOrTabIndex, PtyInstruction},
     screen::ScreenInstruction,
@@ -629,6 +630,66 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
         },
+        Action::CloseTerminalPane(terminal_pane_id) => {
+            senders
+                .send_to_screen(ScreenInstruction::ClosePane(
+                    PaneId::Terminal(terminal_pane_id),
+                    None, // we send None here so that the terminal pane would be closed anywhere
+                          // in the app, not just in the client's tab
+                ))
+                .with_context(err_context)?;
+        },
+        Action::ClosePluginPane(plugin_pane_id) => {
+            senders
+                .send_to_screen(ScreenInstruction::ClosePane(
+                    PaneId::Plugin(plugin_pane_id),
+                    None, // we send None here so that the terminal pane would be closed anywhere
+                          // in the app, not just in the client's tab
+                ))
+                .with_context(err_context)?;
+        }
+        Action::FocusTerminalPaneWithId(pane_id, should_float_if_hidden) => {
+            senders
+                .send_to_screen(ScreenInstruction::FocusPaneWithId(
+                    PaneId::Terminal(pane_id),
+                    should_float_if_hidden,
+                    client_id
+                ))
+                .with_context(err_context)?;
+        }
+        Action::FocusPluginPaneWithId(pane_id, should_float_if_hidden) => {
+            senders
+                .send_to_screen(ScreenInstruction::FocusPaneWithId(
+                    PaneId::Plugin(pane_id),
+                    should_float_if_hidden,
+                    client_id
+                ))
+                .with_context(err_context)?;
+        }
+        Action::RenameTerminalPane(pane_id, name_bytes) => {
+            senders
+                .send_to_screen(ScreenInstruction::RenamePane(
+                    PaneId::Terminal(pane_id),
+                    name_bytes,
+                ))
+                .with_context(err_context)?;
+        }
+        Action::RenamePluginPane(pane_id, name_bytes) => {
+            senders
+                .send_to_screen(ScreenInstruction::RenamePane(
+                    PaneId::Plugin(pane_id),
+                    name_bytes,
+                ))
+                .with_context(err_context)?;
+        }
+        Action::RenameTab(tab_position, name_bytes) => {
+            senders
+                .send_to_screen(ScreenInstruction::RenameTab(
+                    tab_position as usize,
+                    name_bytes,
+                ))
+                .with_context(err_context)?;
+        }
     }
     Ok(should_break)
 }

@@ -456,6 +456,7 @@ pub trait Pane {
     fn exit_status(&self) -> Option<i32> {
         None
     }
+    fn rename(&mut self, _buf: Vec<u8>) {}
 }
 
 #[derive(Clone, Debug)]
@@ -3073,6 +3074,18 @@ impl Tab {
         Ok(())
     }
 
+    pub fn rename_pane(&mut self, buf: Vec<u8>, pane_id: PaneId) -> Result<()> {
+        let err_context =
+            || format!("failed to update name of active pane to '{buf:?}' for pane_id {:?}", pane_id);
+        let pane = self.floating_panes
+                .get_pane_mut(pane_id)
+                .or_else(|| self.tiled_panes.get_pane_mut(pane_id))
+                .or_else(|| self.suppressed_panes.get_mut(&pane_id))
+                .with_context(err_context)?;
+        pane.rename(buf);
+        Ok(())
+    }
+
     pub fn undo_active_rename_pane(&mut self, client_id: ClientId) -> Result<()> {
         if let Some(active_terminal_id) = self.get_active_terminal_id(client_id) {
             let active_terminal = if self.are_floating_panes_visible() {
@@ -3282,6 +3295,7 @@ impl Tab {
         should_float: bool,
         client_id: ClientId,
     ) -> Result<()> {
+        // TODO: should error if pane is not selectable
         self.tiled_panes
             .focus_pane_if_exists(pane_id, client_id)
             .or_else(|_| {

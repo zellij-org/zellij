@@ -183,6 +183,33 @@ impl ZellijPlugin for State {
                 Key::Ctrl('p') => {
                     hide_self();
                 },
+                Key::Ctrl('q') => {
+                    let should_float_if_hidden = false;
+                    show_self(should_float_if_hidden);
+                },
+                Key::Ctrl('r') => {
+                    close_terminal_pane(1);
+                },
+                Key::Ctrl('s') => {
+                    close_plugin_pane(1);
+                },
+                Key::Ctrl('t') => {
+                    let should_float_if_hidden = false;
+                    focus_terminal_pane(1, should_float_if_hidden);
+                },
+                Key::Ctrl('u') => {
+                    let should_float_if_hidden = false;
+                    focus_plugin_pane(1, should_float_if_hidden);
+                },
+                Key::Ctrl('v') => {
+                    rename_terminal_pane(1, "new terminal_pane_name");
+                },
+                Key::Ctrl('w') => {
+                    rename_plugin_pane(1, "new plugin_pane_name");
+                },
+                Key::Ctrl('x') => {
+                    rename_tab(1, "new tab name");
+                },
                 _ => {},
             },
             Event::CustomMessage(message, payload) => {

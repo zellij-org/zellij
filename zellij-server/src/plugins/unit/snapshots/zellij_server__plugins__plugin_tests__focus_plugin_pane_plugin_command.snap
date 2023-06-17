@@ -1,0 +1,14 @@
+---
+source: zellij-server/src/plugins/./unit/plugin_tests.rs
+assertion_line: 3909
+expression: "format!(\"{:#?}\", new_tab_event)"
+---
+Some(
+    FocusPaneWithId(
+        Plugin(
+            1,
+        ),
+        false,
+        1,
+    ),
+)

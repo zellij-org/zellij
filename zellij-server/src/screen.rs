@@ -274,7 +274,10 @@ pub enum ScreenInstruction {
     ProgressPluginLoadingOffset(u32),                 // u32 - plugin id
     RequestStateUpdateForPlugins,
     LaunchOrFocusPlugin(RunPlugin, bool, ClientId), // bool is should_float
-    SuppressPane(PaneId, ClientId),
+    SuppressPane(PaneId, ClientId), // bool is should_float
+    FocusPaneWithId(PaneId, bool, ClientId), // bool is should_float
+    RenamePane(PaneId, Vec<u8>),
+    RenameTab(usize, Vec<u8>),
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -439,6 +442,9 @@ impl From<&ScreenInstruction> for ScreenContext {
             },
             ScreenInstruction::LaunchOrFocusPlugin(..) => ScreenContext::LaunchOrFocusPlugin,
             ScreenInstruction::SuppressPane(..) => ScreenContext::SuppressPane,
+            ScreenInstruction::FocusPaneWithId(..) => ScreenContext::FocusPaneWithId,
+            ScreenInstruction::RenamePane(..) => ScreenContext::RenamePane,
+            ScreenInstruction::RenameTab(..) => ScreenContext::RenameTab,
         }
     }
 }
@@ -1519,6 +1525,32 @@ impl Screen {
             },
             None => Ok(false),
         }
+    }
+
+    pub fn focus_pane_with_id(
+        &mut self,
+        pane_id: PaneId,
+        should_float_if_hidden: bool,
+        client_id: ClientId,
+    ) -> Result<()> {
+        let err_context = || format!("failed to focus_plugin_pane");
+        let tab_index = self.tabs.iter()
+            .find(|(_tab_index, tab)| tab.has_pane_with_pid(&pane_id))
+            .map(|(tab_index, _tab)| *tab_index);
+        match tab_index {
+            Some(tab_index) => {
+                self.go_to_tab(tab_index + 1, client_id)?;
+                self.tabs
+                    .get_mut(&tab_index)
+                    .with_context(err_context)?
+                    .focus_pane_with_id(pane_id, should_float_if_hidden, client_id)
+                    .context("failed to focus pane with id")?;
+            },
+            None =>  {
+                log::error!("Could not find pane with id: {:?}", pane_id);
+            }
+        };
+        Ok(())
     }
 
     fn unblock_input(&self) -> Result<()> {
@@ -2753,6 +2785,35 @@ pub(crate) fn screen_thread_main(
                 }
                 screen.report_pane_state()?;
             },
+            ScreenInstruction::FocusPaneWithId(pane_id, should_float_if_hidden, client_id) => {
+                screen.focus_pane_with_id(pane_id, should_float_if_hidden, client_id)?;
+                screen.report_pane_state()?;
+                screen.report_tab_state()?;
+            }
+            ScreenInstruction::RenamePane(pane_id, new_name) => {
+                let all_tabs = screen.get_tabs_mut();
+                for tab in all_tabs.values_mut() {
+                    if tab.has_pane_with_pid(&pane_id) {
+                        match tab.rename_pane(new_name, pane_id) {
+                            Ok(()) => drop(screen.render()),
+                            Err(e) => log::error!("Failed to rename pane: {:?}", e)
+                        }
+                        break;
+                    }
+                }
+                screen.report_pane_state()?;
+            }
+            ScreenInstruction::RenameTab(tab_index, new_name) => {
+                match screen.tabs.get_mut(&tab_index.saturating_sub(1)) {
+                    Some(tab) => {
+                        tab.name = String::from_utf8_lossy(&new_name).to_string();
+                    },
+                    None => {
+                        log::error!("Failed to find tab with index: {:?}", tab_index);
+                    }
+                }
+                screen.report_tab_state()?;
+            }
         }
     }
     Ok(())
