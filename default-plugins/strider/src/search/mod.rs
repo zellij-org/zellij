@@ -162,10 +162,7 @@ impl Search {
                         match line {
                             Ok(line) => {
                                 self.file_contents.insert(
-                                    (
-                                        file_path_stripped_prefix.clone(),
-                                        index + 1,
-                                    ),
+                                    (file_path_stripped_prefix.clone(), index + 1),
                                     String::from_utf8_lossy(
                                         &strip_ansi_escapes::strip(line).unwrap(),
                                     )
