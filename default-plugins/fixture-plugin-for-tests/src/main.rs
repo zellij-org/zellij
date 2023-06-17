@@ -219,11 +219,7 @@ impl ZellijPlugin for State {
             },
             Event::SystemClipboardFailure => {
                 // this is just to trigger the worker message
-                post_message_to(
-                    "test",
-                    "ping",
-                    "gimme_back_my_payload",
-                );
+                post_message_to("test", "ping", "gimme_back_my_payload");
             },
             _ => {},
         }

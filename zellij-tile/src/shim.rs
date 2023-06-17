@@ -65,12 +65,18 @@ pub fn open_terminal_floating<P: AsRef<Path>>(path: P) {
 }
 
 pub fn open_command_pane<P: AsRef<Path>, A: AsRef<str>>(path: P, args: Vec<A>) {
-    object_to_stdout(&(path.as_ref(), args.iter().map(|a| a.as_ref()).collect::<Vec<&str>>()));
+    object_to_stdout(&(
+        path.as_ref(),
+        args.iter().map(|a| a.as_ref()).collect::<Vec<&str>>(),
+    ));
     unsafe { host_open_command_pane() };
 }
 
 pub fn open_command_pane_floating<P: AsRef<Path>, A: AsRef<str>>(path: P, args: Vec<A>) {
-    object_to_stdout(&(path.as_ref(), args.iter().map(|a| a.as_ref()).collect::<Vec<&str>>()));
+    object_to_stdout(&(
+        path.as_ref(),
+        args.iter().map(|a| a.as_ref()).collect::<Vec<&str>>(),
+    ));
     unsafe { host_open_command_pane_floating() };
 }
 
