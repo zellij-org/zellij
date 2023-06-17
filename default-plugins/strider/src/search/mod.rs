@@ -163,7 +163,6 @@ impl Search {
                             Ok(line) => {
                                 self.file_contents.insert(
                                     (
-                                        // String::from_utf8_lossy(&strip_ansi_escapes::strip(file_path_stripped_prefix.clone()).unwrap()).to_string(),
                                         file_path_stripped_prefix.clone(),
                                         index + 1,
                                     ),
