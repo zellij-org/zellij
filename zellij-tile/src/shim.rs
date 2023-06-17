@@ -1,4 +1,5 @@
 use serde::{de::DeserializeOwned, Serialize};
+use std::str::FromStr;
 use std::{io, path::Path};
 use zellij_utils::data::*;
 use zellij_utils::errors::prelude::*;
@@ -88,6 +89,10 @@ pub fn exec_cmd(cmd: &[&str]) {
 
 pub fn hide_self() {
     unsafe { host_hide_self() };
+}
+
+pub fn show_self(should_float_if_hidden: bool) {
+    unsafe { host_show_self(should_float_if_hidden as i32) };
 }
 
 pub fn switch_to_input_mode(mode: &InputMode) {
@@ -269,6 +274,58 @@ pub fn start_or_reload_plugin(url: &str) {
     unsafe { host_start_or_reload_plugin() };
 }
 
+pub fn close_terminal_pane(terminal_pane_id: i32) {
+    unsafe { host_close_terminal_pane(terminal_pane_id) };
+}
+
+pub fn close_plugin_pane(plugin_pane_id: i32) {
+    unsafe { host_close_plugin_pane(plugin_pane_id) };
+}
+
+pub fn focus_terminal_pane(terminal_pane_id: i32, should_float_if_hidden: bool) {
+    unsafe { host_focus_terminal_pane(terminal_pane_id, should_float_if_hidden as i32) };
+}
+
+pub fn focus_plugin_pane(plugin_pane_id: i32, should_float_if_hidden: bool) {
+    unsafe { host_focus_plugin_pane(plugin_pane_id, should_float_if_hidden as i32) };
+}
+
+pub fn rename_terminal_pane(terminal_pane_id: i32, new_name: &str) {
+    match String::from_str(new_name) {
+        Ok(new_name) => {
+            object_to_stdout(&(terminal_pane_id, new_name));
+            unsafe { host_rename_terminal_pane() };
+        },
+        Err(e) => {
+            eprintln!("Failed to rename terminal: {:?}", e)
+        },
+    }
+}
+
+pub fn rename_plugin_pane(plugin_pane_id: i32, new_name: &str) {
+    match String::from_str(new_name) {
+        Ok(new_name) => {
+            object_to_stdout(&(plugin_pane_id, new_name));
+            unsafe { host_rename_plugin_pane() };
+        },
+        Err(e) => {
+            eprintln!("Failed to rename plugin: {:?}", e)
+        },
+    }
+}
+
+pub fn rename_tab(tab_position: i32, new_name: &str) {
+    match String::from_str(new_name) {
+        Ok(new_name) => {
+            object_to_stdout(&(tab_position, new_name));
+            unsafe { host_rename_tab() };
+        },
+        Err(e) => {
+            eprintln!("Failed to rename tab: {:?}", e)
+        },
+    }
+}
+
 // Internal Functions
 
 #[doc(hidden)]
@@ -282,6 +339,7 @@ pub fn object_from_stdin<T: DeserializeOwned>() -> Result<T> {
 
 #[doc(hidden)]
 pub fn object_to_stdout(object: &impl Serialize) {
+    // TODO: no crashy
     println!("{}", serde_json::to_string(object).unwrap());
 }
 
@@ -325,6 +383,7 @@ extern "C" {
     fn host_post_message_to();
     fn host_post_message_to_plugin();
     fn host_hide_self();
+    fn host_show_self(should_float_if_hidden: i32);
     fn host_switch_to_mode();
     fn host_new_tabs_with_layout();
     fn host_new_tab();
@@ -365,4 +424,11 @@ extern "C" {
     fn host_focus_or_create_tab();
     fn host_go_to_tab(tab_index: i32);
     fn host_start_or_reload_plugin();
+    fn host_close_terminal_pane(terminal_pane: i32);
+    fn host_close_plugin_pane(plugin_pane: i32);
+    fn host_focus_terminal_pane(terminal_pane: i32, should_float_if_hidden: i32);
+    fn host_focus_plugin_pane(plugin_pane: i32, should_float_if_hidden: i32);
+    fn host_rename_terminal_pane();
+    fn host_rename_plugin_pane();
+    fn host_rename_tab();
 }

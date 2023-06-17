@@ -335,6 +335,9 @@ pub enum ScreenContext {
     RequestStateUpdateForPlugins,
     LaunchOrFocusPlugin,
     SuppressPane,
+    FocusPaneWithId,
+    RenamePane,
+    RenameTab,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.

@@ -571,6 +571,10 @@ impl Pane for PluginPane {
             self.pane_name.to_owned()
         }
     }
+    fn rename(&mut self, buf: Vec<u8>) {
+        self.pane_name = String::from_utf8_lossy(&buf).to_string();
+        self.set_should_render(true);
+    }
 }
 
 impl PluginPane {

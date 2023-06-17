@@ -233,6 +233,13 @@ pub enum Action {
     NewTiledPluginPane(RunPluginLocation, Option<String>), // String is an optional name
     NewFloatingPluginPane(RunPluginLocation, Option<String>), // String is an optional name
     StartOrReloadPlugin(RunPlugin),
+    CloseTerminalPane(u32),
+    ClosePluginPane(u32),
+    FocusTerminalPaneWithId(u32, bool), // bool is should_float_if_hidden
+    FocusPluginPaneWithId(u32, bool),   // bool is should_float_if_hidden
+    RenameTerminalPane(u32, Vec<u8>),
+    RenamePluginPane(u32, Vec<u8>),
+    RenameTab(u32, Vec<u8>),
 }
 
 impl Action {
