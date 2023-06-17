@@ -15,9 +15,9 @@ use zellij_tile::prelude::*;
 
 use fuzzy_matcher::skim::SkimMatcherV2;
 use fuzzy_matcher::FuzzyMatcher;
+use ignore::Walk;
 use search_results::SearchResult;
 use serde::{Deserialize, Serialize};
-use walkdir::WalkDir;
 
 use std::io::{self, BufRead};
 
@@ -64,8 +64,10 @@ impl Search {
         }
     }
     pub fn scan_hd(&mut self) {
-        for entry in WalkDir::new(ROOT).into_iter().filter_map(|e| e.ok()) {
-            self.add_file_entry(entry.path(), entry.metadata().ok());
+        for result in Walk::new(ROOT) {
+            if let Ok(entry) = result {
+                self.add_file_entry(entry.path(), entry.metadata().ok());
+            }
         }
     }
     pub fn search(&mut self, search_term: String) {
@@ -160,11 +162,7 @@ impl Search {
                         match line {
                             Ok(line) => {
                                 self.file_contents.insert(
-                                    (
-                                        // String::from_utf8_lossy(&strip_ansi_escapes::strip(file_path_stripped_prefix.clone()).unwrap()).to_string(),
-                                        file_path_stripped_prefix.clone(),
-                                        index + 1,
-                                    ),
+                                    (file_path_stripped_prefix.clone(), index + 1),
                                     String::from_utf8_lossy(
                                         &strip_ansi_escapes::strip(line).unwrap(),
                                     )
