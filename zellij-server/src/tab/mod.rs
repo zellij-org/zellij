@@ -3075,13 +3075,18 @@ impl Tab {
     }
 
     pub fn rename_pane(&mut self, buf: Vec<u8>, pane_id: PaneId) -> Result<()> {
-        let err_context =
-            || format!("failed to update name of active pane to '{buf:?}' for pane_id {:?}", pane_id);
-        let pane = self.floating_panes
-                .get_pane_mut(pane_id)
-                .or_else(|| self.tiled_panes.get_pane_mut(pane_id))
-                .or_else(|| self.suppressed_panes.get_mut(&pane_id))
-                .with_context(err_context)?;
+        let err_context = || {
+            format!(
+                "failed to update name of active pane to '{buf:?}' for pane_id {:?}",
+                pane_id
+            )
+        };
+        let pane = self
+            .floating_panes
+            .get_pane_mut(pane_id)
+            .or_else(|| self.tiled_panes.get_pane_mut(pane_id))
+            .or_else(|| self.suppressed_panes.get_mut(&pane_id))
+            .with_context(err_context)?;
         pane.rename(buf);
         Ok(())
     }

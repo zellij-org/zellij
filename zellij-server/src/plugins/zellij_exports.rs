@@ -1003,14 +1003,22 @@ fn host_close_plugin_pane(env: &ForeignFunctionEnv, plugin_pane_id: i32) {
     apply_action!(action, error_msg, env);
 }
 
-fn host_focus_terminal_pane(env: &ForeignFunctionEnv, terminal_pane_id: i32, should_float_if_hidden: i32) {
+fn host_focus_terminal_pane(
+    env: &ForeignFunctionEnv,
+    terminal_pane_id: i32,
+    should_float_if_hidden: i32,
+) {
     let should_float_if_hidden = should_float_if_hidden != 0;
     let action = Action::FocusTerminalPaneWithId(terminal_pane_id as u32, should_float_if_hidden);
     let error_msg = || format!("Failed to focus terminal pane");
     apply_action!(action, error_msg, env);
 }
 
-fn host_focus_plugin_pane(env: &ForeignFunctionEnv, plugin_pane_id: i32, should_float_if_hidden: i32) {
+fn host_focus_plugin_pane(
+    env: &ForeignFunctionEnv,
+    plugin_pane_id: i32,
+    should_float_if_hidden: i32,
+) {
     let should_float_if_hidden = should_float_if_hidden != 0;
     let action = Action::FocusPluginPaneWithId(plugin_pane_id as u32, should_float_if_hidden);
     let error_msg = || format!("Failed to focus plugin pane");
@@ -1021,7 +1029,8 @@ fn host_rename_terminal_pane(env: &ForeignFunctionEnv) {
     let error_msg = || format!("Failed to rename terminal pane");
     wasi_read_object::<(u32, String)>(&env.plugin_env.wasi_env)
         .and_then(|(terminal_pane_id, new_name)| {
-            let rename_pane_action = Action::RenameTerminalPane(terminal_pane_id, new_name.as_bytes().to_vec());
+            let rename_pane_action =
+                Action::RenameTerminalPane(terminal_pane_id, new_name.as_bytes().to_vec());
             apply_action!(rename_pane_action, error_msg, env);
             Ok(())
         })
@@ -1033,7 +1042,8 @@ fn host_rename_plugin_pane(env: &ForeignFunctionEnv) {
     let error_msg = || format!("Failed to rename plugin pane");
     wasi_read_object::<(u32, String)>(&env.plugin_env.wasi_env)
         .and_then(|(plugin_pane_id, new_name)| {
-            let rename_pane_action = Action::RenamePluginPane(plugin_pane_id, new_name.as_bytes().to_vec());
+            let rename_pane_action =
+                Action::RenamePluginPane(plugin_pane_id, new_name.as_bytes().to_vec());
             apply_action!(rename_pane_action, error_msg, env);
             Ok(())
         })

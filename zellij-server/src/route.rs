@@ -647,25 +647,25 @@ pub(crate) fn route_action(
                           // in the app, not just in the client's tab
                 ))
                 .with_context(err_context)?;
-        }
+        },
         Action::FocusTerminalPaneWithId(pane_id, should_float_if_hidden) => {
             senders
                 .send_to_screen(ScreenInstruction::FocusPaneWithId(
                     PaneId::Terminal(pane_id),
                     should_float_if_hidden,
-                    client_id
+                    client_id,
                 ))
                 .with_context(err_context)?;
-        }
+        },
         Action::FocusPluginPaneWithId(pane_id, should_float_if_hidden) => {
             senders
                 .send_to_screen(ScreenInstruction::FocusPaneWithId(
                     PaneId::Plugin(pane_id),
                     should_float_if_hidden,
-                    client_id
+                    client_id,
                 ))
                 .with_context(err_context)?;
-        }
+        },
         Action::RenameTerminalPane(pane_id, name_bytes) => {
             senders
                 .send_to_screen(ScreenInstruction::RenamePane(
@@ -673,7 +673,7 @@ pub(crate) fn route_action(
                     name_bytes,
                 ))
                 .with_context(err_context)?;
-        }
+        },
         Action::RenamePluginPane(pane_id, name_bytes) => {
             senders
                 .send_to_screen(ScreenInstruction::RenamePane(
@@ -681,7 +681,7 @@ pub(crate) fn route_action(
                     name_bytes,
                 ))
                 .with_context(err_context)?;
-        }
+        },
         Action::RenameTab(tab_position, name_bytes) => {
             senders
                 .send_to_screen(ScreenInstruction::RenameTab(
@@ -689,7 +689,7 @@ pub(crate) fn route_action(
                     name_bytes,
                 ))
                 .with_context(err_context)?;
-        }
+        },
     }
     Ok(should_break)
 }

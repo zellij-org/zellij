@@ -1,8 +1,8 @@
 use serde::{de::DeserializeOwned, Serialize};
+use std::str::FromStr;
 use std::{io, path::Path};
 use zellij_utils::data::*;
 use zellij_utils::errors::prelude::*;
-use std::str::FromStr;
 
 // Subscription Handling
 
@@ -298,7 +298,7 @@ pub fn rename_terminal_pane(terminal_pane_id: i32, new_name: &str) {
         },
         Err(e) => {
             eprintln!("Failed to rename terminal: {:?}", e)
-        }
+        },
     }
 }
 
@@ -310,7 +310,7 @@ pub fn rename_plugin_pane(plugin_pane_id: i32, new_name: &str) {
         },
         Err(e) => {
             eprintln!("Failed to rename plugin: {:?}", e)
-        }
+        },
     }
 }
 
@@ -322,7 +322,7 @@ pub fn rename_tab(tab_position: i32, new_name: &str) {
         },
         Err(e) => {
             eprintln!("Failed to rename tab: {:?}", e)
-        }
+        },
     }
 }
 
