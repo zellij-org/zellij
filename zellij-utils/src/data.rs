@@ -196,7 +196,6 @@ impl fmt::Display for CharOrArrow {
     }
 }
 
-/// The four directions (left, right, up, down).
 #[derive(Eq, Clone, Copy, Debug, PartialEq, Hash, Deserialize, Serialize, PartialOrd, Ord)]
 pub enum Direction {
     Left,
@@ -457,6 +456,8 @@ pub enum Mouse {
     Release(isize, usize),    // line and column
 }
 
+/// These events can be subscribed to with subscribe method exported by `zellij-tile`.
+/// Once subscribed to, they will trigger the `update` method of the `ZellijPlugin` trait.
 #[derive(Debug, Clone, PartialEq, EnumDiscriminants, ToString, Serialize, Deserialize)]
 #[strum_discriminants(derive(EnumString, Hash, Serialize, Deserialize))]
 #[strum_discriminants(name(EventType))]
@@ -465,20 +466,32 @@ pub enum Event {
     ModeUpdate(ModeInfo),
     TabUpdate(Vec<TabInfo>),
     PaneUpdate(PaneManifest),
+    /// A key was pressed while the user is focused on this plugin's pane
     Key(Key),
+    /// A mouse event happened while the user is focused on this plugin's pane
     Mouse(Mouse),
+    /// A timer expired set by the `set_timeout` method exported by `zellij-tile`.
     Timer(f64),
+    /// Text was copied to the clipboard anywhere in the app
     CopyToClipboard(CopyDestination),
+    /// Failed to copy text to clipboard anywhere in the app
     SystemClipboardFailure,
+    /// Input was received anywhere in the app
     InputReceived,
+    /// This plugin became visible or invisible
     Visible(bool),
+    /// A message from one of the plugin's workers
     CustomMessage(
         String, // message
         String, // payload
     ),
+    /// A file was created somewhere in the Zellij CWD folder
     FileSystemCreate(Vec<PathBuf>),
+    /// A file was accessed somewhere in the Zellij CWD folder
     FileSystemRead(Vec<PathBuf>),
+    /// A file was modified somewhere in the Zellij CWD folder
     FileSystemUpdate(Vec<PathBuf>),
+    /// A file was deleted somewhere in the Zellij CWD folder
     FileSystemDelete(Vec<PathBuf>),
 }
 
@@ -543,27 +556,6 @@ pub enum InputMode {
     #[serde(alias = "tmux")]
     Tmux,
 }
-
-// impl TryFrom<&str> for InputMode {
-//     type Error = String;
-//     fn try_from(mode: &str) -> Result<Self, String> {
-//         match mode {
-//             "normal" | "Normal" => Ok(InputMode::Normal),
-//             "locked" | "Locked" => Ok(InputMode::Locked),
-//             "resize" | "Resize" => Ok(InputMode::Resize),
-//             "pane" | "Pane" => Ok(InputMode::Pane),
-//             "tab" | "Tab" => Ok(InputMode::Tab),
-//             "search" | "Search" => Ok(InputMode::Search),
-//             "renametab" | "RenameTab" => Ok(InputMode::RenameTab),
-//             "renamepane" | "RenamePane" => Ok(InputMode::RenamePane),
-//             "session" | "Session" => Ok(InputMode::Session),
-//             "move" | "Move" => Ok(InputMode::Move),
-//             "prompt" | "Prompt" => Ok(InputMode::Prompt),
-//             "tmux" | "Tmux" => Ok(InputMode::Tmux),
-//             _ => Err(format!("Unrecognized mode: {}", mode)),
-//         }
-//     }
-// }
 
 impl Default for InputMode {
     fn default() -> InputMode {
@@ -660,9 +652,7 @@ pub struct Style {
 // FIXME: Poor devs hashtable since HashTable can't derive `Default`...
 pub type KeybindsVec = Vec<(InputMode, Vec<(Key, Vec<Action>)>)>;
 
-/// Represents the contents of the help message that is printed in the status bar,
-/// which indicates the current [`InputMode`] and what the keybinds for that mode
-/// are. Related to the default `status-bar` plugin.
+/// Provides information helpful in rendering the Zellij controls for UI bars
 #[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModeInfo {
     pub mode: InputMode,
@@ -687,37 +677,70 @@ impl ModeInfo {
     }
 }
 
+/// Contains all the information for a currently opened tab.
 #[derive(Debug, Default, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub struct TabInfo {
-    /* subset of fields to publish to plugins */
+    /// The Tab's 0 indexed position
     pub position: usize,
+    /// The name of the tab as it appears in the UI (if there's enough room for it)
     pub name: String,
+    /// Whether this tab is focused
     pub active: bool,
+    /// The number of suppressed panes this tab has
     pub panes_to_hide: usize,
+    /// Whether there's one pane taking up the whole display area on this tab
     pub is_fullscreen_active: bool,
+    /// Whether input sent to this tab will be synced to all panes in it
     pub is_sync_panes_active: bool,
     pub are_floating_panes_visible: bool,
     pub other_focused_clients: Vec<ClientId>,
     pub active_swap_layout_name: Option<String>,
+    /// Whether the user manually changed the layout, moving out of the swap layout scheme
     pub is_swap_layout_dirty: bool,
 }
 
+/// The `PaneManifest` contains a dictionary of panes, indexed by the tab position (0 indexed).
+/// Panes include all panes in the relevant tab, including `tiled` panes, `floating` panes and
+/// `suppressed` panes.
 #[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct PaneManifest {
     pub panes: HashMap<usize, Vec<PaneInfo>>, // usize is the tab position
 }
 
+/// Contains all the information for a currently open pane
+///
+/// # Difference between coordinates/size and content coordinates/size
+///
+/// The pane basic coordinates and size (eg. `pane_x` or `pane_columns`) are the entire space taken
+/// up by this pane - including its frame and title if it has a border.
+///
+/// The pane content coordinates and size (eg. `pane_content_x` or `pane_content_columns`)
+/// represent the area taken by the pane's content, excluding its frame and title if it has a
+/// border.
 #[derive(Debug, Default, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub struct PaneInfo {
+    /// The id of the pane, unique to all panes of this kind (eg. id in terminals or id in panes)
     pub id: u32,
+    /// Whether this pane is a plugin (`true`) or a terminal (`false`), used along with `id` can represent a unique pane ID across
+    /// the running session
     pub is_plugin: bool,
+    /// Whether the pane is focused in its layer (tiled or floating)
     pub is_focused: bool,
     pub is_fullscreen: bool,
+    /// Whether a pane is floating or tiled (embedded)
     pub is_floating: bool,
+    /// Whether a pane is suppressed - suppressed panes are not visible to the user, but still run
+    /// in the background
     pub is_suppressed: bool,
+    /// The full title of the pane as it appears in the UI (if there is room for it)
     pub title: String,
+    /// Whether a pane exited or not, note that most panes close themselves before setting this
+    /// flag, so this is only relevant to command panes
     pub exited: bool,
+    /// The exit status of a pane if it did exit and is still in the UI
     pub exit_status: Option<i32>,
+    /// A "held" pane is a paused pane that is waiting for user input (eg. a command pane that
+    /// exited and is waiting to be re-run or closed)
     pub is_held: bool,
     pub pane_x: usize,
     pub pane_content_x: usize,
@@ -727,9 +750,17 @@ pub struct PaneInfo {
     pub pane_content_rows: usize,
     pub pane_columns: usize,
     pub pane_content_columns: usize,
+    /// The coordinates of the cursor - if this pane is focused - relative to the pane's
+    /// coordinates
     pub cursor_coordinates_in_pane: Option<(usize, usize)>, // x, y if cursor is visible
+    /// If this is a command pane, this will show the stringified version of the command and its
+    /// arguments
     pub terminal_command: Option<String>,
+    /// The URL from which this plugin was loaded (eg. `zellij:strider` for the built-in `strider`
+    /// plugin or `file:/path/to/my/plugin.wasm` for a local plugin)
     pub plugin_url: Option<String>,
+    /// Unselectable panes are often used for UI elements that do not have direct user interaction
+    /// (eg. the default `status-bar` or `tab-bar`).
     pub is_selectable: bool,
 }
 
@@ -739,7 +770,7 @@ pub struct PluginIds {
     pub zellij_pid: u32,
 }
 
-/// Tag used to identify the plugin in layout and config yaml files
+/// Tag used to identify the plugin in layout and config kdl files
 #[derive(Debug, Default, Clone, PartialEq, Eq, Hash, Deserialize, Serialize, PartialOrd, Ord)]
 pub struct PluginTag(String);
 
@@ -772,6 +803,7 @@ impl Default for PluginCapabilities {
     }
 }
 
+/// Represents a Clipboard type
 #[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]
 pub enum CopyDestination {
     Command,
