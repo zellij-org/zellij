@@ -155,13 +155,13 @@ impl SearchState {
                 if !self.search_term.is_empty() {
                     post_message_to(
                         "file_name_search",
-                        serde_json::to_string(&MessageToSearch::Search).unwrap(),
-                        "".to_owned(),
+                        &serde_json::to_string(&MessageToSearch::Search).unwrap(),
+                        "",
                     );
                     post_message_to(
                         "file_contents_search",
-                        serde_json::to_string(&MessageToSearch::Search).unwrap(),
-                        "".to_owned(),
+                        &serde_json::to_string(&MessageToSearch::Search).unwrap(),
+                        "",
                     );
                     self.file_name_search_results.clear();
                     self.file_contents_search_results.clear();

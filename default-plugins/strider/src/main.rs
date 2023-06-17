@@ -32,13 +32,13 @@ impl ZellijPlugin for State {
         ]);
         post_message_to(
             "file_name_search",
-            serde_json::to_string(&MessageToSearch::ScanFolder).unwrap(),
-            "".to_owned(),
+            &serde_json::to_string(&MessageToSearch::ScanFolder).unwrap(),
+            "",
         );
         post_message_to(
             "file_contents_search",
-            serde_json::to_string(&MessageToSearch::ScanFolder).unwrap(),
-            "".to_owned(),
+            &serde_json::to_string(&MessageToSearch::ScanFolder).unwrap(),
+            "",
         );
         self.search_state.loading = true;
         set_timeout(0.5); // for displaying loading animation
@@ -192,13 +192,13 @@ impl ZellijPlugin for State {
                     .collect();
                 post_message_to(
                     "file_name_search",
-                    serde_json::to_string(&MessageToSearch::FileSystemCreate).unwrap(),
-                    serde_json::to_string(&paths).unwrap(),
+                    &serde_json::to_string(&MessageToSearch::FileSystemCreate).unwrap(),
+                    &serde_json::to_string(&paths).unwrap(),
                 );
                 post_message_to(
                     "file_contents_search",
-                    serde_json::to_string(&MessageToSearch::FileSystemCreate).unwrap(),
-                    serde_json::to_string(&paths).unwrap(),
+                    &serde_json::to_string(&MessageToSearch::FileSystemCreate).unwrap(),
+                    &serde_json::to_string(&paths).unwrap(),
                 );
             },
             Event::FileSystemUpdate(paths) => {
@@ -208,13 +208,13 @@ impl ZellijPlugin for State {
                     .collect();
                 post_message_to(
                     "file_name_search",
-                    serde_json::to_string(&MessageToSearch::FileSystemUpdate).unwrap(),
-                    serde_json::to_string(&paths).unwrap(),
+                    &serde_json::to_string(&MessageToSearch::FileSystemUpdate).unwrap(),
+                    &serde_json::to_string(&paths).unwrap(),
                 );
                 post_message_to(
                     "file_contents_search",
-                    serde_json::to_string(&MessageToSearch::FileSystemUpdate).unwrap(),
-                    serde_json::to_string(&paths).unwrap(),
+                    &serde_json::to_string(&MessageToSearch::FileSystemUpdate).unwrap(),
+                    &serde_json::to_string(&paths).unwrap(),
                 );
             },
             Event::FileSystemDelete(paths) => {
@@ -224,13 +224,13 @@ impl ZellijPlugin for State {
                     .collect();
                 post_message_to(
                     "file_name_search",
-                    serde_json::to_string(&MessageToSearch::FileSystemDelete).unwrap(),
-                    serde_json::to_string(&paths).unwrap(),
+                    &serde_json::to_string(&MessageToSearch::FileSystemDelete).unwrap(),
+                    &serde_json::to_string(&paths).unwrap(),
                 );
                 post_message_to(
                     "file_contents_search",
-                    serde_json::to_string(&MessageToSearch::FileSystemDelete).unwrap(),
-                    serde_json::to_string(&paths).unwrap(),
+                    &serde_json::to_string(&MessageToSearch::FileSystemDelete).unwrap(),
+                    &serde_json::to_string(&paths).unwrap(),
                 );
             },
             _ => {
