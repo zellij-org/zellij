@@ -1,5 +1,4 @@
 use serde::{de::DeserializeOwned, Serialize};
-use std::str::FromStr;
 use std::{io, path::Path};
 use zellij_utils::data::*;
 use zellij_utils::errors::prelude::*;
@@ -35,43 +34,43 @@ pub fn get_zellij_version() -> String {
 
 // Host Functions
 
-pub fn open_file(path: &Path) {
-    object_to_stdout(&path);
+pub fn open_file<P: AsRef<Path>>(path: P) {
+    object_to_stdout(&path.as_ref());
     unsafe { host_open_file() };
 }
 
-pub fn open_file_floating(path: &Path) {
-    object_to_stdout(&path);
+pub fn open_file_floating<P: AsRef<Path>>(path: P) {
+    object_to_stdout(&path.as_ref());
     unsafe { host_open_file_floating() };
 }
 
-pub fn open_file_with_line(path: &Path, line: usize) {
-    object_to_stdout(&(path, line));
+pub fn open_file_with_line<P: AsRef<Path>>(path: P, line: usize) {
+    object_to_stdout(&(path.as_ref(), line));
     unsafe { host_open_file_with_line() };
 }
 
-pub fn open_file_with_line_floating(path: &Path, line: usize) {
-    object_to_stdout(&(path, line));
+pub fn open_file_with_line_floating<P: AsRef<Path>>(path: P, line: usize) {
+    object_to_stdout(&(path.as_ref(), line));
     unsafe { host_open_file_with_line_floating() };
 }
 
-pub fn open_terminal(path: &Path) {
-    object_to_stdout(&path);
+pub fn open_terminal<P: AsRef<Path>>(path: P) {
+    object_to_stdout(&path.as_ref());
     unsafe { host_open_terminal() };
 }
 
-pub fn open_terminal_floating(path: &Path) {
-    object_to_stdout(&path);
+pub fn open_terminal_floating<P: AsRef<Path>>(path: P) {
+    object_to_stdout(&path.as_ref());
     unsafe { host_open_terminal_floating() };
 }
 
-pub fn open_command_pane(path: &Path, args: Vec<String>) {
-    object_to_stdout(&(path, args));
+pub fn open_command_pane<P: AsRef<Path>, A: AsRef<str>>(path: P, args: Vec<A>) {
+    object_to_stdout(&(path.as_ref(), args.iter().map(|a| a.as_ref()).collect::<Vec<&str>>()));
     unsafe { host_open_command_pane() };
 }
 
-pub fn open_command_pane_floating(path: &Path, args: Vec<String>) {
-    object_to_stdout(&(path, args));
+pub fn open_command_pane_floating<P: AsRef<Path>, A: AsRef<str>>(path: P, args: Vec<A>) {
+    object_to_stdout(&(path.as_ref(), args.iter().map(|a| a.as_ref()).collect::<Vec<&str>>()));
     unsafe { host_open_command_pane_floating() };
 }
 
@@ -290,40 +289,19 @@ pub fn focus_plugin_pane(plugin_pane_id: i32, should_float_if_hidden: bool) {
     unsafe { host_focus_plugin_pane(plugin_pane_id, should_float_if_hidden as i32) };
 }
 
-pub fn rename_terminal_pane(terminal_pane_id: i32, new_name: &str) {
-    match String::from_str(new_name) {
-        Ok(new_name) => {
-            object_to_stdout(&(terminal_pane_id, new_name));
-            unsafe { host_rename_terminal_pane() };
-        },
-        Err(e) => {
-            eprintln!("Failed to rename terminal: {:?}", e)
-        },
-    }
+pub fn rename_terminal_pane<S: AsRef<str>>(terminal_pane_id: i32, new_name: S) {
+    object_to_stdout(&(terminal_pane_id, new_name.as_ref()));
+    unsafe { host_rename_terminal_pane() };
 }
 
-pub fn rename_plugin_pane(plugin_pane_id: i32, new_name: &str) {
-    match String::from_str(new_name) {
-        Ok(new_name) => {
-            object_to_stdout(&(plugin_pane_id, new_name));
-            unsafe { host_rename_plugin_pane() };
-        },
-        Err(e) => {
-            eprintln!("Failed to rename plugin: {:?}", e)
-        },
-    }
+pub fn rename_plugin_pane<S: AsRef<str>>(plugin_pane_id: i32, new_name: S) {
+    object_to_stdout(&(plugin_pane_id, new_name.as_ref()));
+    unsafe { host_rename_plugin_pane() };
 }
 
-pub fn rename_tab(tab_position: i32, new_name: &str) {
-    match String::from_str(new_name) {
-        Ok(new_name) => {
-            object_to_stdout(&(tab_position, new_name));
-            unsafe { host_rename_tab() };
-        },
-        Err(e) => {
-            eprintln!("Failed to rename tab: {:?}", e)
-        },
-    }
+pub fn rename_tab<S: AsRef<str>>(tab_position: i32, new_name: S) {
+    object_to_stdout(&(tab_position, new_name.as_ref()));
+    unsafe { host_rename_tab() };
 }
 
 // Internal Functions
@@ -344,8 +322,8 @@ pub fn object_to_stdout(object: &impl Serialize) {
 }
 
 #[doc(hidden)]
-pub fn post_message_to(worker_name: &str, message: String, payload: String) {
-    match serde_json::to_string(&(worker_name, message, payload)) {
+pub fn post_message_to<S: AsRef<str>>(worker_name: S, message: S, payload: S) {
+    match serde_json::to_string(&(worker_name.as_ref(), message.as_ref(), payload.as_ref())) {
         Ok(serialized) => println!("{}", serialized),
         Err(e) => eprintln!("Failed to serialize message: {:?}", e),
     }
@@ -353,8 +331,8 @@ pub fn post_message_to(worker_name: &str, message: String, payload: String) {
 }
 
 #[doc(hidden)]
-pub fn post_message_to_plugin(message: String, payload: String) {
-    match serde_json::to_string(&(message, payload)) {
+pub fn post_message_to_plugin<S: AsRef<str>>(message: S, payload: S) {
+    match serde_json::to_string(&(message.as_ref(), payload.as_ref())) {
         Ok(serialized) => println!("{}", serialized),
         Err(e) => eprintln!("Failed to serialize message: {:?}", e),
     }

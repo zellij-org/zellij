@@ -221,8 +221,8 @@ impl ZellijPlugin for State {
                 // this is just to trigger the worker message
                 post_message_to(
                     "test",
-                    "ping".to_owned(),
-                    "gimme_back_my_payload".to_owned(),
+                    "ping",
+                    "gimme_back_my_payload",
                 );
             },
             _ => {},
