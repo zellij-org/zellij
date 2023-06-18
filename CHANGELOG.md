@@ -5,6 +5,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+
+## [0.37.0] - 2023-06-18
 * fix(plugin): respect hide session option on compact-bar (https://github.com/zellij-org/zellij/pull/2368)
 * feat: allow excluding tabs from tab sync in layouts (https://github.com/zellij-org/zellij/pull/2314)
 * feat: support default cwd (https://github.com/zellij-org/zellij/pull/2290)
