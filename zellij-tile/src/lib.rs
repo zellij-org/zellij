@@ -142,8 +142,10 @@ macro_rules! register_plugin {
 /// #[derive(Default, Serialize, Deserialize)]
 /// pub struct FileSearchWorker {}
 ///
-/// impl ZellijWorker for FileSearch {
-///    // ...
+/// impl ZellijWorker<'_> for FileSearchWorker {
+///     fn on_message(&mut self, message: String, payload: String) {
+///         // ...
+///     }
 /// }
 ///
 /// register_worker!(
