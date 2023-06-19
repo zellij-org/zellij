@@ -65,7 +65,17 @@ pub fn get_default_data_dir() -> PathBuf {
 
 #[cfg(not(test))]
 fn get_default_themes() -> Themes {
-    ZELLIJ_DEFAULT_THEMES.to_owned()
+    let mut themes = Themes::default();
+    for file in ZELLIJ_DEFAULT_THEMES.files() {
+        if let Some(content) = file.contents_utf8() {
+            match Themes::from_string(content.to_string()) {
+                Ok(theme) => themes = themes.merge(theme),
+                Err(_) => {},
+            }
+        }
+    }
+
+    themes
 }
 
 #[cfg(test)]

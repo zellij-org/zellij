@@ -41,6 +41,7 @@ kdl = { version = "4.5.0", features = ["span"] }
 shellexpand = "3.0.0"
 uuid = { version = "0.8.2", features = ["serde", "v4"] }
 async-channel = "1.8.0"
+include_dir = { version = "0.7.3", features = ["glob"] }
 
 #[cfg(not(target_family = "wasm"))]
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
