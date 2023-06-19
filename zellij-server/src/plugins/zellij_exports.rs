@@ -588,21 +588,25 @@ fn host_new_tabs_with_layout(env: &ForeignFunctionEnv) {
             let mut tabs_to_open = vec![];
             let tabs = layout.tabs();
             if tabs.is_empty() {
+                let swap_tiled_layouts = Some(layout.swap_tiled_layouts.clone());
+                let swap_floating_layouts = Some(layout.swap_floating_layouts.clone());
                 let action = Action::NewTab(
                     layout.template.as_ref().map(|t| t.0.clone()),
                     layout.template.map(|t| t.1).unwrap_or_default(),
-                    None,
-                    None,
+                    swap_tiled_layouts,
+                    swap_floating_layouts,
                     None,
                 );
                 tabs_to_open.push(action);
             } else {
                 for (tab_name, tiled_pane_layout, floating_pane_layout) in layout.tabs() {
+                    let swap_tiled_layouts = Some(layout.swap_tiled_layouts.clone());
+                    let swap_floating_layouts = Some(layout.swap_floating_layouts.clone());
                     let action = Action::NewTab(
                         Some(tiled_pane_layout),
                         floating_pane_layout,
-                        None,
-                        None,
+                        swap_tiled_layouts,
+                        swap_floating_layouts,
                         tab_name,
                     );
                     tabs_to_open.push(action);

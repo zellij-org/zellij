@@ -1,6 +1,6 @@
 ---
 source: zellij-server/src/tab/./unit/tab_integration_tests.rs
-assertion_line: 5402
+assertion_line: 5926
 expression: snapshot
 ---
 00 (C): ┌ status-bar ──────────────────────────────────────────────┐─────────────────────────────────────────────────┐──────────┐
@@ -13,11 +13,11 @@ expression: snapshot
 07 (C): │                                                          │                                                 │          │
 08 (C): │                                                          │                                                 │          │
 09 (C): └──────────────────────────────────────────────────────────┘─────────────────────────────────────────────────┘          │
-10 (C): ┌ command2 ───────────────────│                   ┌ command1 ────────────────────────────────────────────────┐          │
+10 (C): ┌ command1 ───────────────────│                   ┌ command2 ────────────────────────────────────────────────┐          │
 11 (C): │                             │                   │                                                          │          │
 12 (C): │                             │                   │                                                          │          │
 13 (C): │                             │                   │                                                          │          │
-14 (C): │                Waiting to ru└───────────────────│                Waiting to run: command1                  │          │
+14 (C): │                Waiting to ru└───────────────────│                Waiting to run: command2                  │          │
 15 (C): │                                                 │                                                          │          │
 16 (C): │            <ENTER> to run, <Ctrl-c> to exit     │            <ENTER> to run, <Ctrl-c> to exit              │          │
 17 (C): │                                                 │                                                          │          │
