@@ -6,6 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
 * hotfix: theme options does not work (https://github.com/zellij-org/zellij/pull/2562)
+* fix: various plugin api methods (https://github.com/zellij-org/zellij/pull/2564)
 
 ## [0.37.0] - 2023-06-18
 * fix(plugin): respect hide session option on compact-bar (https://github.com/zellij-org/zellij/pull/2368)
