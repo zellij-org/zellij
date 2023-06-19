@@ -5,6 +5,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+
+## [0.37.1] - 2023-06-19
 * hotfix: theme options does not work (https://github.com/zellij-org/zellij/pull/2562)
 * fix: various plugin api methods (https://github.com/zellij-org/zellij/pull/2564)
 
