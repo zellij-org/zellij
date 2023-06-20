@@ -2779,7 +2779,7 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::SuppressPane(pane_id, client_id) => {
                 let all_tabs = screen.get_tabs_mut();
                 for tab in all_tabs.values_mut() {
-                    if tab.has_pane_with_pid(&pane_id) {
+                    if tab.has_non_suppressed_pane_with_pid(&pane_id) {
                         tab.suppress_pane(pane_id, client_id);
                         drop(screen.render());
                         break;
