@@ -1309,8 +1309,7 @@ impl Tab {
             || self.suppressed_panes.values().any(|s_p| s_p.pid() == *pid)
     }
     pub fn has_non_suppressed_pane_with_pid(&self, pid: &PaneId) -> bool {
-        self.tiled_panes.panes_contain(pid)
-            || self.floating_panes.panes_contain(pid)
+        self.tiled_panes.panes_contain(pid) || self.floating_panes.panes_contain(pid)
     }
     pub fn handle_pty_bytes(&mut self, pid: u32, bytes: VteBytes) -> Result<()> {
         if self.is_pending {
