@@ -41,7 +41,6 @@ pub struct RunCommand {
 
 impl std::fmt::Display for RunCommand {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // uhhh..
         if self.hide_title {
             return write!(f, "");
         }

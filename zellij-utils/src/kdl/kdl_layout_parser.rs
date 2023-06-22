@@ -360,9 +360,7 @@ impl<'a> KdlLayoutParser<'a> {
         let args = self.parse_args(pane_node)?;
         let close_on_exit =
             kdl_get_bool_property_or_child_value_with_error!(pane_node, "close_on_exit");
-        // uhhh..
-        let hide_title = 
-            kdl_get_bool_property_or_child_value_with_error!(pane_node, "hide_title");
+        let hide_title = kdl_get_bool_property_or_child_value_with_error!(pane_node, "hide_title");
         let start_suspended =
             kdl_get_bool_property_or_child_value_with_error!(pane_node, "start_suspended");
         if !is_template {
