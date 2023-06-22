@@ -69,6 +69,7 @@ pub(crate) struct PluginPane {
     prev_pane_name: String,
     frame: HashMap<ClientId, PaneFrame>,
     borderless: bool,
+    hide_title: bool,
     exclude_from_sync: bool,
     pane_frame_color_override: Option<(PaletteColor, Option<String>)>,
     invoked_with: Option<Run>,
@@ -107,6 +108,7 @@ impl PluginPane {
             content_offset: Offset::default(),
             pane_title: title,
             borderless: false,
+            hide_title: false,
             pane_name: pane_name.clone(),
             prev_pane_name: pane_name,
             terminal_emulator_colors,
@@ -514,6 +516,14 @@ impl Pane for PluginPane {
     fn exclude_from_sync(&self) -> bool {
         self.exclude_from_sync
     }
+
+    fn set_hide_title(&mut self, hide_title: bool) {
+        self.hide_title = hide_title;
+    }
+    fn hide_title(&self) -> bool {
+        self.hide_title
+    }
+
     fn handle_right_click(&mut self, to: &Position, client_id: ClientId) {
         self.send_plugin_instructions
             .send(PluginInstruction::Update(vec![(

@@ -377,6 +377,7 @@ fn host_open_command_pane(env: &ForeignFunctionEnv) {
             let direction = None;
             let hold_on_close = true;
             let hold_on_start = false;
+            let hide_title = false;
             let name = None;
             let run_command_action = RunCommandAction {
                 command,
@@ -385,6 +386,7 @@ fn host_open_command_pane(env: &ForeignFunctionEnv) {
                 direction,
                 hold_on_close,
                 hold_on_start,
+                hide_title,
             };
             let action = Action::NewTiledPane(direction, Some(run_command_action), name);
             apply_action!(action, error_msg, env);
@@ -402,6 +404,7 @@ fn host_open_command_pane_floating(env: &ForeignFunctionEnv) {
             let direction = None;
             let hold_on_close = true;
             let hold_on_start = false;
+            let hide_title = false;
             let name = None;
             let run_command_action = RunCommandAction {
                 command,
@@ -410,6 +413,7 @@ fn host_open_command_pane_floating(env: &ForeignFunctionEnv) {
                 direction,
                 hold_on_close,
                 hold_on_start,
+                hide_title,
             };
             let action = Action::NewFloatingPane(Some(run_command_action), name);
             apply_action!(action, error_msg, env);

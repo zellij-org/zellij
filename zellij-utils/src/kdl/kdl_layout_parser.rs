@@ -67,6 +67,7 @@ impl<'a> KdlLayoutParser<'a> {
             || word == "close_on_exit"
             || word == "start_suspended"
             || word == "borderless"
+            || word == "hide_title"
             || word == "focus"
             || word == "name"
             || word == "size"
@@ -86,6 +87,7 @@ impl<'a> KdlLayoutParser<'a> {
             || property_name == "cwd"
             || property_name == "args"
             || property_name == "close_on_exit"
+            || property_name == "hide_title"
             || property_name == "start_suspended"
             || property_name == "split_direction"
             || property_name == "pane"
@@ -358,6 +360,9 @@ impl<'a> KdlLayoutParser<'a> {
         let args = self.parse_args(pane_node)?;
         let close_on_exit =
             kdl_get_bool_property_or_child_value_with_error!(pane_node, "close_on_exit");
+        // uhhh..
+        let hide_title = 
+            kdl_get_bool_property_or_child_value_with_error!(pane_node, "hide_title");
         let start_suspended =
             kdl_get_bool_property_or_child_value_with_error!(pane_node, "start_suspended");
         if !is_template {
@@ -371,6 +376,7 @@ impl<'a> KdlLayoutParser<'a> {
         }
         let hold_on_close = close_on_exit.map(|c| !c).unwrap_or(true);
         let hold_on_start = start_suspended.map(|c| c).unwrap_or(false);
+        let hide_title = hide_title.map(|c| c).unwrap_or(false);
         match (command, edit, cwd) {
             (None, None, Some(cwd)) => Ok(Some(Run::Cwd(cwd))),
             (Some(command), None, cwd) => Ok(Some(Run::Command(RunCommand {
@@ -379,6 +385,7 @@ impl<'a> KdlLayoutParser<'a> {
                 cwd,
                 hold_on_close,
                 hold_on_start,
+                hide_title,
             }))),
             (None, Some(edit), Some(cwd)) => {
                 Ok(Some(Run::EditFile(cwd.join(edit), None, Some(cwd))))
@@ -449,6 +456,7 @@ impl<'a> KdlLayoutParser<'a> {
         let is_expanded_in_stack =
             kdl_get_bool_property_or_child_value_with_error!(kdl_node, "expanded").unwrap_or(false);
         let borderless = kdl_get_bool_property_or_child_value_with_error!(kdl_node, "borderless");
+        let hide_title = kdl_get_bool_property_or_child_value_with_error!(kdl_node, "hide_title");
         let focus = kdl_get_bool_property_or_child_value_with_error!(kdl_node, "focus");
         let name = kdl_get_string_property_or_child_value_with_error!(kdl_node, "name")
             .map(|name| name.to_string());
@@ -486,6 +494,7 @@ impl<'a> KdlLayoutParser<'a> {
         self.assert_no_mixed_children_and_properties(kdl_node)?;
         Ok(TiledPaneLayout {
             borderless: borderless.unwrap_or_default(),
+            hide_title: hide_title.unwrap_or_default(),
             focus,
             name,
             split_size,

@@ -866,6 +866,9 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                 let hold_on_start = command_metadata
                     .and_then(|c_m| kdl_child_bool_value_for_entry(c_m, "start_suspended"))
                     .unwrap_or(false);
+                let hide_title = command_metadata
+                    .and_then(|c_m| kdl_child_bool_value_for_entry(c_m, "hide_title"))
+                    .unwrap_or(false);
                 let run_command_action = RunCommandAction {
                     command: PathBuf::from(command),
                     args,
@@ -873,6 +876,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                     direction,
                     hold_on_close,
                     hold_on_start,
+                    hide_title,
                 };
                 Ok(Action::Run(run_command_action))
             },

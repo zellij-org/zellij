@@ -404,6 +404,7 @@ pub struct TiledPaneLayout {
     pub split_size: Option<SplitSize>,
     pub run: Option<Run>,
     pub borderless: bool,
+    pub hide_title: bool,
     pub focus: Option<bool>,
     pub external_children_index: Option<usize>,
     pub children_are_stacked: bool,
