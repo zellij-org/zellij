@@ -173,8 +173,7 @@ pub(crate) fn route_action(
                 .with_context(err_context)?;
         },
         Action::DumpLayout(layout) => {
-            session
-                .senders
+            senders
                 .send_to_screen(ScreenInstruction::DumpLayout(client_id, layout))
                 .with_context(err_context)?;
         },

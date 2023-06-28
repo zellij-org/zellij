@@ -43,6 +43,7 @@ use zellij_utils::{
     consts::{DEFAULT_SCROLL_BUFFER_SIZE, SCROLL_BUFFER_SIZE},
     data::{Event, PluginCapabilities},
     errors::{prelude::*, ContextType, ErrorInstruction, FatalError, ServerContext},
+    home::get_default_data_dir,
     input::{
         command::{RunCommand, TerminalAction},
         get_mode_info,
@@ -51,7 +52,6 @@ use zellij_utils::{
         plugins::PluginsConfig,
     },
     ipc::{ClientAttributes, ExitReason, ServerToClientMsg},
-    setup::get_default_data_dir,
 };
 
 pub type ClientId = u16;

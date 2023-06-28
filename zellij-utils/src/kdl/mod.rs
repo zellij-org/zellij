@@ -1,13 +1,14 @@
 mod kdl_layout_parser;
+
 use crate::data::{Direction, InputMode, Key, Palette, PaletteColor, Resize};
 use crate::envs::EnvironmentVariables;
+use crate::home::{find_default_config_dir, get_layout_dir};
 use crate::input::config::{Config, ConfigError, KdlError};
 use crate::input::keybinds::Keybinds;
 use crate::input::layout::{Layout, RunPlugin, RunPluginLocation};
 use crate::input::options::{Clipboard, OnForceClose, Options};
 use crate::input::plugins::{PluginConfig, PluginTag, PluginType, PluginsConfig};
 use crate::input::theme::{FrameConfig, Theme, Themes, UiConfig};
-use crate::setup::{find_default_config_dir, get_layout_dir};
 use kdl_layout_parser::KdlLayoutParser;
 use std::collections::HashMap;
 use strum::IntoEnumIterator;

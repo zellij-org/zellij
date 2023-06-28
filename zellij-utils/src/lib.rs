@@ -6,9 +6,11 @@ pub mod errors;
 pub mod input;
 pub mod kdl;
 pub mod pane_size;
+pub mod persistence;
 pub mod position;
 pub mod setup;
 pub mod shared;
+pub mod home;
 
 // The following modules can't be used when targeting wasm
 #[cfg(not(target_family = "wasm"))]

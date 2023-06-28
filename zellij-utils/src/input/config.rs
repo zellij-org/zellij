@@ -13,7 +13,7 @@ use super::plugins::{PluginsConfig, PluginsConfigError};
 use super::theme::{Themes, UiConfig};
 use crate::cli::{CliArgs, Command};
 use crate::envs::EnvironmentVariables;
-use crate::setup;
+use crate::{setup, home};
 
 const DEFAULT_CONFIG_FILE_NAME: &str = "config.kdl";
 
@@ -143,7 +143,7 @@ impl TryFrom<&CliArgs> for Config {
         let config_dir = opts
             .config_dir
             .clone()
-            .or_else(setup::find_default_config_dir);
+            .or_else(home::find_default_config_dir);
 
         if let Some(ref config) = config_dir {
             let path = config.join(DEFAULT_CONFIG_FILE_NAME);

@@ -8,6 +8,7 @@ use crate::{
         ZELLIJ_DEFAULT_THEMES, ZELLIJ_PROJ_DIR,
     },
     errors::prelude::*,
+    home::*,
     input::{
         config::{Config, ConfigError},
         layout::Layout,
@@ -17,96 +18,15 @@ use crate::{
 use clap::{Args, IntoApp};
 use clap_complete::Shell;
 use directories_next::BaseDirs;
+use log::info;
 use serde::{Deserialize, Serialize};
 use std::{
     convert::TryFrom, fmt::Write as FmtWrite, io::Write, path::Path, path::PathBuf, process,
 };
 
-const CONFIG_LOCATION: &str = ".config/zellij";
 const CONFIG_NAME: &str = "config.kdl";
 static ARROW_SEPARATOR: &str = "";
 
-#[cfg(not(test))]
-/// Goes through a predefined list and checks for an already
-/// existing config directory, returns the first match
-pub fn find_default_config_dir() -> Option<PathBuf> {
-    default_config_dirs()
-        .into_iter()
-        .filter(|p| p.is_some())
-        .find(|p| p.clone().unwrap().exists())
-        .flatten()
-}
-
-#[cfg(test)]
-pub fn find_default_config_dir() -> Option<PathBuf> {
-    None
-}
-
-/// Order in which config directories are checked
-fn default_config_dirs() -> Vec<Option<PathBuf>> {
-    vec![
-        home_config_dir(),
-        Some(xdg_config_dir()),
-        Some(Path::new(SYSTEM_DEFAULT_CONFIG_DIR).to_path_buf()),
-    ]
-}
-
-/// Looks for an existing dir, uses that, else returns a
-/// dir matching the config spec.
-pub fn get_default_data_dir() -> PathBuf {
-    [
-        xdg_data_dir(),
-        Path::new(SYSTEM_DEFAULT_DATA_DIR_PREFIX).join("share/zellij"),
-    ]
-    .into_iter()
-    .find(|p| p.exists())
-    .unwrap_or_else(xdg_data_dir)
-}
-
-#[cfg(not(test))]
-fn get_default_themes() -> Themes {
-    let mut themes = Themes::default();
-    for file in ZELLIJ_DEFAULT_THEMES.files() {
-        if let Some(content) = file.contents_utf8() {
-            match Themes::from_string(content.to_string()) {
-                Ok(theme) => themes = themes.merge(theme),
-                Err(_) => {},
-            }
-        }
-    }
-
-    themes
-}
-
-#[cfg(test)]
-fn get_default_themes() -> Themes {
-    Themes::default()
-}
-
-pub fn xdg_config_dir() -> PathBuf {
-    ZELLIJ_PROJ_DIR.config_dir().to_owned()
-}
-
-pub fn xdg_data_dir() -> PathBuf {
-    ZELLIJ_PROJ_DIR.data_dir().to_owned()
-}
-
-pub fn home_config_dir() -> Option<PathBuf> {
-    if let Some(user_dirs) = BaseDirs::new() {
-        let config_dir = user_dirs.home_dir().join(CONFIG_LOCATION);
-        Some(config_dir)
-    } else {
-        None
-    }
-}
-
-pub fn get_layout_dir(config_dir: Option<PathBuf>) -> Option<PathBuf> {
-    config_dir.map(|dir| dir.join("layouts"))
-}
-
-pub fn get_theme_dir(config_dir: Option<PathBuf>) -> Option<PathBuf> {
-    config_dir.map(|dir| dir.join("themes"))
-}
 pub fn dump_asset(asset: &[u8]) -> std::io::Result<()> {
     std::io::stdout().write_all(asset)?;
     Ok(())
@@ -207,10 +127,20 @@ pub fn dump_specified_layout(layout: &str) -> std::io::Result<()> {
         "compact" => dump_asset(COMPACT_BAR_LAYOUT),
         "disable-status" => dump_asset(NO_STATUS_LAYOUT),
         "current" => {
-            log::info!("DUMP CURRENT");
+            info!("DUMP CURRENT");
             Ok(())
         },
-        current => todo!(),
+        custom => {
+            info!("Dump {custom} layout");
+            let dir = find_default_config_dir();
+            let path = Some(PathBuf::from(custom));
+            let Ok((layout_path, ..)) = Layout::stringified_from_path_or_default(path.as_ref(), dir) else {
+                log::error!("No layout named {custom} found");
+                return Ok(())
+            };
+            std::io::stdout().write_all(layout_path.as_bytes())?;
+            Ok(())
+        },
     }
 }
 

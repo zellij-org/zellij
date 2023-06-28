@@ -10,12 +10,13 @@
 //  then [`zellij-utils`] could be a proper place.
 use crate::{
     data::Direction,
+    home::find_default_config_dir,
     input::{
         command::RunCommand,
         config::{Config, ConfigError},
     },
     pane_size::{Dimension, PaneGeom},
-    setup,
+    setup::{self},
 };
 
 use std::str::FromStr;
@@ -729,7 +730,15 @@ impl Layout {
                     Layout::stringified_from_default_assets(layout)
                 }
             },
-            None => Layout::stringified_from_default_assets(layout),
+            None => {
+                let home = find_default_config_dir();
+                let Some(home) = home else {
+                    return Layout::stringified_from_default_assets(layout)
+                };
+
+                let layout_path = &home.join(layout);
+                Self::stringified_from_path(layout_path)
+            },
         }
     }
     pub fn stringified_from_path(
