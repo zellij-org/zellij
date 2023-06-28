@@ -1,4 +1,4 @@
-//! 
+//!
 //! # This module contain everything you'll need to access local system paths
 //! containing configuration and layouts
 
@@ -100,10 +100,18 @@ pub fn home_config_dir() -> Option<PathBuf> {
     }
 }
 
+pub fn default_layout_dir() -> Option<PathBuf> {
+    find_default_config_dir().map(|dir| dir.join("layouts"))
+}
+
 pub fn get_layout_dir(config_dir: Option<PathBuf>) -> Option<PathBuf> {
     config_dir.map(|dir| dir.join("layouts"))
 }
 
 pub fn get_theme_dir(config_dir: Option<PathBuf>) -> Option<PathBuf> {
     config_dir.map(|dir| dir.join("themes"))
+}
+
+pub fn default_theme_dir() -> Option<PathBuf> {
+    find_default_config_dir().map(|dir| dir.join("themes"))
 }

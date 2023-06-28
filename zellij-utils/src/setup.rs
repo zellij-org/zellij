@@ -128,18 +128,23 @@ pub fn dump_specified_layout(layout: &str) -> std::io::Result<()> {
         "disable-status" => dump_asset(NO_STATUS_LAYOUT),
         "current" => {
             info!("DUMP CURRENT");
+            // TODO: use from utils
             Ok(())
         },
         custom => {
             info!("Dump {custom} layout");
-            let dir = find_default_config_dir();
-            let path = Some(PathBuf::from(custom));
-            let Ok((layout_path, ..)) = Layout::stringified_from_path_or_default(path.as_ref(), dir) else {
-                log::error!("No layout named {custom} found");
-                return Ok(())
-            };
-            std::io::stdout().write_all(layout_path.as_bytes())?;
-            Ok(())
+            let home = default_layout_dir();
+            let path = home.map(|h| h.join(custom));
+            let layout_exists = path.as_ref().map(|p| p.exists()).unwrap_or_default();
+            match (path, layout_exists) {
+                (Some(layout), true) => {
+                    std::io::stdout().write_all(layout.to_string_lossy().as_bytes())
+                },
+                _ => {
+                    log::error!("No layout named {custom} found");
+                    return Ok(());
+                },
+            }
         },
     }
 }

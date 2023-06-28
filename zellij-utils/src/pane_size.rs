@@ -1,5 +1,8 @@
 use serde::{Deserialize, Serialize};
-use std::hash::{Hash, Hasher};
+use std::{
+    fmt::Display,
+    hash::{Hash, Hasher},
+};
 
 use crate::position::Position;
 
@@ -45,7 +48,7 @@ pub struct SizeInPixels {
 #[derive(Eq, Clone, Copy, PartialEq, Debug, Serialize, Deserialize, Hash)]
 pub struct Dimension {
     pub constraint: Constraint,
-    inner: usize,
+    pub(crate) inner: usize,
 }
 
 impl Default for Dimension {
@@ -131,6 +134,17 @@ pub enum Constraint {
     Percent(f64),
 }
 
+impl Display for Constraint {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let actual = match self {
+            Constraint::Fixed(v) => *v as f64,
+            Constraint::Percent(v) => *v,
+        };
+        write!(f, "{}", actual)?;
+        Ok(())
+    }
+}
+
 #[allow(clippy::derive_hash_xor_eq)]
 impl Hash for Constraint {
     fn hash<H: Hasher>(&self, state: &mut H) {
@@ -154,6 +168,20 @@ impl PaneGeom {
     }
     pub fn is_at_least_minimum_size(&self) -> bool {
         self.rows.as_usize() > 0 && self.cols.as_usize() > 0
+    }
+}
+
+impl Display for PaneGeom {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{{ ")?;
+        write!(f, "\"x\": {},", self.x)?;
+        write!(f, "\"y\": {},", self.y)?;
+        write!(f, "\"cols\": {},", self.cols.constraint)?;
+        write!(f, "\"rows\": {},", self.rows.constraint)?;
+        write!(f, "\"stacked\": {}", self.is_stacked)?;
+        write!(f, " }}")?;
+
+        Ok(())
     }
 }
 

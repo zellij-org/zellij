@@ -10,13 +10,14 @@ use zellij_utils::data::{Direction, PaneManifest, Resize, ResizeStrategy};
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
 use zellij_utils::input::options::Clipboard;
-use zellij_utils::pane_size::{Size, SizeInPixels};
+use zellij_utils::pane_size::{PaneGeom, Size, SizeInPixels};
 use zellij_utils::{
     input::command::TerminalAction,
     input::layout::{
         FloatingPaneLayout, Run, RunPlugin, RunPluginLocation, SwapFloatingLayout, SwapTiledLayout,
         TiledPaneLayout,
     },
+    persistence,
     position::Position,
 };
 
@@ -29,7 +30,7 @@ use crate::{
     panes::PaneId,
     plugins::PluginInstruction,
     pty::{ClientOrTabIndex, PtyInstruction, VteBytes},
-    tab::Tab,
+    tab::{Pane, Tab},
     thread_bus::Bus,
     ui::{
         loading_indication::LoadingIndication,
@@ -1928,13 +1929,25 @@ pub(crate) fn screen_thread_main(
                 screen.unblock_input()?;
             },
             ScreenInstruction::DumpLayout(client_id, layout) => {
-                let layout: Vec<(&Tab, Vec<PaneId>)> = screen
-                    .tabs
-                    .values()
-                    .map(|t| (t, t.get_all_pane_ids()))
-                    .collect();
-                let tab_names: Vec<String> = layout.iter().map(|(t, _)| t.name.clone()).collect();
-                println!("TABS: {:?}", tab_names);
+                for tab in screen.tabs.values() {
+                    log::warn!("TAB: {}", tab.name);
+                    let panes = tab.get_tiled_panes();
+                    let panes: Vec<String> = panes
+                        .map(|(_, p)| p.position_and_size().to_string())
+                        .collect();
+                    log::info!("***** PRINTING PANE GEOMS *****");
+                    for pane in panes {
+                        log::info!("pane_geom: {}", pane);
+                    }
+                    log::info!("*******************************");
+                }
+                // let layout: Vec<(&usize, BTreeMap<PaneId, &Box<dyn Pane>>)> = screen
+                //     .tabs
+                //     .values()
+                //     .map(|t| (t.position, t.get_tiled_panes()))
+                //     .collect();
+                // let tab_names: Vec<(String, Vec<PaneId>)> =
+                //     layout.iter().map(|(t, p)| (t, p.clone())).collect();
                 screen.unblock_input()?;
                 screen.render()?;
             },
