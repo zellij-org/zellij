@@ -99,3 +99,32 @@ pub fn tab_style(
 
     render_tab(tabname, tab, is_alternate_tab, palette, separator)
 }
+
+pub(crate) fn get_tab_to_focus(
+    tab_line: &[LinePart],
+    active_tab_idx: usize,
+    mouse_click_col: usize,
+) -> Option<usize> {
+    let clicked_line_part = get_clicked_line_part(tab_line, mouse_click_col)?;
+    let clicked_tab_idx = clicked_line_part.tab_index?;
+    // tabs are indexed starting from 1 so we need to add 1
+    let clicked_tab_idx = clicked_tab_idx + 1;
+    if clicked_tab_idx != active_tab_idx {
+        return Some(clicked_tab_idx);
+    }
+    None
+}
+
+pub(crate) fn get_clicked_line_part(
+    tab_line: &[LinePart],
+    mouse_click_col: usize,
+) -> Option<&LinePart> {
+    let mut len = 0;
+    for tab_line_part in tab_line {
+        if mouse_click_col >= len && mouse_click_col < len + tab_line_part.len {
+            return Some(tab_line_part);
+        }
+        len += tab_line_part.len;
+    }
+    None
+}
