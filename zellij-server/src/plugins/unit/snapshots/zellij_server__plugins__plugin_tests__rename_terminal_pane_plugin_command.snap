@@ -1,0 +1,36 @@
+---
+source: zellij-server/src/plugins/./unit/plugin_tests.rs
+assertion_line: 3969
+expression: "format!(\"{:#?}\", new_tab_event)"
+---
+Some(
+    RenamePane(
+        Terminal(
+            1,
+        ),
+        [
+            110,
+            101,
+            119,
+            32,
+            116,
+            101,
+            114,
+            109,
+            105,
+            110,
+            97,
+            108,
+            95,
+            112,
+            97,
+            110,
+            101,
+            95,
+            110,
+            97,
+            109,
+            101,
+        ],
+    ),
+)

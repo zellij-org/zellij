@@ -189,6 +189,7 @@ fn read_from_channel(
                     width: 8,
                 })));
                 let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+                let debug = false;
                 let mut terminal_output = TerminalPane::new(
                     0,
                     pane_geom,
@@ -202,6 +203,7 @@ fn read_from_channel(
                     Rc::new(RefCell::new(HashMap::new())),
                     None,
                     None,
+                    debug,
                 ); // 0 is the pane index
                 loop {
                     if !should_keep_running.load(Ordering::SeqCst) {

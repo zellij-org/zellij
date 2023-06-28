@@ -1,11 +1,11 @@
 mod floating_pane_grid;
 use zellij_utils::{
-    data::{Direction, ResizeStrategy},
+    data::{Direction, PaneInfo, ResizeStrategy},
     position::Position,
 };
 
 use crate::resize_pty;
-use crate::tab::Pane;
+use crate::tab::{pane_info_for_pane, Pane};
 use floating_pane_grid::FloatingPaneGrid;
 
 use crate::{
@@ -25,7 +25,7 @@ use zellij_utils::{
     data::{ModeInfo, Style},
     errors::prelude::*,
     input::command::RunCommand,
-    input::layout::FloatingPaneLayout,
+    input::layout::{FloatingPaneLayout, Run, RunPlugin},
     pane_size::{Dimension, Offset, PaneGeom, Size, SizeInPixels, Viewport},
 };
 
@@ -869,5 +869,33 @@ impl FloatingPanes {
             current_position.set_should_render(true);
             self.focus_pane_for_all_clients(active_pane_id);
         }
+    }
+    pub fn get_plugin_pane_id(&self, run_plugin: &RunPlugin) -> Option<PaneId> {
+        let run = Some(Run::Plugin(run_plugin.clone()));
+        self.panes
+            .iter()
+            .find(|(_id, s_p)| s_p.invoked_with() == &run)
+            .map(|(id, _)| *id)
+    }
+    pub fn focus_pane_if_exists(&mut self, pane_id: PaneId, client_id: ClientId) -> Result<()> {
+        if self.panes.get(&pane_id).is_some() {
+            self.focus_pane(pane_id, client_id);
+            Ok(())
+        } else {
+            Err(anyhow!("Pane not found"))
+        }
+    }
+    pub fn pane_info(&self) -> Vec<PaneInfo> {
+        let mut pane_infos = vec![];
+        for (pane_id, pane) in self.panes.iter() {
+            let mut pane_info_for_pane = pane_info_for_pane(pane_id, pane);
+            let is_focused = self.active_panes.pane_id_is_focused(pane_id);
+            pane_info_for_pane.is_floating = true;
+            pane_info_for_pane.is_suppressed = false;
+            pane_info_for_pane.is_focused = is_focused;
+            pane_info_for_pane.is_fullscreen = false;
+            pane_infos.push(pane_info_for_pane);
+        }
+        pane_infos
     }
 }

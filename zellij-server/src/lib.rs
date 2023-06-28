@@ -32,7 +32,7 @@ use wasmer::Store;
 use crate::{
     os_input_output::ServerOsApi,
     plugins::{plugin_thread_main, PluginInstruction},
-    pty::{pty_thread_main, Pty, PtyInstruction},
+    pty::{get_default_shell, pty_thread_main, Pty, PtyInstruction},
     screen::{screen_thread_main, ScreenInstruction},
     thread_bus::{Bus, ThreadSenders},
 };
@@ -705,6 +705,10 @@ fn init_session(
             ..Default::default()
         })
     });
+    let path_to_default_shell = config_options
+        .default_shell
+        .clone()
+        .unwrap_or_else(|| get_default_shell());
 
     let pty_thread = thread::Builder::new()
         .name("pty".to_string())
@@ -745,18 +749,21 @@ fn init_session(
             let max_panes = opts.max_panes;
 
             let client_attributes_clone = client_attributes.clone();
+            let debug = opts.debug;
             move || {
                 screen_thread_main(
                     screen_bus,
                     max_panes,
                     client_attributes_clone,
                     config_options,
+                    debug,
                 )
                 .fatal();
             }
         })
         .unwrap();
 
+    let zellij_cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
     let plugin_thread = thread::Builder::new()
         .name("wasm".to_string())
         .spawn({
@@ -773,6 +780,9 @@ fn init_session(
             let store = get_store();
 
             let layout = layout.clone();
+            let client_attributes = client_attributes.clone();
+            let default_shell = default_shell.clone();
+            let capabilities = capabilities.clone();
             move || {
                 plugin_thread_main(
                     plugin_bus,
@@ -780,6 +790,11 @@ fn init_session(
                     data_dir,
                     plugins.unwrap_or_default(),
                     layout,
+                    path_to_default_shell,
+                    zellij_cwd,
+                    capabilities,
+                    client_attributes,
+                    default_shell,
                 )
                 .fatal()
             }
@@ -827,7 +842,7 @@ fn init_session(
             to_plugin: Some(to_plugin),
             to_pty_writer: Some(to_pty_writer),
             to_background_jobs: Some(to_background_jobs),
-            to_server: None,
+            to_server: Some(to_server),
             should_silently_fail: false,
         },
         capabilities,

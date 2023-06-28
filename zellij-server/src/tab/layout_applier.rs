@@ -38,6 +38,7 @@ pub struct LayoutApplier<'a> {
     draw_pane_frames: bool,
     focus_pane_id: &'a mut Option<PaneId>,
     os_api: Box<dyn ServerOsApi>,
+    debug: bool,
 }
 
 impl<'a> LayoutApplier<'a> {
@@ -57,6 +58,7 @@ impl<'a> LayoutApplier<'a> {
         draw_pane_frames: bool,
         focus_pane_id: &'a mut Option<PaneId>,
         os_api: &Box<dyn ServerOsApi>,
+        debug: bool,
     ) -> Self {
         let viewport = viewport.clone();
         let senders = senders.clone();
@@ -85,6 +87,7 @@ impl<'a> LayoutApplier<'a> {
             draw_pane_frames,
             focus_pane_id,
             os_api,
+            debug,
         }
     }
     pub fn apply_layout(
@@ -233,6 +236,7 @@ impl<'a> LayoutApplier<'a> {
                             self.connected_clients.borrow().iter().copied().collect(),
                             self.style,
                             layout.run.clone(),
+                            self.debug,
                         );
                         new_plugin.set_borderless(layout.borderless);
                         if let Some(exclude_from_sync) = layout.exclude_from_sync {
@@ -263,6 +267,7 @@ impl<'a> LayoutApplier<'a> {
                                 self.terminal_emulator_color_codes.clone(),
                                 initial_title,
                                 layout.run.clone(),
+                                self.debug,
                             );
                             new_pane.set_borderless(layout.borderless);
                             if let Some(exclude_from_sync) = layout.exclude_from_sync {
@@ -342,6 +347,7 @@ impl<'a> LayoutApplier<'a> {
                     self.connected_clients.borrow().iter().copied().collect(),
                     self.style,
                     floating_pane_layout.run.clone(),
+                    self.debug,
                 );
                 new_pane.set_borderless(false);
                 new_pane.set_content_offset(Offset::frame(1));
@@ -379,6 +385,7 @@ impl<'a> LayoutApplier<'a> {
                     self.terminal_emulator_color_codes.clone(),
                     initial_title,
                     floating_pane_layout.run.clone(),
+                    self.debug,
                 );
                 new_pane.set_borderless(false);
                 new_pane.set_content_offset(Offset::frame(1));

@@ -24,6 +24,7 @@ fn vttest1_0() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         41,
         110,
@@ -32,6 +33,7 @@ fn vttest1_0() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "vttest1-0";
     let content = read_fixture(fixture_name);
@@ -46,6 +48,7 @@ fn vttest1_1() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         41,
         110,
@@ -54,6 +57,7 @@ fn vttest1_1() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "vttest1-1";
     let content = read_fixture(fixture_name);
@@ -68,6 +72,7 @@ fn vttest1_2() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         41,
         110,
@@ -76,6 +81,7 @@ fn vttest1_2() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "vttest1-2";
     let content = read_fixture(fixture_name);
@@ -90,6 +96,7 @@ fn vttest1_3() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         41,
         110,
@@ -98,6 +105,7 @@ fn vttest1_3() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "vttest1-3";
     let content = read_fixture(fixture_name);
@@ -112,6 +120,7 @@ fn vttest1_4() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         41,
         110,
@@ -120,6 +129,7 @@ fn vttest1_4() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "vttest1-4";
     let content = read_fixture(fixture_name);
@@ -134,6 +144,7 @@ fn vttest1_5() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         41,
         110,
@@ -142,6 +153,7 @@ fn vttest1_5() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "vttest1-5";
     let content = read_fixture(fixture_name);
@@ -156,6 +168,7 @@ fn vttest2_0() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         41,
         110,
@@ -164,6 +177,7 @@ fn vttest2_0() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "vttest2-0";
     let content = read_fixture(fixture_name);
@@ -178,6 +192,7 @@ fn vttest2_1() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         41,
         110,
@@ -186,6 +201,7 @@ fn vttest2_1() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "vttest2-1";
     let content = read_fixture(fixture_name);
@@ -200,6 +216,7 @@ fn vttest2_2() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         41,
         110,
@@ -208,6 +225,7 @@ fn vttest2_2() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "vttest2-2";
     let content = read_fixture(fixture_name);
@@ -222,6 +240,7 @@ fn vttest2_3() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         41,
         110,
@@ -230,6 +249,7 @@ fn vttest2_3() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "vttest2-3";
     let content = read_fixture(fixture_name);
@@ -244,6 +264,7 @@ fn vttest2_4() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         41,
         110,
@@ -252,6 +273,7 @@ fn vttest2_4() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "vttest2-4";
     let content = read_fixture(fixture_name);
@@ -266,6 +288,7 @@ fn vttest2_5() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         41,
         110,
@@ -274,6 +297,7 @@ fn vttest2_5() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "vttest2-5";
     let content = read_fixture(fixture_name);
@@ -288,6 +312,7 @@ fn vttest2_6() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         41,
         110,
@@ -296,6 +321,7 @@ fn vttest2_6() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "vttest2-6";
     let content = read_fixture(fixture_name);
@@ -310,6 +336,7 @@ fn vttest2_7() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         41,
         110,
@@ -318,6 +345,7 @@ fn vttest2_7() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "vttest2-7";
     let content = read_fixture(fixture_name);
@@ -332,6 +360,7 @@ fn vttest2_8() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         41,
         110,
@@ -340,6 +369,7 @@ fn vttest2_8() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "vttest2-8";
     let content = read_fixture(fixture_name);
@@ -354,6 +384,7 @@ fn vttest2_9() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         41,
         110,
@@ -362,6 +393,7 @@ fn vttest2_9() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "vttest2-9";
     let content = read_fixture(fixture_name);
@@ -376,6 +408,7 @@ fn vttest2_10() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         41,
         110,
@@ -384,6 +417,7 @@ fn vttest2_10() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "vttest2-10";
     let content = read_fixture(fixture_name);
@@ -398,6 +432,7 @@ fn vttest2_11() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         41,
         110,
@@ -406,6 +441,7 @@ fn vttest2_11() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "vttest2-11";
     let content = read_fixture(fixture_name);
@@ -420,6 +456,7 @@ fn vttest2_12() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         41,
         110,
@@ -428,6 +465,7 @@ fn vttest2_12() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "vttest2-12";
     let content = read_fixture(fixture_name);
@@ -442,6 +480,7 @@ fn vttest2_13() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         41,
         110,
@@ -450,6 +489,7 @@ fn vttest2_13() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "vttest2-13";
     let content = read_fixture(fixture_name);
@@ -464,6 +504,7 @@ fn vttest2_14() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         41,
         110,
@@ -472,6 +513,7 @@ fn vttest2_14() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "vttest2-14";
     let content = read_fixture(fixture_name);
@@ -486,6 +528,7 @@ fn vttest3_0() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         41,
         110,
@@ -494,6 +537,7 @@ fn vttest3_0() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "vttest3-0";
     let content = read_fixture(fixture_name);
@@ -508,6 +552,7 @@ fn vttest8_0() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         51,
         97,
@@ -516,6 +561,7 @@ fn vttest8_0() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "vttest8-0";
     let content = read_fixture(fixture_name);
@@ -530,6 +576,7 @@ fn vttest8_1() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         51,
         97,
@@ -538,6 +585,7 @@ fn vttest8_1() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "vttest8-1";
     let content = read_fixture(fixture_name);
@@ -552,6 +600,7 @@ fn vttest8_2() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         51,
         97,
@@ -560,6 +609,7 @@ fn vttest8_2() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "vttest8-2";
     let content = read_fixture(fixture_name);
@@ -574,6 +624,7 @@ fn vttest8_3() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         51,
         97,
@@ -582,6 +633,7 @@ fn vttest8_3() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "vttest8-3";
     let content = read_fixture(fixture_name);
@@ -596,6 +648,7 @@ fn vttest8_4() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         51,
         97,
@@ -604,6 +657,7 @@ fn vttest8_4() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "vttest8-4";
     let content = read_fixture(fixture_name);
@@ -618,6 +672,7 @@ fn vttest8_5() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         51,
         97,
@@ -626,6 +681,7 @@ fn vttest8_5() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "vttest8-5";
     let content = read_fixture(fixture_name);
@@ -640,6 +696,7 @@ fn csi_b() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         51,
         97,
@@ -648,6 +705,7 @@ fn csi_b() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "csi-b";
     let content = read_fixture(fixture_name);
@@ -662,6 +720,7 @@ fn csi_capital_i() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         51,
         97,
@@ -670,6 +729,7 @@ fn csi_capital_i() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "csi-capital-i";
     let content = read_fixture(fixture_name);
@@ -684,6 +744,7 @@ fn csi_capital_z() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         51,
         97,
@@ -692,6 +753,7 @@ fn csi_capital_z() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "csi-capital-z";
     let content = read_fixture(fixture_name);
@@ -706,6 +768,7 @@ fn terminal_reports() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         51,
         97,
@@ -714,6 +777,7 @@ fn terminal_reports() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "terminal_reports";
     let content = read_fixture(fixture_name);
@@ -728,6 +792,7 @@ fn wide_characters() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         21,
         104,
@@ -736,6 +801,7 @@ fn wide_characters() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "wide_characters";
     let content = read_fixture(fixture_name);
@@ -750,6 +816,7 @@ fn wide_characters_line_wrap() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         21,
         104,
@@ -758,6 +825,7 @@ fn wide_characters_line_wrap() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "wide_characters_line_wrap";
     let content = read_fixture(fixture_name);
@@ -772,6 +840,7 @@ fn insert_character_in_line_with_wide_character() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         21,
         104,
@@ -780,6 +849,7 @@ fn insert_character_in_line_with_wide_character() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "wide_characters_middle_line_insert";
     let content = read_fixture(fixture_name);
@@ -794,6 +864,7 @@ fn delete_char_in_middle_of_line_with_widechar() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         21,
         104,
@@ -802,6 +873,7 @@ fn delete_char_in_middle_of_line_with_widechar() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "wide-chars-delete-middle";
     let content = read_fixture(fixture_name);
@@ -816,6 +888,7 @@ fn delete_char_in_middle_of_line_with_multiple_widechars() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         21,
         104,
@@ -824,6 +897,7 @@ fn delete_char_in_middle_of_line_with_multiple_widechars() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "wide-chars-delete-middle-after-multi";
     let content = read_fixture(fixture_name);
@@ -838,6 +912,7 @@ fn fish_wide_characters_override_clock() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         21,
         104,
@@ -846,6 +921,7 @@ fn fish_wide_characters_override_clock() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "fish_wide_characters_override_clock";
     let content = read_fixture(fixture_name);
@@ -860,6 +936,7 @@ fn bash_delete_wide_characters() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         21,
         104,
@@ -868,6 +945,7 @@ fn bash_delete_wide_characters() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "bash_delete_wide_characters";
     let content = read_fixture(fixture_name);
@@ -882,6 +960,7 @@ fn delete_wide_characters_before_cursor() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         21,
         104,
@@ -890,6 +969,7 @@ fn delete_wide_characters_before_cursor() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "delete_wide_characters_before_cursor";
     let content = read_fixture(fixture_name);
@@ -904,6 +984,7 @@ fn delete_wide_characters_before_cursor_when_cursor_is_on_wide_character() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         21,
         104,
@@ -912,6 +993,7 @@ fn delete_wide_characters_before_cursor_when_cursor_is_on_wide_character() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "delete_wide_characters_before_cursor_when_cursor_is_on_wide_character";
     let content = read_fixture(fixture_name);
@@ -926,6 +1008,7 @@ fn delete_wide_character_under_cursor() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         21,
         104,
@@ -934,6 +1017,7 @@ fn delete_wide_character_under_cursor() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "delete_wide_character_under_cursor";
     let content = read_fixture(fixture_name);
@@ -948,6 +1032,7 @@ fn replace_wide_character_under_cursor() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         21,
         104,
@@ -956,6 +1041,7 @@ fn replace_wide_character_under_cursor() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "replace_wide_character_under_cursor";
     let content = read_fixture(fixture_name);
@@ -970,6 +1056,7 @@ fn wrap_wide_characters() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         21,
         90,
@@ -978,6 +1065,7 @@ fn wrap_wide_characters() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "wide_characters_full";
     let content = read_fixture(fixture_name);
@@ -992,6 +1080,7 @@ fn wrap_wide_characters_on_size_change() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         21,
         93,
@@ -1000,6 +1089,7 @@ fn wrap_wide_characters_on_size_change() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "wide_characters_full";
     let content = read_fixture(fixture_name);
@@ -1015,6 +1105,7 @@ fn unwrap_wide_characters_on_size_change() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         21,
         93,
@@ -1023,6 +1114,7 @@ fn unwrap_wide_characters_on_size_change() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "wide_characters_full";
     let content = read_fixture(fixture_name);
@@ -1039,6 +1131,7 @@ fn wrap_wide_characters_in_the_middle_of_the_line() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         21,
         91,
@@ -1047,6 +1140,7 @@ fn wrap_wide_characters_in_the_middle_of_the_line() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "wide_characters_line_middle";
     let content = read_fixture(fixture_name);
@@ -1061,6 +1155,7 @@ fn wrap_wide_characters_at_the_end_of_the_line() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         21,
         90,
@@ -1069,6 +1164,7 @@ fn wrap_wide_characters_at_the_end_of_the_line() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "wide_characters_line_end";
     let content = read_fixture(fixture_name);
@@ -1083,6 +1179,7 @@ fn copy_selected_text_from_viewport() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         27,
         125,
@@ -1091,6 +1188,7 @@ fn copy_selected_text_from_viewport() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "grid_copy";
     let content = read_fixture(fixture_name);
@@ -1113,6 +1211,7 @@ fn copy_wrapped_selected_text_from_viewport() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         22,
         73,
@@ -1121,6 +1220,7 @@ fn copy_wrapped_selected_text_from_viewport() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "grid_copy_wrapped";
     let content = read_fixture(fixture_name);
@@ -1142,6 +1242,7 @@ fn copy_selected_text_from_lines_above() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         27,
         125,
@@ -1150,6 +1251,7 @@ fn copy_selected_text_from_lines_above() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "grid_copy";
     let content = read_fixture(fixture_name);
@@ -1172,6 +1274,7 @@ fn copy_selected_text_from_lines_below() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         27,
         125,
@@ -1180,6 +1283,7 @@ fn copy_selected_text_from_lines_below() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "grid_copy";
     let content = read_fixture(fixture_name);
@@ -1210,6 +1314,7 @@ fn run_bandwhich_from_fish_shell() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         28,
         116,
@@ -1218,6 +1323,7 @@ fn run_bandwhich_from_fish_shell() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "fish_and_bandwhich";
     let content = read_fixture(fixture_name);
@@ -1232,6 +1338,7 @@ fn fish_tab_completion_options() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         28,
         116,
@@ -1240,6 +1347,7 @@ fn fish_tab_completion_options() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "fish_tab_completion_options";
     let content = read_fixture(fixture_name);
@@ -1260,6 +1368,7 @@ pub fn fish_select_tab_completion_options() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         28,
         116,
@@ -1268,6 +1377,7 @@ pub fn fish_select_tab_completion_options() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "fish_select_tab_completion_options";
     let content = read_fixture(fixture_name);
@@ -1292,6 +1402,7 @@ pub fn vim_scroll_region_down() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         28,
         116,
@@ -1300,6 +1411,7 @@ pub fn vim_scroll_region_down() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "vim_scroll_region_down";
     let content = read_fixture(fixture_name);
@@ -1321,6 +1433,7 @@ pub fn vim_ctrl_d() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         28,
         116,
@@ -1329,6 +1442,7 @@ pub fn vim_ctrl_d() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "vim_ctrl_d";
     let content = read_fixture(fixture_name);
@@ -1349,6 +1463,7 @@ pub fn vim_ctrl_u() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         28,
         116,
@@ -1357,6 +1472,7 @@ pub fn vim_ctrl_u() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "vim_ctrl_u";
     let content = read_fixture(fixture_name);
@@ -1371,6 +1487,7 @@ pub fn htop() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         28,
         116,
@@ -1379,6 +1496,7 @@ pub fn htop() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "htop";
     let content = read_fixture(fixture_name);
@@ -1393,6 +1511,7 @@ pub fn htop_scrolling() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         28,
         116,
@@ -1401,6 +1520,7 @@ pub fn htop_scrolling() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "htop_scrolling";
     let content = read_fixture(fixture_name);
@@ -1415,6 +1535,7 @@ pub fn htop_right_scrolling() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         28,
         116,
@@ -1423,6 +1544,7 @@ pub fn htop_right_scrolling() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "htop_right_scrolling";
     let content = read_fixture(fixture_name);
@@ -1447,6 +1569,7 @@ pub fn vim_overwrite() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         28,
         116,
@@ -1455,6 +1578,7 @@ pub fn vim_overwrite() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "vim_overwrite";
     let content = read_fixture(fixture_name);
@@ -1471,6 +1595,7 @@ pub fn clear_scroll_region() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         28,
         116,
@@ -1479,6 +1604,7 @@ pub fn clear_scroll_region() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "clear_scroll_region";
     let content = read_fixture(fixture_name);
@@ -1493,6 +1619,7 @@ pub fn display_tab_characters_properly() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         28,
         116,
@@ -1501,6 +1628,7 @@ pub fn display_tab_characters_properly() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "tab_characters";
     let content = read_fixture(fixture_name);
@@ -1515,6 +1643,7 @@ pub fn neovim_insert_mode() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         28,
         116,
@@ -1523,6 +1652,7 @@ pub fn neovim_insert_mode() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "nvim_insert";
     let content = read_fixture(fixture_name);
@@ -1537,6 +1667,7 @@ pub fn bash_cursor_linewrap() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         28,
         116,
@@ -1545,6 +1676,7 @@ pub fn bash_cursor_linewrap() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "bash_cursor_linewrap";
     let content = read_fixture(fixture_name);
@@ -1561,6 +1693,7 @@ pub fn fish_paste_multiline() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         28,
         149,
@@ -1569,6 +1702,7 @@ pub fn fish_paste_multiline() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "fish_paste_multiline";
     let content = read_fixture(fixture_name);
@@ -1583,6 +1717,7 @@ pub fn git_log() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         28,
         149,
@@ -1591,6 +1726,7 @@ pub fn git_log() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "git_log";
     let content = read_fixture(fixture_name);
@@ -1607,6 +1743,7 @@ pub fn git_diff_scrollup() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         28,
         149,
@@ -1615,6 +1752,7 @@ pub fn git_diff_scrollup() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "git_diff_scrollup";
     let content = read_fixture(fixture_name);
@@ -1629,6 +1767,7 @@ pub fn emacs_longbuf() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         60,
         284,
@@ -1637,6 +1776,7 @@ pub fn emacs_longbuf() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "emacs_longbuf_tutorial";
     let content = read_fixture(fixture_name);
@@ -1651,6 +1791,7 @@ pub fn top_and_quit() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         56,
         235,
@@ -1659,6 +1800,7 @@ pub fn top_and_quit() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "top_and_quit";
     let content = read_fixture(fixture_name);
@@ -1680,6 +1822,7 @@ pub fn exa_plus_omf_theme() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         56,
         235,
@@ -1688,6 +1831,7 @@ pub fn exa_plus_omf_theme() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "exa_plus_omf_theme";
     let content = read_fixture(fixture_name);
@@ -1702,6 +1846,7 @@ pub fn scroll_up() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         10,
         50,
@@ -1710,6 +1855,7 @@ pub fn scroll_up() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "scrolling";
     let content = read_fixture(fixture_name);
@@ -1725,6 +1871,7 @@ pub fn scroll_down() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         10,
         50,
@@ -1733,6 +1880,7 @@ pub fn scroll_down() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "scrolling";
     let content = read_fixture(fixture_name);
@@ -1749,6 +1897,7 @@ pub fn scroll_up_with_line_wraps() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         10,
         25,
@@ -1757,6 +1906,7 @@ pub fn scroll_up_with_line_wraps() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "scrolling";
     let content = read_fixture(fixture_name);
@@ -1772,6 +1922,7 @@ pub fn scroll_down_with_line_wraps() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         10,
         25,
@@ -1780,6 +1931,7 @@ pub fn scroll_down_with_line_wraps() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "scrolling";
     let content = read_fixture(fixture_name);
@@ -1796,6 +1948,7 @@ pub fn scroll_up_decrease_width_and_scroll_down() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         10,
         50,
@@ -1804,6 +1957,7 @@ pub fn scroll_up_decrease_width_and_scroll_down() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "scrolling";
     let content = read_fixture(fixture_name);
@@ -1825,6 +1979,7 @@ pub fn scroll_up_increase_width_and_scroll_down() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         10,
         25,
@@ -1833,6 +1988,7 @@ pub fn scroll_up_increase_width_and_scroll_down() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "scrolling";
     let content = read_fixture(fixture_name);
@@ -1854,6 +2010,7 @@ pub fn move_cursor_below_scroll_region() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         34,
         114,
@@ -1862,6 +2019,7 @@ pub fn move_cursor_below_scroll_region() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "move_cursor_below_scroll_region";
     let content = read_fixture(fixture_name);
@@ -1876,6 +2034,7 @@ pub fn insert_wide_characters_in_existing_line() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         21,
         86,
@@ -1884,6 +2043,7 @@ pub fn insert_wide_characters_in_existing_line() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "chinese_characters_line_middle";
     let content = read_fixture(fixture_name);
@@ -1904,6 +2064,7 @@ pub fn full_screen_scroll_region_and_scroll_up() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         54,
         80,
@@ -1912,6 +2073,7 @@ pub fn full_screen_scroll_region_and_scroll_up() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "scroll_region_full_screen";
     let content = read_fixture(fixture_name);
@@ -1929,6 +2091,7 @@ pub fn ring_bell() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         134,
         64,
@@ -1937,6 +2100,7 @@ pub fn ring_bell() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "ring_bell";
     let content = read_fixture(fixture_name);
@@ -1951,6 +2115,7 @@ pub fn alternate_screen_change_size() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         20,
         20,
@@ -1959,6 +2124,7 @@ pub fn alternate_screen_change_size() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "alternate_screen_change_size";
     let content = read_fixture(fixture_name);
@@ -1977,6 +2143,7 @@ pub fn fzf_fullscreen() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         51,
         112,
@@ -1985,6 +2152,7 @@ pub fn fzf_fullscreen() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "fzf_fullscreen";
     let content = read_fixture(fixture_name);
@@ -2003,6 +2171,7 @@ pub fn replace_multiple_wide_characters_under_cursor() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         51,
         112,
@@ -2011,6 +2180,7 @@ pub fn replace_multiple_wide_characters_under_cursor() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "replace_multiple_wide_characters";
     let content = read_fixture(fixture_name);
@@ -2029,6 +2199,7 @@ pub fn replace_non_wide_characters_with_wide_characters() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         51,
         112,
@@ -2037,6 +2208,7 @@ pub fn replace_non_wide_characters_with_wide_characters() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "replace_non_wide_characters_with_wide_characters";
     let content = read_fixture(fixture_name);
@@ -2051,6 +2223,7 @@ pub fn scroll_down_ansi() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         51,
         112,
@@ -2059,6 +2232,7 @@ pub fn scroll_down_ansi() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "scroll_down";
     let content = read_fixture(fixture_name);
@@ -2073,6 +2247,7 @@ pub fn ansi_capital_t() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         51,
         112,
@@ -2081,6 +2256,7 @@ pub fn ansi_capital_t() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let content = "foo\u{1b}[14Tbar".as_bytes();
     for byte in content {
@@ -2094,6 +2270,7 @@ pub fn ansi_capital_s() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         51,
         112,
@@ -2102,6 +2279,7 @@ pub fn ansi_capital_s() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let content = "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nfoo\u{1b}[14Sbar".as_bytes();
     for byte in content {
@@ -2115,6 +2293,7 @@ fn terminal_pixel_size_reports() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         51,
         97,
@@ -2126,6 +2305,7 @@ fn terminal_pixel_size_reports() {
             width: 8,
         }))),
         sixel_image_store,
+        debug,
     );
     let fixture_name = "terminal_pixel_size_reports";
     let content = read_fixture(fixture_name);
@@ -2146,6 +2326,7 @@ fn terminal_pixel_size_reports_in_unsupported_terminals() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         51,
         97,
@@ -2154,6 +2335,7 @@ fn terminal_pixel_size_reports_in_unsupported_terminals() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)), // in an unsupported terminal, we don't have this info
         sixel_image_store,
+        debug,
     );
     let fixture_name = "terminal_pixel_size_reports";
     let content = read_fixture(fixture_name);
@@ -2175,6 +2357,7 @@ pub fn ansi_csi_at_sign() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         51,
         112,
@@ -2183,6 +2366,7 @@ pub fn ansi_csi_at_sign() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let content = "foo\u{1b}[2D\u{1b}[2@".as_bytes();
     for byte in content {
@@ -2200,6 +2384,7 @@ pub fn sixel_images_are_reaped_when_scrolled_off() {
         width: 8,
         height: 21,
     })));
+    let debug = false;
     let mut grid = Grid::new(
         51,
         112,
@@ -2208,6 +2393,7 @@ pub fn sixel_images_are_reaped_when_scrolled_off() {
         Rc::new(RefCell::new(LinkHandler::new())),
         character_cell_size,
         sixel_image_store.clone(),
+        debug,
     );
     let pane_content = read_fixture("sixel-image-500px.six");
     for byte in pane_content {
@@ -2234,6 +2420,7 @@ pub fn sixel_images_are_reaped_when_resetting() {
         width: 8,
         height: 21,
     })));
+    let debug = false;
     let mut grid = Grid::new(
         51,
         112,
@@ -2242,6 +2429,7 @@ pub fn sixel_images_are_reaped_when_resetting() {
         Rc::new(RefCell::new(LinkHandler::new())),
         character_cell_size,
         sixel_image_store.clone(),
+        debug,
     );
     let pane_content = read_fixture("sixel-image-500px.six");
     for byte in pane_content {
@@ -2265,6 +2453,7 @@ pub fn sixel_image_in_alternate_buffer() {
         width: 8,
         height: 21,
     })));
+    let debug = false;
     let mut grid = Grid::new(
         30,
         112,
@@ -2273,6 +2462,7 @@ pub fn sixel_image_in_alternate_buffer() {
         Rc::new(RefCell::new(LinkHandler::new())),
         character_cell_size,
         sixel_image_store.clone(),
+        debug,
     );
 
     let move_to_alternate_screen = "\u{1b}[?1049h";
@@ -2307,6 +2497,7 @@ pub fn sixel_with_image_scrolling_decsdm() {
         width: 8,
         height: 21,
     })));
+    let debug = false;
     let mut grid = Grid::new(
         30,
         112,
@@ -2315,6 +2506,7 @@ pub fn sixel_with_image_scrolling_decsdm() {
         Rc::new(RefCell::new(LinkHandler::new())),
         character_cell_size,
         sixel_image_store,
+        debug,
     );
 
     // enter DECSDM
@@ -2368,6 +2560,7 @@ pub fn osc_4_background_query() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         51,
         97,
@@ -2376,6 +2569,7 @@ pub fn osc_4_background_query() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let content = "\u{1b}]10;?\u{1b}\\";
     for byte in content.as_bytes() {
@@ -2397,6 +2591,7 @@ pub fn osc_4_foreground_query() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         51,
         97,
@@ -2405,6 +2600,7 @@ pub fn osc_4_foreground_query() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let content = "\u{1b}]11;?\u{1b}\\";
     for byte in content.as_bytes() {
@@ -2428,6 +2624,7 @@ pub fn osc_4_color_query() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(color_codes));
+    let debug = false;
     let mut grid = Grid::new(
         51,
         97,
@@ -2436,6 +2633,7 @@ pub fn osc_4_color_query() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let content = "\u{1b}]4;222;?\u{1b}\\";
     for byte in content.as_bytes() {
@@ -2457,6 +2655,7 @@ pub fn xtsmgraphics_color_register_count() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut grid = Grid::new(
         51,
         97,
@@ -2465,6 +2664,7 @@ pub fn xtsmgraphics_color_register_count() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        debug,
     );
     let content = "\u{1b}[?1;1;S\u{1b}\\";
     for byte in content.as_bytes() {
@@ -2490,6 +2690,7 @@ pub fn xtsmgraphics_pixel_graphics_geometry() {
         width: 8,
         height: 21,
     })));
+    let debug = false;
     let mut grid = Grid::new(
         51,
         97,
@@ -2498,6 +2699,7 @@ pub fn xtsmgraphics_pixel_graphics_geometry() {
         Rc::new(RefCell::new(LinkHandler::new())),
         character_cell_size,
         sixel_image_store,
+        debug,
     );
     let content = "\u{1b}[?2;1;S\u{1b}\\";
     for byte in content.as_bytes() {
@@ -2523,6 +2725,7 @@ pub fn cursor_hide_persists_through_alternate_screen() {
         width: 8,
         height: 21,
     })));
+    let debug = false;
     let mut grid = Grid::new(
         30,
         112,
@@ -2531,6 +2734,7 @@ pub fn cursor_hide_persists_through_alternate_screen() {
         Rc::new(RefCell::new(LinkHandler::new())),
         character_cell_size,
         sixel_image_store,
+        debug,
     );
 
     let hide_cursor = "\u{1b}[?25l";

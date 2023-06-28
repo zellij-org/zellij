@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+
+## [0.37.2] - 2023-06-20
+* hotfix: include theme files into binary (https://github.com/zellij-org/zellij/pull/2566)
+* fix: make plugin hide_self api idempotent (https://github.com/zellij-org/zellij/pull/2568)
+
+## [0.37.1] - 2023-06-19
+* hotfix: theme options does not work (https://github.com/zellij-org/zellij/pull/2562)
+* fix: various plugin api methods (https://github.com/zellij-org/zellij/pull/2564)
+
+## [0.37.0] - 2023-06-18
 * fix(plugin): respect hide session option on compact-bar (https://github.com/zellij-org/zellij/pull/2368)
 * feat: allow excluding tabs from tab sync in layouts (https://github.com/zellij-org/zellij/pull/2314)
 * feat: support default cwd (https://github.com/zellij-org/zellij/pull/2290)
@@ -21,6 +31,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * build: Bump rust toolchain version to 1.67 (https://github.com/zellij-org/zellij/pull/2375)
 * fix: update config file output (https://github.com/zellij-org/zellij/pull/2443)
 * feat: plugin workers for background tasks (https://github.com/zellij-org/zellij/pull/2449)
+* fix: cwd of newtab action (https://github.com/zellij-org/zellij/pull/2455)
+* feat: plugin system overhaul (https://github.com/zellij-org/zellij/pull/2510)
+* feat: add virtually all of Zellij's API to plugins (https://github.com/zellij-org/zellij/pull/2516)
+* fix: runtime panic because of local cache (https://github.com/zellij-org/zellij/pull/2522)
+* fix: cursor flickering (https://github.com/zellij-org/zellij/pull/2528)
+* fix: focus tab as well as pane when relaunching plugin (https://github.com/zellij-org/zellij/pull/2530)
+* feat: ui improvements for strider search (https://github.com/zellij-org/zellij/pull/2531)
+* fix: only watch fs if plugins explicitly request it (https://github.com/zellij-org/zellij/pull/2529)
+* fix: suppress debug logging when not debugging (https://github.com/zellij-org/zellij/pull/2532)
+* feat: send pane events to plugins (https://github.com/zellij-org/zellij/pull/2545)
+* fix: use debounced watcher for watching filesystem (https://github.com/zellij-org/zellij/pull/2546)
+* feat: add more plugin api methods (https://github.com/zellij-org/zellij/pull/2550)
 
 ## [0.36.0] - 2023-04-13
 * fix: when moving pane focus off screen edge to the next tab, the pane on the screen edge is now focused (https://github.com/zellij-org/zellij/pull/2293)
@@ -39,6 +61,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: strider now no longer opens one pane per client when editing files (https://github.com/zellij-org/zellij/pull/2346)
 * fix: set sticky bit on socket files to avoid automatic cleanup (https://github.com/zellij-org/zellij/pull/2141)
 * fix: memory leak when attaching/detaching from sessions (https://github.com/zellij-org/zellij/pull/2328)
+* fix: allow loading plugins from relative urls (https://github.com/zellij-org/zellij/pull/2539)
 
 ## [0.35.2] - 2023-03-10
 * fix: get "zellij attach --create" working again (https://github.com/zellij-org/zellij/pull/2247)

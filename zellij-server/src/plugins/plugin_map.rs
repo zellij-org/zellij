@@ -1,5 +1,4 @@
-use crate::plugins::plugin_loader::{PluginLoader, VersionMismatchError};
-use crate::plugins::zellij_exports::wasi_write_object;
+use crate::plugins::plugin_worker::MessageToWorker;
 use crate::plugins::PluginId;
 use std::{
     collections::{HashMap, HashSet},
@@ -11,10 +10,15 @@ use wasmer_wasi::WasiEnv;
 
 use crate::{thread_bus::ThreadSenders, ClientId};
 
+use zellij_utils::async_channel::Sender;
 use zellij_utils::errors::prelude::*;
 use zellij_utils::{
-    consts::VERSION, data::EventType, input::layout::RunPluginLocation,
+    data::EventType,
+    data::PluginCapabilities,
+    input::command::TerminalAction,
+    input::layout::{Layout, RunPluginLocation},
     input::plugins::PluginConfig,
+    ipc::ClientAttributes,
 };
 
 // the idea here is to provide atomicity when adding/removing plugins from the map (eg. when a new
@@ -29,7 +33,7 @@ pub struct PluginMap {
         (
             Arc<Mutex<RunningPlugin>>,
             Arc<Mutex<Subscriptions>>,
-            HashMap<String, Arc<Mutex<RunningWorker>>>,
+            HashMap<String, Sender<MessageToWorker>>,
         ),
     >,
 }
@@ -41,7 +45,7 @@ impl PluginMap {
     ) -> Vec<(
         Arc<Mutex<RunningPlugin>>,
         Arc<Mutex<Subscriptions>>,
-        HashMap<String, Arc<Mutex<RunningWorker>>>,
+        HashMap<String, Sender<MessageToWorker>>,
     )> {
         let mut removed = vec![];
         let ids_in_plugin_map: Vec<(PluginId, ClientId)> =
@@ -62,7 +66,7 @@ impl PluginMap {
     ) -> Option<(
         Arc<Mutex<RunningPlugin>>,
         Arc<Mutex<Subscriptions>>,
-        HashMap<String, Arc<Mutex<RunningWorker>>>,
+        HashMap<String, Sender<MessageToWorker>>,
     )> {
         self.plugin_assets.remove(&(plugin_id, client_id))
     }
@@ -132,12 +136,12 @@ impl PluginMap {
                 .and_then(|(_, (running_plugin, _, _))| Some(running_plugin.clone())),
         }
     }
-    pub fn clone_worker(
+    pub fn worker_sender(
         &self,
         plugin_id: PluginId,
         client_id: ClientId,
         worker_name: &str,
-    ) -> Option<Arc<Mutex<RunningWorker>>> {
+    ) -> Option<Sender<MessageToWorker>> {
         self.plugin_assets
             .iter()
             .find(|((p_id, c_id), _)| p_id == &plugin_id && c_id == &client_id)
@@ -174,7 +178,7 @@ impl PluginMap {
         client_id: ClientId,
         running_plugin: Arc<Mutex<RunningPlugin>>,
         subscriptions: Arc<Mutex<Subscriptions>>,
-        running_workers: HashMap<String, Arc<Mutex<RunningWorker>>>,
+        running_workers: HashMap<String, Sender<MessageToWorker>>,
     ) {
         self.plugin_assets.insert(
             (plugin_id, client_id),
@@ -195,6 +199,11 @@ pub struct PluginEnv {
     pub client_id: ClientId,
     #[allow(dead_code)]
     pub plugin_own_data_dir: PathBuf,
+    pub path_to_default_shell: PathBuf,
+    pub capabilities: PluginCapabilities,
+    pub client_attributes: ClientAttributes,
+    pub default_shell: Option<TerminalAction>,
+    pub default_layout: Box<Layout>,
 }
 
 impl PluginEnv {
@@ -254,55 +263,5 @@ impl RunningPlugin {
         } else {
             false
         }
-    }
-}
-
-pub struct RunningWorker {
-    pub instance: Instance,
-    pub name: String,
-    pub plugin_config: PluginConfig,
-    pub plugin_env: PluginEnv,
-}
-
-impl RunningWorker {
-    pub fn new(
-        instance: Instance,
-        name: &str,
-        plugin_config: PluginConfig,
-        plugin_env: PluginEnv,
-    ) -> Self {
-        RunningWorker {
-            instance,
-            name: name.into(),
-            plugin_config,
-            plugin_env,
-        }
-    }
-    pub fn send_message(&self, message: String, payload: String) -> Result<()> {
-        let err_context = || format!("Failed to send message to worker");
-
-        let work_function = self
-            .instance
-            .exports
-            .get_function(&self.name)
-            .with_context(err_context)?;
-        wasi_write_object(&self.plugin_env.wasi_env, &(message, payload))
-            .with_context(err_context)?;
-        work_function.call(&[]).or_else::<anyError, _>(|e| {
-            match e.downcast::<serde_json::Error>() {
-                Ok(_) => panic!(
-                    "{}",
-                    anyError::new(VersionMismatchError::new(
-                        VERSION,
-                        "Unavailable",
-                        &self.plugin_config.path,
-                        self.plugin_config.is_builtin(),
-                    ))
-                ),
-                Err(e) => Err(e).with_context(err_context),
-            }
-        })?;
-
-        Ok(())
     }
 }

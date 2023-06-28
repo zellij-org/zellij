@@ -697,6 +697,7 @@ impl Pane for TerminalPane {
         self.grid.is_alternate_mode_active()
     }
     fn hold(&mut self, exit_status: Option<i32>, is_first_run: bool, run_command: RunCommand) {
+        self.invoked_with = Some(Run::Command(run_command.clone()));
         self.is_held = Some((exit_status, is_first_run, run_command));
         if is_first_run {
             self.render_first_run_banner();
@@ -720,6 +721,35 @@ impl Pane for TerminalPane {
     fn set_title(&mut self, title: String) {
         self.pane_title = title;
     }
+    fn current_title(&self) -> String {
+        if self.pane_name.is_empty() {
+            self.grid
+                .title
+                .as_deref()
+                .unwrap_or(&self.pane_title)
+                .into()
+        } else {
+            self.pane_name.to_owned()
+        }
+    }
+    fn exit_status(&self) -> Option<i32> {
+        self.is_held
+            .as_ref()
+            .and_then(|(exit_status, _, _)| *exit_status)
+    }
+    fn is_held(&self) -> bool {
+        self.is_held.is_some()
+    }
+    fn exited(&self) -> bool {
+        match self.is_held {
+            Some((_, is_first_run, _)) => !is_first_run,
+            None => false,
+        }
+    }
+    fn rename(&mut self, buf: Vec<u8>) {
+        self.pane_name = String::from_utf8_lossy(&buf).to_string();
+        self.set_should_render(true);
+    }
 }
 
 impl TerminalPane {
@@ -737,6 +767,7 @@ impl TerminalPane {
         terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
         initial_pane_title: Option<String>,
         invoked_with: Option<Run>,
+        debug: bool,
     ) -> TerminalPane {
         let initial_pane_title =
             initial_pane_title.unwrap_or_else(|| format!("Pane #{}", pane_index));
@@ -748,6 +779,7 @@ impl TerminalPane {
             link_handler,
             character_cell_size,
             sixel_image_store,
+            debug,
         );
         TerminalPane {
             frame: HashMap::new(),

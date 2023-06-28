@@ -334,6 +334,11 @@ pub enum ScreenContext {
     ProgressPluginLoadingOffset,
     StartPluginLoadingIndication,
     RequestStateUpdateForPlugins,
+    LaunchOrFocusPlugin,
+    SuppressPane,
+    FocusPaneWithId,
+    RenamePane,
+    RenameTab,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.
@@ -369,6 +374,7 @@ pub enum PluginContext {
     ApplyCachedWorkerMessages,
     PostMessageToPluginWorker,
     PostMessageToPlugin,
+    PluginSubscribedToEvents,
 }
 
 /// Stack call representations corresponding to the different types of [`ClientInstruction`]s.

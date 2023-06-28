@@ -1,21 +1,61 @@
+//! The zellij-tile crate acts as the Rust API for developing plugins for Zellij.
+//!
+//! To read more about Zellij plugins:
+//! [https://zellij.dev/documentation/plugins](https://zellij.dev/documentation/plugins)
+//!
+//! ### Interesting things in this libary:
+//! - The [`ZellijPlugin`] trait for implementing plugins combined with the
+//! [`register_plugin!`](register_plugin) macro to register them.
+//! - The list of [commands](shim) representing what a plugin can do.
+//! - The list of [`Events`](prelude::Event) a plugin can subscribe to
+//! - The [`ZellijWorker`] trait for implementing background workers combined with the
+//! [`register_worker!`](register_worker) macro to register them
+//!
+//! ### Full Example and Development Environment
+//! For a working plugin example as well as a development environment, please see:
+//! [https://github.com/zellij-org/rust-plugin-example](https://github.com/zellij-org/rust-plugin-example)
+//!
 pub mod prelude;
 pub mod shim;
 
 use serde::{Deserialize, Serialize};
 use zellij_utils::data::Event;
 
+/// This trait should be implemented - once per plugin - on a struct (normally representing the
+/// plugin state). This struct should then be registered with the
+/// [`register_plugin!`](register_plugin) macro.
 #[allow(unused_variables)]
-pub trait ZellijPlugin {
+pub trait ZellijPlugin: Default {
+    /// Will be called when the plugin is loaded, this is a good place to [`subscribe`](shim::subscribe) to events that are interesting for this plugin.
     fn load(&mut self) {}
+    /// Will be called with an [`Event`](prelude::Event) if the plugin is subscribed to said event.
+    /// If the plugin returns `true` from this function, Zellij will know it should be rendered and call its `render` function.
     fn update(&mut self, event: Event) -> bool {
         false
     } // return true if it should render
+    /// Will be called either after an `update` that requested it, or when the plugin otherwise needs to be re-rendered (eg. on startup, or when the plugin is resized).
+    /// The `rows` and `cols` values represent the "content size" of the plugin (this will not include its surrounding frame if the user has pane frames enabled).
     fn render(&mut self, rows: usize, cols: usize) {}
 }
 
+/// This trait is used to create workers. Workers can be used by plugins to run longer running
+/// background tasks without blocking their own rendering (eg. and showing some sort of loading
+/// indication in part of the UI as needed while waiting for the task to complete).
+///
+/// ## Starting workers on plugin load
+/// Implement this trait on a struct (typically representing the worker state) and register it with
+/// the [`register_worker!`](register_worker) macro.
+///
+/// ## Sending messages to workers and back to the plugin
+/// Send messages to workers with the [`post_message_to`](shim::post_message_to) method.
+/// Send messages from workers back to plugins with the
+/// [`post_message_to_plugin`](shim::post_message_to_plugin) method (but be sure the plugin has
+/// [`subscribe`](shim::subscribe)d to the [`CustomMessage`](prelude::Event::CustomMessage)) event
+/// first!
 #[allow(unused_variables)]
-// TODO: can we get rid of the lifetime? maybe with generics?
 pub trait ZellijWorker<'de>: Default + Serialize + Deserialize<'de> {
+    /// Triggered whenever the plugin sends the worker a message using the
+    /// [`post_message_to`](shim::post_message_to) method.
     fn on_message(&mut self, message: String, payload: String) {}
 }
 
@@ -31,6 +71,21 @@ Please refer to the documentation for further information:
     https://github.com/zellij-org/zellij/blob/main/CONTRIBUTING.md#building
 ";
 
+/// Used to register a plugin implementing the [`ZellijPlugin`] trait.
+///
+/// eg.
+/// ```rust
+/// use zellij_tile::prelude::*;
+///
+/// #[derive(Default)]
+/// pub struct MyPlugin {}
+///
+/// impl ZellijPlugin for MyPlugin {
+///    // ...
+/// }
+///
+/// register_plugin!(MyPlugin);
+/// ```
 #[macro_export]
 macro_rules! register_plugin {
     ($t:ty) => {
@@ -54,12 +109,13 @@ macro_rules! register_plugin {
 
         #[no_mangle]
         pub fn update() -> bool {
-            let object = $crate::shim::object_from_stdin()
-                .context($crate::PLUGIN_MISMATCH)
-                .to_stdout()
-                .unwrap();
-
-            STATE.with(|state| state.borrow_mut().update(object))
+            STATE.with(|state| {
+                let object = $crate::shim::object_from_stdin()
+                    .context($crate::PLUGIN_MISMATCH)
+                    .to_stdout()
+                    .unwrap();
+                state.borrow_mut().update(object)
+            })
         }
 
         #[no_mangle]
@@ -76,12 +132,38 @@ macro_rules! register_plugin {
     };
 }
 
+/// Used to register a plugin worker implementing the [`ZellijWorker`] trait.
+///
+/// eg.
+/// ```rust
+/// use zellij_tile::prelude::*;
+/// use serde::{Deserialize, Serialize};
+///
+/// #[derive(Default, Serialize, Deserialize)]
+/// pub struct FileSearchWorker {}
+///
+/// impl ZellijWorker<'_> for FileSearchWorker {
+///     fn on_message(&mut self, message: String, payload: String) {
+///         // ...
+///     }
+/// }
+///
+/// register_worker!(
+///     FileSearchWorker,
+///     file_search_worker, // registers the worker as the namespace "file_search"
+///     FILE_SEARCH_WORKER  // expanded to a static variable in which the worker state it held
+/// );
+/// ```
 #[macro_export]
 macro_rules! register_worker {
-    ($worker:ty, $worker_name:ident) => {
+    ($worker:ty, $worker_name:ident, $worker_static_name:ident) => {
+        // persist worker state in memory in a static variable
+        thread_local! {
+            static $worker_static_name: std::cell::RefCell<$worker> = std::cell::RefCell::new(Default::default());
+        }
         #[no_mangle]
         pub fn $worker_name() {
-            use serde_json::*;
+
             let worker_display_name = std::stringify!($worker_name);
 
             // read message from STDIN
@@ -93,43 +175,10 @@ macro_rules! register_worker {
                     );
                     Default::default()
                 });
-
-            // read previous worker state from HD if it exists
-            let mut worker_instance = match std::fs::read(&format!("/data/{}", worker_display_name))
-                .map_err(|e| format!("Failed to read file: {:?}", e))
-                .and_then(|s| {
-                    serde_json::from_str::<$worker>(&String::from_utf8_lossy(&s))
-                        .map_err(|e| format!("Failed to deserialize: {:?}", e))
-                }) {
-                Ok(s) => s,
-                Err(e) => {
-                    eprintln!(
-                        "Failed to read existing state ({:?}), creating new state for worker",
-                        e
-                    );
-                    <$worker>::default()
-                },
-            };
-
-            // invoke worker
-            worker_instance.on_message(message, payload);
-
-            // persist worker state to HD for next run
-            match serde_json::to_string(&worker_instance)
-                .map_err(|e| format!("Failed to serialize worker state"))
-                .and_then(|serialized_state| {
-                    std::fs::write(
-                        &format!("/data/{}", worker_display_name),
-                        serialized_state.as_bytes(),
-                    )
-                    .map_err(|e| format!("Failed to persist state to HD: {:?}", e))
-                }) {
-                Ok(()) => {},
-                Err(e) => eprintln!(
-                    "Failed to serialize and persist worker state to hd: {:?}",
-                    e
-                ),
-            }
-        }
+            $worker_static_name.with(|worker_instance| {
+                let mut worker_instance = worker_instance.borrow_mut();
+                worker_instance.on_message(message, payload);
+            });
+         }
     };
 }

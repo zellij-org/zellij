@@ -10,7 +10,7 @@ use crate::{
     output::Output,
     panes::{ActivePanes, PaneId},
     plugins::PluginInstruction,
-    tab::{Pane, MIN_TERMINAL_HEIGHT, MIN_TERMINAL_WIDTH},
+    tab::{pane_info_for_pane, Pane, MIN_TERMINAL_HEIGHT, MIN_TERMINAL_WIDTH},
     thread_bus::ThreadSenders,
     ui::boundaries::Boundaries,
     ui::pane_contents_and_ui::PaneContentsAndUi,
@@ -18,9 +18,12 @@ use crate::{
 };
 use stacked_panes::StackedPanes;
 use zellij_utils::{
-    data::{Direction, ModeInfo, ResizeStrategy, Style},
+    data::{Direction, ModeInfo, PaneInfo, ResizeStrategy, Style},
     errors::prelude::*,
-    input::{command::RunCommand, layout::SplitDirection},
+    input::{
+        command::RunCommand,
+        layout::{Run, RunPlugin, SplitDirection},
+    },
     pane_size::{Offset, PaneGeom, Size, SizeInPixels, Viewport},
 };
 
@@ -528,6 +531,14 @@ impl TiledPanes {
             }
         }
         self.reset_boundaries();
+    }
+    pub fn focus_pane_if_exists(&mut self, pane_id: PaneId, client_id: ClientId) -> Result<()> {
+        if self.panes.get(&pane_id).is_some() {
+            self.focus_pane(pane_id, client_id);
+            Ok(())
+        } else {
+            Err(anyhow!("Pane not found"))
+        }
     }
     pub fn focus_pane_at_position(&mut self, position_and_size: PaneGeom, client_id: ClientId) {
         if let Some(pane_id) = self
@@ -1690,6 +1701,26 @@ impl TiledPanes {
     }
     fn reset_boundaries(&mut self) {
         self.client_id_to_boundaries.clear();
+    }
+    pub fn get_plugin_pane_id(&self, run_plugin: &RunPlugin) -> Option<PaneId> {
+        let run = Some(Run::Plugin(run_plugin.clone()));
+        self.panes
+            .iter()
+            .find(|(_id, s_p)| s_p.invoked_with() == &run)
+            .map(|(id, _)| *id)
+    }
+    pub fn pane_info(&self) -> Vec<PaneInfo> {
+        let mut pane_infos = vec![];
+        for (pane_id, pane) in self.panes.iter() {
+            let mut pane_info_for_pane = pane_info_for_pane(pane_id, pane);
+            let is_focused = self.active_panes.pane_id_is_focused(pane_id);
+            pane_info_for_pane.is_floating = false;
+            pane_info_for_pane.is_suppressed = false;
+            pane_info_for_pane.is_focused = is_focused;
+            pane_info_for_pane.is_fullscreen = is_focused && self.fullscreen_is_active();
+            pane_infos.push(pane_info_for_pane);
+        }
+        pane_infos
     }
 }
 

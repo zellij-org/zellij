@@ -39,6 +39,7 @@ macro_rules! get_or_create_grid {
                 $self.link_handler.clone(),
                 $self.character_cell_size.clone(),
                 $self.sixel_image_store.clone(),
+                $self.debug,
             );
             grid.hide_cursor();
             grid
@@ -72,6 +73,7 @@ pub(crate) struct PluginPane {
     pane_frame_color_override: Option<(PaletteColor, Option<String>)>,
     invoked_with: Option<Run>,
     loading_indication: LoadingIndication,
+    debug: bool,
 }
 
 impl PluginPane {
@@ -89,6 +91,7 @@ impl PluginPane {
         currently_connected_clients: Vec<ClientId>,
         style: Style,
         invoked_with: Option<Run>,
+        debug: bool,
     ) -> Self {
         let loading_indication = LoadingIndication::new(title.clone()).with_colors(style.colors);
         let initial_loading_message = loading_indication.to_string();
@@ -118,6 +121,7 @@ impl PluginPane {
             pane_frame_color_override: None,
             invoked_with,
             loading_indication,
+            debug,
         };
         for client_id in currently_connected_clients {
             plugin.handle_plugin_bytes(client_id, initial_loading_message.as_bytes().to_vec());
@@ -537,7 +541,7 @@ impl Pane for PluginPane {
         self.pane_title = title;
     }
     fn update_loading_indication(&mut self, loading_indication: LoadingIndication) {
-        if self.loading_indication.ended {
+        if self.loading_indication.ended && !loading_indication.is_error() {
             return;
         }
         self.loading_indication.merge(loading_indication);
@@ -559,6 +563,17 @@ impl Pane for PluginPane {
         self.handle_plugin_bytes_for_all_clients(
             self.loading_indication.to_string().as_bytes().to_vec(),
         );
+    }
+    fn current_title(&self) -> String {
+        if self.pane_name.is_empty() {
+            self.pane_title.to_owned()
+        } else {
+            self.pane_name.to_owned()
+        }
+    }
+    fn rename(&mut self, buf: Vec<u8>) {
+        self.pane_name = String::from_utf8_lossy(&buf).to_string();
+        self.set_should_render(true);
     }
 }
 

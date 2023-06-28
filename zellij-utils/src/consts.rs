@@ -1,7 +1,7 @@
 //! Zellij program-wide constants.
 
-use crate::input::theme::Themes;
 use directories_next::ProjectDirs;
+use include_dir::{include_dir, Dir};
 use lazy_static::lazy_static;
 use once_cell::sync::OnceCell;
 use std::path::PathBuf;
@@ -17,6 +17,8 @@ pub static DEBUG_MODE: OnceCell<bool> = OnceCell::new();
 
 pub const SYSTEM_DEFAULT_CONFIG_DIR: &str = "/etc/zellij";
 pub const SYSTEM_DEFAULT_DATA_DIR_PREFIX: &str = system_default_data_dir();
+
+pub static ZELLIJ_DEFAULT_THEMES: Dir = include_dir!("$CARGO_MANIFEST_DIR/assets/themes");
 
 const fn system_default_data_dir() -> &'static str {
     if let Some(data_dir) = std::option_env!("PREFIX") {
@@ -34,19 +36,6 @@ lazy_static! {
         .cache_dir()
         .to_path_buf()
         .join(format!("{}", Uuid::new_v4()));
-    pub static ref ZELLIJ_DEFAULT_THEMES: Themes = {
-        let mut default_themes = Themes::default();
-
-        let path = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/themes"));
-        match Themes::from_dir(path) {
-            Ok(themes) => {
-                default_themes = default_themes.merge(themes);
-            },
-            Err(_) => {},
-        }
-
-        default_themes
-    };
 }
 
 pub const FEATURES: &[&str] = &[

@@ -882,6 +882,30 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                 };
                 Ok(Action::Run(run_command_action))
             },
+            "LaunchOrFocusPlugin" => {
+                let arguments = action_arguments.iter().copied();
+                let mut args = kdl_arguments_that_are_strings(arguments)?;
+                if args.is_empty() {
+                    return Err(ConfigError::new_kdl_error(
+                        "No plugin found to launch in LaunchOrFocusPlugin".into(),
+                        kdl_action.span().offset(),
+                        kdl_action.span().len(),
+                    ));
+                }
+                let plugin_path = args.remove(0);
+
+                let command_metadata = action_children.iter().next();
+                let should_float = command_metadata
+                    .and_then(|c_m| kdl_child_bool_value_for_entry(c_m, "floating"))
+                    .unwrap_or(false);
+                let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+                let location = RunPluginLocation::parse(&plugin_path, Some(current_dir))?;
+                let run_plugin = RunPlugin {
+                    location,
+                    _allow_exec_host_cmd: false,
+                };
+                Ok(Action::LaunchOrFocusPlugin(run_plugin, should_float))
+            },
             "PreviousSwapLayout" => Ok(Action::PreviousSwapLayout),
             "NextSwapLayout" => Ok(Action::NextSwapLayout),
             _ => Err(ConfigError::new_kdl_error(
@@ -1385,7 +1409,7 @@ impl Options {
 }
 
 impl RunPlugin {
-    pub fn from_kdl(kdl_node: &KdlNode) -> Result<Self, ConfigError> {
+    pub fn from_kdl(kdl_node: &KdlNode, cwd: Option<PathBuf>) -> Result<Self, ConfigError> {
         let _allow_exec_host_cmd =
             kdl_get_child_entry_bool_value!(kdl_node, "_allow_exec_host_cmd").unwrap_or(false);
         let string_url = kdl_get_child_entry_string_value!(kdl_node, "location").ok_or(
@@ -1395,7 +1419,7 @@ impl RunPlugin {
                 kdl_node.span().len(),
             ),
         )?;
-        let location = RunPluginLocation::parse(string_url).map_err(|e| {
+        let location = RunPluginLocation::parse(string_url, cwd).map_err(|e| {
             ConfigError::new_layout_kdl_error(
                 e.to_string(),
                 kdl_node.span().offset(),
@@ -1748,11 +1772,8 @@ impl Themes {
         Ok(themes)
     }
 
-    pub fn from_path(path_to_theme_file: PathBuf) -> Result<Self, ConfigError> {
-        // String is the theme name
-        let kdl_config = std::fs::read_to_string(&path_to_theme_file)
-            .map_err(|e| ConfigError::IoPath(e, path_to_theme_file.into()))?;
-        let kdl_config: KdlDocument = kdl_config.parse()?;
+    pub fn from_string(raw_string: String) -> Result<Self, ConfigError> {
+        let kdl_config: KdlDocument = raw_string.parse()?;
         let kdl_themes = kdl_config.get("themes").ok_or(ConfigError::new_kdl_error(
             "No theme node found in file".into(),
             kdl_config.span().offset(),
@@ -1760,6 +1781,13 @@ impl Themes {
         ))?;
         let all_themes_in_file = Themes::from_kdl(kdl_themes)?;
         Ok(all_themes_in_file)
+    }
+
+    pub fn from_path(path_to_theme_file: PathBuf) -> Result<Self, ConfigError> {
+        // String is the theme name
+        let kdl_config = std::fs::read_to_string(&path_to_theme_file)
+            .map_err(|e| ConfigError::IoPath(e, path_to_theme_file.into()))?;
+        Themes::from_string(kdl_config)
     }
 
     pub fn from_dir(path_to_theme_dir: PathBuf) -> Result<Self, ConfigError> {
