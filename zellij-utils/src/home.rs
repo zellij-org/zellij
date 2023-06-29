@@ -100,12 +100,12 @@ pub fn home_config_dir() -> Option<PathBuf> {
     }
 }
 
-pub fn default_layout_dir() -> Option<PathBuf> {
-    find_default_config_dir().map(|dir| dir.join("layouts"))
-}
-
 pub fn get_layout_dir(config_dir: Option<PathBuf>) -> Option<PathBuf> {
     config_dir.map(|dir| dir.join("layouts"))
+}
+
+pub fn default_layout_dir() -> Option<PathBuf> {
+    find_default_config_dir().map(|dir| dir.join("layouts"))
 }
 
 pub fn get_theme_dir(config_dir: Option<PathBuf>) -> Option<PathBuf> {

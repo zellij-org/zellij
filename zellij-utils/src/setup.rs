@@ -126,11 +126,6 @@ pub fn dump_specified_layout(layout: &str) -> std::io::Result<()> {
         "default" => dump_asset(DEFAULT_LAYOUT),
         "compact" => dump_asset(COMPACT_BAR_LAYOUT),
         "disable-status" => dump_asset(NO_STATUS_LAYOUT),
-        "current" => {
-            info!("DUMP CURRENT");
-            // TODO: use from utils
-            Ok(())
-        },
         custom => {
             info!("Dump {custom} layout");
             let home = default_layout_dir();

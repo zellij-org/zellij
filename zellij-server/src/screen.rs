@@ -1931,23 +1931,19 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::DumpLayout(client_id, layout) => {
                 for tab in screen.tabs.values() {
                     log::warn!("TAB: {}", tab.name);
-                    let panes = tab.get_tiled_panes();
-                    let panes: Vec<String> = panes
-                        .map(|(_, p)| p.position_and_size().to_string())
+                    let panes_str: String = tab
+                        .get_tiled_panes()
+                        .map(|(_, p)| p.position_and_size())
+                        .map(|p| p.to_string())
                         .collect();
-                    log::info!("***** PRINTING PANE GEOMS *****");
-                    for pane in panes {
-                        log::info!("pane_geom: {}", pane);
-                    }
-                    log::info!("*******************************");
+                    log::info!("PANES: {panes_str}");
+                    let panes: Vec<PaneGeom> = tab
+                        .get_tiled_panes()
+                        .map(|(_, p)| p.position_and_size())
+                        .collect();
+                    let kdl_config = persistence::geoms_to_kdl(&tab.name, &panes);
+                    log::info!("{kdl_config}");
                 }
-                // let layout: Vec<(&usize, BTreeMap<PaneId, &Box<dyn Pane>>)> = screen
-                //     .tabs
-                //     .values()
-                //     .map(|t| (t.position, t.get_tiled_panes()))
-                //     .collect();
-                // let tab_names: Vec<(String, Vec<PaneId>)> =
-                //     layout.iter().map(|(t, p)| (t, p.clone())).collect();
                 screen.unblock_input()?;
                 screen.render()?;
             },

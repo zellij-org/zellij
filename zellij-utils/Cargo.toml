@@ -54,7 +54,7 @@ notify-debouncer-full = "0.1.0"
 
 [dev-dependencies]
 insta = { version = "1.6.0", features = ["backtrace"] }
-
+expect-test = "1.4.1"
 
 [features]
 # If this feature is NOT set (default):

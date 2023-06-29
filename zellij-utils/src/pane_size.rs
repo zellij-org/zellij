@@ -174,11 +174,11 @@ impl PaneGeom {
 impl Display for PaneGeom {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{{ ")?;
-        write!(f, "\"x\": {},", self.x)?;
-        write!(f, "\"y\": {},", self.y)?;
-        write!(f, "\"cols\": {},", self.cols.constraint)?;
-        write!(f, "\"rows\": {},", self.rows.constraint)?;
-        write!(f, "\"stacked\": {}", self.is_stacked)?;
+        write!(f, r#""x": {},"#, self.x)?;
+        write!(f, r#""y": {},"#, self.y)?;
+        write!(f, r#""cols": {},"#, self.cols.constraint)?;
+        write!(f, r#""rows": {},"#, self.rows.constraint)?;
+        write!(f, r#""stacked": {}"#, self.is_stacked)?;
         write!(f, " }}")?;
 
         Ok(())
