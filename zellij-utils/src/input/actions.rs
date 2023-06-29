@@ -273,7 +273,7 @@ impl Action {
                 path.as_os_str().to_string_lossy().into(),
                 full,
             )]),
-            CliAction::DumpTab{ path, full } => Ok(vec![Action::DumpTab(
+            CliAction::DumpTab { path, full } => Ok(vec![Action::DumpTab(
                 path.as_os_str().to_string_lossy().into(),
                 full,
             )]),

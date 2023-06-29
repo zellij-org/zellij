@@ -2323,21 +2323,18 @@ impl Tab {
         client_id: ClientId,
         full: bool,
     ) -> Result<()> {
-        let err_context =
-            || format!("failed to dump active terminal tab for client {client_id}");
+        let err_context = || format!("failed to dump active terminal tab for client {client_id}");
 
         let mut merged_dump: String = "".to_owned();
         for pane_id in self.get_tiled_pane_ids() {
-            if let PaneId::Terminal(id) = pane_id  {
+            if let PaneId::Terminal(id) = pane_id {
                 let tmp_panel = self.tiled_panes.get_pane_mut(pane_id).unwrap();
                 let dump = tmp_panel.dump_screen(client_id, full);
                 let header = match merged_dump.chars().last() {
-                    Some(c) => {
-                        match c {
-                            '\n' => format!("[Tiled pane: {}]\n", id),
-                            _ => format!("\n[Tiled pane: {}]\n", id),
-                        }
-                    }
+                    Some(c) => match c {
+                        '\n' => format!("[Tiled pane: {}]\n", id),
+                        _ => format!("\n[Tiled pane: {}]\n", id),
+                    },
                     None => format!("[Tiled pane: {}]\n", id),
                 };
                 merged_dump.push_str(&header);
@@ -2350,12 +2347,10 @@ impl Tab {
                 let tmp_panel = self.floating_panes.get_pane_mut(pane_id).unwrap();
                 let dump = tmp_panel.dump_screen(client_id, full);
                 let header = match merged_dump.chars().last() {
-                    Some(c) => {
-                        match c {
-                            '\n' => format!("[Floating pane: {}]\n", id),
-                            _ => format!("\n[Floating pane: {}]\n", id),
-                        }
-                    }
+                    Some(c) => match c {
+                        '\n' => format!("[Floating pane: {}]\n", id),
+                        _ => format!("\n[Floating pane: {}]\n", id),
+                    },
                     None => format!("[Floating pane: {}]\n", id),
                 };
                 merged_dump.push_str(&header);
