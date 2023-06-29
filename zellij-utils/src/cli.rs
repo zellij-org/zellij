@@ -223,6 +223,14 @@ pub enum CliAction {
         #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
         full: bool,
     },
+    /// Dump the current tab to a file
+    DumpTab {
+        path: PathBuf,
+
+        /// Dump the tab with full scrollback
+        #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
+        full: bool,
+    },
     /// Open the pane scrollback in your default editor
     EditScrollback,
     /// Scroll up in the focused pane

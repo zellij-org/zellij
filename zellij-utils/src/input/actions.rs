@@ -124,6 +124,8 @@ pub enum Action {
     ClearScreen,
     /// Dumps the screen to a file
     DumpScreen(String, bool),
+    /// Dumps the tab to a file
+    DumpTab(String, bool),
     /// Scroll up in focus pane.
     EditScrollback,
     ScrollUp,
@@ -268,6 +270,10 @@ impl Action {
             CliAction::MovePaneBackwards => Ok(vec![Action::MovePaneBackwards]),
             CliAction::Clear => Ok(vec![Action::ClearScreen]),
             CliAction::DumpScreen { path, full } => Ok(vec![Action::DumpScreen(
+                path.as_os_str().to_string_lossy().into(),
+                full,
+            )]),
+            CliAction::DumpTab{ path, full } => Ok(vec![Action::DumpTab(
                 path.as_os_str().to_string_lossy().into(),
                 full,
             )]),

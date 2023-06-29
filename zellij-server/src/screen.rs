@@ -164,6 +164,7 @@ pub enum ScreenInstruction {
     Exit,
     ClearScreen(ClientId),
     DumpScreen(String, ClientId, bool),
+    DumpTab(String, ClientId, bool),
     EditScrollback(ClientId),
     ScrollUp(ClientId),
     ScrollUpAt(Position, ClientId),
@@ -341,6 +342,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::Exit => ScreenContext::Exit,
             ScreenInstruction::ClearScreen(..) => ScreenContext::ClearScreen,
             ScreenInstruction::DumpScreen(..) => ScreenContext::DumpScreen,
+            ScreenInstruction::DumpTab(..) => ScreenContext::DumpTab,
             ScreenInstruction::EditScrollback(..) => ScreenContext::EditScrollback,
             ScreenInstruction::ScrollUp(..) => ScreenContext::ScrollUp,
             ScreenInstruction::ScrollDown(..) => ScreenContext::ScrollDown,
@@ -1916,6 +1918,20 @@ pub(crate) fn screen_thread_main(
                     screen,
                     client_id,
                     |tab: &mut Tab, client_id: ClientId| tab.dump_active_terminal_screen(
+                        Some(file.to_string()),
+                        client_id,
+                        full
+                    ),
+                    ?
+                );
+                screen.render()?;
+                screen.unblock_input()?;
+            },
+            ScreenInstruction::DumpTab(file, client_id, full) => {
+                active_tab_and_connected_client_id!(
+                    screen,
+                    client_id,
+                    |tab: &mut Tab, client_id: ClientId| tab.dump_current_terminal_tab(
                         Some(file.to_string()),
                         client_id,
                         full

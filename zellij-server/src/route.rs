@@ -172,6 +172,11 @@ pub(crate) fn route_action(
                 .send_to_screen(ScreenInstruction::DumpScreen(val, client_id, full))
                 .with_context(err_context)?;
         },
+        Action::DumpTab(val, full) => {
+            senders
+                .send_to_screen(ScreenInstruction::DumpTab(val, client_id, full))
+                .with_context(err_context)?;
+        },
         Action::EditScrollback => {
             senders
                 .send_to_screen(ScreenInstruction::EditScrollback(client_id))
