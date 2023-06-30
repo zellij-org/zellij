@@ -257,6 +257,7 @@ pub enum ScreenInstruction {
     PreviousSwapLayout(ClientId),
     NextSwapLayout(ClientId),
     QueryTabNames(ClientId),
+    QueryPaneNames(ClientId),
     NewTiledPluginPane(RunPluginLocation, Option<String>, ClientId), // Option<String> is
     // optional pane title
     NewFloatingPluginPane(RunPluginLocation, Option<String>, ClientId), // Option<String> is an
@@ -422,6 +423,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::PreviousSwapLayout(..) => ScreenContext::PreviousSwapLayout,
             ScreenInstruction::NextSwapLayout(..) => ScreenContext::NextSwapLayout,
             ScreenInstruction::QueryTabNames(..) => ScreenContext::QueryTabNames,
+            ScreenInstruction::QueryPaneNames(..) => ScreenContext::QueryPaneNames,
             ScreenInstruction::NewTiledPluginPane(..) => ScreenContext::NewTiledPluginPane,
             ScreenInstruction::NewFloatingPluginPane(..) => ScreenContext::NewFloatingPluginPane,
             ScreenInstruction::StartOrReloadPluginPane(..) => {
@@ -2626,6 +2628,22 @@ pub(crate) fn screen_thread_main(
                     .bus
                     .senders
                     .send_to_server(ServerInstruction::Log(tab_names, client_id))?;
+            },
+            ScreenInstruction::QueryPaneNames(client_id) => {
+                let active_tab_id = screen.active_tab_indices.values().next().unwrap_or(&1);
+                let pane_names = screen
+                    .get_indexed_tab_mut(*active_tab_id)
+                    .map(|tab| {
+                        tab.pane_infos()
+                            .into_iter()
+                            .map(|pane| format!("{}: {}", pane.id, pane.title))
+                            .collect::<Vec<String>>()
+                    })
+                    .unwrap_or_else(Vec::new);
+                screen
+                    .bus
+                    .senders
+                    .send_to_server(ServerInstruction::Log(pane_names, client_id))?;
             },
             ScreenInstruction::NewTiledPluginPane(run_plugin_location, pane_title, client_id) => {
                 let tab_index = screen.active_tab_indices.values().next().unwrap_or(&1);
