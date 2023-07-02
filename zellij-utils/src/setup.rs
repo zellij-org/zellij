@@ -20,9 +20,7 @@ use clap_complete::Shell;
 use directories_next::BaseDirs;
 use log::info;
 use serde::{Deserialize, Serialize};
-use std::{
-    convert::TryFrom, fmt::Write as FmtWrite, io::Write, path::Path, path::PathBuf, process,
-};
+use std::{convert::TryFrom, fmt::Write as FmtWrite, fs, io::Write, path::PathBuf, process};
 
 const CONFIG_NAME: &str = "config.kdl";
 static ARROW_SEPARATOR: &str = "";
@@ -116,6 +114,17 @@ pub const ZSH_AUTO_START_SCRIPT: &[u8] = include_bytes!(concat!(
     "assets/shell/auto-start.zsh"
 ));
 
+pub fn add_layout_ext(s: &str) -> String {
+    match s {
+        c if s.ends_with(".kdl") => c.to_owned(),
+        _ => {
+            let mut s = s.to_owned();
+            s.push_str(".kdl");
+            s
+        },
+    }
+}
+
 pub fn dump_default_config() -> std::io::Result<()> {
     dump_asset(DEFAULT_CONFIG)
 }
@@ -128,12 +137,15 @@ pub fn dump_specified_layout(layout: &str) -> std::io::Result<()> {
         "disable-status" => dump_asset(NO_STATUS_LAYOUT),
         custom => {
             info!("Dump {custom} layout");
+            let custom = add_layout_ext(custom);
             let home = default_layout_dir();
-            let path = home.map(|h| h.join(custom));
+            let path = home.map(|h| h.join(&custom));
             let layout_exists = path.as_ref().map(|p| p.exists()).unwrap_or_default();
+
             match (path, layout_exists) {
-                (Some(layout), true) => {
-                    std::io::stdout().write_all(layout.to_string_lossy().as_bytes())
+                (Some(path), true) => {
+                    let content = fs::read_to_string(path)?;
+                    std::io::stdout().write_all(content.as_bytes())
                 },
                 _ => {
                     log::error!("No layout named {custom} found");

@@ -27,7 +27,7 @@
 //!         .collect();
 //!
 //!     for (i, geoms) in vec_geoms.iter().enumerate() {
-//!         let kdl_string = geoms_to_kdl(&geoms);
+//!         let kdl_string = geoms_to_kdl_tab(&geoms);
 //!         println!("========== {i} ==========");
 //!         println!("{kdl_string}\n");
 //!     }
@@ -39,6 +39,23 @@ use crate::{
     pane_size::{Dimension, PaneGeom},
 };
 use std::collections::HashMap;
+
+const INDENT: &str = "    ";
+
+pub fn tabs_to_kdl(tabs: &[(String, Vec<PaneGeom>)]) -> String {
+    let tab_n = tabs.len();
+    let mut kdl_layout = format!("layout {{\n");
+
+    for (name, panes) in tabs {
+        // log::info!("PANES in tab:{panes:?}");
+        let mut kdl_tab = geoms_to_kdl_tab(&name, &panes, tab_n);
+        kdl_tab.push_str("\n")
+    }
+
+    kdl_layout.push_str("}");
+
+    kdl_layout
+}
 
 ///
 /// Expects this input
@@ -53,39 +70,49 @@ pub fn parse_geoms_from_json(geoms: &str) -> Vec<PaneGeom> {
         .collect()
 }
 
-pub fn panegeom_from_hashmap(hm: &HashMap<String, usize>) -> PaneGeom {
+pub fn panegeom_from_hashmap(map: &HashMap<String, usize>) -> PaneGeom {
     PaneGeom {
-        x: hm["x"] as usize,
-        y: hm["y"] as usize,
-        rows: Dimension::fixed(hm["rows"] as usize),
-        cols: Dimension::fixed(hm["cols"] as usize),
+        x: map["x"] as usize,
+        y: map["y"] as usize,
+        rows: Dimension::fixed(map["rows"] as usize),
+        cols: Dimension::fixed(map["cols"] as usize),
         is_stacked: false,
     }
 }
 
-pub fn geoms_to_kdl(tab_name: &str, geoms: &[PaneGeom]) -> String {
-    let layout = get_layout_from_geoms(geoms, None);
+/// Tab declaration
+fn geoms_to_kdl_tab(name: &str, geoms: &[PaneGeom], tab_n: usize) -> String {
+    let layout = layout_from_geoms(geoms, None);
+    // log::info!("TiledLayout: {layout:?}");
     let tab = if &layout.children_split_direction != &SplitDirection::default() {
         vec![layout]
     } else {
         layout.children
     };
-    geoms_to_kdl_tab(tab_name, &tab)
-}
 
-fn geoms_to_kdl_tab(name: &str, tab: &[TiledPaneLayout]) -> String {
-    let mut kdl_string = format!("tab name=\"{name}\"{{\n");
-    let indent = "    ";
+    // skip tab decl if the tab is the only one
+    let mut kdl_string = match tab_n {
+        1 => format!(""),
+        _ => format!("tab name=\"{name}\" {{\n"),
+    };
+
     let indent_level = 1;
     for layout in tab {
-        kdl_string.push_str(&kdl_string_from_layout(&layout, indent, indent_level));
+        kdl_string.push_str(&kdl_string_from_layout(&layout, indent_level));
     }
-    kdl_string.push_str("}");
+
+    // skip tab closing } if the tab is the only one
+    match tab_n {
+        1 => {},
+        _ => kdl_string.push_str("}"),
+    };
+
     kdl_string
 }
 
-fn kdl_string_from_layout(layout: &TiledPaneLayout, indent: &str, indent_level: usize) -> String {
-    let mut kdl_string = String::from(&indent.repeat(indent_level));
+/// Pane declaration and recursion
+fn kdl_string_from_layout(layout: &TiledPaneLayout, indent_level: usize) -> String {
+    let mut kdl_string = String::from(&INDENT.repeat(indent_level));
     kdl_string.push_str("pane ");
     match layout.split_size {
         Some(SplitSize::Fixed(size)) => kdl_string.push_str(&format!("size={size} ")),
@@ -104,16 +131,17 @@ fn kdl_string_from_layout(layout: &TiledPaneLayout, indent: &str, indent_level: 
     } else {
         kdl_string.push_str("{\n");
         for pane in &layout.children {
-            kdl_string.push_str(&kdl_string_from_layout(&pane, indent, indent_level + 1));
+            kdl_string.push_str(&kdl_string_from_layout(&pane, indent_level + 1));
         }
-        kdl_string.push_str(&indent.repeat(indent_level));
+        kdl_string.push_str(&INDENT.repeat(indent_level));
         kdl_string.push_str("}\n");
     }
     kdl_string
 }
 
-fn get_layout_from_geoms(geoms: &[PaneGeom], split_size: Option<SplitSize>) -> TiledPaneLayout {
-    let (children_split_direction, splits) = match get_splits(&geoms) {
+/// Tab-level parsing
+fn layout_from_geoms(geoms: &[PaneGeom], split_size: Option<SplitSize>) -> TiledPaneLayout {
+    let (children_split_direction, splits) = match splits(&geoms) {
         Some(x) => x,
         None => {
             return TiledPaneLayout {
@@ -122,24 +150,34 @@ fn get_layout_from_geoms(geoms: &[PaneGeom], split_size: Option<SplitSize>) -> T
             }
         },
     };
-    let mut children = Vec::new();
+    log::info!("SPLITS: {splits:?}");
+
     let mut remaining_geoms = geoms.to_owned();
-    for i in 1..splits.len() {
-        let (v_min, v_max) = (splits[i - 1], splits[i]);
-        let subgeoms: Vec<PaneGeom>;
-        (subgeoms, remaining_geoms) = match children_split_direction {
-            SplitDirection::Horizontal => remaining_geoms
-                .clone()
+    let children = match splits {
+        splits if splits.len() == 1 => {
+            eprintln!("HERE");
+            vec![layout_from_subgeoms(
+                &mut remaining_geoms,
+                children_split_direction,
+                (0, splits[0]),
+            )]
+        },
+        _ => {
+            eprintln!("OR HERE");
+
+            (1..splits.len())
                 .into_iter()
-                .partition(|g| g.y + g.rows.as_usize() <= v_max),
-            SplitDirection::Vertical => remaining_geoms
-                .clone()
-                .into_iter()
-                .partition(|g| g.x + g.cols.as_usize() <= v_max),
-        };
-        let subsplit_size = SplitSize::Fixed(v_max - v_min);
-        children.push(get_layout_from_geoms(&subgeoms, Some(subsplit_size)));
-    }
+                .map(|i| {
+                    let (v_min, v_max) = (splits[i - 1], splits[i]);
+                    layout_from_subgeoms(
+                        &mut remaining_geoms,
+                        children_split_direction,
+                        (v_min, v_max),
+                    )
+                })
+                .collect()
+        },
+    };
     TiledPaneLayout {
         children_split_direction,
         split_size,
@@ -148,7 +186,27 @@ fn get_layout_from_geoms(geoms: &[PaneGeom], split_size: Option<SplitSize>) -> T
     }
 }
 
-fn get_x_lims(geoms: &[PaneGeom]) -> Option<(usize, usize)> {
+fn layout_from_subgeoms(
+    remaining_geoms: &mut Vec<PaneGeom>,
+    split_direction: SplitDirection,
+    (v_min, v_max): (usize, usize),
+) -> TiledPaneLayout {
+    let subgeoms: Vec<PaneGeom>;
+    (subgeoms, *remaining_geoms) = match split_direction {
+        SplitDirection::Horizontal => remaining_geoms
+            .clone()
+            .into_iter()
+            .partition(|g| g.y + g.rows.as_usize() <= v_max),
+        SplitDirection::Vertical => remaining_geoms
+            .clone()
+            .into_iter()
+            .partition(|g| g.x + g.cols.as_usize() <= v_max),
+    };
+    let subsplit_size = SplitSize::Fixed(v_max - v_min);
+    layout_from_geoms(&subgeoms, Some(subsplit_size))
+}
+
+fn x_lims(geoms: &[PaneGeom]) -> Option<(usize, usize)> {
     let x_min = geoms.iter().map(|g| g.x).min();
     let x_max = geoms.iter().map(|g| g.x + g.rows.as_usize()).max();
     match (x_min, x_max) {
@@ -157,7 +215,7 @@ fn get_x_lims(geoms: &[PaneGeom]) -> Option<(usize, usize)> {
     }
 }
 
-fn get_y_lims(geoms: &[PaneGeom]) -> Option<(usize, usize)> {
+fn y_lims(geoms: &[PaneGeom]) -> Option<(usize, usize)> {
     let y_min = geoms.iter().map(|g| g.y).min();
     let y_max = geoms.iter().map(|g| g.y + g.rows.as_usize()).max();
     match (y_min, y_max) {
@@ -166,26 +224,29 @@ fn get_y_lims(geoms: &[PaneGeom]) -> Option<(usize, usize)> {
     }
 }
 
-fn get_splits(geoms: &[PaneGeom]) -> Option<(SplitDirection, Vec<usize>)> {
+fn splits(geoms: &[PaneGeom]) -> Option<(SplitDirection, Vec<usize>)> {
+    log::info!("len: {}", geoms.len());
     if geoms.len() == 1 {
         return None;
     }
-    let (x_lims, y_lims) = match (get_x_lims(&geoms), get_y_lims(&geoms)) {
+    let (x_lims, y_lims) = match (x_lims(&geoms), y_lims(&geoms)) {
         (Some(x_lims), Some(y_lims)) => (x_lims, y_lims),
         _ => return None,
     };
     let mut direction = SplitDirection::default();
     let mut splits = match direction {
-        SplitDirection::Vertical => get_vertical_splits(&geoms, x_lims, y_lims),
-        SplitDirection::Horizontal => get_horizontal_splits(&geoms, x_lims, y_lims),
+        SplitDirection::Vertical => vertical_splits(&geoms, x_lims, y_lims),
+        SplitDirection::Horizontal => horizontal_splits(&geoms, x_lims, y_lims),
     };
+    log::info!("initial splits: {splits:?}, direction: {direction:?}");
     if splits.len() <= 2 {
         direction = !direction;
         splits = match direction {
-            SplitDirection::Vertical => get_vertical_splits(&geoms, x_lims, y_lims),
-            SplitDirection::Horizontal => get_horizontal_splits(&geoms, x_lims, y_lims),
+            SplitDirection::Vertical => vertical_splits(&geoms, x_lims, y_lims),
+            SplitDirection::Horizontal => horizontal_splits(&geoms, x_lims, y_lims),
         };
     }
+    log::info!("second step splits: {splits:?}");
     if splits.len() <= 2 {
         None
     } else {
@@ -193,11 +254,12 @@ fn get_splits(geoms: &[PaneGeom]) -> Option<(SplitDirection, Vec<usize>)> {
     }
 }
 
-fn get_vertical_splits(
+fn vertical_splits(
     geoms: &[PaneGeom],
     x_lims: (usize, usize),
     y_lims: (usize, usize),
 ) -> Vec<usize> {
+    log::info!("VERTICAL:{}", geoms.len());
     let ((_, x_max), (y_min, y_max)) = (x_lims, y_lims);
     let height = y_max - y_min;
     let mut splits = Vec::new();
@@ -219,11 +281,12 @@ fn get_vertical_splits(
     splits
 }
 
-fn get_horizontal_splits(
+fn horizontal_splits(
     geoms: &[PaneGeom],
     x_lims: (usize, usize),
     y_lims: (usize, usize),
 ) -> Vec<usize> {
+    log::info!("HORIZONTAL:{}", geoms.len());
     let ((x_min, x_max), (_, y_max)) = (x_lims, y_lims);
     let width = x_max - x_min;
     let mut splits = Vec::new();
@@ -259,7 +322,7 @@ mod tests {
         r#"[{"x": 0, "y": 0, "cols": 30, "rows": 20}, {"x": 0, "y": 20, "cols": 30, "rows": 20}, {"x": 0, "y": 40, "cols": 30, "rows": 10}, {"x": 30, "y": 0, "cols": 30, "rows": 50}, {"x": 0, "y": 50, "cols": 60, "rows": 10}, {"x": 60, "y": 0, "cols": 20, "rows": 60}]"#,
     ];
     const DIM: Dimension = Dimension {
-        constraint: crate::pane_size::Constraint::Fixed(0),
+        constraint: crate::pane_size::Constraint::Fixed(5),
         inner: 0,
     };
     const PANE_GEOM: PaneGeom = PaneGeom {
@@ -273,39 +336,41 @@ mod tests {
     #[test]
     fn geoms() {
         let geoms = parse_geoms_from_json(LAYOUT[0]);
-        let kdl = geoms_to_kdl("test", &geoms);
+        let kdl = geoms_to_kdl_tab("test", &geoms, 2);
         expect![[r#"
-            "tab name=\"test\"{\n    pane size=50 \n    pane size=50 split_direction=\"vertical\" {\n        pane size=50 \n        pane size=50 \n    }\n}"
+            "tab name=\"test\" {\n    pane size=50 \n    pane size=50 split_direction=\"vertical\" {\n        pane size=50 \n        pane size=50 \n    }\n}"
         "#]].assert_debug_eq(&kdl);
 
         let geoms = parse_geoms_from_json(LAYOUT[1]);
-        let kdl = geoms_to_kdl("test", &geoms);
+        let kdl = geoms_to_kdl_tab("test", &geoms, 1);
         expect![[r#"
-            "tab name=\"test\"{\n}"
-        "#]].assert_debug_eq(&kdl);
+            ""
+        "#]]
+        .assert_debug_eq(&kdl);
 
         let geoms = parse_geoms_from_json(LAYOUT[2]);
-        let kdl = geoms_to_kdl("test", &geoms);
+        let kdl = geoms_to_kdl_tab("test", &geoms, 1);
         expect![[r#"
-            "tab name=\"test\"{\n    pane split_direction=\"vertical\" {\n        pane size=60 \n        pane size=40 \n    }\n}"
+            "    pane split_direction=\"vertical\" {\n        pane size=60 \n        pane size=40 \n    }\n"
         "#]].assert_debug_eq(&kdl);
 
         let geoms = parse_geoms_from_json(LAYOUT[3]);
-        let kdl = geoms_to_kdl("test", &geoms);
+        let kdl = geoms_to_kdl_tab("test", &geoms, 1);
         expect![[r#"
-            "tab name=\"test\"{\n}"
-        "#]].assert_debug_eq(&kdl);
+            ""
+        "#]]
+        .assert_debug_eq(&kdl);
 
         let geoms = parse_geoms_from_json(LAYOUT[4]);
-        let kdl = geoms_to_kdl("test", &geoms);
+        let kdl = geoms_to_kdl_tab("test", &geoms, 1);
         expect![[r#"
-            "tab name=\"test\"{\n    pane split_direction=\"vertical\" {\n        pane size=40 \n        pane size=40 {\n            pane size=20 \n            pane size=20 split_direction=\"vertical\" {\n                pane size=20 \n                pane size=20 \n            }\n            pane size=20 \n        }\n    }\n}"
+            "    pane split_direction=\"vertical\" {\n        pane size=40 \n        pane size=40 {\n            pane size=20 \n            pane size=20 split_direction=\"vertical\" {\n                pane size=20 \n                pane size=20 \n            }\n            pane size=20 \n        }\n    }\n"
         "#]].assert_debug_eq(&kdl);
 
         let geoms = parse_geoms_from_json(LAYOUT[5]);
-        let kdl = geoms_to_kdl("test", &geoms);
+        let kdl = geoms_to_kdl_tab("test", &geoms, 1);
         expect![[r#"
-            "tab name=\"test\"{\n    pane split_direction=\"vertical\" {\n        pane size=60 \n        pane size=60 \n    }\n}"
+            "    pane split_direction=\"vertical\" {\n        pane size=60 \n        pane size=60 \n    }\n"
         "#]].assert_debug_eq(&kdl);
     }
 }

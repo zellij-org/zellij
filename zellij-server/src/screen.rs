@@ -1929,21 +1929,21 @@ pub(crate) fn screen_thread_main(
                 screen.unblock_input()?;
             },
             ScreenInstruction::DumpLayout(client_id, layout) => {
-                for tab in screen.tabs.values() {
-                    log::warn!("TAB: {}", tab.name);
-                    let panes_str: String = tab
-                        .get_tiled_panes()
-                        .map(|(_, p)| p.position_and_size())
-                        .map(|p| p.to_string())
-                        .collect();
-                    log::info!("PANES: {panes_str}");
-                    let panes: Vec<PaneGeom> = tab
-                        .get_tiled_panes()
-                        .map(|(_, p)| p.position_and_size())
-                        .collect();
-                    let kdl_config = persistence::geoms_to_kdl(&tab.name, &panes);
-                    log::info!("{kdl_config}");
-                }
+                let tabs: Vec<(String, Vec<PaneGeom>)> = screen
+                    .tabs
+                    .values()
+                    .into_iter()
+                    .map(|tab| {
+                        let panes: Vec<PaneGeom> = tab
+                            .get_tiled_panes()
+                            .map(|(_, p)| p.position_and_size())
+                            .collect();
+                        (tab.name.clone(), panes)
+                    })
+                    .collect();
+                let kdl_config = persistence::tabs_to_kdl(&tabs);
+
+                log::info!("{kdl_config}");
                 screen.unblock_input()?;
                 screen.render()?;
             },
