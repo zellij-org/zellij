@@ -1097,15 +1097,10 @@ pub fn wasi_read_string(wasi_env: &WasiEnv) -> Result<String> {
     let mut buf = vec![];
     wasi_env
         .state()
-        .fs
-        .stdout_mut()
+        .stdout()
         .map_err(anyError::new)
-        .and_then(|stdout| {
-            stdout
-                .as_mut()
-                .ok_or(anyhow!("failed to get mutable reference to stdout"))
-        })
-        .and_then(|wasi_file| wasi_file.read_to_end(&mut buf).map_err(anyError::new))
+        .and_then(|stdout| stdout.ok_or(anyhow!("failed to get mutable reference to stdout")))
+        .and_then(|mut wasi_file| wasi_file.read_to_end(&mut buf).map_err(anyError::new))
         .with_context(err_context)?;
     let buf = String::from_utf8_lossy(&buf);
     // https://stackoverflow.com/questions/66450942/in-rust-is-there-a-way-to-make-literal-newlines-in-r-using-windows-c
@@ -1115,15 +1110,10 @@ pub fn wasi_read_string(wasi_env: &WasiEnv) -> Result<String> {
 pub fn wasi_write_string(wasi_env: &WasiEnv, buf: &str) -> Result<()> {
     wasi_env
         .state()
-        .fs
-        .stdin_mut()
+        .stdin()
         .map_err(anyError::new)
-        .and_then(|stdin| {
-            stdin
-                .as_mut()
-                .ok_or(anyhow!("failed to get mutable reference to stdin"))
-        })
-        .and_then(|stdin| writeln!(stdin, "{}\r", buf).map_err(anyError::new))
+        .and_then(|stdin| stdin.ok_or(anyhow!("failed to get mutable reference to stdin")))
+        .and_then(|mut stdin| writeln!(stdin, "{}\r", buf).map_err(anyError::new))
         .with_context(|| format!("failed to write string to WASI env '{wasi_env:?}'"))
 }
 
