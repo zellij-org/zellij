@@ -119,7 +119,7 @@ fn create_plugin_thread(
         None,
     )
     .should_silently_fail();
-    let store = Store::new(&wasmer::Universal::new(wasmer::Singlepass::default()).engine());
+    let store = Store::new(wasmer::Singlepass::default());
     let data_dir = PathBuf::from(tempdir().unwrap().path());
     let default_shell = PathBuf::from(".");
     let plugin_capabilities = PluginCapabilities::default();
@@ -200,7 +200,7 @@ fn create_plugin_thread_with_server_receiver(
         None,
     )
     .should_silently_fail();
-    let store = Store::new(&wasmer::Universal::new(wasmer::Singlepass::default()).engine());
+    let store = Store::new(wasmer::Singlepass::default());
     let data_dir = PathBuf::from(tempdir().unwrap().path());
     let default_shell = PathBuf::from(".");
     let plugin_capabilities = PluginCapabilities::default();
@@ -282,7 +282,7 @@ fn create_plugin_thread_with_pty_receiver(
         None,
     )
     .should_silently_fail();
-    let store = Store::new(&wasmer::Universal::new(wasmer::Singlepass::default()).engine());
+    let store = Store::new(wasmer::Singlepass::default());
     let data_dir = PathBuf::from(tempdir().unwrap().path());
     let default_shell = PathBuf::from(".");
     let plugin_capabilities = PluginCapabilities::default();
