@@ -12,7 +12,7 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
-use wasmer::{imports, Function, ImportObject, Store, WasmerEnv};
+use wasmer::{imports, Function, FunctionEnv, FunctionEnvMut, Imports, Store};
 use wasmer_wasi::WasiEnv;
 
 use url::Url;
@@ -49,20 +49,26 @@ macro_rules! apply_action {
 }
 
 pub fn zellij_exports(
-    store: &Store,
+    store: &mut Store,
     plugin_env: &PluginEnv,
     subscriptions: &Arc<Mutex<Subscriptions>>,
-) -> ImportObject {
+) -> Imports {
     macro_rules! zellij_export {
         ($($host_function:ident),+ $(,)?) => {
             imports! {
                 "zellij" => {
                     $(stringify!($host_function) =>
-                        Function::new_native_with_env(store, ForeignFunctionEnv::new(plugin_env, subscriptions), $host_function),)+
+                        Function::new_typed_with_env(store, &FunctionEnv::new(store, ForeignFunctionEnv::new(plugin_env, subscriptions)), $host_function),)+
                 }
             }
         }
     }
+
+    Function::new_typed_with_env(
+        store,
+        &FunctionEnv::new(store, ForeignFunctionEnv::new(plugin_env, subscriptions)),
+        host_subscribe,
+    );
 
     zellij_export! {
         host_subscribe,
@@ -136,7 +142,7 @@ pub fn zellij_exports(
     }
 }
 
-#[derive(WasmerEnv, Clone)]
+#[derive(Clone)]
 pub struct ForeignFunctionEnv {
     pub plugin_env: PluginEnv,
     pub subscriptions: Arc<Mutex<Subscriptions>>,
@@ -151,7 +157,8 @@ impl ForeignFunctionEnv {
     }
 }
 
-fn host_subscribe(env: &ForeignFunctionEnv) {
+fn host_subscribe(env: FunctionEnvMut<ForeignFunctionEnv>) {
+    let env = env.data();
     wasi_read_object::<HashSet<EventType>>(&env.plugin_env.wasi_env)
         .and_then(|new| {
             env.subscriptions.lock().to_anyhow()?.extend(new.clone());
@@ -170,7 +177,8 @@ fn host_subscribe(env: &ForeignFunctionEnv) {
         .fatal();
 }
 
-fn host_unsubscribe(env: &ForeignFunctionEnv) {
+fn host_unsubscribe(env: FunctionEnvMut<ForeignFunctionEnv>) {
+    let env = env.data();
     wasi_read_object::<HashSet<EventType>>(&env.plugin_env.wasi_env)
         .and_then(|old| {
             env.subscriptions
@@ -183,7 +191,8 @@ fn host_unsubscribe(env: &ForeignFunctionEnv) {
         .fatal();
 }
 
-fn host_set_selectable(env: &ForeignFunctionEnv, selectable: i32) {
+fn host_set_selectable(env: FunctionEnvMut<ForeignFunctionEnv>, selectable: i32) {
+    let env = env.data();
     match env.plugin_env.plugin.run {
         PluginType::Pane(Some(tab_index)) => {
             let selectable = selectable != 0;
@@ -212,7 +221,8 @@ fn host_set_selectable(env: &ForeignFunctionEnv, selectable: i32) {
     }
 }
 
-fn host_get_plugin_ids(env: &ForeignFunctionEnv) {
+fn host_get_plugin_ids(env: FunctionEnvMut<ForeignFunctionEnv>) {
+    let env = env.data();
     let ids = PluginIds {
         plugin_id: env.plugin_env.plugin_id,
         zellij_pid: process::id(),
@@ -227,7 +237,8 @@ fn host_get_plugin_ids(env: &ForeignFunctionEnv) {
         .non_fatal();
 }
 
-fn host_get_zellij_version(env: &ForeignFunctionEnv) {
+fn host_get_zellij_version(env: FunctionEnvMut<ForeignFunctionEnv>) {
+    let env = env.data();
     wasi_write_object(&env.plugin_env.wasi_env, VERSION)
         .with_context(|| {
             format!(
@@ -238,7 +249,8 @@ fn host_get_zellij_version(env: &ForeignFunctionEnv) {
         .non_fatal();
 }
 
-fn host_open_file(env: &ForeignFunctionEnv) {
+fn host_open_file(env: FunctionEnvMut<ForeignFunctionEnv>) {
+    let env = env.data();
     wasi_read_object::<PathBuf>(&env.plugin_env.wasi_env)
         .and_then(|path| {
             let error_msg = || {
@@ -261,7 +273,8 @@ fn host_open_file(env: &ForeignFunctionEnv) {
         .non_fatal();
 }
 
-fn host_open_file_floating(env: &ForeignFunctionEnv) {
+fn host_open_file_floating(env: FunctionEnvMut<ForeignFunctionEnv>) {
+    let env = env.data();
     wasi_read_object::<PathBuf>(&env.plugin_env.wasi_env)
         .and_then(|path| {
             let error_msg = || format!("failed to open file in plugin {}", env.plugin_env.name());
@@ -279,7 +292,8 @@ fn host_open_file_floating(env: &ForeignFunctionEnv) {
         .non_fatal();
 }
 
-fn host_open_file_with_line(env: &ForeignFunctionEnv) {
+fn host_open_file_with_line(env: FunctionEnvMut<ForeignFunctionEnv>) {
+    let env = env.data();
     wasi_read_object::<(PathBuf, usize)>(&env.plugin_env.wasi_env)
         .and_then(|(path, line)| {
             let error_msg = || format!("failed to open file in plugin {}", env.plugin_env.name());
@@ -297,7 +311,8 @@ fn host_open_file_with_line(env: &ForeignFunctionEnv) {
         .non_fatal();
 }
 
-fn host_open_file_with_line_floating(env: &ForeignFunctionEnv) {
+fn host_open_file_with_line_floating(env: FunctionEnvMut<ForeignFunctionEnv>) {
+    let env = env.data();
     wasi_read_object::<(PathBuf, usize)>(&env.plugin_env.wasi_env)
         .and_then(|(path, line)| {
             let error_msg = || format!("failed to open file in plugin {}", env.plugin_env.name());
@@ -315,7 +330,8 @@ fn host_open_file_with_line_floating(env: &ForeignFunctionEnv) {
         .non_fatal();
 }
 
-fn host_open_terminal(env: &ForeignFunctionEnv) {
+fn host_open_terminal(env: FunctionEnvMut<ForeignFunctionEnv>) {
+    let env = env.data();
     wasi_read_object::<PathBuf>(&env.plugin_env.wasi_env)
         .and_then(|path| {
             let error_msg = || format!("failed to open file in plugin {}", env.plugin_env.name());
@@ -342,7 +358,8 @@ fn host_open_terminal(env: &ForeignFunctionEnv) {
         .non_fatal();
 }
 
-fn host_open_terminal_floating(env: &ForeignFunctionEnv) {
+fn host_open_terminal_floating(env: FunctionEnvMut<ForeignFunctionEnv>) {
+    let env = env.data();
     wasi_read_object::<PathBuf>(&env.plugin_env.wasi_env)
         .and_then(|path| {
             let error_msg = || format!("failed to open file in plugin {}", env.plugin_env.name());
@@ -369,7 +386,8 @@ fn host_open_terminal_floating(env: &ForeignFunctionEnv) {
         .non_fatal();
 }
 
-fn host_open_command_pane(env: &ForeignFunctionEnv) {
+fn host_open_command_pane(env: FunctionEnvMut<ForeignFunctionEnv>) {
+    let env = env.data();
     let error_msg = || format!("failed to run command in plugin {}", env.plugin_env.name());
     wasi_read_object::<(PathBuf, Vec<String>)>(&env.plugin_env.wasi_env)
         .and_then(|(command, args)| {
@@ -394,7 +412,8 @@ fn host_open_command_pane(env: &ForeignFunctionEnv) {
         .non_fatal();
 }
 
-fn host_open_command_pane_floating(env: &ForeignFunctionEnv) {
+fn host_open_command_pane_floating(env: FunctionEnvMut<ForeignFunctionEnv>) {
+    let env = env.data();
     let error_msg = || format!("failed to run command in plugin {}", env.plugin_env.name());
     wasi_read_object::<(PathBuf, Vec<String>)>(&env.plugin_env.wasi_env)
         .and_then(|(command, args)| {
@@ -419,7 +438,8 @@ fn host_open_command_pane_floating(env: &ForeignFunctionEnv) {
         .non_fatal();
 }
 
-fn host_switch_tab_to(env: &ForeignFunctionEnv, tab_idx: u32) {
+fn host_switch_tab_to(env: FunctionEnvMut<ForeignFunctionEnv>, tab_idx: u32) {
+    let env = env.data();
     env.plugin_env
         .senders
         .send_to_screen(ScreenInstruction::GoToTab(
@@ -435,7 +455,7 @@ fn host_switch_tab_to(env: &ForeignFunctionEnv, tab_idx: u32) {
         .non_fatal();
 }
 
-fn host_set_timeout(env: &ForeignFunctionEnv, secs: f64) {
+fn host_set_timeout(env: FunctionEnvMut<ForeignFunctionEnv>, secs: f64) {
     // There is a fancy, high-performance way to do this with zero additional threads:
     // If the plugin thread keeps a BinaryHeap of timer structs, it can manage multiple and easily `.peek()` at the
     // next time to trigger in O(1) time. Once the wake-up time is known, the `wasm` thread can use `recv_timeout()`
@@ -445,6 +465,7 @@ fn host_set_timeout(env: &ForeignFunctionEnv, secs: f64) {
     // timers as we'd like.
     //
     // But that's a lot of code, and this is a few lines:
+    let env = env.data();
     let send_plugin_instructions = env.plugin_env.senders.to_plugin.clone();
     let update_target = Some(env.plugin_env.plugin_id);
     let client_id = env.plugin_env.client_id;
@@ -478,7 +499,8 @@ fn host_set_timeout(env: &ForeignFunctionEnv, secs: f64) {
     });
 }
 
-fn host_exec_cmd(env: &ForeignFunctionEnv) {
+fn host_exec_cmd(env: FunctionEnvMut<ForeignFunctionEnv>) {
+    let env = env.data();
     let err_context = || {
         format!(
             "failed to execute command on host for plugin '{}'",
@@ -506,7 +528,8 @@ fn host_exec_cmd(env: &ForeignFunctionEnv) {
         .non_fatal();
 }
 
-fn host_post_message_to(env: &ForeignFunctionEnv) {
+fn host_post_message_to(env: FunctionEnvMut<ForeignFunctionEnv>) {
+    let env = env.data();
     wasi_read_object::<(String, String, String)>(&env.plugin_env.wasi_env)
         .and_then(|(worker_name, message, payload)| {
             env.plugin_env
@@ -522,7 +545,8 @@ fn host_post_message_to(env: &ForeignFunctionEnv) {
         .fatal();
 }
 
-fn host_post_message_to_plugin(env: &ForeignFunctionEnv) {
+fn host_post_message_to_plugin(env: FunctionEnvMut<ForeignFunctionEnv>) {
+    let env = env.data();
     wasi_read_object::<(String, String)>(&env.plugin_env.wasi_env)
         .and_then(|(message, payload)| {
             env.plugin_env
@@ -538,7 +562,8 @@ fn host_post_message_to_plugin(env: &ForeignFunctionEnv) {
         .fatal();
 }
 
-fn host_hide_self(env: &ForeignFunctionEnv) {
+fn host_hide_self(env: FunctionEnvMut<ForeignFunctionEnv>) {
+    let env = env.data();
     env.plugin_env
         .senders
         .send_to_screen(ScreenInstruction::SuppressPane(
@@ -549,14 +574,16 @@ fn host_hide_self(env: &ForeignFunctionEnv) {
         .fatal();
 }
 
-fn host_show_self(env: &ForeignFunctionEnv, should_float_if_hidden: i32) {
+fn host_show_self(env: FunctionEnvMut<ForeignFunctionEnv>, should_float_if_hidden: i32) {
+    let env = env.data();
     let should_float_if_hidden = should_float_if_hidden != 0;
     let action = Action::FocusPluginPaneWithId(env.plugin_env.plugin_id, should_float_if_hidden);
     let error_msg = || format!("Failed to show self for plugin");
     apply_action!(action, error_msg, env);
 }
 
-fn host_switch_to_mode(env: &ForeignFunctionEnv) {
+fn host_switch_to_mode(env: FunctionEnvMut<ForeignFunctionEnv>) {
+    let env = env.data();
     wasi_read_object::<InputMode>(&env.plugin_env.wasi_env)
         .and_then(|input_mode| {
             let action = Action::SwitchToMode(input_mode);
@@ -573,7 +600,8 @@ fn host_switch_to_mode(env: &ForeignFunctionEnv) {
         .fatal();
 }
 
-fn host_new_tabs_with_layout(env: &ForeignFunctionEnv) {
+fn host_new_tabs_with_layout(env: FunctionEnvMut<ForeignFunctionEnv>) {
+    let env = env.data();
     wasi_read_string(&env.plugin_env.wasi_env)
         .and_then(|raw_layout| {
             Layout::from_str(
@@ -621,25 +649,29 @@ fn host_new_tabs_with_layout(env: &ForeignFunctionEnv) {
         .non_fatal();
 }
 
-fn host_new_tab(env: &ForeignFunctionEnv) {
+fn host_new_tab(env: FunctionEnvMut<ForeignFunctionEnv>) {
+    let env = env.data();
     let action = Action::NewTab(None, vec![], None, None, None);
     let error_msg = || format!("Failed to open new tab");
     apply_action!(action, error_msg, env);
 }
 
-fn host_go_to_next_tab(env: &ForeignFunctionEnv) {
+fn host_go_to_next_tab(env: FunctionEnvMut<ForeignFunctionEnv>) {
+    let env = env.data();
     let action = Action::GoToNextTab;
     let error_msg = || format!("Failed to go to next tab");
     apply_action!(action, error_msg, env);
 }
 
-fn host_go_to_previous_tab(env: &ForeignFunctionEnv) {
+fn host_go_to_previous_tab(env: FunctionEnvMut<ForeignFunctionEnv>) {
+    let env = env.data();
     let action = Action::GoToPreviousTab;
     let error_msg = || format!("Failed to go to previous tab");
     apply_action!(action, error_msg, env);
 }
 
-fn host_resize(env: &ForeignFunctionEnv) {
+fn host_resize(env: FunctionEnvMut<ForeignFunctionEnv>) {
+    let env = env.data();
     let error_msg = || format!("failed to resize in plugin {}", env.plugin_env.name());
     wasi_read_object::<Resize>(&env.plugin_env.wasi_env)
         .and_then(|resize| {
@@ -651,7 +683,8 @@ fn host_resize(env: &ForeignFunctionEnv) {
         .fatal();
 }
 
-fn host_resize_with_direction(env: &ForeignFunctionEnv) {
+fn host_resize_with_direction(env: FunctionEnvMut<ForeignFunctionEnv>) {
+    let env = env.data();
     let error_msg = || format!("failed to resize in plugin {}", env.plugin_env.name());
     wasi_read_object::<(Resize, Direction)>(&env.plugin_env.wasi_env)
         .and_then(|(resize, direction)| {
@@ -663,19 +696,22 @@ fn host_resize_with_direction(env: &ForeignFunctionEnv) {
         .fatal();
 }
 
-fn host_focus_next_pane(env: &ForeignFunctionEnv) {
+fn host_focus_next_pane(env: FunctionEnvMut<ForeignFunctionEnv>) {
+    let env = env.data();
     let action = Action::FocusNextPane;
     let error_msg = || format!("Failed to focus next pane");
     apply_action!(action, error_msg, env);
 }
 
-fn host_focus_previous_pane(env: &ForeignFunctionEnv) {
+fn host_focus_previous_pane(env: FunctionEnvMut<ForeignFunctionEnv>) {
+    let env = env.data();
     let action = Action::FocusPreviousPane;
     let error_msg = || format!("Failed to focus previous pane");
     apply_action!(action, error_msg, env);
 }
 
-fn host_move_focus(env: &ForeignFunctionEnv) {
+fn host_move_focus(env: FunctionEnvMut<ForeignFunctionEnv>) {
+    let env = env.data();
     let error_msg = || format!("failed to move focus in plugin {}", env.plugin_env.name());
     wasi_read_object::<Direction>(&env.plugin_env.wasi_env)
         .and_then(|direction| {
@@ -687,7 +723,8 @@ fn host_move_focus(env: &ForeignFunctionEnv) {
         .fatal();
 }
 
-fn host_move_focus_or_tab(env: &ForeignFunctionEnv) {
+fn host_move_focus_or_tab(env: FunctionEnvMut<ForeignFunctionEnv>) {
+    let env = env.data();
     let error_msg = || format!("failed to move focus in plugin {}", env.plugin_env.name());
     wasi_read_object::<Direction>(&env.plugin_env.wasi_env)
         .and_then(|direction| {
@@ -699,19 +736,22 @@ fn host_move_focus_or_tab(env: &ForeignFunctionEnv) {
         .fatal();
 }
 
-fn host_detach(env: &ForeignFunctionEnv) {
+fn host_detach(env: FunctionEnvMut<ForeignFunctionEnv>) {
+    let env = env.data();
     let action = Action::Detach;
     let error_msg = || format!("Failed to detach");
     apply_action!(action, error_msg, env);
 }
 
-fn host_edit_scrollback(env: &ForeignFunctionEnv) {
+fn host_edit_scrollback(env: FunctionEnvMut<ForeignFunctionEnv>) {
+    let env = env.data();
     let action = Action::EditScrollback;
     let error_msg = || format!("Failed to edit scrollback");
     apply_action!(action, error_msg, env);
 }
 
-fn host_write(env: &ForeignFunctionEnv) {
+fn host_write(env: FunctionEnvMut<ForeignFunctionEnv>) {
+    let env = env.data();
     let error_msg = || format!("failed to write in plugin {}", env.plugin_env.name());
     wasi_read_object::<Vec<u8>>(&env.plugin_env.wasi_env)
         .and_then(|bytes| {
@@ -723,7 +763,8 @@ fn host_write(env: &ForeignFunctionEnv) {
         .fatal();
 }
 
-fn host_write_chars(env: &ForeignFunctionEnv) {
+fn host_write_chars(env: FunctionEnvMut<ForeignFunctionEnv>) {
+    let env = env.data();
     let error_msg = || format!("failed to write in plugin {}", env.plugin_env.name());
     wasi_read_string(&env.plugin_env.wasi_env)
         .and_then(|chars_to_write| {
@@ -735,19 +776,22 @@ fn host_write_chars(env: &ForeignFunctionEnv) {
         .fatal();
 }
 
-fn host_toggle_tab(env: &ForeignFunctionEnv) {
+fn host_toggle_tab(env: FunctionEnvMut<ForeignFunctionEnv>) {
+    let env = env.data();
     let action = Action::ToggleTab;
     let error_msg = || format!("Failed to toggle tab");
     apply_action!(action, error_msg, env);
 }
 
-fn host_move_pane(env: &ForeignFunctionEnv) {
+fn host_move_pane(env: FunctionEnvMut<ForeignFunctionEnv>) {
+    let env = env.data();
     let error_msg = || format!("failed to move pane in plugin {}", env.plugin_env.name());
     let action = Action::MovePane(None);
     apply_action!(action, error_msg, env);
 }
 
-fn host_move_pane_with_direction(env: &ForeignFunctionEnv) {
+fn host_move_pane_with_direction(env: FunctionEnvMut<ForeignFunctionEnv>) {
+    let env = env.data();
     let error_msg = || format!("failed to move pane in plugin {}", env.plugin_env.name());
     wasi_read_object::<Direction>(&env.plugin_env.wasi_env)
         .and_then(|direction| {
@@ -759,48 +803,56 @@ fn host_move_pane_with_direction(env: &ForeignFunctionEnv) {
         .fatal();
 }
 
-fn host_clear_screen(env: &ForeignFunctionEnv) {
+fn host_clear_screen(env: FunctionEnvMut<ForeignFunctionEnv>) {
+    let env = env.data();
     let error_msg = || format!("failed to clear screen in plugin {}", env.plugin_env.name());
     let action = Action::ClearScreen;
     apply_action!(action, error_msg, env);
 }
-fn host_scroll_up(env: &ForeignFunctionEnv) {
+fn host_scroll_up(env: FunctionEnvMut<ForeignFunctionEnv>) {
+    let env = env.data();
     let error_msg = || format!("failed to scroll up in plugin {}", env.plugin_env.name());
     let action = Action::ScrollUp;
     apply_action!(action, error_msg, env);
 }
 
-fn host_scroll_down(env: &ForeignFunctionEnv) {
+fn host_scroll_down(env: FunctionEnvMut<ForeignFunctionEnv>) {
+    let env = env.data();
     let error_msg = || format!("failed to scroll down in plugin {}", env.plugin_env.name());
     let action = Action::ScrollDown;
     apply_action!(action, error_msg, env);
 }
 
-fn host_scroll_to_top(env: &ForeignFunctionEnv) {
+fn host_scroll_to_top(env: FunctionEnvMut<ForeignFunctionEnv>) {
+    let env = env.data();
     let error_msg = || format!("failed to scroll in plugin {}", env.plugin_env.name());
     let action = Action::ScrollToTop;
     apply_action!(action, error_msg, env);
 }
 
-fn host_scroll_to_bottom(env: &ForeignFunctionEnv) {
+fn host_scroll_to_bottom(env: FunctionEnvMut<ForeignFunctionEnv>) {
+    let env = env.data();
     let error_msg = || format!("failed to scroll in plugin {}", env.plugin_env.name());
     let action = Action::ScrollToBottom;
     apply_action!(action, error_msg, env);
 }
 
-fn host_page_scroll_up(env: &ForeignFunctionEnv) {
+fn host_page_scroll_up(env: FunctionEnvMut<ForeignFunctionEnv>) {
+    let env = env.data();
     let error_msg = || format!("failed to scroll in plugin {}", env.plugin_env.name());
     let action = Action::PageScrollUp;
     apply_action!(action, error_msg, env);
 }
 
-fn host_page_scroll_down(env: &ForeignFunctionEnv) {
+fn host_page_scroll_down(env: FunctionEnvMut<ForeignFunctionEnv>) {
+    let env = env.data();
     let error_msg = || format!("failed to scroll in plugin {}", env.plugin_env.name());
     let action = Action::PageScrollDown;
     apply_action!(action, error_msg, env);
 }
 
-fn host_toggle_focus_fullscreen(env: &ForeignFunctionEnv) {
+fn host_toggle_focus_fullscreen(env: FunctionEnvMut<ForeignFunctionEnv>) {
+    let env = env.data();
     let error_msg = || {
         format!(
             "failed to toggle full screen in plugin {}",
@@ -811,7 +863,8 @@ fn host_toggle_focus_fullscreen(env: &ForeignFunctionEnv) {
     apply_action!(action, error_msg, env);
 }
 
-fn host_toggle_pane_frames(env: &ForeignFunctionEnv) {
+fn host_toggle_pane_frames(env: FunctionEnvMut<ForeignFunctionEnv>) {
+    let env = env.data();
     let error_msg = || {
         format!(
             "failed to toggle full screen in plugin {}",
@@ -822,7 +875,8 @@ fn host_toggle_pane_frames(env: &ForeignFunctionEnv) {
     apply_action!(action, error_msg, env);
 }
 
-fn host_toggle_pane_embed_or_eject(env: &ForeignFunctionEnv) {
+fn host_toggle_pane_embed_or_eject(env: FunctionEnvMut<ForeignFunctionEnv>) {
+    let env = env.data();
     let error_msg = || {
         format!(
             "failed to toggle pane embed or eject in plugin {}",
@@ -833,7 +887,8 @@ fn host_toggle_pane_embed_or_eject(env: &ForeignFunctionEnv) {
     apply_action!(action, error_msg, env);
 }
 
-fn host_undo_rename_pane(env: &ForeignFunctionEnv) {
+fn host_undo_rename_pane(env: FunctionEnvMut<ForeignFunctionEnv>) {
+    let env = env.data();
     let error_msg = || {
         format!(
             "failed to undo rename pane in plugin {}",
@@ -844,7 +899,8 @@ fn host_undo_rename_pane(env: &ForeignFunctionEnv) {
     apply_action!(action, error_msg, env);
 }
 
-fn host_close_focus(env: &ForeignFunctionEnv) {
+fn host_close_focus(env: FunctionEnvMut<ForeignFunctionEnv>) {
+    let env = env.data();
     let error_msg = || {
         format!(
             "failed to close focused pane in plugin {}",
@@ -855,7 +911,8 @@ fn host_close_focus(env: &ForeignFunctionEnv) {
     apply_action!(action, error_msg, env);
 }
 
-fn host_toggle_active_tab_sync(env: &ForeignFunctionEnv) {
+fn host_toggle_active_tab_sync(env: FunctionEnvMut<ForeignFunctionEnv>) {
+    let env = env.data();
     let error_msg = || {
         format!(
             "failed to toggle active tab sync in plugin {}",
@@ -866,7 +923,8 @@ fn host_toggle_active_tab_sync(env: &ForeignFunctionEnv) {
     apply_action!(action, error_msg, env);
 }
 
-fn host_close_focused_tab(env: &ForeignFunctionEnv) {
+fn host_close_focused_tab(env: FunctionEnvMut<ForeignFunctionEnv>) {
+    let env = env.data();
     let error_msg = || {
         format!(
             "failed to close active tab in plugin {}",
@@ -877,7 +935,8 @@ fn host_close_focused_tab(env: &ForeignFunctionEnv) {
     apply_action!(action, error_msg, env);
 }
 
-fn host_undo_rename_tab(env: &ForeignFunctionEnv) {
+fn host_undo_rename_tab(env: FunctionEnvMut<ForeignFunctionEnv>) {
+    let env = env.data();
     let error_msg = || {
         format!(
             "failed to undo rename tab in plugin {}",
@@ -888,13 +947,15 @@ fn host_undo_rename_tab(env: &ForeignFunctionEnv) {
     apply_action!(action, error_msg, env);
 }
 
-fn host_quit_zellij(env: &ForeignFunctionEnv) {
+fn host_quit_zellij(env: FunctionEnvMut<ForeignFunctionEnv>) {
+    let env = env.data();
     let error_msg = || format!("failed to quit zellij in plugin {}", env.plugin_env.name());
     let action = Action::Quit;
     apply_action!(action, error_msg, env);
 }
 
-fn host_previous_swap_layout(env: &ForeignFunctionEnv) {
+fn host_previous_swap_layout(env: FunctionEnvMut<ForeignFunctionEnv>) {
+    let env = env.data();
     let error_msg = || {
         format!(
             "failed to switch swap layout in plugin {}",
@@ -905,7 +966,8 @@ fn host_previous_swap_layout(env: &ForeignFunctionEnv) {
     apply_action!(action, error_msg, env);
 }
 
-fn host_next_swap_layout(env: &ForeignFunctionEnv) {
+fn host_next_swap_layout(env: FunctionEnvMut<ForeignFunctionEnv>) {
+    let env = env.data();
     let error_msg = || {
         format!(
             "failed to switch swap layout in plugin {}",
@@ -916,7 +978,8 @@ fn host_next_swap_layout(env: &ForeignFunctionEnv) {
     apply_action!(action, error_msg, env);
 }
 
-fn host_go_to_tab_name(env: &ForeignFunctionEnv) {
+fn host_go_to_tab_name(env: FunctionEnvMut<ForeignFunctionEnv>) {
+    let env = env.data();
     let error_msg = || format!("failed to change tab in plugin {}", env.plugin_env.name());
     wasi_read_string(&env.plugin_env.wasi_env)
         .and_then(|tab_name| {
@@ -929,7 +992,8 @@ fn host_go_to_tab_name(env: &ForeignFunctionEnv) {
         .fatal();
 }
 
-fn host_focus_or_create_tab(env: &ForeignFunctionEnv) {
+fn host_focus_or_create_tab(env: FunctionEnvMut<ForeignFunctionEnv>) {
+    let env = env.data();
     let error_msg = || {
         format!(
             "failed to change or create tab in plugin {}",
@@ -947,7 +1011,8 @@ fn host_focus_or_create_tab(env: &ForeignFunctionEnv) {
         .fatal();
 }
 
-fn host_go_to_tab(env: &ForeignFunctionEnv, tab_index: i32) {
+fn host_go_to_tab(env: FunctionEnvMut<ForeignFunctionEnv>, tab_index: i32) {
+    let env = env.data();
     let error_msg = || {
         format!(
             "failed to change tab focus in plugin {}",
@@ -958,7 +1023,8 @@ fn host_go_to_tab(env: &ForeignFunctionEnv, tab_index: i32) {
     apply_action!(action, error_msg, env);
 }
 
-fn host_start_or_reload_plugin(env: &ForeignFunctionEnv) {
+fn host_start_or_reload_plugin(env: FunctionEnvMut<ForeignFunctionEnv>) {
+    let env = env.data();
     let error_msg = || {
         format!(
             "failed to start or reload plugin in plugin {}",
@@ -985,7 +1051,8 @@ fn host_start_or_reload_plugin(env: &ForeignFunctionEnv) {
         .fatal();
 }
 
-fn host_close_terminal_pane(env: &ForeignFunctionEnv, terminal_pane_id: i32) {
+fn host_close_terminal_pane(env: FunctionEnvMut<ForeignFunctionEnv>, terminal_pane_id: i32) {
+    let env = env.data();
     let error_msg = || {
         format!(
             "failed to change tab focus in plugin {}",
@@ -996,7 +1063,8 @@ fn host_close_terminal_pane(env: &ForeignFunctionEnv, terminal_pane_id: i32) {
     apply_action!(action, error_msg, env);
 }
 
-fn host_close_plugin_pane(env: &ForeignFunctionEnv, plugin_pane_id: i32) {
+fn host_close_plugin_pane(env: FunctionEnvMut<ForeignFunctionEnv>, plugin_pane_id: i32) {
+    let env = env.data();
     let error_msg = || {
         format!(
             "failed to change tab focus in plugin {}",
@@ -1008,10 +1076,11 @@ fn host_close_plugin_pane(env: &ForeignFunctionEnv, plugin_pane_id: i32) {
 }
 
 fn host_focus_terminal_pane(
-    env: &ForeignFunctionEnv,
+    env: FunctionEnvMut<ForeignFunctionEnv>,
     terminal_pane_id: i32,
     should_float_if_hidden: i32,
 ) {
+    let env = env.data();
     let should_float_if_hidden = should_float_if_hidden != 0;
     let action = Action::FocusTerminalPaneWithId(terminal_pane_id as u32, should_float_if_hidden);
     let error_msg = || format!("Failed to focus terminal pane");
@@ -1019,17 +1088,19 @@ fn host_focus_terminal_pane(
 }
 
 fn host_focus_plugin_pane(
-    env: &ForeignFunctionEnv,
+    env: FunctionEnvMut<ForeignFunctionEnv>,
     plugin_pane_id: i32,
     should_float_if_hidden: i32,
 ) {
+    let env = env.data();
     let should_float_if_hidden = should_float_if_hidden != 0;
     let action = Action::FocusPluginPaneWithId(plugin_pane_id as u32, should_float_if_hidden);
     let error_msg = || format!("Failed to focus plugin pane");
     apply_action!(action, error_msg, env);
 }
 
-fn host_rename_terminal_pane(env: &ForeignFunctionEnv) {
+fn host_rename_terminal_pane(env: FunctionEnvMut<ForeignFunctionEnv>) {
+    let env = env.data();
     let error_msg = || format!("Failed to rename terminal pane");
     wasi_read_object::<(u32, String)>(&env.plugin_env.wasi_env)
         .and_then(|(terminal_pane_id, new_name)| {
@@ -1042,7 +1113,8 @@ fn host_rename_terminal_pane(env: &ForeignFunctionEnv) {
         .fatal();
 }
 
-fn host_rename_plugin_pane(env: &ForeignFunctionEnv) {
+fn host_rename_plugin_pane(env: FunctionEnvMut<ForeignFunctionEnv>) {
+    let env = env.data();
     let error_msg = || format!("Failed to rename plugin pane");
     wasi_read_object::<(u32, String)>(&env.plugin_env.wasi_env)
         .and_then(|(plugin_pane_id, new_name)| {
@@ -1055,7 +1127,8 @@ fn host_rename_plugin_pane(env: &ForeignFunctionEnv) {
         .fatal();
 }
 
-fn host_rename_tab(env: &ForeignFunctionEnv) {
+fn host_rename_tab(env: FunctionEnvMut<ForeignFunctionEnv>) {
+    let env = env.data();
     let error_msg = || format!("Failed to rename tab");
     wasi_read_object::<(u32, String)>(&env.plugin_env.wasi_env)
         .and_then(|(tab_index, new_name)| {
@@ -1072,7 +1145,8 @@ fn host_rename_tab(env: &ForeignFunctionEnv) {
 // This is called when a panic occurs in a plugin. Since most panics will likely originate in the
 // code trying to deserialize an `Event` upon a plugin state update, we read some panic message,
 // formatted as string from the plugin.
-fn host_report_panic(env: &ForeignFunctionEnv) {
+fn host_report_panic(env: FunctionEnvMut<ForeignFunctionEnv>) {
+    let env = env.data();
     let msg = wasi_read_string(&env.plugin_env.wasi_env)
         .with_context(|| {
             format!(
