@@ -11,7 +11,7 @@ use std::{
     str::FromStr,
     sync::{Arc, Mutex},
 };
-use wasmer::{Instance, Module, Store, Value};
+use wasmer::{AsStoreMut, Instance, Module, Store, Value};
 use zellij_utils::async_std::task::{self, JoinHandle};
 use zellij_utils::notify_debouncer_full::{notify::RecommendedWatcher, Debouncer, FileIdMap};
 
@@ -36,7 +36,7 @@ pub struct WasmBridge {
     connected_clients: Arc<Mutex<Vec<ClientId>>>,
     plugins: PluginsConfig,
     senders: ThreadSenders,
-    store: Store,
+    store: Arc<Mutex<Store>>,
     plugin_dir: PathBuf,
     plugin_cache: Arc<Mutex<HashMap<PathBuf, Module>>>,
     plugin_map: Arc<Mutex<PluginMap>>,
@@ -62,7 +62,7 @@ impl WasmBridge {
     pub fn new(
         plugins: PluginsConfig,
         senders: ThreadSenders,
-        store: Store,
+        store: Arc<Mutex<Store>>,
         plugin_dir: PathBuf,
         path_to_default_shell: PathBuf,
         zellij_cwd: PathBuf,
@@ -360,6 +360,7 @@ impl WasmBridge {
                     .lock()
                     .unwrap()
                     .next_event_id(AtomicEvent::Resize);
+                let store = self.store.clone();
                 task::spawn({
                     let senders = self.senders.clone();
                     let running_plugin = running_plugin.clone();
@@ -377,10 +378,13 @@ impl WasmBridge {
                                 .map_err(anyError::new)
                                 .and_then(|render| {
                                     render
-                                        .call(&[
-                                            Value::I32(running_plugin.rows as i32),
-                                            Value::I32(running_plugin.columns as i32),
-                                        ])
+                                        .call(
+                                            &mut store.lock().unwrap().as_store_mut(),
+                                            &[
+                                                Value::I32(running_plugin.rows as i32),
+                                                Value::I32(running_plugin.columns as i32),
+                                            ],
+                                        )
                                         .map_err(anyError::new)
                                 })
                                 .and_then(|_| wasi_read_string(&running_plugin.plugin_env.wasi_env))
@@ -449,6 +453,7 @@ impl WasmBridge {
                         || (cid.is_none() && pid == Some(*plugin_id))
                         || (cid == Some(*client_id) && pid == Some(*plugin_id)))
                 {
+                    let store = self.store.clone();
                     task::spawn({
                         let senders = self.senders.clone();
                         let running_plugin = running_plugin.clone();
@@ -461,6 +466,7 @@ impl WasmBridge {
                             match apply_event_to_plugin(
                                 plugin_id,
                                 client_id,
+                                store,
                                 &running_plugin.instance,
                                 &running_plugin.plugin_env,
                                 &event,
@@ -564,6 +570,7 @@ impl WasmBridge {
                         if !subs.contains(&event_type) {
                             continue;
                         }
+                        let store = self.store.clone();
                         task::spawn({
                             let senders = self.senders.clone();
                             let running_plugin = running_plugin.clone();
@@ -574,6 +581,7 @@ impl WasmBridge {
                                 match apply_event_to_plugin(
                                     plugin_id,
                                     client_id,
+                                    store,
                                     &running_plugin.instance,
                                     &running_plugin.plugin_env,
                                     &event,
@@ -729,6 +737,7 @@ fn handle_plugin_loading_failure(
 pub fn apply_event_to_plugin(
     plugin_id: PluginId,
     client_id: ClientId,
+    store: Arc<Mutex<Store>>,
     instance: &Instance,
     plugin_env: &PluginEnv,
     event: &Event,
@@ -742,21 +751,20 @@ pub fn apply_event_to_plugin(
         .get_function("update")
         .with_context(err_context)?;
     wasi_write_object(&plugin_env.wasi_env, &event).with_context(err_context)?;
-    let update_return =
-        update
-            .call(&[])
-            .or_else::<anyError, _>(|e| match e.downcast::<serde_json::Error>() {
-                Ok(_) => panic!(
-                    "{}",
-                    anyError::new(VersionMismatchError::new(
-                        VERSION,
-                        "Unavailable",
-                        &plugin_env.plugin.path,
-                        plugin_env.plugin.is_builtin(),
-                    ))
-                ),
-                Err(e) => Err(e).with_context(err_context),
-            })?;
+    let update_return = update
+        .call(&mut store.lock().unwrap().as_store_mut(), &[])
+        .or_else::<anyError, _>(|e| match e.downcast::<serde_json::Error>() {
+            Ok(_) => panic!(
+                "{}",
+                anyError::new(VersionMismatchError::new(
+                    VERSION,
+                    "Unavailable",
+                    &plugin_env.plugin.path,
+                    plugin_env.plugin.is_builtin(),
+                ))
+            ),
+            Err(e) => Err(e).with_context(err_context),
+        })?;
     let should_render = match update_return.get(0) {
         Some(Value::I32(n)) => *n == 1,
         _ => false,
@@ -769,7 +777,10 @@ pub fn apply_event_to_plugin(
             .map_err(anyError::new)
             .and_then(|render| {
                 render
-                    .call(&[Value::I32(rows as i32), Value::I32(columns as i32)])
+                    .call(
+                        &mut store.lock().unwrap().as_store_mut(),
+                        &[Value::I32(rows as i32), Value::I32(columns as i32)],
+                    )
                     .map_err(anyError::new)
             })
             .and_then(|_| wasi_read_string(&plugin_env.wasi_env))

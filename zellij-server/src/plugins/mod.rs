@@ -9,6 +9,7 @@ use std::{
     collections::{HashMap, HashSet},
     fs,
     path::PathBuf,
+    sync::{Arc, Mutex},
 };
 use wasmer::Store;
 
@@ -125,6 +126,8 @@ pub(crate) fn plugin_thread_main(
 
     let plugin_dir = data_dir.join("plugins/");
     let plugin_global_data_dir = plugin_dir.join("data");
+
+    let store = Arc::new(Mutex::new(store));
 
     let mut wasm_bridge = WasmBridge::new(
         plugins,

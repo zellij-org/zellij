@@ -1,7 +1,9 @@
+use std::sync::{Arc, Mutex};
+
 use crate::plugins::plugin_loader::VersionMismatchError;
 use crate::plugins::plugin_map::PluginEnv;
 use crate::plugins::zellij_exports::wasi_write_object;
-use wasmer::Instance;
+use wasmer::{AsStoreMut, Instance, Store};
 
 use zellij_utils::async_channel::{unbounded, Receiver, Sender};
 use zellij_utils::async_std::task;
@@ -13,16 +15,19 @@ pub struct RunningWorker {
     pub name: String,
     pub plugin_config: PluginConfig,
     pub plugin_env: PluginEnv,
+    store: Arc<Mutex<Store>>,
 }
 
 impl RunningWorker {
     pub fn new(
+        store: Arc<Mutex<Store>>,
         instance: Instance,
         name: &str,
         plugin_config: PluginConfig,
         plugin_env: PluginEnv,
     ) -> Self {
         RunningWorker {
+            store,
             instance,
             name: name.into(),
             plugin_config,
@@ -39,8 +44,9 @@ impl RunningWorker {
             .with_context(err_context)?;
         wasi_write_object(&self.plugin_env.wasi_env, &(message, payload))
             .with_context(err_context)?;
-        work_function.call(&[]).or_else::<anyError, _>(|e| {
-            match e.downcast::<serde_json::Error>() {
+        work_function
+            .call(&mut self.store.lock().unwrap().as_store_mut(), &[])
+            .or_else::<anyError, _>(|e| match e.downcast::<serde_json::Error>() {
                 Ok(_) => panic!(
                     "{}",
                     anyError::new(VersionMismatchError::new(
@@ -51,8 +57,7 @@ impl RunningWorker {
                     ))
                 ),
                 Err(e) => Err(e).with_context(err_context),
-            }
-        })?;
+            })?;
 
         Ok(())
     }

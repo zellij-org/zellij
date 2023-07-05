@@ -12,7 +12,7 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
-use wasmer::{imports, Function, FunctionEnv, FunctionEnvMut, Imports, Store};
+use wasmer::{imports, AsStoreMut, Function, FunctionEnv, FunctionEnvMut, Imports, Store};
 use wasmer_wasi::WasiEnv;
 
 use url::Url;
@@ -49,26 +49,25 @@ macro_rules! apply_action {
 }
 
 pub fn zellij_exports(
-    store: &mut Store,
+    store: Arc<Mutex<Store>>,
     plugin_env: &PluginEnv,
     subscriptions: &Arc<Mutex<Subscriptions>>,
 ) -> Imports {
+    let mut store = store.lock().unwrap();
+    let env = &FunctionEnv::new(
+        &mut store.as_store_mut(),
+        ForeignFunctionEnv::new(plugin_env, subscriptions),
+    );
     macro_rules! zellij_export {
         ($($host_function:ident),+ $(,)?) => {
             imports! {
                 "zellij" => {
                     $(stringify!($host_function) =>
-                        Function::new_typed_with_env(store, &FunctionEnv::new(store, ForeignFunctionEnv::new(plugin_env, subscriptions)), $host_function),)+
+                        Function::new_typed_with_env(&mut store.as_store_mut(), env, $host_function),)+
                 }
             }
         }
     }
-
-    Function::new_typed_with_env(
-        store,
-        &FunctionEnv::new(store, ForeignFunctionEnv::new(plugin_env, subscriptions)),
-        host_subscribe,
-    );
 
     zellij_export! {
         host_subscribe,
@@ -1166,6 +1165,7 @@ fn host_report_panic(env: FunctionEnvMut<ForeignFunctionEnv>) {
 // Helper Functions ---------------------------------------------------------------------------------------------------
 
 pub fn wasi_read_string(wasi_env: &WasiEnv) -> Result<String> {
+    log::info!("wasi_read_string");
     let err_context = || format!("failed to read string from WASI env '{wasi_env:?}'");
 
     let mut buf = vec![];
@@ -1173,10 +1173,14 @@ pub fn wasi_read_string(wasi_env: &WasiEnv) -> Result<String> {
         .state()
         .stdout()
         .map_err(anyError::new)
-        .and_then(|stdout| stdout.ok_or(anyhow!("failed to get mutable reference to stdout")))
+        .and_then(|stdout| {
+            log::info!("got stdout");
+            stdout.ok_or(anyhow!("failed to get mutable reference to stdout"))
+        })
         .and_then(|mut wasi_file| wasi_file.read_to_end(&mut buf).map_err(anyError::new))
         .with_context(err_context)?;
     let buf = String::from_utf8_lossy(&buf);
+    log::info!("buf: {:?}", buf);
     // https://stackoverflow.com/questions/66450942/in-rust-is-there-a-way-to-make-literal-newlines-in-r-using-windows-c
     Ok(buf.replace("\n", "\n\r"))
 }
