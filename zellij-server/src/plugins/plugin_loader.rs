@@ -1,6 +1,6 @@
 use crate::plugins::plugin_map::{PluginEnv, PluginMap, RunningPlugin, Subscriptions};
 use crate::plugins::plugin_worker::{plugin_worker, RunningWorker};
-use crate::plugins::zellij_exports::{wasi_read_string, zellij_exports, ForeignFunctionEnv};
+use crate::plugins::zellij_exports::{wasi_read_string, zellij_exports};
 use crate::plugins::PluginId;
 use highway::{HighwayHash, PortableHash};
 use log::info;
@@ -12,8 +12,8 @@ use std::{
     sync::{Arc, Mutex},
 };
 use url::Url;
-use wasmer::{AsStoreMut, AsStoreRef, FunctionEnv, FunctionEnvMut, Instance, Module, Store};
-use wasmer_wasi::{Pipe, WasiEnv, WasiFunctionEnv, WasiState};
+use wasmer::{AsStoreMut, AsStoreRef, Instance, Module, Store};
+use wasmer_wasi::{Pipe, WasiState};
 
 use crate::{
     logging_pipe::LoggingPipe, screen::ScreenInstruction, thread_bus::ThreadSenders,

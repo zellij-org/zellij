@@ -1166,7 +1166,6 @@ fn host_report_panic(env: FunctionEnvMut<ForeignFunctionEnv>) {
 // Helper Functions ---------------------------------------------------------------------------------------------------
 
 pub fn wasi_read_string(wasi_env: &WasiEnv) -> Result<String> {
-    log::info!("wasi_read_string");
     let err_context = || format!("failed to read string from WASI env '{wasi_env:?}'");
 
     let mut buf = vec![];
@@ -1174,14 +1173,11 @@ pub fn wasi_read_string(wasi_env: &WasiEnv) -> Result<String> {
         .state()
         .stdout()
         .map_err(anyError::new)
-        .and_then(|stdout| {
-            log::info!("got stdout");
-            stdout.ok_or(anyhow!("failed to get mutable reference to stdout"))
-        })
+        .and_then(|stdout| stdout.ok_or(anyhow!("failed to get mutable reference to stdout")))
         .and_then(|mut wasi_file| wasi_file.read_to_end(&mut buf).map_err(anyError::new))
         .with_context(err_context)?;
     let buf = String::from_utf8_lossy(&buf);
-    log::info!("buf: {:?}", buf);
+
     // https://stackoverflow.com/questions/66450942/in-rust-is-there-a-way-to-make-literal-newlines-in-r-using-windows-c
     Ok(buf.replace("\n", "\n\r"))
 }
