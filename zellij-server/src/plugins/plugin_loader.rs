@@ -1,6 +1,6 @@
 use crate::plugins::plugin_map::{PluginEnv, PluginMap, RunningPlugin, Subscriptions};
 use crate::plugins::plugin_worker::{plugin_worker, RunningWorker};
-use crate::plugins::zellij_exports::{wasi_read_string, zellij_exports};
+use crate::plugins::zellij_exports::{wasi_read_string, zellij_exports, ForeignFunctionEnv};
 use crate::plugins::PluginId;
 use highway::{HighwayHash, PortableHash};
 use log::info;
@@ -12,7 +12,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 use url::Url;
-use wasmer::{AsStoreMut, AsStoreRef, Instance, Module, Store};
+use wasmer::{AsStoreMut, AsStoreRef, FunctionEnv, FunctionEnvMut, Instance, Module, Store};
 use wasmer_wasi::{Pipe, WasiEnv, WasiFunctionEnv, WasiState};
 
 use crate::{
@@ -878,7 +878,7 @@ impl<'a> PluginLoader<'a> {
                 self.plugin_id
             )
         };
-        let wasi_state = WasiState::new("Zellij")
+        let mut wasi_env = WasiState::new("Zellij")
             .env("CLICOLOR_FORCE", "1")
             .map_dir("/host", self.zellij_cwd.clone())
             .and_then(|wasi| wasi.map_dir("/data", &self.plugin_own_data_dir))
@@ -890,22 +890,17 @@ impl<'a> PluginLoader<'a> {
                         &self.plugin.location.to_string(),
                         self.plugin_id,
                     )))
-                    .build()
+                    .finalize(&mut self.store.lock().unwrap().as_store_mut())
             })
             .with_context(err_context)?;
-        let wasi_env = WasiEnv::new(wasi_state);
-        log::info!("created wasi_env");
-        let mut wasi_function_env = WasiFunctionEnv::new(
-            &mut self.store.lock().unwrap().as_store_mut(),
-            wasi_env.clone(),
-        );
-        log::info!("created wasi_function_env");
 
-        let wasi = wasi_function_env
-            .import_object(&mut *self.store.lock().unwrap(), &module)
-            .with_context(err_context)?;
+        log::info!("created wasi_env");
 
         log::info!("created imports");
+
+        let wasi = wasi_env
+            .import_object(&mut *self.store.lock().unwrap(), &module)
+            .with_context(err_context)?;
 
         let mut mut_plugin = self.plugin.clone();
         mut_plugin.set_tab_index(self.tab_index);
@@ -914,7 +909,9 @@ impl<'a> PluginLoader<'a> {
             client_id: self.client_id,
             plugin: mut_plugin,
             senders: self.senders.clone(),
-            wasi_env,
+            wasi_env: wasi_env
+                .data_mut(&mut self.store.lock().unwrap().as_store_mut())
+                .clone(),
             plugin_own_data_dir: self.plugin_own_data_dir.clone(),
             tab_index: self.tab_index,
             path_to_default_shell: self.path_to_default_shell.clone(),
@@ -925,6 +922,7 @@ impl<'a> PluginLoader<'a> {
         };
 
         let subscriptions = Arc::new(Mutex::new(HashSet::new()));
+
         let mut zellij = zellij_exports(self.store.clone(), &plugin_env, &subscriptions);
         zellij.extend(&wasi);
 
@@ -934,7 +932,8 @@ impl<'a> PluginLoader<'a> {
             &zellij,
         )
         .with_context(err_context)?;
-        wasi_function_env.initialize(&mut self.store.lock().unwrap().as_store_mut(), &instance)?;
+
+        wasi_env.initialize(&mut self.store.lock().unwrap().as_store_mut(), &instance)?;
 
         log::info!("created instance");
 

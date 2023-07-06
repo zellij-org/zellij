@@ -54,16 +54,17 @@ pub fn zellij_exports(
     subscriptions: &Arc<Mutex<Subscriptions>>,
 ) -> Imports {
     let mut store = store.lock().unwrap();
-    let env = &FunctionEnv::new(
+    let function_env = FunctionEnv::new(
         &mut store.as_store_mut(),
         ForeignFunctionEnv::new(plugin_env, subscriptions),
     );
+
     macro_rules! zellij_export {
         ($($host_function:ident),+ $(,)?) => {
             imports! {
                 "zellij" => {
                     $(stringify!($host_function) =>
-                        Function::new_typed_with_env(&mut store.as_store_mut(), env, $host_function),)+
+                        Function::new_typed_with_env(&mut store.as_store_mut(), &function_env, $host_function),)+
                 }
             }
         }
