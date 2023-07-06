@@ -73,8 +73,8 @@ mod not_wasm {
                 .to_vec(),
                 #[cfg(all(feature = "plugins_from_target", debug_assertions))]
                 include_bytes!(concat!(
-                    env!("CARGO_MANIFEST_DIR"),
-                    "/../target/wasm32-wasi/debug/",
+                    env!("CARGO_TARGET_DIR"),
+                    "/wasm32-wasi/debug/",
                     $plugin
                 ))
                 .to_vec(),
