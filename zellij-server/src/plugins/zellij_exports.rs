@@ -21,8 +21,9 @@ use crate::{panes::PaneId, screen::ScreenInstruction};
 
 use zellij_utils::{
     consts::VERSION,
-    data::{Direction, Event, EventType, InputMode, PluginIds, Resize},
+    data::{Direction, Event, EventType, InputMode, PluginIds, Resize, Key},
     errors::prelude::*,
+    plugin_api::key::ProtobufKey,
     input::{
         actions::Action,
         command::{RunCommand, RunCommandAction, TerminalAction},
@@ -30,6 +31,7 @@ use zellij_utils::{
         plugins::PluginType,
     },
     serde,
+    prost::Message,
 };
 
 macro_rules! apply_action {
@@ -70,6 +72,7 @@ pub fn zellij_exports(
         host_set_selectable,
         host_get_plugin_ids,
         host_get_zellij_version,
+        host_get_key,
         host_open_file,
         host_open_file_floating,
         host_open_file_with_line,
@@ -237,6 +240,24 @@ fn host_get_zellij_version(env: &ForeignFunctionEnv) {
         })
         .non_fatal();
 }
+
+fn host_get_key(env: &ForeignFunctionEnv) {
+    let key_to_send = Key::Ctrl('q');
+    let serialized_protobuf_key = ProtobufKey::try_from(key_to_send).unwrap().encode_to_vec();
+    wasi_write_object(&env.plugin_env.wasi_env, &serialized_protobuf_key)
+        .with_context(|| {
+            format!(
+                "failed to query plugin IDs from host for plugin {}",
+                env.plugin_env.name()
+            )
+        })
+        .non_fatal();
+}
+
+// TODO:
+// * create a function like "host_get_zellij_version" called host_get_key - DONE
+// * have it write the serialized protobuffer to the rust-demo plugin - DONE
+// * have the plugin deserialize it and display it
 
 fn host_open_file(env: &ForeignFunctionEnv) {
     wasi_read_object::<PathBuf>(&env.plugin_env.wasi_env)

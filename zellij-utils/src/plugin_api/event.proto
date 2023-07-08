@@ -1,0 +1,119 @@
+syntax = "proto3";
+
+package api.event;
+
+enum EventType {
+    /// The input mode or relevant metadata changed
+    ModeUpdate = 0;
+    /// The tab state in the app was changed
+    TabUpdate = 1;
+    /// The pane state in the app was changed
+    PaneUpdate = 2;
+    /// A key was pressed while the user is focused on this plugin's pane
+    Key = 3;
+    /// A mouse event happened while the user is focused on this plugin's pane
+    Mouse = 4;
+    /// A timer expired set by the `set_timeout` method exported by `zellij-tile`.
+    Timer = 5;
+    /// Text was copied to the clipboard anywhere in the app
+    CopyToClipboard = 6;
+    /// Failed to copy text to clipboard anywhere in the app
+    SystemClipboardFailure = 7;
+    /// Input was received anywhere in the app
+    InputReceived = 8;
+    /// This plugin became visible or invisible
+    Visible = 9;
+    /// A message from one of the plugin's workers
+    CustomMessage = 10;
+    /// A file was created somewhere in the Zellij CWD folder
+    FileSystemCreate = 11;
+    /// A file was accessed somewhere in the Zellij CWD folder
+    FileSystemRead = 12;
+    /// A file was modified somewhere in the Zellij CWD folder
+    FileSystemUpdate = 13;
+    /// A file was deleted somewhere in the Zellij CWD folder
+    FileSystemDelete = 14;
+}
+
+message EventNameList {
+  repeated EventType event_types = 1;
+}
+
+// message Key {
+// 
+//   enum NamedKey {
+//     PageDown = 0;
+//     PageUp = 1;
+//     LeftArrow = 2;
+//     DownArrow = 3;
+//     UpArrow = 4;
+//     RightArrow = 5;
+//     Home = 6;
+//     End = 7;
+//     Backspace = 8;
+//     Delete = 9;
+//     Insert = 10;
+//     F1 = 11;
+//     F2 = 12;
+//     F3 = 13;
+//     F4 = 14;
+//     F5 = 15;
+//     F6 = 16;
+//     F7 = 17;
+//     F8 = 18;
+//     F9 = 19;
+//     F10 = 20;
+//     F11 = 21;
+//     F12 = 22;
+//     Tab = 23;
+//     Esc = 24;
+//   }
+// 
+//   enum Char {
+//     a = 0;
+//     b = 1;
+//     c = 2;
+//     d = 3;
+//     e = 4;
+//     f = 5;
+//     g = 6;
+//     h = 7;
+//     i = 8;
+//     j = 9;
+//     k = 10;
+//     l = 11;
+//     m = 12;
+//     n = 13;
+//     o = 14;
+//     p = 15;
+//     q = 16;
+//     r = 17;
+//     s = 18;
+//     t = 19;
+//     u = 20;
+//     v = 21;
+//     w = 22;
+//     x = 23;
+//     y = 24;
+//     z = 25;
+// // TODO: make these work
+// //     0 = 26;
+// //     1 = 27;
+// //     2 = 28;
+// //     3 = 29;
+// //     4 = 30;
+// //     5 = 31;
+// //     6 = 32;
+// //     7 = 33;
+// //     8 = 34;
+// //     9 = 35;
+//   }
+// 
+//   oneof optional_modifier {
+//     KeyModifier modifier = 1;
+//   }
+//   oneof main_key {
+//     NamedKey key = 2;
+//     Char char = 3;
+//   }
+// }

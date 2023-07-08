@@ -1,8 +1,11 @@
 use serde::{de::DeserializeOwned, Serialize};
 use std::{io, path::Path};
 use zellij_utils::data::*;
+use zellij_utils::plugin_api::key::ProtobufKey;
 use zellij_utils::errors::prelude::*;
 
+
+use prost::Message;
 // Subscription Handling
 
 /// Subscribe to a list of [`Event`]s represented by their [`EventType`]s that will then trigger the `update` method
@@ -35,6 +38,13 @@ pub fn get_plugin_ids() -> PluginIds {
 pub fn get_zellij_version() -> String {
     unsafe { host_get_zellij_version() };
     object_from_stdin().unwrap()
+}
+
+pub fn get_key() -> Key {
+    unsafe { host_get_key() };
+    let protobuf_bytes: Vec<u8> = object_from_stdin().unwrap();
+    let protobuf_key = ProtobufKey::decode(protobuf_bytes.as_slice()).unwrap(); // TODO: no unwrap!
+    protobuf_key.try_into().unwrap() // TODO: no unwrap!
 }
 
 // Host Functions
@@ -414,6 +424,7 @@ extern "C" {
     fn host_set_selectable(selectable: i32);
     fn host_get_plugin_ids();
     fn host_get_zellij_version();
+    fn host_get_key();
     fn host_open_file();
     fn host_open_file_floating();
     fn host_open_file_with_line();
