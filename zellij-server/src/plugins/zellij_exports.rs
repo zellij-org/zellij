@@ -12,7 +12,7 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
-use wasmer::{imports, AsStoreMut, Function, FunctionEnv, FunctionEnvMut, Imports, Store};
+use wasmer::{imports, AsStoreMut, Function, FunctionEnv, FunctionEnvMut, Imports};
 use wasmer_wasi::WasiEnv;
 
 use url::Url;
@@ -49,22 +49,18 @@ macro_rules! apply_action {
 }
 
 pub fn zellij_exports(
-    store: Arc<Mutex<Store>>,
+    store: &mut impl AsStoreMut,
     plugin_env: &PluginEnv,
     subscriptions: &Arc<Mutex<Subscriptions>>,
 ) -> Imports {
-    let mut store = store.lock().unwrap();
-    let function_env = FunctionEnv::new(
-        &mut store.as_store_mut(),
-        ForeignFunctionEnv::new(plugin_env, subscriptions),
-    );
+    let function_env = FunctionEnv::new(store, ForeignFunctionEnv::new(plugin_env, subscriptions));
 
     macro_rules! zellij_export {
         ($($host_function:ident),+ $(,)?) => {
             imports! {
                 "zellij" => {
                     $(stringify!($host_function) =>
-                        Function::new_typed_with_env(&mut store.as_store_mut(), &function_env, $host_function),)+
+                        Function::new_typed_with_env(store, &function_env, $host_function),)+
                 }
             }
         }

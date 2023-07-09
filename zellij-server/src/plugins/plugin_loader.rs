@@ -878,6 +878,8 @@ impl<'a> PluginLoader<'a> {
                 self.plugin_id
             )
         };
+        let mut store = self.store.lock().unwrap();
+        let store_mut = &mut *store;
         let mut wasi_env = WasiState::new("Zellij")
             .env("CLICOLOR_FORCE", "1")
             .map_dir("/host", self.zellij_cwd.clone())
@@ -890,7 +892,7 @@ impl<'a> PluginLoader<'a> {
                         &self.plugin.location.to_string(),
                         self.plugin_id,
                     )))
-                    .finalize(&mut self.store.lock().unwrap().as_store_mut())
+                    .finalize(store_mut)
             })
             .with_context(err_context)?;
 
@@ -899,7 +901,7 @@ impl<'a> PluginLoader<'a> {
         log::info!("created imports");
 
         let wasi = wasi_env
-            .import_object(&mut *self.store.lock().unwrap(), &module)
+            .import_object(store_mut, &module)
             .with_context(err_context)?;
 
         let mut mut_plugin = self.plugin.clone();
@@ -909,9 +911,7 @@ impl<'a> PluginLoader<'a> {
             client_id: self.client_id,
             plugin: mut_plugin,
             senders: self.senders.clone(),
-            wasi_env: wasi_env
-                .data_mut(&mut self.store.lock().unwrap().as_store_mut())
-                .clone(),
+            wasi_env: wasi_env.data_mut(store_mut).clone(),
             plugin_own_data_dir: self.plugin_own_data_dir.clone(),
             tab_index: self.tab_index,
             path_to_default_shell: self.path_to_default_shell.clone(),
@@ -923,17 +923,12 @@ impl<'a> PluginLoader<'a> {
 
         let subscriptions = Arc::new(Mutex::new(HashSet::new()));
 
-        let mut zellij = zellij_exports(self.store.clone(), &plugin_env, &subscriptions);
+        let mut zellij = zellij_exports(store_mut, &plugin_env, &subscriptions);
         zellij.extend(&wasi);
 
-        let instance = Instance::new(
-            &mut self.store.lock().unwrap().as_store_mut(),
-            &module,
-            &zellij,
-        )
-        .with_context(err_context)?;
+        let instance = Instance::new(store_mut, &module, &zellij).with_context(err_context)?;
 
-        wasi_env.initialize(&mut self.store.lock().unwrap().as_store_mut(), &instance)?;
+        wasi_env.initialize(store_mut, &instance)?;
 
         log::info!("created instance");
 
