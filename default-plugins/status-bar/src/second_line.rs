@@ -605,7 +605,7 @@ mod tests {
 
         assert_eq!(
             ret,
-            " <←↓↑→> Move focus / <n> New / <x> Close / <f> Fullscreen"
+            " <n> New / <←↓↑→> Change Focus / <x> Close / <f> Toggle Fullscreen",
         );
     }
 
@@ -635,7 +635,7 @@ mod tests {
         let ret = keybinds(&mode_info, "quicknav", 35);
         let ret = unstyle(ret);
 
-        assert_eq!(ret, " <←↓↑→> Move / <n> New ... ");
+        assert_eq!(ret, " <n> New / <←↓↑→> Move ... ");
     }
 
     #[test]
@@ -660,6 +660,9 @@ mod tests {
         let ret = keybinds(&mode_info, "quicknav", 500);
         let ret = unstyle(ret);
 
-        assert_eq!(ret, " Ctrl + <a|ENTER|1|SPACE> Move focus / <BACKSPACE> New / <ESC> Close / <END> Fullscreen");
+        assert_eq!(
+            ret,
+            " <BACKSPACE> New / Ctrl + <a|ENTER|1|SPACE> Change Focus / <ESC> Close / <END> Toggle Fullscreen"
+        );
     }
 }
