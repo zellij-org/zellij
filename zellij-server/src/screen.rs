@@ -20,6 +20,7 @@ use zellij_utils::{
     position::Position,
 };
 
+use crate::os_input_output::ResizeCache;
 use crate::panes::alacritty_functions::xparse_color;
 use crate::panes::terminal_character::AnsiCode;
 
@@ -1583,6 +1584,7 @@ pub(crate) fn screen_thread_main(
         config_options.copy_on_select.unwrap_or(true),
     );
 
+    let thread_senders = bus.senders.clone();
     let mut screen = Screen::new(
         bus,
         &client_attributes,
@@ -1611,6 +1613,9 @@ pub(crate) fn screen_thread_main(
             .recv()
             .context("failed to receive event on channel")?;
         err_ctx.add_call(ContextType::Screen((&event).into()));
+        // here we start caching resizes, so that we'll send them in bulk at the end of each event
+        // when this cache is Dropped, for more information, see the comments in PtyWriter
+        let _resize_cache = ResizeCache::new(thread_senders.clone());
 
         match event {
             ScreenInstruction::PtyBytes(pid, vte_bytes) => {
