@@ -208,7 +208,7 @@ impl ZellijPlugin for State {
             EventType::InputReceived,
             EventType::SystemClipboardFailure,
         ]);
-        self.supermode = true; // TODO: from config
+        self.supermode = false; // TODO: from config
         self.standby_mode = InputMode::Pane;
         if self.supermode {
             switch_to_input_mode(&InputMode::Locked); // supermode should start locked (TODO: only
