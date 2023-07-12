@@ -59,13 +59,17 @@ use zellij_utils::{
 macro_rules! resize_pty {
     ($pane:expr, $os_input:expr, $senders:expr) => {{
         match $pane.pid() {
-            PaneId::Terminal(ref pid) => $os_input.set_terminal_size_using_terminal_id(
-                *pid,
-                $pane.get_content_columns() as u16,
-                $pane.get_content_rows() as u16,
-                None,
-                None,
-            ),
+            PaneId::Terminal(ref pid) => {
+                $senders
+                    .send_to_pty_writer(PtyWriteInstruction::ResizePty(
+                        *pid,
+                        $pane.get_content_columns() as u16,
+                        $pane.get_content_rows() as u16,
+                        None,
+                        None,
+                    ))
+                    .with_context(err_context);
+            },
             PaneId::Plugin(ref pid) => {
                 let err_context = || format!("failed to resize plugin {pid}");
                 $senders
@@ -93,13 +97,19 @@ macro_rules! resize_pty {
             }
         };
         match $pane.pid() {
-            PaneId::Terminal(ref pid) => $os_input.set_terminal_size_using_terminal_id(
-                *pid,
-                $pane.get_content_columns() as u16,
-                $pane.get_content_rows() as u16,
-                width_in_pixels,
-                height_in_pixels,
-            ),
+            PaneId::Terminal(ref pid) => {
+                use crate::PtyWriteInstruction;
+                let err_context = || format!("Failed to send resize pty instruction");
+                $senders
+                    .send_to_pty_writer(PtyWriteInstruction::ResizePty(
+                        *pid,
+                        $pane.get_content_columns() as u16,
+                        $pane.get_content_rows() as u16,
+                        width_in_pixels,
+                        height_in_pixels,
+                    ))
+                    .with_context(err_context)
+            },
             PaneId::Plugin(ref pid) => {
                 let err_context = || format!("failed to resize plugin {pid}");
                 $senders
@@ -760,16 +770,15 @@ impl Tab {
         Ok(())
     }
     pub fn previous_swap_layout(&mut self, client_id: Option<ClientId>) -> Result<()> {
-        // warning, here we cache resizes rather than sending them to the pty, we do that in
-        // apply_cached_resizes below - beware when bailing on this function early!
-        self.os_api.cache_resizes();
         let search_backwards = true;
         if self.floating_panes.panes_are_visible() {
             self.relayout_floating_panes(client_id, search_backwards, true)?;
         } else {
             self.relayout_tiled_panes(client_id, search_backwards, true, false)?;
         }
-        self.os_api.apply_cached_resizes();
+        self.senders
+            .send_to_pty_writer(PtyWriteInstruction::ApplyCachedResizes)
+            .with_context(|| format!("failed to update plugins with mode info"))?;
         Ok(())
     }
     pub fn next_swap_layout(
@@ -777,16 +786,15 @@ impl Tab {
         client_id: Option<ClientId>,
         refocus_pane: bool,
     ) -> Result<()> {
-        // warning, here we cache resizes rather than sending them to the pty, we do that in
-        // apply_cached_resizes below - beware when bailing on this function early!
-        self.os_api.cache_resizes();
         let search_backwards = false;
         if self.floating_panes.panes_are_visible() {
             self.relayout_floating_panes(client_id, search_backwards, refocus_pane)?;
         } else {
             self.relayout_tiled_panes(client_id, search_backwards, refocus_pane, false)?;
         }
-        self.os_api.apply_cached_resizes();
+        self.senders
+            .send_to_pty_writer(PtyWriteInstruction::ApplyCachedResizes)
+            .with_context(|| format!("failed to update plugins with mode info"))?;
         Ok(())
     }
     pub fn apply_buffered_instructions(&mut self) -> Result<()> {
@@ -1826,9 +1834,6 @@ impl Tab {
         selectable_tiled_panes.count() > 0
     }
     pub fn resize_whole_tab(&mut self, new_screen_size: Size) -> Result<()> {
-        // warning, here we cache resizes rather than sending them to the pty, we do that in
-        // apply_cached_resizes below - beware when bailing on this function early!
-        self.os_api.cache_resizes();
         let err_context = || format!("failed to resize whole tab (index {})", self.index);
         self.floating_panes.resize(new_screen_size);
         // we need to do this explicitly because floating_panes.resize does not do this
@@ -1848,7 +1853,9 @@ impl Tab {
             let _ = self.relayout_tiled_panes(None, false, false, true);
         }
         self.should_clear_display_before_rendering = true;
-        let _ = self.os_api.apply_cached_resizes();
+        self.senders
+            .send_to_pty_writer(PtyWriteInstruction::ApplyCachedResizes)
+            .with_context(|| format!("failed to update plugins with mode info"))?;
         Ok(())
     }
     pub fn resize(&mut self, client_id: ClientId, strategy: ResizeStrategy) -> Result<()> {
