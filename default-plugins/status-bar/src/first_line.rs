@@ -210,7 +210,11 @@ fn short_key_indicators(
     mode_info: &ModeInfo,
     no_super: bool,
 ) -> LinePart {
-    let mut line_part = if no_super { LinePart::default() } else { superkey(palette, separator, mode_info) };
+    let mut line_part = if no_super {
+        LinePart::default()
+    } else {
+        superkey(palette, separator, mode_info)
+    };
     let shared_super = if no_super { true } else { line_part.len > 0 };
     for ctrl_key in keys {
         let line_empty = line_part.len == 0;
@@ -235,7 +239,11 @@ fn full_key_indicators(
     no_super: bool,
 ) -> LinePart {
     // Print full-width hints
-    let mut line_part = if no_super { LinePart::default() } else { superkey(palette, separator, mode_info) };
+    let mut line_part = if no_super {
+        LinePart::default()
+    } else {
+        superkey(palette, separator, mode_info)
+    };
     let shared_super = if no_super { true } else { line_part.len > 0 };
     for ctrl_key in keys {
         let line_empty = line_part.len == 0;
@@ -455,19 +463,16 @@ pub fn superkey(palette: ColoredElements, separator: &str, mode_info: &ModeInfo)
 fn standby_mode_shortcut_key(help: &ModeInfo) -> Key {
     let binds = &help.get_mode_keybinds();
     match help.mode {
-        InputMode::Locked => {
-            to_char(action_key(
-                binds,
-                &[Action::SwitchToMode(InputMode::Normal)],
-            ))
-        },
-        _ => {
-            to_char(action_key(
-                binds,
-                &[Action::SwitchToMode(InputMode::Locked)],
-            ))
-        }
-    }.unwrap_or(Key::Char('?'))
+        InputMode::Locked => to_char(action_key(
+            binds,
+            &[Action::SwitchToMode(InputMode::Normal)],
+        )),
+        _ => to_char(action_key(
+            binds,
+            &[Action::SwitchToMode(InputMode::Locked)],
+        )),
+    }
+    .unwrap_or(Key::Char('?'))
 }
 
 fn standby_mode_ui_indication(
@@ -490,13 +495,16 @@ fn standby_mode_ui_indication(
         input_mode_to_key_action(&standby_mode),
         None,
     );
-    let styled_text = colored_elements.unselected.styled_text.paint(format!(" {} ", key_shortcut.full_text()));
-    let suffix_separator = colored_elements.unselected.suffix_separator.paint(separator);
+    let styled_text = colored_elements
+        .unselected
+        .styled_text
+        .paint(format!(" {} ", key_shortcut.full_text()));
+    let suffix_separator = colored_elements
+        .unselected
+        .suffix_separator
+        .paint(separator);
     let standby_mode_text = LinePart {
-        part: ANSIStrings(&[
-            styled_text,
-            suffix_separator,
-        ]).to_string(),
+        part: ANSIStrings(&[styled_text, suffix_separator]).to_string(),
         len: key_shortcut.full_text().chars().count() + separator.chars().count() + 2, // 2 padding
     };
     line_part.part = format!("{}{}", line_part.part, standby_mode_shortcut.part);
@@ -506,22 +514,51 @@ fn standby_mode_ui_indication(
     line_part
 }
 
-fn standby_mode_single_letter_unselected(has_shared_super: bool, shortcut_key: Key, palette: ColoredElements, separator: &str) -> LinePart {
+fn standby_mode_single_letter_unselected(
+    has_shared_super: bool,
+    shortcut_key: Key,
+    palette: ColoredElements,
+    separator: &str,
+) -> LinePart {
     let prefix_separator = palette.unselected.prefix_separator.paint(separator);
-    let char_shortcut = palette.unselected.char_shortcut.paint(format!(" {} ", letter_shortcut(&shortcut_key, has_shared_super)));
+    let char_shortcut = palette.unselected.char_shortcut.paint(format!(
+        " {} ",
+        letter_shortcut(&shortcut_key, has_shared_super)
+    ));
     let suffix_separator = palette.unselected.suffix_separator.paint(separator);
-    let len = prefix_separator.chars().count() + char_shortcut.chars().count() + suffix_separator.chars().count();
+    let len = prefix_separator.chars().count()
+        + char_shortcut.chars().count()
+        + suffix_separator.chars().count();
     LinePart {
         part: ANSIStrings(&[prefix_separator, char_shortcut, suffix_separator]).to_string(),
         len,
     }
 }
 
-fn standby_mode_single_letter_selected(has_shared_super: bool, shortcut_key: Key, palette: ColoredElements, separator: &str) -> LinePart {
-    let prefix_separator = palette.selected_standby_shortcut.prefix_separator.paint(separator);
-    let char_shortcut = palette.selected_standby_shortcut.char_shortcut.paint(format!(" {} ", letter_shortcut(&shortcut_key, has_shared_super)));
-    let suffix_separator = palette.selected_standby_shortcut.suffix_separator.paint(separator);
-    let len = prefix_separator.chars().count() + char_shortcut.chars().count() + suffix_separator.chars().count();
+fn standby_mode_single_letter_selected(
+    has_shared_super: bool,
+    shortcut_key: Key,
+    palette: ColoredElements,
+    separator: &str,
+) -> LinePart {
+    let prefix_separator = palette
+        .selected_standby_shortcut
+        .prefix_separator
+        .paint(separator);
+    let char_shortcut = palette
+        .selected_standby_shortcut
+        .char_shortcut
+        .paint(format!(
+            " {} ",
+            letter_shortcut(&shortcut_key, has_shared_super)
+        ));
+    let suffix_separator = palette
+        .selected_standby_shortcut
+        .suffix_separator
+        .paint(separator);
+    let len = prefix_separator.chars().count()
+        + char_shortcut.chars().count()
+        + suffix_separator.chars().count();
     LinePart {
         part: ANSIStrings(&[prefix_separator, char_shortcut, suffix_separator]).to_string(),
         len,
@@ -619,29 +656,54 @@ pub fn first_line_supermode(
             line
         },
         _ => {
-
             let mut default_keys = generate_default_keys(help);
             default_keys.remove(0); // remove locked mode which is not relevant to the supermode ui
 
-            if let Some(position) = default_keys.iter().position(|d| d.action == input_mode_to_key_action(standby_mode)) {
-                let standby_mode_ui_ribbon = standby_mode_ui_indication(has_shared_super, &standby_mode, standby_mode_shortcut_key, colored_elements, separator);
-                let first_keybinds: Vec<KeyShortcut> = default_keys.iter().cloned().take(position).collect();
-                let second_keybinds: Vec<KeyShortcut> = default_keys.iter().cloned().skip(position + 1).collect();
+            if let Some(position) = default_keys
+                .iter()
+                .position(|d| d.action == input_mode_to_key_action(standby_mode))
+            {
+                let standby_mode_ui_ribbon = standby_mode_ui_indication(
+                    has_shared_super,
+                    &standby_mode,
+                    standby_mode_shortcut_key,
+                    colored_elements,
+                    separator,
+                );
+                let first_keybinds: Vec<KeyShortcut> =
+                    default_keys.iter().cloned().take(position).collect();
+                let second_keybinds: Vec<KeyShortcut> =
+                    default_keys.iter().cloned().skip(position + 1).collect();
                 let first_key_indicators =
                     full_key_indicators(&first_keybinds, colored_elements, separator, help, true);
                 let second_key_indicators =
                     full_key_indicators(&second_keybinds, colored_elements, separator, help, true);
 
-                if first_key_indicators.len + standby_mode_ui_ribbon.len + second_key_indicators.len < max_len_without_superkey {
+                if first_key_indicators.len + standby_mode_ui_ribbon.len + second_key_indicators.len
+                    < max_len_without_superkey
+                {
                     append_to_line(first_key_indicators);
                     append_to_line(standby_mode_ui_ribbon);
                     append_to_line(second_key_indicators);
                 } else {
-                    let length_of_each_half = max_len_without_superkey.saturating_sub(standby_mode_ui_ribbon.len) / 2;
-                    let first_key_indicators =
-                        short_key_indicators(length_of_each_half, &first_keybinds, colored_elements, separator, help, true);
-                    let second_key_indicators =
-                        short_key_indicators(length_of_each_half, &second_keybinds, colored_elements, separator, help, true);
+                    let length_of_each_half =
+                        max_len_without_superkey.saturating_sub(standby_mode_ui_ribbon.len) / 2;
+                    let first_key_indicators = short_key_indicators(
+                        length_of_each_half,
+                        &first_keybinds,
+                        colored_elements,
+                        separator,
+                        help,
+                        true,
+                    );
+                    let second_key_indicators = short_key_indicators(
+                        length_of_each_half,
+                        &second_keybinds,
+                        colored_elements,
+                        separator,
+                        help,
+                        true,
+                    );
                     append_to_line(first_key_indicators);
                     append_to_line(standby_mode_ui_ribbon);
                     append_to_line(second_key_indicators);
@@ -649,12 +711,18 @@ pub fn first_line_supermode(
                 if line.len < max_len {
                     if let Some(tab_info) = tab_info {
                         let remaining_space = max_len.saturating_sub(line.len);
-                        line.append(&swap_layout_status_and_padding(&tab_info, remaining_space, separator, colored_elements, help));
+                        line.append(&swap_layout_status_and_padding(
+                            &tab_info,
+                            remaining_space,
+                            separator,
+                            colored_elements,
+                            help,
+                        ));
                     }
                 }
             }
             line
-        }
+        },
     }
 }
 
@@ -663,7 +731,7 @@ fn swap_layout_status_and_padding(
     mut remaining_space: usize,
     separator: &str,
     colored_elements: ColoredElements,
-    help: &ModeInfo
+    help: &ModeInfo,
 ) -> LinePart {
     let mut line = LinePart::default();
     if let Some(swap_layout_status) = swap_layout_status(
@@ -677,9 +745,8 @@ fn swap_layout_status_and_padding(
     ) {
         remaining_space -= swap_layout_status.len;
         for _ in 0..remaining_space {
-            line.part.push_str(
-                &ANSIStrings(&[colored_elements.superkey_prefix.paint(" ")]).to_string(),
-            );
+            line.part
+                .push_str(&ANSIStrings(&[colored_elements.superkey_prefix.paint(" ")]).to_string());
             line.len += 1;
         }
         line.append(&swap_layout_status);
@@ -783,8 +850,14 @@ pub fn first_line(
     if key_indicators.len < max_len {
         if let Some(tab_info) = tab_info {
             let remaining_space = max_len - key_indicators.len;
-            key_indicators.append(&swap_layout_status_and_padding(&tab_info, remaining_space, separator, colored_elements, help));
-         }
+            key_indicators.append(&swap_layout_status_and_padding(
+                &tab_info,
+                remaining_space,
+                separator,
+                colored_elements,
+                help,
+            ));
+        }
     }
     key_indicators
 }

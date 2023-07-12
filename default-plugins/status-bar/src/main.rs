@@ -15,8 +15,7 @@ use zellij_tile_utils::{palette_match, style};
 
 use first_line::{first_line, first_line_supermode};
 use second_line::{
-    floating_panes_are_visible, fullscreen_panes_to_hide, keybinds,
-    system_clipboard_error,
+    floating_panes_are_visible, fullscreen_panes_to_hide, keybinds, system_clipboard_error,
     text_copied_hint,
 };
 use tip::utils::get_cached_tip_name;
@@ -231,11 +230,16 @@ impl ZellijPlugin for State {
                     // that mode as the standby mode
                     // whenever the user switches away from the standby mode, we palce them in
                     // normal mode
-                    if mode_info.mode == InputMode::Normal && self.current_mode == InputMode::Locked {
+                    if mode_info.mode == InputMode::Normal && self.current_mode == InputMode::Locked
+                    {
                         switch_to_input_mode(&self.standby_mode);
-                    } else if mode_info.mode == InputMode::Normal && self.current_mode == self.standby_mode {
+                    } else if mode_info.mode == InputMode::Normal
+                        && self.current_mode == self.standby_mode
+                    {
                         switch_to_input_mode(&InputMode::Locked);
-                    } else if mode_info.mode != InputMode::Locked && mode_info.mode != InputMode::Normal {
+                    } else if mode_info.mode != InputMode::Locked
+                        && mode_info.mode != InputMode::Normal
+                    {
                         self.standby_mode = mode_info.mode;
                     }
                     self.current_mode = mode_info.mode;
@@ -293,7 +297,13 @@ impl ZellijPlugin for State {
 
         let active_tab = self.tabs.iter().find(|t| t.active);
         let first_line = if self.supermode {
-            first_line_supermode(&self.standby_mode, &self.mode_info, active_tab, cols, separator)
+            first_line_supermode(
+                &self.standby_mode,
+                &self.mode_info,
+                active_tab,
+                cols,
+                separator,
+            )
         } else {
             first_line(&self.mode_info, active_tab, cols, separator)
         };
@@ -356,7 +366,9 @@ impl State {
                 }
             } else if active_tab.are_floating_panes_visible {
                 match self.mode_info.mode {
-                    InputMode::Normal | InputMode:: Locked => floating_panes_are_visible(&self.mode_info),
+                    InputMode::Normal | InputMode::Locked => {
+                        floating_panes_are_visible(&self.mode_info)
+                    },
                     _ => keybinds(&self.mode_info, &self.tip_name, cols),
                 }
             } else {

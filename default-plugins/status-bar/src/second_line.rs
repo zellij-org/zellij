@@ -297,7 +297,7 @@ fn best_effort_shortcut_list(help: &ModeInfo, tip: TipFn, max_len: usize) -> Lin
             } else {
                 LinePart::default()
             }
-        }
+        },
         _ => best_effort_shortcut_list_nonstandard_mode(help, max_len),
     }
 }
