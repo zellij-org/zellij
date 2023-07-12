@@ -1,6 +1,6 @@
 ---
 source: zellij-server/src/./unit/screen_tests.rs
-assertion_line: 879
+assertion_line: 1065
 expression: "format!(\"{:?}\", * received_pty_instructions.lock().unwrap())"
 ---
-[Write([102, 111, 111], 0), Exit]
+[StartCachingResizes, ApplyCachedResizes, StartCachingResizes, ResizePty(0, 119, 18, None, None), ResizePty(0, 119, 18, None, None), ResizePty(0, 119, 18, None, None), ApplyCachedResizes, StartCachingResizes, ApplyCachedResizes, StartCachingResizes, Write([102, 111, 111], 0), ApplyCachedResizes, Exit]
