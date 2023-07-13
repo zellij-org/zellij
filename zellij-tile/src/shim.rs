@@ -24,6 +24,11 @@ pub fn set_selectable(selectable: bool) {
     unsafe { host_set_selectable(selectable as i32) };
 }
 
+pub fn request_permission(permissions: &[PluginPermission]) {
+    object_to_stdout(&permissions);
+    unsafe { host_request_permission() };
+}
+
 // Query Functions
 /// Returns the unique Zellij pane ID for the plugin as well as the Zellij process id.
 pub fn get_plugin_ids() -> PluginIds {
@@ -412,6 +417,7 @@ extern "C" {
     fn host_subscribe();
     fn host_unsubscribe();
     fn host_set_selectable(selectable: i32);
+    fn host_request_permission();
     fn host_get_plugin_ids();
     fn host_get_zellij_version();
     fn host_open_file();

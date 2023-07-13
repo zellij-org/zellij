@@ -9,7 +9,7 @@ mod swap_layouts;
 use copy_command::CopyCommand;
 use std::env::temp_dir;
 use uuid::Uuid;
-use zellij_utils::data::{Direction, PaneInfo, ResizeStrategy};
+use zellij_utils::data::{Direction, PaneInfo, PluginPermission, ResizeStrategy};
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
 use zellij_utils::position::{Column, Line};
@@ -210,6 +210,7 @@ pub trait Pane {
     fn set_should_render_boundaries(&mut self, _should_render: bool) {}
     fn selectable(&self) -> bool;
     fn set_selectable(&mut self, selectable: bool);
+    fn set_plugin_permissions(&mut self, _permissions: Option<HashSet<PluginPermission>>) {}
     fn render(
         &mut self,
         client_id: Option<ClientId>,
@@ -462,6 +463,7 @@ pub trait Pane {
 #[derive(Clone, Debug)]
 pub enum AdjustedInput {
     WriteBytesToTerminal(Vec<u8>),
+    Confirmed(bool),
     ReRunCommandInThisPane(RunCommand),
     CloseThisPane,
 }
@@ -1552,17 +1554,27 @@ impl Tab {
                         self.close_pane(PaneId::Terminal(active_terminal_id), false, None);
                         should_update_ui = true;
                     },
+                    Some(_) => {},
                     None => {},
                 }
             },
-            PaneId::Plugin(pid) => {
-                let mut plugin_updates = vec![];
-                for key in parse_keys(&input_bytes) {
-                    plugin_updates.push((Some(pid), client_id, Event::Key(key)));
-                }
-                self.senders
-                    .send_to_plugin(PluginInstruction::Update(plugin_updates))
-                    .with_context(err_context)?;
+            PaneId::Plugin(pid) => match active_terminal.adjust_input_to_terminal(input_bytes) {
+                Some(AdjustedInput::WriteBytesToTerminal(adjusted_input)) => {
+                    let mut plugin_updates = vec![];
+                    for key in parse_keys(&adjusted_input) {
+                        plugin_updates.push((Some(pid), client_id, Event::Key(key)));
+                    }
+                    self.senders
+                        .send_to_plugin(PluginInstruction::Update(plugin_updates))
+                        .with_context(err_context)?;
+                },
+                Some(AdjustedInput::Confirmed(_)) => {
+                    self.request_plugin_permissions(pid, None);
+                    // TODO: Maybe call render() in plugin instance?
+                    should_update_ui = true;
+                },
+                Some(_) => {},
+                None => {},
             },
         }
         Ok(should_update_ui)
@@ -3405,6 +3417,24 @@ impl Tab {
             self.next_swap_layout(client_id, true)?;
         }
         Ok(())
+    }
+    pub fn request_plugin_permissions(
+        &mut self,
+        pid: u32,
+        permissions: Option<HashSet<PluginPermission>>,
+    ) {
+        if let Some(plugin_pane) = self
+            .tiled_panes
+            .get_pane_mut(PaneId::Plugin(pid))
+            .or_else(|| self.floating_panes.get_pane_mut(PaneId::Plugin(pid)))
+            .or_else(|| {
+                self.suppressed_panes
+                    .values_mut()
+                    .find(|s_p| s_p.pid() == PaneId::Plugin(pid))
+            })
+        {
+            plugin_pane.set_plugin_permissions(permissions);
+        }
     }
 }
 

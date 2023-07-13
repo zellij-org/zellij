@@ -10,8 +10,8 @@ use wasmer_wasi::WasiEnv;
 
 use crate::{thread_bus::ThreadSenders, ClientId};
 
-use zellij_utils::async_channel::Sender;
 use zellij_utils::errors::prelude::*;
+use zellij_utils::{async_channel::Sender, data::PluginPermission};
 use zellij_utils::{
     data::EventType,
     data::PluginCapabilities,
@@ -193,6 +193,7 @@ pub type Subscriptions = HashSet<EventType>;
 pub struct PluginEnv {
     pub plugin_id: PluginId,
     pub plugin: PluginConfig,
+    pub plugin_permissions: HashSet<PluginPermission>,
     pub senders: ThreadSenders,
     pub wasi_env: WasiEnv,
     pub tab_index: usize,

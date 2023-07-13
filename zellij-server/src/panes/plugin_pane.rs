@@ -1,11 +1,11 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::time::Instant;
 
 use crate::output::{CharacterChunk, SixelImageChunk};
 use crate::panes::{grid::Grid, sixel::SixelImageStore, LinkHandler, PaneId};
 use crate::plugins::PluginInstruction;
 use crate::pty::VteBytes;
-use crate::tab::Pane;
+use crate::tab::{AdjustedInput, Pane};
 use crate::ui::{
     loading_indication::LoadingIndication,
     pane_boundaries_frame::{FrameParams, PaneFrame},
@@ -13,6 +13,7 @@ use crate::ui::{
 use crate::ClientId;
 use std::cell::RefCell;
 use std::rc::Rc;
+use zellij_utils::data::PluginPermission;
 use zellij_utils::pane_size::{Offset, SizeInPixels};
 use zellij_utils::position::Position;
 use zellij_utils::{
@@ -73,6 +74,7 @@ pub(crate) struct PluginPane {
     pane_frame_color_override: Option<(PaletteColor, Option<String>)>,
     invoked_with: Option<Run>,
     loading_indication: LoadingIndication,
+    requesting_permissions: Option<HashSet<PluginPermission>>,
     debug: bool,
 }
 
@@ -121,6 +123,7 @@ impl PluginPane {
             pane_frame_color_override: None,
             invoked_with,
             loading_indication,
+            requesting_permissions: None,
             debug,
         };
         for client_id in currently_connected_clients {
@@ -193,13 +196,33 @@ impl Pane for PluginPane {
             .vte_parsers
             .entry(client_id)
             .or_insert_with(|| vte::Parser::new());
-        for &byte in &bytes {
+
+        let mut vte_bytes = bytes;
+        if self.requesting_permissions.is_some() {
+            vte_bytes = "Example...".into();
+        }
+
+        for &byte in &vte_bytes {
             vte_parser.advance(grid, byte);
         }
+
         self.should_render.insert(client_id, true);
     }
     fn cursor_coordinates(&self) -> Option<(usize, usize)> {
         None
+    }
+    fn adjust_input_to_terminal(&mut self, input_bytes: Vec<u8>) -> Option<AdjustedInput> {
+        if self.requesting_permissions.is_some() {
+            match input_bytes.as_slice() {
+                // Y or y
+                &[89] | &[121] => Some(AdjustedInput::Confirmed(true)),
+                // N or n
+                &[78] | &[110] => Some(AdjustedInput::Confirmed(false)),
+                _ => None,
+            }
+        } else {
+            Some(AdjustedInput::WriteBytesToTerminal(input_bytes))
+        }
     }
     fn position_and_size(&self) -> PaneGeom {
         self.geom
@@ -232,6 +255,9 @@ impl Pane for PluginPane {
     }
     fn set_selectable(&mut self, selectable: bool) {
         self.selectable = selectable;
+    }
+    fn set_plugin_permissions(&mut self, permissions: Option<HashSet<PluginPermission>>) {
+        self.requesting_permissions = permissions;
     }
     fn render(
         &mut self,

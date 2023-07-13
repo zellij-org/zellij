@@ -19,6 +19,9 @@ register_worker!(
 
 impl ZellijPlugin for State {
     fn load(&mut self) {
+        // Example
+        request_permission(&[PluginPermission::KeyboardInput]);
+
         refresh_directory(self);
         self.search_state.loading = true;
         subscribe(&[

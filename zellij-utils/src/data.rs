@@ -495,6 +495,14 @@ pub enum Event {
     FileSystemDelete(Vec<PathBuf>),
 }
 
+#[derive(Debug, Clone, PartialEq, EnumDiscriminants, ToString, Serialize, Deserialize)]
+#[strum_discriminants(derive(EnumString, Hash, Serialize, Deserialize))]
+#[strum_discriminants(name(PluginPermission))]
+#[non_exhaustive]
+pub enum Permission {
+    KeyboardInput,
+}
+
 /// Describes the different input modes, which change the way that keystrokes will be interpreted.
 #[derive(
     Debug,

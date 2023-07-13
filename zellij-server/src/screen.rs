@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::str;
 
-use zellij_utils::data::{Direction, PaneManifest, Resize, ResizeStrategy};
+use zellij_utils::data::{Direction, PaneManifest, PluginPermission, Resize, ResizeStrategy};
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
 use zellij_utils::input::options::Clipboard;
@@ -278,6 +278,10 @@ pub enum ScreenInstruction {
     FocusPaneWithId(PaneId, bool, ClientId),        // bool is should_float
     RenamePane(PaneId, Vec<u8>),
     RenameTab(usize, Vec<u8>),
+    RequestPluginPermissions(
+        u32, // u32 - plugin_id
+        HashSet<PluginPermission>,
+    ),
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -445,6 +449,9 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::FocusPaneWithId(..) => ScreenContext::FocusPaneWithId,
             ScreenInstruction::RenamePane(..) => ScreenContext::RenamePane,
             ScreenInstruction::RenameTab(..) => ScreenContext::RenameTab,
+            ScreenInstruction::RequestPluginPermissions(..) => {
+                ScreenContext::RequestPluginPermissions
+            },
         }
     }
 }
@@ -2815,6 +2822,14 @@ pub(crate) fn screen_thread_main(
                     },
                 }
                 screen.report_tab_state()?;
+            },
+            ScreenInstruction::RequestPluginPermissions(plugin_id, permissions) => {
+                let all_tabs = screen.get_tabs_mut();
+                for tab in all_tabs.values_mut() {
+                    if tab.has_plugin(plugin_id) {
+                        tab.request_plugin_permissions(plugin_id, Some(permissions.clone()))
+                    }
+                }
             },
         }
     }
