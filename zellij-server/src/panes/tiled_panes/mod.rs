@@ -623,7 +623,7 @@ impl TiledPanes {
             { self.connected_clients.borrow().iter().copied().collect() };
         let multiple_users_exist_in_session = { self.connected_clients_in_app.borrow().len() > 1 };
         let mut client_id_to_boundaries: HashMap<ClientId, Boundaries> = HashMap::new();
-        let active_panes = if self.session_is_mirrored || floating_panes_are_visible {
+        let active_panes = if floating_panes_are_visible {
             HashMap::new()
         } else {
             self.active_panes
