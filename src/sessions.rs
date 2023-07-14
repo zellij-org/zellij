@@ -296,6 +296,7 @@ const ADJECTIVES: &[&'static str] = &[
     "unique",
     "verdant",
     "vitreous",
+    "wise",
     "zippy",
 ];
 
@@ -351,6 +352,7 @@ const NOUNS: &[&'static str] = &[
     "quasar",
     "rhinoceros",
     "river",
+    "rustacean",
     "salamander",
     "sitar",
     "stegosaurus",
