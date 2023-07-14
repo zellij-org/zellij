@@ -9,20 +9,25 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use url::Url;
 
-fn  validate_session(name: &str) -> Result<String,String> {
+fn validate_session(name: &str) -> Result<String, String> {
     #[cfg(unix)]
     {
         let mut socket_path = crate::consts::ZELLIJ_SOCK_DIR.clone();
-        let available_length = 108_usize.saturating_sub(socket_path.as_os_str().len()).saturating_sub(1);
+        let available_length = 108_usize
+            .saturating_sub(socket_path.as_os_str().len())
+            .saturating_sub(1);
         socket_path.push(name);
-        if socket_path.as_os_str().len() >= 108 { // socket path must be less than 108 bytes
-            return Err(format!("session name must be less than {} characters",available_length));
-        } ;
+        if socket_path.as_os_str().len() >= 108 {
+            // socket path must be less than 108 bytes
+            return Err(format!(
+                "session name must be less than {} characters",
+                available_length
+            ));
+        };
     };
 
     Ok(name.to_owned())
 }
-
 
 #[derive(Parser, Default, Debug, Clone, Serialize, Deserialize)]
 #[clap(version, name = "zellij")]
