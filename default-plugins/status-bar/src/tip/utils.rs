@@ -37,7 +37,11 @@ pub fn get_random_tip_name() -> String {
 }
 
 pub fn get_cached_tip_name() -> String {
-    let mut local_cache = LocalCache::new(PathBuf::from(DEFAULT_CACHE_FILE_PATH)).unwrap();
+    let mut local_cache = match LocalCache::new(PathBuf::from(DEFAULT_CACHE_FILE_PATH)) {
+        // TODO: it might be a good to leave an log with warn later, if possible.
+        Err(_) => return String::from("quicknav"),
+        Ok(cache) => cache,
+    };
 
     let zellij_version = get_zellij_version();
     if zellij_version.ne(local_cache.get_version()) {

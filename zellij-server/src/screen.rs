@@ -2,17 +2,21 @@
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::str;
 
-use zellij_utils::data::{Direction, Resize, ResizeStrategy};
+use zellij_utils::data::{Direction, PaneManifest, Resize, ResizeStrategy};
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
 use zellij_utils::input::options::Clipboard;
 use zellij_utils::pane_size::{Size, SizeInPixels};
 use zellij_utils::{
     input::command::TerminalAction,
-    input::layout::{FloatingPanesLayout, PaneLayout, RunPluginLocation},
+    input::layout::{
+        FloatingPaneLayout, Run, RunPlugin, RunPluginLocation, SwapFloatingLayout, SwapTiledLayout,
+        TiledPaneLayout,
+    },
     position::Position,
 };
 
@@ -27,7 +31,10 @@ use crate::{
     pty::{ClientOrTabIndex, PtyInstruction, VteBytes},
     tab::Tab,
     thread_bus::Bus,
-    ui::overlay::{Overlay, OverlayWindow, Overlayable},
+    ui::{
+        loading_indication::LoadingIndication,
+        overlay::{Overlay, OverlayWindow},
+    },
     ClientId, ServerInstruction,
 };
 use zellij_utils::{
@@ -149,11 +156,13 @@ pub enum ScreenInstruction {
     MoveFocusRight(ClientId),
     MoveFocusRightOrNextTab(ClientId),
     MovePane(ClientId),
+    MovePaneBackwards(ClientId),
     MovePaneUp(ClientId),
     MovePaneDown(ClientId),
     MovePaneRight(ClientId),
     MovePaneLeft(ClientId),
     Exit,
+    ClearScreen(ClientId),
     DumpScreen(String, ClientId, bool),
     EditScrollback(ClientId),
     ScrollUp(ClientId),
@@ -172,19 +181,27 @@ pub enum ScreenInstruction {
     TogglePaneFrames,
     SetSelectable(PaneId, bool, usize),
     ClosePane(PaneId, Option<ClientId>),
-    HoldPane(PaneId, Option<i32>, RunCommand, Option<ClientId>), // Option<i32> is the exit status
+    HoldPane(
+        PaneId,
+        Option<i32>,
+        RunCommand,
+        Option<usize>,
+        Option<ClientId>,
+    ), // Option<i32> is the exit status, Option<usize> is the tab_index
     UpdatePaneName(Vec<u8>, ClientId),
     UndoRenamePane(ClientId),
     NewTab(
+        Option<PathBuf>,
         Option<TerminalAction>,
-        Option<PaneLayout>,
-        Vec<FloatingPanesLayout>,
+        Option<TiledPaneLayout>,
+        Vec<FloatingPaneLayout>,
         Option<String>,
+        (Vec<SwapTiledLayout>, Vec<SwapFloatingLayout>), // swap layouts
         ClientId,
     ),
     ApplyLayout(
-        PaneLayout,
-        Vec<FloatingPanesLayout>,
+        TiledPaneLayout,
+        Vec<FloatingPaneLayout>,
         Vec<(u32, HoldForCommand)>, // new pane pids
         Vec<(u32, HoldForCommand)>, // new floating pane pids
         HashMap<RunPluginLocation, Vec<u32>>,
@@ -196,6 +213,13 @@ pub enum ScreenInstruction {
     ToggleActiveSyncTab(ClientId),
     CloseTab(ClientId),
     GoToTab(u32, Option<ClientId>), // this Option is a hacky workaround, please do not copy this behaviour
+    GoToTabName(
+        String,
+        (Vec<SwapTiledLayout>, Vec<SwapFloatingLayout>), // swap layouts
+        Option<TerminalAction>,                          // default_shell
+        bool,
+        Option<ClientId>,
+    ),
     ToggleTab(ClientId),
     UpdateTabName(Vec<u8>, ClientId),
     UndoRenameTab(ClientId),
@@ -230,6 +254,30 @@ pub enum ScreenInstruction {
     SearchToggleWrap(ClientId),
     AddRedPaneFrameColorOverride(Vec<PaneId>, Option<String>), // Option<String> => optional error text
     ClearPaneFrameColorOverride(Vec<PaneId>),
+    PreviousSwapLayout(ClientId),
+    NextSwapLayout(ClientId),
+    QueryTabNames(ClientId),
+    NewTiledPluginPane(RunPluginLocation, Option<String>, ClientId), // Option<String> is
+    // optional pane title
+    NewFloatingPluginPane(RunPluginLocation, Option<String>, ClientId), // Option<String> is an
+    StartOrReloadPluginPane(RunPlugin, Option<String>),
+    // optional pane title
+    AddPlugin(
+        Option<bool>, // should_float
+        RunPlugin,
+        Option<String>, // pane title
+        usize,          // tab index
+        u32,            // plugin id
+    ),
+    UpdatePluginLoadingStage(u32, LoadingIndication), // u32 - plugin_id
+    StartPluginLoadingIndication(u32, LoadingIndication), // u32 - plugin_id
+    ProgressPluginLoadingOffset(u32),                 // u32 - plugin id
+    RequestStateUpdateForPlugins,
+    LaunchOrFocusPlugin(RunPlugin, bool, ClientId), // bool is should_float
+    SuppressPane(PaneId, ClientId),                 // bool is should_float
+    FocusPaneWithId(PaneId, bool, ClientId),        // bool is should_float
+    RenamePane(PaneId, Vec<u8>),
+    RenameTab(usize, Vec<u8>),
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -285,11 +333,13 @@ impl From<&ScreenInstruction> for ScreenContext {
                 ScreenContext::MoveFocusRightOrNextTab
             },
             ScreenInstruction::MovePane(..) => ScreenContext::MovePane,
+            ScreenInstruction::MovePaneBackwards(..) => ScreenContext::MovePaneBackwards,
             ScreenInstruction::MovePaneDown(..) => ScreenContext::MovePaneDown,
             ScreenInstruction::MovePaneUp(..) => ScreenContext::MovePaneUp,
             ScreenInstruction::MovePaneRight(..) => ScreenContext::MovePaneRight,
             ScreenInstruction::MovePaneLeft(..) => ScreenContext::MovePaneLeft,
             ScreenInstruction::Exit => ScreenContext::Exit,
+            ScreenInstruction::ClearScreen(..) => ScreenContext::ClearScreen,
             ScreenInstruction::DumpScreen(..) => ScreenContext::DumpScreen,
             ScreenInstruction::EditScrollback(..) => ScreenContext::EditScrollback,
             ScreenInstruction::ScrollUp(..) => ScreenContext::ScrollUp,
@@ -317,6 +367,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::SwitchTabPrev(..) => ScreenContext::SwitchTabPrev,
             ScreenInstruction::CloseTab(..) => ScreenContext::CloseTab,
             ScreenInstruction::GoToTab(..) => ScreenContext::GoToTab,
+            ScreenInstruction::GoToTabName(..) => ScreenContext::GoToTabName,
             ScreenInstruction::UpdateTabName(..) => ScreenContext::UpdateTabName,
             ScreenInstruction::UndoRenameTab(..) => ScreenContext::UndoRenameTab,
             ScreenInstruction::TerminalResize(..) => ScreenContext::TerminalResize,
@@ -368,6 +419,32 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::ClearPaneFrameColorOverride(..) => {
                 ScreenContext::ClearPaneFrameColorOverride
             },
+            ScreenInstruction::PreviousSwapLayout(..) => ScreenContext::PreviousSwapLayout,
+            ScreenInstruction::NextSwapLayout(..) => ScreenContext::NextSwapLayout,
+            ScreenInstruction::QueryTabNames(..) => ScreenContext::QueryTabNames,
+            ScreenInstruction::NewTiledPluginPane(..) => ScreenContext::NewTiledPluginPane,
+            ScreenInstruction::NewFloatingPluginPane(..) => ScreenContext::NewFloatingPluginPane,
+            ScreenInstruction::StartOrReloadPluginPane(..) => {
+                ScreenContext::StartOrReloadPluginPane
+            },
+            ScreenInstruction::AddPlugin(..) => ScreenContext::AddPlugin,
+            ScreenInstruction::UpdatePluginLoadingStage(..) => {
+                ScreenContext::UpdatePluginLoadingStage
+            },
+            ScreenInstruction::ProgressPluginLoadingOffset(..) => {
+                ScreenContext::ProgressPluginLoadingOffset
+            },
+            ScreenInstruction::StartPluginLoadingIndication(..) => {
+                ScreenContext::StartPluginLoadingIndication
+            },
+            ScreenInstruction::RequestStateUpdateForPlugins => {
+                ScreenContext::RequestStateUpdateForPlugins
+            },
+            ScreenInstruction::LaunchOrFocusPlugin(..) => ScreenContext::LaunchOrFocusPlugin,
+            ScreenInstruction::SuppressPane(..) => ScreenContext::SuppressPane,
+            ScreenInstruction::FocusPaneWithId(..) => ScreenContext::FocusPaneWithId,
+            ScreenInstruction::RenamePane(..) => ScreenContext::RenamePane,
+            ScreenInstruction::RenameTab(..) => ScreenContext::RenameTab,
         }
     }
 }
@@ -428,8 +505,10 @@ pub(crate) struct Screen {
     default_mode_info: ModeInfo, // TODO: restructure ModeInfo to prevent this duplication
     style: Style,
     draw_pane_frames: bool,
+    auto_layout: bool,
     session_is_mirrored: bool,
     copy_options: CopyOptions,
+    debug: bool,
 }
 
 impl Screen {
@@ -440,8 +519,10 @@ impl Screen {
         max_panes: Option<usize>,
         mode_info: ModeInfo,
         draw_pane_frames: bool,
+        auto_layout: bool,
         session_is_mirrored: bool,
         copy_options: CopyOptions,
+        debug: bool,
     ) -> Self {
         Screen {
             bus,
@@ -461,8 +542,10 @@ impl Screen {
             mode_info: BTreeMap::new(),
             default_mode_info: mode_info,
             draw_pane_frames,
+            auto_layout,
             session_is_mirrored,
             copy_options,
+            debug,
         }
     }
 
@@ -569,7 +652,12 @@ impl Screen {
     }
 
     /// A helper function to switch to a new tab at specified position.
-    fn switch_active_tab(&mut self, new_tab_pos: usize, client_id: ClientId) -> Result<()> {
+    fn switch_active_tab(
+        &mut self,
+        new_tab_pos: usize,
+        should_change_pane_focus: Option<Direction>,
+        client_id: ClientId,
+    ) -> Result<()> {
         let err_context = || {
             format!(
             "Failed to switch to active tab at position {new_tab_pos} for client id: {client_id:?}"
@@ -593,6 +681,15 @@ impl Screen {
                             self.connected_clients.borrow().iter().copied().collect();
                         for client_id in all_connected_clients {
                             self.update_client_tab_focus(client_id, new_tab_index);
+                            match (
+                                should_change_pane_focus,
+                                self.get_indexed_tab_mut(new_tab_index),
+                            ) {
+                                (Some(direction), Some(new_tab)) => {
+                                    new_tab.focus_pane_on_edge(direction, client_id);
+                                },
+                                _ => {},
+                            }
                         }
                     } else {
                         self.move_clients_between_tabs(
@@ -601,6 +698,15 @@ impl Screen {
                             Some(vec![client_id]),
                         )
                         .with_context(err_context)?;
+                        match (
+                            should_change_pane_focus,
+                            self.get_indexed_tab_mut(new_tab_index),
+                        ) {
+                            (Some(direction), Some(new_tab)) => {
+                                new_tab.focus_pane_on_edge(direction, client_id);
+                            },
+                            _ => {},
+                        }
                         self.update_client_tab_focus(client_id, new_tab_index);
                     }
 
@@ -614,7 +720,8 @@ impl Screen {
                             .non_fatal();
                     }
 
-                    self.update_tabs().with_context(err_context)?;
+                    self.report_tab_state().with_context(err_context)?;
+                    self.report_pane_state().with_context(err_context)?;
                     return self.render().with_context(err_context);
                 },
                 Err(err) => Err::<(), _>(err).with_context(err_context).non_fatal(),
@@ -623,8 +730,24 @@ impl Screen {
         Ok(())
     }
 
+    /// A helper function to switch to a new tab with specified name. Return true if tab [name] has
+    /// been created, else false.
+    fn switch_active_tab_name(&mut self, name: String, client_id: ClientId) -> Result<bool> {
+        match self.tabs.values().find(|t| t.name == name) {
+            Some(new_tab) => {
+                self.switch_active_tab(new_tab.position, None, client_id)?;
+                Ok(true)
+            },
+            None => Ok(false),
+        }
+    }
+
     /// Sets this [`Screen`]'s active [`Tab`] to the next tab.
-    pub fn switch_tab_next(&mut self, client_id: ClientId) -> Result<()> {
+    pub fn switch_tab_next(
+        &mut self,
+        should_change_pane_focus: Option<Direction>,
+        client_id: ClientId,
+    ) -> Result<()> {
         let err_context = || format!("failed to switch to next tab for client {client_id}");
 
         let client_id = if self.get_active_tab(client_id).is_ok() {
@@ -638,7 +761,11 @@ impl Screen {
                 Ok(active_tab) => {
                     let active_tab_pos = active_tab.position;
                     let new_tab_pos = (active_tab_pos + 1) % self.tabs.len();
-                    return self.switch_active_tab(new_tab_pos, client_id);
+                    return self.switch_active_tab(
+                        new_tab_pos,
+                        should_change_pane_focus,
+                        client_id,
+                    );
                 },
                 Err(err) => Err::<(), _>(err).with_context(err_context).non_fatal(),
             }
@@ -647,7 +774,11 @@ impl Screen {
     }
 
     /// Sets this [`Screen`]'s active [`Tab`] to the previous tab.
-    pub fn switch_tab_prev(&mut self, client_id: ClientId) -> Result<()> {
+    pub fn switch_tab_prev(
+        &mut self,
+        should_change_pane_focus: Option<Direction>,
+        client_id: ClientId,
+    ) -> Result<()> {
         let err_context = || format!("failed to switch to previous tab for client {client_id}");
 
         let client_id = if self.get_active_tab(client_id).is_ok() {
@@ -666,7 +797,11 @@ impl Screen {
                         active_tab_pos - 1
                     };
 
-                    return self.switch_active_tab(new_tab_pos, client_id);
+                    return self.switch_active_tab(
+                        new_tab_pos,
+                        should_change_pane_focus,
+                        client_id,
+                    );
                 },
                 Err(err) => Err::<(), _>(err).with_context(err_context).non_fatal(),
             }
@@ -675,7 +810,11 @@ impl Screen {
     }
 
     pub fn go_to_tab(&mut self, tab_index: usize, client_id: ClientId) -> Result<()> {
-        self.switch_active_tab(tab_index.saturating_sub(1), client_id)
+        self.switch_active_tab(tab_index.saturating_sub(1), None, client_id)
+    }
+
+    pub fn go_to_tab_name(&mut self, name: String, client_id: ClientId) -> Result<bool> {
+        self.switch_active_tab_name(name, client_id)
     }
 
     fn close_tab_at_index(&mut self, tab_index: usize) -> Result<()> {
@@ -711,7 +850,8 @@ impl Screen {
                     t.position -= 1;
                 }
             }
-            self.update_tabs().with_context(err_context)?;
+            self.report_tab_state().with_context(err_context)?;
+            self.report_pane_state().with_context(err_context)?;
             self.render().with_context(err_context)
         }
     }
@@ -748,6 +888,7 @@ impl Screen {
                 .with_context(err_context)?;
             tab.set_force_render();
         }
+        self.report_pane_state().with_context(err_context)?;
         self.render().with_context(err_context)
     }
 
@@ -800,13 +941,9 @@ impl Screen {
             self.character_cell_size.clone(),
         );
         let mut tabs_to_close = vec![];
-        let size = self.size;
-        let overlay = self.overlay.clone();
         for (tab_index, tab) in &mut self.tabs {
             if tab.has_selectable_tiled_panes() {
-                let vte_overlay = overlay.generate_overlay(size).context(err_context)?;
-                tab.render(&mut output, Some(vte_overlay))
-                    .context(err_context)?;
+                tab.render(&mut output).context(err_context)?;
             } else if !tab.is_pending() {
                 tabs_to_close.push(*tab_index);
             }
@@ -885,7 +1022,13 @@ impl Screen {
     }
 
     /// Creates a new [`Tab`] in this [`Screen`]
-    pub fn new_tab(&mut self, tab_index: usize, client_id: ClientId) -> Result<()> {
+    pub fn new_tab(
+        &mut self,
+        tab_index: usize,
+        swap_layouts: (Vec<SwapTiledLayout>, Vec<SwapFloatingLayout>),
+        tab_name: Option<String>,
+        client_id: ClientId,
+    ) -> Result<()> {
         let err_context = || format!("failed to create new tab for client {client_id:?}",);
 
         let client_id = if self.get_active_tab(client_id).is_ok() {
@@ -896,11 +1039,13 @@ impl Screen {
             client_id
         };
 
+        let tab_name = tab_name.unwrap_or_else(|| String::new());
+
         let position = self.tabs.len();
         let tab = Tab::new(
             tab_index,
             position,
-            String::new(),
+            tab_name,
             self.size,
             self.character_cell_size.clone(),
             self.sixel_image_store.clone(),
@@ -914,26 +1059,35 @@ impl Screen {
             self.style,
             self.default_mode_info.clone(),
             self.draw_pane_frames,
+            self.auto_layout,
             self.connected_clients.clone(),
             self.session_is_mirrored,
             client_id,
             self.copy_options.clone(),
             self.terminal_emulator_colors.clone(),
             self.terminal_emulator_color_codes.clone(),
+            swap_layouts,
+            self.debug,
         );
         self.tabs.insert(tab_index, tab);
         Ok(())
     }
     pub fn apply_layout(
         &mut self,
-        layout: PaneLayout,
-        floating_panes_layout: Vec<FloatingPanesLayout>,
+        layout: TiledPaneLayout,
+        floating_panes_layout: Vec<FloatingPaneLayout>,
         new_terminal_ids: Vec<(u32, HoldForCommand)>,
         new_floating_terminal_ids: Vec<(u32, HoldForCommand)>,
         new_plugin_ids: HashMap<RunPluginLocation, Vec<u32>>,
         tab_index: usize,
         client_id: ClientId,
     ) -> Result<()> {
+        if self.tabs.get(&tab_index).is_none() {
+            // TODO: we should prevent this situation with a UI - eg. cannot close tabs with a
+            // pending state
+            log::error!("Tab with index {tab_index} not found. Cannot apply layout!");
+            return Ok(());
+        }
         let client_id = if self.get_active_tab(client_id).is_ok() {
             client_id
         } else if let Some(first_client_id) = self.get_first_client_id() {
@@ -1000,9 +1154,10 @@ impl Screen {
             self.add_client(client_id).with_context(err_context)?;
         }
 
-        self.update_tabs()
+        self.report_tab_state()
             .and_then(|_| self.render())
-            .with_context(err_context)
+            .with_context(err_context)?;
+        self.report_pane_state().with_context(err_context)
     }
 
     pub fn add_client(&mut self, client_id: ClientId) -> Result<()> {
@@ -1053,10 +1208,10 @@ impl Screen {
             self.tab_history.remove(&client_id);
         }
         self.connected_clients.borrow_mut().remove(&client_id);
-        self.update_tabs().with_context(err_context)
+        self.report_tab_state().with_context(err_context)
     }
 
-    pub fn update_tabs(&self) -> Result<()> {
+    pub fn report_tab_state(&self) -> Result<()> {
         let mut plugin_updates = vec![];
         for (client_id, active_tab_index) in self.active_tab_indices.iter() {
             let mut tab_data = vec![];
@@ -1073,6 +1228,7 @@ impl Screen {
                         .copied()
                         .collect()
                 };
+                let (active_swap_layout_name, is_swap_layout_dirty) = tab.swap_layout_info();
                 tab_data.push(TabInfo {
                     position: tab.position,
                     name: tab.name.clone(),
@@ -1082,6 +1238,8 @@ impl Screen {
                     is_sync_panes_active: tab.is_sync_panes_active(),
                     are_floating_panes_visible: tab.are_floating_panes_visible(),
                     other_focused_clients,
+                    active_swap_layout_name,
+                    is_swap_layout_dirty,
                 });
             }
             plugin_updates.push((None, Some(*client_id), Event::TabUpdate(tab_data)));
@@ -1089,6 +1247,21 @@ impl Screen {
         self.bus
             .senders
             .send_to_plugin(PluginInstruction::Update(plugin_updates))
+            .context("failed to update tabs")?;
+        Ok(())
+    }
+    fn report_pane_state(&self) -> Result<()> {
+        let mut pane_manifest = PaneManifest::default();
+        for tab in self.tabs.values() {
+            pane_manifest.panes.insert(tab.position, tab.pane_infos());
+        }
+        self.bus
+            .senders
+            .send_to_plugin(PluginInstruction::Update(vec![(
+                None,
+                None,
+                Event::PaneUpdate(pane_manifest),
+            )]))
             .context("failed to update tabs")?;
         Ok(())
     }
@@ -1125,7 +1298,7 @@ impl Screen {
                                 }
                             },
                         }
-                        self.update_tabs().with_context(err_context)
+                        self.report_tab_state().with_context(err_context)
                     },
                     Err(err) => {
                         Err::<(), _>(err).with_context(err_context).non_fatal();
@@ -1150,7 +1323,7 @@ impl Screen {
                     Ok(active_tab) => {
                         if active_tab.name != active_tab.prev_name {
                             active_tab.name = active_tab.prev_name.clone();
-                            self.update_tabs()
+                            self.report_tab_state()
                                 .context("failed to undo renaming of active tab")?;
                         }
                     },
@@ -1216,6 +1389,12 @@ impl Screen {
             tab.change_mode_info(mode_info.clone(), client_id);
             tab.mark_active_pane_for_rerender(client_id);
         }
+
+        if let Some(os_input) = &mut self.bus.os_input {
+            let _ =
+                os_input.send_to_client(client_id, ServerToClientMsg::SwitchToMode(mode_info.mode));
+        }
+
         Ok(())
     }
     pub fn change_mode_for_all_clients(&mut self, mode_info: ModeInfo) -> Result<()> {
@@ -1230,10 +1409,6 @@ impl Screen {
         for client_id in connected_client_ids {
             self.change_mode(mode_info.clone(), client_id)
                 .with_context(err_context)?;
-            if let Some(os_input) = &mut self.bus.os_input {
-                let _ = os_input
-                    .send_to_client(client_id, ServerToClientMsg::SwitchToMode(mode_info.mode));
-            }
         }
         Ok(())
     }
@@ -1257,7 +1432,7 @@ impl Screen {
                         .move_focus_left(client_id)
                         .and_then(|success| {
                             if !success {
-                                self.switch_tab_prev(client_id)
+                                self.switch_tab_prev(Some(Direction::Left), client_id)
                                     .context("failed to move focus to previous tab")
                             } else {
                                 Ok(())
@@ -1268,6 +1443,7 @@ impl Screen {
                 Err(err) => Err::<(), _>(err).with_context(err_context).non_fatal(),
             };
         }
+        self.report_pane_state().with_context(err_context)?;
         Ok(())
     }
     pub fn move_focus_right_or_next_tab(&mut self, client_id: ClientId) -> Result<()> {
@@ -1291,7 +1467,7 @@ impl Screen {
                         .move_focus_right(client_id)
                         .and_then(|success| {
                             if !success {
-                                self.switch_tab_next(client_id)
+                                self.switch_tab_next(Some(Direction::Right), client_id)
                                     .context("failed to move focus to next tab")
                             } else {
                                 Ok(())
@@ -1302,6 +1478,7 @@ impl Screen {
                 Err(err) => Err::<(), _>(err).with_context(err_context).non_fatal(),
             };
         }
+        self.report_pane_state().with_context(err_context)?;
         Ok(())
     }
     pub fn toggle_tab(&mut self, client_id: ClientId) -> Result<()> {
@@ -1314,8 +1491,68 @@ impl Screen {
                 .context("failed to toggle tabs")?;
         };
 
-        self.update_tabs().context("failed to toggle tabs")?;
+        self.report_tab_state().context("failed to toggle tabs")?;
+        self.report_pane_state().context("failed to toggle tabs")?;
         self.render()
+    }
+
+    pub fn focus_plugin_pane(
+        &mut self,
+        run_plugin: &RunPlugin,
+        should_float: bool,
+        client_id: ClientId,
+    ) -> Result<bool> {
+        // true => found and focused, false => not
+        let err_context = || format!("failed to focus_plugin_pane");
+        let mut tab_index_and_plugin_pane_id = None;
+        let all_tabs = self.get_tabs_mut();
+        for (tab_index, tab) in all_tabs.iter_mut() {
+            if let Some(plugin_pane_id) = tab.find_plugin(&run_plugin) {
+                tab_index_and_plugin_pane_id = Some((*tab_index, plugin_pane_id));
+                break;
+            }
+        }
+        match tab_index_and_plugin_pane_id {
+            Some((tab_index, plugin_pane_id)) => {
+                self.go_to_tab(tab_index + 1, client_id)?;
+                self.tabs
+                    .get_mut(&tab_index)
+                    .with_context(err_context)?
+                    .focus_pane_with_id(plugin_pane_id, should_float, client_id)
+                    .context("failed to focus plugin pane")?;
+                self.report_pane_state().with_context(err_context)?;
+                Ok(true)
+            },
+            None => Ok(false),
+        }
+    }
+
+    pub fn focus_pane_with_id(
+        &mut self,
+        pane_id: PaneId,
+        should_float_if_hidden: bool,
+        client_id: ClientId,
+    ) -> Result<()> {
+        let err_context = || format!("failed to focus_plugin_pane");
+        let tab_index = self
+            .tabs
+            .iter()
+            .find(|(_tab_index, tab)| tab.has_pane_with_pid(&pane_id))
+            .map(|(tab_index, _tab)| *tab_index);
+        match tab_index {
+            Some(tab_index) => {
+                self.go_to_tab(tab_index + 1, client_id)?;
+                self.tabs
+                    .get_mut(&tab_index)
+                    .with_context(err_context)?
+                    .focus_pane_with_id(pane_id, should_float_if_hidden, client_id)
+                    .context("failed to focus pane with id")?;
+            },
+            None => {
+                log::error!("Could not find pane with id: {:?}", pane_id);
+            },
+        };
+        Ok(())
     }
 
     fn unblock_input(&self) -> Result<()> {
@@ -1334,9 +1571,11 @@ pub(crate) fn screen_thread_main(
     max_panes: Option<usize>,
     client_attributes: ClientAttributes,
     config_options: Box<Options>,
+    debug: bool,
 ) -> Result<()> {
     let capabilities = config_options.simplified_ui;
     let draw_pane_frames = config_options.pane_frames.unwrap_or(true);
+    let auto_layout = config_options.auto_layout.unwrap_or(true);
     let session_is_mirrored = config_options.mirror_session.unwrap_or(false);
     let copy_options = CopyOptions::new(
         config_options.copy_command,
@@ -1356,9 +1595,15 @@ pub(crate) fn screen_thread_main(
             },
         ),
         draw_pane_frames,
+        auto_layout,
         session_is_mirrored,
         copy_options,
+        debug,
     );
+
+    let mut pending_tab_ids: HashSet<usize> = HashSet::new();
+    let mut pending_tab_switches: HashSet<(usize, ClientId)> = HashSet::new(); // usize is the
+                                                                               // tab_index
 
     loop {
         let (event, mut err_ctx) = screen
@@ -1407,6 +1652,7 @@ pub(crate) fn screen_thread_main(
                                                             client_id: ClientId| tab .new_pane(pid,
                                                                                                initial_pane_title,
                                                                                                should_float,
+                                                                                               None,
                                                                                                Some(client_id)),
                                                                                                ?);
                         if let Some(hold_for_command) = hold_for_command {
@@ -1425,7 +1671,13 @@ pub(crate) fn screen_thread_main(
                     },
                     ClientOrTabIndex::TabIndex(tab_index) => {
                         if let Some(active_tab) = screen.tabs.get_mut(&tab_index) {
-                            active_tab.new_pane(pid, initial_pane_title, should_float, None)?;
+                            active_tab.new_pane(
+                                pid,
+                                initial_pane_title,
+                                should_float,
+                                None,
+                                None,
+                            )?;
                             if let Some(hold_for_command) = hold_for_command {
                                 let is_first_run = true;
                                 active_tab.hold_pane(pid, None, is_first_run, hold_for_command);
@@ -1436,7 +1688,8 @@ pub(crate) fn screen_thread_main(
                     },
                 };
                 screen.unblock_input()?;
-                screen.update_tabs()?;
+                screen.report_tab_state()?;
+                screen.report_pane_state()?;
 
                 screen.render()?;
             },
@@ -1444,7 +1697,8 @@ pub(crate) fn screen_thread_main(
                 active_tab!(screen, client_id, |tab: &mut Tab| tab
                     .suppress_active_pane(pid, client_id), ?);
                 screen.unblock_input()?;
-                screen.update_tabs()?;
+                screen.report_tab_state()?;
+                screen.report_pane_state()?;
 
                 screen.render()?;
             },
@@ -1452,15 +1706,17 @@ pub(crate) fn screen_thread_main(
                 active_tab_and_connected_client_id!(screen, client_id, |tab: &mut Tab, client_id: ClientId| tab
                     .toggle_pane_embed_or_floating(client_id), ?);
                 screen.unblock_input()?;
-                screen.update_tabs()?; // update tabs so that the ui indication will be send to the plugins
+                screen.report_tab_state()?; // update tabs so that the ui indication will be send to the plugins
+                screen.report_pane_state()?;
 
                 screen.render()?;
             },
             ScreenInstruction::ToggleFloatingPanes(client_id, default_shell) => {
                 active_tab_and_connected_client_id!(screen, client_id, |tab: &mut Tab, client_id: ClientId| tab
-                    .toggle_floating_panes(client_id, default_shell), ?);
+                    .toggle_floating_panes(Some(client_id), default_shell), ?);
                 screen.unblock_input()?;
-                screen.update_tabs()?; // update tabs so that the ui indication will be send to the plugins
+                screen.report_tab_state()?; // update tabs so that the ui indication will be send to the plugins
+                screen.report_pane_state()?;
 
                 screen.render()?;
             },
@@ -1490,7 +1746,8 @@ pub(crate) fn screen_thread_main(
                     );
                 }
                 screen.unblock_input()?;
-                screen.update_tabs()?;
+                screen.report_tab_state()?;
+                screen.report_pane_state()?;
                 screen.render()?;
             },
             ScreenInstruction::VerticalSplit(
@@ -1519,28 +1776,30 @@ pub(crate) fn screen_thread_main(
                     );
                 }
                 screen.unblock_input()?;
-                screen.update_tabs()?;
+                screen.report_tab_state()?;
+                screen.report_pane_state()?;
                 screen.render()?;
             },
             ScreenInstruction::WriteCharacter(bytes, client_id) => {
-                let mut should_update_tabs = false;
+                let mut state_changed = false;
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
                     |tab: &mut Tab, client_id: ClientId| {
                         let write_result = match tab.is_sync_panes_active() {
-                            true => tab.write_to_terminals_on_current_tab(bytes),
+                            true => tab.write_to_terminals_on_current_tab(bytes, client_id),
                             false => tab.write_to_active_terminal(bytes, client_id),
                         };
                         if let Ok(true) = write_result {
-                            should_update_tabs = true;
+                            state_changed = true;
                         }
                         write_result
                     },
                     ?
                 );
-                if should_update_tabs {
-                    screen.update_tabs()?;
+                if state_changed {
+                    screen.report_tab_state()?;
+                    screen.report_pane_state()?;
                 }
             },
             ScreenInstruction::Resize(client_id, strategy) => {
@@ -1552,6 +1811,8 @@ pub(crate) fn screen_thread_main(
                 );
                 screen.unblock_input()?;
                 screen.render()?;
+                screen.report_tab_state()?;
+                screen.report_pane_state()?;
             },
             ScreenInstruction::SwitchFocus(client_id) => {
                 active_tab_and_connected_client_id!(
@@ -1561,6 +1822,7 @@ pub(crate) fn screen_thread_main(
                 );
                 screen.unblock_input()?;
                 screen.render()?;
+                screen.report_pane_state()?;
             },
             ScreenInstruction::FocusNextPane(client_id) => {
                 active_tab_and_connected_client_id!(
@@ -1579,6 +1841,7 @@ pub(crate) fn screen_thread_main(
                 );
                 screen.render()?;
                 screen.unblock_input()?;
+                screen.report_pane_state()?;
             },
             ScreenInstruction::MoveFocusLeft(client_id) => {
                 active_tab_and_connected_client_id!(
@@ -1589,11 +1852,13 @@ pub(crate) fn screen_thread_main(
                 );
                 screen.render()?;
                 screen.unblock_input()?;
+                screen.report_pane_state()?;
             },
             ScreenInstruction::MoveFocusLeftOrPreviousTab(client_id) => {
                 screen.move_focus_left_or_previous_tab(client_id)?;
                 screen.unblock_input()?;
                 screen.render()?;
+                screen.report_pane_state()?;
             },
             ScreenInstruction::MoveFocusDown(client_id) => {
                 active_tab_and_connected_client_id!(
@@ -1604,6 +1869,7 @@ pub(crate) fn screen_thread_main(
                 );
                 screen.render()?;
                 screen.unblock_input()?;
+                screen.report_pane_state()?;
             },
             ScreenInstruction::MoveFocusRight(client_id) => {
                 active_tab_and_connected_client_id!(
@@ -1614,17 +1880,32 @@ pub(crate) fn screen_thread_main(
                 );
                 screen.render()?;
                 screen.unblock_input()?;
+                screen.report_pane_state()?;
             },
             ScreenInstruction::MoveFocusRightOrNextTab(client_id) => {
                 screen.move_focus_right_or_next_tab(client_id)?;
                 screen.unblock_input()?;
                 screen.render()?;
+                screen.report_pane_state()?;
             },
             ScreenInstruction::MoveFocusUp(client_id) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
                     |tab: &mut Tab, client_id: ClientId| tab.move_focus_up(client_id),
+                    ?
+                );
+                screen.render()?;
+                screen.unblock_input()?;
+                screen.report_pane_state()?;
+            },
+            ScreenInstruction::ClearScreen(client_id) => {
+                active_tab_and_connected_client_id!(
+                    screen,
+                    client_id,
+                    |tab: &mut Tab, client_id: ClientId| tab.clear_active_terminal_screen(
+                        client_id,
+                    ),
                     ?
                 );
                 screen.render()?;
@@ -1652,6 +1933,7 @@ pub(crate) fn screen_thread_main(
                     ?
                 );
                 screen.render()?;
+                screen.report_pane_state()?;
             },
             ScreenInstruction::ScrollUp(client_id) => {
                 active_tab_and_connected_client_id!(
@@ -1668,8 +1950,21 @@ pub(crate) fn screen_thread_main(
                     client_id,
                     |tab: &mut Tab, client_id: ClientId| tab.move_active_pane(client_id)
                 );
+                screen.report_tab_state()?; // update tabs so that the ui indication will be send to the plugins
                 screen.render()?;
                 screen.unblock_input()?;
+                screen.report_pane_state()?;
+            },
+            ScreenInstruction::MovePaneBackwards(client_id) => {
+                active_tab_and_connected_client_id!(
+                    screen,
+                    client_id,
+                    |tab: &mut Tab, client_id: ClientId| tab.move_active_pane_backwards(client_id)
+                );
+                screen.report_tab_state()?; // update tabs so that the ui indication will be send to the plugins
+                screen.render()?;
+                screen.unblock_input()?;
+                screen.report_pane_state()?;
             },
             ScreenInstruction::MovePaneDown(client_id) => {
                 active_tab_and_connected_client_id!(
@@ -1677,8 +1972,10 @@ pub(crate) fn screen_thread_main(
                     client_id,
                     |tab: &mut Tab, client_id: ClientId| tab.move_active_pane_down(client_id)
                 );
+                screen.report_tab_state()?; // update tabs so that the ui indication will be send to the plugins
                 screen.render()?;
                 screen.unblock_input()?;
+                screen.report_pane_state()?;
             },
             ScreenInstruction::MovePaneUp(client_id) => {
                 active_tab_and_connected_client_id!(
@@ -1686,8 +1983,10 @@ pub(crate) fn screen_thread_main(
                     client_id,
                     |tab: &mut Tab, client_id: ClientId| tab.move_active_pane_up(client_id)
                 );
+                screen.report_tab_state()?; // update tabs so that the ui indication will be send to the plugins
                 screen.render()?;
                 screen.unblock_input()?;
+                screen.report_pane_state()?;
             },
             ScreenInstruction::MovePaneRight(client_id) => {
                 active_tab_and_connected_client_id!(
@@ -1695,8 +1994,10 @@ pub(crate) fn screen_thread_main(
                     client_id,
                     |tab: &mut Tab, client_id: ClientId| tab.move_active_pane_right(client_id)
                 );
+                screen.report_tab_state()?; // update tabs so that the ui indication will be send to the plugins
                 screen.render()?;
                 screen.unblock_input()?;
+                screen.report_pane_state()?;
             },
             ScreenInstruction::MovePaneLeft(client_id) => {
                 active_tab_and_connected_client_id!(
@@ -1704,8 +2005,10 @@ pub(crate) fn screen_thread_main(
                     client_id,
                     |tab: &mut Tab, client_id: ClientId| tab.move_active_pane_left(client_id)
                 );
+                screen.report_tab_state()?; // update tabs so that the ui indication will be send to the plugins
                 screen.render()?;
                 screen.unblock_input()?;
+                screen.report_pane_state()?;
             },
             ScreenInstruction::ScrollUpAt(point, client_id) => {
                 active_tab_and_connected_client_id!(
@@ -1812,9 +2115,10 @@ pub(crate) fn screen_thread_main(
                     client_id,
                     |tab: &mut Tab, client_id: ClientId| tab.close_focused_pane(client_id), ?
                 );
-                screen.update_tabs()?;
+                screen.report_tab_state()?;
                 screen.render()?;
                 screen.unblock_input()?;
+                screen.report_pane_state()?;
             },
             ScreenInstruction::SetSelectable(id, selectable, tab_index) => {
                 screen.get_indexed_tab_mut(tab_index).map_or_else(
@@ -1829,28 +2133,34 @@ pub(crate) fn screen_thread_main(
                 );
 
                 screen.render()?;
+                screen.report_pane_state()?;
             },
             ScreenInstruction::ClosePane(id, client_id) => {
                 match client_id {
                     Some(client_id) => {
-                        active_tab!(screen, client_id, |tab: &mut Tab| tab.close_pane(id, false));
+                        active_tab!(screen, client_id, |tab: &mut Tab| tab.close_pane(
+                            id,
+                            false,
+                            Some(client_id)
+                        ));
                     },
                     None => {
                         for tab in screen.tabs.values_mut() {
                             if tab.get_all_pane_ids().contains(&id) {
-                                tab.close_pane(id, false);
+                                tab.close_pane(id, false, None);
                                 break;
                             }
                         }
                     },
                 }
-                screen.update_tabs()?;
+                screen.report_tab_state()?;
                 screen.unblock_input()?;
+                screen.report_pane_state()?;
             },
-            ScreenInstruction::HoldPane(id, exit_status, run_command, client_id) => {
+            ScreenInstruction::HoldPane(id, exit_status, run_command, tab_index, client_id) => {
                 let is_first_run = false;
-                match client_id {
-                    Some(client_id) => {
+                match (client_id, tab_index) {
+                    (Some(client_id), _) => {
                         active_tab!(screen, client_id, |tab: &mut Tab| tab.hold_pane(
                             id,
                             exit_status,
@@ -1858,7 +2168,14 @@ pub(crate) fn screen_thread_main(
                             run_command
                         ));
                     },
-                    None => {
+                    (_, Some(tab_index)) => match screen.tabs.get_mut(&tab_index) {
+                        Some(tab) => tab.hold_pane(id, exit_status, is_first_run, run_command),
+                        None => log::warn!(
+                            "Tab with index {tab_index} not found. Cannot hold pane with id {:?}",
+                            id
+                        ),
+                    },
+                    _ => {
                         for tab in screen.tabs.values_mut() {
                             if tab.get_all_pane_ids().contains(&id) {
                                 tab.hold_pane(id, exit_status, is_first_run, run_command);
@@ -1867,8 +2184,9 @@ pub(crate) fn screen_thread_main(
                         }
                     },
                 }
-                screen.update_tabs()?;
+                screen.report_tab_state()?;
                 screen.unblock_input()?;
+                screen.report_pane_state()?;
             },
             ScreenInstruction::UpdatePaneName(c, client_id) => {
                 active_tab_and_connected_client_id!(
@@ -1878,6 +2196,7 @@ pub(crate) fn screen_thread_main(
                 );
                 screen.render()?;
                 screen.unblock_input()?;
+                screen.report_pane_state()?;
             },
             ScreenInstruction::UndoRenamePane(client_id) => {
                 active_tab_and_connected_client_id!(
@@ -1895,9 +2214,10 @@ pub(crate) fn screen_thread_main(
                     |tab: &mut Tab, client_id: ClientId| tab
                         .toggle_active_pane_fullscreen(client_id)
                 );
-                screen.update_tabs()?;
+                screen.report_tab_state()?;
                 screen.render()?;
                 screen.unblock_input()?;
+                screen.report_pane_state()?;
             },
             ScreenInstruction::TogglePaneFrames => {
                 screen.draw_pane_frames = !screen.draw_pane_frames;
@@ -1906,14 +2226,15 @@ pub(crate) fn screen_thread_main(
                 }
                 screen.render()?;
                 screen.unblock_input()?;
+                screen.report_pane_state()?;
             },
             ScreenInstruction::SwitchTabNext(client_id) => {
-                screen.switch_tab_next(client_id)?;
+                screen.switch_tab_next(None, client_id)?;
                 screen.unblock_input()?;
                 screen.render()?;
             },
             ScreenInstruction::SwitchTabPrev(client_id) => {
-                screen.switch_tab_prev(client_id)?;
+                screen.switch_tab_prev(None, client_id)?;
                 screen.unblock_input()?;
                 screen.render()?;
             },
@@ -1923,22 +2244,25 @@ pub(crate) fn screen_thread_main(
                 screen.render()?;
             },
             ScreenInstruction::NewTab(
+                cwd,
                 default_shell,
                 layout,
                 floating_panes_layout,
                 tab_name,
+                swap_layouts,
                 client_id,
             ) => {
                 let tab_index = screen.get_new_tab_index();
-                screen.new_tab(tab_index, client_id)?;
+                pending_tab_ids.insert(tab_index);
+                screen.new_tab(tab_index, swap_layouts, tab_name.clone(), client_id)?;
                 screen
                     .bus
                     .senders
                     .send_to_plugin(PluginInstruction::NewTab(
+                        cwd,
                         default_shell,
                         layout,
                         floating_panes_layout,
-                        tab_name,
                         tab_index,
                         client_id,
                     ))?;
@@ -1961,10 +2285,51 @@ pub(crate) fn screen_thread_main(
                     tab_index,
                     client_id,
                 )?;
+                pending_tab_ids.remove(&tab_index);
+                if pending_tab_ids.is_empty() {
+                    for (tab_index, client_id) in pending_tab_switches.drain() {
+                        screen.go_to_tab(tab_index as usize, client_id)?;
+                    }
+                }
                 screen.unblock_input()?;
                 screen.render()?;
             },
             ScreenInstruction::GoToTab(tab_index, client_id) => {
+                let client_id_to_switch = if client_id.is_none() {
+                    None
+                } else if screen
+                    .active_tab_indices
+                    .contains_key(&client_id.expect("This is checked above"))
+                {
+                    client_id
+                } else {
+                    screen.active_tab_indices.keys().next().copied()
+                };
+                match client_id_to_switch {
+                    // we must make sure pending_tab_ids is empty because otherwise we cannot be
+                    // sure this instruction is applied at the right time (eg. we might have a
+                    // pending tab that will become not-pending after this instruction and change
+                    // the client focus, which should have happened before this instruction and not
+                    // after)
+                    Some(client_id) if pending_tab_ids.is_empty() => {
+                        screen.go_to_tab(tab_index as usize, client_id)?;
+                        screen.unblock_input()?;
+                        screen.render()?;
+                    },
+                    _ => {
+                        if let Some(client_id) = client_id {
+                            pending_tab_switches.insert((tab_index as usize, client_id));
+                        }
+                    },
+                }
+            },
+            ScreenInstruction::GoToTabName(
+                tab_name,
+                swap_layouts,
+                default_shell,
+                create,
+                client_id,
+            ) => {
                 let client_id = if client_id.is_none() {
                     None
                 } else if screen
@@ -1976,9 +2341,25 @@ pub(crate) fn screen_thread_main(
                     screen.active_tab_indices.keys().next().copied()
                 };
                 if let Some(client_id) = client_id {
-                    screen.go_to_tab(tab_index as usize, client_id)?;
-                    screen.unblock_input()?;
-                    screen.render()?;
+                    if let Ok(tab_exists) = screen.go_to_tab_name(tab_name.clone(), client_id) {
+                        screen.unblock_input()?;
+                        screen.render()?;
+                        if create && !tab_exists {
+                            let tab_index = screen.get_new_tab_index();
+                            screen.new_tab(tab_index, swap_layouts, Some(tab_name), client_id)?;
+                            screen
+                                .bus
+                                .senders
+                                .send_to_plugin(PluginInstruction::NewTab(
+                                    None,
+                                    default_shell,
+                                    None,
+                                    vec![],
+                                    tab_index,
+                                    client_id,
+                                ))?;
+                        }
+                    }
                 }
             },
             ScreenInstruction::UpdateTabName(c, client_id) => {
@@ -1993,6 +2374,7 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::TerminalResize(new_size) => {
                 screen.resize_to_screen(new_size)?;
+                screen.report_tab_state()?; // update tabs so that the ui indication will be send to the plugins
                 screen.render()?;
             },
             ScreenInstruction::TerminalPixelDimensions(pixel_dimensions) => {
@@ -2023,28 +2405,31 @@ pub(crate) fn screen_thread_main(
                     client_id,
                     |tab: &mut Tab, _client_id: ClientId| tab.toggle_sync_panes_is_active()
                 );
-                screen.update_tabs()?;
+                screen.report_tab_state()?;
                 screen.render()?;
                 screen.unblock_input()?;
             },
             ScreenInstruction::LeftClick(point, client_id) => {
                 active_tab!(screen, client_id, |tab: &mut Tab| tab
                     .handle_left_click(&point, client_id), ?);
-                screen.update_tabs()?;
+                screen.report_tab_state()?;
+                screen.report_pane_state()?;
                 screen.render()?;
                 screen.unblock_input()?;
             },
             ScreenInstruction::RightClick(point, client_id) => {
                 active_tab!(screen, client_id, |tab: &mut Tab| tab
                     .handle_right_click(&point, client_id), ?);
-                screen.update_tabs()?;
+                screen.report_tab_state()?;
+                screen.report_pane_state()?;
                 screen.render()?;
                 screen.unblock_input()?;
             },
             ScreenInstruction::MiddleClick(point, client_id) => {
                 active_tab!(screen, client_id, |tab: &mut Tab| tab
                     .handle_middle_click(&point, client_id), ?);
-                screen.update_tabs()?;
+                screen.report_tab_state()?;
+                screen.report_pane_state()?;
                 screen.render()?;
                 screen.unblock_input()?;
             },
@@ -2094,11 +2479,13 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::AddClient(client_id) => {
                 screen.add_client(client_id)?;
-                screen.update_tabs()?;
+                screen.report_tab_state()?;
+                screen.report_pane_state()?;
                 screen.render()?;
             },
             ScreenInstruction::RemoveClient(client_id) => {
                 screen.remove_client(client_id)?;
+                screen.report_pane_state()?;
                 screen.render()?;
             },
             ScreenInstruction::AddOverlay(overlay, _client_id) => {
@@ -2204,6 +2591,230 @@ pub(crate) fn screen_thread_main(
                     }
                 }
                 screen.render()?;
+            },
+            ScreenInstruction::PreviousSwapLayout(client_id) => {
+                active_tab_and_connected_client_id!(
+                    screen,
+                    client_id,
+                    |tab: &mut Tab, client_id: ClientId| tab.previous_swap_layout(Some(client_id)),
+                    ?
+                );
+                screen.render()?;
+                screen.report_tab_state()?;
+                screen.report_pane_state()?;
+                screen.unblock_input()?;
+            },
+            ScreenInstruction::NextSwapLayout(client_id) => {
+                active_tab_and_connected_client_id!(
+                    screen,
+                    client_id,
+                    |tab: &mut Tab, client_id: ClientId| tab.next_swap_layout(Some(client_id), true),
+                    ?
+                );
+                screen.render()?;
+                screen.report_tab_state()?;
+                screen.report_pane_state()?;
+                screen.unblock_input()?;
+            },
+            ScreenInstruction::QueryTabNames(client_id) => {
+                let tab_names = screen
+                    .get_tabs_mut()
+                    .values()
+                    .map(|tab| tab.name.clone())
+                    .collect::<Vec<String>>();
+                screen
+                    .bus
+                    .senders
+                    .send_to_server(ServerInstruction::Log(tab_names, client_id))?;
+            },
+            ScreenInstruction::NewTiledPluginPane(run_plugin_location, pane_title, client_id) => {
+                let tab_index = screen.active_tab_indices.values().next().unwrap_or(&1);
+                let size = Size::default();
+                let should_float = Some(false);
+                let run_plugin = RunPlugin {
+                    _allow_exec_host_cmd: false,
+                    location: run_plugin_location,
+                };
+                screen.bus.senders.send_to_plugin(PluginInstruction::Load(
+                    should_float,
+                    pane_title,
+                    run_plugin,
+                    *tab_index,
+                    client_id,
+                    size,
+                ))?;
+            },
+            ScreenInstruction::NewFloatingPluginPane(
+                run_plugin_location,
+                pane_title,
+                client_id,
+            ) => {
+                let tab_index = screen.active_tab_indices.values().next().unwrap(); // TODO: no
+                                                                                    // unwrap and
+                                                                                    // better
+                let size = Size::default(); // TODO: ???
+                let should_float = Some(true);
+                let run_plugin = RunPlugin {
+                    _allow_exec_host_cmd: false,
+                    location: run_plugin_location,
+                };
+                screen.bus.senders.send_to_plugin(PluginInstruction::Load(
+                    should_float,
+                    pane_title,
+                    run_plugin,
+                    *tab_index,
+                    client_id,
+                    size,
+                ))?;
+            },
+            ScreenInstruction::StartOrReloadPluginPane(run_plugin, pane_title) => {
+                let tab_index = screen.active_tab_indices.values().next().unwrap_or(&1);
+                let size = Size::default();
+                let should_float = Some(false);
+                screen
+                    .bus
+                    .senders
+                    .send_to_plugin(PluginInstruction::Reload(
+                        should_float,
+                        pane_title,
+                        run_plugin,
+                        *tab_index,
+                        size,
+                    ))?;
+            },
+            ScreenInstruction::AddPlugin(
+                should_float,
+                run_plugin_location,
+                pane_title,
+                tab_index,
+                plugin_id,
+            ) => {
+                let pane_title =
+                    pane_title.unwrap_or_else(|| run_plugin_location.location.to_string());
+                let run_plugin = Run::Plugin(run_plugin_location);
+                if let Some(active_tab) = screen.tabs.get_mut(&tab_index) {
+                    active_tab.new_pane(
+                        PaneId::Plugin(plugin_id),
+                        Some(pane_title),
+                        should_float,
+                        Some(run_plugin),
+                        None,
+                    )?;
+                } else {
+                    log::error!("Tab index not found: {:?}", tab_index);
+                }
+                screen.report_pane_state()?;
+                screen.unblock_input()?;
+            },
+            ScreenInstruction::UpdatePluginLoadingStage(pid, loading_indication) => {
+                let all_tabs = screen.get_tabs_mut();
+                for tab in all_tabs.values_mut() {
+                    if tab.has_plugin(pid) {
+                        tab.update_plugin_loading_stage(pid, loading_indication);
+                        break;
+                    }
+                }
+                screen.render()?;
+            },
+            ScreenInstruction::StartPluginLoadingIndication(pid, loading_indication) => {
+                let all_tabs = screen.get_tabs_mut();
+                for tab in all_tabs.values_mut() {
+                    if tab.has_plugin(pid) {
+                        tab.start_plugin_loading_indication(pid, loading_indication);
+                        break;
+                    }
+                }
+                screen.render()?;
+            },
+            ScreenInstruction::ProgressPluginLoadingOffset(pid) => {
+                let all_tabs = screen.get_tabs_mut();
+                for tab in all_tabs.values_mut() {
+                    if tab.has_plugin(pid) {
+                        tab.progress_plugin_loading_offset(pid);
+                        break;
+                    }
+                }
+                screen.render()?;
+            },
+            ScreenInstruction::RequestStateUpdateForPlugins => {
+                let all_tabs = screen.get_tabs_mut();
+                for tab in all_tabs.values_mut() {
+                    tab.update_input_modes()?;
+                }
+                screen.report_tab_state()?;
+                screen.report_pane_state()?;
+                screen.render()?;
+            },
+            ScreenInstruction::LaunchOrFocusPlugin(run_plugin, should_float, client_id) => {
+                let client_id = if screen.active_tab_indices.contains_key(&client_id) {
+                    Some(client_id)
+                } else {
+                    screen.get_first_client_id()
+                };
+                let client_id_and_focused_tab = client_id.and_then(|client_id| {
+                    screen
+                        .active_tab_indices
+                        .get(&client_id)
+                        .map(|tab_index| (*tab_index, client_id))
+                });
+                match client_id_and_focused_tab {
+                    Some((tab_index, client_id)) => {
+                        if screen.focus_plugin_pane(&run_plugin, should_float, client_id)? {
+                            screen.render()?;
+                            screen.report_pane_state()?;
+                        } else {
+                            screen.bus.senders.send_to_plugin(PluginInstruction::Load(
+                                Some(should_float),
+                                None,
+                                run_plugin,
+                                tab_index,
+                                client_id,
+                                Size::default(),
+                            ))?;
+                        }
+                    },
+                    None => log::error!("No connected clients found - cannot load or focus plugin"),
+                }
+            },
+            ScreenInstruction::SuppressPane(pane_id, client_id) => {
+                let all_tabs = screen.get_tabs_mut();
+                for tab in all_tabs.values_mut() {
+                    if tab.has_non_suppressed_pane_with_pid(&pane_id) {
+                        tab.suppress_pane(pane_id, client_id);
+                        drop(screen.render());
+                        break;
+                    }
+                }
+                screen.report_pane_state()?;
+            },
+            ScreenInstruction::FocusPaneWithId(pane_id, should_float_if_hidden, client_id) => {
+                screen.focus_pane_with_id(pane_id, should_float_if_hidden, client_id)?;
+                screen.report_pane_state()?;
+                screen.report_tab_state()?;
+            },
+            ScreenInstruction::RenamePane(pane_id, new_name) => {
+                let all_tabs = screen.get_tabs_mut();
+                for tab in all_tabs.values_mut() {
+                    if tab.has_pane_with_pid(&pane_id) {
+                        match tab.rename_pane(new_name, pane_id) {
+                            Ok(()) => drop(screen.render()),
+                            Err(e) => log::error!("Failed to rename pane: {:?}", e),
+                        }
+                        break;
+                    }
+                }
+                screen.report_pane_state()?;
+            },
+            ScreenInstruction::RenameTab(tab_index, new_name) => {
+                match screen.tabs.get_mut(&tab_index.saturating_sub(1)) {
+                    Some(tab) => {
+                        tab.name = String::from_utf8_lossy(&new_name).to_string();
+                    },
+                    None => {
+                        log::error!("Failed to find tab with index: {:?}", tab_index);
+                    },
+                }
+                screen.report_tab_state()?;
             },
         }
     }

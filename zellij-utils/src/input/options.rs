@@ -52,6 +52,9 @@ pub struct Options {
     /// Set the default shell
     #[clap(long, value_parser)]
     pub default_shell: Option<PathBuf>,
+    /// Set the default cwd
+    #[clap(long, value_parser)]
+    pub default_cwd: Option<PathBuf>,
     /// Set the default layout
     #[clap(long, value_parser)]
     pub default_layout: Option<PathBuf>,
@@ -116,6 +119,11 @@ pub struct Options {
     #[clap(long, value_parser)]
     #[serde(default)]
     pub attach_to_session: Option<bool>,
+
+    /// Whether to lay out panes in a predefined set of layouts whenever possible
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub auto_layout: Option<bool>,
 }
 
 #[derive(ArgEnum, Deserialize, Serialize, Debug, Clone, Copy, PartialEq)]
@@ -157,10 +165,12 @@ impl Options {
     pub fn merge(&self, other: Options) -> Options {
         let mouse_mode = other.mouse_mode.or(self.mouse_mode);
         let pane_frames = other.pane_frames.or(self.pane_frames);
+        let auto_layout = other.auto_layout.or(self.auto_layout);
         let mirror_session = other.mirror_session.or(self.mirror_session);
         let simplified_ui = other.simplified_ui.or(self.simplified_ui);
         let default_mode = other.default_mode.or(self.default_mode);
         let default_shell = other.default_shell.or_else(|| self.default_shell.clone());
+        let default_cwd = other.default_cwd.or_else(|| self.default_cwd.clone());
         let default_layout = other.default_layout.or_else(|| self.default_layout.clone());
         let layout_dir = other.layout_dir.or_else(|| self.layout_dir.clone());
         let theme_dir = other.theme_dir.or_else(|| self.theme_dir.clone());
@@ -183,6 +193,7 @@ impl Options {
             theme,
             default_mode,
             default_shell,
+            default_cwd,
             default_layout,
             layout_dir,
             theme_dir,
@@ -197,6 +208,7 @@ impl Options {
             scrollback_editor,
             session_name,
             attach_to_session,
+            auto_layout,
         }
     }
 
@@ -218,10 +230,12 @@ impl Options {
         let simplified_ui = merge_bool(other.simplified_ui, self.simplified_ui);
         let mouse_mode = merge_bool(other.mouse_mode, self.mouse_mode);
         let pane_frames = merge_bool(other.pane_frames, self.pane_frames);
+        let auto_layout = merge_bool(other.auto_layout, self.auto_layout);
         let mirror_session = merge_bool(other.mirror_session, self.mirror_session);
 
         let default_mode = other.default_mode.or(self.default_mode);
         let default_shell = other.default_shell.or_else(|| self.default_shell.clone());
+        let default_cwd = other.default_cwd.or_else(|| self.default_cwd.clone());
         let default_layout = other.default_layout.or_else(|| self.default_layout.clone());
         let layout_dir = other.layout_dir.or_else(|| self.layout_dir.clone());
         let theme_dir = other.theme_dir.or_else(|| self.theme_dir.clone());
@@ -244,6 +258,7 @@ impl Options {
             theme,
             default_mode,
             default_shell,
+            default_cwd,
             default_layout,
             layout_dir,
             theme_dir,
@@ -258,6 +273,7 @@ impl Options {
             scrollback_editor,
             session_name,
             attach_to_session,
+            auto_layout,
         }
     }
 
@@ -288,6 +304,7 @@ impl From<CliOptions> for Options {
     fn from(cli_options: CliOptions) -> Self {
         let mut opts = cli_options.options;
 
+        // TODO: what?
         if cli_options.no_pane_frames {
             opts.pane_frames = Some(false);
         }
@@ -300,6 +317,7 @@ impl From<CliOptions> for Options {
             theme: opts.theme,
             default_mode: opts.default_mode,
             default_shell: opts.default_shell,
+            default_cwd: opts.default_cwd,
             default_layout: opts.default_layout,
             layout_dir: opts.layout_dir,
             theme_dir: opts.theme_dir,
@@ -314,6 +332,7 @@ impl From<CliOptions> for Options {
             scrollback_editor: opts.scrollback_editor,
             session_name: opts.session_name,
             attach_to_session: opts.attach_to_session,
+            auto_layout: opts.auto_layout,
             ..Default::default()
         }
     }

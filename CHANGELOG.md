@@ -5,6 +5,68 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+* hotfix: include theme files into binary (https://github.com/zellij-org/zellij/pull/2566)
+* fix: make plugin hide_self api idempotent (https://github.com/zellij-org/zellij/pull/2568)
+
+## [0.37.1] - 2023-06-19
+* hotfix: theme options does not work (https://github.com/zellij-org/zellij/pull/2562)
+* fix: various plugin api methods (https://github.com/zellij-org/zellij/pull/2564)
+
+## [0.37.0] - 2023-06-18
+* fix(plugin): respect hide session option on compact-bar (https://github.com/zellij-org/zellij/pull/2368)
+* feat: allow excluding tabs from tab sync in layouts (https://github.com/zellij-org/zellij/pull/2314)
+* feat: support default cwd (https://github.com/zellij-org/zellij/pull/2290)
+* feat: cli action to reload plugins at runtime for easier plugin development (https://github.com/zellij-org/zellij/pull/2372)
+* docs(architecture): update architecture docs (https://github.com/zellij-org/zellij/pull/2371)
+* feat(themes): add nightfox themes (https://github.com/zellij-org/zellij/pull/2384)
+* feat: provide default themes (https://github.com/zellij-org/zellij/pull/2307)
+* feat: update and render plugins asynchronously (https://github.com/zellij-org/zellij/pull/2410)
+* fix: support environment variables and shell expansions in layout cwds (https://github.com/zellij-org/zellij/pull/2291)
+* fix: add file paths to file not found errors (https://github.com/zellij-org/zellij/pull/2412)
+* fix: error loading non-existant themes directory (https://github.com/zellij-org/zellij/pull/2411)
+* build: speed up build and ci https://github.com/zellij-org/zellij/pull/2396
+* fix: sticky bit FreeBSD crash https://github.com/zellij-org/zellij/pull/2424
+* build: Bump rust toolchain version to 1.67 (https://github.com/zellij-org/zellij/pull/2375)
+* fix: update config file output (https://github.com/zellij-org/zellij/pull/2443)
+* feat: plugin workers for background tasks (https://github.com/zellij-org/zellij/pull/2449)
+* fix: cwd of newtab action (https://github.com/zellij-org/zellij/pull/2455)
+* feat: plugin system overhaul (https://github.com/zellij-org/zellij/pull/2510)
+* feat: add virtually all of Zellij's API to plugins (https://github.com/zellij-org/zellij/pull/2516)
+* fix: runtime panic because of local cache (https://github.com/zellij-org/zellij/pull/2522)
+* fix: cursor flickering (https://github.com/zellij-org/zellij/pull/2528)
+* fix: focus tab as well as pane when relaunching plugin (https://github.com/zellij-org/zellij/pull/2530)
+* feat: ui improvements for strider search (https://github.com/zellij-org/zellij/pull/2531)
+* fix: only watch fs if plugins explicitly request it (https://github.com/zellij-org/zellij/pull/2529)
+* fix: suppress debug logging when not debugging (https://github.com/zellij-org/zellij/pull/2532)
+* feat: send pane events to plugins (https://github.com/zellij-org/zellij/pull/2545)
+* fix: use debounced watcher for watching filesystem (https://github.com/zellij-org/zellij/pull/2546)
+* feat: add more plugin api methods (https://github.com/zellij-org/zellij/pull/2550)
+
+## [0.36.0] - 2023-04-13
+* fix: when moving pane focus off screen edge to the next tab, the pane on the screen edge is now focused (https://github.com/zellij-org/zellij/pull/2293)
+* fix: adding panes to lone stack (https://github.com/zellij-org/zellij/pull/2298)
+* fix: closing a stacked pane now properly moves to the previous swap layout if appropriate (https://github.com/zellij-org/zellij/pull/2312)
+* deps: update interprocess: fix crash and reduce memory usage by not leaking socket file descriptors on client attach (https://github.com/zellij-org/zellij/pull/2322)
+* feat: load plugins asynchronously (https://github.com/zellij-org/zellij/pull/2327)
+* feat: cli and bindable action to clear the current terminal's buffer and scrollback (https://github.com/zellij-org/zellij/pull/2239)
+* feat: add option to `hide_session_name` in tab-bar (https://github.com/zellij-org/zellij/pull/2301)
+* fix: do not use default swap layouts when opening a new tab with a custom layout (https://github.com/zellij-org/zellij/pull/2336)
+* fix: properly truncate panes with attributes when applying swap layouts (https://github.com/zellij-org/zellij/pull/2337)
+* fix: support spaces in scrollback_editor (https://github.com/zellij-org/zellij/pull/2339)
+* fix: tab focus race condition when applying layout (https://github.com/zellij-org/zellij/pull/2340)
+* feat: allow specifying an "expanded" pane in a stack when defining layouts (https://github.com/zellij-org/zellij/pull/2343)
+* fix: stacked pane focus glitches in layout (https://github.com/zellij-org/zellij/pull/2344)
+* fix: strider now no longer opens one pane per client when editing files (https://github.com/zellij-org/zellij/pull/2346)
+* fix: set sticky bit on socket files to avoid automatic cleanup (https://github.com/zellij-org/zellij/pull/2141)
+* fix: memory leak when attaching/detaching from sessions (https://github.com/zellij-org/zellij/pull/2328)
+* fix: allow loading plugins from relative urls (https://github.com/zellij-org/zellij/pull/2539)
+
+## [0.35.2] - 2023-03-10
+* fix: get "zellij attach --create" working again (https://github.com/zellij-org/zellij/pull/2247)
+* fix: crash when closing tab with command panes (https://github.com/zellij-org/zellij/pull/2251)
+* Terminal compatibility: pad end of line on `CSI P` (https://github.com/zellij-org/zellij/pull/2259)
+
+## [0.35.1] - 2023-03-07
 * fix: show visual error when unable to split panes vertically/horizontally (https://github.com/zellij-org/zellij/pull/2025)
 * build: Use `xtask` as build system (https://github.com/zellij-org/zellij/pull/2012)
 * fix: show visual error when failing to resize panes in various situations (https://github.com/zellij-org/zellij/pull/2036)
@@ -20,6 +82,41 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * errors: Improve client disconnect handling (https://github.com/zellij-org/zellij/pull/2068)
 * feat: add ScrollToTop action (https://github.com/zellij-org/zellij/pull/2110)
 * fix: the status-bar now does the right thing when set to one line (https://github.com/zellij-org/zellij/pull/2091)
+* feat: add cli action to switch to tab by name (https://github.com/zellij-org/zellij/pull/2120)
+* dev: use the wasmer Singlepass compiler when compiling plugins in development (https://github.com/zellij-org/zellij/pull/2134 + https://github.com/zellij-org/zellij/pull/2146)
+* feat: add pencil light theme (https://github.com/zellij-org/zellij/pull/2157)
+* fix: apply correct color on 'more tabs' message (https://github.com/zellij-org/zellij/pull/2166)
+* deps: upgrade termwiz to 0.20.0 (https://github.com/zellij-org/zellij/pull/2169)
+* feat: swap layouts and stacked panes (https://github.com/zellij-org/zellij/pull/2167, https://github.com/zellij-org/zellij/pull/2191 and 
+)
+* fix: cache STDIN queries to prevent startup delay (https://github.com/zellij-org/zellij/pull/2173)
+* fix: scrollback positioning with Helix (https://github.com/zellij-org/zellij/pull/2156)
+* fix: allow CJK characters in tab names (https://github.com/zellij-org/zellij/pull/2119)
+* fix: fullscreen navigation (https://github.com/zellij-org/zellij/pull/2117)
+* fix: glitchy resizes (https://github.com/zellij-org/zellij/pull/2182)
+* fix: race when opening command panesin layout (https://github.com/zellij-org/zellij/pull/2196)
+* fix: `focus` attribute in tab layouts now works (https://github.com/zellij-org/zellij/pull/2197)
+* fix: new-tab cli action now properly looks in the layout folder as well (https://github.com/zellij-org/zellij/pull/2198)
+* fix: new-tab keybind now properly looks in the layout folder as well (https://github.com/zellij-org/zellij/pull/2200)
+* fix: cwd for edit panes (https://github.com/zellij-org/zellij/pull/2201)
+* fix: get config parameters from config file when opening new-tab through the cli (https://github.com/zellij-org/zellij/pull/2203)
+* Terminal compatibility: fix wrong styling interpretation when deleting characters (https://github.com/zellij-org/zellij/pull/2204)
+* fix: report pixel size in ioctl (https://github.com/zellij-org/zellij/pull/2212)
+* fix: handle empty cwd from unreadable processes (https://github.com/zellij-org/zellij/pull/2213)
+* fix: properly decode plugin urls with spaces (https://github.com/zellij-org/zellij/pull/2190)
+* feat: QueryTabNames cli action (https://github.com/zellij-org/zellij/pull/2145)
+* fix: log error instead of crashing when unable to set CWD in a template (https://github.com/zellij-org/zellij/pull/2214)
+* fix: tab names in layout and gototabname crash on create (https://github.com/zellij-org/zellij/pull/2225)
+* feat: allow simulating releases (https://github.com/zellij-org/zellij/pull/2194)
+* feat: add args to new-tab action in keybinds (https://github.com/zellij-org/zellij/pull/2072)
+
+  Eg:
+  ```kdl
+  tab {
+    bind "n" { NewTab; SwitchToMode "Normal"; }
+    bind "m" { NewTab { cwd "/tmp"; name "example"; layout "/tmp/example.kdl"; }; SwitchToMode "Normal"; }
+  }
+  ```
 
 ## [0.34.4] - 2022-12-13
 

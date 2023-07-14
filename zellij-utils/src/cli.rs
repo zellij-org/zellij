@@ -7,6 +7,7 @@ use crate::{
 use clap::{Parser, Subcommand};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use url::Url;
 
 #[derive(Parser, Default, Debug, Clone, Serialize, Deserialize)]
 #[clap(version, name = "zellij")]
@@ -180,9 +181,13 @@ pub enum Sessions {
 #[derive(Debug, Subcommand, Clone, Serialize, Deserialize)]
 pub enum CliAction {
     /// Write bytes to the terminal.
-    Write { bytes: Vec<u8> },
+    Write {
+        bytes: Vec<u8>,
+    },
     /// Write characters to the terminal.
-    WriteChars { chars: String },
+    WriteChars {
+        chars: String,
+    },
     /// [increase|decrease] the focused panes area at the [left|down|up|right] border.
     Resize {
         resize: Resize,
@@ -193,13 +198,23 @@ pub enum CliAction {
     /// Change focus to the previous pane
     FocusPreviousPane,
     /// Move the focused pane in the specified direction. [right|left|up|down]
-    MoveFocus { direction: Direction },
+    MoveFocus {
+        direction: Direction,
+    },
     /// Move focus to the pane or tab (if on screen edge) in the specified direction
     /// [right|left|up|down]
-    MoveFocusOrTab { direction: Direction },
-    /// Change the location of the focused pane in the specified direction
+    MoveFocusOrTab {
+        direction: Direction,
+    },
+    /// Change the location of the focused pane in the specified direction or rotate forwrads
     /// [right|left|up|down]
-    MovePane { direction: Direction },
+    MovePane {
+        direction: Option<Direction>,
+    },
+    /// Rotate the location of the previous pane backwards
+    MovePaneBackwards,
+    /// Clear all buffers for a focused pane
+    Clear,
     /// Dump the focused pane to a file
     DumpScreen {
         path: PathBuf,
@@ -241,6 +256,9 @@ pub enum CliAction {
 
         #[clap(last(true))]
         command: Vec<String>,
+
+        #[clap(short, long, conflicts_with("command"), conflicts_with("direction"))]
+        plugin: Option<String>,
 
         /// Change the working directory of the new pane
         #[clap(long, value_parser)]
@@ -296,7 +314,9 @@ pub enum CliAction {
         cwd: Option<PathBuf>,
     },
     /// Switch input mode of all connected clients [locked|pane|tab|resize|move|search|session]
-    SwitchMode { input_mode: InputMode },
+    SwitchMode {
+        input_mode: InputMode,
+    },
     /// Embed focused pane if floating or float focused pane if embedded
     TogglePaneEmbedOrFloating,
     /// Toggle the visibility of all fdirectionloating panes in the current Tab, open one if none exist
@@ -304,7 +324,9 @@ pub enum CliAction {
     /// Close the focused pane.
     ClosePane,
     /// Renames the focused pane
-    RenamePane { name: String },
+    RenamePane {
+        name: String,
+    },
     /// Remove a previously set pane name
     UndoRenamePane,
     /// Go to the next tab.
@@ -314,9 +336,20 @@ pub enum CliAction {
     /// Close the current tab.
     CloseTab,
     /// Go to tab with index [index]
-    GoToTab { index: u32 },
+    GoToTab {
+        index: u32,
+    },
+    /// Go to tab with name [name]
+    GoToTabName {
+        name: String,
+        /// Create a tab if one does not exist.
+        #[clap(short, long, value_parser)]
+        create: bool,
+    },
     /// Renames the focused pane
-    RenameTab { name: String },
+    RenameTab {
+        name: String,
+    },
     /// Remove a previously set tab name
     UndoRenameTab,
     /// Create a new tab, optionally with a specified tab layout and name
@@ -325,6 +358,10 @@ pub enum CliAction {
         #[clap(short, long, value_parser)]
         layout: Option<PathBuf>,
 
+        /// Default folder to look for layouts
+        #[clap(long, value_parser, requires("layout"))]
+        layout_dir: Option<PathBuf>,
+
         /// Name of the new tab
         #[clap(short, long, value_parser)]
         name: Option<String>,
@@ -332,5 +369,17 @@ pub enum CliAction {
         /// Change the working directory of the new tab
         #[clap(short, long, value_parser, requires("layout"))]
         cwd: Option<PathBuf>,
+    },
+    PreviousSwapLayout,
+    NextSwapLayout,
+    /// Query all tab names
+    QueryTabNames,
+    StartOrReloadPlugin {
+        url: String,
+    },
+    LaunchOrFocusPlugin {
+        #[clap(short, long, value_parser)]
+        floating: bool,
+        url: Url,
     },
 }

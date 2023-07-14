@@ -398,7 +398,6 @@ impl CharacterStyles {
                     *self = self.background(Some(AnsiCode::NamedColor(NamedColor::BrightWhite)))
                 },
                 _ => {
-                    log::warn!("unhandled csi m code {:?}", param);
                     return;
                 },
             }

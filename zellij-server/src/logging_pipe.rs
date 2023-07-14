@@ -3,6 +3,7 @@ use std::{
     io::{Read, Seek, Write},
 };
 
+use crate::plugins::PluginId;
 use log::{debug, error};
 use wasmer_wasi::{WasiFile, WasiFsError};
 use zellij_utils::{errors::prelude::*, serde};
@@ -17,11 +18,11 @@ const ZELLIJ_MAX_PIPE_BUFFER_SIZE: usize = 16_384;
 pub struct LoggingPipe {
     buffer: VecDeque<u8>,
     plugin_name: String,
-    plugin_id: u32,
+    plugin_id: PluginId,
 }
 
 impl LoggingPipe {
-    pub fn new(plugin_name: &str, plugin_id: u32) -> LoggingPipe {
+    pub fn new(plugin_name: &str, plugin_id: PluginId) -> LoggingPipe {
         LoggingPipe {
             buffer: VecDeque::new(),
             plugin_name: String::from(plugin_name),

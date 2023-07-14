@@ -1,8 +1,8 @@
 //! Composite pipelines for the build system.
 //!
 //! Defines multiple "pipelines" that run specific individual steps in sequence.
-use crate::flags;
 use crate::{build, clippy, format, test};
+use crate::{flags, WorkspaceMember};
 use anyhow::Context;
 use xshell::{cmd, Shell};
 
@@ -44,7 +44,6 @@ pub fn make(sh: &Shell, flags: flags::Make) -> anyhow::Result<()> {
 /// Runs the following steps in sequence:
 ///
 /// - [`build`](build::build) (release, plugins only)
-/// - [`wasm_opt_plugins`](build::wasm_opt_plugins)
 /// - [`build`](build::build) (release, without plugins)
 /// - [`manpage`](build::manpage)
 /// - Copy the executable to [target file](flags::Install::destination)
@@ -91,8 +90,24 @@ pub fn install(sh: &Shell, flags: flags::Install) -> anyhow::Result<()> {
 }
 
 /// Run zellij debug build.
-pub fn run(sh: &Shell, flags: flags::Run) -> anyhow::Result<()> {
-    let err_context = || format!("failed to run pipeline 'run' with args {flags:?}");
+pub fn run(sh: &Shell, mut flags: flags::Run) -> anyhow::Result<()> {
+    let err_context =
+        |flags: &flags::Run| format!("failed to run pipeline 'run' with args {:?}", flags);
+
+    let singlepass = flags.singlepass.then_some(["--features", "singlepass"]);
+    if flags.quick_run {
+        if flags.data_dir.is_some() {
+            eprintln!("cannot use '--data-dir' and '--quick-run' at the same time!");
+            std::process::exit(1);
+        }
+        flags.data_dir.replace(crate::asset_dir());
+    }
+
+    let profile = if flags.disable_deps_optimize {
+        "dev"
+    } else {
+        "dev-opt"
+    };
 
     if let Some(ref data_dir) = flags.data_dir {
         let data_dir = sh.current_dir().join(data_dir);
@@ -103,12 +118,14 @@ pub fn run(sh: &Shell, flags: flags::Run) -> anyhow::Result<()> {
                     .args(["--package", "zellij"])
                     .arg("--no-default-features")
                     .args(["--features", "disable_automatic_asset_installation"])
+                    .args(singlepass.iter().flatten())
+                    .args(["--profile", profile])
                     .args(["--", "--data-dir", &format!("{}", data_dir.display())])
                     .args(&flags.args)
                     .run()
                     .map_err(anyhow::Error::new)
             })
-            .with_context(err_context)
+            .with_context(|| err_context(&flags))
     } else {
         build::build(
             sh,
@@ -120,12 +137,15 @@ pub fn run(sh: &Shell, flags: flags::Run) -> anyhow::Result<()> {
         )
         .and_then(|_| crate::cargo())
         .and_then(|cargo| {
-            cmd!(sh, "{cargo} run --")
+            cmd!(sh, "{cargo} run")
+                .args(singlepass.iter().flatten())
+                .args(["--profile", profile])
+                .args(["--"])
                 .args(&flags.args)
                 .run()
                 .map_err(anyhow::Error::new)
         })
-        .with_context(err_context)
+        .with_context(|| err_context(&flags))
     }
 }
 
@@ -134,7 +154,7 @@ pub fn run(sh: &Shell, flags: flags::Run) -> anyhow::Result<()> {
 /// This includes the optimized zellij executable from the [`install`] pipeline, the man page, the
 /// `.desktop` file and the application logo.
 pub fn dist(sh: &Shell, _flags: flags::Dist) -> anyhow::Result<()> {
-    let err_context = || format!("failed to run pipeline 'dist'");
+    let err_context = || "failed to run pipeline 'dist'";
 
     sh.change_dir(crate::project_root());
     if sh.path_exists("target/dist") {
@@ -163,12 +183,30 @@ pub fn dist(sh: &Shell, _flags: flags::Dist) -> anyhow::Result<()> {
 pub fn publish(sh: &Shell, flags: flags::Publish) -> anyhow::Result<()> {
     let err_context = "failed to publish zellij";
 
-    sh.change_dir(crate::project_root());
+    // Process flags
     let dry_run = if flags.dry_run {
         Some("--dry-run")
     } else {
         None
     };
+    let remote = flags.git_remote.unwrap_or("origin".into());
+    let registry = if let Some(registry) = flags.cargo_registry {
+        Some(format!(
+            "--registry={}",
+            registry
+                .into_string()
+                .map_err(|registry| anyhow::Error::msg(format!(
+                    "failed to convert '{:?}' to valid registry name",
+                    registry
+                )))
+                .context(err_context)?
+        ))
+    } else {
+        None
+    };
+    let registry = registry.as_ref();
+
+    sh.change_dir(crate::project_root());
     let cargo = crate::cargo().context(err_context)?;
     let project_dir = crate::project_root();
     let manifest = sh
@@ -260,25 +298,39 @@ pub fn publish(sh: &Shell, flags: flags::Publish) -> anyhow::Result<()> {
         if flags.dry_run {
             println!("Skipping push due to dry-run");
         } else {
-            cmd!(sh, "git push --atomic origin main v{version}")
+            cmd!(sh, "git push --atomic {remote} main v{version}")
                 .run()
                 .context(err_context)?;
         }
 
         // Publish all the crates
-        for member in crate::WORKSPACE_MEMBERS.iter() {
-            if member.contains("plugin") {
+        for WorkspaceMember { crate_name, .. } in crate::WORKSPACE_MEMBERS.iter() {
+            if crate_name.contains("plugin") || crate_name.contains("xtask") {
                 continue;
             }
 
-            let _pd = sh.push_dir(project_dir.join(member));
+            let _pd = sh.push_dir(project_dir.join(crate_name));
             loop {
-                if let Err(err) = cmd!(sh, "{cargo} publish {dry_run...}")
-                    .run()
-                    .context(err_context)
+                let msg = format!(">> Publishing '{crate_name}'");
+                crate::status(&msg);
+                println!("{}", msg);
+
+                let more_args = match *crate_name {
+                    // This is needed for zellij to pick up the plugins from the assets included in
+                    // the released zellij-utils binary
+                    "." => Some("--no-default-features"),
+                    _ => None,
+                };
+
+                if let Err(err) = cmd!(
+                    sh,
+                    "{cargo} publish {registry...} {more_args...} {dry_run...}"
+                )
+                .run()
+                .context(err_context)
                 {
                     println!();
-                    println!("Publishing crate '{member}' failed with error:");
+                    println!("Publishing crate '{crate_name}' failed with error:");
                     println!("{:?}", err);
                     println!();
                     println!("Retry? [y/n]");
@@ -310,16 +362,17 @@ pub fn publish(sh: &Shell, flags: flags::Publish) -> anyhow::Result<()> {
                     if retry {
                         continue;
                     } else {
-                        println!("Aborting publish for crate '{member}'");
+                        println!("Aborting publish for crate '{crate_name}'");
                         return Err::<(), _>(err);
                     }
-                } else {
-                    println!("Waiting for crates.io to catch up...");
-                    std::thread::sleep(std::time::Duration::from_secs(15));
-                    break;
                 }
             }
         }
+
+        println!();
+        println!(" +-----------------------------------------------+");
+        println!(" | PRAISE THE DEVS, WE HAVE A NEW ZELLIJ RELEASE |");
+        println!(" +-----------------------------------------------+");
         Ok(())
     };
 

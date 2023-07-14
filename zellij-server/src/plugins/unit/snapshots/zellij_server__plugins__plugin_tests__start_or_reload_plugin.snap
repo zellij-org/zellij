@@ -1,0 +1,16 @@
+---
+source: zellij-server/src/plugins/./unit/plugin_tests.rs
+assertion_line: 2889
+expression: "format!(\"{:#?}\", new_tab_event)"
+---
+Some(
+    StartOrReloadPluginPane(
+        RunPlugin {
+            _allow_exec_host_cmd: false,
+            location: File(
+                "/path/to/my/plugin.wasm",
+            ),
+        },
+        None,
+    ),
+)

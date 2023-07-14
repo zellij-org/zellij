@@ -1,0 +1,24 @@
+---
+source: zellij-server/src/plugins/./unit/plugin_tests.rs
+assertion_line: 4089
+expression: "format!(\"{:#?}\", new_tab_event)"
+---
+Some(
+    RenameTab(
+        1,
+        [
+            110,
+            101,
+            119,
+            32,
+            116,
+            97,
+            98,
+            32,
+            110,
+            97,
+            109,
+            101,
+        ],
+    ),
+)

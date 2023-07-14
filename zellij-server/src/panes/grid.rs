@@ -370,6 +370,7 @@ pub struct Grid {
     pub focus_event_tracking: bool,
     pub search_results: SearchResult,
     pub pending_clipboard_update: Option<String>,
+    debug: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -457,6 +458,7 @@ impl Grid {
         link_handler: Rc<RefCell<LinkHandler>>,
         character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
         sixel_image_store: Rc<RefCell<SixelImageStore>>,
+        debug: bool,
     ) -> Self {
         let sixel_grid = SixelGrid::new(character_cell_size.clone(), sixel_image_store);
         Grid {
@@ -505,6 +507,7 @@ impl Grid {
             search_results: Default::default(),
             sixel_grid,
             pending_clipboard_update: None,
+            debug,
         }
     }
     pub fn render_full_viewport(&mut self) {
@@ -626,6 +629,27 @@ impl Grid {
         }
         cursor_index_in_canonical_line
     }
+    fn saved_cursor_index_in_canonical_line(&self) -> Option<usize> {
+        if let Some(saved_cursor_position) = self.saved_cursor_position.as_ref() {
+            let mut cursor_canonical_line_index = 0;
+            let mut cursor_index_in_canonical_line = 0;
+            for (i, line) in self.viewport.iter().enumerate() {
+                if line.is_canonical {
+                    cursor_canonical_line_index = i;
+                }
+                if i == saved_cursor_position.y {
+                    let line_wrap_position_in_line =
+                        saved_cursor_position.y - cursor_canonical_line_index;
+                    cursor_index_in_canonical_line =
+                        line_wrap_position_in_line + saved_cursor_position.x;
+                    break;
+                }
+            }
+            Some(cursor_index_in_canonical_line)
+        } else {
+            None
+        }
+    }
     fn canonical_line_y_coordinates(&self, canonical_line_index: usize) -> usize {
         let mut canonical_lines_traversed = 0;
         let mut y_coordinates = 0;
@@ -713,7 +737,7 @@ impl Grid {
         }
         found_something
     }
-    fn force_change_size(&mut self, new_rows: usize, new_columns: usize) {
+    pub fn force_change_size(&mut self, new_rows: usize, new_columns: usize) {
         // this is an ugly hack - it's here because sometimes we need to change_size to the
         // existing size (eg. when resizing an alternative_grid to the current height/width) and
         // the change_size method is a no-op in that case. Should be fixed by making the
@@ -742,6 +766,7 @@ impl Grid {
             self.horizontal_tabstops = create_horizontal_tabstops(new_columns);
             let mut cursor_canonical_line_index = self.cursor_canonical_line_index();
             let cursor_index_in_canonical_line = self.cursor_index_in_canonical_line();
+            let saved_cursor_index_in_canonical_line = self.saved_cursor_index_in_canonical_line();
             let mut viewport_canonical_lines = vec![];
             for mut row in self.viewport.drain(..) {
                 if !row.is_canonical
@@ -817,9 +842,25 @@ impl Grid {
             self.viewport = new_viewport_rows;
 
             let mut new_cursor_y = self.canonical_line_y_coordinates(cursor_canonical_line_index);
+            let mut saved_cursor_y_coordinates =
+                if let Some(saved_cursor) = self.saved_cursor_position.as_ref() {
+                    Some(self.canonical_line_y_coordinates(saved_cursor.y))
+                } else {
+                    None
+                };
 
             let new_cursor_x = (cursor_index_in_canonical_line / new_columns)
                 + (cursor_index_in_canonical_line % new_columns);
+            let saved_cursor_x_coordinates = if let Some(saved_cursor_index_in_canonical_line) =
+                saved_cursor_index_in_canonical_line.as_ref()
+            {
+                Some(
+                    (*saved_cursor_index_in_canonical_line / new_columns)
+                        + (*saved_cursor_index_in_canonical_line % new_columns),
+                )
+            } else {
+                None
+            };
             let current_viewport_row_count = self.viewport.len();
             match current_viewport_row_count.cmp(&self.height) {
                 Ordering::Less => {
@@ -834,6 +875,9 @@ impl Grid {
                     );
                     let rows_pulled = self.viewport.len() - current_viewport_row_count;
                     new_cursor_y += rows_pulled;
+                    if let Some(saved_cursor_y_coordinates) = saved_cursor_y_coordinates.as_mut() {
+                        *saved_cursor_y_coordinates += rows_pulled;
+                    }
                 },
                 Ordering::Greater => {
                     let row_count_to_transfer = current_viewport_row_count - self.height;
@@ -841,6 +885,13 @@ impl Grid {
                         new_cursor_y = 0;
                     } else {
                         new_cursor_y -= row_count_to_transfer;
+                    }
+                    if let Some(saved_cursor_y_coordinates) = saved_cursor_y_coordinates.as_mut() {
+                        if row_count_to_transfer > *saved_cursor_y_coordinates {
+                            *saved_cursor_y_coordinates = 0;
+                        } else {
+                            *saved_cursor_y_coordinates -= row_count_to_transfer;
+                        }
                     }
                     transfer_rows_from_viewport_to_lines_above(
                         &mut self.viewport,
@@ -855,8 +906,16 @@ impl Grid {
             self.cursor.y = new_cursor_y;
             self.cursor.x = new_cursor_x;
             if let Some(saved_cursor_position) = self.saved_cursor_position.as_mut() {
-                saved_cursor_position.y = new_cursor_y;
-                saved_cursor_position.x = new_cursor_x;
+                match (saved_cursor_x_coordinates, saved_cursor_y_coordinates) {
+                    (Some(saved_cursor_x_coordinates), Some(saved_cursor_y_coordinates)) => {
+                        saved_cursor_position.x = saved_cursor_x_coordinates;
+                        saved_cursor_position.y = saved_cursor_y_coordinates;
+                    },
+                    _ => {
+                        saved_cursor_position.x = new_cursor_x;
+                        saved_cursor_position.y = new_cursor_y;
+                    },
+                }
             };
         } else if new_columns != self.width && self.alternate_screen_state.is_some() {
             // in alternate screen just truncate exceeding width
@@ -1053,7 +1112,16 @@ impl Grid {
             Some((self.cursor.x, self.cursor.y))
         }
     }
-
+    /// Clears all buffers with text for a current screen
+    pub fn clear_screen(&mut self) {
+        if self.alternate_screen_state.is_some() {
+            log::warn!("Tried to clear pane with alternate_screen_state");
+            return;
+        }
+        self.reset_terminal_state();
+        self.mark_for_rerender();
+    }
+    /// Dumps all lines above terminal vieport and the viewport itself to a string
     pub fn dump_screen(&mut self, full: bool) -> String {
         let viewport: String = dump_screen!(self.viewport);
         if !full {
@@ -1189,7 +1257,7 @@ impl Grid {
             let new_row = Row::new(self.width).canonical();
             self.viewport.push(new_row);
         }
-        if self.cursor.y == self.height - 1 {
+        if self.cursor.y == self.height.saturating_sub(1) {
             if self.scroll_region.is_none() {
                 if self.alternate_screen_state.is_none() {
                     self.transfer_rows_to_lines_above(1);
@@ -1341,7 +1409,7 @@ impl Grid {
     }
     fn line_wrap(&mut self) {
         self.cursor.x = 0;
-        if self.cursor.y == self.height - 1 {
+        if self.cursor.y == self.height.saturating_sub(1) {
             if self.alternate_screen_state.is_none() {
                 self.transfer_rows_to_lines_above(1);
             } else {
@@ -1560,10 +1628,17 @@ impl Grid {
         }
         self.output_buffer.update_line(self.cursor.y);
     }
-    pub fn erase_characters(&mut self, count: usize, empty_char_style: CharacterStyles) {
+    fn erase_characters(&mut self, count: usize, empty_char_style: CharacterStyles) {
         let mut empty_character = EMPTY_TERMINAL_CHARACTER;
         empty_character.styles = empty_char_style;
         let current_row = self.viewport.get_mut(self.cursor.y).unwrap();
+
+        // pad row if needed
+        if current_row.width_cached() < self.width {
+            let padding_count = self.width - current_row.width_cached();
+            let mut columns_padding = VecDeque::from(vec![EMPTY_TERMINAL_CHARACTER; padding_count]);
+            current_row.columns.append(&mut columns_padding);
+        }
         for _ in 0..count {
             let deleted_character = current_row.delete_and_return_character(self.cursor.x);
             let excess_width = deleted_character
@@ -1573,6 +1648,7 @@ impl Grid {
             for _ in 0..excess_width {
                 current_row.insert_character_at(empty_character, self.cursor.x);
             }
+            current_row.push(empty_character);
         }
         self.output_buffer.update_line(self.cursor.y);
     }
@@ -2084,7 +2160,9 @@ impl Perform for Grid {
                 self.set_active_charset(CharsetIndex::G0);
             },
             _ => {
-                log::warn!("Unhandled execute: {:?}", byte);
+                if self.debug {
+                    log::warn!("Unhandled execute: {:?}", byte);
+                }
             },
         }
     }
@@ -2313,7 +2391,9 @@ impl Perform for Grid {
             },
 
             _ => {
-                log::warn!("Unhandled osc: {:?}", params);
+                if self.debug {
+                    log::warn!("Unhandled osc: {:?}", params);
+                }
             },
         }
     }
@@ -2328,9 +2408,11 @@ impl Perform for Grid {
                 .unwrap_or(default) as usize
         };
         if c == 'm' {
-            self.cursor
-                .pending_styles
-                .add_style_from_ansi_params(&mut params_iter);
+            if intermediates.is_empty() {
+                self.cursor
+                    .pending_styles
+                    .add_style_from_ansi_params(&mut params_iter);
+            }
         } else if c == 'C' || c == 'a' {
             // move cursor forward
             let move_by = next_param_or(1);
@@ -2338,13 +2420,13 @@ impl Perform for Grid {
         } else if c == 'K' {
             // clear line (0 => right, 1 => left, 2 => all)
             if let Some(clear_type) = params_iter.next().map(|param| param[0]) {
+                let mut char_to_replace = EMPTY_TERMINAL_CHARACTER;
+                if let Some(background_color) = self.cursor.pending_styles.background {
+                    char_to_replace.styles.background = Some(background_color);
+                }
                 if clear_type == 0 {
-                    let mut char_to_replace = EMPTY_TERMINAL_CHARACTER;
-                    char_to_replace.styles = self.cursor.pending_styles;
                     self.replace_characters_in_line_after_cursor(char_to_replace);
                 } else if clear_type == 1 {
-                    let mut char_to_replace = EMPTY_TERMINAL_CHARACTER;
-                    char_to_replace.styles = self.cursor.pending_styles;
                     self.replace_characters_in_line_before_cursor(char_to_replace);
                 } else if clear_type == 2 {
                     self.clear_cursor_line();
@@ -2353,8 +2435,9 @@ impl Perform for Grid {
         } else if c == 'J' {
             // clear all (0 => below, 1 => above, 2 => all, 3 => saved)
             let mut char_to_replace = EMPTY_TERMINAL_CHARACTER;
-            char_to_replace.styles = self.cursor.pending_styles;
-
+            if let Some(background_color) = self.cursor.pending_styles.background {
+                char_to_replace.styles.background = Some(background_color);
+            }
             if let Some(clear_type) = params_iter.next().map(|param| param[0]) {
                 if clear_type == 0 {
                     self.clear_all_after_cursor(char_to_replace);
@@ -2836,7 +2919,9 @@ impl Perform for Grid {
                 _ => {},
             }
         } else {
-            log::warn!("Unhandled csi: {}->{:?}", c, params);
+            if self.debug {
+                log::warn!("Unhandled csi: {}->{:?}", c, params);
+            }
         }
     }
 
@@ -2918,7 +3003,9 @@ impl Perform for Grid {
                 self.fill_viewport(fill_character);
             },
             _ => {
-                log::warn!("Unhandled esc_dispatch: {}->{:?}", byte, intermediates);
+                if self.debug {
+                    log::warn!("Unhandled esc_dispatch: {}->{:?}", byte, intermediates);
+                }
             },
         }
     }

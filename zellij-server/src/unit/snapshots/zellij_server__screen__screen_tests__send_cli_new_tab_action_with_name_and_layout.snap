@@ -1,16 +1,17 @@
 ---
 source: zellij-server/src/./unit/screen_tests.rs
-assertion_line: 2350
+assertion_line: 2448
 expression: "format!(\"{:#?}\", new_tab_instruction)"
 ---
 NewTab(
     None,
+    None,
     Some(
-        PaneLayout {
+        TiledPaneLayout {
             children_split_direction: Horizontal,
             name: None,
             children: [
-                PaneLayout {
+                TiledPaneLayout {
                     children_split_direction: Horizontal,
                     name: None,
                     children: [],
@@ -23,8 +24,11 @@ NewTab(
                     borderless: false,
                     focus: None,
                     external_children_index: None,
+                    children_are_stacked: false,
+                    is_expanded_in_stack: false,
+                    exclude_from_sync: None,
                 },
-                PaneLayout {
+                TiledPaneLayout {
                     children_split_direction: Horizontal,
                     name: None,
                     children: [],
@@ -37,8 +41,11 @@ NewTab(
                     borderless: false,
                     focus: None,
                     external_children_index: None,
+                    children_are_stacked: false,
+                    is_expanded_in_stack: false,
+                    exclude_from_sync: None,
                 },
-                PaneLayout {
+                TiledPaneLayout {
                     children_split_direction: Horizontal,
                     name: None,
                     children: [],
@@ -51,6 +58,9 @@ NewTab(
                     borderless: false,
                     focus: None,
                     external_children_index: None,
+                    children_are_stacked: false,
+                    is_expanded_in_stack: false,
+                    exclude_from_sync: None,
                 },
             ],
             split_size: None,
@@ -58,12 +68,12 @@ NewTab(
             borderless: false,
             focus: None,
             external_children_index: None,
+            children_are_stacked: false,
+            is_expanded_in_stack: false,
+            exclude_from_sync: None,
         },
     ),
     [],
-    Some(
-        "my-awesome-tab-name",
-    ),
     1,
     10,
 )

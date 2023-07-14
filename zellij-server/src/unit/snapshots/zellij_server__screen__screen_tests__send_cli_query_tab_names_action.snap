@@ -1,0 +1,14 @@
+---
+source: zellij-server/src/./unit/screen_tests.rs
+assertion_line: 2713
+expression: "format!(\"{:#?}\", log_tab_names_action)"
+---
+Some(
+    Log(
+        [
+            "Tab #1",
+            "Tab #2",
+        ],
+        10,
+    ),
+)

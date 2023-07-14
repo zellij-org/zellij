@@ -5,36 +5,6 @@
 //! xtask install` for installation of rust-analyzer server and client.
 //!
 //! This binary is integrated into the `cargo` command line by using an alias in `.cargo/config`.
-// Current default "flow":
-// - format-flow: `cargo fmt`
-// - format-toml-conditioned-flow: ??
-// - build: `cargo build`
-// - test: `cargo test`
-// - clippy: `cargo clippy --all-targets --all-features -- --deny warnings $@`
-//
-// # Install flow:
-// - build-plugins-release: `cargo build --release ...`
-// - wasm-opt-plugins: `wasm-opt ...`
-// - build-release: `cargo build --release`
-// - install-mandown: `cargo install mandown`
-// - manpage: |
-//      mkdir -p ${root_dir}/assets/man
-//      mandown ${root_dir}/docs/MANPAGE.md 1 > ${root_dir}/assets/man/zellij.1
-// - install: `cp target/release/zellij "$1"`
-//
-// # Release flow:
-// - workspace: cargo make --profile development -- release
-//
-// # Publish flow:
-// - update-default-config:
-// - build-plugins-release: `cargo build --release ...`
-// - wasm-opt-plugins: `wasm-opt ...`
-// - release-commit:
-//      - commit-all: `git commit -aem "chore(release): v${CRATE_VERSION}"`
-//      - tag-release: `git tag --annotate --message "Version ${CRATE_VERSION}"
-//      "v${CRATE_VERSION}"`
-//      - `git push --atomic origin main "v${CRATE_VERSION}"`
-// - publish-zellij: `cargo publish [tile, client, server, utils, tile-utils, zellij]`
 
 mod build;
 mod ci;
@@ -53,18 +23,24 @@ use std::{
 };
 use xshell::Shell;
 
+pub struct WorkspaceMember {
+    crate_name: &'static str,
+    build: bool,
+}
+
 lazy_static::lazy_static! {
-    pub static ref WORKSPACE_MEMBERS: Vec<&'static str> = vec![
-        "default-plugins/compact-bar",
-        "default-plugins/status-bar",
-        "default-plugins/strider",
-        "default-plugins/tab-bar",
-        "zellij-utils",
-        "zellij-tile-utils",
-        "zellij-tile",
-        "zellij-client",
-        "zellij-server",
-        ".",
+    pub static ref WORKSPACE_MEMBERS: Vec<WorkspaceMember> = vec![
+        WorkspaceMember{crate_name: "default-plugins/compact-bar", build: true},
+        WorkspaceMember{crate_name: "default-plugins/status-bar", build: true},
+        WorkspaceMember{crate_name: "default-plugins/strider", build: true},
+        WorkspaceMember{crate_name: "default-plugins/tab-bar", build: true},
+        WorkspaceMember{crate_name: "default-plugins/fixture-plugin-for-tests", build: true},
+        WorkspaceMember{crate_name: "zellij-utils", build: false},
+        WorkspaceMember{crate_name: "zellij-tile-utils", build: false},
+        WorkspaceMember{crate_name: "zellij-tile", build: false},
+        WorkspaceMember{crate_name: "zellij-client", build: false},
+        WorkspaceMember{crate_name: "zellij-server", build: false},
+        WorkspaceMember{crate_name: ".", build: true},
     ];
 }
 
@@ -105,6 +81,10 @@ fn project_root() -> PathBuf {
     .nth(1)
     .unwrap()
     .to_path_buf()
+}
+
+fn asset_dir() -> PathBuf {
+    crate::project_root().join("zellij-utils").join("assets")
 }
 
 pub fn cargo() -> anyhow::Result<PathBuf> {

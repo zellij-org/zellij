@@ -18,6 +18,7 @@ use zellij_utils::pane_size::Offset;
 use zellij_utils::{
     data::{InputMode, Palette, PaletteColor, Style},
     errors::prelude::*,
+    input::layout::Run,
     pane_size::PaneGeom,
     pane_size::SizeInPixels,
     position::Position,
@@ -104,6 +105,7 @@ pub struct TerminalPane {
     prev_pane_name: String,
     frame: HashMap<ClientId, PaneFrame>,
     borderless: bool,
+    exclude_from_sync: bool,
     fake_cursor_locations: HashSet<(usize, usize)>, // (x, y) - these hold a record of previous fake cursors which we need to clear on render
     search_term: String,
     is_held: Option<(Option<i32>, IsFirstRun, RunCommand)>, // a "held" pane means that its command has either exited and the pane is waiting for a
@@ -111,6 +113,7 @@ pub struct TerminalPane {
     banner: Option<String>, // a banner to be rendered inside this TerminalPane, used for panes
     // held on startup and can possibly be used to display some errors
     pane_frame_color_override: Option<(PaletteColor, Option<String>)>,
+    invoked_with: Option<Run>,
 }
 
 impl Pane for TerminalPane {
@@ -165,6 +168,10 @@ impl Pane for TerminalPane {
     }
     fn cursor_coordinates(&self) -> Option<(usize, usize)> {
         // (x, y)
+        if self.get_content_rows() < 1 || self.get_content_columns() < 1 {
+            // do not render cursor if there's no room for it
+            return None;
+        }
         let Offset { top, left, .. } = self.content_offset;
         self.grid
             .cursor_coordinates()
@@ -283,6 +290,11 @@ impl Pane for TerminalPane {
         if self.should_render() {
             let content_x = self.get_content_x();
             let content_y = self.get_content_y();
+            let rows = self.get_content_rows();
+            let columns = self.get_content_columns();
+            if rows < 1 || columns < 1 {
+                return Ok(None);
+            }
             match self.grid.render(content_x, content_y, &self.style) {
                 Ok(rendered_assets) => {
                     self.set_should_render(false);
@@ -347,8 +359,9 @@ impl Pane for TerminalPane {
             self.pane_name.clone()
         };
 
+        let frame_geom = self.current_geom();
         let mut frame = PaneFrame::new(
-            self.current_geom().into(),
+            frame_geom.into(),
             self.grid.scrollback_position_and_length(),
             pane_title,
             frame_params,
@@ -487,6 +500,9 @@ impl Pane for TerminalPane {
     fn dump_screen(&mut self, _client_id: ClientId, full: bool) -> String {
         self.grid.dump_screen(full)
     }
+    fn clear_screen(&mut self) {
+        self.grid.clear_screen()
+    }
     fn scroll_up(&mut self, count: usize, _client_id: ClientId) {
         self.grid.move_viewport_up(count);
         self.set_should_render(true);
@@ -587,6 +603,14 @@ impl Pane for TerminalPane {
         self.borderless
     }
 
+    fn set_exclude_from_sync(&mut self, exclude_from_sync: bool) {
+        self.exclude_from_sync = exclude_from_sync;
+    }
+
+    fn exclude_from_sync(&self) -> bool {
+        self.exclude_from_sync
+    }
+
     fn mouse_left_click(&self, position: &Position, is_held: bool) -> Option<String> {
         self.grid.mouse_left_click_signal(position, is_held)
     }
@@ -673,6 +697,7 @@ impl Pane for TerminalPane {
         self.grid.is_alternate_mode_active()
     }
     fn hold(&mut self, exit_status: Option<i32>, is_first_run: bool, run_command: RunCommand) {
+        self.invoked_with = Some(Run::Command(run_command.clone()));
         self.is_held = Some((exit_status, is_first_run, run_command));
         if is_first_run {
             self.render_first_run_banner();
@@ -690,6 +715,41 @@ impl Pane for TerminalPane {
             .as_ref()
             .map(|(color, _text)| *color)
     }
+    fn invoked_with(&self) -> &Option<Run> {
+        &self.invoked_with
+    }
+    fn set_title(&mut self, title: String) {
+        self.pane_title = title;
+    }
+    fn current_title(&self) -> String {
+        if self.pane_name.is_empty() {
+            self.grid
+                .title
+                .as_deref()
+                .unwrap_or(&self.pane_title)
+                .into()
+        } else {
+            self.pane_name.to_owned()
+        }
+    }
+    fn exit_status(&self) -> Option<i32> {
+        self.is_held
+            .as_ref()
+            .and_then(|(exit_status, _, _)| *exit_status)
+    }
+    fn is_held(&self) -> bool {
+        self.is_held.is_some()
+    }
+    fn exited(&self) -> bool {
+        match self.is_held {
+            Some((_, is_first_run, _)) => !is_first_run,
+            None => false,
+        }
+    }
+    fn rename(&mut self, buf: Vec<u8>) {
+        self.pane_name = String::from_utf8_lossy(&buf).to_string();
+        self.set_should_render(true);
+    }
 }
 
 impl TerminalPane {
@@ -706,6 +766,8 @@ impl TerminalPane {
         terminal_emulator_colors: Rc<RefCell<Palette>>,
         terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
         initial_pane_title: Option<String>,
+        invoked_with: Option<Run>,
+        debug: bool,
     ) -> TerminalPane {
         let initial_pane_title =
             initial_pane_title.unwrap_or_else(|| format!("Pane #{}", pane_index));
@@ -717,6 +779,7 @@ impl TerminalPane {
             link_handler,
             character_cell_size,
             sixel_image_store,
+            debug,
         );
         TerminalPane {
             frame: HashMap::new(),
@@ -734,11 +797,13 @@ impl TerminalPane {
             pane_name: pane_name.clone(),
             prev_pane_name: pane_name,
             borderless: false,
+            exclude_from_sync: false,
             fake_cursor_locations: HashSet::new(),
             search_term: String::new(),
             is_held: None,
             banner: None,
             pane_frame_color_override: None,
+            invoked_with,
         }
     }
     pub fn get_x(&self) -> usize {
@@ -768,7 +833,7 @@ impl TerminalPane {
     fn reflow_lines(&mut self) {
         let rows = self.get_content_rows();
         let cols = self.get_content_columns();
-        self.grid.change_size(rows, cols);
+        self.grid.force_change_size(rows, cols);
         if self.banner.is_some() {
             self.grid.reset_terminal_state();
             self.render_first_run_banner();
@@ -780,6 +845,10 @@ impl TerminalPane {
     }
     pub fn cursor_coordinates(&self) -> Option<(usize, usize)> {
         // (x, y)
+        if self.get_content_rows() < 1 || self.get_content_columns() < 1 {
+            // do not render cursor if there's no room for it
+            return None;
+        }
         self.grid.cursor_coordinates()
     }
     fn render_first_run_banner(&mut self) {

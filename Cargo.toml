@@ -1,6 +1,6 @@
 [package]
 name = "zellij"
-version = "0.34.5"
+version = "0.38.0"
 authors = ["Aram Drevekenin <aram@poor.dev>"]
 edition = "2021"
 description = "A terminal workspace with batteries included"
@@ -13,21 +13,20 @@ rust-version = "1.60"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-anyhow = "1.0"
-thiserror = "1.0.30"
-names = { version = "0.13.0", default-features = false }
-miette = { version = "3.3.0", features = ["fancy"] }
-zellij-client = { path = "zellij-client/", version = "0.34.5" }
-zellij-server = { path = "zellij-server/", version = "0.34.5" }
-zellij-utils = { path = "zellij-utils/", version = "0.34.5" }
+zellij-client = { path = "zellij-client/", version = "0.38.0" }
+zellij-server = { path = "zellij-server/", version = "0.38.0" }
+zellij-utils = { path = "zellij-utils/", version = "0.38.0" }
+thiserror = "1.0.40"
+names = { version = "0.14.0", default-features = false }
 log = "0.4.17"
-dialoguer = "0.10.1"
-suggest = "0.4"
+dialoguer = "0.10.4"
+suggest = "0.4.0"
 
 [dev-dependencies]
 insta = { version = "1.6.0", features = ["backtrace"] }
 ssh2 = "0.9.1"
 rand = "0.8.0"
+regex = "1.8.1"
 
 [workspace]
 members = [
@@ -35,6 +34,7 @@ members = [
     "default-plugins/status-bar",
     "default-plugins/strider",
     "default-plugins/tab-bar",
+    "default-plugins/fixture-plugin-for-tests",
     "zellij-client",
     "zellij-server",
     "zellij-utils",
@@ -43,6 +43,12 @@ members = [
     "xtask",
     ".",
 ]
+
+[profile.dev-opt]
+inherits = "dev"
+
+[profile.dev-opt.package."*"]
+opt-level = 3
 
 [profile.release]
 lto = true
@@ -73,3 +79,8 @@ pkg-fmt = "tgz"
 default = [ "zellij-utils/plugins_from_target" ]
 disable_automatic_asset_installation = [ "zellij-utils/disable_automatic_asset_installation" ]
 unstable = [ "zellij-client/unstable", "zellij-utils/unstable" ]
+singlepass = [ "zellij-server/singlepass" ]
+
+# uncomment this when developing plugins in the Zellij UI to make plugin compilation faster
+# [profile.dev.package."*"]
+# opt-level = 3

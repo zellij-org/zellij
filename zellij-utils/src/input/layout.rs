@@ -22,7 +22,7 @@ use std::str::FromStr;
 
 use super::plugins::{PluginTag, PluginsConfigError};
 use serde::{Deserialize, Serialize};
-use std::convert::TryFrom;
+use std::collections::BTreeMap;
 use std::vec::Vec;
 use std::{
     fmt,
@@ -72,7 +72,7 @@ pub enum Run {
     Plugin(RunPlugin),
     #[serde(rename = "command")]
     Command(RunCommand),
-    EditFile(PathBuf, Option<usize>), // TODO: merge this with TerminalAction::OpenFile
+    EditFile(PathBuf, Option<usize>, Option<PathBuf>), // TODO: merge this with TerminalAction::OpenFile
     Cwd(PathBuf),
 }
 
@@ -107,13 +107,26 @@ impl Run {
             },
             (
                 Some(Run::Command(base_run_command)),
-                Some(Run::EditFile(file_to_edit, line_number)),
+                Some(Run::EditFile(file_to_edit, line_number, edit_cwd)),
             ) => match &base_run_command.cwd {
-                Some(cwd) => Some(Run::EditFile(cwd.join(&file_to_edit), *line_number)),
-                None => Some(Run::EditFile(file_to_edit.clone(), *line_number)),
+                Some(cwd) => Some(Run::EditFile(
+                    cwd.join(&file_to_edit),
+                    *line_number,
+                    Some(cwd.join(edit_cwd.clone().unwrap_or_default())),
+                )),
+                None => Some(Run::EditFile(
+                    file_to_edit.clone(),
+                    *line_number,
+                    edit_cwd.clone(),
+                )),
             },
-            (Some(Run::Cwd(cwd)), Some(Run::EditFile(file_to_edit, line_number))) => {
-                Some(Run::EditFile(cwd.join(&file_to_edit), *line_number))
+            (Some(Run::Cwd(cwd)), Some(Run::EditFile(file_to_edit, line_number, edit_cwd))) => {
+                let cwd = edit_cwd.clone().unwrap_or(cwd.clone());
+                Some(Run::EditFile(
+                    cwd.join(&file_to_edit),
+                    *line_number,
+                    Some(cwd),
+                ))
             },
             (Some(_base), Some(other)) => Some(other.clone()),
             (Some(base), _) => Some(base.clone()),
@@ -131,7 +144,15 @@ impl Run {
                     run_command.cwd = Some(cwd.clone());
                 },
             },
-            Run::EditFile(path_to_file, _line_number) => {
+            Run::EditFile(path_to_file, _line_number, edit_cwd) => {
+                match edit_cwd.as_mut() {
+                    Some(edit_cwd) => {
+                        *edit_cwd = cwd.join(&edit_cwd);
+                    },
+                    None => {
+                        let _ = edit_cwd.insert(cwd.clone());
+                    },
+                };
                 *path_to_file = cwd.join(&path_to_file);
             },
             Run::Cwd(path) => {
@@ -169,9 +190,24 @@ impl Run {
             }
         }
     }
+    pub fn is_same_category(first: &Option<Run>, second: &Option<Run>) -> bool {
+        match (first, second) {
+            (Some(Run::Plugin(..)), Some(Run::Plugin(..))) => true,
+            (Some(Run::Command(..)), Some(Run::Command(..))) => true,
+            (Some(Run::EditFile(..)), Some(Run::EditFile(..))) => true,
+            (Some(Run::Cwd(..)), Some(Run::Cwd(..))) => true,
+            _ => false,
+        }
+    }
+    pub fn is_terminal(run: &Option<Run>) -> bool {
+        match run {
+            Some(Run::Command(..)) | Some(Run::EditFile(..)) | Some(Run::Cwd(..)) | None => true,
+            _ => false,
+        }
+    }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
 pub struct RunPlugin {
     #[serde(default)]
     pub _allow_exec_host_cmd: bool,
@@ -182,6 +218,48 @@ pub struct RunPlugin {
 pub enum RunPluginLocation {
     File(PathBuf),
     Zellij(PluginTag),
+}
+
+impl RunPluginLocation {
+    pub fn parse(location: &str, cwd: Option<PathBuf>) -> Result<Self, PluginsConfigError> {
+        let url = Url::parse(location)?;
+
+        let decoded_path = percent_encoding::percent_decode_str(url.path()).decode_utf8_lossy();
+
+        match url.scheme() {
+            "zellij" => Ok(Self::Zellij(PluginTag::new(decoded_path))),
+            "file" => {
+                let path = if location.starts_with("file:/") {
+                    // Path is absolute, its safe to use URL path.
+                    //
+                    // This is the case if the scheme and : delimiter are followed by a / slash
+                    PathBuf::from(decoded_path.as_ref())
+                } else if location.starts_with("file:~") {
+                    // Unwrap is safe here since location is a valid URL
+                    PathBuf::from(location.strip_prefix("file:").unwrap())
+                } else {
+                    // URL dep doesn't handle relative paths with `file` schema properly,
+                    // it always makes them absolute. Use raw location string instead.
+                    //
+                    // Unwrap is safe here since location is a valid URL
+                    let stripped = location.strip_prefix("file:").unwrap();
+                    match cwd {
+                        Some(cwd) => cwd.join(stripped),
+                        None => PathBuf::from(stripped),
+                    }
+                };
+                let path = match shellexpand::full(&path.to_string_lossy().to_string()) {
+                    Ok(s) => PathBuf::from(s.as_ref()),
+                    Err(e) => {
+                        log::error!("Failed to shell expand plugin path: {}", e);
+                        path
+                    },
+                };
+                Ok(Self::File(path))
+            },
+            _ => Err(PluginsConfigError::InvalidUrlScheme(url)),
+        }
+    }
 }
 
 impl From<&RunPluginLocation> for Url {
@@ -211,12 +289,28 @@ impl fmt::Display for RunPluginLocation {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Ord, PartialOrd, Serialize, Deserialize)]
+pub enum LayoutConstraint {
+    MaxPanes(usize),
+    MinPanes(usize),
+    ExactPanes(usize),
+    NoConstraint,
+}
+
+pub type SwapTiledLayout = (BTreeMap<LayoutConstraint, TiledPaneLayout>, Option<String>); // Option<String> is the swap layout name
+pub type SwapFloatingLayout = (
+    BTreeMap<LayoutConstraint, Vec<FloatingPaneLayout>>,
+    Option<String>,
+); // Option<String> is the swap layout name
+
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct Layout {
-    pub tabs: Vec<(Option<String>, PaneLayout, Vec<FloatingPanesLayout>)>,
+    pub tabs: Vec<(Option<String>, TiledPaneLayout, Vec<FloatingPaneLayout>)>,
     pub focused_tab_index: Option<usize>,
-    pub template: Option<PaneLayout>,
-    pub floating_panes_template: Vec<FloatingPanesLayout>,
+    pub template: Option<(TiledPaneLayout, Vec<FloatingPaneLayout>)>,
+    pub swap_layouts: Vec<(TiledPaneLayout, Vec<FloatingPaneLayout>)>,
+    pub swap_tiled_layouts: Vec<SwapTiledLayout>,
+    pub swap_floating_layouts: Vec<SwapFloatingLayout>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
@@ -270,8 +364,7 @@ impl FromStr for PercentOrFixed {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
-pub struct FloatingPanesLayout {
-    // TODO: change name to singular
+pub struct FloatingPaneLayout {
     pub name: Option<String>,
     pub height: Option<PercentOrFixed>,
     pub width: Option<PercentOrFixed>,
@@ -281,7 +374,7 @@ pub struct FloatingPanesLayout {
     pub focus: Option<bool>,
 }
 
-impl FloatingPanesLayout {
+impl FloatingPaneLayout {
     pub fn add_cwd_to_layout(&mut self, cwd: &PathBuf) {
         match self.run.as_mut() {
             Some(run) => run.add_cwd(cwd),
@@ -292,9 +385,9 @@ impl FloatingPanesLayout {
     }
 }
 
-impl From<&PaneLayout> for FloatingPanesLayout {
-    fn from(pane_layout: &PaneLayout) -> Self {
-        FloatingPanesLayout {
+impl From<&TiledPaneLayout> for FloatingPaneLayout {
+    fn from(pane_layout: &TiledPaneLayout) -> Self {
+        FloatingPaneLayout {
             name: pane_layout.name.clone(),
             run: pane_layout.run.clone(),
             focus: pane_layout.focus,
@@ -304,21 +397,24 @@ impl From<&PaneLayout> for FloatingPanesLayout {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
-pub struct PaneLayout {
+pub struct TiledPaneLayout {
     pub children_split_direction: SplitDirection,
     pub name: Option<String>,
-    pub children: Vec<PaneLayout>,
+    pub children: Vec<TiledPaneLayout>,
     pub split_size: Option<SplitSize>,
     pub run: Option<Run>,
     pub borderless: bool,
     pub focus: Option<bool>,
     pub external_children_index: Option<usize>,
+    pub children_are_stacked: bool,
+    pub is_expanded_in_stack: bool,
+    pub exclude_from_sync: Option<bool>,
 }
 
-impl PaneLayout {
+impl TiledPaneLayout {
     pub fn insert_children_layout(
         &mut self,
-        children_layout: &mut PaneLayout,
+        children_layout: &mut TiledPaneLayout,
     ) -> Result<bool, ConfigError> {
         // returns true if successfully inserted and false otherwise
         match self.external_children_index {
@@ -338,6 +434,30 @@ impl PaneLayout {
             },
         }
     }
+    pub fn insert_children_nodes(
+        &mut self,
+        children_nodes: &mut Vec<TiledPaneLayout>,
+    ) -> Result<bool, ConfigError> {
+        // returns true if successfully inserted and false otherwise
+        match self.external_children_index {
+            Some(external_children_index) => {
+                children_nodes.reverse();
+                for child_node in children_nodes.drain(..) {
+                    self.children.insert(external_children_index, child_node);
+                }
+                self.external_children_index = None;
+                Ok(true)
+            },
+            None => {
+                for pane in self.children.iter_mut() {
+                    if pane.insert_children_nodes(children_nodes)? {
+                        return Ok(true);
+                    }
+                }
+                Ok(false)
+            },
+        }
+    }
     pub fn children_block_count(&self) -> usize {
         let mut count = 0;
         if self.external_children_index.is_some() {
@@ -348,11 +468,50 @@ impl PaneLayout {
         }
         count
     }
+    pub fn pane_count(&self) -> usize {
+        if self.children.is_empty() {
+            1 // self
+        } else {
+            let mut pane_count = 0;
+            for child in &self.children {
+                pane_count += child.pane_count();
+            }
+            pane_count
+        }
+    }
     pub fn position_panes_in_space(
         &self,
         space: &PaneGeom,
-    ) -> Result<Vec<(PaneLayout, PaneGeom)>, &'static str> {
-        let layouts = split_space(space, self, space);
+        max_panes: Option<usize>,
+    ) -> Result<Vec<(TiledPaneLayout, PaneGeom)>, &'static str> {
+        let layouts = match max_panes {
+            Some(max_panes) => {
+                let mut layout_to_split = self.clone();
+                let pane_count_in_layout = layout_to_split.pane_count();
+                if max_panes > pane_count_in_layout {
+                    // the + 1 here is because this was previously an "actual" pane and will now
+                    // become just a container, so we need to account for it too
+                    // TODO: make sure this works when the `children` node has sibling nodes,
+                    // because we really should support that
+                    let children_count = (max_panes - pane_count_in_layout) + 1;
+                    let mut extra_children = vec![TiledPaneLayout::default(); children_count];
+                    if !layout_to_split.has_focused_node() {
+                        if let Some(last_child) = extra_children.last_mut() {
+                            last_child.focus = Some(true);
+                        }
+                    }
+                    let _ = layout_to_split.insert_children_nodes(&mut extra_children);
+                } else {
+                    layout_to_split.truncate(max_panes);
+                }
+                if !layout_to_split.has_focused_node() {
+                    layout_to_split.focus_deepest_pane();
+                }
+
+                split_space(space, &layout_to_split, space)?
+            },
+            None => split_space(space, self, space)?,
+        };
         for (_pane_layout, pane_geom) in layouts.iter() {
             if !pane_geom.is_at_least_minimum_size() {
                 return Err("No room on screen for this layout!");
@@ -374,8 +533,8 @@ impl PaneLayout {
         run_instructions
     }
     pub fn with_one_pane() -> Self {
-        let mut default_layout = PaneLayout::default();
-        default_layout.children = vec![PaneLayout::default()];
+        let mut default_layout = TiledPaneLayout::default();
+        default_layout.children = vec![TiledPaneLayout::default()];
         default_layout
     }
     pub fn add_cwd_to_layout(&mut self, cwd: &PathBuf) {
@@ -388,6 +547,86 @@ impl PaneLayout {
         for child in self.children.iter_mut() {
             child.add_cwd_to_layout(cwd);
         }
+    }
+    pub fn deepest_depth(&self) -> usize {
+        let mut deepest_child_depth = 0;
+        for child in self.children.iter() {
+            let child_deepest_depth = child.deepest_depth();
+            if child_deepest_depth > deepest_child_depth {
+                deepest_child_depth = child_deepest_depth;
+            }
+        }
+        deepest_child_depth + 1
+    }
+    pub fn focus_deepest_pane(&mut self) {
+        let mut deepest_child_index = None;
+        let mut deepest_path = 0;
+        for (i, child) in self.children.iter().enumerate() {
+            let child_deepest_path = child.deepest_depth();
+            if child_deepest_path >= deepest_path {
+                deepest_path = child_deepest_path;
+                deepest_child_index = Some(i)
+            }
+        }
+        match deepest_child_index {
+            Some(deepest_child_index) => {
+                if let Some(child) = self.children.get_mut(deepest_child_index) {
+                    child.focus_deepest_pane();
+                }
+            },
+            None => {
+                self.focus = Some(true);
+            },
+        }
+    }
+    pub fn truncate(&mut self, max_panes: usize) -> usize {
+        // returns remaining children length
+        // if max_panes is 1, it means there's only enough panes for this node,
+        // if max_panes is 0, this is probably the root layout being called with 0 max panes
+        if max_panes <= 1 {
+            while !self.children.is_empty() {
+                // this is a special case: we're truncating a pane that was previously a logical
+                // container but now should be an actual pane - so here we'd like to use its
+                // deepest "non-logical" child in order to get all its attributes (eg. borderless)
+                let first_child = self.children.remove(0);
+                drop(std::mem::replace(self, first_child));
+            }
+            self.children.clear();
+        } else if max_panes <= self.children.len() {
+            self.children.truncate(max_panes);
+            self.children.iter_mut().for_each(|l| l.children.clear());
+        } else {
+            let mut remaining_panes = max_panes
+                - self
+                    .children
+                    .iter()
+                    .filter(|c| c.children.is_empty())
+                    .count();
+            for child in self.children.iter_mut() {
+                if remaining_panes > 1 && child.children.len() > 0 {
+                    remaining_panes =
+                        remaining_panes.saturating_sub(child.truncate(remaining_panes));
+                } else {
+                    child.children.clear();
+                }
+            }
+        }
+        if self.children.len() > 0 {
+            self.children.len()
+        } else {
+            1 // just me
+        }
+    }
+    pub fn has_focused_node(&self) -> bool {
+        if self.focus.map(|f| f).unwrap_or(false) {
+            return true;
+        };
+        for child in &self.children {
+            if child.has_focused_node() {
+                return true;
+            }
+        }
+        false
     }
 }
 
@@ -429,8 +668,8 @@ impl Layout {
     pub fn stringified_from_path_or_default(
         layout_path: Option<&PathBuf>,
         layout_dir: Option<PathBuf>,
-    ) -> Result<(String, String), ConfigError> {
-        // (path_to_layout as String, stringified_layout)
+    ) -> Result<(String, String, Option<(String, String)>), ConfigError> {
+        // (path_to_layout as String, stringified_layout, Option<path_to_swap_layout as String, stringified_swap_layout>)
         match layout_path {
             Some(layout_path) => {
                 // The way we determine where to look for the layout is similar to
@@ -455,24 +694,32 @@ impl Layout {
         layout_dir: Option<PathBuf>,
         config: Config,
     ) -> Result<(Layout, Config), ConfigError> {
-        let (path_to_raw_layout, raw_layout) =
+        let (path_to_raw_layout, raw_layout, raw_swap_layouts) =
             Layout::stringified_from_path_or_default(layout_path, layout_dir)?;
-        let layout = Layout::from_kdl(&raw_layout, path_to_raw_layout, None)?;
+        let layout = Layout::from_kdl(
+            &raw_layout,
+            path_to_raw_layout,
+            raw_swap_layouts
+                .as_ref()
+                .map(|(r, f)| (r.as_str(), f.as_str())),
+            None,
+        )?;
         let config = Config::from_kdl(&raw_layout, Some(config))?; // this merges the two config, with
         Ok((layout, config))
     }
     pub fn from_str(
         raw: &str,
         path_to_raw_layout: String,
+        swap_layouts: Option<(&str, &str)>, // Option<path_to_swap_layout, stringified_swap_layout>
         cwd: Option<PathBuf>,
     ) -> Result<Layout, ConfigError> {
-        Layout::from_kdl(raw, path_to_raw_layout, cwd)
+        Layout::from_kdl(raw, path_to_raw_layout, swap_layouts, cwd)
     }
     pub fn stringified_from_dir(
         layout: &PathBuf,
         layout_dir: Option<&PathBuf>,
-    ) -> Result<(String, String), ConfigError> {
-        // (path_to_layout as String, stringified_layout)
+    ) -> Result<(String, String, Option<(String, String)>), ConfigError> {
+        // (path_to_layout as String, stringified_layout, Option<path_to_swap_layout as String, stringified_swap_layout>)
         match layout_dir {
             Some(dir) => {
                 let layout_path = &dir.join(layout);
@@ -485,18 +732,30 @@ impl Layout {
             None => Layout::stringified_from_default_assets(layout),
         }
     }
-    pub fn stringified_from_path(layout_path: &Path) -> Result<(String, String), ConfigError> {
-        // (path_to_layout as String, stringified_layout)
+    pub fn stringified_from_path(
+        layout_path: &Path,
+    ) -> Result<(String, String, Option<(String, String)>), ConfigError> {
+        // (path_to_layout as String, stringified_layout, Option<path_to_swap_layout as String, stringified_swap_layout>)
         let mut layout_file = File::open(&layout_path)
             .or_else(|_| File::open(&layout_path.with_extension("kdl")))
             .map_err(|e| ConfigError::IoPath(e, layout_path.into()))?;
 
+        let swap_layout_and_path = Layout::swap_layout_and_path(&layout_path);
+
         let mut kdl_layout = String::new();
-        layout_file.read_to_string(&mut kdl_layout)?;
-        Ok((layout_path.as_os_str().to_string_lossy().into(), kdl_layout))
+        layout_file
+            .read_to_string(&mut kdl_layout)
+            .map_err(|e| ConfigError::IoPath(e, layout_path.into()))?;
+        Ok((
+            layout_path.as_os_str().to_string_lossy().into(),
+            kdl_layout,
+            swap_layout_and_path,
+        ))
     }
-    pub fn stringified_from_default_assets(path: &Path) -> Result<(String, String), ConfigError> {
-        // (path_to_layout as String, stringified_layout)
+    pub fn stringified_from_default_assets(
+        path: &Path,
+    ) -> Result<(String, String, Option<(String, String)>), ConfigError> {
+        // (path_to_layout as String, stringified_layout, Option<path_to_swap_layout as String, stringified_swap_layout>)
         // TODO: ideally these should not be hard-coded
         // we should load layouts by name from the config
         // and load them from a hashmap or some such
@@ -504,18 +763,31 @@ impl Layout {
             Some("default") => Ok((
                 "Default layout".into(),
                 Self::stringified_default_from_assets()?,
+                Some((
+                    "Default swap layout".into(),
+                    Self::stringified_default_swap_from_assets()?,
+                )),
             )),
             Some("strider") => Ok((
                 "Strider layout".into(),
                 Self::stringified_strider_from_assets()?,
+                Some((
+                    "Strider swap layout".into(),
+                    Self::stringified_strider_swap_from_assets()?,
+                )),
             )),
             Some("disable-status-bar") => Ok((
                 "Disable Status Bar layout".into(),
                 Self::stringified_disable_status_from_assets()?,
+                None,
             )),
             Some("compact") => Ok((
                 "Compact layout".into(),
                 Self::stringified_compact_from_assets()?,
+                Some((
+                    "Compact layout swap".into(),
+                    Self::stringified_compact_swap_from_assets()?,
+                )),
             )),
             None | Some(_) => Err(ConfigError::IoPath(
                 std::io::Error::new(std::io::ErrorKind::Other, "The layout was not found"),
@@ -526,9 +798,14 @@ impl Layout {
     pub fn stringified_default_from_assets() -> Result<String, ConfigError> {
         Ok(String::from_utf8(setup::DEFAULT_LAYOUT.to_vec())?)
     }
-
+    pub fn stringified_default_swap_from_assets() -> Result<String, ConfigError> {
+        Ok(String::from_utf8(setup::DEFAULT_SWAP_LAYOUT.to_vec())?)
+    }
     pub fn stringified_strider_from_assets() -> Result<String, ConfigError> {
         Ok(String::from_utf8(setup::STRIDER_LAYOUT.to_vec())?)
+    }
+    pub fn stringified_strider_swap_from_assets() -> Result<String, ConfigError> {
+        Ok(String::from_utf8(setup::STRIDER_SWAP_LAYOUT.to_vec())?)
     }
 
     pub fn stringified_disable_status_from_assets() -> Result<String, ConfigError> {
@@ -539,12 +816,12 @@ impl Layout {
         Ok(String::from_utf8(setup::COMPACT_BAR_LAYOUT.to_vec())?)
     }
 
-    pub fn new_tab(&self) -> (PaneLayout, Vec<FloatingPanesLayout>) {
-        let template = match &self.template {
-            Some(template) => template.clone(),
-            None => PaneLayout::default(),
-        };
-        (template, self.floating_panes_template.clone())
+    pub fn stringified_compact_swap_from_assets() -> Result<String, ConfigError> {
+        Ok(String::from_utf8(setup::COMPACT_BAR_SWAP_LAYOUT.to_vec())?)
+    }
+
+    pub fn new_tab(&self) -> (TiledPaneLayout, Vec<FloatingPaneLayout>) {
+        self.template.clone().unwrap_or_default()
     }
 
     pub fn is_empty(&self) -> bool {
@@ -555,7 +832,7 @@ impl Layout {
         !self.tabs.is_empty()
     }
 
-    pub fn tabs(&self) -> Vec<(Option<String>, PaneLayout, Vec<FloatingPanesLayout>)> {
+    pub fn tabs(&self) -> Vec<(Option<String>, TiledPaneLayout, Vec<FloatingPaneLayout>)> {
         // String is the tab name
         self.tabs.clone()
     }
@@ -563,16 +840,63 @@ impl Layout {
     pub fn focused_tab_index(&self) -> Option<usize> {
         self.focused_tab_index
     }
+
+    fn swap_layout_and_path(path: &Path) -> Option<(String, String)> {
+        // Option<path, stringified_swap_layout>
+        let mut swap_layout_path = PathBuf::from(path);
+        swap_layout_path.set_extension("swap.kdl");
+        match File::open(&swap_layout_path) {
+            Ok(mut stringified_swap_layout_file) => {
+                let mut swap_kdl_layout = String::new();
+                match stringified_swap_layout_file.read_to_string(&mut swap_kdl_layout) {
+                    Ok(..) => Some((
+                        swap_layout_path.as_os_str().to_string_lossy().into(),
+                        swap_kdl_layout,
+                    )),
+                    Err(e) => {
+                        log::warn!(
+                            "Failed to read swap layout file: {}. Error: {:?}",
+                            swap_layout_path.as_os_str().to_string_lossy(),
+                            e
+                        );
+                        None
+                    },
+                }
+            },
+            Err(e) => {
+                log::warn!(
+                    "Failed to read swap layout file: {}. Error: {:?}",
+                    swap_layout_path.as_os_str().to_string_lossy(),
+                    e
+                );
+                None
+            },
+        }
+    }
 }
 
 fn split_space(
     space_to_split: &PaneGeom,
-    layout: &PaneLayout,
+    layout: &TiledPaneLayout,
     total_space_to_split: &PaneGeom,
-) -> Vec<(PaneLayout, PaneGeom)> {
+) -> Result<Vec<(TiledPaneLayout, PaneGeom)>, &'static str> {
     let mut pane_positions = Vec::new();
-    let sizes: Vec<Option<SplitSize>> =
-        layout.children.iter().map(|part| part.split_size).collect();
+    let sizes: Vec<Option<SplitSize>> = if layout.children_are_stacked {
+        let index_of_expanded_pane = layout.children.iter().position(|p| p.is_expanded_in_stack);
+        let mut sizes: Vec<Option<SplitSize>> = layout
+            .children
+            .iter()
+            .map(|_part| Some(SplitSize::Fixed(1)))
+            .collect();
+        if let Some(index_of_expanded_pane) = index_of_expanded_pane {
+            *sizes.get_mut(index_of_expanded_pane).unwrap() = None;
+        } else if let Some(last_size) = sizes.last_mut() {
+            *last_size = None;
+        }
+        sizes
+    } else {
+        layout.children.iter().map(|part| part.split_size).collect()
+    };
 
     let mut split_geom = Vec::new();
     let (
@@ -595,7 +919,22 @@ fn split_space(
         ),
     };
 
+    let min_size_for_panes = sizes.iter().fold(0, |acc, size| match size {
+        Some(SplitSize::Percent(_)) | None => acc + 1, // TODO: minimum height/width as relevant here
+        Some(SplitSize::Fixed(fixed)) => acc + fixed,
+    });
+    if min_size_for_panes > split_dimension_space.as_usize() {
+        return Err("Not enough room for panes"); // TODO: use error infra
+    }
+
     let flex_parts = sizes.iter().filter(|s| s.is_none()).count();
+    let total_fixed_size = sizes.iter().fold(0, |acc, s| {
+        if let Some(SplitSize::Fixed(fixed)) = s {
+            acc + fixed
+        } else {
+            acc
+        }
+    });
 
     let mut total_pane_size = 0;
     for (&size, _part) in sizes.iter().zip(&*layout.children) {
@@ -617,7 +956,11 @@ fn split_space(
                 Dimension::percent(free_percent / flex_parts as f64)
             },
         };
-        split_dimension.adjust_inner(total_split_dimension_space.as_usize());
+        split_dimension.adjust_inner(
+            total_split_dimension_space
+                .as_usize()
+                .saturating_sub(total_fixed_size),
+        );
         total_pane_size += split_dimension.as_usize();
 
         let geom = match layout.children_split_direction {
@@ -626,20 +969,22 @@ fn split_space(
                 y: space_to_split.y,
                 cols: split_dimension,
                 rows: inherited_dimension,
+                is_stacked: layout.children_are_stacked,
             },
             SplitDirection::Horizontal => PaneGeom {
                 x: space_to_split.x,
                 y: current_position,
                 cols: inherited_dimension,
                 rows: split_dimension,
+                is_stacked: layout.children_are_stacked,
             },
         };
         split_geom.push(geom);
         current_position += split_dimension.as_usize();
     }
 
-    // add extra space from rounding errors to the last pane
     if total_pane_size < split_dimension_space.as_usize() {
+        // add extra space from rounding errors to the last pane
         let increase_by = split_dimension_space.as_usize() - total_pane_size;
         if let Some(last_geom) = split_geom.last_mut() {
             match layout.children_split_direction {
@@ -647,36 +992,32 @@ fn split_space(
                 SplitDirection::Horizontal => last_geom.rows.increase_inner(increase_by),
             }
         }
+    } else if total_pane_size > split_dimension_space.as_usize() {
+        // remove extra space from rounding errors to the last pane
+        let decrease_by = total_pane_size - split_dimension_space.as_usize();
+        if let Some(last_geom) = split_geom.last_mut() {
+            match layout.children_split_direction {
+                SplitDirection::Vertical => last_geom.cols.decrease_inner(decrease_by),
+                SplitDirection::Horizontal => last_geom.rows.decrease_inner(decrease_by),
+            }
+        }
     }
     for (i, part) in layout.children.iter().enumerate() {
         let part_position_and_size = split_geom.get(i).unwrap();
         if !part.children.is_empty() {
             let mut part_positions =
-                split_space(part_position_and_size, part, total_space_to_split);
+                split_space(part_position_and_size, part, total_space_to_split)?;
             pane_positions.append(&mut part_positions);
         } else {
-            pane_positions.push((part.clone(), *part_position_and_size));
+            let part = part.clone();
+            pane_positions.push((part, *part_position_and_size));
         }
     }
     if pane_positions.is_empty() {
-        pane_positions.push((layout.clone(), space_to_split.clone()));
+        let layout = layout.clone();
+        pane_positions.push((layout, space_to_split.clone()));
     }
-    pane_positions
-}
-
-impl TryFrom<Url> for RunPluginLocation {
-    type Error = PluginsConfigError;
-
-    fn try_from(url: Url) -> Result<Self, Self::Error> {
-        match url.scheme() {
-            "zellij" => Ok(Self::Zellij(PluginTag::new(url.path()))),
-            "file" => {
-                let path = PathBuf::from(url.path());
-                Ok(Self::File(path))
-            },
-            _ => Err(PluginsConfigError::InvalidUrl(url)),
-        }
-    }
+    Ok(pane_positions)
 }
 
 impl Default for SplitDirection {

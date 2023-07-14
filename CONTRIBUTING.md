@@ -10,6 +10,13 @@ server](https://discord.gg/MHV3n76PDq), or on [Matrix](https://matrix.to/#/#zell
 Before contributing please read our [Code of Conduct](CODE_OF_CONDUCT.md) which
 all contributors are expected to adhere to.
 
+## Status of Code Contributions (PRs)
+At the moment, the Zellij maintainers are very much overloaded implementing our [Roadmap](https://zellij.dev/roadmap) - and so while we very much welcome and appreciate the community's willingness to contribute - we are only able to accept code contributions for larger projects as they appear in said Roadmap.
+
+For those willing to take up such large projects, aside from our enthusiasm - we can offer guidance through issues or our various chat platforms.
+
+If you're still eager to contribute minor fixes, please note that we might take a long while to get to them until the current overload of the project subsides - hopefully in the coming months.
+
 ## Building
 
 To build Zellij, we're using cargo xtask. This is a standalone package shipped
@@ -42,9 +49,6 @@ cargo xtask manpage
 
 You can see a list of all commands (with supported arguments) with `cargo xtask
 --help`. For convenience, `xtask` may be shortened to `x`: `cargo x build` etc.
-
-To run `install` or `publish`, you'll need the package `binaryen` in the
-version `wasm-opt --version` > 97, for it's command `wasm-opt`.
 
 To run `test`, you will need the package `pkg-config` and a version of `openssl`.
 
@@ -84,6 +88,14 @@ log::info!("my variable is: {:?}", my_variable);
 Note that the output is truncated at 100KB. This can be adjusted for the purposes of debugging through the `LOG_MAX_BYTES` constant, at the time of writing here: https://github.com/zellij-org/zellij/blob/main/zellij-utils/src/logging.rs#L24
 
 When running Zellij with the `--debug` flag, Zellij will dump a copy of all bytes received over the pty for each pane in: `/$temp_dir/zellij-<UID>/zellij-log/zellij-<pane_id>.log`. These might be useful when troubleshooting terminal issues.
+
+## Testing plugins
+Zellij allows the use of the [Singlepass](https://crates.io/crates/wasmer-compiler-singlepass) compiler for wasmer. This can enable great gains in compilation time of plugins in detriment of stability, notably on Arm64 architectures.
+
+To enable the singlepass compiler, use the `singlepass` flag. E.g.:
+```sh
+cargo xtask run --singlepass
+```
 
 ## How we treat clippy lints
 

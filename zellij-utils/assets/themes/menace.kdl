@@ -1,0 +1,17 @@
+// orange-green-blue
+
+themes {
+    menace {
+        fg "#e3a555"
+        bg 40 42 54
+        red "#f74c17"
+        green 80 250 123
+        yellow 241 250 140
+        blue 98 114 164
+        magenta 255 121 198
+        orange 255 184 108
+        cyan 139 233 253
+        black "#04399d"
+        white 255 255 255
+    }
+}

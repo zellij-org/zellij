@@ -3,6 +3,7 @@ use std::time::SystemTime;
 use std::{fs, io, process};
 use suggest::Suggest;
 use zellij_utils::{
+    anyhow,
     consts::ZELLIJ_SOCK_DIR,
     envs,
     interprocess::local_socket::LocalSocketStream,
@@ -207,7 +208,7 @@ pub(crate) fn assert_session_ne(name: &str) {
         process::exit(1);
     }
     if name.contains('/') {
-        eprintln!("Session name cannot contains '/'.");
+        eprintln!("Session name cannot contain '/'.");
         process::exit(1);
     }
 

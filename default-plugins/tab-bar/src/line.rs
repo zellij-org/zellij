@@ -123,13 +123,13 @@ fn left_more_message(
     // 238
     // chars length plus separator length on both sides
     let more_text_len = more_text.width() + 2 * separator.width();
-    let text_color = match palette.theme_hue {
-        ThemeHue::Dark => palette.white,
-        ThemeHue::Light => palette.black,
+    let (text_color, sep_color) = match palette.theme_hue {
+        ThemeHue::Dark => (palette.white, palette.black),
+        ThemeHue::Light => (palette.black, palette.white),
     };
-    let left_separator = style!(text_color, palette.orange).paint(separator);
+    let left_separator = style!(sep_color, palette.orange).paint(separator);
     let more_styled_text = style!(text_color, palette.orange).bold().paint(more_text);
-    let right_separator = style!(palette.orange, text_color).paint(separator);
+    let right_separator = style!(palette.orange, sep_color).paint(separator);
     let more_styled_text =
         ANSIStrings(&[left_separator, more_styled_text, right_separator]).to_string();
     LinePart {
@@ -155,13 +155,13 @@ fn right_more_message(
     };
     // chars length plus separator length on both sides
     let more_text_len = more_text.width() + 2 * separator.width();
-    let text_color = match palette.theme_hue {
-        ThemeHue::Dark => palette.white,
-        ThemeHue::Light => palette.black,
+    let (text_color, sep_color) = match palette.theme_hue {
+        ThemeHue::Dark => (palette.white, palette.black),
+        ThemeHue::Light => (palette.black, palette.white),
     };
-    let left_separator = style!(text_color, palette.orange).paint(separator);
+    let left_separator = style!(sep_color, palette.orange).paint(separator);
     let more_styled_text = style!(text_color, palette.orange).bold().paint(more_text);
-    let right_separator = style!(palette.orange, text_color).paint(separator);
+    let right_separator = style!(palette.orange, sep_color).paint(separator);
     let more_styled_text =
         ANSIStrings(&[left_separator, more_styled_text, right_separator]).to_string();
     LinePart {
@@ -223,6 +223,7 @@ pub fn tab_line(
     cols: usize,
     palette: Palette,
     capabilities: PluginCapabilities,
+    hide_session_name: bool,
 ) -> Vec<LinePart> {
     let mut tabs_after_active = all_tabs.split_off(active_tab_index);
     let mut tabs_before_active = all_tabs;
@@ -231,7 +232,10 @@ pub fn tab_line(
     } else {
         tabs_before_active.pop().unwrap()
     };
-    let mut prefix = tab_line_prefix(session_name, palette, cols);
+    let mut prefix = match hide_session_name {
+        true => tab_line_prefix(None, palette, cols),
+        false => tab_line_prefix(session_name, palette, cols),
+    };
     let prefix_len = get_current_title_len(&prefix);
 
     // if active tab alone won't fit in cols, don't draw any tabs

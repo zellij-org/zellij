@@ -189,6 +189,7 @@ fn read_from_channel(
                     width: 8,
                 })));
                 let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+                let debug = false;
                 let mut terminal_output = TerminalPane::new(
                     0,
                     pane_geom,
@@ -201,6 +202,8 @@ fn read_from_channel(
                     Rc::new(RefCell::new(Palette::default())),
                     Rc::new(RefCell::new(HashMap::new())),
                     None,
+                    None,
+                    debug,
                 ); // 0 is the pane index
                 loop {
                     if !should_keep_running.load(Ordering::SeqCst) {
@@ -298,10 +301,14 @@ impl RemoteTerminal {
         x == self.cursor_x && y == self.cursor_y
     }
     pub fn tip_appears(&self) -> bool {
-        self.last_snapshot.lock().unwrap().contains("Tip:")
+        let snapshot = self.last_snapshot.lock().unwrap();
+        snapshot.contains("Tip:") || snapshot.contains("QuickNav:")
     }
     pub fn status_bar_appears(&self) -> bool {
         self.last_snapshot.lock().unwrap().contains("Ctrl +")
+    }
+    pub fn tab_bar_appears(&self) -> bool {
+        self.last_snapshot.lock().unwrap().contains("Tab #1")
     }
     pub fn snapshot_contains(&self, text: &str) -> bool {
         self.last_snapshot.lock().unwrap().contains(text)
@@ -397,6 +404,7 @@ impl RemoteRunner {
             y: 0,
             rows,
             cols,
+            is_stacked: false,
         };
         setup_remote_environment(&mut channel, win_size);
         start_zellij(&mut channel);
@@ -432,6 +440,7 @@ impl RemoteRunner {
             y: 0,
             rows,
             cols,
+            is_stacked: false,
         };
         setup_remote_environment(&mut channel, win_size);
         start_zellij_mirrored_session(&mut channel);
@@ -474,6 +483,7 @@ impl RemoteRunner {
             y: 0,
             rows,
             cols,
+            is_stacked: false,
         };
         setup_remote_environment(&mut channel, win_size);
         start_zellij_in_session(&mut channel, session_name, mirrored);
@@ -509,6 +519,7 @@ impl RemoteRunner {
             y: 0,
             rows,
             cols,
+            is_stacked: false,
         };
         setup_remote_environment(&mut channel, win_size);
         attach_to_existing_session(&mut channel, session_name);
@@ -544,6 +555,7 @@ impl RemoteRunner {
             y: 0,
             rows,
             cols,
+            is_stacked: false,
         };
         setup_remote_environment(&mut channel, win_size);
         start_zellij_without_frames(&mut channel);
@@ -580,6 +592,7 @@ impl RemoteRunner {
             y: 0,
             rows,
             cols,
+            is_stacked: false,
         };
         setup_remote_environment(&mut channel, win_size);
         start_zellij_with_config(&mut channel, &remote_path.to_string_lossy());
@@ -618,6 +631,10 @@ impl RemoteRunner {
     }
     pub fn run_next_step(&mut self) {
         if let Some(next_step) = self.steps.get(self.current_step_index) {
+            println!(
+                "running step: {}, retries left: {}",
+                next_step.name, self.retries_left
+            );
             let (cursor_x, cursor_y) = *self.cursor_coordinates.lock().unwrap();
             let remote_terminal = RemoteTerminal {
                 cursor_x,
@@ -643,6 +660,10 @@ impl RemoteRunner {
         let mut retries_left = RETRIES;
         let instruction = step.instruction;
         loop {
+            println!(
+                "taking snapshot: {}, retries left: {}",
+                step.name, retries_left
+            );
             if retries_left == 0 {
                 self.test_timed_out = true;
                 return self.last_snapshot.lock().unwrap().clone();
@@ -664,6 +685,7 @@ impl RemoteRunner {
         }
     }
     pub fn run_all_steps(&mut self) {
+        println!();
         loop {
             self.run_next_step();
             if !self.steps_left() {

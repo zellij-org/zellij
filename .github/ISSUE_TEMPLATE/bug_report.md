@@ -7,7 +7,7 @@ Thank you for taking the time to file this issue! Please follow the instructions
 
 **In Case of Graphical or Performance Issues**
 
-1. Delete the contents of `/tmp/zellij-1000/zellij-log`, ie with `cd /tmp/zellij-1000/` and `rm -fr zellij-log/`
+1. Delete the contents of `/tmp/zellij-1000/zellij-log`, ie with `cd /tmp/zellij-1000/` and `rm -fr zellij-log/` (`/tmp/` is `$TMPDIR/` on OSX)
 2. Run `zellij --debug`
 3. Run `stty size`, copy the result and attach it in the bug report
 4. Recreate your issue.

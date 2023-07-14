@@ -1,0 +1,12 @@
+---
+source: zellij-server/src/plugins/./unit/plugin_tests.rs
+assertion_line: 400
+expression: "format!(\"{:#?}\", plugin_bytes_event)"
+---
+Some(
+    (
+        0,
+        1,
+        "Rows: 20, Cols: 121, Received events: [FileSystemCreate([\"/host/test1\"])]\n\r",
+    ),
+)

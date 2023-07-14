@@ -1,0 +1,22 @@
+layout {
+    default_tab_template {
+        children
+    }
+    tab split_direction="Horizontal" {
+        pane size=1 borderless=true {
+            plugin location="zellij:tab-bar"
+        }
+        pane split_direction="Vertical" {
+            pane split_direction="Vertical" {
+                pane command="htop" size="50%"
+                pane command="htop" size="50%" {
+                    args "-C"
+                }
+            }
+        }
+        pane size=5
+        pane size=2 borderless=true {
+            plugin location="zellij:status-bar"
+        }
+    }
+}

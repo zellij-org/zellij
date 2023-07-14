@@ -1,83 +1,1866 @@
 ---
 source: zellij-utils/src/setup.rs
-assertion_line: 583
 expression: "format!(\"{:#?}\", layout)"
 ---
 Layout {
     tabs: [],
     focused_tab_index: None,
     template: Some(
-        PaneLayout {
-            children_split_direction: Horizontal,
-            name: None,
-            children: [
-                PaneLayout {
-                    children_split_direction: Horizontal,
-                    name: None,
-                    children: [],
-                    split_size: Some(
-                        Fixed(
-                            1,
+        (
+            TiledPaneLayout {
+                children_split_direction: Horizontal,
+                name: None,
+                children: [
+                    TiledPaneLayout {
+                        children_split_direction: Horizontal,
+                        name: None,
+                        children: [],
+                        split_size: Some(
+                            Fixed(
+                                1,
+                            ),
                         ),
-                    ),
-                    run: Some(
-                        Plugin(
-                            RunPlugin {
-                                _allow_exec_host_cmd: false,
-                                location: Zellij(
-                                    PluginTag(
-                                        "tab-bar",
+                        run: Some(
+                            Plugin(
+                                RunPlugin {
+                                    _allow_exec_host_cmd: false,
+                                    location: Zellij(
+                                        PluginTag(
+                                            "tab-bar",
+                                        ),
                                     ),
-                                ),
-                            },
+                                },
+                            ),
                         ),
-                    ),
-                    borderless: true,
-                    focus: None,
-                    external_children_index: None,
-                },
-                PaneLayout {
+                        borderless: true,
+                        focus: None,
+                        external_children_index: None,
+                        children_are_stacked: false,
+                        is_expanded_in_stack: false,
+                        exclude_from_sync: None,
+                    },
+                    TiledPaneLayout {
+                        children_split_direction: Horizontal,
+                        name: None,
+                        children: [],
+                        split_size: None,
+                        run: None,
+                        borderless: false,
+                        focus: None,
+                        external_children_index: None,
+                        children_are_stacked: false,
+                        is_expanded_in_stack: false,
+                        exclude_from_sync: None,
+                    },
+                    TiledPaneLayout {
+                        children_split_direction: Horizontal,
+                        name: None,
+                        children: [],
+                        split_size: Some(
+                            Fixed(
+                                2,
+                            ),
+                        ),
+                        run: Some(
+                            Plugin(
+                                RunPlugin {
+                                    _allow_exec_host_cmd: false,
+                                    location: Zellij(
+                                        PluginTag(
+                                            "status-bar",
+                                        ),
+                                    ),
+                                },
+                            ),
+                        ),
+                        borderless: true,
+                        focus: None,
+                        external_children_index: None,
+                        children_are_stacked: false,
+                        is_expanded_in_stack: false,
+                        exclude_from_sync: None,
+                    },
+                ],
+                split_size: None,
+                run: None,
+                borderless: false,
+                focus: None,
+                external_children_index: None,
+                children_are_stacked: false,
+                is_expanded_in_stack: false,
+                exclude_from_sync: None,
+            },
+            [],
+        ),
+    ),
+    swap_layouts: [],
+    swap_tiled_layouts: [
+        (
+            {
+                MaxPanes(
+                    5,
+                ): TiledPaneLayout {
                     children_split_direction: Horizontal,
                     name: None,
-                    children: [],
+                    children: [
+                        TiledPaneLayout {
+                            children_split_direction: Horizontal,
+                            name: None,
+                            children: [],
+                            split_size: Some(
+                                Fixed(
+                                    1,
+                                ),
+                            ),
+                            run: Some(
+                                Plugin(
+                                    RunPlugin {
+                                        _allow_exec_host_cmd: false,
+                                        location: Zellij(
+                                            PluginTag(
+                                                "tab-bar",
+                                            ),
+                                        ),
+                                    },
+                                ),
+                            ),
+                            borderless: true,
+                            focus: None,
+                            external_children_index: None,
+                            children_are_stacked: false,
+                            is_expanded_in_stack: false,
+                            exclude_from_sync: None,
+                        },
+                        TiledPaneLayout {
+                            children_split_direction: Horizontal,
+                            name: None,
+                            children: [
+                                TiledPaneLayout {
+                                    children_split_direction: Vertical,
+                                    name: None,
+                                    children: [
+                                        TiledPaneLayout {
+                                            children_split_direction: Horizontal,
+                                            name: None,
+                                            children: [],
+                                            split_size: None,
+                                            run: None,
+                                            borderless: false,
+                                            focus: None,
+                                            external_children_index: None,
+                                            children_are_stacked: false,
+                                            is_expanded_in_stack: false,
+                                            exclude_from_sync: None,
+                                        },
+                                        TiledPaneLayout {
+                                            children_split_direction: Horizontal,
+                                            name: None,
+                                            children: [],
+                                            split_size: None,
+                                            run: None,
+                                            borderless: false,
+                                            focus: None,
+                                            external_children_index: Some(
+                                                0,
+                                            ),
+                                            children_are_stacked: false,
+                                            is_expanded_in_stack: false,
+                                            exclude_from_sync: None,
+                                        },
+                                    ],
+                                    split_size: None,
+                                    run: None,
+                                    borderless: false,
+                                    focus: None,
+                                    external_children_index: None,
+                                    children_are_stacked: false,
+                                    is_expanded_in_stack: false,
+                                    exclude_from_sync: None,
+                                },
+                            ],
+                            split_size: None,
+                            run: None,
+                            borderless: false,
+                            focus: None,
+                            external_children_index: None,
+                            children_are_stacked: false,
+                            is_expanded_in_stack: false,
+                            exclude_from_sync: None,
+                        },
+                        TiledPaneLayout {
+                            children_split_direction: Horizontal,
+                            name: None,
+                            children: [],
+                            split_size: Some(
+                                Fixed(
+                                    2,
+                                ),
+                            ),
+                            run: Some(
+                                Plugin(
+                                    RunPlugin {
+                                        _allow_exec_host_cmd: false,
+                                        location: Zellij(
+                                            PluginTag(
+                                                "status-bar",
+                                            ),
+                                        ),
+                                    },
+                                ),
+                            ),
+                            borderless: true,
+                            focus: None,
+                            external_children_index: None,
+                            children_are_stacked: false,
+                            is_expanded_in_stack: false,
+                            exclude_from_sync: None,
+                        },
+                    ],
                     split_size: None,
                     run: None,
                     borderless: false,
                     focus: None,
                     external_children_index: None,
+                    children_are_stacked: false,
+                    is_expanded_in_stack: false,
+                    exclude_from_sync: None,
                 },
-                PaneLayout {
+                MaxPanes(
+                    8,
+                ): TiledPaneLayout {
                     children_split_direction: Horizontal,
                     name: None,
-                    children: [],
-                    split_size: Some(
-                        Fixed(
-                            2,
-                        ),
-                    ),
-                    run: Some(
-                        Plugin(
-                            RunPlugin {
-                                _allow_exec_host_cmd: false,
-                                location: Zellij(
-                                    PluginTag(
-                                        "status-bar",
-                                    ),
+                    children: [
+                        TiledPaneLayout {
+                            children_split_direction: Horizontal,
+                            name: None,
+                            children: [],
+                            split_size: Some(
+                                Fixed(
+                                    1,
                                 ),
-                            },
-                        ),
-                    ),
-                    borderless: true,
+                            ),
+                            run: Some(
+                                Plugin(
+                                    RunPlugin {
+                                        _allow_exec_host_cmd: false,
+                                        location: Zellij(
+                                            PluginTag(
+                                                "tab-bar",
+                                            ),
+                                        ),
+                                    },
+                                ),
+                            ),
+                            borderless: true,
+                            focus: None,
+                            external_children_index: None,
+                            children_are_stacked: false,
+                            is_expanded_in_stack: false,
+                            exclude_from_sync: None,
+                        },
+                        TiledPaneLayout {
+                            children_split_direction: Horizontal,
+                            name: None,
+                            children: [
+                                TiledPaneLayout {
+                                    children_split_direction: Vertical,
+                                    name: None,
+                                    children: [
+                                        TiledPaneLayout {
+                                            children_split_direction: Horizontal,
+                                            name: None,
+                                            children: [],
+                                            split_size: None,
+                                            run: None,
+                                            borderless: false,
+                                            focus: None,
+                                            external_children_index: Some(
+                                                0,
+                                            ),
+                                            children_are_stacked: false,
+                                            is_expanded_in_stack: false,
+                                            exclude_from_sync: None,
+                                        },
+                                        TiledPaneLayout {
+                                            children_split_direction: Horizontal,
+                                            name: None,
+                                            children: [
+                                                TiledPaneLayout {
+                                                    children_split_direction: Horizontal,
+                                                    name: None,
+                                                    children: [],
+                                                    split_size: None,
+                                                    run: None,
+                                                    borderless: false,
+                                                    focus: None,
+                                                    external_children_index: None,
+                                                    children_are_stacked: false,
+                                                    is_expanded_in_stack: false,
+                                                    exclude_from_sync: None,
+                                                },
+                                                TiledPaneLayout {
+                                                    children_split_direction: Horizontal,
+                                                    name: None,
+                                                    children: [],
+                                                    split_size: None,
+                                                    run: None,
+                                                    borderless: false,
+                                                    focus: None,
+                                                    external_children_index: None,
+                                                    children_are_stacked: false,
+                                                    is_expanded_in_stack: false,
+                                                    exclude_from_sync: None,
+                                                },
+                                                TiledPaneLayout {
+                                                    children_split_direction: Horizontal,
+                                                    name: None,
+                                                    children: [],
+                                                    split_size: None,
+                                                    run: None,
+                                                    borderless: false,
+                                                    focus: None,
+                                                    external_children_index: None,
+                                                    children_are_stacked: false,
+                                                    is_expanded_in_stack: false,
+                                                    exclude_from_sync: None,
+                                                },
+                                                TiledPaneLayout {
+                                                    children_split_direction: Horizontal,
+                                                    name: None,
+                                                    children: [],
+                                                    split_size: None,
+                                                    run: None,
+                                                    borderless: false,
+                                                    focus: None,
+                                                    external_children_index: None,
+                                                    children_are_stacked: false,
+                                                    is_expanded_in_stack: false,
+                                                    exclude_from_sync: None,
+                                                },
+                                            ],
+                                            split_size: None,
+                                            run: None,
+                                            borderless: false,
+                                            focus: None,
+                                            external_children_index: None,
+                                            children_are_stacked: false,
+                                            is_expanded_in_stack: false,
+                                            exclude_from_sync: None,
+                                        },
+                                    ],
+                                    split_size: None,
+                                    run: None,
+                                    borderless: false,
+                                    focus: None,
+                                    external_children_index: None,
+                                    children_are_stacked: false,
+                                    is_expanded_in_stack: false,
+                                    exclude_from_sync: None,
+                                },
+                            ],
+                            split_size: None,
+                            run: None,
+                            borderless: false,
+                            focus: None,
+                            external_children_index: None,
+                            children_are_stacked: false,
+                            is_expanded_in_stack: false,
+                            exclude_from_sync: None,
+                        },
+                        TiledPaneLayout {
+                            children_split_direction: Horizontal,
+                            name: None,
+                            children: [],
+                            split_size: Some(
+                                Fixed(
+                                    2,
+                                ),
+                            ),
+                            run: Some(
+                                Plugin(
+                                    RunPlugin {
+                                        _allow_exec_host_cmd: false,
+                                        location: Zellij(
+                                            PluginTag(
+                                                "status-bar",
+                                            ),
+                                        ),
+                                    },
+                                ),
+                            ),
+                            borderless: true,
+                            focus: None,
+                            external_children_index: None,
+                            children_are_stacked: false,
+                            is_expanded_in_stack: false,
+                            exclude_from_sync: None,
+                        },
+                    ],
+                    split_size: None,
+                    run: None,
+                    borderless: false,
                     focus: None,
                     external_children_index: None,
+                    children_are_stacked: false,
+                    is_expanded_in_stack: false,
+                    exclude_from_sync: None,
                 },
-            ],
-            split_size: None,
-            run: None,
-            borderless: false,
-            focus: None,
-            external_children_index: None,
-        },
-    ),
-    floating_panes_template: [],
+                MaxPanes(
+                    12,
+                ): TiledPaneLayout {
+                    children_split_direction: Horizontal,
+                    name: None,
+                    children: [
+                        TiledPaneLayout {
+                            children_split_direction: Horizontal,
+                            name: None,
+                            children: [],
+                            split_size: Some(
+                                Fixed(
+                                    1,
+                                ),
+                            ),
+                            run: Some(
+                                Plugin(
+                                    RunPlugin {
+                                        _allow_exec_host_cmd: false,
+                                        location: Zellij(
+                                            PluginTag(
+                                                "tab-bar",
+                                            ),
+                                        ),
+                                    },
+                                ),
+                            ),
+                            borderless: true,
+                            focus: None,
+                            external_children_index: None,
+                            children_are_stacked: false,
+                            is_expanded_in_stack: false,
+                            exclude_from_sync: None,
+                        },
+                        TiledPaneLayout {
+                            children_split_direction: Horizontal,
+                            name: None,
+                            children: [
+                                TiledPaneLayout {
+                                    children_split_direction: Vertical,
+                                    name: None,
+                                    children: [
+                                        TiledPaneLayout {
+                                            children_split_direction: Horizontal,
+                                            name: None,
+                                            children: [],
+                                            split_size: None,
+                                            run: None,
+                                            borderless: false,
+                                            focus: None,
+                                            external_children_index: Some(
+                                                0,
+                                            ),
+                                            children_are_stacked: false,
+                                            is_expanded_in_stack: false,
+                                            exclude_from_sync: None,
+                                        },
+                                        TiledPaneLayout {
+                                            children_split_direction: Horizontal,
+                                            name: None,
+                                            children: [
+                                                TiledPaneLayout {
+                                                    children_split_direction: Horizontal,
+                                                    name: None,
+                                                    children: [],
+                                                    split_size: None,
+                                                    run: None,
+                                                    borderless: false,
+                                                    focus: None,
+                                                    external_children_index: None,
+                                                    children_are_stacked: false,
+                                                    is_expanded_in_stack: false,
+                                                    exclude_from_sync: None,
+                                                },
+                                                TiledPaneLayout {
+                                                    children_split_direction: Horizontal,
+                                                    name: None,
+                                                    children: [],
+                                                    split_size: None,
+                                                    run: None,
+                                                    borderless: false,
+                                                    focus: None,
+                                                    external_children_index: None,
+                                                    children_are_stacked: false,
+                                                    is_expanded_in_stack: false,
+                                                    exclude_from_sync: None,
+                                                },
+                                                TiledPaneLayout {
+                                                    children_split_direction: Horizontal,
+                                                    name: None,
+                                                    children: [],
+                                                    split_size: None,
+                                                    run: None,
+                                                    borderless: false,
+                                                    focus: None,
+                                                    external_children_index: None,
+                                                    children_are_stacked: false,
+                                                    is_expanded_in_stack: false,
+                                                    exclude_from_sync: None,
+                                                },
+                                                TiledPaneLayout {
+                                                    children_split_direction: Horizontal,
+                                                    name: None,
+                                                    children: [],
+                                                    split_size: None,
+                                                    run: None,
+                                                    borderless: false,
+                                                    focus: None,
+                                                    external_children_index: None,
+                                                    children_are_stacked: false,
+                                                    is_expanded_in_stack: false,
+                                                    exclude_from_sync: None,
+                                                },
+                                            ],
+                                            split_size: None,
+                                            run: None,
+                                            borderless: false,
+                                            focus: None,
+                                            external_children_index: None,
+                                            children_are_stacked: false,
+                                            is_expanded_in_stack: false,
+                                            exclude_from_sync: None,
+                                        },
+                                        TiledPaneLayout {
+                                            children_split_direction: Horizontal,
+                                            name: None,
+                                            children: [
+                                                TiledPaneLayout {
+                                                    children_split_direction: Horizontal,
+                                                    name: None,
+                                                    children: [],
+                                                    split_size: None,
+                                                    run: None,
+                                                    borderless: false,
+                                                    focus: None,
+                                                    external_children_index: None,
+                                                    children_are_stacked: false,
+                                                    is_expanded_in_stack: false,
+                                                    exclude_from_sync: None,
+                                                },
+                                                TiledPaneLayout {
+                                                    children_split_direction: Horizontal,
+                                                    name: None,
+                                                    children: [],
+                                                    split_size: None,
+                                                    run: None,
+                                                    borderless: false,
+                                                    focus: None,
+                                                    external_children_index: None,
+                                                    children_are_stacked: false,
+                                                    is_expanded_in_stack: false,
+                                                    exclude_from_sync: None,
+                                                },
+                                                TiledPaneLayout {
+                                                    children_split_direction: Horizontal,
+                                                    name: None,
+                                                    children: [],
+                                                    split_size: None,
+                                                    run: None,
+                                                    borderless: false,
+                                                    focus: None,
+                                                    external_children_index: None,
+                                                    children_are_stacked: false,
+                                                    is_expanded_in_stack: false,
+                                                    exclude_from_sync: None,
+                                                },
+                                                TiledPaneLayout {
+                                                    children_split_direction: Horizontal,
+                                                    name: None,
+                                                    children: [],
+                                                    split_size: None,
+                                                    run: None,
+                                                    borderless: false,
+                                                    focus: None,
+                                                    external_children_index: None,
+                                                    children_are_stacked: false,
+                                                    is_expanded_in_stack: false,
+                                                    exclude_from_sync: None,
+                                                },
+                                            ],
+                                            split_size: None,
+                                            run: None,
+                                            borderless: false,
+                                            focus: None,
+                                            external_children_index: None,
+                                            children_are_stacked: false,
+                                            is_expanded_in_stack: false,
+                                            exclude_from_sync: None,
+                                        },
+                                    ],
+                                    split_size: None,
+                                    run: None,
+                                    borderless: false,
+                                    focus: None,
+                                    external_children_index: None,
+                                    children_are_stacked: false,
+                                    is_expanded_in_stack: false,
+                                    exclude_from_sync: None,
+                                },
+                            ],
+                            split_size: None,
+                            run: None,
+                            borderless: false,
+                            focus: None,
+                            external_children_index: None,
+                            children_are_stacked: false,
+                            is_expanded_in_stack: false,
+                            exclude_from_sync: None,
+                        },
+                        TiledPaneLayout {
+                            children_split_direction: Horizontal,
+                            name: None,
+                            children: [],
+                            split_size: Some(
+                                Fixed(
+                                    2,
+                                ),
+                            ),
+                            run: Some(
+                                Plugin(
+                                    RunPlugin {
+                                        _allow_exec_host_cmd: false,
+                                        location: Zellij(
+                                            PluginTag(
+                                                "status-bar",
+                                            ),
+                                        ),
+                                    },
+                                ),
+                            ),
+                            borderless: true,
+                            focus: None,
+                            external_children_index: None,
+                            children_are_stacked: false,
+                            is_expanded_in_stack: false,
+                            exclude_from_sync: None,
+                        },
+                    ],
+                    split_size: None,
+                    run: None,
+                    borderless: false,
+                    focus: None,
+                    external_children_index: None,
+                    children_are_stacked: false,
+                    is_expanded_in_stack: false,
+                    exclude_from_sync: None,
+                },
+            },
+            Some(
+                "vertical",
+            ),
+        ),
+        (
+            {
+                MaxPanes(
+                    5,
+                ): TiledPaneLayout {
+                    children_split_direction: Horizontal,
+                    name: None,
+                    children: [
+                        TiledPaneLayout {
+                            children_split_direction: Horizontal,
+                            name: None,
+                            children: [],
+                            split_size: Some(
+                                Fixed(
+                                    1,
+                                ),
+                            ),
+                            run: Some(
+                                Plugin(
+                                    RunPlugin {
+                                        _allow_exec_host_cmd: false,
+                                        location: Zellij(
+                                            PluginTag(
+                                                "tab-bar",
+                                            ),
+                                        ),
+                                    },
+                                ),
+                            ),
+                            borderless: true,
+                            focus: None,
+                            external_children_index: None,
+                            children_are_stacked: false,
+                            is_expanded_in_stack: false,
+                            exclude_from_sync: None,
+                        },
+                        TiledPaneLayout {
+                            children_split_direction: Horizontal,
+                            name: None,
+                            children: [
+                                TiledPaneLayout {
+                                    children_split_direction: Horizontal,
+                                    name: None,
+                                    children: [],
+                                    split_size: None,
+                                    run: None,
+                                    borderless: false,
+                                    focus: None,
+                                    external_children_index: None,
+                                    children_are_stacked: false,
+                                    is_expanded_in_stack: false,
+                                    exclude_from_sync: None,
+                                },
+                                TiledPaneLayout {
+                                    children_split_direction: Horizontal,
+                                    name: None,
+                                    children: [],
+                                    split_size: None,
+                                    run: None,
+                                    borderless: false,
+                                    focus: None,
+                                    external_children_index: None,
+                                    children_are_stacked: false,
+                                    is_expanded_in_stack: false,
+                                    exclude_from_sync: None,
+                                },
+                            ],
+                            split_size: None,
+                            run: None,
+                            borderless: false,
+                            focus: None,
+                            external_children_index: None,
+                            children_are_stacked: false,
+                            is_expanded_in_stack: false,
+                            exclude_from_sync: None,
+                        },
+                        TiledPaneLayout {
+                            children_split_direction: Horizontal,
+                            name: None,
+                            children: [],
+                            split_size: Some(
+                                Fixed(
+                                    2,
+                                ),
+                            ),
+                            run: Some(
+                                Plugin(
+                                    RunPlugin {
+                                        _allow_exec_host_cmd: false,
+                                        location: Zellij(
+                                            PluginTag(
+                                                "status-bar",
+                                            ),
+                                        ),
+                                    },
+                                ),
+                            ),
+                            borderless: true,
+                            focus: None,
+                            external_children_index: None,
+                            children_are_stacked: false,
+                            is_expanded_in_stack: false,
+                            exclude_from_sync: None,
+                        },
+                    ],
+                    split_size: None,
+                    run: None,
+                    borderless: false,
+                    focus: None,
+                    external_children_index: None,
+                    children_are_stacked: false,
+                    is_expanded_in_stack: false,
+                    exclude_from_sync: None,
+                },
+                MaxPanes(
+                    8,
+                ): TiledPaneLayout {
+                    children_split_direction: Horizontal,
+                    name: None,
+                    children: [
+                        TiledPaneLayout {
+                            children_split_direction: Horizontal,
+                            name: None,
+                            children: [],
+                            split_size: Some(
+                                Fixed(
+                                    1,
+                                ),
+                            ),
+                            run: Some(
+                                Plugin(
+                                    RunPlugin {
+                                        _allow_exec_host_cmd: false,
+                                        location: Zellij(
+                                            PluginTag(
+                                                "tab-bar",
+                                            ),
+                                        ),
+                                    },
+                                ),
+                            ),
+                            borderless: true,
+                            focus: None,
+                            external_children_index: None,
+                            children_are_stacked: false,
+                            is_expanded_in_stack: false,
+                            exclude_from_sync: None,
+                        },
+                        TiledPaneLayout {
+                            children_split_direction: Horizontal,
+                            name: None,
+                            children: [
+                                TiledPaneLayout {
+                                    children_split_direction: Horizontal,
+                                    name: None,
+                                    children: [
+                                        TiledPaneLayout {
+                                            children_split_direction: Vertical,
+                                            name: None,
+                                            children: [],
+                                            split_size: None,
+                                            run: None,
+                                            borderless: false,
+                                            focus: None,
+                                            external_children_index: Some(
+                                                0,
+                                            ),
+                                            children_are_stacked: false,
+                                            is_expanded_in_stack: false,
+                                            exclude_from_sync: None,
+                                        },
+                                        TiledPaneLayout {
+                                            children_split_direction: Vertical,
+                                            name: None,
+                                            children: [
+                                                TiledPaneLayout {
+                                                    children_split_direction: Horizontal,
+                                                    name: None,
+                                                    children: [],
+                                                    split_size: None,
+                                                    run: None,
+                                                    borderless: false,
+                                                    focus: None,
+                                                    external_children_index: None,
+                                                    children_are_stacked: false,
+                                                    is_expanded_in_stack: false,
+                                                    exclude_from_sync: None,
+                                                },
+                                                TiledPaneLayout {
+                                                    children_split_direction: Horizontal,
+                                                    name: None,
+                                                    children: [],
+                                                    split_size: None,
+                                                    run: None,
+                                                    borderless: false,
+                                                    focus: None,
+                                                    external_children_index: None,
+                                                    children_are_stacked: false,
+                                                    is_expanded_in_stack: false,
+                                                    exclude_from_sync: None,
+                                                },
+                                                TiledPaneLayout {
+                                                    children_split_direction: Horizontal,
+                                                    name: None,
+                                                    children: [],
+                                                    split_size: None,
+                                                    run: None,
+                                                    borderless: false,
+                                                    focus: None,
+                                                    external_children_index: None,
+                                                    children_are_stacked: false,
+                                                    is_expanded_in_stack: false,
+                                                    exclude_from_sync: None,
+                                                },
+                                                TiledPaneLayout {
+                                                    children_split_direction: Horizontal,
+                                                    name: None,
+                                                    children: [],
+                                                    split_size: None,
+                                                    run: None,
+                                                    borderless: false,
+                                                    focus: None,
+                                                    external_children_index: None,
+                                                    children_are_stacked: false,
+                                                    is_expanded_in_stack: false,
+                                                    exclude_from_sync: None,
+                                                },
+                                            ],
+                                            split_size: None,
+                                            run: None,
+                                            borderless: false,
+                                            focus: None,
+                                            external_children_index: None,
+                                            children_are_stacked: false,
+                                            is_expanded_in_stack: false,
+                                            exclude_from_sync: None,
+                                        },
+                                    ],
+                                    split_size: None,
+                                    run: None,
+                                    borderless: false,
+                                    focus: None,
+                                    external_children_index: None,
+                                    children_are_stacked: false,
+                                    is_expanded_in_stack: false,
+                                    exclude_from_sync: None,
+                                },
+                            ],
+                            split_size: None,
+                            run: None,
+                            borderless: false,
+                            focus: None,
+                            external_children_index: None,
+                            children_are_stacked: false,
+                            is_expanded_in_stack: false,
+                            exclude_from_sync: None,
+                        },
+                        TiledPaneLayout {
+                            children_split_direction: Horizontal,
+                            name: None,
+                            children: [],
+                            split_size: Some(
+                                Fixed(
+                                    2,
+                                ),
+                            ),
+                            run: Some(
+                                Plugin(
+                                    RunPlugin {
+                                        _allow_exec_host_cmd: false,
+                                        location: Zellij(
+                                            PluginTag(
+                                                "status-bar",
+                                            ),
+                                        ),
+                                    },
+                                ),
+                            ),
+                            borderless: true,
+                            focus: None,
+                            external_children_index: None,
+                            children_are_stacked: false,
+                            is_expanded_in_stack: false,
+                            exclude_from_sync: None,
+                        },
+                    ],
+                    split_size: None,
+                    run: None,
+                    borderless: false,
+                    focus: None,
+                    external_children_index: None,
+                    children_are_stacked: false,
+                    is_expanded_in_stack: false,
+                    exclude_from_sync: None,
+                },
+                MaxPanes(
+                    12,
+                ): TiledPaneLayout {
+                    children_split_direction: Horizontal,
+                    name: None,
+                    children: [
+                        TiledPaneLayout {
+                            children_split_direction: Horizontal,
+                            name: None,
+                            children: [],
+                            split_size: Some(
+                                Fixed(
+                                    1,
+                                ),
+                            ),
+                            run: Some(
+                                Plugin(
+                                    RunPlugin {
+                                        _allow_exec_host_cmd: false,
+                                        location: Zellij(
+                                            PluginTag(
+                                                "tab-bar",
+                                            ),
+                                        ),
+                                    },
+                                ),
+                            ),
+                            borderless: true,
+                            focus: None,
+                            external_children_index: None,
+                            children_are_stacked: false,
+                            is_expanded_in_stack: false,
+                            exclude_from_sync: None,
+                        },
+                        TiledPaneLayout {
+                            children_split_direction: Horizontal,
+                            name: None,
+                            children: [
+                                TiledPaneLayout {
+                                    children_split_direction: Horizontal,
+                                    name: None,
+                                    children: [
+                                        TiledPaneLayout {
+                                            children_split_direction: Vertical,
+                                            name: None,
+                                            children: [],
+                                            split_size: None,
+                                            run: None,
+                                            borderless: false,
+                                            focus: None,
+                                            external_children_index: Some(
+                                                0,
+                                            ),
+                                            children_are_stacked: false,
+                                            is_expanded_in_stack: false,
+                                            exclude_from_sync: None,
+                                        },
+                                        TiledPaneLayout {
+                                            children_split_direction: Vertical,
+                                            name: None,
+                                            children: [
+                                                TiledPaneLayout {
+                                                    children_split_direction: Horizontal,
+                                                    name: None,
+                                                    children: [],
+                                                    split_size: None,
+                                                    run: None,
+                                                    borderless: false,
+                                                    focus: None,
+                                                    external_children_index: None,
+                                                    children_are_stacked: false,
+                                                    is_expanded_in_stack: false,
+                                                    exclude_from_sync: None,
+                                                },
+                                                TiledPaneLayout {
+                                                    children_split_direction: Horizontal,
+                                                    name: None,
+                                                    children: [],
+                                                    split_size: None,
+                                                    run: None,
+                                                    borderless: false,
+                                                    focus: None,
+                                                    external_children_index: None,
+                                                    children_are_stacked: false,
+                                                    is_expanded_in_stack: false,
+                                                    exclude_from_sync: None,
+                                                },
+                                                TiledPaneLayout {
+                                                    children_split_direction: Horizontal,
+                                                    name: None,
+                                                    children: [],
+                                                    split_size: None,
+                                                    run: None,
+                                                    borderless: false,
+                                                    focus: None,
+                                                    external_children_index: None,
+                                                    children_are_stacked: false,
+                                                    is_expanded_in_stack: false,
+                                                    exclude_from_sync: None,
+                                                },
+                                                TiledPaneLayout {
+                                                    children_split_direction: Horizontal,
+                                                    name: None,
+                                                    children: [],
+                                                    split_size: None,
+                                                    run: None,
+                                                    borderless: false,
+                                                    focus: None,
+                                                    external_children_index: None,
+                                                    children_are_stacked: false,
+                                                    is_expanded_in_stack: false,
+                                                    exclude_from_sync: None,
+                                                },
+                                            ],
+                                            split_size: None,
+                                            run: None,
+                                            borderless: false,
+                                            focus: None,
+                                            external_children_index: None,
+                                            children_are_stacked: false,
+                                            is_expanded_in_stack: false,
+                                            exclude_from_sync: None,
+                                        },
+                                        TiledPaneLayout {
+                                            children_split_direction: Vertical,
+                                            name: None,
+                                            children: [
+                                                TiledPaneLayout {
+                                                    children_split_direction: Horizontal,
+                                                    name: None,
+                                                    children: [],
+                                                    split_size: None,
+                                                    run: None,
+                                                    borderless: false,
+                                                    focus: None,
+                                                    external_children_index: None,
+                                                    children_are_stacked: false,
+                                                    is_expanded_in_stack: false,
+                                                    exclude_from_sync: None,
+                                                },
+                                                TiledPaneLayout {
+                                                    children_split_direction: Horizontal,
+                                                    name: None,
+                                                    children: [],
+                                                    split_size: None,
+                                                    run: None,
+                                                    borderless: false,
+                                                    focus: None,
+                                                    external_children_index: None,
+                                                    children_are_stacked: false,
+                                                    is_expanded_in_stack: false,
+                                                    exclude_from_sync: None,
+                                                },
+                                                TiledPaneLayout {
+                                                    children_split_direction: Horizontal,
+                                                    name: None,
+                                                    children: [],
+                                                    split_size: None,
+                                                    run: None,
+                                                    borderless: false,
+                                                    focus: None,
+                                                    external_children_index: None,
+                                                    children_are_stacked: false,
+                                                    is_expanded_in_stack: false,
+                                                    exclude_from_sync: None,
+                                                },
+                                                TiledPaneLayout {
+                                                    children_split_direction: Horizontal,
+                                                    name: None,
+                                                    children: [],
+                                                    split_size: None,
+                                                    run: None,
+                                                    borderless: false,
+                                                    focus: None,
+                                                    external_children_index: None,
+                                                    children_are_stacked: false,
+                                                    is_expanded_in_stack: false,
+                                                    exclude_from_sync: None,
+                                                },
+                                            ],
+                                            split_size: None,
+                                            run: None,
+                                            borderless: false,
+                                            focus: None,
+                                            external_children_index: None,
+                                            children_are_stacked: false,
+                                            is_expanded_in_stack: false,
+                                            exclude_from_sync: None,
+                                        },
+                                    ],
+                                    split_size: None,
+                                    run: None,
+                                    borderless: false,
+                                    focus: None,
+                                    external_children_index: None,
+                                    children_are_stacked: false,
+                                    is_expanded_in_stack: false,
+                                    exclude_from_sync: None,
+                                },
+                            ],
+                            split_size: None,
+                            run: None,
+                            borderless: false,
+                            focus: None,
+                            external_children_index: None,
+                            children_are_stacked: false,
+                            is_expanded_in_stack: false,
+                            exclude_from_sync: None,
+                        },
+                        TiledPaneLayout {
+                            children_split_direction: Horizontal,
+                            name: None,
+                            children: [],
+                            split_size: Some(
+                                Fixed(
+                                    2,
+                                ),
+                            ),
+                            run: Some(
+                                Plugin(
+                                    RunPlugin {
+                                        _allow_exec_host_cmd: false,
+                                        location: Zellij(
+                                            PluginTag(
+                                                "status-bar",
+                                            ),
+                                        ),
+                                    },
+                                ),
+                            ),
+                            borderless: true,
+                            focus: None,
+                            external_children_index: None,
+                            children_are_stacked: false,
+                            is_expanded_in_stack: false,
+                            exclude_from_sync: None,
+                        },
+                    ],
+                    split_size: None,
+                    run: None,
+                    borderless: false,
+                    focus: None,
+                    external_children_index: None,
+                    children_are_stacked: false,
+                    is_expanded_in_stack: false,
+                    exclude_from_sync: None,
+                },
+            },
+            Some(
+                "horizontal",
+            ),
+        ),
+        (
+            {
+                MinPanes(
+                    5,
+                ): TiledPaneLayout {
+                    children_split_direction: Horizontal,
+                    name: None,
+                    children: [
+                        TiledPaneLayout {
+                            children_split_direction: Horizontal,
+                            name: None,
+                            children: [],
+                            split_size: Some(
+                                Fixed(
+                                    1,
+                                ),
+                            ),
+                            run: Some(
+                                Plugin(
+                                    RunPlugin {
+                                        _allow_exec_host_cmd: false,
+                                        location: Zellij(
+                                            PluginTag(
+                                                "tab-bar",
+                                            ),
+                                        ),
+                                    },
+                                ),
+                            ),
+                            borderless: true,
+                            focus: None,
+                            external_children_index: None,
+                            children_are_stacked: false,
+                            is_expanded_in_stack: false,
+                            exclude_from_sync: None,
+                        },
+                        TiledPaneLayout {
+                            children_split_direction: Horizontal,
+                            name: None,
+                            children: [
+                                TiledPaneLayout {
+                                    children_split_direction: Vertical,
+                                    name: None,
+                                    children: [
+                                        TiledPaneLayout {
+                                            children_split_direction: Horizontal,
+                                            name: None,
+                                            children: [],
+                                            split_size: None,
+                                            run: None,
+                                            borderless: false,
+                                            focus: None,
+                                            external_children_index: None,
+                                            children_are_stacked: false,
+                                            is_expanded_in_stack: false,
+                                            exclude_from_sync: None,
+                                        },
+                                        TiledPaneLayout {
+                                            children_split_direction: Horizontal,
+                                            name: None,
+                                            children: [],
+                                            split_size: None,
+                                            run: None,
+                                            borderless: false,
+                                            focus: None,
+                                            external_children_index: Some(
+                                                0,
+                                            ),
+                                            children_are_stacked: true,
+                                            is_expanded_in_stack: false,
+                                            exclude_from_sync: None,
+                                        },
+                                    ],
+                                    split_size: None,
+                                    run: None,
+                                    borderless: false,
+                                    focus: None,
+                                    external_children_index: None,
+                                    children_are_stacked: false,
+                                    is_expanded_in_stack: false,
+                                    exclude_from_sync: None,
+                                },
+                            ],
+                            split_size: None,
+                            run: None,
+                            borderless: false,
+                            focus: None,
+                            external_children_index: None,
+                            children_are_stacked: false,
+                            is_expanded_in_stack: false,
+                            exclude_from_sync: None,
+                        },
+                        TiledPaneLayout {
+                            children_split_direction: Horizontal,
+                            name: None,
+                            children: [],
+                            split_size: Some(
+                                Fixed(
+                                    2,
+                                ),
+                            ),
+                            run: Some(
+                                Plugin(
+                                    RunPlugin {
+                                        _allow_exec_host_cmd: false,
+                                        location: Zellij(
+                                            PluginTag(
+                                                "status-bar",
+                                            ),
+                                        ),
+                                    },
+                                ),
+                            ),
+                            borderless: true,
+                            focus: None,
+                            external_children_index: None,
+                            children_are_stacked: false,
+                            is_expanded_in_stack: false,
+                            exclude_from_sync: None,
+                        },
+                    ],
+                    split_size: None,
+                    run: None,
+                    borderless: false,
+                    focus: None,
+                    external_children_index: None,
+                    children_are_stacked: false,
+                    is_expanded_in_stack: false,
+                    exclude_from_sync: None,
+                },
+            },
+            Some(
+                "stacked",
+            ),
+        ),
+    ],
+    swap_floating_layouts: [
+        (
+            {
+                NoConstraint: [],
+            },
+            Some(
+                "staggered",
+            ),
+        ),
+        (
+            {
+                MaxPanes(
+                    10,
+                ): [
+                    FloatingPaneLayout {
+                        name: None,
+                        height: Some(
+                            Percent(
+                                90,
+                            ),
+                        ),
+                        width: Some(
+                            Percent(
+                                90,
+                            ),
+                        ),
+                        x: Some(
+                            Percent(
+                                5,
+                            ),
+                        ),
+                        y: Some(
+                            Fixed(
+                                1,
+                            ),
+                        ),
+                        run: None,
+                        focus: None,
+                    },
+                    FloatingPaneLayout {
+                        name: None,
+                        height: Some(
+                            Percent(
+                                90,
+                            ),
+                        ),
+                        width: Some(
+                            Percent(
+                                90,
+                            ),
+                        ),
+                        x: Some(
+                            Percent(
+                                5,
+                            ),
+                        ),
+                        y: Some(
+                            Fixed(
+                                2,
+                            ),
+                        ),
+                        run: None,
+                        focus: None,
+                    },
+                    FloatingPaneLayout {
+                        name: None,
+                        height: Some(
+                            Percent(
+                                90,
+                            ),
+                        ),
+                        width: Some(
+                            Percent(
+                                90,
+                            ),
+                        ),
+                        x: Some(
+                            Percent(
+                                5,
+                            ),
+                        ),
+                        y: Some(
+                            Fixed(
+                                3,
+                            ),
+                        ),
+                        run: None,
+                        focus: None,
+                    },
+                    FloatingPaneLayout {
+                        name: None,
+                        height: Some(
+                            Percent(
+                                90,
+                            ),
+                        ),
+                        width: Some(
+                            Percent(
+                                90,
+                            ),
+                        ),
+                        x: Some(
+                            Percent(
+                                5,
+                            ),
+                        ),
+                        y: Some(
+                            Fixed(
+                                4,
+                            ),
+                        ),
+                        run: None,
+                        focus: None,
+                    },
+                    FloatingPaneLayout {
+                        name: None,
+                        height: Some(
+                            Percent(
+                                90,
+                            ),
+                        ),
+                        width: Some(
+                            Percent(
+                                90,
+                            ),
+                        ),
+                        x: Some(
+                            Percent(
+                                5,
+                            ),
+                        ),
+                        y: Some(
+                            Fixed(
+                                5,
+                            ),
+                        ),
+                        run: None,
+                        focus: None,
+                    },
+                    FloatingPaneLayout {
+                        name: None,
+                        height: Some(
+                            Percent(
+                                90,
+                            ),
+                        ),
+                        width: Some(
+                            Percent(
+                                90,
+                            ),
+                        ),
+                        x: Some(
+                            Percent(
+                                5,
+                            ),
+                        ),
+                        y: Some(
+                            Fixed(
+                                6,
+                            ),
+                        ),
+                        run: None,
+                        focus: None,
+                    },
+                    FloatingPaneLayout {
+                        name: None,
+                        height: Some(
+                            Percent(
+                                90,
+                            ),
+                        ),
+                        width: Some(
+                            Percent(
+                                90,
+                            ),
+                        ),
+                        x: Some(
+                            Percent(
+                                5,
+                            ),
+                        ),
+                        y: Some(
+                            Fixed(
+                                7,
+                            ),
+                        ),
+                        run: None,
+                        focus: None,
+                    },
+                    FloatingPaneLayout {
+                        name: None,
+                        height: Some(
+                            Percent(
+                                90,
+                            ),
+                        ),
+                        width: Some(
+                            Percent(
+                                90,
+                            ),
+                        ),
+                        x: Some(
+                            Percent(
+                                5,
+                            ),
+                        ),
+                        y: Some(
+                            Fixed(
+                                8,
+                            ),
+                        ),
+                        run: None,
+                        focus: None,
+                    },
+                    FloatingPaneLayout {
+                        name: None,
+                        height: Some(
+                            Percent(
+                                90,
+                            ),
+                        ),
+                        width: Some(
+                            Percent(
+                                90,
+                            ),
+                        ),
+                        x: Some(
+                            Percent(
+                                5,
+                            ),
+                        ),
+                        y: Some(
+                            Fixed(
+                                9,
+                            ),
+                        ),
+                        run: None,
+                        focus: None,
+                    },
+                    FloatingPaneLayout {
+                        name: None,
+                        height: Some(
+                            Percent(
+                                90,
+                            ),
+                        ),
+                        width: Some(
+                            Percent(
+                                90,
+                            ),
+                        ),
+                        x: Some(
+                            Fixed(
+                                10,
+                            ),
+                        ),
+                        y: Some(
+                            Fixed(
+                                10,
+                            ),
+                        ),
+                        run: None,
+                        focus: Some(
+                            true,
+                        ),
+                    },
+                ],
+            },
+            Some(
+                "enlarged",
+            ),
+        ),
+        (
+            {
+                MaxPanes(
+                    1,
+                ): [
+                    FloatingPaneLayout {
+                        name: None,
+                        height: None,
+                        width: None,
+                        x: Some(
+                            Percent(
+                                50,
+                            ),
+                        ),
+                        y: Some(
+                            Percent(
+                                50,
+                            ),
+                        ),
+                        run: None,
+                        focus: None,
+                    },
+                ],
+                MaxPanes(
+                    2,
+                ): [
+                    FloatingPaneLayout {
+                        name: None,
+                        height: None,
+                        width: Some(
+                            Percent(
+                                45,
+                            ),
+                        ),
+                        x: Some(
+                            Percent(
+                                1,
+                            ),
+                        ),
+                        y: Some(
+                            Percent(
+                                25,
+                            ),
+                        ),
+                        run: None,
+                        focus: None,
+                    },
+                    FloatingPaneLayout {
+                        name: None,
+                        height: None,
+                        width: Some(
+                            Percent(
+                                45,
+                            ),
+                        ),
+                        x: Some(
+                            Percent(
+                                50,
+                            ),
+                        ),
+                        y: Some(
+                            Percent(
+                                25,
+                            ),
+                        ),
+                        run: None,
+                        focus: None,
+                    },
+                ],
+                MaxPanes(
+                    3,
+                ): [
+                    FloatingPaneLayout {
+                        name: None,
+                        height: Some(
+                            Percent(
+                                45,
+                            ),
+                        ),
+                        width: Some(
+                            Percent(
+                                45,
+                            ),
+                        ),
+                        x: None,
+                        y: Some(
+                            Percent(
+                                55,
+                            ),
+                        ),
+                        run: None,
+                        focus: Some(
+                            true,
+                        ),
+                    },
+                    FloatingPaneLayout {
+                        name: None,
+                        height: None,
+                        width: Some(
+                            Percent(
+                                45,
+                            ),
+                        ),
+                        x: Some(
+                            Percent(
+                                1,
+                            ),
+                        ),
+                        y: Some(
+                            Percent(
+                                1,
+                            ),
+                        ),
+                        run: None,
+                        focus: None,
+                    },
+                    FloatingPaneLayout {
+                        name: None,
+                        height: None,
+                        width: Some(
+                            Percent(
+                                45,
+                            ),
+                        ),
+                        x: Some(
+                            Percent(
+                                50,
+                            ),
+                        ),
+                        y: Some(
+                            Percent(
+                                1,
+                            ),
+                        ),
+                        run: None,
+                        focus: None,
+                    },
+                ],
+                MaxPanes(
+                    4,
+                ): [
+                    FloatingPaneLayout {
+                        name: None,
+                        height: Some(
+                            Percent(
+                                45,
+                            ),
+                        ),
+                        width: Some(
+                            Percent(
+                                45,
+                            ),
+                        ),
+                        x: Some(
+                            Percent(
+                                1,
+                            ),
+                        ),
+                        y: Some(
+                            Percent(
+                                55,
+                            ),
+                        ),
+                        run: None,
+                        focus: None,
+                    },
+                    FloatingPaneLayout {
+                        name: None,
+                        height: Some(
+                            Percent(
+                                45,
+                            ),
+                        ),
+                        width: Some(
+                            Percent(
+                                45,
+                            ),
+                        ),
+                        x: Some(
+                            Percent(
+                                50,
+                            ),
+                        ),
+                        y: Some(
+                            Percent(
+                                55,
+                            ),
+                        ),
+                        run: None,
+                        focus: Some(
+                            true,
+                        ),
+                    },
+                    FloatingPaneLayout {
+                        name: None,
+                        height: Some(
+                            Percent(
+                                45,
+                            ),
+                        ),
+                        width: Some(
+                            Percent(
+                                45,
+                            ),
+                        ),
+                        x: Some(
+                            Percent(
+                                1,
+                            ),
+                        ),
+                        y: Some(
+                            Percent(
+                                1,
+                            ),
+                        ),
+                        run: None,
+                        focus: None,
+                    },
+                    FloatingPaneLayout {
+                        name: None,
+                        height: Some(
+                            Percent(
+                                45,
+                            ),
+                        ),
+                        width: Some(
+                            Percent(
+                                45,
+                            ),
+                        ),
+                        x: Some(
+                            Percent(
+                                50,
+                            ),
+                        ),
+                        y: Some(
+                            Percent(
+                                1,
+                            ),
+                        ),
+                        run: None,
+                        focus: None,
+                    },
+                ],
+            },
+            Some(
+                "spread",
+            ),
+        ),
+    ],
 }

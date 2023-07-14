@@ -4,7 +4,10 @@ use crate::{
     flags::{self, CiCmd, Cross, E2e},
 };
 use anyhow::Context;
-use std::{ffi::OsString, path::PathBuf};
+use std::{
+    ffi::OsString,
+    path::{Path, PathBuf},
+};
 use xshell::{cmd, Shell};
 
 pub fn main(sh: &Shell, flags: flags::Ci) -> anyhow::Result<()> {
@@ -54,11 +57,8 @@ fn e2e_build(sh: &Shell) -> anyhow::Result<()> {
     .context(err_context)?;
 
     // Copy plugins to e2e data-dir
+    let plugin_dir = crate::asset_dir().join("plugins");
     let project_root = crate::project_root();
-    let plugin_dir = project_root
-        .join("zellij-utils")
-        .join("assets")
-        .join("plugins");
     let data_dir = project_root.join("target").join("e2e-data");
     let plugins: Vec<_> = std::fs::read_dir(plugin_dir)
         .context(err_context)?
@@ -90,7 +90,7 @@ fn e2e_build(sh: &Shell) -> anyhow::Result<()> {
         .and_then(|cargo| {
             cmd!(
                 sh,
-                "{cargo} build --verbose --release --target x86_64-unknown-linux-musl"
+                "{cargo} build --release --target x86_64-unknown-linux-musl"
             )
             .run()
             .map_err(anyhow::Error::new)
@@ -101,26 +101,34 @@ fn e2e_build(sh: &Shell) -> anyhow::Result<()> {
 fn e2e_test(sh: &Shell, args: Vec<OsString>) -> anyhow::Result<()> {
     let err_context = "failed to run E2E tests";
 
-    let _pd = sh.push_dir(crate::project_root());
     e2e_build(sh).context(err_context)?;
 
-    // Build debug plugins for test binary
-    build::build(
-        sh,
-        flags::Build {
-            release: false,
-            no_plugins: false,
-            plugins_only: true,
-        },
-    )
-    .context(err_context)?;
+    let _pd = sh.push_dir(crate::project_root());
 
+    // set --no-default-features so the test binary gets built with the plugins from assets/plugins that just got built
     crate::cargo()
         .and_then(|cargo| {
+            // e2e tests
+            cmd!(
+                sh,
+                "{cargo} test --no-default-features -- --ignored --nocapture --test-threads 1"
+            )
+            .args(args.clone())
+            .run()
+            .map_err(anyhow::Error::new)?;
+
+            // plugin system tests are run here because they're medium-slow
+            let _pd = sh.push_dir(Path::new("zellij-server"));
+            println!("");
+            let msg = format!(">> Testing Plugin System");
+            crate::status(&msg);
+            println!("{}", msg);
+
             cmd!(sh, "{cargo} test -- --ignored --nocapture --test-threads 1")
-                .args(args)
+                .args(args.clone())
                 .run()
-                .map_err(anyhow::Error::new)
+                .with_context(|| format!("Failed to run tests for the Plugin System"))?;
+            Ok(())
         })
         .context(err_context)
 }

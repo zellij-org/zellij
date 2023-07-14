@@ -10,7 +10,7 @@ use crate::{
 use std::path::PathBuf;
 use zellij_utils::data::{Direction, Resize, ResizeStrategy};
 use zellij_utils::errors::prelude::*;
-use zellij_utils::input::layout::{PaneLayout, SplitDirection, SplitSize};
+use zellij_utils::input::layout::{SplitDirection, SplitSize, TiledPaneLayout};
 use zellij_utils::ipc::IpcReceiverWithContext;
 use zellij_utils::pane_size::{Size, SizeInPixels};
 
@@ -30,7 +30,14 @@ use zellij_utils::{
 struct FakeInputOutput {}
 
 impl ServerOsApi for FakeInputOutput {
-    fn set_terminal_size_using_terminal_id(&self, _id: u32, _cols: u16, _rows: u16) -> Result<()> {
+    fn set_terminal_size_using_terminal_id(
+        &self,
+        _id: u32,
+        _cols: u16,
+        _rows: u16,
+        _width_in_pixels: Option<u16>,
+        _height_in_pixels: Option<u16>,
+    ) -> Result<()> {
         // noop
         Ok(())
     }
@@ -146,6 +153,7 @@ fn create_new_tab(size: Size) -> Tab {
     let mode_info = ModeInfo::default();
     let style = Style::default();
     let draw_pane_frames = true;
+    let auto_layout = true;
     let client_id = 1;
     let session_is_mirrored = true;
     let mut connected_clients = HashSet::new();
@@ -156,6 +164,7 @@ fn create_new_tab(size: Size) -> Tab {
     let copy_options = CopyOptions::default();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut tab = Tab::new(
         index,
         position,
@@ -169,15 +178,18 @@ fn create_new_tab(size: Size) -> Tab {
         style,
         mode_info,
         draw_pane_frames,
+        auto_layout,
         connected_clients,
         session_is_mirrored,
         client_id,
         copy_options,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
+        (vec![], vec![]), // swap layouts
+        debug,
     );
     tab.apply_layout(
-        PaneLayout::default(),
+        TiledPaneLayout::default(),
         vec![],
         vec![(1, None)],
         vec![],
@@ -188,7 +200,7 @@ fn create_new_tab(size: Size) -> Tab {
     tab
 }
 
-fn create_new_tab_with_layout(size: Size, layout: PaneLayout) -> Tab {
+fn create_new_tab_with_layout(size: Size, layout: TiledPaneLayout) -> Tab {
     let index = 0;
     let position = 0;
     let name = String::new();
@@ -198,6 +210,7 @@ fn create_new_tab_with_layout(size: Size, layout: PaneLayout) -> Tab {
     let mode_info = ModeInfo::default();
     let style = Style::default();
     let draw_pane_frames = true;
+    let auto_layout = true;
     let client_id = 1;
     let session_is_mirrored = true;
     let mut connected_clients = HashSet::new();
@@ -208,6 +221,7 @@ fn create_new_tab_with_layout(size: Size, layout: PaneLayout) -> Tab {
     let copy_options = CopyOptions::default();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut tab = Tab::new(
         index,
         position,
@@ -221,12 +235,15 @@ fn create_new_tab_with_layout(size: Size, layout: PaneLayout) -> Tab {
         style,
         mode_info,
         draw_pane_frames,
+        auto_layout,
         connected_clients,
         session_is_mirrored,
         client_id,
         copy_options,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
+        (vec![], vec![]), // swap layouts
+        debug,
     );
     let mut new_terminal_ids = vec![];
     for i in 0..layout.extract_run_instructions().len() {
@@ -257,6 +274,7 @@ fn create_new_tab_with_cell_size(
     let mode_info = ModeInfo::default();
     let style = Style::default();
     let draw_pane_frames = true;
+    let auto_layout = true;
     let client_id = 1;
     let session_is_mirrored = true;
     let mut connected_clients = HashSet::new();
@@ -266,6 +284,7 @@ fn create_new_tab_with_cell_size(
     let copy_options = CopyOptions::default();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
     let mut tab = Tab::new(
         index,
         position,
@@ -279,15 +298,18 @@ fn create_new_tab_with_cell_size(
         style,
         mode_info,
         draw_pane_frames,
+        auto_layout,
         connected_clients,
         session_is_mirrored,
         client_id,
         copy_options,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
+        (vec![], vec![]), // swap layouts
+        debug,
     );
     tab.apply_layout(
-        PaneLayout::default(),
+        TiledPaneLayout::default(),
         vec![],
         vec![(1, None)],
         vec![],
@@ -314,7 +336,7 @@ fn write_to_suppressed_pane() {
     // Make sure it's suppressed now
     tab.suppressed_panes.get(&PaneId::Terminal(2)).unwrap();
     // Write content to it
-    tab.write_to_pane_id(vec![34, 127, 31, 82, 17, 182], PaneId::Terminal(2))
+    tab.write_to_pane_id(vec![34, 127, 31, 82, 17, 182], PaneId::Terminal(2), None)
         .unwrap();
 }
 
@@ -521,7 +543,8 @@ fn split_largest_pane() {
     let mut tab = create_new_tab(size);
     for i in 2..5 {
         let new_pane_id = PaneId::Terminal(i);
-        tab.new_pane(new_pane_id, None, None, Some(1)).unwrap();
+        tab.new_pane(new_pane_id, None, None, None, Some(1))
+            .unwrap();
     }
     assert_eq!(tab.tiled_panes.panes.len(), 4, "The tab has four panes");
 
@@ -726,7 +749,7 @@ pub fn cannot_split_panes_horizontally_when_active_pane_is_too_small() {
 pub fn cannot_split_largest_pane_when_there_is_no_room() {
     let size = Size { cols: 8, rows: 4 };
     let mut tab = create_new_tab(size);
-    tab.new_pane(PaneId::Terminal(2), None, None, Some(1))
+    tab.new_pane(PaneId::Terminal(2), None, None, None, Some(1))
         .unwrap();
     assert_eq!(
         tab.tiled_panes.panes.len(),
@@ -738,11 +761,11 @@ pub fn cannot_split_largest_pane_when_there_is_no_room() {
 #[test]
 pub fn cannot_split_panes_vertically_when_active_pane_has_fixed_columns() {
     let size = Size { cols: 50, rows: 20 };
-    let mut initial_layout = PaneLayout::default();
+    let mut initial_layout = TiledPaneLayout::default();
     initial_layout.children_split_direction = SplitDirection::Vertical;
-    let mut fixed_child = PaneLayout::default();
+    let mut fixed_child = TiledPaneLayout::default();
     fixed_child.split_size = Some(SplitSize::Fixed(30));
-    initial_layout.children = vec![fixed_child, PaneLayout::default()];
+    initial_layout.children = vec![fixed_child, TiledPaneLayout::default()];
     let mut tab = create_new_tab_with_layout(size, initial_layout);
     tab.vertical_split(PaneId::Terminal(3), None, 1).unwrap();
     assert_eq!(tab.tiled_panes.panes.len(), 2, "Tab still has two panes");
@@ -751,11 +774,11 @@ pub fn cannot_split_panes_vertically_when_active_pane_has_fixed_columns() {
 #[test]
 pub fn cannot_split_panes_horizontally_when_active_pane_has_fixed_rows() {
     let size = Size { cols: 50, rows: 20 };
-    let mut initial_layout = PaneLayout::default();
+    let mut initial_layout = TiledPaneLayout::default();
     initial_layout.children_split_direction = SplitDirection::Horizontal;
-    let mut fixed_child = PaneLayout::default();
+    let mut fixed_child = TiledPaneLayout::default();
     fixed_child.split_size = Some(SplitSize::Fixed(12));
-    initial_layout.children = vec![fixed_child, PaneLayout::default()];
+    initial_layout.children = vec![fixed_child, TiledPaneLayout::default()];
     let mut tab = create_new_tab_with_layout(size, initial_layout);
     tab.horizontal_split(PaneId::Terminal(3), None, 1).unwrap();
     assert_eq!(tab.tiled_panes.panes.len(), 2, "Tab still has two panes");
@@ -770,7 +793,8 @@ pub fn toggle_focused_pane_fullscreen() {
     let mut tab = create_new_tab(size);
     for i in 2..5 {
         let new_pane_id = PaneId::Terminal(i);
-        tab.new_pane(new_pane_id, None, None, Some(1)).unwrap();
+        tab.new_pane(new_pane_id, None, None, None, Some(1))
+            .unwrap();
     }
     tab.toggle_active_pane_fullscreen(1);
     assert_eq!(
@@ -844,16 +868,16 @@ fn switch_to_next_pane_fullscreen() {
     let mut active_tab = create_new_tab(size);
 
     active_tab
-        .new_pane(PaneId::Terminal(1), None, None, Some(1))
+        .new_pane(PaneId::Terminal(1), None, None, None, Some(1))
         .unwrap();
     active_tab
-        .new_pane(PaneId::Terminal(2), None, None, Some(1))
+        .new_pane(PaneId::Terminal(2), None, None, None, Some(1))
         .unwrap();
     active_tab
-        .new_pane(PaneId::Terminal(3), None, None, Some(1))
+        .new_pane(PaneId::Terminal(3), None, None, None, Some(1))
         .unwrap();
     active_tab
-        .new_pane(PaneId::Terminal(4), None, None, Some(1))
+        .new_pane(PaneId::Terminal(4), None, None, None, Some(1))
         .unwrap();
     active_tab.toggle_active_pane_fullscreen(1);
 
@@ -884,16 +908,16 @@ fn switch_to_prev_pane_fullscreen() {
     //testing four consecutive switches in fullscreen mode
 
     active_tab
-        .new_pane(PaneId::Terminal(1), None, None, Some(1))
+        .new_pane(PaneId::Terminal(1), None, None, None, Some(1))
         .unwrap();
     active_tab
-        .new_pane(PaneId::Terminal(2), None, None, Some(1))
+        .new_pane(PaneId::Terminal(2), None, None, None, Some(1))
         .unwrap();
     active_tab
-        .new_pane(PaneId::Terminal(3), None, None, Some(1))
+        .new_pane(PaneId::Terminal(3), None, None, None, Some(1))
         .unwrap();
     active_tab
-        .new_pane(PaneId::Terminal(4), None, None, Some(1))
+        .new_pane(PaneId::Terminal(4), None, None, None, Some(1))
         .unwrap();
     active_tab.toggle_active_pane_fullscreen(1);
     // order is now 1 2 3 4
@@ -5948,11 +5972,11 @@ pub fn cannot_resize_down_when_pane_has_fixed_rows() {
         rows: 20,
     };
 
-    let mut initial_layout = PaneLayout::default();
+    let mut initial_layout = TiledPaneLayout::default();
     initial_layout.children_split_direction = SplitDirection::Horizontal;
-    let mut fixed_child = PaneLayout::default();
+    let mut fixed_child = TiledPaneLayout::default();
     fixed_child.split_size = Some(SplitSize::Fixed(10));
-    initial_layout.children = vec![fixed_child, PaneLayout::default()];
+    initial_layout.children = vec![fixed_child, TiledPaneLayout::default()];
     let mut tab = create_new_tab_with_layout(size, initial_layout);
     tab_resize_down(&mut tab, 1);
 
@@ -5994,11 +6018,11 @@ pub fn cannot_resize_down_when_pane_below_has_fixed_rows() {
         rows: 20,
     };
 
-    let mut initial_layout = PaneLayout::default();
+    let mut initial_layout = TiledPaneLayout::default();
     initial_layout.children_split_direction = SplitDirection::Horizontal;
-    let mut fixed_child = PaneLayout::default();
+    let mut fixed_child = TiledPaneLayout::default();
     fixed_child.split_size = Some(SplitSize::Fixed(10));
-    initial_layout.children = vec![PaneLayout::default(), fixed_child];
+    initial_layout.children = vec![TiledPaneLayout::default(), fixed_child];
     let mut tab = create_new_tab_with_layout(size, initial_layout);
     tab_resize_down(&mut tab, 1);
 
@@ -6040,11 +6064,11 @@ pub fn cannot_resize_up_when_pane_below_has_fixed_rows() {
         rows: 20,
     };
 
-    let mut initial_layout = PaneLayout::default();
+    let mut initial_layout = TiledPaneLayout::default();
     initial_layout.children_split_direction = SplitDirection::Horizontal;
-    let mut fixed_child = PaneLayout::default();
+    let mut fixed_child = TiledPaneLayout::default();
     fixed_child.split_size = Some(SplitSize::Fixed(10));
-    initial_layout.children = vec![PaneLayout::default(), fixed_child];
+    initial_layout.children = vec![TiledPaneLayout::default(), fixed_child];
     let mut tab = create_new_tab_with_layout(size, initial_layout);
     tab_resize_up(&mut tab, 1);
 
@@ -11371,11 +11395,11 @@ pub fn cannot_resize_right_when_pane_has_fixed_columns() {
         rows: 20,
     };
 
-    let mut initial_layout = PaneLayout::default();
+    let mut initial_layout = TiledPaneLayout::default();
     initial_layout.children_split_direction = SplitDirection::Vertical;
-    let mut fixed_child = PaneLayout::default();
+    let mut fixed_child = TiledPaneLayout::default();
     fixed_child.split_size = Some(SplitSize::Fixed(60));
-    initial_layout.children = vec![fixed_child, PaneLayout::default()];
+    initial_layout.children = vec![fixed_child, TiledPaneLayout::default()];
     let mut tab = create_new_tab_with_layout(size, initial_layout);
     tab_resize_down(&mut tab, 1);
 
@@ -14375,9 +14399,9 @@ fn correctly_resize_frameless_panes_on_pane_close() {
     let content_size = (pane.get_content_columns(), pane.get_content_rows());
     assert_eq!(content_size, (cols, rows));
 
-    tab.new_pane(PaneId::Terminal(2), None, None, Some(1))
+    tab.new_pane(PaneId::Terminal(2), None, None, None, Some(1))
         .unwrap();
-    tab.close_pane(PaneId::Terminal(2), true);
+    tab.close_pane(PaneId::Terminal(2), true, None);
 
     // the size should be the same after adding and then removing a pane
     let pane = tab.tiled_panes.panes.get(&PaneId::Terminal(1)).unwrap();

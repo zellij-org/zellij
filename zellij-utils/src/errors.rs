@@ -249,11 +249,13 @@ pub enum ScreenContext {
     MoveFocusRight,
     MoveFocusRightOrNextTab,
     MovePane,
+    MovePaneBackwards,
     MovePaneDown,
     MovePaneUp,
     MovePaneRight,
     MovePaneLeft,
     Exit,
+    ClearScreen,
     DumpScreen,
     EditScrollback,
     ScrollUp,
@@ -285,6 +287,7 @@ pub enum ScreenContext {
     SwitchTabPrev,
     CloseTab,
     GoToTab,
+    GoToTabName,
     UpdateTabName,
     UndoRenameTab,
     TerminalResize,
@@ -319,6 +322,22 @@ pub enum ScreenContext {
     SearchToggleWrap,
     AddRedPaneFrameColorOverride,
     ClearPaneFrameColorOverride,
+    PreviousSwapLayout,
+    NextSwapLayout,
+    QueryTabNames,
+    NewTiledPluginPane,
+    StartOrReloadPluginPane,
+    NewFloatingPluginPane,
+    AddPlugin,
+    UpdatePluginLoadingStage,
+    ProgressPluginLoadingOffset,
+    StartPluginLoadingIndication,
+    RequestStateUpdateForPlugins,
+    LaunchOrFocusPlugin,
+    SuppressPane,
+    FocusPaneWithId,
+    RenamePane,
+    RenameTab,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.
@@ -344,11 +363,17 @@ pub enum PluginContext {
     Update,
     Render,
     Unload,
+    Reload,
     Resize,
     Exit,
     AddClient,
     RemoveClient,
     NewTab,
+    ApplyCachedEvents,
+    ApplyCachedWorkerMessages,
+    PostMessageToPluginWorker,
+    PostMessageToPlugin,
+    PluginSubscribedToEvents,
 }
 
 /// Stack call representations corresponding to the different types of [`ClientInstruction`]s.
@@ -362,6 +387,7 @@ pub enum ClientContext {
     SwitchToMode,
     Connected,
     ActiveClients,
+    Log,
     OwnClientId,
     StartedParsingStdinQuery,
     DoneParsingStdinQuery,
@@ -381,6 +407,7 @@ pub enum ServerContext {
     AttachClient,
     ConnStatus,
     ActiveClients,
+    Log,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -392,6 +419,8 @@ pub enum PtyWriteContext {
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum BackgroundJobContext {
     DisplayPaneError,
+    AnimatePluginLoading,
+    StopPluginLoadingAnimation,
     Exit,
 }
 
@@ -473,6 +502,9 @@ open an issue on GitHub:
 
     #[error("Client {client_id} is too slow to handle incoming messages")]
     ClientTooSlow { client_id: u16 },
+
+    #[error("The plugin does not exist")]
+    PluginDoesNotExist,
 }
 
 #[cfg(not(target_family = "wasm"))]

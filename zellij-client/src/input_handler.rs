@@ -298,6 +298,7 @@ impl InputHandler {
                     .send_to_server(ClientToServerMsg::Action(action, None));
             },
             Action::CloseFocus
+            | Action::ClearScreen
             | Action::NewPane(..)
             | Action::Run(_)
             | Action::ToggleFloatingPanes
@@ -307,6 +308,7 @@ impl InputHandler {
             | Action::GoToPreviousTab
             | Action::CloseTab
             | Action::GoToTab(_)
+            | Action::GoToTabName(_, _)
             | Action::ToggleTab
             | Action::MoveFocusOrTab(_) => {
                 self.command_is_executing.blocking_input_thread();

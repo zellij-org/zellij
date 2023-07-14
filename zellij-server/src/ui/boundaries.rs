@@ -436,6 +436,7 @@ pub struct Boundaries {
     pub boundary_characters: HashMap<Coordinates, BoundarySymbol>,
 }
 
+#[allow(clippy::if_same_then_else)]
 impl Boundaries {
     pub fn new(viewport: Viewport) -> Self {
         Boundaries {
@@ -444,6 +445,7 @@ impl Boundaries {
         }
     }
     pub fn add_rect(&mut self, rect: &dyn Pane, color: Option<PaletteColor>) {
+        let pane_is_stacked = rect.current_geom().is_stacked;
         if !self.is_fully_inside_screen(rect) {
             return;
         }
@@ -456,8 +458,11 @@ impl Boundaries {
                 let coordinates = Coordinates::new(boundary_x_coords, row);
                 let symbol_to_add = if row == first_row_coordinates && row != self.viewport.y {
                     BoundarySymbol::new(boundary_type::TOP_LEFT).color(color)
+                } else if row == first_row_coordinates && pane_is_stacked {
+                    BoundarySymbol::new(boundary_type::TOP_LEFT).color(color)
                 } else if row == last_row_coordinates - 1
                     && row != self.viewport.y + self.viewport.rows - 1
+                    && !pane_is_stacked
                 {
                     BoundarySymbol::new(boundary_type::BOTTOM_LEFT).color(color)
                 } else {
@@ -471,7 +476,7 @@ impl Boundaries {
                 self.boundary_characters.insert(coordinates, next_symbol);
             }
         }
-        if rect.y() > self.viewport.y {
+        if rect.y() > self.viewport.y && !pane_is_stacked {
             // top boundary
             let boundary_y_coords = rect.y() - 1;
             let first_col_coordinates = self.rect_bottom_boundary_col_start(rect);
@@ -504,6 +509,7 @@ impl Boundaries {
                     BoundarySymbol::new(boundary_type::TOP_RIGHT).color(color)
                 } else if row == last_row_coordinates - 1
                     && row != self.viewport.y + self.viewport.rows - 1
+                    && !pane_is_stacked
                 {
                     BoundarySymbol::new(boundary_type::BOTTOM_RIGHT).color(color)
                 } else {
@@ -517,7 +523,7 @@ impl Boundaries {
                 self.boundary_characters.insert(coordinates, next_symbol);
             }
         }
-        if self.rect_bottom_boundary_is_before_screen_edge(rect) {
+        if self.rect_bottom_boundary_is_before_screen_edge(rect) && !pane_is_stacked {
             // bottom boundary
             let boundary_y_coords = rect.bottom_boundary_y_coords() - 1;
             let first_col_coordinates = self.rect_bottom_boundary_col_start(rect);
@@ -570,8 +576,10 @@ impl Boundaries {
         rect.y() + rect.rows() < self.viewport.y + self.viewport.rows
     }
     fn rect_right_boundary_row_start(&self, rect: &dyn Pane) -> usize {
+        let pane_is_stacked = rect.current_geom().is_stacked;
+        let horizontal_frame_offset = if pane_is_stacked { 0 } else { 1 };
         if rect.y() > self.viewport.y {
-            rect.y() - 1
+            rect.y() - horizontal_frame_offset
         } else {
             self.viewport.y
         }

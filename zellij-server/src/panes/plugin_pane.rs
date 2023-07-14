@@ -6,7 +6,10 @@ use crate::panes::{grid::Grid, sixel::SixelImageStore, LinkHandler, PaneId};
 use crate::plugins::PluginInstruction;
 use crate::pty::VteBytes;
 use crate::tab::Pane;
-use crate::ui::pane_boundaries_frame::{FrameParams, PaneFrame};
+use crate::ui::{
+    loading_indication::LoadingIndication,
+    pane_boundaries_frame::{FrameParams, PaneFrame},
+};
 use crate::ClientId;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -16,6 +19,7 @@ use zellij_utils::{
     channels::SenderWithContext,
     data::{Event, InputMode, Mouse, Palette, PaletteColor, Style},
     errors::prelude::*,
+    input::layout::Run,
     pane_size::PaneGeom,
     shared::make_terminal_title,
     vte,
@@ -35,6 +39,7 @@ macro_rules! get_or_create_grid {
                 $self.link_handler.clone(),
                 $self.character_cell_size.clone(),
                 $self.sixel_image_store.clone(),
+                $self.debug,
             );
             grid.hide_cursor();
             grid
@@ -64,7 +69,11 @@ pub(crate) struct PluginPane {
     prev_pane_name: String,
     frame: HashMap<ClientId, PaneFrame>,
     borderless: bool,
+    exclude_from_sync: bool,
     pane_frame_color_override: Option<(PaletteColor, Option<String>)>,
+    invoked_with: Option<Run>,
+    loading_indication: LoadingIndication,
+    debug: bool,
 }
 
 impl PluginPane {
@@ -79,9 +88,14 @@ impl PluginPane {
         terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
         link_handler: Rc<RefCell<LinkHandler>>,
         character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
+        currently_connected_clients: Vec<ClientId>,
         style: Style,
+        invoked_with: Option<Run>,
+        debug: bool,
     ) -> Self {
-        Self {
+        let loading_indication = LoadingIndication::new(title.clone()).with_colors(style.colors);
+        let initial_loading_message = loading_indication.to_string();
+        let mut plugin = PluginPane {
             pid,
             should_render: HashMap::new(),
             selectable: true,
@@ -97,6 +111,7 @@ impl PluginPane {
             prev_pane_name: pane_name,
             terminal_emulator_colors,
             terminal_emulator_color_codes,
+            exclude_from_sync: false,
             link_handler,
             character_cell_size,
             sixel_image_store,
@@ -104,7 +119,14 @@ impl PluginPane {
             grids: HashMap::new(),
             style,
             pane_frame_color_override: None,
+            invoked_with,
+            loading_indication,
+            debug,
+        };
+        for client_id in currently_connected_clients {
+            plugin.handle_plugin_bytes(client_id, initial_loading_message.as_bytes().to_vec());
         }
+        plugin
     }
 }
 
@@ -222,6 +244,11 @@ impl Pane for PluginPane {
             if self.should_render.get(&client_id).copied().unwrap_or(false) {
                 let content_x = self.get_content_x();
                 let content_y = self.get_content_y();
+                let rows = self.get_content_rows();
+                let columns = self.get_content_columns();
+                if rows < 1 || columns < 1 {
+                    return Ok(None);
+                }
                 if let Some(grid) = self.grids.get_mut(&client_id) {
                     match grid.render(content_x, content_y, &self.style) {
                         Ok(rendered_assets) => {
@@ -265,8 +292,15 @@ impl Pane for PluginPane {
                 self.pane_name.clone()
             };
 
+            let mut frame_geom = self.current_geom();
+            if !frame_params.should_draw_pane_frames {
+                // in this case the width of the frame needs not include the pane corners
+                frame_geom
+                    .cols
+                    .set_inner(frame_geom.cols.as_usize().saturating_sub(1));
+            }
             let mut frame = PaneFrame::new(
-                self.current_geom().into(),
+                frame_geom.into(),
                 grid.scrollback_position_and_length(),
                 pane_title,
                 frame_params,
@@ -405,6 +439,9 @@ impl Pane for PluginPane {
             )]))
             .unwrap();
     }
+    fn clear_screen(&mut self) {
+        // do nothing
+    }
     fn clear_scroll(&mut self) {
         // noop
     }
@@ -471,6 +508,12 @@ impl Pane for PluginPane {
     fn borderless(&self) -> bool {
         self.borderless
     }
+    fn set_exclude_from_sync(&mut self, exclude_from_sync: bool) {
+        self.exclude_from_sync = exclude_from_sync;
+    }
+    fn exclude_from_sync(&self) -> bool {
+        self.exclude_from_sync
+    }
     fn handle_right_click(&mut self, to: &Position, client_id: ClientId) {
         self.send_plugin_instructions
             .send(PluginInstruction::Update(vec![(
@@ -491,6 +534,47 @@ impl Pane for PluginPane {
             .as_ref()
             .map(|(color, _text)| *color)
     }
+    fn invoked_with(&self) -> &Option<Run> {
+        &self.invoked_with
+    }
+    fn set_title(&mut self, title: String) {
+        self.pane_title = title;
+    }
+    fn update_loading_indication(&mut self, loading_indication: LoadingIndication) {
+        if self.loading_indication.ended && !loading_indication.is_error() {
+            return;
+        }
+        self.loading_indication.merge(loading_indication);
+        self.handle_plugin_bytes_for_all_clients(
+            self.loading_indication.to_string().as_bytes().to_vec(),
+        );
+    }
+    fn start_loading_indication(&mut self, loading_indication: LoadingIndication) {
+        self.loading_indication.merge(loading_indication);
+        self.handle_plugin_bytes_for_all_clients(
+            self.loading_indication.to_string().as_bytes().to_vec(),
+        );
+    }
+    fn progress_animation_offset(&mut self) {
+        if self.loading_indication.ended {
+            return;
+        }
+        self.loading_indication.progress_animation_offset();
+        self.handle_plugin_bytes_for_all_clients(
+            self.loading_indication.to_string().as_bytes().to_vec(),
+        );
+    }
+    fn current_title(&self) -> String {
+        if self.pane_name.is_empty() {
+            self.pane_title.to_owned()
+        } else {
+            self.pane_name.to_owned()
+        }
+    }
+    fn rename(&mut self, buf: Vec<u8>) {
+        self.pane_name = String::from_utf8_lossy(&buf).to_string();
+        self.set_should_render(true);
+    }
 }
 
 impl PluginPane {
@@ -504,5 +588,11 @@ impl PluginPane {
     }
     fn set_client_should_render(&mut self, client_id: ClientId, should_render: bool) {
         self.should_render.insert(client_id, should_render);
+    }
+    fn handle_plugin_bytes_for_all_clients(&mut self, bytes: VteBytes) {
+        let client_ids: Vec<ClientId> = self.grids.keys().copied().collect();
+        for client_id in client_ids {
+            self.handle_plugin_bytes(client_id, bytes.clone());
+        }
     }
 }

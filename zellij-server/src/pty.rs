@@ -7,7 +7,7 @@ use crate::{
     ClientId, ServerInstruction,
 };
 use async_std::task::{self, JoinHandle};
-use std::{collections::HashMap, env, os::unix::io::RawFd, path::PathBuf};
+use std::{collections::HashMap, os::unix::io::RawFd, path::PathBuf};
 use zellij_utils::nix::unistd::Pid;
 use zellij_utils::{
     async_std,
@@ -15,7 +15,7 @@ use zellij_utils::{
     errors::{ContextType, PtyContext},
     input::{
         command::{RunCommand, TerminalAction},
-        layout::{FloatingPanesLayout, Layout, PaneLayout, Run, RunPluginLocation},
+        layout::{FloatingPaneLayout, Layout, Run, RunPluginLocation, TiledPaneLayout},
     },
 };
 
@@ -48,10 +48,10 @@ pub enum PtyInstruction {
     UpdateActivePane(Option<PaneId>, ClientId),
     GoToTab(TabIndex, ClientId),
     NewTab(
+        Option<PathBuf>,
         Option<TerminalAction>,
-        Option<PaneLayout>,
-        Vec<FloatingPanesLayout>,
-        Option<String>,
+        Option<TiledPaneLayout>,
+        Vec<FloatingPaneLayout>,
         usize,                                // tab_index
         HashMap<RunPluginLocation, Vec<u32>>, // plugin_ids
         ClientId,
@@ -147,6 +147,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                                         pty.bus.senders.clone(),
                                         *terminal_id,
                                         run_command.clone(),
+                                        None,
                                     )
                                     .with_context(err_context)?;
                                 }
@@ -165,7 +166,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     || format!("failed to open in-place editor for client {}", client_id);
 
                 match pty.spawn_terminal(
-                    Some(TerminalAction::OpenFile(temp_file, line_number)),
+                    Some(TerminalAction::OpenFile(temp_file, line_number, None)),
                     ClientOrTabIndex::ClientId(client_id),
                 ) {
                     Ok((pid, _starts_held)) => {
@@ -243,6 +244,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                                             Some(2), // exit status
                                             run_command,
                                             None,
+                                            None,
                                         ))
                                         .with_context(err_context)?;
                                 }
@@ -313,6 +315,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                                             Some(2), // exit status
                                             run_command,
                                             None,
+                                            None,
                                         ))
                                         .with_context(err_context)?;
                                 }
@@ -334,10 +337,10 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     })?;
             },
             PtyInstruction::NewTab(
+                cwd,
                 terminal_action,
                 tab_layout,
                 floating_panes_layout,
-                tab_name,
                 tab_index,
                 plugin_ids,
                 client_id,
@@ -350,6 +353,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     floating_panes_layout
                 };
                 pty.spawn_terminals_for_layout(
+                    cwd,
                     tab_layout.unwrap_or_else(|| layout.new_tab().0),
                     floating_panes_layout,
                     terminal_action.clone(),
@@ -358,21 +362,6 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     client_id,
                 )
                 .with_context(err_context)?;
-
-                if let Some(tab_name) = tab_name {
-                    // clear current name at first
-                    pty.bus
-                        .senders
-                        .send_to_screen(ScreenInstruction::UpdateTabName(vec![0], client_id))
-                        .with_context(err_context)?;
-                    pty.bus
-                        .senders
-                        .send_to_screen(ScreenInstruction::UpdateTabName(
-                            tab_name.into_bytes(),
-                            client_id,
-                        ))
-                        .with_context(err_context)?;
-                }
             },
             PtyInstruction::ClosePane(id) => {
                 pty.close_pane(id)
@@ -422,6 +411,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                                         Some(2), // exit status
                                         run_command,
                                         None,
+                                        None,
                                     ))
                                     .with_context(err_context)?;
                             }
@@ -451,18 +441,43 @@ impl Pty {
             default_editor,
         }
     }
-    pub fn get_default_terminal(&self, cwd: Option<PathBuf>) -> TerminalAction {
-        let shell = PathBuf::from(env::var("SHELL").unwrap_or_else(|_| {
-            log::warn!("Cannot read SHELL env, falling back to use /bin/sh");
-            "/bin/sh".to_string()
-        }));
-        TerminalAction::RunCommand(RunCommand {
-            args: vec![],
-            command: shell,
-            cwd, // note: this might also be filled by the calling function, eg. spawn_terminal
-            hold_on_close: false,
-            hold_on_start: false,
-        })
+    pub fn get_default_terminal(
+        &self,
+        cwd: Option<PathBuf>,
+        default_shell: Option<TerminalAction>,
+    ) -> TerminalAction {
+        match default_shell {
+            Some(mut default_shell) => {
+                if let Some(cwd) = cwd {
+                    match default_shell {
+                        TerminalAction::RunCommand(ref mut command) => {
+                            command.cwd = Some(cwd);
+                        },
+                        TerminalAction::OpenFile(ref _file, _line_number, ref mut edit_cwd) => {
+                            match edit_cwd.as_mut() {
+                                Some(edit_cwd) => {
+                                    *edit_cwd = cwd.join(&edit_cwd);
+                                },
+                                None => {
+                                    let _ = edit_cwd.insert(cwd.clone());
+                                },
+                            };
+                        },
+                    }
+                }
+                default_shell
+            },
+            None => {
+                let shell = get_default_shell();
+                TerminalAction::RunCommand(RunCommand {
+                    args: vec![],
+                    command: shell,
+                    cwd, // note: this might also be filled by the calling function, eg. spawn_terminal
+                    hold_on_close: false,
+                    hold_on_start: false,
+                })
+            },
+        }
     }
     fn fill_cwd(&self, terminal_action: &mut TerminalAction, client_id: ClientId) {
         if let TerminalAction::RunCommand(run_command) = terminal_action {
@@ -495,12 +510,12 @@ impl Pty {
         let terminal_action = match client_or_tab_index {
             ClientOrTabIndex::ClientId(client_id) => {
                 let mut terminal_action =
-                    terminal_action.unwrap_or_else(|| self.get_default_terminal(None));
+                    terminal_action.unwrap_or_else(|| self.get_default_terminal(None, None));
                 self.fill_cwd(&mut terminal_action, client_id);
                 terminal_action
             },
             ClientOrTabIndex::TabIndex(_) => {
-                terminal_action.unwrap_or_else(|| self.get_default_terminal(None))
+                terminal_action.unwrap_or_else(|| self.get_default_terminal(None, None))
             },
         };
         let (hold_on_start, hold_on_close) = match &terminal_action {
@@ -531,6 +546,7 @@ impl Pty {
                         pane_id,
                         exit_status,
                         command,
+                        None,
                         None,
                     ));
                 } else {
@@ -575,8 +591,9 @@ impl Pty {
     }
     pub fn spawn_terminals_for_layout(
         &mut self,
-        layout: PaneLayout,
-        floating_panes_layout: Vec<FloatingPanesLayout>,
+        cwd: Option<PathBuf>,
+        layout: TiledPaneLayout,
+        floating_panes_layout: Vec<FloatingPaneLayout>,
         default_shell: Option<TerminalAction>,
         plugin_ids: HashMap<RunPluginLocation, Vec<u32>>,
         tab_index: usize,
@@ -584,7 +601,8 @@ impl Pty {
     ) -> Result<()> {
         let err_context = || format!("failed to spawn terminals for layout for client {client_id}");
 
-        let mut default_shell = default_shell.unwrap_or_else(|| self.get_default_terminal(None));
+        let mut default_shell =
+            default_shell.unwrap_or_else(|| self.get_default_terminal(cwd, None));
         self.fill_cwd(&mut default_shell, client_id);
         let extracted_run_instructions = layout.extract_run_instructions();
         let extracted_floating_run_instructions =
@@ -599,14 +617,14 @@ impl Pty {
                     // new_pane_pids
         for run_instruction in extracted_run_instructions {
             if let Some(new_pane_data) =
-                self.apply_run_instruction(run_instruction, default_shell.clone())?
+                self.apply_run_instruction(run_instruction, default_shell.clone(), tab_index)?
             {
                 new_pane_pids.push(new_pane_data);
             }
         }
         for run_instruction in extracted_floating_run_instructions {
             if let Some(new_pane_data) =
-                self.apply_run_instruction(run_instruction, default_shell.clone())?
+                self.apply_run_instruction(run_instruction, default_shell.clone(), tab_index)?
             {
                 new_floating_panes_pids.push(new_pane_data);
             }
@@ -686,6 +704,7 @@ impl Pty {
                                 self.bus.senders.clone(),
                                 terminal_id,
                                 run_command.clone(),
+                                Some(tab_index),
                             )
                             .with_context(err_context)?;
                         } else {
@@ -706,6 +725,7 @@ impl Pty {
         &mut self,
         run_instruction: Option<Run>,
         default_shell: TerminalAction,
+        tab_index: usize,
     ) -> Result<Option<(u32, bool, Option<RunCommand>, Result<i32>)>> {
         // terminal_id,
         // starts_held,
@@ -719,7 +739,7 @@ impl Pty {
             }
         });
         match run_instruction {
-            Some(Run::Command(command)) => {
+            Some(Run::Command(mut command)) => {
                 let starts_held = command.hold_on_start;
                 let hold_on_close = command.hold_on_close;
                 let quit_cb = Box::new({
@@ -730,6 +750,7 @@ impl Pty {
                                 pane_id,
                                 exit_status,
                                 command,
+                                Some(tab_index),
                                 None,
                             ));
                         } else {
@@ -738,6 +759,11 @@ impl Pty {
                         }
                     }
                 });
+                if command.cwd.is_none() {
+                    if let TerminalAction::RunCommand(cmd) = default_shell {
+                        command.cwd = cmd.cwd;
+                    }
+                }
                 let cmd = TerminalAction::RunCommand(command.clone());
                 if starts_held {
                     // we don't actually open a terminal in this case, just wait for the user to run it
@@ -792,7 +818,7 @@ impl Pty {
             },
             Some(Run::Cwd(cwd)) => {
                 let starts_held = false; // we do not hold Cwd panes
-                let shell = self.get_default_terminal(Some(cwd));
+                let shell = self.get_default_terminal(Some(cwd), Some(default_shell.clone()));
                 match self
                     .bus
                     .os_input
@@ -814,7 +840,7 @@ impl Pty {
                     },
                 }
             },
-            Some(Run::EditFile(path_to_file, line_number)) => {
+            Some(Run::EditFile(path_to_file, line_number, cwd)) => {
                 let starts_held = false; // we do not hold edit panes (for now?)
                 match self
                     .bus
@@ -823,7 +849,7 @@ impl Pty {
                     .context("no OS I/O interface found")
                     .with_context(err_context)?
                     .spawn_terminal(
-                        TerminalAction::OpenFile(path_to_file, line_number),
+                        TerminalAction::OpenFile(path_to_file, line_number, cwd),
                         quit_cb,
                         self.default_editor.clone(),
                     )
@@ -935,6 +961,7 @@ impl Pty {
                                 exit_status,
                                 command,
                                 None,
+                                None,
                             ));
                         } else {
                             let _ =
@@ -996,6 +1023,7 @@ fn send_command_not_found_to_screen(
     senders: ThreadSenders,
     terminal_id: u32,
     run_command: RunCommand,
+    tab_index: Option<usize>,
 ) -> Result<()> {
     let err_context = || format!("failed to send command_not_fount for terminal {terminal_id}");
     senders
@@ -1011,8 +1039,16 @@ fn send_command_not_found_to_screen(
             PaneId::Terminal(terminal_id),
             Some(2),
             run_command.clone(),
+            tab_index,
             None,
         ))
         .with_context(err_context)?;
     Ok(())
+}
+
+pub fn get_default_shell() -> PathBuf {
+    PathBuf::from(std::env::var("SHELL").unwrap_or_else(|_| {
+        log::warn!("Cannot read SHELL env, falling back to use /bin/sh");
+        "/bin/sh".to_string()
+    }))
 }

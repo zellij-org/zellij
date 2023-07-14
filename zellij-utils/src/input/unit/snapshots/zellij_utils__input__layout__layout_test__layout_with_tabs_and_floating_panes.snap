@@ -1,17 +1,17 @@
 ---
 source: zellij-utils/src/input/./unit/layout_test.rs
-assertion_line: 263
+assertion_line: 275
 expression: "format!(\"{:#?}\", layout)"
 ---
 Layout {
     tabs: [
         (
             None,
-            PaneLayout {
+            TiledPaneLayout {
                 children_split_direction: Horizontal,
                 name: None,
                 children: [
-                    PaneLayout {
+                    TiledPaneLayout {
                         children_split_direction: Horizontal,
                         name: None,
                         children: [],
@@ -20,6 +20,9 @@ Layout {
                         borderless: false,
                         focus: None,
                         external_children_index: None,
+                        children_are_stacked: false,
+                        is_expanded_in_stack: false,
+                        exclude_from_sync: None,
                     },
                 ],
                 split_size: None,
@@ -27,9 +30,12 @@ Layout {
                 borderless: false,
                 focus: None,
                 external_children_index: None,
+                children_are_stacked: false,
+                is_expanded_in_stack: false,
+                exclude_from_sync: None,
             },
             [
-                FloatingPanesLayout {
+                FloatingPaneLayout {
                     name: None,
                     height: None,
                     width: None,
@@ -42,11 +48,11 @@ Layout {
         ),
         (
             None,
-            PaneLayout {
+            TiledPaneLayout {
                 children_split_direction: Horizontal,
                 name: None,
                 children: [
-                    PaneLayout {
+                    TiledPaneLayout {
                         children_split_direction: Horizontal,
                         name: None,
                         children: [],
@@ -55,6 +61,9 @@ Layout {
                         borderless: false,
                         focus: None,
                         external_children_index: None,
+                        children_are_stacked: false,
+                        is_expanded_in_stack: false,
+                        exclude_from_sync: None,
                     },
                 ],
                 split_size: None,
@@ -62,9 +71,12 @@ Layout {
                 borderless: false,
                 focus: None,
                 external_children_index: None,
+                children_are_stacked: false,
+                is_expanded_in_stack: false,
+                exclude_from_sync: None,
             },
             [
-                FloatingPanesLayout {
+                FloatingPaneLayout {
                     name: None,
                     height: None,
                     width: None,
@@ -73,7 +85,7 @@ Layout {
                     run: None,
                     focus: None,
                 },
-                FloatingPanesLayout {
+                FloatingPaneLayout {
                     name: None,
                     height: None,
                     width: None,
@@ -87,16 +99,24 @@ Layout {
     ],
     focused_tab_index: None,
     template: Some(
-        PaneLayout {
-            children_split_direction: Horizontal,
-            name: None,
-            children: [],
-            split_size: None,
-            run: None,
-            borderless: false,
-            focus: None,
-            external_children_index: None,
-        },
+        (
+            TiledPaneLayout {
+                children_split_direction: Horizontal,
+                name: None,
+                children: [],
+                split_size: None,
+                run: None,
+                borderless: false,
+                focus: None,
+                external_children_index: None,
+                children_are_stacked: false,
+                is_expanded_in_stack: false,
+                exclude_from_sync: None,
+            },
+            [],
+        ),
     ),
-    floating_panes_template: [],
+    swap_layouts: [],
+    swap_tiled_layouts: [],
+    swap_floating_layouts: [],
 }

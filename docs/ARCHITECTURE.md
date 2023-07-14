@@ -7,13 +7,13 @@ It is in charge of actions such as:
   * Creating new panes
   * Closing existing panes (and filling up their space by other panes)
 
-## Terminal Pane (zellij-server/src/pane/terminal_pane.rs)
+## Terminal Pane (zellij-server/src/panes/terminal_pane.rs)
 The TerminalPane represents a pane on screen that connects to a single pty (pseudo terminal) and (presumably) has one shell or other program running inside it.
 The TerminalPane has two main roles:
   * Keeping track of the Scroll, which represents the buffer of lines in this terminal
   * Interpreting the ANSI/VT instructions coming from the pty in order to adjust the styling of characters, change the cursor position, etc.
 
-### Scroll (src/terminal_pane/scroll.rs)
+### Scroll (zellij-server/src/panes/terminal_pane.rs and zellij-server/src/panes/grid.rs)
 The Scroll holds the terminal buffer and is in charge of:
   * Keeping track of the viewport (which part of it we see) this can change when we scroll up/down
   * Keeping track of the cursor position
@@ -32,7 +32,7 @@ It's important to understand that these styles are ongoing relative to the curre
 
 This is important to note because the styles themselves are saved only on characters that have already been printed. If we receive an instruction to change the style to blue, then print a (blue) character, then receive another instruction to move to a new line, print another (plain) character and then come back, the style would be reset. We would have to receive a new instruction to change the style to blue in order for the next character to be blue.
 
-## Boundaries (zellij-server/src/boundaries.rs)
+## Boundaries (zellij-server/src/ui/boundaries.rs)
 The Boundaries refer to those lines that are drawn between terminal panes. A few things that happen here:
   * The Rect trait is here so that different panes can implement it, giving boundaries a generic way to calculate the size of the pane and draw boundaries around it.
   * Here we use the [unicode box drawing characters](https://en.wikipedia.org/wiki/Box-drawing_character) in order to draw the borders. There's some logic here about combining them together for all possible combinations of pane locations.

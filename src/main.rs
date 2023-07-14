@@ -6,6 +6,7 @@ mod tests;
 use zellij_utils::{
     clap::Parser,
     cli::{CliAction, CliArgs, Command, Sessions},
+    input::config::Config,
     logging::*,
 };
 
@@ -14,8 +15,9 @@ fn main() {
     let opts = CliArgs::parse();
 
     {
+        let config = Config::try_from(&opts).ok();
         if let Some(Command::Sessions(Sessions::Action(cli_action))) = opts.command {
-            commands::send_action_to_session(cli_action, opts.session);
+            commands::send_action_to_session(cli_action, opts.session, config);
             std::process::exit(0);
         }
         if let Some(Command::Sessions(Sessions::Run {
@@ -30,6 +32,7 @@ fn main() {
         {
             let command_cli_action = CliAction::NewPane {
                 command,
+                plugin: None,
                 direction,
                 cwd,
                 floating,
@@ -37,7 +40,7 @@ fn main() {
                 close_on_exit,
                 start_suspended,
             };
-            commands::send_action_to_session(command_cli_action, opts.session);
+            commands::send_action_to_session(command_cli_action, opts.session, config);
             std::process::exit(0);
         }
         if let Some(Command::Sessions(Sessions::Edit {
@@ -62,7 +65,7 @@ fn main() {
                 floating,
                 cwd,
             };
-            commands::send_action_to_session(command_cli_action, opts.session);
+            commands::send_action_to_session(command_cli_action, opts.session, config);
             std::process::exit(0);
         }
         if let Some(Command::Sessions(Sessions::ConvertConfig { old_config_file })) = opts.command {

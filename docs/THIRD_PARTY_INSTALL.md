@@ -1,9 +1,10 @@
 # Third Party Install
 
-* [Packages](#package)
+* [Packages](#packages)
     * [Arch Linux](#arch-linux)
     * [MacOS](#macos)
     * [Fedora Linux](#fedora-linux)
+    * [Void Linux](#void-linux)
 
 ## Packages
 

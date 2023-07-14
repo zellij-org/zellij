@@ -20,7 +20,7 @@ use pty_writer::{pty_writer_main, PtyWriteInstruction};
 use std::collections::{HashMap, HashSet};
 use std::{
     path::PathBuf,
-    sync::{Arc, Mutex, RwLock},
+    sync::{Arc, RwLock},
     thread,
 };
 use zellij_utils::envs;
@@ -32,7 +32,7 @@ use wasmer::Store;
 use crate::{
     os_input_output::ServerOsApi,
     plugins::{plugin_thread_main, PluginInstruction},
-    pty::{pty_thread_main, Pty, PtyInstruction},
+    pty::{get_default_shell, pty_thread_main, Pty, PtyInstruction},
     screen::{screen_thread_main, ScreenInstruction},
     thread_bus::{Bus, ThreadSenders},
 };
@@ -77,6 +77,7 @@ pub enum ServerInstruction {
     AttachClient(ClientAttributes, Options, ClientId),
     ConnStatus(ClientId),
     ActiveClients(ClientId),
+    Log(Vec<String>, ClientId),
 }
 
 impl From<&ServerInstruction> for ServerContext {
@@ -93,6 +94,7 @@ impl From<&ServerInstruction> for ServerContext {
             ServerInstruction::AttachClient(..) => ServerContext::AttachClient,
             ServerInstruction::ConnStatus(..) => ServerContext::ConnStatus,
             ServerInstruction::ActiveClients(_) => ServerContext::ActiveClients,
+            ServerInstruction::Log(..) => ServerContext::Log,
         }
     }
 }
@@ -108,6 +110,7 @@ pub(crate) struct SessionMetaData {
     pub capabilities: PluginCapabilities,
     pub client_attributes: ClientAttributes,
     pub default_shell: Option<TerminalAction>,
+    pub layout: Box<Layout>,
     screen_thread: Option<thread::JoinHandle<()>>,
     pty_thread: Option<thread::JoinHandle<()>>,
     plugin_thread: Option<thread::JoinHandle<()>>,
@@ -257,8 +260,6 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
         })
     });
 
-    let thread_handles = Arc::new(Mutex::new(Vec::new()));
-
     let _ = thread::Builder::new()
         .name("server_listener".to_string())
         .spawn({
@@ -271,11 +272,14 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
             let session_state = session_state.clone();
             let to_server = to_server.clone();
             let socket_path = socket_path.clone();
-            let thread_handles = thread_handles.clone();
             move || {
                 drop(std::fs::remove_file(&socket_path));
                 let listener = LocalSocketListener::bind(&*socket_path).unwrap();
-                set_permissions(&socket_path, 0o700).unwrap();
+                // set the sticky bit to avoid the socket file being potentially cleaned up
+                // https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html states that for XDG_RUNTIME_DIR:
+                // "To ensure that your files are not removed, they should have their access time timestamp modified at least once every 6 hours of monotonic time or the 'sticky' bit should be set on the file. "
+                // It is not guaranteed that all platforms allow setting the sticky bit on sockets!
+                drop(set_permissions(&socket_path, 0o1700));
                 for stream in listener.incoming() {
                     match stream {
                         Ok(stream) => {
@@ -285,22 +289,20 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                             let session_data = session_data.clone();
                             let session_state = session_state.clone();
                             let to_server = to_server.clone();
-                            thread_handles.lock().unwrap().push(
-                                thread::Builder::new()
-                                    .name("server_router".to_string())
-                                    .spawn(move || {
-                                        route_thread_main(
-                                            session_data,
-                                            session_state,
-                                            os_input,
-                                            to_server,
-                                            receiver,
-                                            client_id,
-                                        )
-                                        .fatal()
-                                    })
-                                    .unwrap(),
-                            );
+                            thread::Builder::new()
+                                .name("server_router".to_string())
+                                .spawn(move || {
+                                    route_thread_main(
+                                        session_data,
+                                        session_state,
+                                        os_input,
+                                        to_server,
+                                        receiver,
+                                        client_id,
+                                    )
+                                    .fatal()
+                                })
+                                .unwrap();
                         },
                         Err(err) => {
                             panic!("err {:?}", err);
@@ -342,11 +344,13 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 let default_shell = config_options.default_shell.map(|shell| {
                     TerminalAction::RunCommand(RunCommand {
                         command: shell,
+                        cwd: config_options.default_cwd.clone(),
                         ..Default::default()
                     })
                 });
+                let cwd = config_options.default_cwd;
 
-                let spawn_tabs = |tab_layout, floating_panes_layout, tab_name| {
+                let spawn_tabs = |tab_layout, floating_panes_layout, tab_name, swap_layouts| {
                     session_data
                         .read()
                         .unwrap()
@@ -354,10 +358,12 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                         .unwrap()
                         .senders
                         .send_to_screen(ScreenInstruction::NewTab(
+                            cwd.clone(),
                             default_shell.clone(),
                             tab_layout,
                             floating_panes_layout,
                             tab_name,
+                            swap_layouts,
                             client_id,
                         ))
                         .unwrap()
@@ -369,6 +375,10 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                             Some(tab_layout.clone()),
                             floating_panes_layout.clone(),
                             tab_name,
+                            (
+                                layout.swap_tiled_layouts.clone(),
+                                layout.swap_floating_layouts.clone(),
+                            ),
                         );
                     }
 
@@ -379,14 +389,22 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                             .as_ref()
                             .unwrap()
                             .senders
-                            .send_to_pty(PtyInstruction::GoToTab(
+                            .send_to_screen(ScreenInstruction::GoToTab(
                                 (focused_tab_index + 1) as u32,
-                                client_id,
+                                Some(client_id),
                             ))
                             .unwrap();
                     }
                 } else {
-                    spawn_tabs(None, layout.floating_panes_template.clone(), None);
+                    spawn_tabs(
+                        None,
+                        layout.template.map(|t| t.1).clone().unwrap_or_default(),
+                        None,
+                        (
+                            layout.swap_tiled_layouts.clone(),
+                            layout.swap_floating_layouts.clone(),
+                        ),
+                    );
                 }
                 session_data
                     .read()
@@ -609,17 +627,20 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     session_state
                 );
             },
+            ServerInstruction::Log(lines_to_log, client_id) => {
+                send_to_client!(
+                    client_id,
+                    os_input,
+                    ServerToClientMsg::Log(lines_to_log),
+                    session_state
+                );
+            },
         }
     }
 
     // Drop cached session data before exit.
     *session_data.write().unwrap() = None;
 
-    thread_handles
-        .lock()
-        .unwrap()
-        .drain(..)
-        .for_each(|h| drop(h.join()));
     drop(std::fs::remove_file(&socket_path));
 }
 
@@ -684,6 +705,10 @@ fn init_session(
             ..Default::default()
         })
     });
+    let path_to_default_shell = config_options
+        .default_shell
+        .clone()
+        .unwrap_or_else(|| get_default_shell());
 
     let pty_thread = thread::Builder::new()
         .name("pty".to_string())
@@ -724,18 +749,21 @@ fn init_session(
             let max_panes = opts.max_panes;
 
             let client_attributes_clone = client_attributes.clone();
+            let debug = opts.debug;
             move || {
                 screen_thread_main(
                     screen_bus,
                     max_panes,
                     client_attributes_clone,
                     config_options,
+                    debug,
                 )
                 .fatal();
             }
         })
         .unwrap();
 
+    let zellij_cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
     let plugin_thread = thread::Builder::new()
         .name("wasm".to_string())
         .spawn({
@@ -744,13 +772,17 @@ fn init_session(
                 Some(&to_screen),
                 Some(&to_pty),
                 Some(&to_plugin),
-                None,
+                Some(&to_server),
                 Some(&to_pty_writer),
                 Some(&to_background_jobs),
                 None,
             );
-            let store = Store::default();
+            let store = get_store();
 
+            let layout = layout.clone();
+            let client_attributes = client_attributes.clone();
+            let default_shell = default_shell.clone();
+            let capabilities = capabilities.clone();
             move || {
                 plugin_thread_main(
                     plugin_bus,
@@ -758,6 +790,11 @@ fn init_session(
                     data_dir,
                     plugins.unwrap_or_default(),
                     layout,
+                    path_to_default_shell,
+                    zellij_cwd,
+                    capabilities,
+                    client_attributes,
+                    default_shell,
                 )
                 .fatal()
             }
@@ -805,16 +842,29 @@ fn init_session(
             to_plugin: Some(to_plugin),
             to_pty_writer: Some(to_pty_writer),
             to_background_jobs: Some(to_background_jobs),
-            to_server: None,
+            to_server: Some(to_server),
             should_silently_fail: false,
         },
         capabilities,
         default_shell,
         client_attributes,
+        layout,
         screen_thread: Some(screen_thread),
         pty_thread: Some(pty_thread),
         plugin_thread: Some(plugin_thread),
         pty_writer_thread: Some(pty_writer_thread),
         background_jobs_thread: Some(background_jobs_thread),
     }
+}
+
+#[cfg(not(feature = "singlepass"))]
+fn get_store() -> Store {
+    log::info!("Compiling plugins using Cranelift");
+    Store::new(&wasmer::Universal::new(wasmer::Cranelift::default()).engine())
+}
+
+#[cfg(feature = "singlepass")]
+fn get_store() -> Store {
+    log::info!("Compiling plugins using Singlepass");
+    Store::new(&wasmer::Universal::new(wasmer::Singlepass::default()).engine())
 }

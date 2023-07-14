@@ -75,6 +75,9 @@ pub struct FrameParams {
     pub style: Style,
     pub color: Option<PaletteColor>,
     pub other_cursors_exist_in_session: bool,
+    pub pane_is_stacked_under: bool,
+    pub pane_is_stacked_over: bool,
+    pub should_draw_pane_frames: bool,
 }
 
 #[derive(Default, PartialEq)]
@@ -90,6 +93,9 @@ pub struct PaneFrame {
     pub other_focused_clients: Vec<ClientId>,
     exit_status: Option<ExitStatus>,
     is_first_run: bool,
+    pane_is_stacked_over: bool,
+    pane_is_stacked_under: bool,
+    should_draw_pane_frames: bool,
 }
 
 impl PaneFrame {
@@ -111,6 +117,9 @@ impl PaneFrame {
             other_cursors_exist_in_session: frame_params.other_cursors_exist_in_session,
             exit_status: None,
             is_first_run: false,
+            pane_is_stacked_over: frame_params.pane_is_stacked_over,
+            pane_is_stacked_under: frame_params.pane_is_stacked_under,
+            should_draw_pane_frames: frame_params.should_draw_pane_frames,
         }
     }
     pub fn add_exit_status(&mut self, exit_status: Option<i32>) {
@@ -130,6 +139,17 @@ impl PaneFrame {
         background_color(" ", color.map(|c| c.0))
     }
     fn get_corner(&self, corner: &'static str) -> &'static str {
+        let corner = if !self.should_draw_pane_frames
+            && (corner == boundary_type::TOP_LEFT || corner == boundary_type::TOP_RIGHT)
+        {
+            boundary_type::HORIZONTAL
+        } else if self.pane_is_stacked_under && corner == boundary_type::TOP_RIGHT {
+            boundary_type::BOTTOM_RIGHT
+        } else if self.pane_is_stacked_under && corner == boundary_type::TOP_LEFT {
+            boundary_type::BOTTOM_LEFT
+        } else {
+            corner
+        };
         if self.style.rounded_corners {
             match corner {
                 boundary_type::TOP_RIGHT => boundary_type::TOP_RIGHT_ROUND,
@@ -323,6 +343,15 @@ impl PaneFrame {
             self.render_my_and_others_focus(max_length)
         } else if !self.other_focused_clients.is_empty() {
             self.render_other_focused_users(max_length)
+        } else if (self.pane_is_stacked_under || self.pane_is_stacked_over)
+            && self.exit_status.is_some()
+        {
+            let (first_part, first_part_len) = self.first_exited_held_title_part_full();
+            if first_part_len <= max_length {
+                Some((first_part, first_part_len))
+            } else {
+                None
+            }
         } else {
             None
         }
@@ -617,6 +646,14 @@ impl PaneFrame {
             .or_else(|| Some(self.title_line_without_middle()))
             .with_context(|| format!("failed to render title '{}'", self.title))
     }
+    fn render_one_line_title(&self) -> Result<Vec<TerminalCharacter>> {
+        let total_title_length = self.geom.cols.saturating_sub(2); // 2 for the left and right corners
+
+        self.render_title_middle(total_title_length)
+            .map(|(middle, middle_length)| self.title_line_with_middle(middle, &middle_length))
+            .or_else(|| Some(self.title_line_without_middle()))
+            .with_context(|| format!("failed to render title '{}'", self.title))
+    }
     fn render_held_undertitle(&self) -> Result<Vec<TerminalCharacter>> {
         let max_undertitle_length = self.geom.cols.saturating_sub(2); // 2 for the left and right corners
         let (mut first_part, first_part_len) = self.first_exited_held_title_part_full();
@@ -678,55 +715,69 @@ impl PaneFrame {
     pub fn render(&self) -> Result<(Vec<CharacterChunk>, Option<String>)> {
         let err_context = || "failed to render pane frame";
         let mut character_chunks = vec![];
-        for row in 0..self.geom.rows {
-            if row == 0 {
-                // top row
-                let title = self.render_title().with_context(err_context)?;
-                let x = self.geom.x;
-                let y = self.geom.y + row;
-                character_chunks.push(CharacterChunk::new(title, x, y));
-            } else if row == self.geom.rows - 1 {
-                // bottom row
-                if self.exit_status.is_some() || self.is_first_run {
+        if self.geom.rows == 1 || !self.should_draw_pane_frames {
+            // we do this explicitly when not drawing pane frames because this should only happen
+            // if this is a stacked pane with pane frames off (and it doesn't necessarily have only
+            // 1 row because it could also be a flexible stacked pane)
+            // in this case we should always draw the pane title line, and only the title line
+            let one_line_title = self.render_one_line_title().with_context(err_context)?;
+            character_chunks.push(CharacterChunk::new(
+                one_line_title,
+                self.geom.x,
+                self.geom.y,
+            ));
+        } else {
+            for row in 0..self.geom.rows {
+                if row == 0 {
+                    // top row
+                    let title = self.render_title().with_context(err_context)?;
                     let x = self.geom.x;
                     let y = self.geom.y + row;
-                    character_chunks.push(CharacterChunk::new(
-                        self.render_held_undertitle().with_context(err_context)?,
-                        x,
-                        y,
-                    ));
-                } else {
-                    let mut bottom_row = vec![];
-                    for col in 0..self.geom.cols {
-                        let boundary = if col == 0 {
-                            // bottom left corner
-                            self.get_corner(boundary_type::BOTTOM_LEFT)
-                        } else if col == self.geom.cols - 1 {
-                            // bottom right corner
-                            self.get_corner(boundary_type::BOTTOM_RIGHT)
-                        } else {
-                            boundary_type::HORIZONTAL
-                        };
+                    character_chunks.push(CharacterChunk::new(title, x, y));
+                } else if row == self.geom.rows - 1 {
+                    // bottom row
+                    if self.exit_status.is_some() || self.is_first_run {
+                        let x = self.geom.x;
+                        let y = self.geom.y + row;
+                        character_chunks.push(CharacterChunk::new(
+                            self.render_held_undertitle().with_context(err_context)?,
+                            x,
+                            y,
+                        ));
+                    } else {
+                        let mut bottom_row = vec![];
+                        for col in 0..self.geom.cols {
+                            let boundary = if col == 0 {
+                                // bottom left corner
+                                self.get_corner(boundary_type::BOTTOM_LEFT)
+                            } else if col == self.geom.cols - 1 {
+                                // bottom right corner
+                                self.get_corner(boundary_type::BOTTOM_RIGHT)
+                            } else {
+                                boundary_type::HORIZONTAL
+                            };
 
-                        let mut boundary_character = foreground_color(boundary, self.color);
-                        bottom_row.append(&mut boundary_character);
+                            let mut boundary_character = foreground_color(boundary, self.color);
+                            bottom_row.append(&mut boundary_character);
+                        }
+                        let x = self.geom.x;
+                        let y = self.geom.y + row;
+                        character_chunks.push(CharacterChunk::new(bottom_row, x, y));
                     }
+                } else {
+                    let boundary_character_left =
+                        foreground_color(boundary_type::VERTICAL, self.color);
+                    let boundary_character_right =
+                        foreground_color(boundary_type::VERTICAL, self.color);
+
                     let x = self.geom.x;
                     let y = self.geom.y + row;
-                    character_chunks.push(CharacterChunk::new(bottom_row, x, y));
+                    character_chunks.push(CharacterChunk::new(boundary_character_left, x, y));
+
+                    let x = (self.geom.x + self.geom.cols).saturating_sub(1);
+                    let y = self.geom.y + row;
+                    character_chunks.push(CharacterChunk::new(boundary_character_right, x, y));
                 }
-            } else {
-                let boundary_character_left = foreground_color(boundary_type::VERTICAL, self.color);
-                let boundary_character_right =
-                    foreground_color(boundary_type::VERTICAL, self.color);
-
-                let x = self.geom.x;
-                let y = self.geom.y + row;
-                character_chunks.push(CharacterChunk::new(boundary_character_left, x, y));
-
-                let x = (self.geom.x + self.geom.cols).saturating_sub(1);
-                let y = self.geom.y + row;
-                character_chunks.push(CharacterChunk::new(boundary_character_right, x, y));
             }
         }
         Ok((character_chunks, None))

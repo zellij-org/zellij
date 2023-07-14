@@ -2,71 +2,69 @@ name: Rust
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
   build:
-    name: Build & Test
+    name: Build
 
     strategy:
       fail-fast: false
       matrix:
-        os: [ ubuntu-latest, macos-latest ]
+        os: [ubuntu-latest, macos-latest]
 
     runs-on: ${{ matrix.os }}
 
     steps:
-    - uses: actions/checkout@v3
-    - uses: actions/cache@v3
-      with:
-        path: |
-          ~/.cargo/bin/
-          ~/.cargo/registry
-          ~/.cargo/git
-          target
-        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-    - name: Add WASM target
-      run: rustup target add wasm32-wasi
-    - name: Build
-      run: cargo xtask build
-    - name: Test
-      run: cargo xtask test
+      - uses: actions/checkout@v3
+      - name: Setup toolchain
+        run: rustup show
+      - uses: Swatinem/rust-cache@v2
+      - name: Build
+        run: cargo xtask build
+
+  test:
+    name: Test
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v3
+      - name: Setup toolchain
+        run: rustup show
+      - uses: Swatinem/rust-cache@v2
+      - name: Test
+        run: cargo xtask test
 
   format:
     name: Check Formatting
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v3
-    - uses: actions/cache@v3
-      with:
-        path: |
-          ~/.cargo/bin/
-          ~/.cargo/registry
-          ~/.cargo/git
-          target
-        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-    - name: Check Format
-      run: cargo xtask format --check
+      - uses: actions/checkout@v3
+      - name: Setup toolchain
+        run: rustup show
+      - name: Check Format
+        run: cargo xtask format --check
 
   clippy:
     name: Check Clippy Lints
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v3
-    - uses: actions/cache@v3
-      with:
-        path: |
-          ~/.cargo/bin/
-          ~/.cargo/registry
-          ~/.cargo/git
-          target
-        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-    - name: Check clippy lints
-      run: cargo xtask clippy
+      - uses: actions/checkout@v3
+      - name: Setup toolchain
+        run: rustup show
+      - uses: Swatinem/rust-cache@v2
+      - name: Check clippy lints
+        run: cargo xtask clippy

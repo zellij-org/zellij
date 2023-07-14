@@ -1,17 +1,17 @@
 ---
 source: zellij-server/src/./unit/screen_tests.rs
-assertion_line: 2300
 expression: "format!(\"{:#?}\", new_tab_action)"
 ---
 Some(
     NewTab(
         None,
+        None,
         Some(
-            PaneLayout {
+            TiledPaneLayout {
                 children_split_direction: Vertical,
                 name: None,
                 children: [
-                    PaneLayout {
+                    TiledPaneLayout {
                         children_split_direction: Horizontal,
                         name: None,
                         children: [],
@@ -20,8 +20,11 @@ Some(
                         borderless: false,
                         focus: None,
                         external_children_index: None,
+                        children_are_stacked: false,
+                        is_expanded_in_stack: false,
+                        exclude_from_sync: None,
                     },
-                    PaneLayout {
+                    TiledPaneLayout {
                         children_split_direction: Horizontal,
                         name: None,
                         children: [],
@@ -30,6 +33,9 @@ Some(
                         borderless: false,
                         focus: None,
                         external_children_index: None,
+                        children_are_stacked: false,
+                        is_expanded_in_stack: false,
+                        exclude_from_sync: None,
                     },
                 ],
                 split_size: None,
@@ -37,10 +43,12 @@ Some(
                 borderless: false,
                 focus: None,
                 external_children_index: None,
+                children_are_stacked: false,
+                is_expanded_in_stack: false,
+                exclude_from_sync: None,
             },
         ),
         [],
-        None,
         0,
         1,
     ),

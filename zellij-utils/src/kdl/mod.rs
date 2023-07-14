@@ -7,12 +7,10 @@ use crate::input::layout::{Layout, RunPlugin, RunPluginLocation};
 use crate::input::options::{Clipboard, OnForceClose, Options};
 use crate::input::plugins::{PluginConfig, PluginTag, PluginType, PluginsConfig};
 use crate::input::theme::{FrameConfig, Theme, Themes, UiConfig};
+use crate::setup::{find_default_config_dir, get_layout_dir};
 use kdl_layout_parser::KdlLayoutParser;
 use std::collections::HashMap;
-use std::fs::File;
-use std::io::Read;
 use strum::IntoEnumIterator;
-use url::Url;
 
 use miette::NamedSource;
 
@@ -66,6 +64,9 @@ macro_rules! parse_kdl_action_arguments {
                 "Confirm" => Ok(Action::Confirm),
                 "Deny" => Ok(Action::Deny),
                 "ToggleMouseMode" => Ok(Action::ToggleMouseMode),
+                "PreviousSwapLayout" => Ok(Action::PreviousSwapLayout),
+                "NextSwapLayout" => Ok(Action::NextSwapLayout),
+                "Clear" => Ok(Action::ClearScreen),
                 _ => Err(ConfigError::new_kdl_error(
                     format!("Unsupported action: {:?}", $action_name),
                     $action_node.span().offset(),
@@ -301,10 +302,10 @@ macro_rules! keys_from_kdl {
 
 #[macro_export]
 macro_rules! actions_from_kdl {
-    ( $kdl_node:expr ) => {
+    ( $kdl_node:expr, $config_options:expr ) => {
         kdl_children_nodes_or_error!($kdl_node, "no actions found for key_block")
             .iter()
-            .map(|kdl_action| Action::try_from(kdl_action))
+            .map(|kdl_action| Action::try_from((kdl_action, $config_options)))
             .collect::<Result<_, _>>()?
     };
 }
@@ -452,6 +453,7 @@ impl Action {
                     Ok(Action::MovePane(Some(direction)))
                 }
             },
+            "MovePaneBackwards" => Ok(Action::MovePaneBackwards),
             "DumpScreen" => Ok(Action::DumpScreen(string, false)),
             "NewPane" => {
                 if string.is_empty() {
@@ -614,9 +616,9 @@ impl TryFrom<(&str, &KdlDocument)> for PaletteColor {
     }
 }
 
-impl TryFrom<&KdlNode> for Action {
+impl TryFrom<(&KdlNode, &Options)> for Action {
     type Error = ConfigError;
-    fn try_from(kdl_action: &KdlNode) -> Result<Self, Self::Error> {
+    fn try_from((kdl_action, config_options): (&KdlNode, &Options)) -> Result<Self, Self::Error> {
         let action_name = kdl_name!(kdl_action);
         let action_arguments: Vec<&KdlEntry> = kdl_argument_values!(kdl_action);
         let action_children: Vec<&KdlDocument> = kdl_children!(kdl_action);
@@ -686,6 +688,7 @@ impl TryFrom<&KdlNode> for Action {
             },
             "Detach" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
             "Copy" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
+            "Clear" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
             "Confirm" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
             "Deny" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
             "Write" => parse_kdl_action_u8_arguments!(action_name, action_arguments, kdl_action),
@@ -729,6 +732,11 @@ impl TryFrom<&KdlNode> for Action {
                 action_arguments,
                 kdl_action
             ),
+            "MovePaneBackwards" => parse_kdl_action_char_or_string_arguments!(
+                action_name,
+                action_arguments,
+                kdl_action
+            ),
             "DumpScreen" => parse_kdl_action_char_or_string_arguments!(
                 action_name,
                 action_arguments,
@@ -742,7 +750,85 @@ impl TryFrom<&KdlNode> for Action {
             "PaneNameInput" => {
                 parse_kdl_action_u8_arguments!(action_name, action_arguments, kdl_action)
             },
-            "NewTab" => Ok(Action::NewTab(None, vec![], None)),
+            "NewTab" => {
+                let command_metadata = action_children.iter().next();
+                if command_metadata.is_none() {
+                    return Ok(Action::NewTab(None, vec![], None, None, None));
+                }
+
+                let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+
+                let layout = command_metadata
+                    .and_then(|c_m| kdl_child_string_value_for_entry(c_m, "layout"))
+                    .map(|layout_string| PathBuf::from(layout_string))
+                    .or_else(|| config_options.default_layout.clone());
+                let cwd = command_metadata
+                    .and_then(|c_m| kdl_child_string_value_for_entry(c_m, "cwd"))
+                    .map(|cwd_string| PathBuf::from(cwd_string))
+                    .map(|cwd| current_dir.join(cwd));
+                let name = command_metadata
+                    .and_then(|c_m| kdl_child_string_value_for_entry(c_m, "name"))
+                    .map(|name_string| name_string.to_string());
+
+                let layout_dir = config_options
+                    .layout_dir
+                    .clone()
+                    .or_else(|| get_layout_dir(find_default_config_dir()));
+                let (path_to_raw_layout, raw_layout, swap_layouts) =
+                    Layout::stringified_from_path_or_default(layout.as_ref(), layout_dir).map_err(
+                        |e| {
+                            ConfigError::new_kdl_error(
+                                format!("Failed to load layout: {}", e),
+                                kdl_action.span().offset(),
+                                kdl_action.span().len(),
+                            )
+                        },
+                    )?;
+
+                let layout = Layout::from_str(
+                    &raw_layout,
+                    path_to_raw_layout,
+                    swap_layouts.as_ref().map(|(f, p)| (f.as_str(), p.as_str())),
+                    cwd,
+                )
+                .map_err(|e| {
+                    ConfigError::new_kdl_error(
+                        format!("Failed to load layout: {}", e),
+                        kdl_action.span().offset(),
+                        kdl_action.span().len(),
+                    )
+                })?;
+
+                let mut tabs = layout.tabs();
+                if tabs.len() > 1 {
+                    return Err(ConfigError::new_kdl_error(
+                        "Tab layout cannot itself have tabs".to_string(),
+                        kdl_action.span().offset(),
+                        kdl_action.span().len(),
+                    ));
+                } else if !tabs.is_empty() {
+                    let (tab_name, layout, floating_panes_layout) = tabs.drain(..).next().unwrap();
+                    let name = tab_name.or(name);
+
+                    Ok(Action::NewTab(
+                        Some(layout),
+                        floating_panes_layout,
+                        None,
+                        None,
+                        name,
+                    ))
+                } else {
+                    let (layout, floating_panes_layout) = layout.new_tab();
+
+                    Ok(Action::NewTab(
+                        Some(layout),
+                        floating_panes_layout,
+                        None,
+                        None,
+                        name,
+                    ))
+                }
+            },
             "GoToTab" => parse_kdl_action_u8_arguments!(action_name, action_arguments, kdl_action),
             "TabNameInput" => {
                 parse_kdl_action_u8_arguments!(action_name, action_arguments, kdl_action)
@@ -790,6 +876,32 @@ impl TryFrom<&KdlNode> for Action {
                 };
                 Ok(Action::Run(run_command_action))
             },
+            "LaunchOrFocusPlugin" => {
+                let arguments = action_arguments.iter().copied();
+                let mut args = kdl_arguments_that_are_strings(arguments)?;
+                if args.is_empty() {
+                    return Err(ConfigError::new_kdl_error(
+                        "No plugin found to launch in LaunchOrFocusPlugin".into(),
+                        kdl_action.span().offset(),
+                        kdl_action.span().len(),
+                    ));
+                }
+                let plugin_path = args.remove(0);
+
+                let command_metadata = action_children.iter().next();
+                let should_float = command_metadata
+                    .and_then(|c_m| kdl_child_bool_value_for_entry(c_m, "floating"))
+                    .unwrap_or(false);
+                let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+                let location = RunPluginLocation::parse(&plugin_path, Some(current_dir))?;
+                let run_plugin = RunPlugin {
+                    location,
+                    _allow_exec_host_cmd: false,
+                };
+                Ok(Action::LaunchOrFocusPlugin(run_plugin, should_float))
+            },
+            "PreviousSwapLayout" => Ok(Action::PreviousSwapLayout),
+            "NextSwapLayout" => Ok(Action::NextSwapLayout),
             _ => Err(ConfigError::new_kdl_error(
                 format!("Unsupported action: {}", action_name).into(),
                 kdl_action.span().offset(),
@@ -1214,8 +1326,12 @@ impl Options {
         let default_shell =
             kdl_property_first_arg_as_string_or_error!(kdl_options, "default_shell")
                 .map(|(string, _entry)| PathBuf::from(string));
+        let default_cwd = kdl_property_first_arg_as_string_or_error!(kdl_options, "default_cwd")
+            .map(|(string, _entry)| PathBuf::from(string));
         let pane_frames =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "pane_frames").map(|(v, _)| v);
+        let auto_layout =
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "auto_layout").map(|(v, _)| v);
         let theme = kdl_property_first_arg_as_string_or_error!(kdl_options, "theme")
             .map(|(theme, _entry)| theme.to_string());
         let default_mode =
@@ -1266,6 +1382,7 @@ impl Options {
             theme,
             default_mode,
             default_shell,
+            default_cwd,
             default_layout,
             layout_dir,
             theme_dir,
@@ -1280,12 +1397,13 @@ impl Options {
             scrollback_editor,
             session_name,
             attach_to_session,
+            auto_layout,
         })
     }
 }
 
 impl RunPlugin {
-    pub fn from_kdl(kdl_node: &KdlNode) -> Result<Self, ConfigError> {
+    pub fn from_kdl(kdl_node: &KdlNode, cwd: Option<PathBuf>) -> Result<Self, ConfigError> {
         let _allow_exec_host_cmd =
             kdl_get_child_entry_bool_value!(kdl_node, "_allow_exec_host_cmd").unwrap_or(false);
         let string_url = kdl_get_child_entry_string_value!(kdl_node, "location").ok_or(
@@ -1295,14 +1413,13 @@ impl RunPlugin {
                 kdl_node.span().len(),
             ),
         )?;
-        let url = Url::parse(string_url).map_err(|e| {
-            ConfigError::new_kdl_error(
-                format!("Failed to parse url: {:?}", e),
+        let location = RunPluginLocation::parse(string_url, cwd).map_err(|e| {
+            ConfigError::new_layout_kdl_error(
+                e.to_string(),
                 kdl_node.span().offset(),
                 kdl_node.span().len(),
             )
         })?;
-        let location = RunPluginLocation::try_from(url)?;
         Ok(RunPlugin {
             _allow_exec_host_cmd,
             location,
@@ -1313,36 +1430,66 @@ impl Layout {
     pub fn from_kdl(
         raw_layout: &str,
         file_name: String,
+        raw_swap_layouts: Option<(&str, &str)>, // raw_swap_layouts swap_layouts_file_name
         cwd: Option<PathBuf>,
     ) -> Result<Self, ConfigError> {
-        KdlLayoutParser::new(raw_layout, cwd).parse().map_err(|e| {
-            match e {
-                ConfigError::KdlError(kdl_error) => ConfigError::KdlError(kdl_error.add_src(file_name, String::from(raw_layout))),
-                ConfigError::KdlDeserializationError(kdl_error) => {
-                    let error_message = match kdl_error.kind {
-                        kdl::KdlErrorKind::Context("valid node terminator") => {
-                            format!("Failed to deserialize KDL node. \nPossible reasons:\n{}\n{}\n{}\n{}",
-                            "- Missing `;` after a node name, eg. { node; another_node; }",
-                            "- Missing quotations (\") around an argument node eg. { first_node \"argument_node\"; }",
-                            "- Missing an equal sign (=) between node arguments on a title line. eg. argument=\"value\"",
-                            "- Found an extraneous equal sign (=) between node child arguments and their values. eg. { argument=\"value\" }")
+        let mut kdl_layout_parser = KdlLayoutParser::new(raw_layout, cwd);
+        let layout = kdl_layout_parser.parse().map_err(|e| match e {
+            ConfigError::KdlError(kdl_error) => {
+                ConfigError::KdlError(kdl_error.add_src(file_name, String::from(raw_layout)))
+            },
+            ConfigError::KdlDeserializationError(kdl_error) => {
+                kdl_layout_error(kdl_error, file_name, raw_layout)
+            },
+            e => e,
+        })?;
+        match raw_swap_layouts {
+            Some((raw_swap_layout_filename, raw_swap_layout)) => {
+                // here we use the same parser to parse the swap layout so that we can reuse assets
+                // (eg. pane and tab templates)
+                kdl_layout_parser
+                    .parse_external_swap_layouts(raw_swap_layout, layout)
+                    .map_err(|e| match e {
+                        ConfigError::KdlError(kdl_error) => {
+                            ConfigError::KdlError(kdl_error.add_src(
+                                String::from(raw_swap_layout_filename),
+                                String::from(raw_swap_layout),
+                            ))
                         },
-                        _ => String::from(kdl_error.help.unwrap_or("Kdl Deserialization Error")),
-                    };
-                    let kdl_error = KdlError {
-                        error_message,
-                        src: Some(NamedSource::new(file_name, String::from(raw_layout))),
-                        offset: Some(kdl_error.span.offset()),
-                        len: Some(kdl_error.span.len()),
-                        help_message: None,
-                    };
-                    ConfigError::KdlError(kdl_error)
-                },
-                e => e
-            }
-        })
+                        ConfigError::KdlDeserializationError(kdl_error) => kdl_layout_error(
+                            kdl_error,
+                            raw_swap_layout_filename.into(),
+                            raw_swap_layout,
+                        ),
+                        e => e,
+                    })
+            },
+            None => Ok(layout),
+        }
     }
 }
+
+fn kdl_layout_error(kdl_error: kdl::KdlError, file_name: String, raw_layout: &str) -> ConfigError {
+    let error_message = match kdl_error.kind {
+        kdl::KdlErrorKind::Context("valid node terminator") => {
+            format!("Failed to deserialize KDL node. \nPossible reasons:\n{}\n{}\n{}\n{}",
+            "- Missing `;` after a node name, eg. { node; another_node; }",
+            "- Missing quotations (\") around an argument node eg. { first_node \"argument_node\"; }",
+            "- Missing an equal sign (=) between node arguments on a title line. eg. argument=\"value\"",
+            "- Found an extraneous equal sign (=) between node child arguments and their values. eg. { argument=\"value\" }")
+        },
+        _ => String::from(kdl_error.help.unwrap_or("Kdl Deserialization Error")),
+    };
+    let kdl_error = KdlError {
+        error_message,
+        src: Some(NamedSource::new(file_name, String::from(raw_layout))),
+        offset: Some(kdl_error.span.offset()),
+        len: Some(kdl_error.span.len()),
+        help_message: None,
+    };
+    ConfigError::KdlError(kdl_error)
+}
+
 impl EnvironmentVariables {
     pub fn from_kdl(kdl_env_variables: &KdlNode) -> Result<Self, ConfigError> {
         let mut env: HashMap<String, String> = HashMap::new();
@@ -1370,12 +1517,13 @@ impl Keybinds {
     fn bind_keys_in_block(
         block: &KdlNode,
         input_mode_keybinds: &mut HashMap<Key, Vec<Action>>,
+        config_options: &Options,
     ) -> Result<(), ConfigError> {
         let all_nodes = kdl_children_nodes_or_error!(block, "no keybinding block for mode");
         let bind_nodes = all_nodes.iter().filter(|n| kdl_name!(n) == "bind");
         let unbind_nodes = all_nodes.iter().filter(|n| kdl_name!(n) == "unbind");
         for key_block in bind_nodes {
-            Keybinds::bind_actions_for_each_key(key_block, input_mode_keybinds)?;
+            Keybinds::bind_actions_for_each_key(key_block, input_mode_keybinds, config_options)?;
         }
         // we loop a second time so that the unbinds always happen after the binds
         for key_block in unbind_nodes {
@@ -1392,7 +1540,11 @@ impl Keybinds {
         }
         Ok(())
     }
-    pub fn from_kdl(kdl_keybinds: &KdlNode, base_keybinds: Keybinds) -> Result<Self, ConfigError> {
+    pub fn from_kdl(
+        kdl_keybinds: &KdlNode,
+        base_keybinds: Keybinds,
+        config_options: &Options,
+    ) -> Result<Self, ConfigError> {
         let clear_defaults = kdl_arg_is_truthy!(kdl_keybinds, "clear-defaults");
         let mut keybinds_from_config = if clear_defaults {
             Keybinds::default()
@@ -1416,7 +1568,7 @@ impl Keybinds {
                         continue;
                     }
                     let mut input_mode_keybinds = keybinds_from_config.get_input_mode_mut(&mode);
-                    Keybinds::bind_keys_in_block(block, &mut input_mode_keybinds)?;
+                    Keybinds::bind_keys_in_block(block, &mut input_mode_keybinds, config_options)?;
                 }
             }
             if kdl_name!(block) == "shared_among" {
@@ -1429,7 +1581,7 @@ impl Keybinds {
                         continue;
                     }
                     let mut input_mode_keybinds = keybinds_from_config.get_input_mode_mut(&mode);
-                    Keybinds::bind_keys_in_block(block, &mut input_mode_keybinds)?;
+                    Keybinds::bind_keys_in_block(block, &mut input_mode_keybinds, config_options)?;
                 }
             }
         }
@@ -1443,7 +1595,7 @@ impl Keybinds {
             }
             let mut input_mode_keybinds =
                 Keybinds::input_mode_keybindings(mode, &mut keybinds_from_config)?;
-            Keybinds::bind_keys_in_block(mode, &mut input_mode_keybinds)?;
+            Keybinds::bind_keys_in_block(mode, &mut input_mode_keybinds, config_options)?;
         }
         if let Some(global_unbind) = kdl_keybinds.children().and_then(|c| c.get("unbind")) {
             Keybinds::unbind_keys_in_all_modes(global_unbind, &mut keybinds_from_config)?;
@@ -1453,9 +1605,10 @@ impl Keybinds {
     fn bind_actions_for_each_key(
         key_block: &KdlNode,
         input_mode_keybinds: &mut HashMap<Key, Vec<Action>>,
+        config_options: &Options,
     ) -> Result<(), ConfigError> {
         let keys: Vec<Key> = keys_from_kdl!(key_block);
-        let actions: Vec<Action> = actions_from_kdl!(key_block);
+        let actions: Vec<Action> = actions_from_kdl!(key_block, config_options);
         for key in keys {
             input_mode_keybinds.insert(key, actions.clone());
         }
@@ -1508,13 +1661,15 @@ impl Config {
     pub fn from_kdl(kdl_config: &str, base_config: Option<Config>) -> Result<Config, ConfigError> {
         let mut config = base_config.unwrap_or_else(|| Config::default());
         let kdl_config: KdlDocument = kdl_config.parse()?;
+
+        let config_options = Options::from_kdl(&kdl_config)?;
+        config.options = config.options.merge(config_options);
+
         // TODO: handle cases where we have more than one of these blocks (eg. two "keybinds")
         // this should give an informative parsing error
         if let Some(kdl_keybinds) = kdl_config.get("keybinds") {
-            config.keybinds = Keybinds::from_kdl(&kdl_keybinds, config.keybinds)?;
+            config.keybinds = Keybinds::from_kdl(&kdl_keybinds, config.keybinds, &config.options)?;
         }
-        let config_options = Options::from_kdl(&kdl_config)?;
-        config.options = config.options.merge(config_options);
         if let Some(kdl_themes) = kdl_config.get("themes") {
             let config_themes = Themes::from_kdl(kdl_themes)?;
             config.themes = config.themes.merge(config_themes);
@@ -1571,7 +1726,12 @@ impl UiConfig {
             let rounded_corners =
                 kdl_children_property_first_arg_as_bool!(pane_frames, "rounded_corners")
                     .unwrap_or(false);
-            let frame_config = FrameConfig { rounded_corners };
+            let hide_session_name =
+                kdl_get_child_entry_bool_value!(pane_frames, "hide_session_name").unwrap_or(false);
+            let frame_config = FrameConfig {
+                rounded_corners,
+                hide_session_name,
+            };
             ui_config.pane_frames = frame_config;
         }
         Ok(ui_config)
@@ -1606,12 +1766,8 @@ impl Themes {
         Ok(themes)
     }
 
-    pub fn from_path(path_to_theme_file: PathBuf) -> Result<Self, ConfigError> {
-        // String is the theme name
-        let mut file = File::open(path_to_theme_file.clone())?;
-        let mut kdl_config = String::new();
-        file.read_to_string(&mut kdl_config)?;
-        let kdl_config: KdlDocument = kdl_config.parse()?;
+    pub fn from_string(raw_string: String) -> Result<Self, ConfigError> {
+        let kdl_config: KdlDocument = raw_string.parse()?;
         let kdl_themes = kdl_config.get("themes").ok_or(ConfigError::new_kdl_error(
             "No theme node found in file".into(),
             kdl_config.span().offset(),
@@ -1619,5 +1775,28 @@ impl Themes {
         ))?;
         let all_themes_in_file = Themes::from_kdl(kdl_themes)?;
         Ok(all_themes_in_file)
+    }
+
+    pub fn from_path(path_to_theme_file: PathBuf) -> Result<Self, ConfigError> {
+        // String is the theme name
+        let kdl_config = std::fs::read_to_string(&path_to_theme_file)
+            .map_err(|e| ConfigError::IoPath(e, path_to_theme_file.into()))?;
+        Themes::from_string(kdl_config)
+    }
+
+    pub fn from_dir(path_to_theme_dir: PathBuf) -> Result<Self, ConfigError> {
+        let mut themes = Themes::default();
+        for entry in std::fs::read_dir(&path_to_theme_dir)
+            .map_err(|e| ConfigError::IoPath(e, path_to_theme_dir.clone()))?
+        {
+            let entry = entry.map_err(|e| ConfigError::IoPath(e, path_to_theme_dir.clone()))?;
+            let path = entry.path();
+            if let Some(extension) = path.extension() {
+                if extension == "kdl" {
+                    themes = themes.merge(Themes::from_path(path)?);
+                }
+            }
+        }
+        Ok(themes)
     }
 }

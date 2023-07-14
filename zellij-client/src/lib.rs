@@ -45,6 +45,7 @@ pub(crate) enum ClientInstruction {
     ActiveClients(Vec<ClientId>),
     StartedParsingStdinQuery,
     DoneParsingStdinQuery,
+    Log(Vec<String>),
 }
 
 impl From<ServerToClientMsg> for ClientInstruction {
@@ -58,6 +59,7 @@ impl From<ServerToClientMsg> for ClientInstruction {
             },
             ServerToClientMsg::Connected => ClientInstruction::Connected,
             ServerToClientMsg::ActiveClients(clients) => ClientInstruction::ActiveClients(clients),
+            ServerToClientMsg::Log(log_lines) => ClientInstruction::Log(log_lines),
         }
     }
 }
@@ -72,6 +74,7 @@ impl From<&ClientInstruction> for ClientContext {
             ClientInstruction::SwitchToMode(_) => ClientContext::SwitchToMode,
             ClientInstruction::Connected => ClientContext::Connected,
             ClientInstruction::ActiveClients(_) => ClientContext::ActiveClients,
+            ClientInstruction::Log(_) => ClientContext::Log,
             ClientInstruction::StartedParsingStdinQuery => ClientContext::StartedParsingStdinQuery,
             ClientInstruction::DoneParsingStdinQuery => ClientContext::DoneParsingStdinQuery,
         }
@@ -164,6 +167,7 @@ pub fn start_client(
         style: Style {
             colors: palette,
             rounded_corners: config.ui.pane_frames.rounded_corners,
+            hide_session_name: config.ui.pane_frames.hide_session_name,
         },
         keybinds: config.keybinds.clone(),
     };
@@ -265,16 +269,6 @@ pub fn start_client(
                             os_api.send_to_server(ClientToServerMsg::TerminalResize(
                                 os_api.get_terminal_size_using_fd(0),
                             ));
-                            // send a query to the terminal emulator in case the font size changed
-                            // as well - we'll parse the response through STDIN
-                            let terminal_emulator_query_string = stdin_ansi_parser
-                                .lock()
-                                .unwrap()
-                                .window_size_change_query_string();
-                            let _ = os_api
-                                .get_stdout_writer()
-                                .write(terminal_emulator_query_string.as_bytes())
-                                .unwrap();
                         }
                     }),
                     Box::new({
@@ -348,7 +342,7 @@ pub fn start_client(
 
     let mut stdout = os_input.get_stdout_writer();
     stdout
-        .write_all("\u{1b}[1mLoading Zellij\u{1b}[m".as_bytes())
+        .write_all("\u{1b}[1mLoading Zellij\u{1b}[m\n\r".as_bytes())
         .expect("cannot write to stdout");
     stdout.flush().expect("could not flush");
 
@@ -368,7 +362,7 @@ pub fn start_client(
             match client_instruction {
                 ClientInstruction::StartedParsingStdinQuery => {
                     stdout
-                        .write_all("\n\rQuerying terminal emulator for \u{1b}[32;1mdefault colors\u{1b}[m and \u{1b}[32;1mpixel/cell\u{1b}[m ratio...".as_bytes())
+                        .write_all("Querying terminal emulator for \u{1b}[32;1mdefault colors\u{1b}[m and \u{1b}[32;1mpixel/cell\u{1b}[m ratio...".as_bytes())
                         .expect("cannot write to stdout");
                     stdout.flush().expect("could not flush");
                 },
@@ -415,6 +409,11 @@ pub fn start_client(
                 send_input_instructions
                     .send(InputInstruction::SwitchToMode(input_mode))
                     .unwrap();
+            },
+            ClientInstruction::Log(lines_to_log) => {
+                for line in lines_to_log {
+                    log::info!("{line}");
+                }
             },
             _ => {},
         }

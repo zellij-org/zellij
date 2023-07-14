@@ -3,6 +3,7 @@ use crate::tab::Pane;
 use crate::{os_input_output::ServerOsApi, panes::PaneId, ClientId};
 use std::collections::{BTreeMap, HashMap};
 
+#[derive(Clone)]
 pub struct ActivePanes {
     active_panes: HashMap<ClientId, PaneId>,
     os_api: Box<dyn ServerOsApi>,
@@ -96,5 +97,11 @@ impl ActivePanes {
                     .write_to_tty_stdin(terminal_id, focus_event.as_bytes());
             }
         }
+    }
+    pub fn pane_id_is_focused(&self, pane_id: &PaneId) -> bool {
+        self.active_panes
+            .values()
+            .find(|p_id| **p_id == *pane_id)
+            .is_some()
     }
 }

@@ -5,7 +5,7 @@ use crate::{
     cli::{CliArgs, Command},
     consts::{
         FEATURES, SYSTEM_DEFAULT_CONFIG_DIR, SYSTEM_DEFAULT_DATA_DIR_PREFIX, VERSION,
-        ZELLIJ_PROJ_DIR,
+        ZELLIJ_DEFAULT_THEMES, ZELLIJ_PROJ_DIR,
     },
     errors::prelude::*,
     input::{
@@ -63,6 +63,26 @@ pub fn get_default_data_dir() -> PathBuf {
     .unwrap_or_else(xdg_data_dir)
 }
 
+#[cfg(not(test))]
+fn get_default_themes() -> Themes {
+    let mut themes = Themes::default();
+    for file in ZELLIJ_DEFAULT_THEMES.files() {
+        if let Some(content) = file.contents_utf8() {
+            match Themes::from_string(content.to_string()) {
+                Ok(theme) => themes = themes.merge(theme),
+                Err(_) => {},
+            }
+        }
+    }
+
+    themes
+}
+
+#[cfg(test)]
+fn get_default_themes() -> Themes {
+    Themes::default()
+}
+
 pub fn xdg_config_dir() -> PathBuf {
     ZELLIJ_PROJ_DIR.config_dir().to_owned()
 }
@@ -104,10 +124,22 @@ pub const DEFAULT_LAYOUT: &[u8] = include_bytes!(concat!(
     "assets/layouts/default.kdl"
 ));
 
+pub const DEFAULT_SWAP_LAYOUT: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/",
+    "assets/layouts/default.swap.kdl"
+));
+
 pub const STRIDER_LAYOUT: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/",
     "assets/layouts/strider.kdl"
+));
+
+pub const STRIDER_SWAP_LAYOUT: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/",
+    "assets/layouts/strider.swap.kdl"
 ));
 
 pub const NO_STATUS_LAYOUT: &[u8] = include_bytes!(concat!(
@@ -120,6 +152,12 @@ pub const COMPACT_BAR_LAYOUT: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/",
     "assets/layouts/compact.kdl"
+));
+
+pub const COMPACT_BAR_SWAP_LAYOUT: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/",
+    "assets/layouts/compact.swap.kdl"
 ));
 
 pub const FISH_EXTRA_COMPLETION: &[u8] = include_bytes!(concat!(
@@ -171,6 +209,18 @@ pub fn dump_specified_layout(layout: &str) -> std::io::Result<()> {
         not_found => Err(std::io::Error::new(
             std::io::ErrorKind::Other,
             format!("Layout: {} not found", not_found),
+        )),
+    }
+}
+
+pub fn dump_specified_swap_layout(swap_layout: &str) -> std::io::Result<()> {
+    match swap_layout {
+        "strider" => dump_asset(STRIDER_SWAP_LAYOUT),
+        "default" => dump_asset(DEFAULT_SWAP_LAYOUT),
+        "compact" => dump_asset(COMPACT_BAR_SWAP_LAYOUT),
+        not_found => Err(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            format!("Swap Layout not found for: {}", not_found),
         )),
     }
 }
@@ -230,6 +280,10 @@ pub struct Setup {
     #[clap(long, value_parser)]
     pub dump_layout: Option<String>,
 
+    /// Dump the specified swap layout file to stdout
+    #[clap(long, value_parser)]
+    pub dump_swap_layout: Option<String>,
+
     /// Dump the builtin plugins to DIR or "DATA DIR" if unspecified
     #[clap(
         long,
@@ -257,8 +311,8 @@ impl Setup {
     /// file options, superceeding the config file options:
     /// 1. command line options (`zellij options`)
     /// 2. layout options
-    ///    (`layout.yaml` / `zellij --layout`)
-    /// 3. config options (`config.yaml`)
+    ///    (`layout.kdl` / `zellij --layout`)
+    /// 3. config options (`config.kdl`)
     pub fn from_cli_args(cli_args: &CliArgs) -> Result<(Config, Layout, Options), ConfigError> {
         // note that this can potentially exit the process
         Setup::handle_setup_commands(cli_args);
@@ -276,25 +330,14 @@ impl Setup {
             None => config.options.clone(),
         };
 
-        if let Some(theme_dir) = config_options
-            .theme_dir
-            .clone()
-            .or_else(|| get_theme_dir(cli_args.config_dir.clone().or_else(find_default_config_dir)))
-        {
-            if theme_dir.is_dir() {
-                for entry in (theme_dir.read_dir()?).flatten() {
-                    if let Some(extension) = entry.path().extension() {
-                        if extension == "kdl" {
-                            match Themes::from_path(entry.path()) {
-                                Ok(themes) => config.themes = config.themes.merge(themes),
-                                Err(e) => {
-                                    log::error!("error loading theme file: {:?}", e);
-                                },
-                            }
-                        }
-                    }
-                }
-            }
+        config.themes = config.themes.merge(get_default_themes());
+
+        let user_theme_dir = config_options.theme_dir.clone().or_else(|| {
+            get_theme_dir(cli_args.config_dir.clone().or_else(find_default_config_dir))
+                .filter(|dir| dir.exists())
+        });
+        if let Some(user_theme_dir) = user_theme_dir {
+            config.themes = config.themes.merge(Themes::from_dir(user_theme_dir)?);
         }
 
         if let Some(Command::Setup(ref setup)) = &cli_args.command {
@@ -334,6 +377,11 @@ impl Setup {
 
         if let Some(layout) = &self.dump_layout {
             dump_specified_layout(layout)?;
+            std::process::exit(0);
+        }
+
+        if let Some(swap_layout) = &self.dump_swap_layout {
+            dump_specified_swap_layout(swap_layout)?;
             std::process::exit(0);
         }
 
@@ -402,11 +450,20 @@ impl Setup {
             }
         }
         if let Some(config_file) = config_file {
-            writeln!(&mut message, "[CONFIG FILE]: {:?}", config_file).unwrap();
-            // match Config::new(&config_file) {
+            writeln!(
+                &mut message,
+                "[LOOKING FOR CONFIG FILE FROM]: {:?}",
+                config_file
+            )
+            .unwrap();
             match Config::from_path(&config_file, None) {
                 Ok(_) => message.push_str("[CONFIG FILE]: Well defined.\n"),
-                Err(e) => writeln!(&mut message, "[CONFIG ERROR]: {}", e).unwrap(),
+                Err(e) => writeln!(
+                    &mut message,
+                    "[CONFIG ERROR]: {}. \n By default, zellij loads default configuration",
+                    e
+                )
+                .unwrap(),
             }
         } else {
             message.push_str("[CONFIG FILE]: Not Found\n");

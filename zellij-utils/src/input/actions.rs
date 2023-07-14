@@ -1,12 +1,16 @@
 //! Definition of the actions that can be bound to keys.
 
 use super::command::RunCommandAction;
-use super::layout::{FloatingPanesLayout, Layout, PaneLayout};
+use super::layout::{
+    FloatingPaneLayout, Layout, RunPlugin, RunPluginLocation, SwapFloatingLayout, SwapTiledLayout,
+    TiledPaneLayout,
+};
 use crate::cli::CliAction;
 use crate::data::InputMode;
 use crate::data::{Direction, Resize};
-use crate::input::config::{ConfigError, KdlError};
+use crate::input::config::{Config, ConfigError, KdlError};
 use crate::input::options::OnForceClose;
+use crate::setup::{find_default_config_dir, get_layout_dir};
 use miette::{NamedSource, Report};
 use serde::{Deserialize, Serialize};
 
@@ -115,6 +119,9 @@ pub enum Action {
     /// If there is no pane in the direction, move to previous/next Tab.
     MoveFocusOrTab(Direction),
     MovePane(Option<Direction>),
+    MovePaneBackwards,
+    /// Clear all buffers of a current screen
+    ClearScreen,
     /// Dumps the screen to a file
     DumpScreen(String, bool),
     /// Scroll up in focus pane.
@@ -148,7 +155,13 @@ pub enum Action {
     /// If no direction is specified, will try to use the biggest available space.
     NewPane(Option<Direction>, Option<String>), // String is an optional pane name
     /// Open the file in a new pane using the default editor
-    EditFile(PathBuf, Option<usize>, Option<Direction>, bool), // usize is an optional line number, bool is floating true/false
+    EditFile(
+        PathBuf,
+        Option<usize>,
+        Option<PathBuf>,
+        Option<Direction>,
+        bool,
+    ), // usize is an optional line number, Option<PathBuf> is an optional cwd, bool is floating true/false
     /// Open a new floating pane
     NewFloatingPane(Option<RunCommandAction>, Option<String>), // String is an optional pane name
     /// Open a new tiled (embedded, non-floating) pane
@@ -164,7 +177,13 @@ pub enum Action {
     PaneNameInput(Vec<u8>),
     UndoRenamePane,
     /// Create a new tab, optionally with a specified tab layout.
-    NewTab(Option<PaneLayout>, Vec<FloatingPanesLayout>, Option<String>), // the String is the tab name
+    NewTab(
+        Option<TiledPaneLayout>,
+        Vec<FloatingPaneLayout>,
+        Option<Vec<SwapTiledLayout>>,
+        Option<Vec<SwapFloatingLayout>>,
+        Option<String>,
+    ), // the String is the tab name
     /// Do nothing.
     NoOp,
     /// Go to the next tab.
@@ -174,6 +193,7 @@ pub enum Action {
     /// Close the current tab.
     CloseTab,
     GoToTab(u32),
+    GoToTabName(String, bool),
     ToggleTab,
     TabNameInput(Vec<u8>),
     UndoRenameTab,
@@ -184,6 +204,7 @@ pub enum Action {
     LeftClick(Position),
     RightClick(Position),
     MiddleClick(Position),
+    LaunchOrFocusPlugin(RunPlugin, bool), // bool => should float
     LeftMouseRelease(Position),
     RightMouseRelease(Position),
     MiddleMouseRelease(Position),
@@ -204,12 +225,36 @@ pub enum Action {
     /// Toggle case sensitivity of search
     SearchToggleOption(SearchOption),
     ToggleMouseMode,
+    PreviousSwapLayout,
+    NextSwapLayout,
+    /// Query all tab names
+    QueryTabNames,
+    /// Open a new tiled (embedded, non-floating) plugin pane
+    NewTiledPluginPane(RunPluginLocation, Option<String>), // String is an optional name
+    NewFloatingPluginPane(RunPluginLocation, Option<String>), // String is an optional name
+    StartOrReloadPlugin(RunPlugin),
+    CloseTerminalPane(u32),
+    ClosePluginPane(u32),
+    FocusTerminalPaneWithId(u32, bool), // bool is should_float_if_hidden
+    FocusPluginPaneWithId(u32, bool),   // bool is should_float_if_hidden
+    RenameTerminalPane(u32, Vec<u8>),
+    RenamePluginPane(u32, Vec<u8>),
+    RenameTab(u32, Vec<u8>),
 }
 
 impl Action {
+    /// Checks that two Action are match except their mutable attributes.
+    pub fn shallow_eq(&self, other_action: &Action) -> bool {
+        match (self, other_action) {
+            (Action::NewTab(..), Action::NewTab(..)) => true,
+            _ => self == other_action,
+        }
+    }
+
     pub fn actions_from_cli(
         cli_action: CliAction,
         get_current_dir: Box<dyn Fn() -> PathBuf>,
+        config: Option<Config>,
     ) -> Result<Vec<Action>, String> {
         match cli_action {
             CliAction::Write { bytes } => Ok(vec![Action::Write(bytes)]),
@@ -219,7 +264,9 @@ impl Action {
             CliAction::FocusPreviousPane => Ok(vec![Action::FocusPreviousPane]),
             CliAction::MoveFocus { direction } => Ok(vec![Action::MoveFocus(direction)]),
             CliAction::MoveFocusOrTab { direction } => Ok(vec![Action::MoveFocusOrTab(direction)]),
-            CliAction::MovePane { direction } => Ok(vec![Action::MovePane(Some(direction))]),
+            CliAction::MovePane { direction } => Ok(vec![Action::MovePane(direction)]),
+            CliAction::MovePaneBackwards => Ok(vec![Action::MovePaneBackwards]),
+            CliAction::Clear => Ok(vec![Action::ClearScreen]),
             CliAction::DumpScreen { path, full } => Ok(vec![Action::DumpScreen(
                 path.as_os_str().to_string_lossy().into(),
                 full,
@@ -239,19 +286,40 @@ impl Action {
             CliAction::NewPane {
                 direction,
                 command,
+                plugin,
                 cwd,
                 floating,
                 name,
                 close_on_exit,
                 start_suspended,
             } => {
-                if !command.is_empty() {
+                let current_dir = get_current_dir();
+                let cwd = cwd
+                    .map(|cwd| current_dir.join(cwd))
+                    .or_else(|| Some(current_dir));
+                if let Some(plugin) = plugin {
+                    if floating {
+                        let plugin = RunPluginLocation::parse(&plugin, cwd).map_err(|e| {
+                            format!("Failed to parse plugin loction {plugin}: {}", e)
+                        })?;
+                        Ok(vec![Action::NewFloatingPluginPane(plugin, name)])
+                    } else {
+                        let plugin = RunPluginLocation::parse(&plugin, cwd).map_err(|e| {
+                            format!("Failed to parse plugin location {plugin}: {}", e)
+                        })?;
+                        // it is intentional that a new tiled plugin pane cannot include a
+                        // direction
+                        // this is because the cli client opening a tiled plugin pane is a
+                        // different client than the one opening the pane, and this can potentially
+                        // create very confusing races if the client changes focus while the plugin
+                        // is being loaded
+                        // this is not the case with terminal panes for historical reasons of
+                        // backwards compatibility to a time before we had auto layouts
+                        Ok(vec![Action::NewTiledPluginPane(plugin, name)])
+                    }
+                } else if !command.is_empty() {
                     let mut command = command.clone();
                     let (command, args) = (PathBuf::from(command.remove(0)), command);
-                    let current_dir = get_current_dir();
-                    let cwd = cwd
-                        .map(|cwd| current_dir.join(cwd))
-                        .or_else(|| Some(current_dir));
                     let hold_on_start = start_suspended;
                     let hold_on_close = !close_on_exit;
                     let run_command_action = RunCommandAction {
@@ -295,13 +363,14 @@ impl Action {
                     .map(|cwd| current_dir.join(cwd))
                     .or_else(|| Some(current_dir));
                 if file.is_relative() {
-                    if let Some(cwd) = cwd {
+                    if let Some(cwd) = cwd.as_ref() {
                         file = cwd.join(file);
                     }
                 }
                 Ok(vec![Action::EditFile(
                     file,
                     line_number,
+                    cwd,
                     direction,
                     floating,
                 )])
@@ -321,21 +390,30 @@ impl Action {
             CliAction::GoToPreviousTab => Ok(vec![Action::GoToPreviousTab]),
             CliAction::CloseTab => Ok(vec![Action::CloseTab]),
             CliAction::GoToTab { index } => Ok(vec![Action::GoToTab(index)]),
+            CliAction::GoToTabName { name, create } => Ok(vec![Action::GoToTabName(name, create)]),
             CliAction::RenameTab { name } => Ok(vec![
                 Action::TabNameInput(vec![0]),
                 Action::TabNameInput(name.as_bytes().to_vec()),
             ]),
             CliAction::UndoRenameTab => Ok(vec![Action::UndoRenameTab]),
-            CliAction::NewTab { name, layout, cwd } => {
+            CliAction::NewTab {
+                name,
+                layout,
+                layout_dir,
+                cwd,
+            } => {
                 let current_dir = get_current_dir();
                 let cwd = cwd
                     .map(|cwd| current_dir.join(cwd))
                     .or_else(|| Some(current_dir));
                 if let Some(layout_path) = layout {
-                    let (path_to_raw_layout, raw_layout) =
-                        Layout::stringified_from_path_or_default(Some(&layout_path), None)
+                    let layout_dir = layout_dir
+                        .or_else(|| config.and_then(|c| c.options.layout_dir))
+                        .or_else(|| get_layout_dir(find_default_config_dir()));
+                    let (path_to_raw_layout, raw_layout, swap_layouts) =
+                        Layout::stringified_from_path_or_default(Some(&layout_path), layout_dir)
                             .map_err(|e| format!("Failed to load layout: {}", e))?;
-                    let layout = Layout::from_str(&raw_layout, path_to_raw_layout, cwd).map_err(|e| {
+                    let layout = Layout::from_str(&raw_layout, path_to_raw_layout, swap_layouts.as_ref().map(|(f, p)| (f.as_str(), p.as_str())), cwd).map_err(|e| {
                         let stringified_error = match e {
                             ConfigError::KdlError(kdl_error) => {
                                 let error = kdl_error.add_src(layout_path.as_path().as_os_str().to_string_lossy().to_string(), String::from(raw_layout));
@@ -371,25 +449,56 @@ impl Action {
                     if tabs.len() > 1 {
                         return Err(format!("Tab layout cannot itself have tabs"));
                     } else if !tabs.is_empty() {
+                        let swap_tiled_layouts = Some(layout.swap_tiled_layouts.clone());
+                        let swap_floating_layouts = Some(layout.swap_floating_layouts.clone());
                         let (tab_name, layout, floating_panes_layout) =
                             tabs.drain(..).next().unwrap();
                         let name = tab_name.or(name);
                         Ok(vec![Action::NewTab(
                             Some(layout),
                             floating_panes_layout,
+                            swap_tiled_layouts,
+                            swap_floating_layouts,
                             name,
                         )])
                     } else {
+                        let swap_tiled_layouts = Some(layout.swap_tiled_layouts.clone());
+                        let swap_floating_layouts = Some(layout.swap_floating_layouts.clone());
                         let (layout, floating_panes_layout) = layout.new_tab();
                         Ok(vec![Action::NewTab(
                             Some(layout),
                             floating_panes_layout,
+                            swap_tiled_layouts,
+                            swap_floating_layouts,
                             name,
                         )])
                     }
                 } else {
-                    Ok(vec![Action::NewTab(None, vec![], name)])
+                    Ok(vec![Action::NewTab(None, vec![], None, None, name)])
                 }
+            },
+            CliAction::PreviousSwapLayout => Ok(vec![Action::PreviousSwapLayout]),
+            CliAction::NextSwapLayout => Ok(vec![Action::NextSwapLayout]),
+            CliAction::QueryTabNames => Ok(vec![Action::QueryTabNames]),
+            CliAction::StartOrReloadPlugin { url } => {
+                let current_dir = get_current_dir();
+                let run_plugin_location = RunPluginLocation::parse(&url, Some(current_dir))
+                    .map_err(|e| format!("Failed to parse plugin location: {}", e))?;
+                let run_plugin = RunPlugin {
+                    location: run_plugin_location,
+                    _allow_exec_host_cmd: false,
+                };
+                Ok(vec![Action::StartOrReloadPlugin(run_plugin)])
+            },
+            CliAction::LaunchOrFocusPlugin { url, floating } => {
+                let current_dir = get_current_dir();
+                let run_plugin_location = RunPluginLocation::parse(url.as_str(), Some(current_dir))
+                    .map_err(|e| format!("Failed to parse plugin location: {}", e))?;
+                let run_plugin = RunPlugin {
+                    location: run_plugin_location,
+                    _allow_exec_host_cmd: false,
+                };
+                Ok(vec![Action::LaunchOrFocusPlugin(run_plugin, floating)])
             },
         }
     }

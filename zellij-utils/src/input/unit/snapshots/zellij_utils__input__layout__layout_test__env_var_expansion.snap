@@ -1,0 +1,212 @@
+---
+source: zellij-utils/src/input/./unit/layout_test.rs
+assertion_line: 2116
+expression: "format!(\"{layout:#?}\")"
+---
+Layout {
+    tabs: [],
+    focused_tab_index: None,
+    template: Some(
+        (
+            TiledPaneLayout {
+                children_split_direction: Horizontal,
+                name: None,
+                children: [
+                    TiledPaneLayout {
+                        children_split_direction: Horizontal,
+                        name: None,
+                        children: [],
+                        split_size: None,
+                        run: Some(
+                            Cwd(
+                                "/abs/path/relative",
+                            ),
+                        ),
+                        borderless: false,
+                        focus: None,
+                        external_children_index: None,
+                        children_are_stacked: false,
+                        is_expanded_in_stack: false,
+                        exclude_from_sync: None,
+                    },
+                    TiledPaneLayout {
+                        children_split_direction: Horizontal,
+                        name: None,
+                        children: [],
+                        split_size: None,
+                        run: Some(
+                            Cwd(
+                                "/another/abs",
+                            ),
+                        ),
+                        borderless: false,
+                        focus: None,
+                        external_children_index: None,
+                        children_are_stacked: false,
+                        is_expanded_in_stack: false,
+                        exclude_from_sync: None,
+                    },
+                    TiledPaneLayout {
+                        children_split_direction: Horizontal,
+                        name: None,
+                        children: [],
+                        split_size: None,
+                        run: Some(
+                            Cwd(
+                                "/another/abs",
+                            ),
+                        ),
+                        borderless: false,
+                        focus: None,
+                        external_children_index: None,
+                        children_are_stacked: false,
+                        is_expanded_in_stack: false,
+                        exclude_from_sync: None,
+                    },
+                    TiledPaneLayout {
+                        children_split_direction: Horizontal,
+                        name: None,
+                        children: [],
+                        split_size: None,
+                        run: Some(
+                            Cwd(
+                                "/abs/path/relative",
+                            ),
+                        ),
+                        borderless: false,
+                        focus: None,
+                        external_children_index: None,
+                        children_are_stacked: false,
+                        is_expanded_in_stack: false,
+                        exclude_from_sync: None,
+                    },
+                    TiledPaneLayout {
+                        children_split_direction: Horizontal,
+                        name: None,
+                        children: [],
+                        split_size: None,
+                        run: Some(
+                            Command(
+                                RunCommand {
+                                    command: "ls",
+                                    args: [],
+                                    cwd: Some(
+                                        "/somewhere",
+                                    ),
+                                    hold_on_close: true,
+                                    hold_on_start: false,
+                                },
+                            ),
+                        ),
+                        borderless: false,
+                        focus: None,
+                        external_children_index: None,
+                        children_are_stacked: false,
+                        is_expanded_in_stack: false,
+                        exclude_from_sync: None,
+                    },
+                    TiledPaneLayout {
+                        children_split_direction: Horizontal,
+                        name: None,
+                        children: [],
+                        split_size: None,
+                        run: Some(
+                            EditFile(
+                                "/somewhere/file.rs",
+                                None,
+                                Some(
+                                    "/somewhere",
+                                ),
+                            ),
+                        ),
+                        borderless: false,
+                        focus: None,
+                        external_children_index: None,
+                        children_are_stacked: false,
+                        is_expanded_in_stack: false,
+                        exclude_from_sync: None,
+                    },
+                    TiledPaneLayout {
+                        children_split_direction: Horizontal,
+                        name: None,
+                        children: [],
+                        split_size: None,
+                        run: Some(
+                            EditFile(
+                                "/home/aram/backup/file.rs",
+                                None,
+                                Some(
+                                    "/home/aram/backup",
+                                ),
+                            ),
+                        ),
+                        borderless: false,
+                        focus: None,
+                        external_children_index: None,
+                        children_are_stacked: false,
+                        is_expanded_in_stack: false,
+                        exclude_from_sync: None,
+                    },
+                    TiledPaneLayout {
+                        children_split_direction: Horizontal,
+                        name: None,
+                        children: [],
+                        split_size: None,
+                        run: Some(
+                            Command(
+                                RunCommand {
+                                    command: "/home/aram/backup/executable",
+                                    args: [],
+                                    cwd: Some(
+                                        "/abs/path",
+                                    ),
+                                    hold_on_close: true,
+                                    hold_on_start: false,
+                                },
+                            ),
+                        ),
+                        borderless: false,
+                        focus: None,
+                        external_children_index: None,
+                        children_are_stacked: false,
+                        is_expanded_in_stack: false,
+                        exclude_from_sync: None,
+                    },
+                    TiledPaneLayout {
+                        children_split_direction: Horizontal,
+                        name: None,
+                        children: [],
+                        split_size: None,
+                        run: Some(
+                            EditFile(
+                                "/home/aram/backup/foo.txt",
+                                None,
+                                Some(
+                                    "/abs/path",
+                                ),
+                            ),
+                        ),
+                        borderless: false,
+                        focus: None,
+                        external_children_index: None,
+                        children_are_stacked: false,
+                        is_expanded_in_stack: false,
+                        exclude_from_sync: None,
+                    },
+                ],
+                split_size: None,
+                run: None,
+                borderless: false,
+                focus: None,
+                external_children_index: None,
+                children_are_stacked: false,
+                is_expanded_in_stack: false,
+                exclude_from_sync: None,
+            },
+            [],
+        ),
+    ),
+    swap_layouts: [],
+    swap_tiled_layouts: [],
+    swap_floating_layouts: [],
+}
