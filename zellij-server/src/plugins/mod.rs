@@ -18,7 +18,7 @@ use crate::{pty::PtyInstruction, thread_bus::Bus, ClientId, ServerInstruction};
 use wasm_bridge::WasmBridge;
 
 use zellij_utils::{
-    data::{Event, EventType, PluginCapabilities},
+    data::{Event, EventType, PermissionType, PluginCapabilities},
     errors::{prelude::*, ContextType, PluginContext},
     input::{
         command::TerminalAction,
@@ -79,7 +79,7 @@ pub enum PluginInstruction {
         String, // serialized payload
     ),
     PluginSubscribedToEvents(PluginId, ClientId, HashSet<EventType>),
-    PermissionRequestResult(PluginId, Option<ClientId>, bool),
+    PermissionRequestResult(PluginId, Option<ClientId>, HashSet<PermissionType>, bool),
     Exit,
 }
 
@@ -290,7 +290,15 @@ pub(crate) fn plugin_thread_main(
                     }
                 }
             },
-            PluginInstruction::PermissionRequestResult(plugin_id, client_id, result) => {
+            PluginInstruction::PermissionRequestResult(
+                plugin_id,
+                client_id,
+                permissions,
+                result,
+            ) => {
+                let permissions = if result { permissions } else { HashSet::new() };
+                wasm_bridge.caching_plugin_permissions(plugin_id, client_id, permissions);
+
                 let updates = vec![(
                     Some(plugin_id),
                     client_id,

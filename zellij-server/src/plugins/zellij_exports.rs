@@ -215,6 +215,7 @@ fn host_set_selectable(env: &ForeignFunctionEnv, selectable: i32) {
 }
 
 fn host_request_permission(env: &ForeignFunctionEnv) {
+    // TODO: only if `env.plugin_env.plugin_permissions` is empty, send request permission.
     wasi_read_object::<HashSet<PermissionType>>(&env.plugin_env.wasi_env)
         .and_then(|permissions| {
             env.plugin_env

@@ -13,6 +13,7 @@ use std::{
 };
 use wasmer::{Instance, Module, Store, Value};
 use zellij_utils::async_std::task::{self, JoinHandle};
+use zellij_utils::data::PermissionType;
 use zellij_utils::notify_debouncer_full::{notify::RecommendedWatcher, Debouncer, FileIdMap};
 
 use crate::{
@@ -704,6 +705,25 @@ impl WasmBridge {
             };
         }
     }
+    pub fn caching_plugin_permissions(
+        &mut self,
+        plugin_id: PluginId,
+        client_id: Option<ClientId>,
+        permissions: HashSet<PermissionType>,
+    ) {
+        if let Some(running_plugin) = self
+            .plugin_map
+            .lock()
+            .unwrap()
+            .get_running_plugin(plugin_id, client_id)
+        {
+            running_plugin
+                .lock()
+                .unwrap()
+                .plugin_env
+                .merge_plugin_permissions(permissions);
+        }
+    }
 }
 
 fn handle_plugin_successful_loading(senders: &ThreadSenders, plugin_id: PluginId) {
@@ -737,6 +757,10 @@ pub fn apply_event_to_plugin(
     plugin_bytes: &mut Vec<(PluginId, ClientId, Vec<u8>)>,
 ) -> Result<()> {
     let err_context = || format!("Failed to apply event to plugin {plugin_id}");
+
+    // TODO: for test, must be deleted before merge
+    log::info!("plugin_permissions: {:?}", plugin_env.plugin_permissions);
+
     let update = instance
         .exports
         .get_function("update")

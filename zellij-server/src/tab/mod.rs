@@ -9,7 +9,7 @@ mod swap_layouts;
 use copy_command::CopyCommand;
 use std::env::temp_dir;
 use uuid::Uuid;
-use zellij_utils::data::{Direction, PaneInfo, PluginPermission, ResizeStrategy};
+use zellij_utils::data::{Direction, PaneInfo, PermissionType, PluginPermission, ResizeStrategy};
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
 use zellij_utils::position::{Column, Line};
@@ -463,8 +463,8 @@ pub trait Pane {
 #[derive(Clone, Debug)]
 pub enum AdjustedInput {
     WriteBytesToTerminal(Vec<u8>),
-    Confirmed(bool),
     ReRunCommandInThisPane(RunCommand),
+    PermissionRequestResult(HashSet<PermissionType>, bool),
     CloseThisPane,
 }
 pub fn get_next_terminal_position(
@@ -1568,11 +1568,14 @@ impl Tab {
                         .send_to_plugin(PluginInstruction::Update(plugin_updates))
                         .with_context(err_context)?;
                 },
-                Some(AdjustedInput::Confirmed(result)) => {
+                Some(AdjustedInput::PermissionRequestResult(permissions, result)) => {
                     self.request_plugin_permissions(pid, None);
                     self.senders
                         .send_to_plugin(PluginInstruction::PermissionRequestResult(
-                            pid, client_id, result,
+                            pid,
+                            client_id,
+                            permissions,
+                            result,
                         ))
                         .with_context(err_context)?;
                     should_update_ui = true;

@@ -224,12 +224,13 @@ impl Pane for PluginPane {
         None
     }
     fn adjust_input_to_terminal(&mut self, input_bytes: Vec<u8>) -> Option<AdjustedInput> {
-        if self.requesting_permissions.is_some() {
+        if let Some(requesting_permissions) = &self.requesting_permissions {
+            let permissions = requesting_permissions.permissions.clone();
             match input_bytes.as_slice() {
                 // Y or y
-                &[89] | &[121] => Some(AdjustedInput::Confirmed(true)),
+                &[89] | &[121] => Some(AdjustedInput::PermissionRequestResult(permissions, true)),
                 // N or n
-                &[78] | &[110] => Some(AdjustedInput::Confirmed(false)),
+                &[78] | &[110] => Some(AdjustedInput::PermissionRequestResult(permissions, false)),
                 _ => None,
             }
         } else {
