@@ -2,8 +2,8 @@ use crate::input::actions::Action;
 use crate::input::config::ConversionError;
 use clap::ArgEnum;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::fmt;
+use std::collections::{HashMap, HashSet};
+use std::fmt::{self, Display};
 use std::path::PathBuf;
 use std::str::FromStr;
 use strum_macros::{EnumDiscriminants, EnumIter, EnumString, ToString};
@@ -493,14 +493,36 @@ pub enum Event {
     FileSystemUpdate(Vec<PathBuf>),
     /// A file was deleted somewhere in the Zellij CWD folder
     FileSystemDelete(Vec<PathBuf>),
+    /// TODO
+    PermissionRequestResult(bool),
 }
 
 #[derive(Debug, Clone, PartialEq, EnumDiscriminants, ToString, Serialize, Deserialize)]
 #[strum_discriminants(derive(EnumString, Hash, Serialize, Deserialize))]
-#[strum_discriminants(name(PluginPermission))]
+#[strum_discriminants(name(PermissionType))]
 #[non_exhaustive]
 pub enum Permission {
     KeyboardInput,
+}
+
+impl Display for PermissionType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::KeyboardInput => write!(f, "keyboard input"),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct PluginPermission {
+    pub name: String,
+    pub permissions: HashSet<PermissionType>,
+}
+
+impl PluginPermission {
+    pub fn new(name: String, permissions: HashSet<PermissionType>) -> Self {
+        PluginPermission { name, permissions }
+    }
 }
 
 /// Describes the different input modes, which change the way that keystrokes will be interpreted.

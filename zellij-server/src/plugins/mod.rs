@@ -79,6 +79,7 @@ pub enum PluginInstruction {
         String, // serialized payload
     ),
     PluginSubscribedToEvents(PluginId, ClientId, HashSet<EventType>),
+    PermissionRequestResult(PluginId, Option<ClientId>, bool),
     Exit,
 }
 
@@ -104,6 +105,9 @@ impl From<&PluginInstruction> for PluginContext {
             PluginInstruction::PostMessageToPlugin(..) => PluginContext::PostMessageToPlugin,
             PluginInstruction::PluginSubscribedToEvents(..) => {
                 PluginContext::PluginSubscribedToEvents
+            },
+            PluginInstruction::PermissionRequestResult(..) => {
+                PluginContext::PermissionRequestResult
             },
         }
     }
@@ -285,6 +289,14 @@ pub(crate) fn plugin_thread_main(
                         wasm_bridge.start_fs_watcher_if_not_started();
                     }
                 }
+            },
+            PluginInstruction::PermissionRequestResult(plugin_id, client_id, result) => {
+                let updates = vec![(
+                    Some(plugin_id),
+                    client_id,
+                    Event::PermissionRequestResult(result),
+                )];
+                wasm_bridge.update_plugins(updates)?;
             },
             PluginInstruction::Exit => {
                 wasm_bridge.cleanup();

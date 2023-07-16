@@ -210,7 +210,7 @@ pub trait Pane {
     fn set_should_render_boundaries(&mut self, _should_render: bool) {}
     fn selectable(&self) -> bool;
     fn set_selectable(&mut self, selectable: bool);
-    fn set_plugin_permissions(&mut self, _permissions: Option<HashSet<PluginPermission>>) {}
+    fn set_plugin_permissions(&mut self, _permissions: Option<PluginPermission>) {}
     fn render(
         &mut self,
         client_id: Option<ClientId>,
@@ -1568,9 +1568,13 @@ impl Tab {
                         .send_to_plugin(PluginInstruction::Update(plugin_updates))
                         .with_context(err_context)?;
                 },
-                Some(AdjustedInput::Confirmed(_)) => {
+                Some(AdjustedInput::Confirmed(result)) => {
                     self.request_plugin_permissions(pid, None);
-                    // TODO: Maybe call render() in plugin instance?
+                    self.senders
+                        .send_to_plugin(PluginInstruction::PermissionRequestResult(
+                            pid, client_id, result,
+                        ))
+                        .with_context(err_context)?;
                     should_update_ui = true;
                 },
                 Some(_) => {},
@@ -3418,11 +3422,7 @@ impl Tab {
         }
         Ok(())
     }
-    pub fn request_plugin_permissions(
-        &mut self,
-        pid: u32,
-        permissions: Option<HashSet<PluginPermission>>,
-    ) {
+    pub fn request_plugin_permissions(&mut self, pid: u32, permissions: Option<PluginPermission>) {
         if let Some(plugin_pane) = self
             .tiled_panes
             .get_pane_mut(PaneId::Plugin(pid))

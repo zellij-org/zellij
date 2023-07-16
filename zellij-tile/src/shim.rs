@@ -24,7 +24,7 @@ pub fn set_selectable(selectable: bool) {
     unsafe { host_set_selectable(selectable as i32) };
 }
 
-pub fn request_permission(permissions: &[PluginPermission]) {
+pub fn request_permission(permissions: &[PermissionType]) {
     object_to_stdout(&permissions);
     unsafe { host_request_permission() };
 }

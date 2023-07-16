@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::time::Instant;
 
 use crate::output::{CharacterChunk, SixelImageChunk};
@@ -25,6 +25,15 @@ use zellij_utils::{
     shared::make_terminal_title,
     vte,
 };
+
+macro_rules! style {
+    ($fg:expr) => {
+        ansi_term::Style::new().fg(match $fg {
+            PaletteColor::Rgb((r, g, b)) => ansi_term::Color::RGB(r, g, b),
+            PaletteColor::EightBit(color) => ansi_term::Color::Fixed(color),
+        })
+    };
+}
 
 macro_rules! get_or_create_grid {
     ($self:ident, $client_id:ident) => {{
@@ -74,7 +83,7 @@ pub(crate) struct PluginPane {
     pane_frame_color_override: Option<(PaletteColor, Option<String>)>,
     invoked_with: Option<Run>,
     loading_indication: LoadingIndication,
-    requesting_permissions: Option<HashSet<PluginPermission>>,
+    requesting_permissions: Option<PluginPermission>,
     debug: bool,
 }
 
@@ -184,6 +193,14 @@ impl Pane for PluginPane {
     }
     fn handle_plugin_bytes(&mut self, client_id: ClientId, bytes: VteBytes) {
         self.set_client_should_render(client_id, true);
+
+        let mut vte_bytes = bytes;
+        if let Some(plugin_permission) = &self.requesting_permissions {
+            vte_bytes = self
+                .display_request_permission_message(plugin_permission)
+                .into();
+        }
+
         let grid = get_or_create_grid!(self, client_id);
 
         // this is part of the plugin contract, whenever we update the plugin and call its render function, we delete the existing viewport
@@ -196,11 +213,6 @@ impl Pane for PluginPane {
             .vte_parsers
             .entry(client_id)
             .or_insert_with(|| vte::Parser::new());
-
-        let mut vte_bytes = bytes;
-        if self.requesting_permissions.is_some() {
-            vte_bytes = "Example...".into();
-        }
 
         for &byte in &vte_bytes {
             vte_parser.advance(grid, byte);
@@ -256,7 +268,7 @@ impl Pane for PluginPane {
     fn set_selectable(&mut self, selectable: bool) {
         self.selectable = selectable;
     }
-    fn set_plugin_permissions(&mut self, permissions: Option<HashSet<PluginPermission>>) {
+    fn set_plugin_permissions(&mut self, permissions: Option<PluginPermission>) {
         self.requesting_permissions = permissions;
     }
     fn render(
@@ -620,5 +632,28 @@ impl PluginPane {
         for client_id in client_ids {
             self.handle_plugin_bytes(client_id, bytes.clone());
         }
+    }
+    fn display_request_permission_message(&self, plugin_permission: &PluginPermission) -> String {
+        let cyan = style!(self.terminal_emulator_colors.borrow().cyan).bold();
+
+        let mut messages = String::new();
+
+        messages.push_str(&format!(
+            "Plugin {} would like permission to:",
+            cyan.paint(&plugin_permission.name),
+        ));
+        plugin_permission
+            .permissions
+            .iter()
+            .enumerate()
+            .for_each(|(i, p)| {
+                messages.push_str(&format!("\n\r{}. {}", i + 1, p));
+            });
+
+        messages.push_str(&format!(
+            "\n\r\n\rWould you like to grant these permissions? (y/n)"
+        ));
+
+        messages
     }
 }

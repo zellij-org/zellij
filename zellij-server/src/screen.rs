@@ -280,7 +280,7 @@ pub enum ScreenInstruction {
     RenameTab(usize, Vec<u8>),
     RequestPluginPermissions(
         u32, // u32 - plugin_id
-        HashSet<PluginPermission>,
+        PluginPermission,
     ),
 }
 

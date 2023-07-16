@@ -14,7 +14,7 @@ use std::{
 };
 use wasmer::{imports, Function, ImportObject, Store, WasmerEnv};
 use wasmer_wasi::WasiEnv;
-use zellij_utils::data::PluginPermission;
+use zellij_utils::data::{PermissionType, PluginPermission};
 
 use url::Url;
 
@@ -215,13 +215,16 @@ fn host_set_selectable(env: &ForeignFunctionEnv, selectable: i32) {
 }
 
 fn host_request_permission(env: &ForeignFunctionEnv) {
-    wasi_read_object::<HashSet<PluginPermission>>(&env.plugin_env.wasi_env)
+    wasi_read_object::<HashSet<PermissionType>>(&env.plugin_env.wasi_env)
         .and_then(|permissions| {
             env.plugin_env
                 .senders
                 .send_to_screen(ScreenInstruction::RequestPluginPermissions(
                     env.plugin_env.plugin_id,
-                    permissions,
+                    PluginPermission::new(
+                        env.plugin_env.plugin.path.display().to_string(),
+                        permissions,
+                    ),
                 ))
         })
         .with_context(|| {

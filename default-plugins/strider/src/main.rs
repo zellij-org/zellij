@@ -20,7 +20,7 @@ register_worker!(
 impl ZellijPlugin for State {
     fn load(&mut self) {
         // Example
-        request_permission(&[PluginPermission::KeyboardInput]);
+        request_permission(&[PermissionType::KeyboardInput]);
 
         refresh_directory(self);
         self.search_state.loading = true;
@@ -32,6 +32,7 @@ impl ZellijPlugin for State {
             EventType::FileSystemCreate,
             EventType::FileSystemUpdate,
             EventType::FileSystemDelete,
+            EventType::PermissionRequestResult,
         ]);
         post_message_to(
             "file_name_search",
@@ -56,6 +57,9 @@ impl ZellijPlugin for State {
         };
         self.ev_history.push_back((event.clone(), Instant::now()));
         match event {
+            Event::PermissionRequestResult(_) => {
+                should_render = true;
+            },
             Event::Timer(_elapsed) => {
                 if self.search_state.loading {
                     set_timeout(0.5);
