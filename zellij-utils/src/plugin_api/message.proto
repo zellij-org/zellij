@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package api.message;
+
+message Message {
+  string name = 1;
+  string payload = 2;
+  oneof optional_worker_name {
+    string worker_name = 3;
+  }
+}

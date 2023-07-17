@@ -20,8 +20,9 @@ use url::Url;
 use crate::{panes::PaneId, screen::ScreenInstruction};
 
 use zellij_utils::{
+    plugin_api::{event::ProtobufEventNameList, file::ProtobufFile, command::ProtobufCommand, message::ProtobufMessage, input_mode::ProtobufInputModeMessage},
     consts::VERSION,
-    data::{Direction, Event, EventType, InputMode, PluginIds, Resize, Key},
+    data::{Direction, Event, EventType, InputMode, PluginIds, Resize, Key, FileToOpen, CommandToRun, PluginMessage},
     errors::prelude::*,
     plugin_api::key::ProtobufKey,
     input::{
@@ -75,8 +76,6 @@ pub fn zellij_exports(
         host_get_key,
         host_open_file,
         host_open_file_floating,
-        host_open_file_with_line,
-        host_open_file_with_line_floating,
         host_open_terminal,
         host_open_terminal_floating,
         host_open_command_pane,
@@ -155,10 +154,15 @@ impl ForeignFunctionEnv {
 }
 
 fn host_subscribe(env: &ForeignFunctionEnv) {
-    wasi_read_object::<HashSet<EventType>>(&env.plugin_env.wasi_env)
-        .and_then(|new| {
-            env.subscriptions.lock().to_anyhow()?.extend(new.clone());
-            Ok(new)
+    // wasi_read_object::<HashSet<EventType>>(&env.plugin_env.wasi_env)
+    wasi_read_bytes(&env.plugin_env.wasi_env)
+        .and_then(|bytes| {
+            let new_subscriptions: ProtobufEventNameList = ProtobufEventNameList::decode(bytes.as_slice())?;
+            let event_list: HashSet<EventType> = new_subscriptions
+                .try_into()
+                .map_err(|e| anyhow!("failed to convert serialized subscriptions: {}", e))?;
+            env.subscriptions.lock().to_anyhow()?.extend(event_list.clone());
+            Ok(event_list)
         })
         .and_then(|new| {
             env.plugin_env
@@ -174,12 +178,16 @@ fn host_subscribe(env: &ForeignFunctionEnv) {
 }
 
 fn host_unsubscribe(env: &ForeignFunctionEnv) {
-    wasi_read_object::<HashSet<EventType>>(&env.plugin_env.wasi_env)
-        .and_then(|old| {
+    wasi_read_bytes(&env.plugin_env.wasi_env)
+        .and_then(|bytes| {
+            let new_subscriptions: ProtobufEventNameList = ProtobufEventNameList::decode(bytes.as_slice())?;
+            let event_list: HashSet<EventType> = new_subscriptions
+                .try_into()
+                .map_err(|e| anyhow!("failed to convert serialized subscriptions: {}", e))?;
             env.subscriptions
                 .lock()
                 .to_anyhow()?
-                .retain(|k| !old.contains(k));
+                .retain(|k| !event_list.contains(k));
             Ok(())
         })
         .with_context(|| format!("failed to unsubscribe for plugin {}", env.plugin_env.name()))
@@ -215,6 +223,7 @@ fn host_set_selectable(env: &ForeignFunctionEnv, selectable: i32) {
     }
 }
 
+// TODO: protobufferify
 fn host_get_plugin_ids(env: &ForeignFunctionEnv) {
     let ids = PluginIds {
         plugin_id: env.plugin_env.plugin_id,
@@ -241,6 +250,7 @@ fn host_get_zellij_version(env: &ForeignFunctionEnv) {
         .non_fatal();
 }
 
+// TODO: removeme
 fn host_get_key(env: &ForeignFunctionEnv) {
     let key_to_send = Key::Ctrl('q');
     let serialized_protobuf_key = ProtobufKey::try_from(key_to_send).unwrap().encode_to_vec();
@@ -254,22 +264,21 @@ fn host_get_key(env: &ForeignFunctionEnv) {
         .non_fatal();
 }
 
-// TODO:
-// * create a function like "host_get_zellij_version" called host_get_key - DONE
-// * have it write the serialized protobuffer to the rust-demo plugin - DONE
-// * have the plugin deserialize it and display it
-
 fn host_open_file(env: &ForeignFunctionEnv) {
-    wasi_read_object::<PathBuf>(&env.plugin_env.wasi_env)
-        .and_then(|path| {
-            let error_msg = || {
-                format!(
-                    "failed to open floating file in plugin {}",
-                    env.plugin_env.name()
-                )
-            };
+    let error_msg = || {
+        format!(
+            "failed to open file in plugin {}",
+            env.plugin_env.name()
+        )
+    };
+    wasi_read_bytes(&env.plugin_env.wasi_env)
+        .and_then(|bytes| {
+            let file_to_open: ProtobufFile = ProtobufFile::decode(bytes.as_slice())?;
+            let file_to_open: FileToOpen = file_to_open.try_into().map_err(
+                |e| anyhow!("failed to convert serialized file to open: {}", e)
+            )?;
             let floating = false;
-            let action = Action::EditFile(path, None, None, None, floating); // TODO: add cwd
+            let action = Action::EditFile(file_to_open.path, file_to_open.line_number, file_to_open.cwd, None, floating); // TODO: add cwd
             apply_action!(action, error_msg, env);
             Ok(())
         })
@@ -283,47 +292,20 @@ fn host_open_file(env: &ForeignFunctionEnv) {
 }
 
 fn host_open_file_floating(env: &ForeignFunctionEnv) {
-    wasi_read_object::<PathBuf>(&env.plugin_env.wasi_env)
-        .and_then(|path| {
-            let error_msg = || format!("failed to open file in plugin {}", env.plugin_env.name());
+    let error_msg = || {
+        format!(
+            "failed to open file in plugin {}",
+            env.plugin_env.name()
+        )
+    };
+    wasi_read_bytes(&env.plugin_env.wasi_env)
+        .and_then(|bytes| {
+            let file_to_open: ProtobufFile = ProtobufFile::decode(bytes.as_slice())?;
+            let file_to_open: FileToOpen = file_to_open.try_into().map_err(
+                |e| anyhow!("failed to convert serialized file to open: {}", e)
+            )?;
             let floating = true;
-            let action = Action::EditFile(path, None, None, None, floating); // TODO: add cwd
-            apply_action!(action, error_msg, env);
-            Ok(())
-        })
-        .with_context(|| {
-            format!(
-                "failed to open file on host from plugin {}",
-                env.plugin_env.name()
-            )
-        })
-        .non_fatal();
-}
-
-fn host_open_file_with_line(env: &ForeignFunctionEnv) {
-    wasi_read_object::<(PathBuf, usize)>(&env.plugin_env.wasi_env)
-        .and_then(|(path, line)| {
-            let error_msg = || format!("failed to open file in plugin {}", env.plugin_env.name());
-            let floating = false;
-            let action = Action::EditFile(path, Some(line), None, None, floating); // TODO: add cwd
-            apply_action!(action, error_msg, env);
-            Ok(())
-        })
-        .with_context(|| {
-            format!(
-                "failed to open file on host from plugin {}",
-                env.plugin_env.name()
-            )
-        })
-        .non_fatal();
-}
-
-fn host_open_file_with_line_floating(env: &ForeignFunctionEnv) {
-    wasi_read_object::<(PathBuf, usize)>(&env.plugin_env.wasi_env)
-        .and_then(|(path, line)| {
-            let error_msg = || format!("failed to open file in plugin {}", env.plugin_env.name());
-            let floating = true;
-            let action = Action::EditFile(path, Some(line), None, None, floating); // TODO: add cwd
+            let action = Action::EditFile(file_to_open.path, file_to_open.line_number, file_to_open.cwd, None, floating); // TODO: add cwd
             apply_action!(action, error_msg, env);
             Ok(())
         })
@@ -391,10 +373,21 @@ fn host_open_terminal_floating(env: &ForeignFunctionEnv) {
 }
 
 fn host_open_command_pane(env: &ForeignFunctionEnv) {
-    let error_msg = || format!("failed to run command in plugin {}", env.plugin_env.name());
-    wasi_read_object::<(PathBuf, Vec<String>)>(&env.plugin_env.wasi_env)
-        .and_then(|(command, args)| {
-            let cwd = None;
+    let error_msg = || {
+        format!(
+            "failed to open command in plugin {}",
+            env.plugin_env.name()
+        )
+    };
+    wasi_read_bytes(&env.plugin_env.wasi_env)
+        .and_then(|bytes| {
+            let command_to_run = ProtobufCommand::decode(bytes.as_slice())?;
+            let command_to_run: CommandToRun = command_to_run.try_into().map_err(
+                |e| anyhow!("failed to convert serialized command to run: {}", e)
+            )?;
+            let command = command_to_run.path;
+            let cwd = command_to_run.cwd;
+            let args = command_to_run.args;
             let direction = None;
             let hold_on_close = true;
             let hold_on_start = false;
@@ -411,15 +404,31 @@ fn host_open_command_pane(env: &ForeignFunctionEnv) {
             apply_action!(action, error_msg, env);
             Ok(())
         })
-        .with_context(error_msg)
+        .with_context(|| {
+            format!(
+                "failed to run command on host from plugin {}",
+                env.plugin_env.name()
+            )
+        })
         .non_fatal();
 }
 
 fn host_open_command_pane_floating(env: &ForeignFunctionEnv) {
-    let error_msg = || format!("failed to run command in plugin {}", env.plugin_env.name());
-    wasi_read_object::<(PathBuf, Vec<String>)>(&env.plugin_env.wasi_env)
-        .and_then(|(command, args)| {
-            let cwd = None;
+    let error_msg = || {
+        format!(
+            "failed to open command in plugin {}",
+            env.plugin_env.name()
+        )
+    };
+    wasi_read_bytes(&env.plugin_env.wasi_env)
+        .and_then(|bytes| {
+            let command_to_run = ProtobufCommand::decode(bytes.as_slice())?;
+            let command_to_run: CommandToRun = command_to_run.try_into().map_err(
+                |e| anyhow!("failed to convert serialized command to run: {}", e)
+            )?;
+            let command = command_to_run.path;
+            let cwd = command_to_run.cwd;
+            let args = command_to_run.args;
             let direction = None;
             let hold_on_close = true;
             let hold_on_start = false;
@@ -436,7 +445,12 @@ fn host_open_command_pane_floating(env: &ForeignFunctionEnv) {
             apply_action!(action, error_msg, env);
             Ok(())
         })
-        .with_context(error_msg)
+        .with_context(|| {
+            format!(
+                "failed to run command on host from plugin {}",
+                env.plugin_env.name()
+            )
+        })
         .non_fatal();
 }
 
@@ -528,35 +542,94 @@ fn host_exec_cmd(env: &ForeignFunctionEnv) {
 }
 
 fn host_post_message_to(env: &ForeignFunctionEnv) {
-    wasi_read_object::<(String, String, String)>(&env.plugin_env.wasi_env)
-        .and_then(|(worker_name, message, payload)| {
+    wasi_read_bytes(&env.plugin_env.wasi_env)
+        .and_then(|bytes| {
+            let plugin_message = ProtobufMessage::decode(bytes.as_slice())?;
+            let plugin_message: PluginMessage = plugin_message.try_into().map_err(
+                |e| anyhow!("failed to convert serialized plugin message: {}", e)
+            )?;
+            let worker_name = plugin_message.worker_name
+                // .ok_or("Worker name not specified in message to worker")
+                .ok_or(anyhow!("Worker name not specified in message to worker"))?;
+                // .map_err(anyError::new)?;
+                // .with_context(error_msg)?;
             env.plugin_env
                 .senders
                 .send_to_plugin(PluginInstruction::PostMessagesToPluginWorker(
                     env.plugin_env.plugin_id,
                     env.plugin_env.client_id,
                     worker_name,
-                    vec![(message, payload)],
+                    vec![(plugin_message.name, plugin_message.payload)],
                 ))
         })
-        .with_context(|| format!("failed to post message to worker {}", env.plugin_env.name()))
-        .fatal();
+        .with_context(|| {
+            format!(
+                "failed to send plugin message to worker: {}",
+                env.plugin_env.name()
+            )
+        })
+        .non_fatal();
+
+
+
+//     wasi_read_object::<(String, String, String)>(&env.plugin_env.wasi_env)
+//         .and_then(|(worker_name, message, payload)| {
+//             env.plugin_env
+//                 .senders
+//                 .send_to_plugin(PluginInstruction::PostMessagesToPluginWorker(
+//                     env.plugin_env.plugin_id,
+//                     env.plugin_env.client_id,
+//                     worker_name,
+//                     vec![(message, payload)],
+//                 ))
+//         })
+//         .with_context(|| format!("failed to post message to worker {}", env.plugin_env.name()))
+//         .fatal();
 }
 
 fn host_post_message_to_plugin(env: &ForeignFunctionEnv) {
-    wasi_read_object::<(String, String)>(&env.plugin_env.wasi_env)
-        .and_then(|(message, payload)| {
+    wasi_read_bytes(&env.plugin_env.wasi_env)
+        .and_then(|bytes| {
+            let plugin_message = ProtobufMessage::decode(bytes.as_slice())?;
+            let plugin_message: PluginMessage = plugin_message.try_into().map_err(
+                |e| anyhow!("failed to convert serialized plugin message: {}", e)
+            )?;
+            if let Some(worker_name) = plugin_message.worker_name {
+                return Err(anyhow!("Worker name (\"{}\") should not be specified in message to plugin", worker_name));
+            }
             env.plugin_env
                 .senders
                 .send_to_plugin(PluginInstruction::PostMessageToPlugin(
                     env.plugin_env.plugin_id,
                     env.plugin_env.client_id,
-                    message,
-                    payload,
+                    plugin_message.name,
+                    plugin_message.payload
                 ))
         })
-        .with_context(|| format!("failed to post message to plugin {}", env.plugin_env.name()))
-        .fatal();
+        .with_context(|| {
+            format!(
+                "failed to send plugin message to plugin: {}",
+                env.plugin_env.name()
+            )
+        })
+        .non_fatal();
+
+
+
+
+//     wasi_read_object::<(String, String)>(&env.plugin_env.wasi_env)
+//         .and_then(|(message, payload)| {
+//             env.plugin_env
+//                 .senders
+//                 .send_to_plugin(PluginInstruction::PostMessageToPlugin(
+//                     env.plugin_env.plugin_id,
+//                     env.plugin_env.client_id,
+//                     message,
+//                     payload,
+//                 ))
+//         })
+//         .with_context(|| format!("failed to post message to plugin {}", env.plugin_env.name()))
+//         .fatal();
 }
 
 fn host_hide_self(env: &ForeignFunctionEnv) {
@@ -578,8 +651,12 @@ fn host_show_self(env: &ForeignFunctionEnv, should_float_if_hidden: i32) {
 }
 
 fn host_switch_to_mode(env: &ForeignFunctionEnv) {
-    wasi_read_object::<InputMode>(&env.plugin_env.wasi_env)
-        .and_then(|input_mode| {
+    wasi_read_bytes(&env.plugin_env.wasi_env)
+        .and_then(|bytes| {
+            let input_mode = ProtobufInputModeMessage::decode(bytes.as_slice())?;
+            let input_mode: InputMode = input_mode.try_into().map_err(
+                |e| anyhow!("failed to convert serialized input mode: {}", e)
+            )?;
             let action = Action::SwitchToMode(input_mode);
             let error_msg = || {
                 format!(
@@ -591,7 +668,7 @@ fn host_switch_to_mode(env: &ForeignFunctionEnv) {
             Ok(())
         })
         .with_context(|| format!("failed to subscribe for plugin {}", env.plugin_env.name()))
-        .fatal();
+        .non_fatal();
 }
 
 fn host_new_tabs_with_layout(env: &ForeignFunctionEnv) {
@@ -660,6 +737,7 @@ fn host_go_to_previous_tab(env: &ForeignFunctionEnv) {
     apply_action!(action, error_msg, env);
 }
 
+// TODO: CONTINUE HERE (14/07) - make Resize work with protobufs
 fn host_resize(env: &ForeignFunctionEnv) {
     let error_msg = || format!("failed to resize in plugin {}", env.plugin_env.name());
     wasi_read_object::<Resize>(&env.plugin_env.wasi_env)
@@ -1156,6 +1234,12 @@ pub fn wasi_write_object(wasi_env: &WasiEnv, object: &(impl Serialize + ?Sized))
 }
 
 pub fn wasi_read_object<T: DeserializeOwned>(wasi_env: &WasiEnv) -> Result<T> {
+    wasi_read_string(wasi_env)
+        .and_then(|string| serde_json::from_str(&string).map_err(anyError::new))
+        .with_context(|| format!("failed to deserialize object from WASI env '{wasi_env:?}'"))
+}
+
+pub fn wasi_read_bytes(wasi_env: &WasiEnv) -> Result<Vec<u8>> {
     wasi_read_string(wasi_env)
         .and_then(|string| serde_json::from_str(&string).map_err(anyError::new))
         .with_context(|| format!("failed to deserialize object from WASI env '{wasi_env:?}'"))

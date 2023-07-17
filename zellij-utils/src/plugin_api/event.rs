@@ -30,9 +30,10 @@ impl TryFrom<ProtobufEventNameList> for HashSet<EventType> {
 impl TryFrom<HashSet<EventType>> for ProtobufEventNameList {
    type Error = &'static str;
    fn try_from(event_types: HashSet<EventType>) -> Result<Self, &'static str> {
-       // TODO: CONTINUE HERE (07/07) - implement this, then consider refactoring the above and
-       // then get subscribe/unsubscribe to use these and see how it goes
-       unimplemented!()
+       let protobuf_event_name_list = ProtobufEventNameList {
+           event_types: event_types.iter().filter_map(|e| ProtobufEventType::try_from(*e).ok()).map(|e| e as i32).collect()
+       };
+       Ok(protobuf_event_name_list)
    }
 }
 

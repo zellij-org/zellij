@@ -1,0 +1,40 @@
+syntax = "proto3";
+
+package api.input_mode;
+
+message InputModeMessage {
+  InputMode input_mode = 1;
+}
+
+enum InputMode {
+    /// In `Normal` mode, input is always written to the terminal, except for the shortcuts leading
+    /// to other modes
+    Normal = 0;
+    /// In `Locked` mode, input is always written to the terminal and all shortcuts are disabled
+    /// except the one leading back to normal mode
+    Locked = 1;
+    /// `Resize` mode allows resizing the different existing panes.
+    Resize = 2;
+    /// `Pane` mode allows creating and closing panes, as well as moving between them.
+    Pane = 3;
+    /// `Tab` mode allows creating and closing tabs, as well as moving between them.
+    Tab = 4;
+    /// `Scroll` mode allows scrolling up and down within a pane.
+    Scroll = 5;
+    /// `EnterSearch` mode allows for typing in the needle for a search in the scroll buffer of a pane.
+    EnterSearch = 6;
+    /// `Search` mode allows for searching a term in a pane (superset of `Scroll`).
+    Search = 7;
+    /// `RenameTab` mode allows assigning a new name to a tab.
+    RenameTab = 8;
+    /// `RenamePane` mode allows assigning a new name to a pane.
+    RenamePane = 9;
+    /// `Session` mode allows detaching sessions
+    Session = 10;
+    /// `Move` mode allows moving the different existing panes within a tab
+    Move = 11;
+    /// `Prompt` mode allows interacting with active prompts.
+    Prompt = 12;
+    /// `Tmux` mode allows for basic tmux keybindings functionality
+    Tmux = 13;
+}

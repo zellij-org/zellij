@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package api.command;
+
+message Command {
+  string path = 1;
+  repeated string args = 2;
+  oneof optional_cwd {
+    string cwd = 3;
+  }
+}

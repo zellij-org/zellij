@@ -1,7 +1,18 @@
 use prost_build;
 
 fn main() {
-    prost_build::compile_protos(&["src/plugin_api/key.proto", "src/plugin_api/event.proto"],
-                                &["src/"]).unwrap();
+    // TODO: include all .proto files dynamically somehow
+    prost_build::compile_protos(
+        &[
+            "src/plugin_api/key.proto",
+            "src/plugin_api/event.proto",
+            "src/plugin_api/file.proto",
+            "src/plugin_api/command.proto",
+            "src/plugin_api/message.proto",
+            "src/plugin_api/input_mode.proto",
+            "src/plugin_api/resize.proto"
+        ],
+        &["src/"]
+    ).unwrap();
 }
 

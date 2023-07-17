@@ -810,3 +810,24 @@ pub enum CopyDestination {
     Primary,
     System,
 }
+
+#[derive(Debug, Default, Clone)]
+pub struct FileToOpen {
+    pub path: PathBuf,
+    pub line_number: Option<usize>,
+    pub cwd: Option<PathBuf>,
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct CommandToRun {
+    pub path: PathBuf,
+    pub args: Vec<String>,
+    pub cwd: Option<PathBuf>,
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct PluginMessage {
+    pub name: String,
+    pub payload: String,
+    pub worker_name: Option<String>,
+}

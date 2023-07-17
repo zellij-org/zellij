@@ -30,16 +30,16 @@ impl ZellijPlugin for State {
             EventType::FileSystemUpdate,
             EventType::FileSystemDelete,
         ]);
-        post_message_to(
-            "file_name_search",
-            &serde_json::to_string(&MessageToSearch::ScanFolder).unwrap(),
-            "",
-        );
-        post_message_to(
-            "file_contents_search",
-            &serde_json::to_string(&MessageToSearch::ScanFolder).unwrap(),
-            "",
-        );
+        post_message_to(PluginMessage {
+            worker_name: Some("file_name_search".into()),
+            name: serde_json::to_string(&MessageToSearch::ScanFolder).unwrap(),
+            payload: "".into(),
+        });
+        post_message_to(PluginMessage {
+            worker_name: Some("file_contents_search".into()),
+            name: serde_json::to_string(&MessageToSearch::ScanFolder).unwrap(),
+            payload: "".into(),
+        });
         self.search_state.loading = true;
         set_timeout(0.5); // for displaying loading animation
     }
@@ -190,48 +190,48 @@ impl ZellijPlugin for State {
                     .iter()
                     .map(|p| p.to_string_lossy().to_string())
                     .collect();
-                post_message_to(
-                    "file_name_search",
-                    &serde_json::to_string(&MessageToSearch::FileSystemCreate).unwrap(),
-                    &serde_json::to_string(&paths).unwrap(),
-                );
-                post_message_to(
-                    "file_contents_search",
-                    &serde_json::to_string(&MessageToSearch::FileSystemCreate).unwrap(),
-                    &serde_json::to_string(&paths).unwrap(),
-                );
+                post_message_to(PluginMessage {
+                    worker_name: Some("file_name_search".into()),
+                    name: serde_json::to_string(&MessageToSearch::FileSystemCreate).unwrap(),
+                    payload: serde_json::to_string(&paths).unwrap(),
+                });
+                post_message_to(PluginMessage {
+                    worker_name: Some("file_contents_search".into()),
+                    name: serde_json::to_string(&MessageToSearch::FileSystemCreate).unwrap(),
+                    payload: serde_json::to_string(&paths).unwrap(),
+                });
             },
             Event::FileSystemUpdate(paths) => {
                 let paths: Vec<String> = paths
                     .iter()
                     .map(|p| p.to_string_lossy().to_string())
                     .collect();
-                post_message_to(
-                    "file_name_search",
-                    &serde_json::to_string(&MessageToSearch::FileSystemUpdate).unwrap(),
-                    &serde_json::to_string(&paths).unwrap(),
-                );
-                post_message_to(
-                    "file_contents_search",
-                    &serde_json::to_string(&MessageToSearch::FileSystemUpdate).unwrap(),
-                    &serde_json::to_string(&paths).unwrap(),
-                );
+                post_message_to(PluginMessage {
+                    worker_name: Some("file_name_search".into()),
+                    name: serde_json::to_string(&MessageToSearch::FileSystemUpdate).unwrap(),
+                    payload: serde_json::to_string(&paths).unwrap(),
+                });
+                post_message_to(PluginMessage {
+                    worker_name: Some("file_contents_search".into()),
+                    name: serde_json::to_string(&MessageToSearch::FileSystemUpdate).unwrap(),
+                    payload: serde_json::to_string(&paths).unwrap(),
+                });
             },
             Event::FileSystemDelete(paths) => {
                 let paths: Vec<String> = paths
                     .iter()
                     .map(|p| p.to_string_lossy().to_string())
                     .collect();
-                post_message_to(
-                    "file_name_search",
-                    &serde_json::to_string(&MessageToSearch::FileSystemDelete).unwrap(),
-                    &serde_json::to_string(&paths).unwrap(),
-                );
-                post_message_to(
-                    "file_contents_search",
-                    &serde_json::to_string(&MessageToSearch::FileSystemDelete).unwrap(),
-                    &serde_json::to_string(&paths).unwrap(),
-                );
+                post_message_to(PluginMessage {
+                    worker_name: Some("file_name_search".into()),
+                    name: serde_json::to_string(&MessageToSearch::FileSystemDelete).unwrap(),
+                    payload: serde_json::to_string(&paths).unwrap(),
+                });
+                post_message_to(PluginMessage {
+                    worker_name: Some("file_contents_search".into()),
+                    name: serde_json::to_string(&MessageToSearch::FileSystemDelete).unwrap(),
+                    payload: serde_json::to_string(&paths).unwrap(),
+                });
             },
             _ => {
                 dbg!("Unknown event {:?}", event);

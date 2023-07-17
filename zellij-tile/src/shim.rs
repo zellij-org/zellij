@@ -1,8 +1,14 @@
 use serde::{de::DeserializeOwned, Serialize};
 use std::{io, path::Path};
+use std::collections::HashSet;
 use zellij_utils::data::*;
-use zellij_utils::plugin_api::key::ProtobufKey;
 use zellij_utils::errors::prelude::*;
+use zellij_utils::plugin_api::key::ProtobufKey;
+use zellij_utils::plugin_api::file::ProtobufFile;
+use zellij_utils::plugin_api::event::ProtobufEventNameList;
+use zellij_utils::plugin_api::command::ProtobufCommand;
+use zellij_utils::plugin_api::message::ProtobufMessage;
+use zellij_utils::plugin_api::input_mode::ProtobufInputModeMessage;
 
 
 use prost::Message;
@@ -10,13 +16,17 @@ use prost::Message;
 
 /// Subscribe to a list of [`Event`]s represented by their [`EventType`]s that will then trigger the `update` method
 pub fn subscribe(event_types: &[EventType]) {
-    object_to_stdout(&event_types);
+    let event_types: HashSet<EventType> = event_types.iter().cloned().collect();
+    let event_types: ProtobufEventNameList = ProtobufEventNameList::try_from(event_types).unwrap();
+    object_to_stdout(&event_types.encode_to_vec());
     unsafe { host_subscribe() };
 }
 
 /// Unsubscribe to a list of [`Event`]s represented by their [`EventType`]s.
 pub fn unsubscribe(event_types: &[EventType]) {
-    object_to_stdout(&event_types);
+    let event_types: HashSet<EventType> = event_types.iter().cloned().collect();
+    let event_types: ProtobufEventNameList = ProtobufEventNameList::try_from(event_types).unwrap();
+    object_to_stdout(&event_types.encode_to_vec());
     unsafe { host_unsubscribe() };
 }
 
@@ -40,6 +50,7 @@ pub fn get_zellij_version() -> String {
     object_from_stdin().unwrap()
 }
 
+// TODO: removeme
 pub fn get_key() -> Key {
     unsafe { host_get_key() };
     let protobuf_bytes: Vec<u8> = object_from_stdin().unwrap();
@@ -50,28 +61,30 @@ pub fn get_key() -> Key {
 // Host Functions
 
 /// Open a file in the user's default `$EDITOR` in a new pane
-pub fn open_file<P: AsRef<Path>>(path: P) {
-    object_to_stdout(&path.as_ref());
+pub fn open_file(file_to_open: FileToOpen) {
+    let file_to_open = ProtobufFile::try_from(file_to_open).unwrap();
+    object_to_stdout(&file_to_open.encode_to_vec());
     unsafe { host_open_file() };
 }
 
 /// Open a file in the user's default `$EDITOR` in a new floating pane
-pub fn open_file_floating<P: AsRef<Path>>(path: P) {
-    object_to_stdout(&path.as_ref());
+pub fn open_file_floating(file_to_open: FileToOpen) {
+    let file_to_open = ProtobufFile::try_from(file_to_open).unwrap();
+    object_to_stdout(&file_to_open.encode_to_vec());
     unsafe { host_open_file_floating() };
 }
 
-/// Open a file to a specific line in the user's default `$EDITOR` (if it supports it, most do) in a new pane
-pub fn open_file_with_line<P: AsRef<Path>>(path: P, line: usize) {
-    object_to_stdout(&(path.as_ref(), line));
-    unsafe { host_open_file_with_line() };
-}
-
-/// Open a file to a specific line in the user's default `$EDITOR` (if it supports it, most do) in a new floating pane
-pub fn open_file_with_line_floating<P: AsRef<Path>>(path: P, line: usize) {
-    object_to_stdout(&(path.as_ref(), line));
-    unsafe { host_open_file_with_line_floating() };
-}
+// /// Open a file to a specific line in the user's default `$EDITOR` (if it supports it, most do) in a new pane
+// pub fn open_file_with_line<P: AsRef<Path>>(path: P, line: usize) {
+//     object_to_stdout(&(path.as_ref(), line));
+//     unsafe { host_open_file_with_line() };
+// }
+// 
+// /// Open a file to a specific line in the user's default `$EDITOR` (if it supports it, most do) in a new floating pane
+// pub fn open_file_with_line_floating<P: AsRef<Path>>(path: P, line: usize) {
+//     object_to_stdout(&(path.as_ref(), line));
+//     unsafe { host_open_file_with_line_floating() };
+// }
 
 /// Open a new terminal pane to the specified location on the host filesystem
 pub fn open_terminal<P: AsRef<Path>>(path: P) {
@@ -86,21 +99,31 @@ pub fn open_terminal_floating<P: AsRef<Path>>(path: P) {
 }
 
 /// Open a new command pane with the specified command and args (this sort of pane allows the user to control the command, re-run it and see its exit status through the Zellij UI).
-pub fn open_command_pane<P: AsRef<Path>, A: AsRef<str>>(path: P, args: Vec<A>) {
-    object_to_stdout(&(
-        path.as_ref(),
-        args.iter().map(|a| a.as_ref()).collect::<Vec<&str>>(),
-    ));
+// pub fn open_command_pane<P: AsRef<Path>, A: AsRef<str>>(path: P, args: Vec<A>) {
+pub fn open_command_pane(command_to_run: CommandToRun) {
+
+    let command_to_run = ProtobufCommand::try_from(command_to_run).unwrap();
+    object_to_stdout(&command_to_run.encode_to_vec());
     unsafe { host_open_command_pane() };
+//     object_to_stdout(&(
+//         path.as_ref(),
+//         args.iter().map(|a| a.as_ref()).collect::<Vec<&str>>(),
+//     ));
+//     unsafe { host_open_command_pane() };
 }
 
 /// Open a new floating command pane with the specified command and args (this sort of pane allows the user to control the command, re-run it and see its exit status through the Zellij UI).
-pub fn open_command_pane_floating<P: AsRef<Path>, A: AsRef<str>>(path: P, args: Vec<A>) {
-    object_to_stdout(&(
-        path.as_ref(),
-        args.iter().map(|a| a.as_ref()).collect::<Vec<&str>>(),
-    ));
+// pub fn open_command_pane_floating<P: AsRef<Path>, A: AsRef<str>>(path: P, args: Vec<A>) {
+pub fn open_command_pane_floating(command_to_run: CommandToRun) {
+    let command_to_run = ProtobufCommand::try_from(command_to_run).unwrap();
+    object_to_stdout(&command_to_run.encode_to_vec());
     unsafe { host_open_command_pane_floating() };
+
+//     object_to_stdout(&(
+//         path.as_ref(),
+//         args.iter().map(|a| a.as_ref()).collect::<Vec<&str>>(),
+//     ));
+//     unsafe { host_open_command_pane_floating() };
 }
 
 /// Change the focused tab to the specified index (corresponding with the default tab names, to starting at `1`, `0` will be considered as `1`).
@@ -131,8 +154,15 @@ pub fn show_self(should_float_if_hidden: bool) {
 
 /// Switch to the specified Input Mode (eg. `Normal`, `Tab`, `Pane`)
 pub fn switch_to_input_mode(mode: &InputMode) {
-    object_to_stdout(&mode);
+
+    let switch_to_mode_message = ProtobufInputModeMessage::try_from(*mode).unwrap();
+    object_to_stdout(&switch_to_mode_message.encode_to_vec());
     unsafe { host_switch_to_mode() };
+
+//     unsafe { host_post_message_to_plugin() };
+// 
+//     object_to_stdout(&mode);
+//     unsafe { host_switch_to_mode() };
 }
 
 /// Provide a stringified [`layout`](https://zellij.dev/documentation/layouts.html) to be applied to the current session. If the layout has multiple tabs, they will all be opened.
@@ -400,21 +430,35 @@ pub fn object_to_stdout(object: &impl Serialize) {
 }
 
 /// Post a message to a worker of this plugin, for more information please see [Plugin Workers](https://zellij.dev/documentation/plugin-api-workers.md)
-pub fn post_message_to<S: AsRef<str>>(worker_name: S, message: S, payload: S) {
-    match serde_json::to_string(&(worker_name.as_ref(), message.as_ref(), payload.as_ref())) {
-        Ok(serialized) => println!("{}", serialized),
-        Err(e) => eprintln!("Failed to serialize message: {:?}", e),
-    }
+pub fn post_message_to(plugin_message: PluginMessage) {
+
+
+// pub fn open_command_pane_floating(command_to_run: CommandToRun) {
+    let plugin_message = ProtobufMessage::try_from(plugin_message).unwrap();
+    object_to_stdout(&plugin_message.encode_to_vec());
     unsafe { host_post_message_to() };
+
+
+
+//     match serde_json::to_string(&(worker_name.as_ref(), message.as_ref(), payload.as_ref())) {
+//         Ok(serialized) => println!("{}", serialized),
+//         Err(e) => eprintln!("Failed to serialize message: {:?}", e),
+//     }
+//     unsafe { host_post_message_to() };
 }
 
 /// Post a message to this plugin, for more information please see [Plugin Workers](https://zellij.dev/documentation/plugin-api-workers.md)
-pub fn post_message_to_plugin<S: AsRef<str>>(message: S, payload: S) {
-    match serde_json::to_string(&(message.as_ref(), payload.as_ref())) {
-        Ok(serialized) => println!("{}", serialized),
-        Err(e) => eprintln!("Failed to serialize message: {:?}", e),
-    }
+// pub fn post_message_to_plugin<S: AsRef<str>>(message: S, payload: S) {
+pub fn post_message_to_plugin(plugin_message: PluginMessage) {
+    let plugin_message = ProtobufMessage::try_from(plugin_message).unwrap();
+    object_to_stdout(&plugin_message.encode_to_vec());
     unsafe { host_post_message_to_plugin() };
+
+//     match serde_json::to_string(&(message.as_ref(), payload.as_ref())) {
+//         Ok(serialized) => println!("{}", serialized),
+//         Err(e) => eprintln!("Failed to serialize message: {:?}", e),
+//     }
+//     unsafe { host_post_message_to_plugin() };
 }
 
 #[link(wasm_import_module = "zellij")]
@@ -427,8 +471,6 @@ extern "C" {
     fn host_get_key();
     fn host_open_file();
     fn host_open_file_floating();
-    fn host_open_file_with_line();
-    fn host_open_file_with_line_floating();
     fn host_open_terminal();
     fn host_open_terminal_floating();
     fn host_open_command_pane();
