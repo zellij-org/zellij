@@ -27,7 +27,10 @@ pub const RESET_STYLES: CharacterStyles = CharacterStyles {
     slow_blink: Some(AnsiCode::Reset),
     fast_blink: Some(AnsiCode::Reset),
     underline: Some(UnderlineCode::Reset),
-    underline_color: Some(AnsiCode::Reset),
+    underline_color: Some(UnderlineColor {
+        color: AnsiCode::Reset,
+        separator: ':',
+    }),
     bold: Some(AnsiCode::Reset),
     dim: Some(AnsiCode::Reset),
     italic: Some(AnsiCode::Reset),
@@ -129,6 +132,13 @@ impl NamedColor {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct UnderlineColor {
+    color: AnsiCode,
+    // Included due to some xterm bugs. See https://github.com/zellij-org/pull/2018
+    separator: char,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub struct CharacterStyles {
     pub foreground: Option<AnsiCode>,
@@ -139,7 +149,7 @@ pub struct CharacterStyles {
     pub slow_blink: Option<AnsiCode>,
     pub fast_blink: Option<AnsiCode>,
     pub underline: Option<UnderlineCode>,
-    pub underline_color: Option<AnsiCode>,
+    pub underline_color: Option<UnderlineColor>,
     pub bold: Option<AnsiCode>,
     pub dim: Option<AnsiCode>,
     pub italic: Option<AnsiCode>,
@@ -174,7 +184,7 @@ impl CharacterStyles {
         self.underline = underline_code;
         self
     }
-    pub fn underline_color(mut self, underline_color_code: Option<AnsiCode>) -> Self {
+    pub fn underline_color(mut self, underline_color_code: Option<UnderlineColor>) -> Self {
         self.underline_color = underline_color_code;
         self
     }
@@ -298,7 +308,10 @@ impl CharacterStyles {
         self.dim = Some(AnsiCode::Reset);
         self.italic = Some(AnsiCode::Reset);
         self.underline = Some(UnderlineCode::Reset);
-        self.underline_color = Some(AnsiCode::Reset);
+        self.underline_color = Some(UnderlineColor {
+            color: AnsiCode::Reset,
+            separator: ':',
+        });
         self.slow_blink = Some(AnsiCode::Reset);
         self.fast_blink = Some(AnsiCode::Reset);
         self.reverse = Some(AnsiCode::Reset);
@@ -387,7 +400,10 @@ impl CharacterStyles {
                 [58] => {
                     let mut iter = params.map(|param| param[0]);
                     if let Some(ansi_code) = parse_sgr_color(&mut iter) {
-                        *self = self.underline_color(Some(ansi_code));
+                        *self = self.underline_color(Some(UnderlineColor {
+                            color: ansi_code,
+                            separator: ';',
+                        }));
                     }
                 },
                 [58, params @ ..] => {
@@ -395,10 +411,16 @@ impl CharacterStyles {
                     let rgb_iter = params[rgb_start..].iter().copied();
                     let mut iter = std::iter::once(params[0]).chain(rgb_iter);
                     if let Some(ansi_code) = parse_sgr_color(&mut iter) {
-                        *self = self.underline_color(Some(ansi_code));
+                        *self = self.underline_color(Some(UnderlineColor {
+                            color: ansi_code,
+                            separator: ':',
+                        }));
                     }
                 },
-                [59] => *self = self.underline_color(Some(AnsiCode::Reset)),
+                [59] => *self = self.underline_color(Some(UnderlineColor {
+                    color: AnsiCode::Reset,
+                    separator: ':', // N/A
+                })),
                 [90] => {
                     *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::BrightBlack)))
                 },
@@ -458,7 +480,10 @@ impl Display for CharacterStyles {
             && self.fast_blink == Some(AnsiCode::Reset)
             && self.slow_blink == Some(AnsiCode::Reset)
             && self.underline == Some(UnderlineCode::Reset)
-            && self.underline_color == Some(AnsiCode::Reset)
+            && self.underline_color == Some(UnderlineColor {
+                color: AnsiCode::Reset,
+                separator: ':',
+            })
             && self.bold == Some(AnsiCode::Reset)
             && self.dim == Some(AnsiCode::Reset)
             && self.italic == Some(AnsiCode::Reset)
@@ -594,12 +619,13 @@ impl Display for CharacterStyles {
             }
         }
         if let Some(ansi_code) = self.underline_color {
-            match ansi_code {
+            let sep = ansi_code.separator;
+            match ansi_code.color {
                 AnsiCode::RgbCode((r, g, b)) => {
-                    write!(f, "\u{1b}[58:2:{}:{}:{}m", r, g, b)?;
+                    write!(f, "\u{1b}[58{sep}2{sep}{r}{sep}{g}{sep}{b}m")?;
                 },
                 AnsiCode::ColorIndex(color_index) => {
-                    write!(f, "\u{1b}[58:5:{}m", color_index)?;
+                    write!(f, "\u{1b}[58{sep}5{sep}{color_index}m")?;
                 },
                 AnsiCode::Reset => {
                     write!(f, "\u{1b}[59m")?;
