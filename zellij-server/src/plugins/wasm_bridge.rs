@@ -33,6 +33,11 @@ use zellij_utils::{
     pane_size::Size,
 };
 
+enum Permission {
+    Allowed,
+    Denied,
+}
+
 pub struct WasmBridge {
     connected_clients: Arc<Mutex<Vec<ClientId>>>,
     plugins: PluginsConfig,
@@ -746,6 +751,21 @@ fn handle_plugin_loading_failure(
     ));
 }
 
+fn check_permission(plugin_env: &PluginEnv, event: &Event) -> Permission {
+    let permission = match event {
+        Event::Key(_) => PermissionType::KeyboardInput,
+        _ => return Permission::Allowed,
+    };
+
+    if let Some(permissions) = &plugin_env.plugin_permissions {
+        if !permissions.contains(&permission) {
+            return Permission::Denied;
+        }
+    }
+
+    Permission::Allowed
+}
+
 pub fn apply_event_to_plugin(
     plugin_id: PluginId,
     client_id: ClientId,
@@ -761,15 +781,16 @@ pub fn apply_event_to_plugin(
     // TODO: for test, must be deleted before merge
     log::info!("plugin_permissions: {:?}", plugin_env.plugin_permissions);
 
-    let update = instance
-        .exports
-        .get_function("update")
-        .with_context(err_context)?;
-    wasi_write_object(&plugin_env.wasi_env, &event).with_context(err_context)?;
-    let update_return =
-        update
-            .call(&[])
-            .or_else::<anyError, _>(|e| match e.downcast::<serde_json::Error>() {
+    match check_permission(plugin_env, event) {
+        Permission::Allowed => {
+            let update = instance
+                .exports
+                .get_function("update")
+                .with_context(err_context)?;
+            wasi_write_object(&plugin_env.wasi_env, &event).with_context(err_context)?;
+            let update_return = update.call(&[]).or_else::<anyError, _>(|e| match e
+                .downcast::<serde_json::Error>(
+            ) {
                 Ok(_) => panic!(
                     "{}",
                     anyError::new(VersionMismatchError::new(
@@ -781,24 +802,30 @@ pub fn apply_event_to_plugin(
                 ),
                 Err(e) => Err(e).with_context(err_context),
             })?;
-    let should_render = match update_return.get(0) {
-        Some(Value::I32(n)) => *n == 1,
-        _ => false,
-    };
+            let should_render = match update_return.get(0) {
+                Some(Value::I32(n)) => *n == 1,
+                _ => false,
+            };
 
-    if rows > 0 && columns > 0 && should_render {
-        let rendered_bytes = instance
-            .exports
-            .get_function("render")
-            .map_err(anyError::new)
-            .and_then(|render| {
-                render
-                    .call(&[Value::I32(rows as i32), Value::I32(columns as i32)])
+            if rows > 0 && columns > 0 && should_render {
+                let rendered_bytes = instance
+                    .exports
+                    .get_function("render")
                     .map_err(anyError::new)
-            })
-            .and_then(|_| wasi_read_string(&plugin_env.wasi_env))
-            .with_context(err_context)?;
-        plugin_bytes.push((plugin_id, client_id, rendered_bytes.as_bytes().to_vec()));
+                    .and_then(|render| {
+                        render
+                            .call(&[Value::I32(rows as i32), Value::I32(columns as i32)])
+                            .map_err(anyError::new)
+                    })
+                    .and_then(|_| wasi_read_string(&plugin_env.wasi_env))
+                    .with_context(err_context)?;
+                plugin_bytes.push((plugin_id, client_id, rendered_bytes.as_bytes().to_vec()));
+            }
+        },
+        Permission::Denied => {
+            // TODO: for test, must be deleted before merge
+            log::info!("Permission::Denied: {:?}", event);
+        },
     }
     Ok(())
 }
