@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+* fix(tab-bar,compact-bar): tab switching with mouse sometimes not working (https://github.com/zellij-org/zellij/pull/2587)
+* feat(status-bar): supermode to prevent colliding keybindings (https://github.com/zellij-org/zellij/pull/2619)
+* fix(rendering): occasional glitches while resizing (https://github.com/zellij-org/zellij/pull/2621)
+* fix(rendering): colored paneframes in mirrored sessions (https://github.com/zellij-org/zellij/pull/2625)
+
+## [0.37.2] - 2023-06-20
 * hotfix: include theme files into binary (https://github.com/zellij-org/zellij/pull/2566)
 * fix: make plugin hide_self api idempotent (https://github.com/zellij-org/zellij/pull/2568)
 
