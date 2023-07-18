@@ -2,7 +2,7 @@ use dialoguer::Confirm;
 use std::{fs::File, io::prelude::*, path::PathBuf, process};
 
 use crate::sessions::{
-    assert_session, assert_session_ne, generate_session_name, get_active_session, get_sessions,
+    assert_session, assert_session_ne, get_active_session, get_name_generator, get_sessions,
     get_sessions_sorted_by_mtime, kill_session as kill_session_impl, match_session_name,
     print_sessions, print_sessions_with_index, session_exists, ActiveSession, SessionNameMatch,
 };
@@ -467,16 +467,14 @@ fn generate_unique_session_name() -> String {
         process::exit(1);
     };
 
-    for _ in 0..1000 {
-        let name = generate_session_name().unwrap();
+    let name = get_name_generator()
+        .take(1000)
+        .find(|name| !sessions.contains(name));
 
-        if sessions.contains(&name) {
-            continue;
-        } else {
-            return name;
-        }
+    if let Some(name) = name {
+        return name;
+    } else {
+        eprintln!("Failed to generate a unique session name, giving up");
+        process::exit(1);
     }
-
-    eprintln!("Failed to generate a unique session name, giving up");
-    process::exit(1);
 }

@@ -220,7 +220,7 @@ pub(crate) fn assert_session_ne(name: &str) {
     process::exit(1);
 }
 
-/// Generate a new random session name
+/// Create a new random name generator
 ///
 /// Used to provide a memorable handle for a session when users don't specify a session name when the session is
 /// created.
@@ -228,8 +228,8 @@ pub(crate) fn assert_session_ne(name: &str) {
 /// Uses the list of adjectives and nouns defined below, with the intention of avoiding unfortunate
 /// and offensive combinations. Care should be taken when adding or removing to either list due to the birthday paradox/
 /// hash collisions, e.g. with 4096 unique names, the likelihood of a collision in 10 session names is 1%.
-pub(crate) fn generate_session_name() -> Option<String> {
-    names::Generator::new(&ADJECTIVES, &NOUNS, names::Name::Plain).next()
+pub(crate) fn get_name_generator() -> impl Iterator<Item = String> {
+    names::Generator::new(&ADJECTIVES, &NOUNS, names::Name::Plain)
 }
 
 const ADJECTIVES: &[&'static str] = &[
