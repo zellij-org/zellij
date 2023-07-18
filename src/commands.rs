@@ -93,7 +93,7 @@ pub(crate) fn start_server(path: PathBuf, debug: bool) {
 }
 
 fn create_new_client() -> ClientInfo {
-    ClientInfo::New(generate_session_name().unwrap())
+    ClientInfo::New(generate_unique_session_name())
 }
 
 fn find_indexed_session(
@@ -446,7 +446,7 @@ pub(crate) fn start_client(opts: CliArgs) {
                 process::exit(0);
             }
 
-            let session_name = generate_session_name().unwrap();
+            let session_name = generate_unique_session_name();
             start_client_plan(session_name.clone());
             start_client_impl(
                 Box::new(os_input),
@@ -458,4 +458,25 @@ pub(crate) fn start_client(opts: CliArgs) {
             );
         }
     }
+}
+
+fn generate_unique_session_name() -> String {
+    let sessions = get_sessions();
+    let Ok(sessions) = sessions else {
+        eprintln!("Failed to list existing sessions: {:?}", sessions);
+        process::exit(1);
+    };
+
+    for _ in 0..1000 {
+        let name = generate_session_name().unwrap();
+
+        if sessions.contains(&name) {
+            continue;
+        } else {
+            return name;
+        }
+    }
+
+    eprintln!("Failed to generate a unique session name, giving up");
+    process::exit(1);
 }
