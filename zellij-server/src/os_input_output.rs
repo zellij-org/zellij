@@ -10,6 +10,7 @@ use nix::{
     },
     unistd,
 };
+
 use signal_hook::consts::*;
 use sysinfo::{ProcessExt, ProcessRefreshKind, System, SystemExt};
 use zellij_utils::{
@@ -838,6 +839,34 @@ pub fn get_server_os_input() -> Result<ServerOsInputOutput, nix::Error> {
         terminal_id_to_raw_fd: Arc::new(Mutex::new(BTreeMap::new())),
         cached_resizes: Arc::new(Mutex::new(None)),
     })
+}
+
+use crate::pty_writer::PtyWriteInstruction;
+use crate::thread_bus::ThreadSenders;
+
+pub struct ResizeCache {
+    senders: ThreadSenders,
+}
+
+impl ResizeCache {
+    pub fn new(senders: ThreadSenders) -> Self {
+        senders
+            .send_to_pty_writer(PtyWriteInstruction::StartCachingResizes)
+            .unwrap_or_else(|e| {
+                log::error!("Failed to cache resizes: {}", e);
+            });
+        ResizeCache { senders }
+    }
+}
+
+impl Drop for ResizeCache {
+    fn drop(&mut self) {
+        self.senders
+            .send_to_pty_writer(PtyWriteInstruction::ApplyCachedResizes)
+            .unwrap_or_else(|e| {
+                log::error!("Failed to apply cached resizes: {}", e);
+            });
+    }
 }
 
 /// Process id's for forked terminals
