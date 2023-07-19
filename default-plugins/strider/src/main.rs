@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use serde_json;
 use state::{refresh_directory, FsEntry, State};
 use std::{cmp::min, time::Instant};
+use std::collections::BTreeMap;
 use zellij_tile::prelude::*;
 
 register_plugin!(State);
@@ -18,7 +19,7 @@ register_worker!(
 );
 
 impl ZellijPlugin for State {
-    fn load(&mut self) {
+    fn load(&mut self, configuration: BTreeMap<String, String>) {
         refresh_directory(self);
         self.search_state.loading = true;
         subscribe(&[

@@ -2639,6 +2639,7 @@ pub(crate) fn screen_thread_main(
                 let run_plugin = RunPlugin {
                     _allow_exec_host_cmd: false,
                     location: run_plugin_location,
+                    configuration: BTreeMap::new(), // TODO: parse config
                 };
                 screen.bus.senders.send_to_plugin(PluginInstruction::Load(
                     should_float,
@@ -2662,6 +2663,7 @@ pub(crate) fn screen_thread_main(
                 let run_plugin = RunPlugin {
                     _allow_exec_host_cmd: false,
                     location: run_plugin_location,
+                    configuration: BTreeMap::new(), // TODO: parse config
                 };
                 screen.bus.senders.send_to_plugin(PluginInstruction::Load(
                     should_float,

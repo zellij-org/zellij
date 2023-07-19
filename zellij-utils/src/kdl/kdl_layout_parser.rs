@@ -19,7 +19,8 @@ use crate::{
     kdl_get_int_property_or_child_value, kdl_get_property_or_child,
     kdl_get_string_property_or_child_value, kdl_get_string_property_or_child_value_with_error,
     kdl_name, kdl_parsing_error, kdl_property_names, kdl_property_or_child_value_node,
-    kdl_string_arguments,
+    kdl_string_arguments, kdl_first_entry_as_string, kdl_first_entry_as_i64,
+    kdl_first_entry_as_bool,
 };
 
 use std::path::PathBuf;
@@ -120,6 +121,9 @@ impl<'a> KdlLayoutParser<'a> {
             || property_name == "max_panes"
             || property_name == "min_panes"
             || property_name == "exact_panes"
+    }
+    pub fn is_a_reserved_plugin_property(property_name: &str) -> bool {
+        property_name == "location" || property_name == "_allow_exec_host_cmd" || property_name == "path"
     }
     fn assert_legal_node_name(&self, name: &str, kdl_node: &KdlNode) -> Result<(), ConfigError> {
         if name.contains(char::is_whitespace) {
@@ -305,10 +309,55 @@ impl<'a> KdlLayoutParser<'a> {
                     url_node.span().len(),
                 )
             })?;
+        let configuration = KdlLayoutParser::parse_plugin_user_configuration(&plugin_block)?;
         Ok(Some(Run::Plugin(RunPlugin {
             _allow_exec_host_cmd,
             location,
+            configuration,
         })))
+    }
+    pub fn parse_plugin_user_configuration(plugin_block: &KdlNode) -> Result<BTreeMap<String, String>, ConfigError> {
+        let mut configuration = BTreeMap::new();
+        for user_configuration_entry in plugin_block.entries() {
+            let name = user_configuration_entry.name();
+            let value = user_configuration_entry.value();
+            if let Some(name) = name {
+                let name = name.to_string();
+                if KdlLayoutParser::is_a_reserved_plugin_property(&name) {
+                    continue;
+                }
+                configuration.insert(name, value.to_string());
+            }
+            // we ignore "bare" (eg. `plugin i_am_a_bare_true_argument { arg_one 1; }`) entries
+            // to prevent diverging behaviour with the keybindings config
+        }
+        if let Some(user_config) = kdl_children_nodes!(plugin_block) {
+            for user_configuration_entry in user_config {
+                let config_entry_name = kdl_name!(user_configuration_entry);
+                if KdlLayoutParser::is_a_reserved_plugin_property(&config_entry_name) {
+                    continue;
+                }
+                let config_entry_str_value =
+                    kdl_first_entry_as_string!(user_configuration_entry).map(|s| format!("{}", s.to_string()));
+                let config_entry_int_value =
+                    kdl_first_entry_as_i64!(user_configuration_entry).map(|s| format!("{}", s.to_string()));
+                let config_entry_bool_value =
+                    kdl_first_entry_as_bool!(user_configuration_entry).map(|s| format!("{}", s.to_string()));
+                let config_entry_children = user_configuration_entry.children().map(|s| format!("{}", s.to_string().trim()));
+                let config_entry_value =
+                    config_entry_str_value
+                        .or(config_entry_int_value)
+                        .or(config_entry_bool_value)
+                        .or(config_entry_children)
+                        .ok_or(ConfigError::new_kdl_error(
+                            format!("Failed to parse plugin block configuration: {:?}", user_configuration_entry),
+                            plugin_block.span().offset(),
+                            plugin_block.span().len(),
+                        ))?;
+                configuration.insert(config_entry_name.into(), config_entry_value);
+            }
+        }
+        Ok(configuration)
     }
     fn parse_args(&self, pane_node: &KdlNode) -> Result<Option<Vec<String>>, ConfigError> {
         match kdl_get_child!(pane_node, "args") {

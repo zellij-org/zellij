@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use zellij_tile::prelude::*;
 
@@ -35,7 +36,7 @@ register_plugin!(State);
 register_worker!(TestWorker, test_worker, TEST_WORKER);
 
 impl ZellijPlugin for State {
-    fn load(&mut self) {
+    fn load(&mut self, configuration: BTreeMap<String, String>) {
         subscribe(&[
             EventType::InputReceived,
             EventType::Key,

@@ -9,6 +9,7 @@ use ansi_term::{
 };
 
 use std::fmt::{Display, Error, Formatter};
+use std::collections::BTreeMap;
 use zellij_tile::prelude::actions::Action;
 use zellij_tile::prelude::*;
 use zellij_tile_utils::{palette_match, style};
@@ -196,7 +197,7 @@ fn color_elements(palette: Palette, different_color_alternates: bool) -> Colored
 }
 
 impl ZellijPlugin for State {
-    fn load(&mut self) {
+    fn load(&mut self, configuration: BTreeMap<String, String>) {
         // TODO: Should be able to choose whether to use the cache through config.
         self.tip_name = get_cached_tip_name();
         set_selectable(false);
@@ -207,7 +208,8 @@ impl ZellijPlugin for State {
             EventType::InputReceived,
             EventType::SystemClipboardFailure,
         ]);
-        self.supermode = false; // TODO: from config
+        eprintln!("configuration: {:?}", configuration);
+        self.supermode = configuration.get("supermode").and_then(|s| s.trim().parse().ok()).unwrap_or(false);
         self.standby_mode = InputMode::Pane;
         if self.supermode {
             switch_to_input_mode(&InputMode::Locked); // supermode should start locked (TODO: only

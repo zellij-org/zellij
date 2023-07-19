@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 
 use std::path::PathBuf;
 use std::str::FromStr;
+use std::collections::BTreeMap;
 
 use crate::position::Position;
 
@@ -480,13 +481,19 @@ impl Action {
             CliAction::PreviousSwapLayout => Ok(vec![Action::PreviousSwapLayout]),
             CliAction::NextSwapLayout => Ok(vec![Action::NextSwapLayout]),
             CliAction::QueryTabNames => Ok(vec![Action::QueryTabNames]),
-            CliAction::StartOrReloadPlugin { url } => {
+            CliAction::StartOrReloadPlugin { url } => { // TODO: CONTINUE HERE (18/07) - look
+                                                        // through the clap docs and find a good
+                                                        // way to pass key value through the
+                                                        // command line, then do it here and turn
+                                                        // it into a plugin user configuration (the
+                                                        // TODO below)
                 let current_dir = get_current_dir();
                 let run_plugin_location = RunPluginLocation::parse(&url, Some(current_dir))
                     .map_err(|e| format!("Failed to parse plugin location: {}", e))?;
                 let run_plugin = RunPlugin {
                     location: run_plugin_location,
                     _allow_exec_host_cmd: false,
+                    configuration: BTreeMap::new(), // TODO: parse config
                 };
                 Ok(vec![Action::StartOrReloadPlugin(run_plugin)])
             },
@@ -497,6 +504,7 @@ impl Action {
                 let run_plugin = RunPlugin {
                     location: run_plugin_location,
                     _allow_exec_host_cmd: false,
+                    configuration: BTreeMap::new(), // TODO: parse config
                 };
                 Ok(vec![Action::LaunchOrFocusPlugin(run_plugin, floating)])
             },

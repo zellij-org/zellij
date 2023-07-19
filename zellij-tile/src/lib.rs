@@ -18,6 +18,7 @@
 pub mod prelude;
 pub mod shim;
 
+use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use zellij_utils::data::Event;
 
@@ -27,7 +28,7 @@ use zellij_utils::data::Event;
 #[allow(unused_variables)]
 pub trait ZellijPlugin: Default {
     /// Will be called when the plugin is loaded, this is a good place to [`subscribe`](shim::subscribe) to events that are interesting for this plugin.
-    fn load(&mut self) {}
+    fn load(&mut self, configuration: BTreeMap<String, String>) {}
     /// Will be called with an [`Event`](prelude::Event) if the plugin is subscribed to said event.
     /// If the plugin returns `true` from this function, Zellij will know it should be rendered and call its `render` function.
     fn update(&mut self, event: Event) -> bool {
@@ -103,7 +104,11 @@ macro_rules! register_plugin {
         #[no_mangle]
         fn load() {
             STATE.with(|state| {
-                state.borrow_mut().load();
+                let configuration = $crate::shim::object_from_stdin()
+                    .context($crate::PLUGIN_MISMATCH)
+                    .to_stdout()
+                    .unwrap();
+                state.borrow_mut().load(configuration);
             });
         }
 
