@@ -9,6 +9,7 @@ use zellij_utils::plugin_api::event::ProtobufEventNameList;
 use zellij_utils::plugin_api::command::ProtobufCommand;
 use zellij_utils::plugin_api::message::ProtobufMessage;
 use zellij_utils::plugin_api::input_mode::ProtobufInputModeMessage;
+use zellij_utils::plugin_api::resize::{ProtobufResize, ProtobufMoveDirection};
 
 
 use prost::Message;
@@ -195,13 +196,20 @@ pub fn report_panic(info: &std::panic::PanicInfo) {
 
 /// Either Increase or Decrease the size of the focused pane
 pub fn resize_focused_pane(resize: Resize) {
-    object_to_stdout(&resize);
+    let resize = ProtobufResize::try_from(resize).unwrap();
+    object_to_stdout(&resize.encode_to_vec());
     unsafe { host_resize() };
 }
 
 /// Either Increase or Decrease the size of the focused pane in a specified direction (eg. `Left`, `Right`, `Up`, `Down`).
 pub fn resize_focused_pane_with_direction(resize: Resize, direction: Direction) {
-    object_to_stdout(&(resize, direction));
+    let resize_strategy = ResizeStrategy {
+        resize,
+        direction: Some(direction),
+        invert_on_boundaries: false
+    };
+    let resize = ProtobufResize::try_from(resize_strategy).unwrap();
+    object_to_stdout(&resize.encode_to_vec());
     unsafe { host_resize_with_direction() };
 }
 
@@ -217,13 +225,15 @@ pub fn focus_previous_pane() {
 
 /// Change the focused pane in the specified direction
 pub fn move_focus(direction: Direction) {
-    object_to_stdout(&direction);
+    let direction = ProtobufMoveDirection::try_from(direction).unwrap();
+    object_to_stdout(&direction.encode_to_vec());
     unsafe { host_move_focus() };
 }
 
 /// Change the focused pane in the specified direction, if the pane is on the edge of the screen, the next tab is focused (next if right edge, previous if left edge).
 pub fn move_focus_or_tab(direction: Direction) {
-    object_to_stdout(&direction);
+    let direction = ProtobufMoveDirection::try_from(direction).unwrap();
+    object_to_stdout(&direction.encode_to_vec());
     unsafe { host_move_focus_or_tab() };
 }
 
@@ -261,7 +271,8 @@ pub fn move_pane() {
 
 /// Switch the position of the focused pane with a different pane in the specified direction (eg. `Down`, `Up`, `Left`, `Right`).
 pub fn move_pane_with_direction(direction: Direction) {
-    object_to_stdout(&direction);
+    let direction = ProtobufMoveDirection::try_from(direction).unwrap();
+    object_to_stdout(&direction.encode_to_vec());
     unsafe { host_move_pane_with_direction() };
 }
 

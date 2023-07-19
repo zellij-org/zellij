@@ -12,41 +12,109 @@ pub mod api {
     include!(concat!(env!("OUT_DIR"), "/api.resize.rs"));
 }
 
-pub use api::{Resize as ProtobufResize, ResizeAction, resize::OptionalDirection};
-use crate::data::{Resize, Direction};
+pub use api::{Resize as ProtobufResize, ResizeAction, resize::OptionalDirection, ResizeDirection, MoveDirection as ProtobufMoveDirection};
+use crate::data::{Resize, ResizeStrategy, Direction};
 
 use std::convert::TryFrom;
-use std::path::PathBuf;
 
 impl TryFrom<ProtobufResize> for Resize {
    type Error = &'static str;
    fn try_from(protobuf_resize: ProtobufResize) -> Result<Self, &'static str> {
-       // TODO: CONTINUE HERE - implement this, then continue in zellij_exports.rs
        if protobuf_resize.optional_direction.is_some() {
            return Err("Resize cannot have a direction");
        }
-       let name = protobuf_message.name;
-       let payload = protobuf_message.payload;
-       let worker_name = protobuf_message.optional_worker_name.map(|n| {
-           match n {
-               OptionalWorkerName::WorkerName(n) => n
-           }
-       });
-       Ok(PluginMessage {
-           name,
-           payload,
-           worker_name
+       match ResizeAction::from_i32(protobuf_resize.resize_action) {
+           Some(ResizeAction::Increase) => Ok(Resize::Increase),
+           Some(ResizeAction::Decrease) => Ok(Resize::Decrease),
+           None => Err("No resize action for the given index")
+       }
+   }
+}
+
+impl TryFrom<Resize> for ProtobufResize {
+   type Error = &'static str;
+   fn try_from(resize: Resize) -> Result<Self, &'static str> {
+       Ok(ProtobufResize {
+           resize_action: match resize {
+               Resize::Increase => ResizeAction::Increase as i32,
+               Resize::Decrease => ResizeAction::Decrease as i32,
+           },
+           optional_direction: None,
        })
    }
 }
 
-impl TryFrom<PluginMessage> for ProtobufMessage {
+impl TryFrom<ProtobufResize> for ResizeStrategy {
    type Error = &'static str;
-   fn try_from(plugin_message: PluginMessage) -> Result<Self, &'static str> {
-       Ok(ProtobufMessage {
-           name: plugin_message.name,
-           payload: plugin_message.payload,
-           optional_worker_name: plugin_message.worker_name.map(|n| OptionalWorkerName::WorkerName(n))
+   fn try_from(protobuf_resize: ProtobufResize) -> Result<Self, &'static str> {
+       let direction = match protobuf_resize.optional_direction {
+           Some(OptionalDirection::ResizeDirection(direction_index)) => {
+               match ResizeDirection::from_i32(direction_index) {
+                   Some(ResizeDirection::Left) => Some(Direction::Left),
+                   Some(ResizeDirection::Right) => Some(Direction::Right),
+                   Some(ResizeDirection::Up) => Some(Direction::Up),
+                   Some(ResizeDirection::Down) => Some(Direction::Down),
+                   None => None,
+               }
+           },
+           None => None
+       };
+       let resize = match ResizeAction::from_i32(protobuf_resize.resize_action) {
+           Some(ResizeAction::Increase) => Resize::Increase,
+           Some(ResizeAction::Decrease) => Resize::Decrease,
+           None => return Err("No resize action for the given index"),
+       };
+       Ok(ResizeStrategy {
+           direction,
+           resize,
+           invert_on_boundaries: false,
+       })
+   }
+}
+
+impl TryFrom<ResizeStrategy> for ProtobufResize {
+   type Error = &'static str;
+   fn try_from(resize_strategy: ResizeStrategy) -> Result<Self, &'static str> {
+
+       Ok(ProtobufResize {
+           resize_action: match resize_strategy.resize {
+               Resize::Increase => ResizeAction::Increase as i32,
+               Resize::Decrease => ResizeAction::Decrease as i32,
+           },
+           optional_direction: match resize_strategy.direction {
+               Some(Direction::Left) => Some(OptionalDirection::ResizeDirection(ResizeDirection::Left as i32)),
+               Some(Direction::Right) => Some(OptionalDirection::ResizeDirection(ResizeDirection::Right as i32)),
+               Some(Direction::Up) => Some(OptionalDirection::ResizeDirection(ResizeDirection::Up as i32)),
+               Some(Direction::Down) => Some(OptionalDirection::ResizeDirection(ResizeDirection::Down as i32)),
+               None => None
+           }
+       })
+   }
+}
+
+impl TryFrom<ProtobufMoveDirection> for Direction {
+   type Error = &'static str;
+   fn try_from(protobuf_move_direction: ProtobufMoveDirection) -> Result<Self, &'static str> {
+       match ResizeDirection::from_i32(protobuf_move_direction.direction) {
+           Some(ResizeDirection::Left) => Ok(Direction::Left),
+           Some(ResizeDirection::Right) => Ok(Direction::Right),
+           Some(ResizeDirection::Up) => Ok(Direction::Up),
+           Some(ResizeDirection::Down) => Ok(Direction::Down),
+           None => Err("No direction for the given index")
+       }
+   }
+}
+
+impl TryFrom<Direction> for ProtobufMoveDirection {
+   type Error = &'static str;
+   fn try_from(direction: Direction) -> Result<Self, &'static str> {
+       Ok(ProtobufMoveDirection {
+           direction: match direction {
+               Direction::Left => ResizeDirection::Left as i32,
+               Direction::Right => ResizeDirection::Right as i32,
+               Direction::Up => ResizeDirection::Up as i32,
+               Direction::Down => ResizeDirection::Down as i32,
+           },
        })
    }
 }

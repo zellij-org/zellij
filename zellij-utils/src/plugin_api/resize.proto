@@ -20,3 +20,7 @@ message Resize {
     ResizeDirection resize_direction = 2;
   }
 }
+
+message MoveDirection {
+  ResizeDirection direction = 1;
+}

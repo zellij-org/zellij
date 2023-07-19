@@ -20,9 +20,16 @@ use url::Url;
 use crate::{panes::PaneId, screen::ScreenInstruction};
 
 use zellij_utils::{
-    plugin_api::{event::ProtobufEventNameList, file::ProtobufFile, command::ProtobufCommand, message::ProtobufMessage, input_mode::ProtobufInputModeMessage},
+    plugin_api::{
+        event::ProtobufEventNameList,
+        file::ProtobufFile,
+        command::ProtobufCommand,
+        message::ProtobufMessage,
+        input_mode::ProtobufInputModeMessage,
+        resize::{ProtobufResize, ProtobufMoveDirection}
+    },
     consts::VERSION,
-    data::{Direction, Event, EventType, InputMode, PluginIds, Resize, Key, FileToOpen, CommandToRun, PluginMessage},
+    data::{Direction, Event, EventType, InputMode, PluginIds, Resize, ResizeStrategy, Key, FileToOpen, CommandToRun, PluginMessage},
     errors::prelude::*,
     plugin_api::key::ProtobufKey,
     input::{
@@ -737,29 +744,36 @@ fn host_go_to_previous_tab(env: &ForeignFunctionEnv) {
     apply_action!(action, error_msg, env);
 }
 
-// TODO: CONTINUE HERE (14/07) - make Resize work with protobufs
 fn host_resize(env: &ForeignFunctionEnv) {
     let error_msg = || format!("failed to resize in plugin {}", env.plugin_env.name());
-    wasi_read_object::<Resize>(&env.plugin_env.wasi_env)
-        .and_then(|resize| {
+    wasi_read_bytes(&env.plugin_env.wasi_env)
+        .and_then(|bytes| {
+            let resize = ProtobufResize::decode(bytes.as_slice())?;
+            let resize: Resize = resize.try_into().map_err(
+                |e| anyhow!("failed to convert serialized resize: {}", e)
+            )?;
             let action = Action::Resize(resize, None);
             apply_action!(action, error_msg, env);
             Ok(())
         })
         .with_context(error_msg)
-        .fatal();
+        .non_fatal();
 }
 
 fn host_resize_with_direction(env: &ForeignFunctionEnv) {
     let error_msg = || format!("failed to resize in plugin {}", env.plugin_env.name());
-    wasi_read_object::<(Resize, Direction)>(&env.plugin_env.wasi_env)
-        .and_then(|(resize, direction)| {
-            let action = Action::Resize(resize, Some(direction));
+    wasi_read_bytes(&env.plugin_env.wasi_env)
+        .and_then(|bytes| {
+            let resize = ProtobufResize::decode(bytes.as_slice())?;
+            let resize: ResizeStrategy = resize.try_into().map_err(
+                |e| anyhow!("failed to convert serialized resize with direction: {}", e)
+            )?;
+            let action = Action::Resize(resize.resize, resize.direction);
             apply_action!(action, error_msg, env);
             Ok(())
         })
         .with_context(error_msg)
-        .fatal();
+        .non_fatal();
 }
 
 fn host_focus_next_pane(env: &ForeignFunctionEnv) {
@@ -776,26 +790,34 @@ fn host_focus_previous_pane(env: &ForeignFunctionEnv) {
 
 fn host_move_focus(env: &ForeignFunctionEnv) {
     let error_msg = || format!("failed to move focus in plugin {}", env.plugin_env.name());
-    wasi_read_object::<Direction>(&env.plugin_env.wasi_env)
-        .and_then(|direction| {
+    wasi_read_bytes(&env.plugin_env.wasi_env)
+        .and_then(|bytes| {
+            let direction = ProtobufMoveDirection::decode(bytes.as_slice())?;
+            let direction: Direction = direction.try_into().map_err(
+                |e| anyhow!("failed to convert serialized move direction: {}", e)
+            )?;
             let action = Action::MoveFocus(direction);
             apply_action!(action, error_msg, env);
             Ok(())
         })
         .with_context(error_msg)
-        .fatal();
+        .non_fatal();
 }
 
 fn host_move_focus_or_tab(env: &ForeignFunctionEnv) {
     let error_msg = || format!("failed to move focus in plugin {}", env.plugin_env.name());
-    wasi_read_object::<Direction>(&env.plugin_env.wasi_env)
-        .and_then(|direction| {
+    wasi_read_bytes(&env.plugin_env.wasi_env)
+        .and_then(|bytes| {
+            let direction = ProtobufMoveDirection::decode(bytes.as_slice())?;
+            let direction: Direction = direction.try_into().map_err(
+                |e| anyhow!("failed to convert serialized move direction: {}", e)
+            )?;
             let action = Action::MoveFocusOrTab(direction);
             apply_action!(action, error_msg, env);
             Ok(())
         })
         .with_context(error_msg)
-        .fatal();
+        .non_fatal();
 }
 
 fn host_detach(env: &ForeignFunctionEnv) {
@@ -848,8 +870,12 @@ fn host_move_pane(env: &ForeignFunctionEnv) {
 
 fn host_move_pane_with_direction(env: &ForeignFunctionEnv) {
     let error_msg = || format!("failed to move pane in plugin {}", env.plugin_env.name());
-    wasi_read_object::<Direction>(&env.plugin_env.wasi_env)
-        .and_then(|direction| {
+    wasi_read_bytes(&env.plugin_env.wasi_env)
+        .and_then(|bytes| {
+            let direction = ProtobufMoveDirection::decode(bytes.as_slice())?;
+            let direction: Direction = direction.try_into().map_err(
+                |e| anyhow!("failed to convert serialized move direction: {}", e)
+            )?;
             let action = Action::MovePane(Some(direction));
             apply_action!(action, error_msg, env);
             Ok(())
