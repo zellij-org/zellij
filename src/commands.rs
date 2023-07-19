@@ -2,7 +2,7 @@ use dialoguer::Confirm;
 use std::{fs::File, io::prelude::*, path::PathBuf, process};
 
 use crate::sessions::{
-    assert_session, assert_session_ne, get_active_session, get_sessions,
+    assert_session, assert_session_ne, get_active_session, get_name_generator, get_sessions,
     get_sessions_sorted_by_mtime, kill_session as kill_session_impl, match_session_name,
     print_sessions, print_sessions_with_index, session_exists, ActiveSession, SessionNameMatch,
 };
@@ -93,7 +93,7 @@ pub(crate) fn start_server(path: PathBuf, debug: bool) {
 }
 
 fn create_new_client() -> ClientInfo {
-    ClientInfo::New(names::Generator::default().next().unwrap())
+    ClientInfo::New(generate_unique_session_name())
 }
 
 fn find_indexed_session(
@@ -446,7 +446,7 @@ pub(crate) fn start_client(opts: CliArgs) {
                 process::exit(0);
             }
 
-            let session_name = names::Generator::default().next().unwrap();
+            let session_name = generate_unique_session_name();
             start_client_plan(session_name.clone());
             start_client_impl(
                 Box::new(os_input),
@@ -457,5 +457,24 @@ pub(crate) fn start_client(opts: CliArgs) {
                 Some(layout),
             );
         }
+    }
+}
+
+fn generate_unique_session_name() -> String {
+    let sessions = get_sessions();
+    let Ok(sessions) = sessions else {
+        eprintln!("Failed to list existing sessions: {:?}", sessions);
+        process::exit(1);
+    };
+
+    let name = get_name_generator()
+        .take(1000)
+        .find(|name| !sessions.contains(name));
+
+    if let Some(name) = name {
+        return name;
+    } else {
+        eprintln!("Failed to generate a unique session name, giving up");
+        process::exit(1);
     }
 }
