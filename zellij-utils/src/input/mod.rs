@@ -4,6 +4,7 @@ pub mod config;
 pub mod keybinds;
 pub mod layout;
 pub mod options;
+pub mod permission;
 pub mod plugins;
 pub mod theme;
 

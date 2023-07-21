@@ -18,11 +18,13 @@ use crate::{pty::PtyInstruction, thread_bus::Bus, ClientId, ServerInstruction};
 use wasm_bridge::WasmBridge;
 
 use zellij_utils::{
+    consts::ZELLIJ_PLUGIN_PERMISSIONS_FILE,
     data::{Event, EventType, PermissionType, PluginCapabilities},
     errors::{prelude::*, ContextType, PluginContext},
     input::{
         command::TerminalAction,
         layout::{FloatingPaneLayout, Layout, Run, RunPlugin, RunPluginLocation, TiledPaneLayout},
+        permission::GrantedPermission,
         plugins::PluginsConfig,
     },
     ipc::ClientAttributes,
@@ -79,7 +81,7 @@ pub enum PluginInstruction {
         String, // serialized payload
     ),
     PluginSubscribedToEvents(PluginId, ClientId, HashSet<EventType>),
-    PermissionRequestResult(PluginId, Option<ClientId>, HashSet<PermissionType>, bool),
+    PermissionRequestResult(PluginId, Option<ClientId>, Vec<PermissionType>, bool),
     Exit,
 }
 
@@ -130,11 +132,21 @@ pub(crate) fn plugin_thread_main(
     let plugin_dir = data_dir.join("plugins/");
     let plugin_global_data_dir = plugin_dir.join("data");
 
+    let granted_permission =
+        match fs::read_to_string(plugin_dir.join(ZELLIJ_PLUGIN_PERMISSIONS_FILE)) {
+            Ok(s) => match GrantedPermission::from_string(s) {
+                Ok(p) => p,
+                Err(_) => GrantedPermission::default(),
+            },
+            Err(_) => GrantedPermission::default(),
+        };
+
     let mut wasm_bridge = WasmBridge::new(
         plugins,
         bus.senders.clone(),
         store,
         plugin_dir,
+        granted_permission,
         path_to_default_shell,
         zellij_cwd,
         capabilities,
@@ -296,8 +308,11 @@ pub(crate) fn plugin_thread_main(
                 permissions,
                 result,
             ) => {
-                let permissions = if result { permissions } else { HashSet::new() };
-                wasm_bridge.caching_plugin_permissions(plugin_id, client_id, permissions);
+                let permissions = if result { permissions } else { Vec::new() };
+                match wasm_bridge.caching_plugin_permissions(plugin_id, client_id, permissions) {
+                    Ok(_) => {},
+                    Err(e) => log::error!("{}", e),
+                }
 
                 let updates = vec![(
                     Some(plugin_id),

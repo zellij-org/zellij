@@ -1,15 +1,16 @@
 mod kdl_layout_parser;
-use crate::data::{Direction, InputMode, Key, Palette, PaletteColor, Resize};
+use crate::data::{Direction, InputMode, Key, Palette, PaletteColor, PermissionType, Resize};
 use crate::envs::EnvironmentVariables;
 use crate::input::config::{Config, ConfigError, KdlError};
 use crate::input::keybinds::Keybinds;
 use crate::input::layout::{Layout, RunPlugin, RunPluginLocation};
 use crate::input::options::{Clipboard, OnForceClose, Options};
+use crate::input::permission::GrantedPermission;
 use crate::input::plugins::{PluginConfig, PluginTag, PluginType, PluginsConfig};
 use crate::input::theme::{FrameConfig, Theme, Themes, UiConfig};
 use crate::setup::{find_default_config_dir, get_layout_dir};
 use kdl_layout_parser::KdlLayoutParser;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use strum::IntoEnumIterator;
 
 use miette::NamedSource;
@@ -1798,5 +1799,52 @@ impl Themes {
             }
         }
         Ok(themes)
+    }
+}
+
+impl GrantedPermission {
+    pub fn from_string(raw_string: String) -> Result<Self, ConfigError> {
+        let kdl_document: KdlDocument = raw_string.parse()?;
+
+        let mut granted_permission = GrantedPermission::default();
+
+        for node in kdl_document.nodes() {
+            if let Some(children) = node.children() {
+                let key = kdl_name!(node);
+                let permissions: Vec<PermissionType> = children
+                    .nodes()
+                    .iter()
+                    .filter_map(|p| {
+                        let v = kdl_name!(p);
+                        PermissionType::from_str(v).ok()
+                    })
+                    .collect();
+
+                granted_permission.insert(key.into(), permissions);
+            }
+        }
+
+        Ok(granted_permission)
+    }
+
+    pub fn to_string(&self) -> String {
+        let mut kdl_doucment = KdlDocument::new();
+
+        self.iter().for_each(|(k, v)| {
+            let mut node = KdlNode::new(k.as_str());
+            let mut children = KdlDocument::new();
+
+            let permissions: HashSet<PermissionType> = v.clone().into_iter().collect();
+            permissions.iter().for_each(|f| {
+                let n = KdlNode::new(f.to_string().as_str());
+                children.nodes_mut().push(n);
+            });
+
+            node.set_children(children);
+            kdl_doucment.nodes_mut().push(node);
+        });
+
+        kdl_doucment.fmt();
+        kdl_doucment.to_string()
     }
 }

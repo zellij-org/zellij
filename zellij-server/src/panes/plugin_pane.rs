@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::time::Instant;
 
 use crate::output::{CharacterChunk, SixelImageChunk};
@@ -13,7 +13,7 @@ use crate::ui::{
 use crate::ClientId;
 use std::cell::RefCell;
 use std::rc::Rc;
-use zellij_utils::data::PluginPermission;
+use zellij_utils::data::{PermissionType, PluginPermission};
 use zellij_utils::pane_size::{Offset, SizeInPixels};
 use zellij_utils::position::Position;
 use zellij_utils::{
@@ -638,18 +638,16 @@ impl PluginPane {
         let cyan = style!(self.terminal_emulator_colors.borrow().cyan).bold();
 
         let mut messages = String::new();
+        let permissions: HashSet<PermissionType> =
+            plugin_permission.permissions.clone().into_iter().collect();
 
         messages.push_str(&format!(
             "Plugin {} would like permission to:",
             cyan.paint(&plugin_permission.name),
         ));
-        plugin_permission
-            .permissions
-            .iter()
-            .enumerate()
-            .for_each(|(i, p)| {
-                messages.push_str(&format!("\n\r{}. {}", i + 1, p));
-            });
+        permissions.iter().enumerate().for_each(|(i, p)| {
+            messages.push_str(&format!("\n\r{}. {}", i + 1, p));
+        });
 
         messages.push_str(&format!(
             "\n\r\n\rWould you like to grant these permissions? (y/n)"

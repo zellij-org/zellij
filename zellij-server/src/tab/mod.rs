@@ -464,7 +464,7 @@ pub trait Pane {
 pub enum AdjustedInput {
     WriteBytesToTerminal(Vec<u8>),
     ReRunCommandInThisPane(RunCommand),
-    PermissionRequestResult(HashSet<PermissionType>, bool),
+    PermissionRequestResult(Vec<PermissionType>, bool),
     CloseThisPane,
 }
 pub fn get_next_terminal_position(

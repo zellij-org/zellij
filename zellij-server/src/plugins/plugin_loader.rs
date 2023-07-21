@@ -14,6 +14,8 @@ use std::{
 use url::Url;
 use wasmer::{ChainableNamedResolver, Instance, Module, Store};
 use wasmer_wasi::{Pipe, WasiState};
+use zellij_utils::data::PermissionType;
+use zellij_utils::input::permission::GrantedPermission;
 
 use crate::{
     logging_pipe::LoggingPipe, screen::ScreenInstruction, thread_bus::ThreadSenders,
@@ -163,6 +165,7 @@ pub struct PluginLoader<'a> {
     store: Store,
     plugin: PluginConfig,
     plugin_dir: &'a PathBuf,
+    plugin_permissions: Option<Vec<PermissionType>>,
     tab_index: usize,
     plugin_own_data_dir: PathBuf,
     size: Size,
@@ -180,6 +183,7 @@ impl<'a> PluginLoader<'a> {
         plugin_id: PluginId,
         plugin_dir: PathBuf,
         plugin_cache: Arc<Mutex<HashMap<PathBuf, Module>>>,
+        plugin_permissions: Option<Vec<PermissionType>>,
         senders: ThreadSenders,
         store: Store,
         plugin_map: Arc<Mutex<PluginMap>>,
@@ -209,6 +213,7 @@ impl<'a> PluginLoader<'a> {
             first_client_id,
             &store,
             &plugin_dir,
+            plugin_permissions,
             path_to_default_shell,
             zellij_cwd,
             capabilities,
@@ -242,6 +247,7 @@ impl<'a> PluginLoader<'a> {
         tab_index: usize,
         plugin_dir: PathBuf,
         plugin_cache: Arc<Mutex<HashMap<PathBuf, Module>>>,
+        plugin_permissions: Option<Vec<PermissionType>>,
         senders: ThreadSenders,
         store: Store,
         plugin_map: Arc<Mutex<PluginMap>>,
@@ -265,6 +271,7 @@ impl<'a> PluginLoader<'a> {
             &store,
             plugin.clone(),
             &plugin_dir,
+            plugin_permissions,
             tab_index,
             size,
             path_to_default_shell,
@@ -297,10 +304,12 @@ impl<'a> PluginLoader<'a> {
         display_loading_stage!(end, loading_indication, senders, plugin_id);
         Ok(())
     }
+
     pub fn add_client(
         client_id: ClientId,
         plugin_dir: PathBuf,
         plugin_cache: Arc<Mutex<HashMap<PathBuf, Module>>>,
+        granted_permission: &GrantedPermission,
         senders: ThreadSenders,
         store: Store,
         plugin_map: Arc<Mutex<PluginMap>>,
@@ -314,10 +323,14 @@ impl<'a> PluginLoader<'a> {
         default_layout: Box<Layout>,
     ) -> Result<()> {
         let mut new_plugins = HashSet::new();
-        for plugin_id in plugin_map.lock().unwrap().plugin_ids() {
-            new_plugins.insert((plugin_id, client_id));
+        for (plugin_id, _, running_plugin) in plugin_map.lock().unwrap().running_plugins() {
+            let running_plugin = running_plugin.lock().unwrap();
+            let plugin_permissions =
+                granted_permission.get(&running_plugin.plugin_env.plugin.location.to_string());
+
+            new_plugins.insert((plugin_id, client_id, plugin_permissions.cloned()));
         }
-        for (plugin_id, existing_client_id) in new_plugins {
+        for (plugin_id, existing_client_id, plugin_permissions) in new_plugins {
             let mut plugin_loader = PluginLoader::new_from_different_client_id(
                 &plugin_cache,
                 &plugin_map,
@@ -327,6 +340,7 @@ impl<'a> PluginLoader<'a> {
                 existing_client_id,
                 &store,
                 &plugin_dir,
+                plugin_permissions,
                 path_to_default_shell.clone(),
                 zellij_cwd.clone(),
                 capabilities.clone(),
@@ -354,6 +368,7 @@ impl<'a> PluginLoader<'a> {
         plugin_id: PluginId,
         plugin_dir: PathBuf,
         plugin_cache: Arc<Mutex<HashMap<PathBuf, Module>>>,
+        plugin_permissions: Option<Vec<PermissionType>>,
         senders: ThreadSenders,
         store: Store,
         plugin_map: Arc<Mutex<PluginMap>>,
@@ -384,6 +399,7 @@ impl<'a> PluginLoader<'a> {
             first_client_id,
             &store,
             &plugin_dir,
+            plugin_permissions,
             path_to_default_shell,
             zellij_cwd,
             capabilities,
@@ -418,6 +434,7 @@ impl<'a> PluginLoader<'a> {
         store: &Store,
         plugin: PluginConfig,
         plugin_dir: &'a PathBuf,
+        plugin_permissions: Option<Vec<PermissionType>>,
         tab_index: usize,
         size: Size,
         path_to_default_shell: PathBuf,
@@ -442,6 +459,7 @@ impl<'a> PluginLoader<'a> {
             store: store.clone(),
             plugin,
             plugin_dir,
+            plugin_permissions,
             tab_index,
             plugin_own_data_dir,
             size,
@@ -463,6 +481,7 @@ impl<'a> PluginLoader<'a> {
         client_id: ClientId,
         store: &Store,
         plugin_dir: &'a PathBuf,
+        plugin_permissions: Option<Vec<PermissionType>>,
         path_to_default_shell: PathBuf,
         zellij_cwd: PathBuf,
         capabilities: PluginCapabilities,
@@ -494,6 +513,7 @@ impl<'a> PluginLoader<'a> {
             store,
             plugin_config,
             plugin_dir,
+            plugin_permissions,
             tab_index,
             size,
             path_to_default_shell,
@@ -513,6 +533,7 @@ impl<'a> PluginLoader<'a> {
         client_id: ClientId,
         store: &Store,
         plugin_dir: &'a PathBuf,
+        plugin_permissions: Option<Vec<PermissionType>>,
         path_to_default_shell: PathBuf,
         zellij_cwd: PathBuf,
         capabilities: PluginCapabilities,
@@ -545,6 +566,7 @@ impl<'a> PluginLoader<'a> {
             store,
             plugin_config,
             plugin_dir,
+            plugin_permissions,
             tab_index,
             size,
             path_to_default_shell,
@@ -783,6 +805,7 @@ impl<'a> PluginLoader<'a> {
                     *client_id,
                     &self.store,
                     &self.plugin_dir,
+                    self.plugin_permissions.clone(),
                     self.path_to_default_shell.clone(),
                     self.zellij_cwd.clone(),
                     self.capabilities.clone(),
@@ -860,6 +883,10 @@ impl<'a> PluginLoader<'a> {
             })
             .with_context(err_context)?;
         let wasi = wasi_env.import_object(&module).with_context(err_context)?;
+        let plugin_permissions = match &self.plugin_permissions {
+            Some(p) => Some(HashSet::from_iter(p.clone())),
+            None => None,
+        };
 
         let mut mut_plugin = self.plugin.clone();
         mut_plugin.set_tab_index(self.tab_index);
@@ -867,7 +894,7 @@ impl<'a> PluginLoader<'a> {
             plugin_id: self.plugin_id,
             client_id: self.client_id,
             plugin: mut_plugin,
-            plugin_permissions: None,
+            plugin_permissions,
             senders: self.senders.clone(),
             wasi_env,
             plugin_own_data_dir: self.plugin_own_data_dir.clone(),
