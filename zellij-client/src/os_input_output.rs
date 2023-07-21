@@ -235,7 +235,7 @@ impl ClientOsApi for ClientOsInputOutput {
     }
 
     fn disable_mouse(&self) -> Result<()> {
-        let err_context = "failed to enable mouse mode";
+        let err_context = "failed to disable mouse mode";
         let mut stdout = self.get_stdout_writer();
         stdout
             .write_all(DISABLE_MOUSE_SUPPORT.as_bytes())
