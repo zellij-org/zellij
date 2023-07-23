@@ -33,6 +33,7 @@ impl LinkHandler {
 
         if !uri.is_empty() {
             // save the link, and the id if present to hashmap
+            self.link_index += 1;
             String::from_utf8(uri.to_vec()).ok().map(|uri| {
                 let id = link_params
                     .split(|&b| b == b':')
@@ -40,12 +41,11 @@ impl LinkHandler {
                     .and_then(|kv| String::from_utf8(kv[3..].to_vec()).ok());
                 let anchor = LinkAnchor::Start(self.link_index);
                 self.links.insert(self.link_index, Link { id, uri });
-                self.link_index += 1;
                 anchor
             })
         } else {
             // there is no link, so consider it a link end
-            Some(LinkAnchor::End)
+            Some(LinkAnchor::End(self.link_index))
         }
     }
 
@@ -71,8 +71,26 @@ impl LinkHandler {
 
                 output
             },
-            LinkAnchor::End => Some(format!("\u{1b}]8;;{}", TERMINATOR)),
+            LinkAnchor::End(_) | LinkAnchor::Reset => Some(format!("\u{1b}]8;;{}", TERMINATOR)),
         })
+    }
+
+    pub fn clear(&mut self) {
+        self.links.clear();
+        self.link_index = 0;
+    }
+
+    pub fn remove(&mut self, ids: &[u16]) {
+        for id in ids {
+            let removed = self.links.remove(id);
+            debug_assert!(removed.is_some());
+        }
+    }
+
+    // used in test only
+    #[allow(dead_code)]
+    pub(crate) fn link_count(&self) -> usize {
+        self.links.len()
     }
 }
 
@@ -115,7 +133,7 @@ mod tests {
 
         let anchor = link_handler.dispatch_osc8(&params);
 
-        assert_eq!(anchor, Some(LinkAnchor::End));
+        assert_eq!(anchor, Some(LinkAnchor::End(link_handler.link_index)));
 
         let expected = format!("\u{1b}]8;;{}", TERMINATOR);
         assert_eq!(link_handler.output_osc8(anchor).unwrap(), expected);

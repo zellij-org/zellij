@@ -2768,3 +2768,32 @@ pub fn cursor_hide_persists_through_alternate_screen() {
         "Cursor still shown away from alternate screen"
     );
 }
+
+#[test]
+fn links_are_reaped_when_scrolled_off() {
+    let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let link_handler = Rc::new(RefCell::new(LinkHandler::new()));
+    let mut grid = Grid::new(
+        10,
+        10,
+        Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
+        link_handler.clone(),
+        Rc::new(RefCell::new(None)),
+        sixel_image_store,
+    );
+    let content = "\u{1b}]8;;http://example.com\u{1b}\\A Link\u{1b}]8;;\u{1b}\\ NOT A Link";
+    for byte in content.as_bytes() {
+        vte_parser.advance(&mut grid, *byte);
+    }
+    assert_eq!(link_handler.borrow().link_count(), 1);
+
+    for _ in 0..10_011 {
+        // scrollbuffer limit + viewport height
+        grid.add_canonical_line();
+    }
+
+    assert_eq!(link_handler.borrow().link_count(), 0);
+}
