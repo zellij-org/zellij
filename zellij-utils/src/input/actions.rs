@@ -229,6 +229,8 @@ pub enum Action {
     NextSwapLayout,
     /// Query all tab names
     QueryTabNames,
+    /// Query all pane names
+    QueryPaneNames,
     /// Open a new tiled (embedded, non-floating) plugin pane
     NewTiledPluginPane(RunPluginLocation, Option<String>), // String is an optional name
     NewFloatingPluginPane(RunPluginLocation, Option<String>), // String is an optional name
@@ -480,6 +482,7 @@ impl Action {
             CliAction::PreviousSwapLayout => Ok(vec![Action::PreviousSwapLayout]),
             CliAction::NextSwapLayout => Ok(vec![Action::NextSwapLayout]),
             CliAction::QueryTabNames => Ok(vec![Action::QueryTabNames]),
+            CliAction::QueryPaneNames => Ok(vec![Action::QueryPaneNames]),
             CliAction::StartOrReloadPlugin { url } => {
                 let current_dir = get_current_dir();
                 let run_plugin_location = RunPluginLocation::parse(&url, Some(current_dir))
