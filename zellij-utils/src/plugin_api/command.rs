@@ -6,13 +6,7 @@
 // SDK authors in other languages should generate their own equivalent structures based on the
 // `.proto` specification, and then decode the protobuf over the wire into them
 
-pub mod api {
-    // this is a compile time asset generated from the `.proto` specification file by Prost to give
-    // us the ProtobufCommand structure we are gathered here to avoid
-    include!(concat!(env!("OUT_DIR"), "/api.command.rs"));
-}
-
-pub use api::{Command as ProtobufCommand, command::OptionalCwd};
+pub use super::generated_api::api::command::{Command as ProtobufCommand, command::OptionalCwd};
 use crate::data::CommandToRun;
 
 use std::convert::TryFrom;

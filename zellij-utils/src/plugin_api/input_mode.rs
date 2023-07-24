@@ -6,13 +6,7 @@
 // SDK authors in other languages should generate their own equivalent structures based on the
 // `.proto` specification, and then decode the protobuf over the wire into them
 
-pub mod api {
-    // this is a compile time asset generated from the `.proto` specification file by Prost to give
-    // us the ProtobufInputMode structure we are gathered here to avoid
-    include!(concat!(env!("OUT_DIR"), "/api.input_mode.rs"));
-}
-
-pub use api::{InputModeMessage as ProtobufInputModeMessage, InputMode as ProtobufInputMode};
+pub use super::generated_api::api::input_mode::{InputModeMessage as ProtobufInputModeMessage, InputMode as ProtobufInputMode};
 use crate::data::InputMode;
 
 use std::convert::TryFrom;

@@ -3,13 +3,13 @@ use std::{io, path::Path};
 use std::collections::HashSet;
 use zellij_utils::data::*;
 use zellij_utils::errors::prelude::*;
-use zellij_utils::plugin_api::key::ProtobufKey;
+use zellij_utils::plugin_api::plugin_command::ProtobufPluginCommand;
 use zellij_utils::plugin_api::file::ProtobufFile;
-use zellij_utils::plugin_api::event::ProtobufEventNameList;
 use zellij_utils::plugin_api::command::ProtobufCommand;
 use zellij_utils::plugin_api::message::ProtobufMessage;
 use zellij_utils::plugin_api::input_mode::ProtobufInputModeMessage;
 use zellij_utils::plugin_api::resize::{ProtobufResize, ProtobufMoveDirection};
+use zellij_utils::plugin_api::plugin_ids::{ProtobufPluginIds, ProtobufZellijVersion};
 
 
 use prost::Message;
@@ -18,173 +18,192 @@ use prost::Message;
 /// Subscribe to a list of [`Event`]s represented by their [`EventType`]s that will then trigger the `update` method
 pub fn subscribe(event_types: &[EventType]) {
     let event_types: HashSet<EventType> = event_types.iter().cloned().collect();
-    let event_types: ProtobufEventNameList = ProtobufEventNameList::try_from(event_types).unwrap();
-    object_to_stdout(&event_types.encode_to_vec());
-    unsafe { host_subscribe() };
+    let plugin_command = PluginCommand::Subscribe(event_types);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
 }
 
 /// Unsubscribe to a list of [`Event`]s represented by their [`EventType`]s.
 pub fn unsubscribe(event_types: &[EventType]) {
     let event_types: HashSet<EventType> = event_types.iter().cloned().collect();
-    let event_types: ProtobufEventNameList = ProtobufEventNameList::try_from(event_types).unwrap();
-    object_to_stdout(&event_types.encode_to_vec());
-    unsafe { host_unsubscribe() };
+    let plugin_command = PluginCommand::Unsubscribe(event_types);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
 }
 
 // Plugin Settings
 
 /// Sets the plugin as selectable or unselectable to the user. Unselectable plugins might be desired when they do not accept user input.
 pub fn set_selectable(selectable: bool) {
-    unsafe { host_set_selectable(selectable as i32) };
+    let plugin_command = PluginCommand::SetSelectable(selectable);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
 }
 
 // Query Functions
 /// Returns the unique Zellij pane ID for the plugin as well as the Zellij process id.
 pub fn get_plugin_ids() -> PluginIds {
-    unsafe { host_get_plugin_ids() };
-    object_from_stdin().unwrap()
+    let plugin_command = PluginCommand::GetPluginIds;
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+    let protobuf_plugin_ids = ProtobufPluginIds::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
+    PluginIds::try_from(protobuf_plugin_ids).unwrap()
 }
 
 /// Returns the version of the running Zellij instance - can be useful to check plugin compatibility
 pub fn get_zellij_version() -> String {
-    unsafe { host_get_zellij_version() };
-    object_from_stdin().unwrap()
-}
-
-// TODO: removeme
-pub fn get_key() -> Key {
-    unsafe { host_get_key() };
-    let protobuf_bytes: Vec<u8> = object_from_stdin().unwrap();
-    let protobuf_key = ProtobufKey::decode(protobuf_bytes.as_slice()).unwrap(); // TODO: no unwrap!
-    protobuf_key.try_into().unwrap() // TODO: no unwrap!
+    let plugin_command = PluginCommand::GetZellijVersion;
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+    let protobuf_zellij_version = ProtobufZellijVersion::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
+    protobuf_zellij_version.version
 }
 
 // Host Functions
 
 /// Open a file in the user's default `$EDITOR` in a new pane
 pub fn open_file(file_to_open: FileToOpen) {
-    let file_to_open = ProtobufFile::try_from(file_to_open).unwrap();
-    object_to_stdout(&file_to_open.encode_to_vec());
-    unsafe { host_open_file() };
+    let plugin_command = PluginCommand::OpenFile(file_to_open);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
 }
 
 /// Open a file in the user's default `$EDITOR` in a new floating pane
 pub fn open_file_floating(file_to_open: FileToOpen) {
-    let file_to_open = ProtobufFile::try_from(file_to_open).unwrap();
-    object_to_stdout(&file_to_open.encode_to_vec());
-    unsafe { host_open_file_floating() };
+    let plugin_command = PluginCommand::OpenFileFloating(file_to_open);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
 }
-
-// /// Open a file to a specific line in the user's default `$EDITOR` (if it supports it, most do) in a new pane
-// pub fn open_file_with_line<P: AsRef<Path>>(path: P, line: usize) {
-//     object_to_stdout(&(path.as_ref(), line));
-//     unsafe { host_open_file_with_line() };
-// }
-// 
-// /// Open a file to a specific line in the user's default `$EDITOR` (if it supports it, most do) in a new floating pane
-// pub fn open_file_with_line_floating<P: AsRef<Path>>(path: P, line: usize) {
-//     object_to_stdout(&(path.as_ref(), line));
-//     unsafe { host_open_file_with_line_floating() };
-// }
 
 /// Open a new terminal pane to the specified location on the host filesystem
 pub fn open_terminal<P: AsRef<Path>>(path: P) {
-    object_to_stdout(&path.as_ref());
-    unsafe { host_open_terminal() };
+    let file_to_open = FileToOpen::new(path.as_ref().to_path_buf());
+    let plugin_command = PluginCommand::OpenTerminal(file_to_open);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
 }
 
 /// Open a new floating terminal pane to the specified location on the host filesystem
 pub fn open_terminal_floating<P: AsRef<Path>>(path: P) {
-    object_to_stdout(&path.as_ref());
-    unsafe { host_open_terminal_floating() };
+    let file_to_open = FileToOpen::new(path.as_ref().to_path_buf());
+    let plugin_command = PluginCommand::OpenTerminalFloating(file_to_open);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
 }
 
 /// Open a new command pane with the specified command and args (this sort of pane allows the user to control the command, re-run it and see its exit status through the Zellij UI).
 // pub fn open_command_pane<P: AsRef<Path>, A: AsRef<str>>(path: P, args: Vec<A>) {
 pub fn open_command_pane(command_to_run: CommandToRun) {
+    let plugin_command = PluginCommand::OpenCommandPane(command_to_run);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
 
-    let command_to_run = ProtobufCommand::try_from(command_to_run).unwrap();
-    object_to_stdout(&command_to_run.encode_to_vec());
-    unsafe { host_open_command_pane() };
-//     object_to_stdout(&(
-//         path.as_ref(),
-//         args.iter().map(|a| a.as_ref()).collect::<Vec<&str>>(),
-//     ));
+
+//     let command_to_run = ProtobufCommand::try_from(command_to_run).unwrap();
+//     object_to_stdout(&command_to_run.encode_to_vec());
 //     unsafe { host_open_command_pane() };
 }
 
 /// Open a new floating command pane with the specified command and args (this sort of pane allows the user to control the command, re-run it and see its exit status through the Zellij UI).
 // pub fn open_command_pane_floating<P: AsRef<Path>, A: AsRef<str>>(path: P, args: Vec<A>) {
 pub fn open_command_pane_floating(command_to_run: CommandToRun) {
-    let command_to_run = ProtobufCommand::try_from(command_to_run).unwrap();
-    object_to_stdout(&command_to_run.encode_to_vec());
-    unsafe { host_open_command_pane_floating() };
-
-//     object_to_stdout(&(
-//         path.as_ref(),
-//         args.iter().map(|a| a.as_ref()).collect::<Vec<&str>>(),
-//     ));
-//     unsafe { host_open_command_pane_floating() };
+    let plugin_command = PluginCommand::OpenCommandPaneFloating(command_to_run);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
 }
 
 /// Change the focused tab to the specified index (corresponding with the default tab names, to starting at `1`, `0` will be considered as `1`).
 pub fn switch_tab_to(tab_idx: u32) {
-    unsafe { host_switch_tab_to(tab_idx) };
+    let plugin_command = PluginCommand::SwitchTabTo(tab_idx);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
 }
 
 /// Set a timeout in seconds (or fractions thereof) after which the plugins [update](./plugin-api-events#update) method will be called with the [`Timer`](./plugin-api-events.md#timer) event.
 pub fn set_timeout(secs: f64) {
-    unsafe { host_set_timeout(secs) };
+    let plugin_command = PluginCommand::SetTimeout(secs as f32);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
 }
 
 #[doc(hidden)]
 pub fn exec_cmd(cmd: &[&str]) {
-    object_to_stdout(&cmd);
-    unsafe { host_exec_cmd() };
+    let plugin_command = PluginCommand::ExecCmd(cmd.iter().cloned().map(|s| s.to_owned()).collect());
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
 }
 
 /// Hide the plugin pane (suppress it) from the UI
 pub fn hide_self() {
-    unsafe { host_hide_self() };
+    let plugin_command = PluginCommand::HideSelf;
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
 }
 
 /// Show the plugin pane (unsuppress it if it is suppressed), focus it and switch to its tab
 pub fn show_self(should_float_if_hidden: bool) {
-    unsafe { host_show_self(should_float_if_hidden as i32) };
+    let plugin_command = PluginCommand::ShowSelf(should_float_if_hidden);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
 }
 
 /// Switch to the specified Input Mode (eg. `Normal`, `Tab`, `Pane`)
 pub fn switch_to_input_mode(mode: &InputMode) {
-
-    let switch_to_mode_message = ProtobufInputModeMessage::try_from(*mode).unwrap();
-    object_to_stdout(&switch_to_mode_message.encode_to_vec());
-    unsafe { host_switch_to_mode() };
-
-//     unsafe { host_post_message_to_plugin() };
-// 
-//     object_to_stdout(&mode);
-//     unsafe { host_switch_to_mode() };
+    let plugin_command = PluginCommand::SwitchToMode(*mode);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
 }
 
 /// Provide a stringified [`layout`](https://zellij.dev/documentation/layouts.html) to be applied to the current session. If the layout has multiple tabs, they will all be opened.
 pub fn new_tabs_with_layout(layout: &str) {
-    println!("{}", layout);
-    unsafe { host_new_tabs_with_layout() }
+    let plugin_command = PluginCommand::NewTabsWithLayout(layout.to_owned());
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
 }
 
 /// Open a new tab with the default layout
 pub fn new_tab() {
-    unsafe { host_new_tab() }
+    let plugin_command = PluginCommand::NewTab;
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+    // unsafe { host_new_tab() }
 }
 
 /// Change focus to the next tab or loop back to the first
 pub fn go_to_next_tab() {
-    unsafe { host_go_to_next_tab() }
+    let plugin_command = PluginCommand::GoToNextTab;
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+    // unsafe { host_go_to_next_tab() }
 }
 
 /// Change focus to the previous tab or loop back to the last
 pub fn go_to_previous_tab() {
-    unsafe { host_go_to_previous_tab() }
+    let plugin_command = PluginCommand::GoToPreviousTab;
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+    // unsafe { host_go_to_previous_tab() }
 }
 
 pub fn report_panic(info: &std::panic::PanicInfo) {
@@ -435,6 +454,15 @@ pub fn object_from_stdin<T: DeserializeOwned>() -> Result<T> {
 }
 
 #[doc(hidden)]
+pub fn bytes_from_stdin() -> Result<Vec<u8>> {
+    let err_context = || "failed to deserialize bytes from stdin".to_string();
+
+    let mut json = String::new();
+    io::stdin().read_line(&mut json).with_context(err_context)?;
+    serde_json::from_str(&json).with_context(err_context)
+}
+
+#[doc(hidden)]
 pub fn object_to_stdout(object: &impl Serialize) {
     // TODO: no crashy
     println!("{}", serde_json::to_string(object).unwrap());
@@ -442,12 +470,16 @@ pub fn object_to_stdout(object: &impl Serialize) {
 
 /// Post a message to a worker of this plugin, for more information please see [Plugin Workers](https://zellij.dev/documentation/plugin-api-workers.md)
 pub fn post_message_to(plugin_message: PluginMessage) {
+    let plugin_command = PluginCommand::PostMessageTo(plugin_message);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
 
 
-// pub fn open_command_pane_floating(command_to_run: CommandToRun) {
-    let plugin_message = ProtobufMessage::try_from(plugin_message).unwrap();
-    object_to_stdout(&plugin_message.encode_to_vec());
-    unsafe { host_post_message_to() };
+// // pub fn open_command_pane_floating(command_to_run: CommandToRun) {
+//     let plugin_message = ProtobufMessage::try_from(plugin_message).unwrap();
+//     object_to_stdout(&plugin_message.encode_to_vec());
+//     unsafe { host_post_message_to() };
 
 
 
@@ -461,9 +493,16 @@ pub fn post_message_to(plugin_message: PluginMessage) {
 /// Post a message to this plugin, for more information please see [Plugin Workers](https://zellij.dev/documentation/plugin-api-workers.md)
 // pub fn post_message_to_plugin<S: AsRef<str>>(message: S, payload: S) {
 pub fn post_message_to_plugin(plugin_message: PluginMessage) {
-    let plugin_message = ProtobufMessage::try_from(plugin_message).unwrap();
-    object_to_stdout(&plugin_message.encode_to_vec());
-    unsafe { host_post_message_to_plugin() };
+    let plugin_command = PluginCommand::PostMessageToPlugin(plugin_message);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+
+
+
+//     let plugin_message = ProtobufMessage::try_from(plugin_message).unwrap();
+//     object_to_stdout(&plugin_message.encode_to_vec());
+//     unsafe { host_post_message_to_plugin() };
 
 //     match serde_json::to_string(&(message.as_ref(), payload.as_ref())) {
 //         Ok(serialized) => println!("{}", serialized),
@@ -474,31 +513,31 @@ pub fn post_message_to_plugin(plugin_message: PluginMessage) {
 
 #[link(wasm_import_module = "zellij")]
 extern "C" {
-    fn host_subscribe();
-    fn host_unsubscribe();
-    fn host_set_selectable(selectable: i32);
-    fn host_get_plugin_ids();
-    fn host_get_zellij_version();
-    fn host_get_key();
-    fn host_open_file();
-    fn host_open_file_floating();
-    fn host_open_terminal();
-    fn host_open_terminal_floating();
-    fn host_open_command_pane();
-    fn host_open_command_pane_floating();
-    fn host_switch_tab_to(tab_idx: u32);
-    fn host_set_timeout(secs: f64);
-    fn host_exec_cmd();
+    fn host_run_plugin_command();
+//     fn host_subscribe();
+//     fn host_unsubscribe();
+    // fn host_set_selectable(selectable: i32);
+    // fn host_get_plugin_ids();
+    // fn host_get_zellij_version();
+    // fn host_open_file();
+    // fn host_open_file_floating();
+    // fn host_open_terminal();
+    // fn host_open_terminal_floating();
+//     fn host_open_command_pane();
+//     fn host_open_command_pane_floating();
+    // fn host_switch_tab_to(tab_idx: u32);
+    // fn host_set_timeout(secs: f64);
+    // fn host_exec_cmd();
     fn host_report_panic();
-    fn host_post_message_to();
-    fn host_post_message_to_plugin();
-    fn host_hide_self();
-    fn host_show_self(should_float_if_hidden: i32);
-    fn host_switch_to_mode();
-    fn host_new_tabs_with_layout();
-    fn host_new_tab();
-    fn host_go_to_next_tab();
-    fn host_go_to_previous_tab();
+    // fn host_post_message_to();
+    // fn host_post_message_to_plugin();
+    // fn host_hide_self();
+    // fn host_show_self(should_float_if_hidden: i32);
+    // fn host_switch_to_mode();
+//     fn host_new_tabs_with_layout();
+//     fn host_new_tab();
+//     fn host_go_to_next_tab();
+//     fn host_go_to_previous_tab();
     fn host_resize();
     fn host_resize_with_direction();
     fn host_focus_next_pane();

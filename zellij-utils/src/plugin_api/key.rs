@@ -6,13 +6,7 @@
 // SDK authors in other languages should generate their own equivalent structures based on the
 // `.proto` specification, and then decode the protobuf over the wire into them
 
-pub mod api {
-    // this is a compile time asset generated from the `.proto` specification file by Prost to give
-    // us the ProtobufKey structure we are gathered here to avoid
-    include!(concat!(env!("OUT_DIR"), "/api.key.rs"));
-}
-
-pub use api::{Key as ProtobufKey, key::{NamedKey, MainKey, OptionalModifier, KeyModifier}};
+pub use super::generated_api::api::key::{Key as ProtobufKey, key::{NamedKey, MainKey, OptionalModifier, KeyModifier}};
 use crate::data::{CharOrArrow, Direction, Key};
 
 use std::convert::TryFrom;

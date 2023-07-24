@@ -6,13 +6,7 @@
 // SDK authors in other languages should generate their own equivalent structures based on the
 // `.proto` specification, and then decode the protobuf over the wire into them
 
-pub mod api {
-    // this is a compile time asset generated from the `.proto` specification file by Prost to give
-    // us the ProtobufEventType structure we are gathered here to avoid
-    include!(concat!(env!("OUT_DIR"), "/api.event.rs"));
-}
-
-pub use api::{EventType as ProtobufEventType, EventNameList as ProtobufEventNameList};
+pub use super::generated_api::api::event::{EventType as ProtobufEventType, EventNameList as ProtobufEventNameList};
 use crate::data::EventType;
 
 use std::convert::TryFrom;
