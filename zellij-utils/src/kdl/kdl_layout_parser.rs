@@ -4,7 +4,7 @@ use crate::input::{
     layout::{
         FloatingPaneLayout, Layout, LayoutConstraint, PercentOrFixed, Run, RunPlugin,
         RunPluginLocation, SplitDirection, SplitSize, SwapFloatingLayout, SwapTiledLayout,
-        TiledPaneLayout,
+        TiledPaneLayout, PluginUserConfiguration
     },
 };
 
@@ -316,7 +316,7 @@ impl<'a> KdlLayoutParser<'a> {
             configuration,
         })))
     }
-    pub fn parse_plugin_user_configuration(plugin_block: &KdlNode) -> Result<BTreeMap<String, String>, ConfigError> {
+    pub fn parse_plugin_user_configuration(plugin_block: &KdlNode) -> Result<PluginUserConfiguration, ConfigError> {
         let mut configuration = BTreeMap::new();
         for user_configuration_entry in plugin_block.entries() {
             let name = user_configuration_entry.name();
@@ -357,7 +357,7 @@ impl<'a> KdlLayoutParser<'a> {
                 configuration.insert(config_entry_name.into(), config_entry_value);
             }
         }
-        Ok(configuration)
+        Ok(PluginUserConfiguration::new(configuration))
     }
     fn parse_args(&self, pane_node: &KdlNode) -> Result<Option<Vec<String>>, ConfigError> {
         match kdl_get_child!(pane_node, "args") {

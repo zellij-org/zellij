@@ -26,7 +26,7 @@ use zellij_utils::{
     input::{
         actions::Action,
         command::{RunCommand, RunCommandAction, TerminalAction},
-        layout::{Layout, RunPlugin, RunPluginLocation},
+        layout::{Layout, RunPlugin, RunPluginLocation, PluginUserConfiguration},
         plugins::PluginType,
     },
     serde,
@@ -976,7 +976,7 @@ fn host_start_or_reload_plugin(env: &ForeignFunctionEnv) {
             let run_plugin = RunPlugin {
                 location: run_plugin_location,
                 _allow_exec_host_cmd: false,
-                configuration: BTreeMap::new(), // TODO: allow passing configuration
+                configuration: PluginUserConfiguration::new(BTreeMap::new()), // TODO: allow passing configuration
             };
             let action = Action::StartOrReloadPlugin(run_plugin);
             apply_action!(action, error_msg, env);

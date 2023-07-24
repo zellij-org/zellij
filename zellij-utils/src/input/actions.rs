@@ -16,7 +16,6 @@ use serde::{Deserialize, Serialize};
 
 use std::path::PathBuf;
 use std::str::FromStr;
-use std::collections::BTreeMap;
 
 use crate::position::Position;
 
@@ -231,8 +230,8 @@ pub enum Action {
     /// Query all tab names
     QueryTabNames,
     /// Open a new tiled (embedded, non-floating) plugin pane
-    NewTiledPluginPane(RunPluginLocation, Option<String>), // String is an optional name
-    NewFloatingPluginPane(RunPluginLocation, Option<String>), // String is an optional name
+    NewTiledPluginPane(RunPlugin, Option<String>), // String is an optional name
+    NewFloatingPluginPane(RunPlugin, Option<String>), // String is an optional name
     StartOrReloadPlugin(RunPlugin),
     CloseTerminalPane(u32),
     ClosePluginPane(u32),
@@ -293,21 +292,28 @@ impl Action {
                 name,
                 close_on_exit,
                 start_suspended,
+                configuration,
             } => {
                 let current_dir = get_current_dir();
                 let cwd = cwd
                     .map(|cwd| current_dir.join(cwd))
                     .or_else(|| Some(current_dir));
+                let user_configuration = configuration.unwrap_or_default();
                 if let Some(plugin) = plugin {
+                    let location = RunPluginLocation::parse(&plugin, cwd).map_err(|e| {
+                        format!("Failed to parse plugin loction {plugin}: {}", e)
+                    })?;
+                    let plugin = RunPlugin {
+                        _allow_exec_host_cmd: false,
+                        location,
+                        configuration: user_configuration,
+                    };
                     if floating {
-                        let plugin = RunPluginLocation::parse(&plugin, cwd).map_err(|e| {
-                            format!("Failed to parse plugin loction {plugin}: {}", e)
-                        })?;
                         Ok(vec![Action::NewFloatingPluginPane(plugin, name)])
                     } else {
-                        let plugin = RunPluginLocation::parse(&plugin, cwd).map_err(|e| {
-                            format!("Failed to parse plugin location {plugin}: {}", e)
-                        })?;
+//                         let plugin = RunPluginLocation::parse(&plugin, cwd).map_err(|e| {
+//                             format!("Failed to parse plugin location {plugin}: {}", e)
+//                         })?;
                         // it is intentional that a new tiled plugin pane cannot include a
                         // direction
                         // this is because the cli client opening a tiled plugin pane is a
@@ -481,30 +487,25 @@ impl Action {
             CliAction::PreviousSwapLayout => Ok(vec![Action::PreviousSwapLayout]),
             CliAction::NextSwapLayout => Ok(vec![Action::NextSwapLayout]),
             CliAction::QueryTabNames => Ok(vec![Action::QueryTabNames]),
-            CliAction::StartOrReloadPlugin { url } => { // TODO: CONTINUE HERE (18/07) - look
-                                                        // through the clap docs and find a good
-                                                        // way to pass key value through the
-                                                        // command line, then do it here and turn
-                                                        // it into a plugin user configuration (the
-                                                        // TODO below)
+            CliAction::StartOrReloadPlugin { url, configuration } => {
                 let current_dir = get_current_dir();
                 let run_plugin_location = RunPluginLocation::parse(&url, Some(current_dir))
                     .map_err(|e| format!("Failed to parse plugin location: {}", e))?;
                 let run_plugin = RunPlugin {
                     location: run_plugin_location,
                     _allow_exec_host_cmd: false,
-                    configuration: BTreeMap::new(), // TODO: parse config
+                    configuration: configuration.unwrap_or_default(), // TODO: test this
                 };
                 Ok(vec![Action::StartOrReloadPlugin(run_plugin)])
             },
-            CliAction::LaunchOrFocusPlugin { url, floating } => {
+            CliAction::LaunchOrFocusPlugin { url, floating, configuration } => {
                 let current_dir = get_current_dir();
                 let run_plugin_location = RunPluginLocation::parse(url.as_str(), Some(current_dir))
                     .map_err(|e| format!("Failed to parse plugin location: {}", e))?;
                 let run_plugin = RunPlugin {
                     location: run_plugin_location,
                     _allow_exec_host_cmd: false,
-                    configuration: BTreeMap::new(), // TODO: parse config
+                    configuration: configuration.unwrap_or_default(),
                 };
                 Ok(vec![Action::LaunchOrFocusPlugin(run_plugin, floating)])
             },

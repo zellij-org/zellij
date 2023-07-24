@@ -212,7 +212,35 @@ pub struct RunPlugin {
     #[serde(default)]
     pub _allow_exec_host_cmd: bool,
     pub location: RunPluginLocation,
-    pub configuration: BTreeMap<String, String>,
+    pub configuration: PluginUserConfiguration,
+}
+
+#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub struct PluginUserConfiguration(BTreeMap<String, String>);
+
+impl PluginUserConfiguration {
+    pub fn new(configuration: BTreeMap<String, String>) -> Self {
+        PluginUserConfiguration(configuration)
+    }
+    pub fn inner(&self) -> &BTreeMap<String, String> {
+        &self.0
+    }
+}
+
+impl FromStr for PluginUserConfiguration {
+    type Err = &'static str;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut ret = BTreeMap::new();
+        let configs = s.split(',');
+        for config in configs {
+            let mut config = config.split('=');
+            let key = config.next().ok_or("invalid configuration key")?.to_owned();
+            let value = config.map(|c| c.to_owned()).collect::<Vec<_>>().join("=");
+            ret.insert(key, value);
+        }
+        Ok(PluginUserConfiguration(ret))
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]

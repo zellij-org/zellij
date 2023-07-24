@@ -15,7 +15,7 @@ use zellij_utils::{
     input::command::TerminalAction,
     input::layout::{
         FloatingPaneLayout, Run, RunPlugin, RunPluginLocation, SwapFloatingLayout, SwapTiledLayout,
-        TiledPaneLayout,
+        TiledPaneLayout, PluginUserConfiguration
     },
     position::Position,
 };
@@ -258,11 +258,11 @@ pub enum ScreenInstruction {
     PreviousSwapLayout(ClientId),
     NextSwapLayout(ClientId),
     QueryTabNames(ClientId),
-    NewTiledPluginPane(RunPluginLocation, Option<String>, ClientId), // Option<String> is
+    NewTiledPluginPane(RunPlugin, Option<String>, ClientId), // Option<String> is
     // optional pane title
-    NewFloatingPluginPane(RunPluginLocation, Option<String>, ClientId), // Option<String> is an
+    NewFloatingPluginPane(RunPlugin, Option<String>, ClientId), // Option<String> is an
+    // optional pane title
     StartOrReloadPluginPane(RunPlugin, Option<String>),
-    // optional pane title
     AddPlugin(
         Option<bool>, // should_float
         RunPlugin,
@@ -2632,15 +2632,15 @@ pub(crate) fn screen_thread_main(
                     .senders
                     .send_to_server(ServerInstruction::Log(tab_names, client_id))?;
             },
-            ScreenInstruction::NewTiledPluginPane(run_plugin_location, pane_title, client_id) => {
+            ScreenInstruction::NewTiledPluginPane(run_plugin, pane_title, client_id) => {
                 let tab_index = screen.active_tab_indices.values().next().unwrap_or(&1);
                 let size = Size::default();
                 let should_float = Some(false);
-                let run_plugin = RunPlugin {
-                    _allow_exec_host_cmd: false,
-                    location: run_plugin_location,
-                    configuration: BTreeMap::new(), // TODO: parse config
-                };
+//                 let run_plugin = RunPlugin {
+//                     _allow_exec_host_cmd: false,
+//                     location: run_plugin_location,
+//                     configuration: PluginUserConfiguration::new(BTreeMap::new()), // TODO: parse config
+//                 };
                 screen.bus.senders.send_to_plugin(PluginInstruction::Load(
                     should_float,
                     pane_title,
@@ -2651,7 +2651,7 @@ pub(crate) fn screen_thread_main(
                 ))?;
             },
             ScreenInstruction::NewFloatingPluginPane(
-                run_plugin_location,
+                run_plugin,
                 pane_title,
                 client_id,
             ) => {
@@ -2660,11 +2660,11 @@ pub(crate) fn screen_thread_main(
                                                                                     // better
                 let size = Size::default(); // TODO: ???
                 let should_float = Some(true);
-                let run_plugin = RunPlugin {
-                    _allow_exec_host_cmd: false,
-                    location: run_plugin_location,
-                    configuration: BTreeMap::new(), // TODO: parse config
-                };
+//                 let run_plugin = RunPlugin {
+//                     _allow_exec_host_cmd: false,
+//                     location: run_plugin_location,
+//                     configuration: PluginUserConfiguration::new(BTreeMap::new()), // TODO: parse config
+//                 };
                 screen.bus.senders.send_to_plugin(PluginInstruction::Load(
                     should_float,
                     pane_title,

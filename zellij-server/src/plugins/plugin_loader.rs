@@ -724,7 +724,7 @@ impl<'a> PluginLoader<'a> {
         }
         start_function.call(&[]).with_context(err_context)?;
 
-        wasi_write_object(&plugin_env.wasi_env, &self.plugin.userspace_configuration).with_context(err_context)?;
+        wasi_write_object(&plugin_env.wasi_env, &self.plugin.userspace_configuration.inner()).with_context(err_context)?;
         load_function.call(&[]).with_context(err_context)?;
 
         display_loading_stage!(

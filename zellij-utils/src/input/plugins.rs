@@ -8,7 +8,7 @@ use thiserror::Error;
 use serde::{Deserialize, Serialize};
 use url::Url;
 
-use super::layout::{RunPlugin, RunPluginLocation};
+use super::layout::{RunPlugin, RunPluginLocation, PluginUserConfiguration};
 #[cfg(not(target_family = "wasm"))]
 use crate::consts::ASSET_MAP;
 pub use crate::data::PluginTag;
@@ -89,7 +89,7 @@ pub struct PluginConfig {
     /// Original location of the
     pub location: RunPluginLocation,
     /// Custom configuration for this plugin
-    pub userspace_configuration: BTreeMap<String, String>,
+    pub userspace_configuration: PluginUserConfiguration,
 }
 
 impl PluginConfig {

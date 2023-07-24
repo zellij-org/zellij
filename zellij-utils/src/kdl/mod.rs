@@ -3,7 +3,7 @@ use crate::data::{Direction, InputMode, Key, Palette, PaletteColor, Resize};
 use crate::envs::EnvironmentVariables;
 use crate::input::config::{Config, ConfigError, KdlError};
 use crate::input::keybinds::Keybinds;
-use crate::input::layout::{Layout, RunPlugin, RunPluginLocation};
+use crate::input::layout::{Layout, RunPlugin, RunPluginLocation, PluginUserConfiguration};
 use crate::input::options::{Clipboard, OnForceClose, Options};
 use crate::input::plugins::{PluginConfig, PluginTag, PluginType, PluginsConfig};
 use crate::input::theme::{FrameConfig, Theme, Themes, UiConfig};
@@ -1701,7 +1701,7 @@ impl PluginsConfig {
                 run: PluginType::Pane(None),
                 location: RunPluginLocation::Zellij(plugin_tag.clone()),
                 _allow_exec_host_cmd: allow_exec_host_cmd,
-                userspace_configuration: BTreeMap::new(), // TODO: consider removing the whole
+                userspace_configuration: PluginUserConfiguration::new(BTreeMap::new()), // TODO: consider removing the whole
                                                           // "plugins" section in the config
                                                           // because it's not used???
             };
