@@ -39,7 +39,7 @@ use zellij_utils::{
 
 enum Permission {
     Allowed,
-    Denied,
+    Denied(PermissionType),
 }
 
 pub struct WasmBridge {
@@ -790,7 +790,7 @@ fn check_permission(plugin_env: &PluginEnv, event: &Event) -> Permission {
 
     if let Some(permissions) = &plugin_env.plugin_permissions {
         if !permissions.contains(&permission) {
-            return Permission::Denied;
+            return Permission::Denied(permission);
         }
     }
 
@@ -811,7 +811,6 @@ pub fn apply_event_to_plugin(
 
     match check_permission(plugin_env, event) {
         Permission::Allowed => {
-            log::debug!("Permission::Allowed: {:?}", event);
             let update = instance
                 .exports
                 .get_function("update")
@@ -851,8 +850,13 @@ pub fn apply_event_to_plugin(
                 plugin_bytes.push((plugin_id, client_id, rendered_bytes.as_bytes().to_vec()));
             }
         },
-        Permission::Denied => {
-            log::debug!("Permission::Denied: {:?}", event);
+        Permission::Denied(permission) => {
+            log::error!(
+                "PluginId '{}' permission '{}' is not allowed - Event '{:?}' denied",
+                plugin_id,
+                permission,
+                event
+            );
         },
     }
     Ok(())

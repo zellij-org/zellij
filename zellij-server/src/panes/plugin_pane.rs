@@ -269,7 +269,7 @@ impl Pane for PluginPane {
     fn set_selectable(&mut self, selectable: bool) {
         self.selectable = selectable;
     }
-    fn set_plugin_permissions(&mut self, permissions: Option<PluginPermission>) {
+    fn request_permissions_from_user(&mut self, permissions: Option<PluginPermission>) {
         self.requesting_permissions = permissions;
     }
     fn render(
@@ -635,7 +635,7 @@ impl PluginPane {
         }
     }
     fn display_request_permission_message(&self, plugin_permission: &PluginPermission) -> String {
-        let cyan = style!(self.terminal_emulator_colors.borrow().cyan).bold();
+        let cyan = style!(self.style.colors.cyan).bold();
 
         let mut messages = String::new();
         let permissions: HashSet<PermissionType> =

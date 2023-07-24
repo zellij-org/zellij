@@ -210,7 +210,7 @@ pub trait Pane {
     fn set_should_render_boundaries(&mut self, _should_render: bool) {}
     fn selectable(&self) -> bool;
     fn set_selectable(&mut self, selectable: bool);
-    fn set_plugin_permissions(&mut self, _permissions: Option<PluginPermission>) {}
+    fn request_permissions_from_user(&mut self, _permissions: Option<PluginPermission>) {}
     fn render(
         &mut self,
         client_id: Option<ClientId>,
@@ -3436,7 +3436,7 @@ impl Tab {
                     .find(|s_p| s_p.pid() == PaneId::Plugin(pid))
             })
         {
-            plugin_pane.set_plugin_permissions(permissions);
+            plugin_pane.request_permissions_from_user(permissions);
         }
     }
 }
