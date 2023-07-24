@@ -3,11 +3,12 @@ use crate::screen::ScreenInstruction;
 use crate::{channels::SenderWithContext, thread_bus::Bus, ServerInstruction};
 use insta::assert_snapshot;
 use std::path::PathBuf;
+use std::collections::BTreeMap;
 use tempfile::tempdir;
 use wasmer::Store;
 use zellij_utils::data::{Event, Key, PluginCapabilities};
 use zellij_utils::errors::ErrorContext;
-use zellij_utils::input::layout::{Layout, RunPlugin, RunPluginLocation};
+use zellij_utils::input::layout::{Layout, RunPlugin, RunPluginLocation, PluginUserConfiguration};
 use zellij_utils::input::plugins::PluginsConfig;
 use zellij_utils::ipc::ClientAttributes;
 use zellij_utils::lazy_static::lazy_static;
@@ -4149,4 +4150,72 @@ pub fn rename_tab_plugin_command() {
         })
         .clone();
     assert_snapshot!(format!("{:#?}", new_tab_event));
+}
+
+#[test]
+#[ignore]
+pub fn send_configuration_to_plugins() {
+    let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
+                                          // destructor removes the directory
+    let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let (plugin_thread_sender, screen_receiver, mut teardown) =
+        create_plugin_thread(Some(plugin_host_folder));
+    let plugin_should_float = Some(false);
+    let plugin_title = Some("test_plugin".to_owned());
+    let mut configuration = BTreeMap::new();
+    configuration.insert("fake_config_key_1".to_owned(), "fake_config_value_1".to_owned());
+    configuration.insert("fake_config_key_2".to_owned(), "fake_config_value_2".to_owned());
+    let run_plugin = RunPlugin {
+        _allow_exec_host_cmd: false,
+        location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: PluginUserConfiguration::new(configuration),
+    };
+    let tab_index = 1;
+    let client_id = 1;
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let received_screen_instructions = Arc::new(Mutex::new(vec![]));
+    let screen_thread = log_actions_in_thread!(
+        received_screen_instructions,
+        ScreenInstruction::GoToTabName,
+        screen_receiver,
+        1
+    );
+
+    let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
+    let _ = plugin_thread_sender.send(PluginInstruction::Load(
+        plugin_should_float,
+        plugin_title,
+        run_plugin,
+        tab_index,
+        client_id,
+        size,
+    ));
+    let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
+        None,
+        Some(client_id),
+        Event::Key(Key::Ctrl('z')), // this triggers the enent in the fixture plugin
+    )]));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    screen_thread.join().unwrap(); // this might take a while if the cache is cold
+    teardown();
+    // here we make sure we received a rename_tab event with the title being the stringified
+    // (Debug) configuration we sent to the fixture plugin to make sure it got there properly
+
+
+    let go_to_tab_event = received_screen_instructions
+        .lock()
+        .unwrap()
+        .iter()
+        .find_map(|i| {
+            if let ScreenInstruction::GoToTabName(..) = i {
+                Some(i.clone())
+            } else {
+                None
+            }
+        })
+        .clone();
+    assert_snapshot!(format!("{:#?}", go_to_tab_event));
 }

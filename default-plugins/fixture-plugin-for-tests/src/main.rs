@@ -10,6 +10,7 @@ use zellij_tile::prelude::*;
 struct State {
     received_events: Vec<Event>,
     received_payload: Option<String>,
+    configuration: BTreeMap<String, String>,
 }
 
 #[derive(Default, Serialize, Deserialize)]
@@ -37,6 +38,7 @@ register_worker!(TestWorker, test_worker, TEST_WORKER);
 
 impl ZellijPlugin for State {
     fn load(&mut self, configuration: BTreeMap<String, String>) {
+        self.configuration = configuration;
         subscribe(&[
             EventType::InputReceived,
             EventType::Key,
@@ -210,6 +212,9 @@ impl ZellijPlugin for State {
                 },
                 Key::Ctrl('x') => {
                     rename_tab(1, "new tab name");
+                },
+                Key::Ctrl('z') => {
+                    go_to_tab_name(&format!("{:?}", self.configuration));
                 },
                 _ => {},
             },
