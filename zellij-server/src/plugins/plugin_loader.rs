@@ -1,6 +1,6 @@
 use crate::plugins::plugin_map::{PluginEnv, PluginMap, RunningPlugin, Subscriptions};
 use crate::plugins::plugin_worker::{plugin_worker, RunningWorker};
-use crate::plugins::zellij_exports::{wasi_read_string, zellij_exports};
+use crate::plugins::zellij_exports::{wasi_read_string, wasi_write_object, zellij_exports};
 use crate::plugins::PluginId;
 use highway::{HighwayHash, PortableHash};
 use log::info;
@@ -745,7 +745,14 @@ impl<'a> PluginLoader<'a> {
             }
         }
         start_function.call(&[]).with_context(err_context)?;
+
+        wasi_write_object(
+            &plugin_env.wasi_env,
+            &self.plugin.userspace_configuration.inner(),
+        )
+        .with_context(err_context)?;
         load_function.call(&[]).with_context(err_context)?;
+
         display_loading_stage!(
             indicate_starting_plugin_success,
             self.loading_indication,

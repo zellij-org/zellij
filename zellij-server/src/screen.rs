@@ -14,8 +14,8 @@ use zellij_utils::pane_size::{Size, SizeInPixels};
 use zellij_utils::{
     input::command::TerminalAction,
     input::layout::{
-        FloatingPaneLayout, Run, RunPlugin, RunPluginLocation, SwapFloatingLayout, SwapTiledLayout,
-        TiledPaneLayout,
+        FloatingPaneLayout, PluginUserConfiguration, Run, RunPlugin, RunPluginLocation,
+        SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,
     },
     position::Position,
 };
@@ -258,11 +258,11 @@ pub enum ScreenInstruction {
     PreviousSwapLayout(ClientId),
     NextSwapLayout(ClientId),
     QueryTabNames(ClientId),
-    NewTiledPluginPane(RunPluginLocation, Option<String>, ClientId), // Option<String> is
+    NewTiledPluginPane(RunPlugin, Option<String>, ClientId), // Option<String> is
     // optional pane title
-    NewFloatingPluginPane(RunPluginLocation, Option<String>, ClientId), // Option<String> is an
+    NewFloatingPluginPane(RunPlugin, Option<String>, ClientId), // Option<String> is an
+    // optional pane title
     StartOrReloadPluginPane(RunPlugin, Option<String>),
-    // optional pane title
     AddPlugin(
         Option<bool>, // should_float
         RunPlugin,
@@ -2639,14 +2639,10 @@ pub(crate) fn screen_thread_main(
                     .senders
                     .send_to_server(ServerInstruction::Log(tab_names, client_id))?;
             },
-            ScreenInstruction::NewTiledPluginPane(run_plugin_location, pane_title, client_id) => {
+            ScreenInstruction::NewTiledPluginPane(run_plugin, pane_title, client_id) => {
                 let tab_index = screen.active_tab_indices.values().next().unwrap_or(&1);
                 let size = Size::default();
                 let should_float = Some(false);
-                let run_plugin = RunPlugin {
-                    _allow_exec_host_cmd: false,
-                    location: run_plugin_location,
-                };
                 screen.bus.senders.send_to_plugin(PluginInstruction::Load(
                     should_float,
                     pane_title,
@@ -2656,28 +2652,26 @@ pub(crate) fn screen_thread_main(
                     size,
                 ))?;
             },
-            ScreenInstruction::NewFloatingPluginPane(
-                run_plugin_location,
-                pane_title,
-                client_id,
-            ) => {
-                let tab_index = screen.active_tab_indices.values().next().unwrap(); // TODO: no
-                                                                                    // unwrap and
-                                                                                    // better
-                let size = Size::default(); // TODO: ???
-                let should_float = Some(true);
-                let run_plugin = RunPlugin {
-                    _allow_exec_host_cmd: false,
-                    location: run_plugin_location,
-                };
-                screen.bus.senders.send_to_plugin(PluginInstruction::Load(
-                    should_float,
-                    pane_title,
-                    run_plugin,
-                    *tab_index,
-                    client_id,
-                    size,
-                ))?;
+            ScreenInstruction::NewFloatingPluginPane(run_plugin, pane_title, client_id) => {
+                match screen.active_tab_indices.values().next() {
+                    Some(tab_index) => {
+                        let size = Size::default();
+                        let should_float = Some(true);
+                        screen.bus.senders.send_to_plugin(PluginInstruction::Load(
+                            should_float,
+                            pane_title,
+                            run_plugin,
+                            *tab_index,
+                            client_id,
+                            size,
+                        ))?;
+                    },
+                    None => {
+                        log::error!(
+                            "Could not find an active tab - is there at least 1 connected user?"
+                        );
+                    },
+                }
             },
             ScreenInstruction::StartOrReloadPluginPane(run_plugin, pane_title) => {
                 let tab_index = screen.active_tab_indices.values().next().unwrap_or(&1);

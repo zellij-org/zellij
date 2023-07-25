@@ -1854,6 +1854,7 @@ pub fn send_cli_new_pane_action_with_default_parameters() {
         name: None,
         close_on_exit: false,
         start_suspended: false,
+        configuration: None,
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -1890,6 +1891,7 @@ pub fn send_cli_new_pane_action_with_split_direction() {
         name: None,
         close_on_exit: false,
         start_suspended: false,
+        configuration: None,
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -1926,6 +1928,7 @@ pub fn send_cli_new_pane_action_with_command_and_cwd() {
         name: None,
         close_on_exit: false,
         start_suspended: false,
+        configuration: None,
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -2550,6 +2553,7 @@ pub fn send_cli_launch_or_focus_plugin_action() {
     let cli_action = CliAction::LaunchOrFocusPlugin {
         floating: true,
         url: url::Url::parse("file:/path/to/fake/plugin").unwrap(),
+        configuration: Default::default(),
     };
     send_cli_action_to_server(&session_metadata, cli_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -2583,6 +2587,7 @@ pub fn send_cli_launch_or_focus_plugin_action_when_plugin_is_already_loaded() {
         run: Some(Run::Plugin(RunPlugin {
             _allow_exec_host_cmd: false,
             location: RunPluginLocation::File(PathBuf::from("/path/to/fake/plugin")),
+            configuration: Default::default(),
         })),
         ..Default::default()
     };
@@ -2605,6 +2610,7 @@ pub fn send_cli_launch_or_focus_plugin_action_when_plugin_is_already_loaded() {
     let cli_action = CliAction::LaunchOrFocusPlugin {
         floating: true,
         url: url::Url::parse("file:/path/to/fake/plugin").unwrap(),
+        configuration: Default::default(),
     };
     send_cli_action_to_server(&session_metadata, cli_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
