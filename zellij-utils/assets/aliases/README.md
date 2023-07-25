@@ -1,0 +1,1 @@
+Aliases that can be added to the shell's init file.

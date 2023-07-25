@@ -192,16 +192,22 @@ pub const FISH_EXTRA_COMPLETION: &[u8] = include_bytes!(concat!(
     "assets/completions/comp.fish"
 ));
 
-pub const BASH_EXTRA_COMPLETION: &[u8] = include_bytes!(concat!(
+pub const BASH_ALIASES: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/",
-    "assets/completions/comp.bash"
+    "assets/aliases/aliases.bash"
 ));
 
-pub const ZSH_EXTRA_COMPLETION: &[u8] = include_bytes!(concat!(
+pub const FISH_ALIASES: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/",
-    "assets/completions/comp.zsh"
+    "assets/aliases/aliases.fish"
+));
+
+pub const ZSH_ALIASES: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/",
+    "assets/aliases/aliases.zsh"
 ));
 
 pub const BASH_AUTO_START_SCRIPT: &[u8] = include_bytes!(concat!(
@@ -352,6 +358,10 @@ pub struct Setup {
     #[clap(long, value_name = "SHELL", value_parser)]
     pub generate_completion: Option<String>,
 
+    /// Generates aliases for the specified shell
+    #[clap(long, value_name = "SHELL", value_parser)]
+    pub generate_aliases: Option<String>,
+
     /// Generates auto-start script for the specified shell
     #[clap(long, value_name = "SHELL", value_parser)]
     pub generate_auto_start: Option<String>,
@@ -446,6 +456,11 @@ impl Setup {
 
         if let Some(shell) = &self.generate_completion {
             Self::generate_completion(shell);
+            std::process::exit(0);
+        }
+
+        if let Some(shell) = &self.generate_aliases {
+            Self::generate_aliases(shell);
             std::process::exit(0);
         }
 
@@ -623,21 +638,38 @@ impl Setup {
         clap_complete::generate(shell, &mut CliArgs::command(), "zellij", &mut out);
         // add shell dependent extra completion
         match shell {
-            Shell::Bash => {
-                let _ = out.write_all(BASH_EXTRA_COMPLETION);
-            },
+            Shell::Bash => {},
             Shell::Elvish => {},
             Shell::Fish => {
                 let _ = out.write_all(FISH_EXTRA_COMPLETION);
             },
             Shell::PowerShell => {},
-            Shell::Zsh => {
-                let _ = out.write_all(ZSH_EXTRA_COMPLETION);
-            },
+            Shell::Zsh => {},
             _ => {},
         };
     }
-
+    fn generate_aliases(shell: &str) {
+        let shell: Shell = match shell.to_lowercase().parse() {
+            Ok(shell) => shell,
+            _ => {
+                eprintln!("Unsupported shell: {}", shell);
+                std::process::exit(1);
+            },
+        };
+        let mut out = std::io::stdout();
+        match shell {
+            Shell::Bash => {
+                let _ = out.write_all(BASH_ALIASES);
+            },
+            Shell::Fish => {
+                let _ = out.write_all(FISH_ALIASES);
+            },
+            Shell::Zsh => {
+                let _ = out.write_all(ZSH_ALIASES);
+            },
+            _ => {},
+        }
+    }
     fn generate_auto_start(shell: &str) {
         let shell: Shell = match shell.to_lowercase().parse() {
             Ok(shell) => shell,
