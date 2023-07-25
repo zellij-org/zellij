@@ -208,7 +208,6 @@ impl ZellijPlugin for State {
             EventType::InputReceived,
             EventType::SystemClipboardFailure,
         ]);
-        eprintln!("configuration: {:?}", configuration);
         self.supermode = configuration
             .get("supermode")
             .and_then(|s| s.trim().parse().ok())
