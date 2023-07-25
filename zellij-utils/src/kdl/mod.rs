@@ -3,13 +3,13 @@ use crate::data::{Direction, InputMode, Key, Palette, PaletteColor, Resize};
 use crate::envs::EnvironmentVariables;
 use crate::input::config::{Config, ConfigError, KdlError};
 use crate::input::keybinds::Keybinds;
-use crate::input::layout::{Layout, RunPlugin, RunPluginLocation};
+use crate::input::layout::{Layout, PluginUserConfiguration, RunPlugin, RunPluginLocation};
 use crate::input::options::{Clipboard, OnForceClose, Options};
 use crate::input::plugins::{PluginConfig, PluginTag, PluginType, PluginsConfig};
 use crate::input::theme::{FrameConfig, Theme, Themes, UiConfig};
 use crate::setup::{find_default_config_dir, get_layout_dir};
 use kdl_layout_parser::KdlLayoutParser;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use strum::IntoEnumIterator;
 
 use miette::NamedSource;
@@ -133,6 +133,17 @@ macro_rules! kdl_first_entry_as_i64 {
             .iter()
             .next()
             .and_then(|i| i.value().as_i64())
+    };
+}
+
+#[macro_export]
+macro_rules! kdl_first_entry_as_bool {
+    ( $node:expr ) => {
+        $node
+            .entries()
+            .iter()
+            .next()
+            .and_then(|i| i.value().as_bool())
     };
 }
 
@@ -894,9 +905,11 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                     .unwrap_or(false);
                 let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
                 let location = RunPluginLocation::parse(&plugin_path, Some(current_dir))?;
+                let configuration = KdlLayoutParser::parse_plugin_user_configuration(&kdl_action)?;
                 let run_plugin = RunPlugin {
                     location,
                     _allow_exec_host_cmd: false,
+                    configuration,
                 };
                 Ok(Action::LaunchOrFocusPlugin(run_plugin, should_float))
             },
@@ -1265,15 +1278,12 @@ macro_rules! kdl_get_string_property_or_child_value_with_error {
 #[macro_export]
 macro_rules! kdl_get_property_or_child {
     ( $kdl_node:expr, $name:expr ) => {
-        $kdl_node
-            .get($name)
-            // .and_then(|e| e.value().as_string())
-            .or_else(|| {
-                $kdl_node
-                    .children()
-                    .and_then(|c| c.get($name))
-                    .and_then(|c| c.get(0))
-            })
+        $kdl_node.get($name).or_else(|| {
+            $kdl_node
+                .children()
+                .and_then(|c| c.get($name))
+                .and_then(|c| c.get(0))
+        })
     };
 }
 
@@ -1402,30 +1412,6 @@ impl Options {
     }
 }
 
-impl RunPlugin {
-    pub fn from_kdl(kdl_node: &KdlNode, cwd: Option<PathBuf>) -> Result<Self, ConfigError> {
-        let _allow_exec_host_cmd =
-            kdl_get_child_entry_bool_value!(kdl_node, "_allow_exec_host_cmd").unwrap_or(false);
-        let string_url = kdl_get_child_entry_string_value!(kdl_node, "location").ok_or(
-            ConfigError::new_kdl_error(
-                "Plugins must have a location".into(),
-                kdl_node.span().offset(),
-                kdl_node.span().len(),
-            ),
-        )?;
-        let location = RunPluginLocation::parse(string_url, cwd).map_err(|e| {
-            ConfigError::new_layout_kdl_error(
-                e.to_string(),
-                kdl_node.span().offset(),
-                kdl_node.span().len(),
-            )
-        })?;
-        Ok(RunPlugin {
-            _allow_exec_host_cmd,
-            location,
-        })
-    }
-}
 impl Layout {
     pub fn from_kdl(
         raw_layout: &str,
@@ -1713,6 +1699,9 @@ impl PluginsConfig {
                 run: PluginType::Pane(None),
                 location: RunPluginLocation::Zellij(plugin_tag.clone()),
                 _allow_exec_host_cmd: allow_exec_host_cmd,
+                userspace_configuration: PluginUserConfiguration::new(BTreeMap::new()), // TODO: consider removing the whole
+                                                                                        // "plugins" section in the config
+                                                                                        // because it's not used???
             };
             plugins.insert(plugin_tag, plugin_config);
         }
@@ -1799,4 +1788,52 @@ impl Themes {
         }
         Ok(themes)
     }
+}
+
+pub fn parse_plugin_user_configuration(
+    plugin_block: &KdlNode,
+) -> Result<BTreeMap<String, String>, ConfigError> {
+    let mut configuration = BTreeMap::new();
+    for user_configuration_entry in plugin_block.entries() {
+        let name = user_configuration_entry.name();
+        let value = user_configuration_entry.value();
+        if let Some(name) = name {
+            let name = name.to_string();
+            if KdlLayoutParser::is_a_reserved_plugin_property(&name) {
+                continue;
+            }
+            configuration.insert(name, value.to_string());
+        }
+    }
+    if let Some(user_config) = kdl_children_nodes!(plugin_block) {
+        for user_configuration_entry in user_config {
+            let config_entry_name = kdl_name!(user_configuration_entry);
+            if KdlLayoutParser::is_a_reserved_plugin_property(&config_entry_name) {
+                continue;
+            }
+            let config_entry_str_value = kdl_first_entry_as_string!(user_configuration_entry)
+                .map(|s| format!("{}", s.to_string()));
+            let config_entry_int_value = kdl_first_entry_as_i64!(user_configuration_entry)
+                .map(|s| format!("{}", s.to_string()));
+            let config_entry_bool_value = kdl_first_entry_as_bool!(user_configuration_entry)
+                .map(|s| format!("{}", s.to_string()));
+            let config_entry_children = user_configuration_entry
+                .children()
+                .map(|s| format!("{}", s.to_string().trim()));
+            let config_entry_value = config_entry_str_value
+                .or(config_entry_int_value)
+                .or(config_entry_bool_value)
+                .or(config_entry_children)
+                .ok_or(ConfigError::new_kdl_error(
+                    format!(
+                        "Failed to parse plugin block configuration: {:?}",
+                        user_configuration_entry
+                    ),
+                    plugin_block.span().offset(),
+                    plugin_block.span().len(),
+                ))?;
+            configuration.insert(config_entry_name.into(), config_entry_value);
+        }
+    }
+    Ok(configuration)
 }

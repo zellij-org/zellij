@@ -8,7 +8,7 @@ use thiserror::Error;
 use serde::{Deserialize, Serialize};
 use url::Url;
 
-use super::layout::{RunPlugin, RunPluginLocation};
+use super::layout::{PluginUserConfiguration, RunPlugin, RunPluginLocation};
 #[cfg(not(target_family = "wasm"))]
 use crate::consts::ASSET_MAP;
 pub use crate::data::PluginTag;
@@ -48,9 +48,11 @@ impl PluginsConfig {
                 run: PluginType::Pane(None),
                 _allow_exec_host_cmd: run._allow_exec_host_cmd,
                 location: run.location.clone(),
+                userspace_configuration: run.configuration.clone(),
             }),
             RunPluginLocation::Zellij(tag) => self.0.get(tag).cloned().map(|plugin| PluginConfig {
                 _allow_exec_host_cmd: run._allow_exec_host_cmd,
+                userspace_configuration: run.configuration.clone(),
                 ..plugin
             }),
         }
@@ -86,6 +88,8 @@ pub struct PluginConfig {
     pub _allow_exec_host_cmd: bool,
     /// Original location of the
     pub location: RunPluginLocation,
+    /// Custom configuration for this plugin
+    pub userspace_configuration: PluginUserConfiguration,
 }
 
 impl PluginConfig {
