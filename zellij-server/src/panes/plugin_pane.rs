@@ -635,22 +635,33 @@ impl PluginPane {
         }
     }
     fn display_request_permission_message(&self, plugin_permission: &PluginPermission) -> String {
+        let bold_white = style!(self.style.colors.white).bold();
         let cyan = style!(self.style.colors.cyan).bold();
+        let orange = style!(self.style.colors.orange).bold();
+        let green = style!(self.style.colors.green).bold();
 
         let mut messages = String::new();
         let permissions: HashSet<PermissionType> =
             plugin_permission.permissions.clone().into_iter().collect();
 
         messages.push_str(&format!(
-            "Plugin {} would like permission to:",
+            "{} {} {}\n",
+            bold_white.paint("Plugin"),
             cyan.paint(&plugin_permission.name),
+            bold_white.paint("asks permission to:"),
         ));
         permissions.iter().enumerate().for_each(|(i, p)| {
-            messages.push_str(&format!("\n\r{}. {}", i + 1, p));
+            messages.push_str(&format!(
+                "\n\r{}. {}",
+                bold_white.paint(&format!("{}", i + 1)),
+                orange.paint(p.display_name())
+            ));
         });
 
         messages.push_str(&format!(
-            "\n\r\n\rWould you like to grant these permissions? (y/n)"
+            "\n\n\r{} {}",
+            bold_white.paint("Allow?"),
+            green.paint("(y/n)"),
         ));
 
         messages

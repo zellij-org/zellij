@@ -505,6 +505,14 @@ pub enum Permission {
     KeyboardInput,
 }
 
+impl PermissionType {
+    pub fn display_name(&self) -> String {
+        match self {
+            PermissionType::KeyboardInput => "Read keyboard input".to_owned(),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct PluginPermission {
     pub name: String,
