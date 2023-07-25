@@ -300,9 +300,8 @@ impl Action {
                     .or_else(|| Some(current_dir));
                 let user_configuration = configuration.unwrap_or_default();
                 if let Some(plugin) = plugin {
-                    let location = RunPluginLocation::parse(&plugin, cwd).map_err(|e| {
-                        format!("Failed to parse plugin loction {plugin}: {}", e)
-                    })?;
+                    let location = RunPluginLocation::parse(&plugin, cwd)
+                        .map_err(|e| format!("Failed to parse plugin loction {plugin}: {}", e))?;
                     let plugin = RunPlugin {
                         _allow_exec_host_cmd: false,
                         location,
@@ -495,7 +494,11 @@ impl Action {
                 };
                 Ok(vec![Action::StartOrReloadPlugin(run_plugin)])
             },
-            CliAction::LaunchOrFocusPlugin { url, floating, configuration } => {
+            CliAction::LaunchOrFocusPlugin {
+                url,
+                floating,
+                configuration,
+            } => {
                 let current_dir = get_current_dir();
                 let run_plugin_location = RunPluginLocation::parse(url.as_str(), Some(current_dir))
                     .map_err(|e| format!("Failed to parse plugin location: {}", e))?;

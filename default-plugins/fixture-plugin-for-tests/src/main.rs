@@ -1,5 +1,5 @@
-use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use zellij_tile::prelude::*;
 
 // This is a fixture plugin used only for tests in Zellij

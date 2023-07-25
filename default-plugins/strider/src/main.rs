@@ -6,8 +6,8 @@ use search::{FileContentsWorker, FileNameWorker, MessageToSearch, ResultsOfSearc
 use serde::{Deserialize, Serialize};
 use serde_json;
 use state::{refresh_directory, FsEntry, State};
-use std::{cmp::min, time::Instant};
 use std::collections::BTreeMap;
+use std::{cmp::min, time::Instant};
 use zellij_tile::prelude::*;
 
 register_plugin!(State);

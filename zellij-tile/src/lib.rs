@@ -18,8 +18,8 @@
 pub mod prelude;
 pub mod shim;
 
-use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use zellij_utils::data::Event;
 
 /// This trait should be implemented - once per plugin - on a struct (normally representing the

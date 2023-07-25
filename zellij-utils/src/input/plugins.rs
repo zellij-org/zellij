@@ -8,7 +8,7 @@ use thiserror::Error;
 use serde::{Deserialize, Serialize};
 use url::Url;
 
-use super::layout::{RunPlugin, RunPluginLocation, PluginUserConfiguration};
+use super::layout::{PluginUserConfiguration, RunPlugin, RunPluginLocation};
 #[cfg(not(target_family = "wasm"))]
 use crate::consts::ASSET_MAP;
 pub use crate::data::PluginTag;

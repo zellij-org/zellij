@@ -389,4 +389,3 @@ pub enum CliAction {
         configuration: Option<PluginUserConfiguration>,
     },
 }
-

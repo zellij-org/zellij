@@ -2,8 +2,8 @@ mod line;
 mod tab;
 
 use std::cmp::{max, min};
-use std::convert::TryInto;
 use std::collections::BTreeMap;
+use std::convert::TryInto;
 
 use tab::get_tab_to_focus;
 use zellij_tile::prelude::*;

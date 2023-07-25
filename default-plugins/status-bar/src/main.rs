@@ -8,8 +8,8 @@ use ansi_term::{
     Style,
 };
 
-use std::fmt::{Display, Error, Formatter};
 use std::collections::BTreeMap;
+use std::fmt::{Display, Error, Formatter};
 use zellij_tile::prelude::actions::Action;
 use zellij_tile::prelude::*;
 use zellij_tile_utils::{palette_match, style};
@@ -209,7 +209,10 @@ impl ZellijPlugin for State {
             EventType::SystemClipboardFailure,
         ]);
         eprintln!("configuration: {:?}", configuration);
-        self.supermode = configuration.get("supermode").and_then(|s| s.trim().parse().ok()).unwrap_or(false);
+        self.supermode = configuration
+            .get("supermode")
+            .and_then(|s| s.trim().parse().ok())
+            .unwrap_or(false);
         self.standby_mode = InputMode::Pane;
         if self.supermode {
             switch_to_input_mode(&InputMode::Locked); // supermode should start locked (TODO: only

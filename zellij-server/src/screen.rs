@@ -14,8 +14,8 @@ use zellij_utils::pane_size::{Size, SizeInPixels};
 use zellij_utils::{
     input::command::TerminalAction,
     input::layout::{
-        FloatingPaneLayout, Run, RunPlugin, RunPluginLocation, SwapFloatingLayout, SwapTiledLayout,
-        TiledPaneLayout, PluginUserConfiguration
+        FloatingPaneLayout, PluginUserConfiguration, Run, RunPlugin, RunPluginLocation,
+        SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,
     },
     position::Position,
 };
@@ -2645,11 +2645,7 @@ pub(crate) fn screen_thread_main(
                     size,
                 ))?;
             },
-            ScreenInstruction::NewFloatingPluginPane(
-                run_plugin,
-                pane_title,
-                client_id,
-            ) => {
+            ScreenInstruction::NewFloatingPluginPane(run_plugin, pane_title, client_id) => {
                 match screen.active_tab_indices.values().next() {
                     Some(tab_index) => {
                         let size = Size::default();
@@ -2664,8 +2660,10 @@ pub(crate) fn screen_thread_main(
                         ))?;
                     },
                     None => {
-                        log::error!("Could not find an active tab - is there at least 1 connected user?");
-                    }
+                        log::error!(
+                            "Could not find an active tab - is there at least 1 connected user?"
+                        );
+                    },
                 }
             },
             ScreenInstruction::StartOrReloadPluginPane(run_plugin, pane_title) => {

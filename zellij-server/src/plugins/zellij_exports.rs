@@ -5,7 +5,7 @@ use crate::route::route_action;
 use log::{debug, warn};
 use serde::{de::DeserializeOwned, Serialize};
 use std::{
-    collections::{HashSet, BTreeMap},
+    collections::{BTreeMap, HashSet},
     path::PathBuf,
     process,
     sync::{Arc, Mutex},
@@ -26,7 +26,7 @@ use zellij_utils::{
     input::{
         actions::Action,
         command::{RunCommand, RunCommandAction, TerminalAction},
-        layout::{Layout, RunPlugin, RunPluginLocation, PluginUserConfiguration},
+        layout::{Layout, PluginUserConfiguration, RunPlugin, RunPluginLocation},
         plugins::PluginType,
     },
     serde,

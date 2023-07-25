@@ -2,13 +2,13 @@ use super::plugin_thread_main;
 use crate::screen::ScreenInstruction;
 use crate::{channels::SenderWithContext, thread_bus::Bus, ServerInstruction};
 use insta::assert_snapshot;
-use std::path::PathBuf;
 use std::collections::BTreeMap;
+use std::path::PathBuf;
 use tempfile::tempdir;
 use wasmer::Store;
 use zellij_utils::data::{Event, Key, PluginCapabilities};
 use zellij_utils::errors::ErrorContext;
-use zellij_utils::input::layout::{Layout, RunPlugin, RunPluginLocation, PluginUserConfiguration};
+use zellij_utils::input::layout::{Layout, PluginUserConfiguration, RunPlugin, RunPluginLocation};
 use zellij_utils::input::plugins::PluginsConfig;
 use zellij_utils::ipc::ClientAttributes;
 use zellij_utils::lazy_static::lazy_static;
@@ -4163,8 +4163,14 @@ pub fn send_configuration_to_plugins() {
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
     let mut configuration = BTreeMap::new();
-    configuration.insert("fake_config_key_1".to_owned(), "fake_config_value_1".to_owned());
-    configuration.insert("fake_config_key_2".to_owned(), "fake_config_value_2".to_owned());
+    configuration.insert(
+        "fake_config_key_1".to_owned(),
+        "fake_config_value_1".to_owned(),
+    );
+    configuration.insert(
+        "fake_config_key_2".to_owned(),
+        "fake_config_value_2".to_owned(),
+    );
     let run_plugin = RunPlugin {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
@@ -4203,7 +4209,6 @@ pub fn send_configuration_to_plugins() {
     teardown();
     // here we make sure we received a rename_tab event with the title being the stringified
     // (Debug) configuration we sent to the fixture plugin to make sure it got there properly
-
 
     let go_to_tab_event = received_screen_instructions
         .lock()
