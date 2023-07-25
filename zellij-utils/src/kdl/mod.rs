@@ -10,7 +10,7 @@ use crate::input::plugins::{PluginConfig, PluginTag, PluginType, PluginsConfig};
 use crate::input::theme::{FrameConfig, Theme, Themes, UiConfig};
 use crate::setup::{find_default_config_dir, get_layout_dir};
 use kdl_layout_parser::KdlLayoutParser;
-use std::collections::{HashMap, HashSet, BTreeMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use strum::IntoEnumIterator;
 
 use miette::NamedSource;
