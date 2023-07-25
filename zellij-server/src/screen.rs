@@ -2636,11 +2636,6 @@ pub(crate) fn screen_thread_main(
                 let tab_index = screen.active_tab_indices.values().next().unwrap_or(&1);
                 let size = Size::default();
                 let should_float = Some(false);
-//                 let run_plugin = RunPlugin {
-//                     _allow_exec_host_cmd: false,
-//                     location: run_plugin_location,
-//                     configuration: PluginUserConfiguration::new(BTreeMap::new()), // TODO: parse config
-//                 };
                 screen.bus.senders.send_to_plugin(PluginInstruction::Load(
                     should_float,
                     pane_title,
@@ -2655,24 +2650,23 @@ pub(crate) fn screen_thread_main(
                 pane_title,
                 client_id,
             ) => {
-                let tab_index = screen.active_tab_indices.values().next().unwrap(); // TODO: no
-                                                                                    // unwrap and
-                                                                                    // better
-                let size = Size::default(); // TODO: ???
-                let should_float = Some(true);
-//                 let run_plugin = RunPlugin {
-//                     _allow_exec_host_cmd: false,
-//                     location: run_plugin_location,
-//                     configuration: PluginUserConfiguration::new(BTreeMap::new()), // TODO: parse config
-//                 };
-                screen.bus.senders.send_to_plugin(PluginInstruction::Load(
-                    should_float,
-                    pane_title,
-                    run_plugin,
-                    *tab_index,
-                    client_id,
-                    size,
-                ))?;
+                match screen.active_tab_indices.values().next() {
+                    Some(tab_index) => {
+                        let size = Size::default();
+                        let should_float = Some(true);
+                        screen.bus.senders.send_to_plugin(PluginInstruction::Load(
+                            should_float,
+                            pane_title,
+                            run_plugin,
+                            *tab_index,
+                            client_id,
+                            size,
+                        ))?;
+                    },
+                    None => {
+                        log::error!("Could not find an active tab - is there at least 1 connected user?");
+                    }
+                }
             },
             ScreenInstruction::StartOrReloadPluginPane(run_plugin, pane_title) => {
                 let tab_index = screen.active_tab_indices.values().next().unwrap_or(&1);

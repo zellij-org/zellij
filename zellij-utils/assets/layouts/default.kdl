@@ -4,11 +4,6 @@ layout {
     }
     pane
     pane size=2 borderless=true {
-        plugin location="zellij:status-bar" {
-//             config_one "config_one"
-//             config_two 2
-//             config_three { pane; pane bla=1 { bla; bar; baz; }; }
-//             // supermode { pane; pane; }
-        }
+        plugin location="zellij:status-bar"
     }
 }

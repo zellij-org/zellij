@@ -311,9 +311,6 @@ impl Action {
                     if floating {
                         Ok(vec![Action::NewFloatingPluginPane(plugin, name)])
                     } else {
-//                         let plugin = RunPluginLocation::parse(&plugin, cwd).map_err(|e| {
-//                             format!("Failed to parse plugin location {plugin}: {}", e)
-//                         })?;
                         // it is intentional that a new tiled plugin pane cannot include a
                         // direction
                         // this is because the cli client opening a tiled plugin pane is a
@@ -494,7 +491,7 @@ impl Action {
                 let run_plugin = RunPlugin {
                     location: run_plugin_location,
                     _allow_exec_host_cmd: false,
-                    configuration: configuration.unwrap_or_default(), // TODO: test this
+                    configuration: configuration.unwrap_or_default(),
                 };
                 Ok(vec![Action::StartOrReloadPlugin(run_plugin)])
             },
