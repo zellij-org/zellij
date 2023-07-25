@@ -15,8 +15,8 @@ use std::{
 };
 use wasmer::{Instance, Module, Store, Value};
 use zellij_utils::async_std::task::{self, JoinHandle};
-use zellij_utils::consts::ZELLIJ_PLUGIN_PERMISSIONS_FILE;
-use zellij_utils::data::PermissionType;
+use zellij_utils::consts::{ZELLIJ_CACHE_DIR, ZELLIJ_PLUGIN_PERMISSIONS_FILE};
+use zellij_utils::data::{PermissionStatus, PermissionType, PluginPermission};
 use zellij_utils::input::permission::GrantedPermission;
 use zellij_utils::notify_debouncer_full::{notify::RecommendedWatcher, Debouncer, FileIdMap};
 
@@ -50,7 +50,6 @@ pub struct WasmBridge {
     plugin_dir: PathBuf,
     plugin_cache: Arc<Mutex<HashMap<PathBuf, Module>>>,
     plugin_map: Arc<Mutex<PluginMap>>,
-    granted_permission: GrantedPermission,
     next_plugin_id: PluginId,
     cached_events_for_pending_plugins: HashMap<PluginId, Vec<Event>>,
     cached_resizes_for_pending_plugins: HashMap<PluginId, (usize, usize)>, // (rows, columns)
@@ -75,7 +74,6 @@ impl WasmBridge {
         senders: ThreadSenders,
         store: Store,
         plugin_dir: PathBuf,
-        granted_permission: GrantedPermission,
         path_to_default_shell: PathBuf,
         zellij_cwd: PathBuf,
         capabilities: PluginCapabilities,
@@ -96,7 +94,6 @@ impl WasmBridge {
             plugin_dir,
             plugin_cache,
             plugin_map,
-            granted_permission,
             path_to_default_shell,
             watcher,
             next_plugin_id: 0,
@@ -152,10 +149,6 @@ impl WasmBridge {
         let load_plugin_task = task::spawn({
             let plugin_dir = self.plugin_dir.clone();
             let plugin_cache = self.plugin_cache.clone();
-            let plugin_permissions = self
-                .granted_permission
-                .get(&run.location.to_string())
-                .cloned();
             let senders = self.senders.clone();
             let store = self.store.clone();
             let plugin_map = self.plugin_map.clone();
@@ -177,7 +170,6 @@ impl WasmBridge {
                     tab_index,
                     plugin_dir,
                     plugin_cache,
-                    plugin_permissions,
                     senders.clone(),
                     store,
                     plugin_map,
@@ -245,10 +237,6 @@ impl WasmBridge {
         let load_plugin_task = task::spawn({
             let plugin_dir = self.plugin_dir.clone();
             let plugin_cache = self.plugin_cache.clone();
-            let plugin_permissions = self
-                .granted_permission
-                .get(&run_plugin.location.to_string())
-                .cloned();
             let senders = self.senders.clone();
             let store = self.store.clone();
             let plugin_map = self.plugin_map.clone();
@@ -264,7 +252,6 @@ impl WasmBridge {
                     first_plugin_id,
                     plugin_dir.clone(),
                     plugin_cache.clone(),
-                    plugin_permissions.clone(),
                     senders.clone(),
                     store.clone(),
                     plugin_map.clone(),
@@ -289,7 +276,6 @@ impl WasmBridge {
                                 *plugin_id,
                                 plugin_dir.clone(),
                                 plugin_cache.clone(),
-                                plugin_permissions.clone(),
                                 senders.clone(),
                                 store.clone(),
                                 plugin_map.clone(),
@@ -336,7 +322,6 @@ impl WasmBridge {
             client_id,
             self.plugin_dir.clone(),
             self.plugin_cache.clone(),
-            &self.granted_permission,
             self.senders.clone(),
             self.store.clone(),
             self.plugin_map.clone(),
@@ -734,6 +719,7 @@ impl WasmBridge {
         plugin_id: PluginId,
         client_id: Option<ClientId>,
         permissions: Vec<PermissionType>,
+        status: PermissionStatus,
     ) -> Result<()> {
         if let Some(running_plugin) = self
             .plugin_map
@@ -744,18 +730,33 @@ impl WasmBridge {
             let err_context = || format!("Failed to write plugin permission {plugin_id}");
 
             let mut running_plugin = running_plugin.lock().unwrap();
-            running_plugin
-                .plugin_env
-                .merge_plugin_permissions(HashSet::from_iter(permissions.clone()));
 
-            self.granted_permission.insert(
+            let permissions = HashSet::from_iter(permissions);
+            match status {
+                PermissionStatus::Granted => {
+                    running_plugin.plugin_env.merge_permissions(permissions)
+                },
+                PermissionStatus::Denied => {
+                    permissions.iter().for_each(|p| {
+                        running_plugin.plugin_env.permissions.remove(p);
+                    });
+                },
+            }
+
+            let mut granted_permission = GrantedPermission::from_default().unwrap_or_default();
+            granted_permission.insert(
                 running_plugin.plugin_env.plugin.location.to_string(),
-                permissions,
+                running_plugin
+                    .plugin_env
+                    .permissions
+                    .clone()
+                    .into_iter()
+                    .collect(),
             );
 
-            let mut f = File::create(self.plugin_dir.join(ZELLIJ_PLUGIN_PERMISSIONS_FILE))
+            let mut f = File::create(ZELLIJ_CACHE_DIR.join(ZELLIJ_PLUGIN_PERMISSIONS_FILE))
                 .with_context(err_context)?;
-            write!(f, "{}", self.granted_permission.to_string()).with_context(err_context)?;
+            write!(f, "{}", granted_permission.to_string()).with_context(err_context)?;
         }
 
         Ok(())
@@ -788,10 +789,8 @@ fn check_permission(plugin_env: &PluginEnv, event: &Event) -> Permission {
         _ => return Permission::Allowed,
     };
 
-    if let Some(permissions) = &plugin_env.plugin_permissions {
-        if !permissions.contains(&permission) {
-            return Permission::Denied(permission);
-        }
+    if !plugin_env.permissions.contains(&permission) {
+        return Permission::Denied(permission);
     }
 
     Permission::Allowed

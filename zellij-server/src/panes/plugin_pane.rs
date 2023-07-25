@@ -13,7 +13,7 @@ use crate::ui::{
 use crate::ClientId;
 use std::cell::RefCell;
 use std::rc::Rc;
-use zellij_utils::data::{PermissionType, PluginPermission};
+use zellij_utils::data::{PermissionStatus, PermissionType, PluginPermission};
 use zellij_utils::pane_size::{Offset, SizeInPixels};
 use zellij_utils::position::Position;
 use zellij_utils::{
@@ -228,9 +228,15 @@ impl Pane for PluginPane {
             let permissions = requesting_permissions.permissions.clone();
             match input_bytes.as_slice() {
                 // Y or y
-                &[89] | &[121] => Some(AdjustedInput::PermissionRequestResult(permissions, true)),
+                &[89] | &[121] => Some(AdjustedInput::PermissionRequestResult(
+                    permissions,
+                    PermissionStatus::Granted,
+                )),
                 // N or n
-                &[78] | &[110] => Some(AdjustedInput::PermissionRequestResult(permissions, false)),
+                &[78] | &[110] => Some(AdjustedInput::PermissionRequestResult(
+                    permissions,
+                    PermissionStatus::Denied,
+                )),
                 _ => None,
             }
         } else {

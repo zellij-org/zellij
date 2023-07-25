@@ -217,20 +217,11 @@ fn host_set_selectable(env: &ForeignFunctionEnv, selectable: i32) {
 fn host_request_permission(env: &ForeignFunctionEnv) {
     wasi_read_object::<Vec<PermissionType>>(&env.plugin_env.wasi_env)
         .and_then(|permissions| {
-            if let Some(permissions) = &env.plugin_env.plugin_permissions {
-                if !permissions.is_empty() {
-                    return Ok(());
-                }
-            }
-
             env.plugin_env
                 .senders
                 .send_to_screen(ScreenInstruction::RequestPluginPermissions(
                     env.plugin_env.plugin_id,
-                    PluginPermission::new(
-                        env.plugin_env.plugin.path.display().to_string(),
-                        permissions,
-                    ),
+                    PluginPermission::new(env.plugin_env.plugin.location.to_string(), permissions),
                 ))
         })
         .with_context(|| {

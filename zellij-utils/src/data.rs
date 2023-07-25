@@ -494,7 +494,7 @@ pub enum Event {
     /// A file was deleted somewhere in the Zellij CWD folder
     FileSystemDelete(Vec<PathBuf>),
     /// A Result of plugin permission request
-    PermissionRequestResult(bool),
+    PermissionRequestResult(PermissionStatus),
 }
 
 #[derive(Debug, Clone, PartialEq, EnumDiscriminants, ToString, Serialize, Deserialize)]
@@ -839,4 +839,10 @@ pub enum CopyDestination {
     Command,
     Primary,
     System,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]
+pub enum PermissionStatus {
+    Granted,
+    Denied,
 }
