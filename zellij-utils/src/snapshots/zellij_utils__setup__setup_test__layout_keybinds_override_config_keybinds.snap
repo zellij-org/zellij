@@ -1,5 +1,6 @@
 ---
 source: zellij-utils/src/setup.rs
+assertion_line: 753
 expression: "format!(\"{:#?}\", config)"
 ---
 Config {
@@ -97,6 +98,9 @@ Config {
                     "compact-bar",
                 ),
             ),
+            userspace_configuration: PluginUserConfiguration(
+                {},
+            ),
         },
         PluginTag(
             "status-bar",
@@ -110,6 +114,9 @@ Config {
                 PluginTag(
                     "status-bar",
                 ),
+            ),
+            userspace_configuration: PluginUserConfiguration(
+                {},
             ),
         },
         PluginTag(
@@ -125,6 +132,9 @@ Config {
                     "strider",
                 ),
             ),
+            userspace_configuration: PluginUserConfiguration(
+                {},
+            ),
         },
         PluginTag(
             "tab-bar",
@@ -138,6 +148,9 @@ Config {
                 PluginTag(
                     "tab-bar",
                 ),
+            ),
+            userspace_configuration: PluginUserConfiguration(
+                {},
             ),
         },
     },

@@ -600,6 +600,7 @@ mod config_test {
                 run: PluginType::Pane(None),
                 location: RunPluginLocation::Zellij(PluginTag::new("tab-bar")),
                 _allow_exec_host_cmd: false,
+                userspace_configuration: Default::default(),
             },
         );
         expected_plugin_configuration.insert(
@@ -609,6 +610,7 @@ mod config_test {
                 run: PluginType::Pane(None),
                 location: RunPluginLocation::Zellij(PluginTag::new("status-bar")),
                 _allow_exec_host_cmd: false,
+                userspace_configuration: Default::default(),
             },
         );
         expected_plugin_configuration.insert(
@@ -618,6 +620,7 @@ mod config_test {
                 run: PluginType::Pane(None),
                 location: RunPluginLocation::Zellij(PluginTag::new("strider")),
                 _allow_exec_host_cmd: true,
+                userspace_configuration: Default::default(),
             },
         );
         expected_plugin_configuration.insert(
@@ -627,6 +630,7 @@ mod config_test {
                 run: PluginType::Pane(None),
                 location: RunPluginLocation::Zellij(PluginTag::new("compact-bar")),
                 _allow_exec_host_cmd: false,
+                userspace_configuration: Default::default(),
             },
         );
         assert_eq!(

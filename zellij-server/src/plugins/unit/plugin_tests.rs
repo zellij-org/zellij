@@ -2,12 +2,13 @@ use super::plugin_thread_main;
 use crate::screen::ScreenInstruction;
 use crate::{channels::SenderWithContext, thread_bus::Bus, ServerInstruction};
 use insta::assert_snapshot;
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 use tempfile::tempdir;
 use wasmer::Store;
 use zellij_utils::data::{Event, Key, PluginCapabilities};
 use zellij_utils::errors::ErrorContext;
-use zellij_utils::input::layout::{Layout, RunPlugin, RunPluginLocation};
+use zellij_utils::input::layout::{Layout, PluginUserConfiguration, RunPlugin, RunPluginLocation};
 use zellij_utils::input::plugins::PluginsConfig;
 use zellij_utils::ipc::ClientAttributes;
 use zellij_utils::lazy_static::lazy_static;
@@ -349,6 +350,7 @@ pub fn load_new_plugin_from_hd() {
     let run_plugin = RunPlugin {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
     };
     let tab_index = 1;
     let client_id = 1;
@@ -407,6 +409,7 @@ pub fn plugin_workers() {
     let run_plugin = RunPlugin {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
     };
     let tab_index = 1;
     let client_id = 1;
@@ -468,6 +471,7 @@ pub fn plugin_workers_persist_state() {
     let run_plugin = RunPlugin {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
     };
     let tab_index = 1;
     let client_id = 1;
@@ -541,6 +545,7 @@ pub fn can_subscribe_to_hd_events() {
     let run_plugin = RunPlugin {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
     };
     let tab_index = 1;
     let client_id = 1;
@@ -605,6 +610,7 @@ pub fn switch_to_mode_plugin_command() {
     let run_plugin = RunPlugin {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
     };
     let tab_index = 1;
     let client_id = 1;
@@ -666,6 +672,7 @@ pub fn new_tabs_with_layout_plugin_command() {
     let run_plugin = RunPlugin {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
     };
     let tab_index = 1;
     let client_id = 1;
@@ -741,6 +748,7 @@ pub fn new_tab_plugin_command() {
     let run_plugin = RunPlugin {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
     };
     let tab_index = 1;
     let client_id = 1;
@@ -802,6 +810,7 @@ pub fn go_to_next_tab_plugin_command() {
     let run_plugin = RunPlugin {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
     };
     let tab_index = 1;
     let client_id = 1;
@@ -862,6 +871,7 @@ pub fn go_to_previous_tab_plugin_command() {
     let run_plugin = RunPlugin {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
     };
     let tab_index = 1;
     let client_id = 1;
@@ -922,6 +932,7 @@ pub fn resize_focused_pane_plugin_command() {
     let run_plugin = RunPlugin {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
     };
     let tab_index = 1;
     let client_id = 1;
@@ -982,6 +993,7 @@ pub fn resize_focused_pane_with_direction_plugin_command() {
     let run_plugin = RunPlugin {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
     };
     let tab_index = 1;
     let client_id = 1;
@@ -1042,6 +1054,7 @@ pub fn focus_next_pane_plugin_command() {
     let run_plugin = RunPlugin {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
     };
     let tab_index = 1;
     let client_id = 1;
@@ -1102,6 +1115,7 @@ pub fn focus_previous_pane_plugin_command() {
     let run_plugin = RunPlugin {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
     };
     let tab_index = 1;
     let client_id = 1;
@@ -1162,6 +1176,7 @@ pub fn move_focus_plugin_command() {
     let run_plugin = RunPlugin {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
     };
     let tab_index = 1;
     let client_id = 1;
@@ -1222,6 +1237,7 @@ pub fn move_focus_or_tab_plugin_command() {
     let run_plugin = RunPlugin {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
     };
     let tab_index = 1;
     let client_id = 1;
@@ -1282,6 +1298,7 @@ pub fn edit_scrollback_plugin_command() {
     let run_plugin = RunPlugin {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
     };
     let tab_index = 1;
     let client_id = 1;
@@ -1342,6 +1359,7 @@ pub fn write_plugin_command() {
     let run_plugin = RunPlugin {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
     };
     let tab_index = 1;
     let client_id = 1;
@@ -1402,6 +1420,7 @@ pub fn write_chars_plugin_command() {
     let run_plugin = RunPlugin {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
     };
     let tab_index = 1;
     let client_id = 1;
@@ -1462,6 +1481,7 @@ pub fn toggle_tab_plugin_command() {
     let run_plugin = RunPlugin {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
     };
     let tab_index = 1;
     let client_id = 1;
@@ -1522,6 +1542,7 @@ pub fn move_pane_plugin_command() {
     let run_plugin = RunPlugin {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
     };
     let tab_index = 1;
     let client_id = 1;
@@ -1582,6 +1603,7 @@ pub fn move_pane_with_direction_plugin_command() {
     let run_plugin = RunPlugin {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
     };
     let tab_index = 1;
     let client_id = 1;
@@ -1642,6 +1664,7 @@ pub fn clear_screen_plugin_command() {
     let run_plugin = RunPlugin {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
     };
     let tab_index = 1;
     let client_id = 1;
@@ -1702,6 +1725,7 @@ pub fn scroll_up_plugin_command() {
     let run_plugin = RunPlugin {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
     };
     let tab_index = 1;
     let client_id = 1;
@@ -1762,6 +1786,7 @@ pub fn scroll_down_plugin_command() {
     let run_plugin = RunPlugin {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
     };
     let tab_index = 1;
     let client_id = 1;
@@ -1822,6 +1847,7 @@ pub fn scroll_to_top_plugin_command() {
     let run_plugin = RunPlugin {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
     };
     let tab_index = 1;
     let client_id = 1;
@@ -1882,6 +1908,7 @@ pub fn scroll_to_bottom_plugin_command() {
     let run_plugin = RunPlugin {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
     };
     let tab_index = 1;
     let client_id = 1;
@@ -1942,6 +1969,7 @@ pub fn page_scroll_up_plugin_command() {
     let run_plugin = RunPlugin {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
     };
     let tab_index = 1;
     let client_id = 1;
@@ -2002,6 +2030,7 @@ pub fn page_scroll_down_plugin_command() {
     let run_plugin = RunPlugin {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
     };
     let tab_index = 1;
     let client_id = 1;
@@ -2062,6 +2091,7 @@ pub fn toggle_focus_fullscreen_plugin_command() {
     let run_plugin = RunPlugin {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
     };
     let tab_index = 1;
     let client_id = 1;
@@ -2122,6 +2152,7 @@ pub fn toggle_pane_frames_plugin_command() {
     let run_plugin = RunPlugin {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
     };
     let tab_index = 1;
     let client_id = 1;
@@ -2182,6 +2213,7 @@ pub fn toggle_pane_embed_or_eject_plugin_command() {
     let run_plugin = RunPlugin {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
     };
     let tab_index = 1;
     let client_id = 1;
@@ -2242,6 +2274,7 @@ pub fn undo_rename_pane_plugin_command() {
     let run_plugin = RunPlugin {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
     };
     let tab_index = 1;
     let client_id = 1;
@@ -2302,6 +2335,7 @@ pub fn close_focus_plugin_command() {
     let run_plugin = RunPlugin {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
     };
     let tab_index = 1;
     let client_id = 1;
@@ -2362,6 +2396,7 @@ pub fn toggle_active_tab_sync_plugin_command() {
     let run_plugin = RunPlugin {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
     };
     let tab_index = 1;
     let client_id = 1;
@@ -2422,6 +2457,7 @@ pub fn close_focused_tab_plugin_command() {
     let run_plugin = RunPlugin {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
     };
     let tab_index = 1;
     let client_id = 1;
@@ -2482,6 +2518,7 @@ pub fn undo_rename_tab_plugin_command() {
     let run_plugin = RunPlugin {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
     };
     let tab_index = 1;
     let client_id = 1;
@@ -2542,6 +2579,7 @@ pub fn previous_swap_layout_plugin_command() {
     let run_plugin = RunPlugin {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
     };
     let tab_index = 1;
     let client_id = 1;
@@ -2602,6 +2640,7 @@ pub fn next_swap_layout_plugin_command() {
     let run_plugin = RunPlugin {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
     };
     let tab_index = 1;
     let client_id = 1;
@@ -2662,6 +2701,7 @@ pub fn go_to_tab_name_plugin_command() {
     let run_plugin = RunPlugin {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
     };
     let tab_index = 1;
     let client_id = 1;
@@ -2722,6 +2762,7 @@ pub fn focus_or_create_tab_plugin_command() {
     let run_plugin = RunPlugin {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
     };
     let tab_index = 1;
     let client_id = 1;
@@ -2782,6 +2823,7 @@ pub fn go_to_tab() {
     let run_plugin = RunPlugin {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
     };
     let tab_index = 1;
     let client_id = 1;
@@ -2842,6 +2884,7 @@ pub fn start_or_reload_plugin() {
     let run_plugin = RunPlugin {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
     };
     let tab_index = 1;
     let client_id = 1;
@@ -2902,6 +2945,7 @@ pub fn quit_zellij_plugin_command() {
     let run_plugin = RunPlugin {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
     };
     let tab_index = 1;
     let client_id = 1;
@@ -2962,6 +3006,7 @@ pub fn detach_plugin_command() {
     let run_plugin = RunPlugin {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
     };
     let tab_index = 1;
     let client_id = 1;
@@ -3022,6 +3067,7 @@ pub fn open_file_floating_plugin_command() {
     let run_plugin = RunPlugin {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
     };
     let tab_index = 1;
     let client_id = 1;
@@ -3082,6 +3128,7 @@ pub fn open_file_plugin_command() {
     let run_plugin = RunPlugin {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
     };
     let tab_index = 1;
     let client_id = 1;
@@ -3142,6 +3189,7 @@ pub fn open_file_with_line_plugin_command() {
     let run_plugin = RunPlugin {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
     };
     let tab_index = 1;
     let client_id = 1;
@@ -3202,6 +3250,7 @@ pub fn open_file_with_line_floating_plugin_command() {
     let run_plugin = RunPlugin {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
     };
     let tab_index = 1;
     let client_id = 1;
@@ -3262,6 +3311,7 @@ pub fn open_terminal_plugin_command() {
     let run_plugin = RunPlugin {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
     };
     let tab_index = 1;
     let client_id = 1;
@@ -3322,6 +3372,7 @@ pub fn open_terminal_floating_plugin_command() {
     let run_plugin = RunPlugin {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
     };
     let tab_index = 1;
     let client_id = 1;
@@ -3382,6 +3433,7 @@ pub fn open_command_pane_plugin_command() {
     let run_plugin = RunPlugin {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
     };
     let tab_index = 1;
     let client_id = 1;
@@ -3442,6 +3494,7 @@ pub fn open_command_pane_floating_plugin_command() {
     let run_plugin = RunPlugin {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
     };
     let tab_index = 1;
     let client_id = 1;
@@ -3502,6 +3555,7 @@ pub fn switch_to_tab_plugin_command() {
     let run_plugin = RunPlugin {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
     };
     let tab_index = 1;
     let client_id = 1;
@@ -3562,6 +3616,7 @@ pub fn hide_self_plugin_command() {
     let run_plugin = RunPlugin {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
     };
     let tab_index = 1;
     let client_id = 1;
@@ -3622,6 +3677,7 @@ pub fn show_self_plugin_command() {
     let run_plugin = RunPlugin {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
     };
     let tab_index = 1;
     let client_id = 1;
@@ -3682,6 +3738,7 @@ pub fn close_terminal_pane_plugin_command() {
     let run_plugin = RunPlugin {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
     };
     let tab_index = 1;
     let client_id = 1;
@@ -3742,6 +3799,7 @@ pub fn close_plugin_pane_plugin_command() {
     let run_plugin = RunPlugin {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
     };
     let tab_index = 1;
     let client_id = 1;
@@ -3802,6 +3860,7 @@ pub fn focus_terminal_pane_plugin_command() {
     let run_plugin = RunPlugin {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
     };
     let tab_index = 1;
     let client_id = 1;
@@ -3862,6 +3921,7 @@ pub fn focus_plugin_pane_plugin_command() {
     let run_plugin = RunPlugin {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
     };
     let tab_index = 1;
     let client_id = 1;
@@ -3922,6 +3982,7 @@ pub fn rename_terminal_pane_plugin_command() {
     let run_plugin = RunPlugin {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
     };
     let tab_index = 1;
     let client_id = 1;
@@ -3982,6 +4043,7 @@ pub fn rename_plugin_pane_plugin_command() {
     let run_plugin = RunPlugin {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
     };
     let tab_index = 1;
     let client_id = 1;
@@ -4042,6 +4104,7 @@ pub fn rename_tab_plugin_command() {
     let run_plugin = RunPlugin {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
     };
     let tab_index = 1;
     let client_id = 1;
@@ -4087,4 +4150,77 @@ pub fn rename_tab_plugin_command() {
         })
         .clone();
     assert_snapshot!(format!("{:#?}", new_tab_event));
+}
+
+#[test]
+#[ignore]
+pub fn send_configuration_to_plugins() {
+    let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
+                                          // destructor removes the directory
+    let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let (plugin_thread_sender, screen_receiver, mut teardown) =
+        create_plugin_thread(Some(plugin_host_folder));
+    let plugin_should_float = Some(false);
+    let plugin_title = Some("test_plugin".to_owned());
+    let mut configuration = BTreeMap::new();
+    configuration.insert(
+        "fake_config_key_1".to_owned(),
+        "fake_config_value_1".to_owned(),
+    );
+    configuration.insert(
+        "fake_config_key_2".to_owned(),
+        "fake_config_value_2".to_owned(),
+    );
+    let run_plugin = RunPlugin {
+        _allow_exec_host_cmd: false,
+        location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: PluginUserConfiguration::new(configuration),
+    };
+    let tab_index = 1;
+    let client_id = 1;
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let received_screen_instructions = Arc::new(Mutex::new(vec![]));
+    let screen_thread = log_actions_in_thread!(
+        received_screen_instructions,
+        ScreenInstruction::GoToTabName,
+        screen_receiver,
+        1
+    );
+
+    let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
+    let _ = plugin_thread_sender.send(PluginInstruction::Load(
+        plugin_should_float,
+        plugin_title,
+        run_plugin,
+        tab_index,
+        client_id,
+        size,
+    ));
+    let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
+        None,
+        Some(client_id),
+        Event::Key(Key::Ctrl('z')), // this triggers the enent in the fixture plugin
+    )]));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    screen_thread.join().unwrap(); // this might take a while if the cache is cold
+    teardown();
+    // here we make sure we received a rename_tab event with the title being the stringified
+    // (Debug) configuration we sent to the fixture plugin to make sure it got there properly
+
+    let go_to_tab_event = received_screen_instructions
+        .lock()
+        .unwrap()
+        .iter()
+        .find_map(|i| {
+            if let ScreenInstruction::GoToTabName(..) = i {
+                Some(i.clone())
+            } else {
+                None
+            }
+        })
+        .clone();
+    assert_snapshot!(format!("{:#?}", go_to_tab_event));
 }

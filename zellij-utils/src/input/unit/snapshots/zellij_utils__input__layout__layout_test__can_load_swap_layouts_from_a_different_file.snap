@@ -1,6 +1,6 @@
 ---
 source: zellij-utils/src/input/./unit/layout_test.rs
-assertion_line: 1850
+assertion_line: 1863
 expression: "format!(\"{:#?}\", layout)"
 ---
 Layout {
@@ -66,6 +66,9 @@ Layout {
                                                 "tab-bar",
                                             ),
                                         ),
+                                        configuration: PluginUserConfiguration(
+                                            {},
+                                        ),
                                     },
                                 ),
                             ),
@@ -149,6 +152,9 @@ Layout {
                                             PluginTag(
                                                 "status-bar",
                                             ),
+                                        ),
+                                        configuration: PluginUserConfiguration(
+                                            {},
                                         ),
                                     },
                                 ),
@@ -194,6 +200,9 @@ Layout {
                                                 "tab-bar",
                                             ),
                                         ),
+                                        configuration: PluginUserConfiguration(
+                                            {},
+                                        ),
                                     },
                                 ),
                             ),
@@ -330,6 +339,9 @@ Layout {
                                             PluginTag(
                                                 "status-bar",
                                             ),
+                                        ),
+                                        configuration: PluginUserConfiguration(
+                                            {},
                                         ),
                                     },
                                 ),
@@ -375,6 +387,9 @@ Layout {
                                                 "tab-bar",
                                             ),
                                         ),
+                                        configuration: PluginUserConfiguration(
+                                            {},
+                                        ),
                                     },
                                 ),
                             ),
@@ -577,6 +592,9 @@ Layout {
                                             PluginTag(
                                                 "status-bar",
                                             ),
+                                        ),
+                                        configuration: PluginUserConfiguration(
+                                            {},
                                         ),
                                     },
                                 ),

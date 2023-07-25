@@ -2,7 +2,7 @@ use crate::data::{Direction, InputMode, Resize};
 use crate::setup::Setup;
 use crate::{
     consts::{ZELLIJ_CONFIG_DIR_ENV, ZELLIJ_CONFIG_FILE_ENV},
-    input::options::CliOptions,
+    input::{layout::PluginUserConfiguration, options::CliOptions},
 };
 use clap::{Parser, Subcommand};
 use serde::{Deserialize, Serialize};
@@ -297,6 +297,8 @@ pub enum CliAction {
             requires("command")
         )]
         start_suspended: bool,
+        #[clap(short, long, value_parser)]
+        configuration: Option<PluginUserConfiguration>,
     },
     /// Open the specified file in a new zellij pane with your default EDITOR
     Edit {
@@ -381,10 +383,14 @@ pub enum CliAction {
     QueryTabNames,
     StartOrReloadPlugin {
         url: String,
+        #[clap(short, long, value_parser)]
+        configuration: Option<PluginUserConfiguration>,
     },
     LaunchOrFocusPlugin {
         #[clap(short, long, value_parser)]
         floating: bool,
         url: Url,
+        #[clap(short, long, value_parser)]
+        configuration: Option<PluginUserConfiguration>,
     },
 }

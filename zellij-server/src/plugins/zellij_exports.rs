@@ -5,7 +5,7 @@ use crate::route::route_action;
 use log::{debug, warn};
 use serde::{de::DeserializeOwned, Serialize};
 use std::{
-    collections::HashSet,
+    collections::{BTreeMap, HashSet},
     path::PathBuf,
     process,
     sync::{Arc, Mutex},
@@ -26,7 +26,7 @@ use zellij_utils::{
     input::{
         actions::Action,
         command::{RunCommand, RunCommandAction, TerminalAction},
-        layout::{Layout, RunPlugin, RunPluginLocation},
+        layout::{Layout, PluginUserConfiguration, RunPlugin, RunPluginLocation},
         plugins::PluginType,
     },
     serde,
@@ -976,6 +976,7 @@ fn host_start_or_reload_plugin(env: &ForeignFunctionEnv) {
             let run_plugin = RunPlugin {
                 location: run_plugin_location,
                 _allow_exec_host_cmd: false,
+                configuration: PluginUserConfiguration::new(BTreeMap::new()), // TODO: allow passing configuration
             };
             let action = Action::StartOrReloadPlugin(run_plugin);
             apply_action!(action, error_msg, env);

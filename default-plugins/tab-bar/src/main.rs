@@ -2,6 +2,7 @@ mod line;
 mod tab;
 
 use std::cmp::{max, min};
+use std::collections::BTreeMap;
 use std::convert::TryInto;
 
 use tab::get_tab_to_focus;
@@ -30,7 +31,7 @@ static ARROW_SEPARATOR: &str = "";
 register_plugin!(State);
 
 impl ZellijPlugin for State {
-    fn load(&mut self) {
+    fn load(&mut self, configuration: BTreeMap<String, String>) {
         set_selectable(false);
         subscribe(&[
             EventType::TabUpdate,
