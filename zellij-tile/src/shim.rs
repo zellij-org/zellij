@@ -206,6 +206,11 @@ pub fn go_to_previous_tab() {
     // unsafe { host_go_to_previous_tab() }
 }
 
+       // TODO: CONTINUE HERE (26/07) - implement the missing stuff in this file after we updated
+       // data.rs, plugin_command.proto, and plugin_command.rs, then move to zellij_exports.rs and
+       // implement the missing stuff there, then see what else we are missing and try to test this
+
+
 pub fn report_panic(info: &std::panic::PanicInfo) {
     println!("");
     println!("A panic occured in a plugin");
