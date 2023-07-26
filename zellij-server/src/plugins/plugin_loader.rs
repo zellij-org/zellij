@@ -725,6 +725,19 @@ impl<'a> PluginLoader<'a> {
         }
         start_function.call(&[]).with_context(err_context)?;
 
+        plugin_map.lock().unwrap().insert(
+            self.plugin_id,
+            self.client_id,
+            Arc::new(Mutex::new(RunningPlugin::new(
+                main_user_instance,
+                main_user_env,
+                self.size.rows,
+                self.size.cols,
+            ))),
+            subscriptions.clone(),
+            workers,
+        );
+
         wasi_write_object(
             &plugin_env.wasi_env,
             &self.plugin.userspace_configuration.inner(),
@@ -743,18 +756,6 @@ impl<'a> PluginLoader<'a> {
             self.loading_indication,
             self.senders,
             self.plugin_id
-        );
-        plugin_map.lock().unwrap().insert(
-            self.plugin_id,
-            self.client_id,
-            Arc::new(Mutex::new(RunningPlugin::new(
-                main_user_instance,
-                main_user_env,
-                self.size.rows,
-                self.size.cols,
-            ))),
-            subscriptions.clone(),
-            workers,
         );
         display_loading_stage!(
             indicate_writing_plugin_to_cache_success,

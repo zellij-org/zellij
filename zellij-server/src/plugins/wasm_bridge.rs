@@ -16,7 +16,7 @@ use std::{
 use wasmer::{Instance, Module, Store, Value};
 use zellij_utils::async_std::task::{self, JoinHandle};
 use zellij_utils::consts::{ZELLIJ_CACHE_DIR, ZELLIJ_PLUGIN_PERMISSIONS_FILE};
-use zellij_utils::data::{PermissionStatus, PermissionType, PluginPermission};
+use zellij_utils::data::{PermissionStatus, PermissionType};
 use zellij_utils::input::permission::GrantedPermission;
 use zellij_utils::notify_debouncer_full::{notify::RecommendedWatcher, Debouncer, FileIdMap};
 

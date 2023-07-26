@@ -298,17 +298,16 @@ pub(crate) fn plugin_thread_main(
             PluginInstruction::PermissionRequestResult(
                 plugin_id,
                 client_id,
-                plugin_permission,
+                permissions,
                 status,
             ) => {
-                match wasm_bridge.caching_plugin_permissions(
+                if let Err(e) = wasm_bridge.caching_plugin_permissions(
                     plugin_id,
                     client_id,
-                    plugin_permission,
+                    permissions,
                     status,
                 ) {
-                    Ok(_) => {},
-                    Err(e) => log::error!("{}", e),
+                    log::info!("{}", e);
                 }
 
                 let updates = vec![(

@@ -10,7 +10,6 @@ use zellij_utils::data::{Direction, PaneManifest, PluginPermission, Resize, Resi
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
 use zellij_utils::input::options::Clipboard;
-use zellij_utils::input::permission::GrantedPermission;
 use zellij_utils::pane_size::{Size, SizeInPixels};
 use zellij_utils::{
     input::command::TerminalAction,
@@ -2823,23 +2822,11 @@ pub(crate) fn screen_thread_main(
                 }
                 screen.report_tab_state()?;
             },
-            ScreenInstruction::RequestPluginPermissions(plugin_id, permissions) => {
-                let permissions = match GrantedPermission::from_default() {
-                    Ok(granted_permission) => {
-                        if let Some(p) = granted_permission.get(&permissions.name) {
-                            // TODO: How to deal cached data?
-                            permissions
-                        } else {
-                            permissions
-                        }
-                    },
-                    Err(_) => permissions,
-                };
-
+            ScreenInstruction::RequestPluginPermissions(plugin_id, plugin_permission) => {
                 let all_tabs = screen.get_tabs_mut();
                 let found = all_tabs.values_mut().any(|tab| {
                     if tab.has_plugin(plugin_id) {
-                        tab.request_plugin_permissions(plugin_id, Some(permissions.clone()));
+                        tab.request_plugin_permissions(plugin_id, Some(plugin_permission.clone()));
                         true
                     } else {
                         false
