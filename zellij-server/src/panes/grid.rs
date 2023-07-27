@@ -760,9 +760,16 @@ impl Grid {
         if new_columns == 0 || new_rows == 0 {
             return;
         }
+        if self.alternate_screen_state.is_some() {
+            // in alternate screen we do nothing but log the new size, the program in the terminal
+            // is in control now...
+            self.height = new_rows;
+            self.width = new_columns;
+            return;
+        }
         self.selection.reset();
         self.sixel_grid.character_cell_size_possibly_changed();
-        if new_columns != self.width && self.alternate_screen_state.is_none() {
+        if new_columns != self.width {
             self.horizontal_tabstops = create_horizontal_tabstops(new_columns);
             let mut cursor_canonical_line_index = self.cursor_canonical_line_index();
             let cursor_index_in_canonical_line = self.cursor_index_in_canonical_line();
@@ -917,14 +924,6 @@ impl Grid {
                     },
                 }
             };
-        } else if new_columns != self.width && self.alternate_screen_state.is_some() {
-            // in alternate screen just truncate exceeding width
-            for row in &mut self.viewport {
-                if row.width() >= new_columns {
-                    let truncate_at = row.position_accounting_for_widechars(new_columns);
-                    row.columns.truncate(truncate_at);
-                }
-            }
         }
         if new_rows != self.height {
             let current_viewport_row_count = self.viewport.len();
@@ -959,18 +958,13 @@ impl Grid {
                                 .saturating_sub(row_count_to_transfer);
                         };
                     }
-                    if self.alternate_screen_state.is_none() {
-                        transfer_rows_from_viewport_to_lines_above(
-                            &mut self.viewport,
-                            &mut self.lines_above,
-                            &mut self.sixel_grid,
-                            row_count_to_transfer,
-                            new_columns,
-                        );
-                    } else {
-                        // in alternate screen, no scroll buffer, so just remove lines
-                        self.viewport.drain(0..row_count_to_transfer);
-                    }
+                    transfer_rows_from_viewport_to_lines_above(
+                        &mut self.viewport,
+                        &mut self.lines_above,
+                        &mut self.sixel_grid,
+                        row_count_to_transfer,
+                        new_columns,
+                    );
                 },
                 Ordering::Equal => {},
             }
@@ -1340,7 +1334,7 @@ impl Grid {
         if character_width == 0 {
             return;
         }
-        if self.cursor.x + character_width > self.width {
+        if self.cursor.x + character_width > self.width && self.alternate_screen_state.is_none() {
             if self.disable_linewrap {
                 return;
             }

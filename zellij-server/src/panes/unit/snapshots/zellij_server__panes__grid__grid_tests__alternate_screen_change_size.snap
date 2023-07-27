@@ -1,16 +1,26 @@
 ---
 source: zellij-server/src/panes/./unit/grid_tests.rs
+assertion_line: 2137
 expression: "format!(\"{:?}\", grid)"
-
 ---
-00 (C): line12aaaa
-01 (C): line13aaaa
-02 (C): line14aaaa
-03 (C): line15aaaa
-04 (C): line16aaaa
-05 (C): line17aaaa
-06 (C): line18aaaa
-07 (C): line19a🦀a
-08 (C): line20a🦀
-09 (C): line21🦀🦀
+00 (C): line2aaaaaaaaaaaaaaa
+01 (C): line3aaaaaaaaaaaaaaa
+02 (C): line4aaaaaaaaaaaaaaa
+03 (C): line5aaaaaaaaaaaaaaa
+04 (C): line6aaaaaaaaaaaaaaa
+05 (C): line7aaaaaaaaaaaaaaa
+06 (C): line8aaaaaaaaaaaaaaa
+07 (C): line9aaaaaaaaaaaaaaa
+08 (C): line10aaaaaaaaaaaaaa
+09 (C): line11aaaaaaaaaaaaaa
+10 (C): line12aaaaaaaaaaaaaa
+11 (C): line13aaaaaaaaaaaaaa
+12 (C): line14aaaaaaaaaaaaaa
+13 (C): line15aaaaaaaaaaaaaa
+14 (C): line16aaaaaaaaaaaaaa
+15 (C): line17aaaaaaaaaaaaaa
+16 (C): line18aaaaaaaaaaaaaa
+17 (C): line19a🦀aaaaaaaaaaa
+18 (C): line20a🦀🦀aaaaaaaaa
+19 (C): line21🦀🦀🦀🦀🦀🦀🦀
 
