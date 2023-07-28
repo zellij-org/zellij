@@ -240,6 +240,7 @@ pub enum Action {
     RenameTerminalPane(u32, Vec<u8>),
     RenamePluginPane(u32, Vec<u8>),
     RenameTab(u32, Vec<u8>),
+    BreakPane,
 }
 
 impl Action {
@@ -509,6 +510,9 @@ impl Action {
                 };
                 Ok(vec![Action::LaunchOrFocusPlugin(run_plugin, floating)])
             },
+            CliAction::BreakPane => {
+                Ok(vec![Action::BreakPane])
+            }
         }
     }
 }

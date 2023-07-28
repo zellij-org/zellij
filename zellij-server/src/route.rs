@@ -690,6 +690,11 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
         },
+        Action::BreakPane => {
+            senders
+                .send_to_screen(ScreenInstruction::BreakPane(default_layout.clone(), default_shell.clone(), client_id))
+                .with_context(err_context)?;
+        },
     }
     Ok(should_break)
 }

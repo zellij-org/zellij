@@ -622,6 +622,7 @@ impl Tab {
     ) -> Result<()> {
         self.swap_layouts
             .set_base_layout((layout.clone(), floating_panes_layout.clone()));
+        log::info!("here...");
         let layout_has_floating_panes = LayoutApplier::new(
             &self.viewport,
             &self.senders,
@@ -648,6 +649,7 @@ impl Tab {
             new_plugin_ids,
             client_id,
         )?;
+        log::info!("right?");
         if layout_has_floating_panes {
             if !self.floating_panes.panes_are_visible() {
                 self.toggle_floating_panes(Some(client_id), None)?;
@@ -3355,6 +3357,14 @@ impl Tab {
         }
         pane_info
     }
+    pub fn add_existing_pane(&mut self, pane: Box<dyn Pane>, pane_id: PaneId, client_id: Option<ClientId>) -> Result<()> {
+        log::info!("add_existing_pane");
+        if self.are_floating_panes_visible() {
+            self.add_floating_pane(pane, pane_id, client_id)
+        } else {
+            self.add_tiled_pane(pane, pane_id, client_id)
+        }
+    }
     fn add_floating_pane(
         &mut self,
         mut pane: Box<dyn Pane>,
@@ -3386,17 +3396,22 @@ impl Tab {
         pane_id: PaneId,
         client_id: Option<ClientId>,
     ) -> Result<()> {
+        log::info!("add_tiled_pane");
         if self.tiled_panes.fullscreen_is_active() {
             self.tiled_panes.unset_fullscreen();
         }
         let should_auto_layout = self.auto_layout && !self.swap_layouts.is_tiled_damaged();
+        log::info!("has_room_for_new_pane?");
         if self.tiled_panes.has_room_for_new_pane() {
+            log::info!("yes!");
             pane.set_active_at(Instant::now());
             if should_auto_layout {
+                log::info!("should_auto_layout");
                 // no need to relayout here, we'll do it when reapplying the swap layout
                 // below
                 self.tiled_panes.insert_pane_without_relayout(pane_id, pane);
             } else {
+                log::info!("not should_auto_layout");
                 self.tiled_panes.insert_pane(pane_id, pane);
             }
             self.should_clear_display_before_rendering = true;
@@ -3404,6 +3419,7 @@ impl Tab {
                 self.tiled_panes.focus_pane(pane_id, client_id);
             }
         }
+        log::info!("panes after adding: {:?}", self.tiled_panes.get_panes().map(|(_, p)| p.invoked_with()).collect::<Vec<_>>());
         if should_auto_layout {
             // only do this if we're already in this layout, otherwise it might be
             // confusing and not what the user intends

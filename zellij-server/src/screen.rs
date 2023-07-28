@@ -14,7 +14,7 @@ use zellij_utils::pane_size::{Size, SizeInPixels};
 use zellij_utils::{
     input::command::TerminalAction,
     input::layout::{
-        FloatingPaneLayout, PluginUserConfiguration, Run, RunPlugin, RunPluginLocation,
+        Layout, FloatingPaneLayout, Run, RunPlugin, RunPluginLocation,
         SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,
     },
     position::Position,
@@ -279,6 +279,7 @@ pub enum ScreenInstruction {
     FocusPaneWithId(PaneId, bool, ClientId),        // bool is should_float
     RenamePane(PaneId, Vec<u8>),
     RenameTab(usize, Vec<u8>),
+    BreakPane(Box<Layout>, Option<TerminalAction>, ClientId),
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -446,6 +447,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::FocusPaneWithId(..) => ScreenContext::FocusPaneWithId,
             ScreenInstruction::RenamePane(..) => ScreenContext::RenamePane,
             ScreenInstruction::RenameTab(..) => ScreenContext::RenameTab,
+            ScreenInstruction::BreakPane(..) => ScreenContext::BreakPane,
         }
     }
 }
@@ -2815,6 +2817,64 @@ pub(crate) fn screen_thread_main(
                 }
                 screen.report_tab_state()?;
             },
+            ScreenInstruction::BreakPane(default_layout, default_shell, client_id) => {
+                // TODO: CONTINUE HERE
+                // - find a way to test this
+                // - do the same with floating panes
+                // - try with a plugin (also floating)
+                // - try with keybind
+                // - consider refactoring?
+                let err_context = || "failed break pane out of tab".to_string();
+
+                let client_id = screen.get_first_client_id().with_context(err_context)?;
+                let active_tab = screen.get_active_tab_mut(client_id)?;
+                let active_pane_id = active_tab.get_active_pane_id(client_id).with_context(err_context)?;
+                let pane_to_break_is_floating = active_tab.are_floating_panes_visible();
+                let active_pane = active_tab.close_pane(active_pane_id, false, Some(client_id)).with_context(err_context)?;
+                let active_pane_run_instruction = active_pane.invoked_with().clone();
+                let tab_index = screen.get_new_tab_index();
+                let swap_layouts = (default_layout.swap_tiled_layouts.clone(), default_layout.swap_floating_layouts.clone());
+                screen.new_tab(tab_index, swap_layouts, None, client_id)?;
+                let tab = screen.tabs
+                    .get_mut(&tab_index)
+                    .with_context(err_context)?;
+                tab.add_existing_pane(active_pane, active_pane_id, Some(client_id))?;
+                let (mut tiled_panes_layout, mut floating_panes_layout) = default_layout.new_tab();
+
+                if pane_to_break_is_floating {
+                    if let Some(mut already_running_layout) = floating_panes_layout.iter_mut().find(|i| i.run == active_pane_run_instruction) {
+                        already_running_layout.already_running = true;
+                    }
+                } else {
+                    tiled_panes_layout.ignore_run_instruction(active_pane_run_instruction.clone());
+                }
+
+                screen
+                    .bus
+                    .senders
+                    .send_to_plugin(PluginInstruction::NewTab(
+                        None,
+                        default_shell,
+                        Some(tiled_panes_layout),
+                        floating_panes_layout,
+                        tab_index,
+                        client_id,
+                    ))?;
+
+
+
+//                 tab.apply_layout(default_layout.template.as_ref().unwrap().0.clone(), default_layout.template.unwrap().1.clone(), vec![], vec![], HashMap::new(), client_id)?;
+//                 log::info!("4");
+//                 screen.go_to_tab(tab_index as usize, client_id)?;
+//                 log::info!("5");
+//                 screen.unblock_input()?;
+//                 log::info!("6");
+//                 screen.render()?;
+//                 log::info!("7");
+//                 screen.report_tab_state()?;
+//                 screen.report_pane_state()?;
+
+            }
         }
     }
     Ok(())

@@ -182,9 +182,13 @@ impl TiledPanes {
         let has_room_for_new_pane = pane_grid
             .find_room_for_new_pane(cursor_height_width_ratio)
             .is_some();
-        has_room_for_new_pane || pane_grid.has_room_for_new_stacked_pane()
+        has_room_for_new_pane || pane_grid.has_room_for_new_stacked_pane() || self.panes.is_empty()
     }
     fn add_pane(&mut self, pane_id: PaneId, mut pane: Box<dyn Pane>, should_relayout: bool) {
+        if self.panes.is_empty() {
+            self.panes.insert(pane_id, pane);
+            return;
+        }
         let cursor_height_width_ratio = self.cursor_height_width_ratio();
         let mut pane_grid = TiledPaneGrid::new(
             &mut self.panes,
@@ -587,8 +591,6 @@ impl TiledPanes {
     pub fn focused_pane_id(&self, client_id: ClientId) -> Option<PaneId> {
         self.active_panes.get(&client_id).copied()
     }
-    // FIXME: Really not a fan of allowing this... Someone with more energy
-    // than me should clean this up someday...
     #[allow(clippy::borrowed_box)]
     pub fn get_pane(&self, pane_id: PaneId) -> Option<&Box<dyn Pane>> {
         self.panes.get(&pane_id)
@@ -734,6 +736,17 @@ impl TiledPanes {
     }
     pub fn get_panes(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn Pane>)> {
         self.panes.iter()
+    }
+    pub fn set_geom_for_pane_with_run(&mut self, run: Option<Run>, geom: PaneGeom) {
+        log::info!("panes: {:?}", self.panes.iter().map(|(_, p)| p.invoked_with()).collect::<Vec<_>>());
+        match self.panes.iter_mut().find(|(_, p)| p.invoked_with() == &run) {
+            Some((_, pane)) => {
+                pane.set_geom(geom);
+            },
+            None => {
+                log::error!("Failed to find pane with run: {:?}", run);
+            }
+        }
     }
     pub fn resize(&mut self, new_screen_size: Size) {
         // this is blocked out to appease the borrow checker

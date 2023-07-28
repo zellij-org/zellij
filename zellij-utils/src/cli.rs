@@ -388,4 +388,5 @@ pub enum CliAction {
         #[clap(short, long, value_parser)]
         configuration: Option<PluginUserConfiguration>,
     },
+    BreakPane,
 }

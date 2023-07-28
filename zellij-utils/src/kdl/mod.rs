@@ -915,6 +915,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
             },
             "PreviousSwapLayout" => Ok(Action::PreviousSwapLayout),
             "NextSwapLayout" => Ok(Action::NextSwapLayout),
+            "BreakPane" => Ok(Action::BreakPane),
             _ => Err(ConfigError::new_kdl_error(
                 format!("Unsupported action: {}", action_name).into(),
                 kdl_action.span().offset(),
