@@ -216,6 +216,9 @@ impl ZellijPlugin for State {
                 Key::Ctrl('z') => {
                     go_to_tab_name(&format!("{:?}", self.configuration));
                 },
+                Key::Ctrl('1') => {
+                    request_permission(&[PermissionType::KeyboardInput]);
+                },
                 _ => {},
             },
             Event::CustomMessage(message, payload) => {

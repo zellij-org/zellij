@@ -4224,3 +4224,63 @@ pub fn send_configuration_to_plugins() {
         .clone();
     assert_snapshot!(format!("{:#?}", go_to_tab_event));
 }
+
+#[test]
+#[ignore]
+pub fn request_plugin_permissions() {
+    let temp_folder = tempdir().unwrap();
+    let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let (plugin_thread_sender, screen_receiver, mut teardown) =
+        create_plugin_thread(Some(plugin_host_folder));
+    let plugin_should_float = Some(false);
+    let plugin_title = Some("test_plugin".to_owned());
+    let run_plugin = RunPlugin {
+        _allow_exec_host_cmd: false,
+        location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
+    };
+    let tab_index = 1;
+    let client_id = 1;
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let received_screen_instructions = Arc::new(Mutex::new(vec![]));
+    let screen_thread = log_actions_in_thread!(
+        received_screen_instructions,
+        ScreenInstruction::RequestPluginPermissions,
+        screen_receiver,
+        1
+    );
+
+    let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
+    let _ = plugin_thread_sender.send(PluginInstruction::Load(
+        plugin_should_float,
+        plugin_title,
+        run_plugin,
+        tab_index,
+        client_id,
+        size,
+    ));
+    let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
+        None,
+        Some(client_id),
+        Event::Key(Key::Ctrl('1')), // this triggers the enent in the fixture plugin
+    )]));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    screen_thread.join().unwrap(); // this might take a while if the cache is cold
+    teardown();
+    let new_tab_event = received_screen_instructions
+        .lock()
+        .unwrap()
+        .iter()
+        .find_map(|i| {
+            if let ScreenInstruction::RequestPluginPermissions(..) = i {
+                Some(i.clone())
+            } else {
+                None
+            }
+        })
+        .clone();
+    assert_snapshot!(format!("{:#?}", new_tab_event));
+}
