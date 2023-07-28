@@ -2677,3 +2677,98 @@ pub fn screen_can_suppress_pane() {
     }
     assert_snapshot!(format!("{}", snapshot_count));
 }
+
+#[test]
+pub fn screen_can_break_pane_to_a_new_tab() {
+    let size = Size { cols: 80, rows: 20 };
+    let mut initial_layout = TiledPaneLayout::default();
+    let mut pane_to_break_free = TiledPaneLayout::default();
+    pane_to_break_free.name = Some("pane_to_break_free".to_owned());
+    let mut pane_to_stay = TiledPaneLayout::default();
+    pane_to_stay.name = Some("pane_to_stay".to_owned());
+    initial_layout.children_split_direction = SplitDirection::Vertical;
+    initial_layout.children = vec![pane_to_break_free, pane_to_stay];
+    let mut mock_screen = MockScreen::new(size);
+    let screen_thread = mock_screen.run(Some(initial_layout));
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::BreakPane(Box::new(Layout::default()), Default::default(), 1));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    // we send ApplyLayout, because in prod this is eventually received after the message traverses
+    // through the plugin and pty threads (to open extra stuff we need in the layout, eg. the
+    // default plugins)
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::ApplyLayout(
+            TiledPaneLayout::default(),
+            vec![], // floating_panes_layout
+            Default::default(),
+            vec![], // floating panes ids
+            Default::default(),
+            1,
+            1,
+        ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    // move back to make sure the other pane is in the previous tab
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::MoveFocusLeftOrPreviousTab(1));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    // move forward to make sure the broken pane is in the previous tab
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::MoveFocusRightOrNextTab(1));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+
+    let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
+        received_server_instructions.lock().unwrap().iter(),
+        size,
+    );
+    let snapshot_count = snapshots.len();
+    for (_cursor_coordinates, snapshot) in snapshots {
+        assert_snapshot!(format!("{}", snapshot));
+    }
+    assert_snapshot!(format!("{}", snapshot_count));
+}
+
+#[test]
+pub fn screen_cannot_break_last_selectable_pane_to_a_new_tab() {
+    let size = Size { cols: 80, rows: 20 };
+    let mut initial_layout = TiledPaneLayout::default();
+    let mut mock_screen = MockScreen::new(size);
+    let screen_thread = mock_screen.run(Some(initial_layout));
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::BreakPane(Box::new(Layout::default()), Default::default(), 1));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+
+    let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
+        received_server_instructions.lock().unwrap().iter(),
+        size,
+    );
+    let snapshot_count = snapshots.len();
+    for (_cursor_coordinates, snapshot) in snapshots {
+        assert_snapshot!(format!("{}", snapshot));
+    }
+    assert_snapshot!(format!("{}", snapshot_count));
+}

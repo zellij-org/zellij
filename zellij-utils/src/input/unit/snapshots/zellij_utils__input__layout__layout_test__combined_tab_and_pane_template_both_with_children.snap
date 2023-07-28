@@ -1,6 +1,6 @@
 ---
 source: zellij-utils/src/input/./unit/layout_test.rs
-assertion_line: 1008
+assertion_line: 1027
 expression: "format!(\"{:#?}\", layout)"
 ---
 Layout {
@@ -29,6 +29,7 @@ Layout {
                                 children_are_stacked: false,
                                 is_expanded_in_stack: false,
                                 exclude_from_sync: None,
+                                run_instructions_to_ignore: [],
                             },
                             TiledPaneLayout {
                                 children_split_direction: Horizontal,
@@ -48,6 +49,7 @@ Layout {
                                         children_are_stacked: false,
                                         is_expanded_in_stack: false,
                                         exclude_from_sync: None,
+                                        run_instructions_to_ignore: [],
                                     },
                                 ],
                                 split_size: None,
@@ -58,6 +60,7 @@ Layout {
                                 children_are_stacked: false,
                                 is_expanded_in_stack: false,
                                 exclude_from_sync: None,
+                                run_instructions_to_ignore: [],
                             },
                             TiledPaneLayout {
                                 children_split_direction: Horizontal,
@@ -71,6 +74,7 @@ Layout {
                                 children_are_stacked: false,
                                 is_expanded_in_stack: false,
                                 exclude_from_sync: None,
+                                run_instructions_to_ignore: [],
                             },
                         ],
                         split_size: None,
@@ -81,6 +85,7 @@ Layout {
                         children_are_stacked: false,
                         is_expanded_in_stack: false,
                         exclude_from_sync: None,
+                        run_instructions_to_ignore: [],
                     },
                     TiledPaneLayout {
                         children_split_direction: Horizontal,
@@ -98,6 +103,7 @@ Layout {
                                 children_are_stacked: false,
                                 is_expanded_in_stack: false,
                                 exclude_from_sync: None,
+                                run_instructions_to_ignore: [],
                             },
                             TiledPaneLayout {
                                 children_split_direction: Horizontal,
@@ -111,6 +117,7 @@ Layout {
                                 children_are_stacked: false,
                                 is_expanded_in_stack: false,
                                 exclude_from_sync: None,
+                                run_instructions_to_ignore: [],
                             },
                         ],
                         split_size: None,
@@ -121,6 +128,7 @@ Layout {
                         children_are_stacked: false,
                         is_expanded_in_stack: false,
                         exclude_from_sync: None,
+                        run_instructions_to_ignore: [],
                     },
                 ],
                 split_size: None,
@@ -131,6 +139,7 @@ Layout {
                 children_are_stacked: false,
                 is_expanded_in_stack: false,
                 exclude_from_sync: None,
+                run_instructions_to_ignore: [],
             },
             [],
         ),
@@ -156,6 +165,7 @@ Layout {
                                 children_are_stacked: false,
                                 is_expanded_in_stack: false,
                                 exclude_from_sync: None,
+                                run_instructions_to_ignore: [],
                             },
                             TiledPaneLayout {
                                 children_split_direction: Horizontal,
@@ -175,6 +185,7 @@ Layout {
                                         children_are_stacked: false,
                                         is_expanded_in_stack: false,
                                         exclude_from_sync: None,
+                                        run_instructions_to_ignore: [],
                                     },
                                 ],
                                 split_size: None,
@@ -185,6 +196,7 @@ Layout {
                                 children_are_stacked: false,
                                 is_expanded_in_stack: false,
                                 exclude_from_sync: None,
+                                run_instructions_to_ignore: [],
                             },
                             TiledPaneLayout {
                                 children_split_direction: Horizontal,
@@ -198,6 +210,7 @@ Layout {
                                 children_are_stacked: false,
                                 is_expanded_in_stack: false,
                                 exclude_from_sync: None,
+                                run_instructions_to_ignore: [],
                             },
                         ],
                         split_size: None,
@@ -208,6 +221,7 @@ Layout {
                         children_are_stacked: false,
                         is_expanded_in_stack: false,
                         exclude_from_sync: None,
+                        run_instructions_to_ignore: [],
                     },
                     TiledPaneLayout {
                         children_split_direction: Horizontal,
@@ -221,6 +235,7 @@ Layout {
                         children_are_stacked: false,
                         is_expanded_in_stack: false,
                         exclude_from_sync: None,
+                        run_instructions_to_ignore: [],
                     },
                 ],
                 split_size: None,
@@ -231,6 +246,7 @@ Layout {
                 children_are_stacked: false,
                 is_expanded_in_stack: false,
                 exclude_from_sync: None,
+                run_instructions_to_ignore: [],
             },
             [],
         ),
@@ -250,6 +266,7 @@ Layout {
                 children_are_stacked: false,
                 is_expanded_in_stack: false,
                 exclude_from_sync: None,
+                run_instructions_to_ignore: [],
             },
             [],
         ),

@@ -1785,6 +1785,9 @@ impl Tab {
     fn get_selectable_tiled_panes(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn Pane>)> {
         self.get_tiled_panes().filter(|(_, p)| p.selectable())
     }
+    pub fn get_selectable_tiled_panes_count(&self) -> usize {
+        self.get_selectable_tiled_panes().count()
+    }
     fn get_next_terminal_position(&self) -> usize {
         let tiled_panes_count = self
             .tiled_panes

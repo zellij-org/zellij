@@ -1,6 +1,6 @@
 ---
 source: zellij-utils/src/input/./unit/layout_test.rs
-assertion_line: 836
+assertion_line: 855
 expression: "format!(\"{:#?}\", layout)"
 ---
 Layout {
@@ -28,6 +28,7 @@ Layout {
                                 children_are_stacked: false,
                                 is_expanded_in_stack: false,
                                 exclude_from_sync: None,
+                                run_instructions_to_ignore: [],
                             },
                             TiledPaneLayout {
                                 children_split_direction: Horizontal,
@@ -41,6 +42,7 @@ Layout {
                                 children_are_stacked: false,
                                 is_expanded_in_stack: false,
                                 exclude_from_sync: None,
+                                run_instructions_to_ignore: [],
                             },
                             TiledPaneLayout {
                                 children_split_direction: Horizontal,
@@ -58,6 +60,7 @@ Layout {
                                         children_are_stacked: false,
                                         is_expanded_in_stack: false,
                                         exclude_from_sync: None,
+                                        run_instructions_to_ignore: [],
                                     },
                                     TiledPaneLayout {
                                         children_split_direction: Horizontal,
@@ -71,6 +74,7 @@ Layout {
                                         children_are_stacked: false,
                                         is_expanded_in_stack: false,
                                         exclude_from_sync: None,
+                                        run_instructions_to_ignore: [],
                                     },
                                 ],
                                 split_size: None,
@@ -81,6 +85,7 @@ Layout {
                                 children_are_stacked: false,
                                 is_expanded_in_stack: false,
                                 exclude_from_sync: None,
+                                run_instructions_to_ignore: [],
                             },
                             TiledPaneLayout {
                                 children_split_direction: Horizontal,
@@ -94,6 +99,7 @@ Layout {
                                 children_are_stacked: false,
                                 is_expanded_in_stack: false,
                                 exclude_from_sync: None,
+                                run_instructions_to_ignore: [],
                             },
                         ],
                         split_size: None,
@@ -104,6 +110,7 @@ Layout {
                         children_are_stacked: false,
                         is_expanded_in_stack: false,
                         exclude_from_sync: None,
+                        run_instructions_to_ignore: [],
                     },
                 ],
                 split_size: None,
@@ -114,6 +121,7 @@ Layout {
                 children_are_stacked: false,
                 is_expanded_in_stack: false,
                 exclude_from_sync: None,
+                run_instructions_to_ignore: [],
             },
             [],
         ),
