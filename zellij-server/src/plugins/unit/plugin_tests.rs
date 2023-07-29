@@ -4275,8 +4275,8 @@ pub fn request_plugin_permissions() {
         .unwrap()
         .iter()
         .find_map(|i| {
-            if let ScreenInstruction::RequestPluginPermissions(..) = i {
-                Some(i.clone())
+            if let ScreenInstruction::RequestPluginPermissions(_, plugin_permission) = i {
+                Some(plugin_permission.permissions.clone())
             } else {
                 None
             }
