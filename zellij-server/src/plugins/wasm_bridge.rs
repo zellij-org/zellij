@@ -730,9 +730,15 @@ impl WasmBridge {
             let err_context = || format!("Failed to write plugin permission {plugin_id}");
 
             let mut running_plugin = running_plugin.lock().unwrap();
-            let permissions = if status == PermissionStatus::Granted { permissions } else { vec![] };
-            
-            running_plugin.plugin_env.set_permissions(HashSet::from_iter(permissions.clone()));
+            let permissions = if status == PermissionStatus::Granted {
+                permissions
+            } else {
+                vec![]
+            };
+
+            running_plugin
+                .plugin_env
+                .set_permissions(HashSet::from_iter(permissions.clone()));
 
             let mut granted_permission = GrantedPermission::from_default().unwrap_or_default();
             granted_permission.insert(
