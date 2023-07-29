@@ -1,0 +1,15 @@
+---
+source: zellij-server/src/plugins/./unit/plugin_tests.rs
+expression: "format!(\"{:#?}\", new_tab_event)"
+---
+Some(
+    RequestPluginPermissions(
+        0,
+        PluginPermission {
+            name: "/home/meow/zellij/zellij-server/../target/e2e-data/plugins/fixture-plugin-for-tests.wasm",
+            permissions: [
+                KeyboardInput,
+            ],
+        },
+    ),
+)

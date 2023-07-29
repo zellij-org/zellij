@@ -875,7 +875,7 @@ impl<'a> PluginLoader<'a> {
             plugin_id: self.plugin_id,
             client_id: self.client_id,
             plugin: mut_plugin,
-            permissions: HashSet::default(),
+            permissions: None,
             senders: self.senders.clone(),
             wasi_env,
             plugin_own_data_dir: self.plugin_own_data_dir.clone(),

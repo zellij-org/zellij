@@ -730,28 +730,14 @@ impl WasmBridge {
             let err_context = || format!("Failed to write plugin permission {plugin_id}");
 
             let mut running_plugin = running_plugin.lock().unwrap();
-
-            let permissions = HashSet::from_iter(permissions);
-            match status {
-                PermissionStatus::Granted => {
-                    running_plugin.plugin_env.merge_permissions(permissions)
-                },
-                PermissionStatus::Denied => {
-                    permissions.iter().for_each(|p| {
-                        running_plugin.plugin_env.permissions.remove(p);
-                    });
-                },
-            }
+            let permissions = if status == PermissionStatus::Granted { permissions } else { vec![] };
+            
+            running_plugin.plugin_env.set_permissions(HashSet::from_iter(permissions.clone()));
 
             let mut granted_permission = GrantedPermission::from_default().unwrap_or_default();
             granted_permission.insert(
                 running_plugin.plugin_env.plugin.location.to_string(),
-                running_plugin
-                    .plugin_env
-                    .permissions
-                    .clone()
-                    .into_iter()
-                    .collect(),
+                permissions,
             );
 
             let mut f = File::create(ZELLIJ_CACHE_DIR.join(ZELLIJ_PLUGIN_PERMISSIONS_FILE))
@@ -789,8 +775,10 @@ fn check_permission(plugin_env: &PluginEnv, event: &Event) -> Permission {
         _ => return Permission::Allowed,
     };
 
-    if !plugin_env.permissions.contains(&permission) {
-        return Permission::Denied(permission);
+    if let Some(permissions) = &plugin_env.permissions {
+        if !permissions.contains(&permission) {
+            return Permission::Denied(permission);
+        }
     }
 
     Permission::Allowed

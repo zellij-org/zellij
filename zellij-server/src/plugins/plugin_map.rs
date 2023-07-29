@@ -193,7 +193,7 @@ pub type Subscriptions = HashSet<EventType>;
 pub struct PluginEnv {
     pub plugin_id: PluginId,
     pub plugin: PluginConfig,
-    pub permissions: HashSet<PermissionType>,
+    pub permissions: Option<HashSet<PermissionType>>,
     pub senders: ThreadSenders,
     pub wasi_env: WasiEnv,
     pub tab_index: usize,
@@ -217,8 +217,12 @@ impl PluginEnv {
         )
     }
 
-    pub fn merge_permissions(&mut self, permissions: HashSet<PermissionType>) {
-        self.permissions.extend(permissions);
+    pub fn set_permissions(&mut self, permissions: HashSet<PermissionType>) {
+        self.permissions = Some(permissions)
+    }
+
+    pub fn clear_permissions(&mut self) {
+        self.permissions = None
     }
 }
 
