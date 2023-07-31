@@ -15,7 +15,7 @@ use zellij_utils::errors::{prelude::*, ErrorContext};
 use zellij_utils::input::actions::Action;
 use zellij_utils::input::command::{RunCommand, TerminalAction};
 use zellij_utils::input::layout::{
-    Layout, Run, RunPlugin, RunPluginLocation, SplitDirection, TiledPaneLayout,
+    Layout, Run, RunPlugin, RunPluginLocation, SplitDirection, TiledPaneLayout, FloatingPaneLayout
 };
 use zellij_utils::input::options::Options;
 use zellij_utils::ipc::IpcReceiverWithContext;
@@ -271,7 +271,7 @@ struct MockScreen {
 }
 
 impl MockScreen {
-    pub fn run(&mut self, initial_layout: Option<TiledPaneLayout>) -> std::thread::JoinHandle<()> {
+    pub fn run(&mut self, initial_layout: Option<TiledPaneLayout>, initial_floating_panes_layout: Vec<FloatingPaneLayout>) -> std::thread::JoinHandle<()> {
         let config_options = self.config_options.clone();
         let client_attributes = self.client_attributes.clone();
         let screen_bus = Bus::new(
@@ -302,7 +302,9 @@ impl MockScreen {
             .unwrap();
         let pane_layout = initial_layout.unwrap_or_default();
         let pane_count = pane_layout.extract_run_instructions().len();
+        let floating_pane_count = initial_floating_panes_layout.len();
         let mut pane_ids = vec![];
+        let mut floating_pane_ids = vec![];
         let mut plugin_ids = HashMap::new();
         plugin_ids.insert(
             RunPluginLocation::File(PathBuf::from("/path/to/fake/plugin")),
@@ -311,6 +313,9 @@ impl MockScreen {
         for i in 0..pane_count {
             pane_ids.push((i as u32, None));
         }
+        for i in 0..floating_pane_count {
+            floating_pane_ids.push((i as u32, None));
+        }
         let default_shell = None;
         let tab_name = None;
         let tab_index = self.last_opened_tab_index.map(|l| l + 1).unwrap_or(0);
@@ -318,16 +323,19 @@ impl MockScreen {
             None,
             default_shell,
             Some(pane_layout.clone()),
-            vec![], // floating_panes_layout
+            initial_floating_panes_layout.clone(),
+            // vec![], // floating_panes_layout
             tab_name,
             (vec![], vec![]), // swap layouts
             self.main_client_id,
         ));
         let _ = self.to_screen.send(ScreenInstruction::ApplyLayout(
             pane_layout,
-            vec![], // floating panes layout
+            initial_floating_panes_layout,
+            // vec![], // floating panes layout
             pane_ids,
-            vec![], // floating pane ids
+            floating_pane_ids,
+            // vec![], // floating pane ids
             plugin_ids,
             tab_index,
             self.main_client_id,
@@ -1023,7 +1031,7 @@ pub fn send_cli_write_chars_action_to_screen() {
     let mut mock_screen = MockScreen::new(size);
     let pty_writer_receiver = mock_screen.pty_writer_receiver.take().unwrap();
     let session_metadata = mock_screen.clone_session_metadata();
-    let screen_thread = mock_screen.run(None);
+    let screen_thread = mock_screen.run(None, vec![]);
     let received_pty_instructions = Arc::new(Mutex::new(vec![]));
     let pty_writer_thread = log_actions_in_thread!(
         received_pty_instructions,
@@ -1049,7 +1057,7 @@ pub fn send_cli_write_action_to_screen() {
     let mut mock_screen = MockScreen::new(size);
     let pty_writer_receiver = mock_screen.pty_writer_receiver.take().unwrap();
     let session_metadata = mock_screen.clone_session_metadata();
-    let screen_thread = mock_screen.run(None);
+    let screen_thread = mock_screen.run(None, vec![]);
     let received_pty_instructions = Arc::new(Mutex::new(vec![]));
     let pty_writer_thread = log_actions_in_thread!(
         received_pty_instructions,
@@ -1074,7 +1082,7 @@ pub fn send_cli_resize_action_to_screen() {
     initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
     let mut mock_screen = MockScreen::new(size);
     let session_metadata = mock_screen.clone_session_metadata();
-    let screen_thread = mock_screen.run(Some(initial_layout));
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
     let received_server_instructions = Arc::new(Mutex::new(vec![]));
     let server_receiver = mock_screen.server_receiver.take().unwrap();
     let pty_writer_thread = log_actions_in_thread!(
@@ -1108,7 +1116,7 @@ pub fn send_cli_focus_next_pane_action() {
     initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
     let mut mock_screen = MockScreen::new(size);
     let session_metadata = mock_screen.clone_session_metadata();
-    let screen_thread = mock_screen.run(Some(initial_layout));
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
     let received_server_instructions = Arc::new(Mutex::new(vec![]));
     let server_receiver = mock_screen.server_receiver.take().unwrap();
     let server_instruction = log_actions_in_thread!(
@@ -1141,7 +1149,7 @@ pub fn send_cli_focus_previous_pane_action() {
     initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
     let mut mock_screen = MockScreen::new(size);
     let session_metadata = mock_screen.clone_session_metadata();
-    let screen_thread = mock_screen.run(Some(initial_layout));
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
     let received_server_instructions = Arc::new(Mutex::new(vec![]));
     let server_receiver = mock_screen.server_receiver.take().unwrap();
     let server_instruction = log_actions_in_thread!(
@@ -1174,7 +1182,7 @@ pub fn send_cli_move_focus_pane_action() {
     initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
     let mut mock_screen = MockScreen::new(size);
     let session_metadata = mock_screen.clone_session_metadata();
-    let screen_thread = mock_screen.run(Some(initial_layout));
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
     let received_server_instructions = Arc::new(Mutex::new(vec![]));
     let server_receiver = mock_screen.server_receiver.take().unwrap();
     let server_instruction = log_actions_in_thread!(
@@ -1209,7 +1217,7 @@ pub fn send_cli_move_focus_or_tab_pane_action() {
     initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
     let mut mock_screen = MockScreen::new(size);
     let session_metadata = mock_screen.clone_session_metadata();
-    let screen_thread = mock_screen.run(Some(initial_layout));
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
     let received_server_instructions = Arc::new(Mutex::new(vec![]));
     let server_receiver = mock_screen.server_receiver.take().unwrap();
     let server_instruction = log_actions_in_thread!(
@@ -1244,7 +1252,7 @@ pub fn send_cli_move_pane_action() {
     initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
     let mut mock_screen = MockScreen::new(size);
     let session_metadata = mock_screen.clone_session_metadata();
-    let screen_thread = mock_screen.run(Some(initial_layout));
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
     let received_server_instructions = Arc::new(Mutex::new(vec![]));
     let server_receiver = mock_screen.server_receiver.take().unwrap();
     let server_instruction = log_actions_in_thread!(
@@ -1278,7 +1286,7 @@ pub fn send_cli_dump_screen_action() {
     initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
     let mut mock_screen = MockScreen::new(size);
     let session_metadata = mock_screen.clone_session_metadata();
-    let screen_thread = mock_screen.run(Some(initial_layout));
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
     let received_server_instructions = Arc::new(Mutex::new(vec![]));
     let server_receiver = mock_screen.server_receiver.take().unwrap();
     let server_thread = log_actions_in_thread!(
@@ -1312,7 +1320,7 @@ pub fn send_cli_edit_scrollback_action() {
     initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
     let mut mock_screen = MockScreen::new(size);
     let session_metadata = mock_screen.clone_session_metadata();
-    let screen_thread = mock_screen.run(Some(initial_layout));
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
     let received_pty_instructions = Arc::new(Mutex::new(vec![]));
     let pty_receiver = mock_screen.pty_receiver.take().unwrap();
     let pty_thread = log_actions_in_thread!(
@@ -1360,7 +1368,7 @@ pub fn send_cli_scroll_up_action() {
     initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
     let mut mock_screen = MockScreen::new(size);
     let session_metadata = mock_screen.clone_session_metadata();
-    let screen_thread = mock_screen.run(Some(initial_layout));
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
     let received_server_instructions = Arc::new(Mutex::new(vec![]));
     let server_receiver = mock_screen.server_receiver.take().unwrap();
     let server_instruction = log_actions_in_thread!(
@@ -1404,7 +1412,7 @@ pub fn send_cli_scroll_down_action() {
     initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
     let mut mock_screen = MockScreen::new(size);
     let session_metadata = mock_screen.clone_session_metadata();
-    let screen_thread = mock_screen.run(Some(initial_layout));
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
     let received_server_instructions = Arc::new(Mutex::new(vec![]));
     let server_receiver = mock_screen.server_receiver.take().unwrap();
     let server_instruction = log_actions_in_thread!(
@@ -1454,7 +1462,7 @@ pub fn send_cli_scroll_to_bottom_action() {
     initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
     let mut mock_screen = MockScreen::new(size);
     let session_metadata = mock_screen.clone_session_metadata();
-    let screen_thread = mock_screen.run(Some(initial_layout));
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
     let received_server_instructions = Arc::new(Mutex::new(vec![]));
     let server_receiver = mock_screen.server_receiver.take().unwrap();
     let server_instruction = log_actions_in_thread!(
@@ -1507,7 +1515,7 @@ pub fn send_cli_scroll_to_top_action() {
     initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
     let mut mock_screen = MockScreen::new(size);
     let session_metadata = mock_screen.clone_session_metadata();
-    let screen_thread = mock_screen.run(Some(initial_layout));
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
     let received_server_instructions = Arc::new(Mutex::new(vec![]));
     let server_receiver = mock_screen.server_receiver.take().unwrap();
     let server_instruction = log_actions_in_thread!(
@@ -1549,7 +1557,7 @@ pub fn send_cli_page_scroll_up_action() {
     initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
     let mut mock_screen = MockScreen::new(size);
     let session_metadata = mock_screen.clone_session_metadata();
-    let screen_thread = mock_screen.run(Some(initial_layout));
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
     let received_server_instructions = Arc::new(Mutex::new(vec![]));
     let server_receiver = mock_screen.server_receiver.take().unwrap();
     let server_instruction = log_actions_in_thread!(
@@ -1590,7 +1598,7 @@ pub fn send_cli_page_scroll_down_action() {
     initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
     let mut mock_screen = MockScreen::new(size);
     let session_metadata = mock_screen.clone_session_metadata();
-    let screen_thread = mock_screen.run(Some(initial_layout));
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
     let received_server_instructions = Arc::new(Mutex::new(vec![]));
     let server_receiver = mock_screen.server_receiver.take().unwrap();
     let server_instruction = log_actions_in_thread!(
@@ -1638,7 +1646,7 @@ pub fn send_cli_half_page_scroll_up_action() {
     initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
     let mut mock_screen = MockScreen::new(size);
     let session_metadata = mock_screen.clone_session_metadata();
-    let screen_thread = mock_screen.run(Some(initial_layout));
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
     let received_server_instructions = Arc::new(Mutex::new(vec![]));
     let server_receiver = mock_screen.server_receiver.take().unwrap();
     let server_instruction = log_actions_in_thread!(
@@ -1679,7 +1687,7 @@ pub fn send_cli_half_page_scroll_down_action() {
     initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
     let mut mock_screen = MockScreen::new(size);
     let session_metadata = mock_screen.clone_session_metadata();
-    let screen_thread = mock_screen.run(Some(initial_layout));
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
     let received_server_instructions = Arc::new(Mutex::new(vec![]));
     let server_receiver = mock_screen.server_receiver.take().unwrap();
     let server_instruction = log_actions_in_thread!(
@@ -1735,7 +1743,7 @@ pub fn send_cli_toggle_full_screen_action() {
     initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
     let mut mock_screen = MockScreen::new(size);
     let session_metadata = mock_screen.clone_session_metadata();
-    let screen_thread = mock_screen.run(Some(initial_layout));
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
     let received_server_instructions = Arc::new(Mutex::new(vec![]));
     let server_receiver = mock_screen.server_receiver.take().unwrap();
     let server_instruction = log_actions_in_thread!(
@@ -1767,7 +1775,7 @@ pub fn send_cli_toggle_pane_frames_action() {
     initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
     let mut mock_screen = MockScreen::new(size);
     let session_metadata = mock_screen.clone_session_metadata();
-    let screen_thread = mock_screen.run(Some(initial_layout));
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
     let received_server_instructions = Arc::new(Mutex::new(vec![]));
     let server_receiver = mock_screen.server_receiver.take().unwrap();
     let server_instruction = log_actions_in_thread!(
@@ -1803,7 +1811,7 @@ pub fn send_cli_toggle_active_tab_sync_action() {
     let mut initial_layout = TiledPaneLayout::default();
     initial_layout.children_split_direction = SplitDirection::Vertical;
     initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
-    let screen_thread = mock_screen.run(Some(initial_layout));
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
     let received_pty_instructions = Arc::new(Mutex::new(vec![]));
     let pty_writer_thread = log_actions_in_thread!(
         received_pty_instructions,
@@ -1838,7 +1846,7 @@ pub fn send_cli_new_pane_action_with_default_parameters() {
     let mut initial_layout = TiledPaneLayout::default();
     initial_layout.children_split_direction = SplitDirection::Vertical;
     initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
-    let screen_thread = mock_screen.run(Some(initial_layout));
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
     let received_pty_instructions = Arc::new(Mutex::new(vec![]));
     let pty_thread = log_actions_in_thread!(
         received_pty_instructions,
@@ -1875,7 +1883,7 @@ pub fn send_cli_new_pane_action_with_split_direction() {
     let mut initial_layout = TiledPaneLayout::default();
     initial_layout.children_split_direction = SplitDirection::Vertical;
     initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
-    let screen_thread = mock_screen.run(Some(initial_layout));
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
     let received_pty_instructions = Arc::new(Mutex::new(vec![]));
     let pty_thread = log_actions_in_thread!(
         received_pty_instructions,
@@ -1912,7 +1920,7 @@ pub fn send_cli_new_pane_action_with_command_and_cwd() {
     let mut initial_layout = TiledPaneLayout::default();
     initial_layout.children_split_direction = SplitDirection::Vertical;
     initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
-    let screen_thread = mock_screen.run(Some(initial_layout));
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
     let received_pty_instructions = Arc::new(Mutex::new(vec![]));
     let pty_thread = log_actions_in_thread!(
         received_pty_instructions,
@@ -1949,7 +1957,7 @@ pub fn send_cli_edit_action_with_default_parameters() {
     let mut initial_layout = TiledPaneLayout::default();
     initial_layout.children_split_direction = SplitDirection::Vertical;
     initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
-    let screen_thread = mock_screen.run(Some(initial_layout));
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
     let received_pty_instructions = Arc::new(Mutex::new(vec![]));
     let pty_thread = log_actions_in_thread!(
         received_pty_instructions,
@@ -1982,7 +1990,7 @@ pub fn send_cli_edit_action_with_line_number() {
     let mut initial_layout = TiledPaneLayout::default();
     initial_layout.children_split_direction = SplitDirection::Vertical;
     initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
-    let screen_thread = mock_screen.run(Some(initial_layout));
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
     let received_pty_instructions = Arc::new(Mutex::new(vec![]));
     let pty_thread = log_actions_in_thread!(
         received_pty_instructions,
@@ -2015,7 +2023,7 @@ pub fn send_cli_edit_action_with_split_direction() {
     let mut initial_layout = TiledPaneLayout::default();
     initial_layout.children_split_direction = SplitDirection::Vertical;
     initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
-    let screen_thread = mock_screen.run(Some(initial_layout));
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
     let received_pty_instructions = Arc::new(Mutex::new(vec![]));
     let pty_thread = log_actions_in_thread!(
         received_pty_instructions,
@@ -2047,7 +2055,7 @@ pub fn send_cli_switch_mode_action() {
     let mut initial_layout = TiledPaneLayout::default();
     initial_layout.children_split_direction = SplitDirection::Vertical;
     initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
-    let screen_thread = mock_screen.run(Some(initial_layout));
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
     let cli_switch_mode = CliAction::SwitchMode {
         input_mode: InputMode::Locked,
     };
@@ -2073,7 +2081,7 @@ pub fn send_cli_toggle_pane_embed_or_float() {
     initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
     let mut mock_screen = MockScreen::new(size);
     let session_metadata = mock_screen.clone_session_metadata();
-    let screen_thread = mock_screen.run(Some(initial_layout));
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
     let received_server_instructions = Arc::new(Mutex::new(vec![]));
     let server_receiver = mock_screen.server_receiver.take().unwrap();
     let server_instruction = log_actions_in_thread!(
@@ -2117,7 +2125,7 @@ pub fn send_cli_toggle_floating_panes() {
     initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
     let mut mock_screen = MockScreen::new(size);
     let session_metadata = mock_screen.clone_session_metadata();
-    let screen_thread = mock_screen.run(Some(initial_layout));
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
     let received_server_instructions = Arc::new(Mutex::new(vec![]));
     let server_receiver = mock_screen.server_receiver.take().unwrap();
     let server_instruction = log_actions_in_thread!(
@@ -2157,7 +2165,7 @@ pub fn send_cli_close_pane_action() {
     initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
     let mut mock_screen = MockScreen::new(size);
     let session_metadata = mock_screen.clone_session_metadata();
-    let screen_thread = mock_screen.run(Some(initial_layout));
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
     let received_server_instructions = Arc::new(Mutex::new(vec![]));
     let server_receiver = mock_screen.server_receiver.take().unwrap();
     let server_instruction = log_actions_in_thread!(
@@ -2189,7 +2197,7 @@ pub fn send_cli_new_tab_action_default_params() {
     initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
     let mut mock_screen = MockScreen::new(size);
     let session_metadata = mock_screen.clone_session_metadata();
-    let screen_thread = mock_screen.run(Some(initial_layout));
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
     let received_plugin_instructions = Arc::new(Mutex::new(vec![]));
     let plugin_receiver = mock_screen.plugin_receiver.take().unwrap();
     let plugin_thread = log_actions_in_thread!(
@@ -2226,7 +2234,7 @@ pub fn send_cli_new_tab_action_with_name_and_layout() {
     initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
     let mut mock_screen = MockScreen::new(size);
     let session_metadata = mock_screen.clone_session_metadata();
-    let screen_thread = mock_screen.run(Some(initial_layout));
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
     let received_plugin_instructions = Arc::new(Mutex::new(vec![]));
     let plugin_receiver = mock_screen.plugin_receiver.take().unwrap();
     let plugin_thread = log_actions_in_thread!(
@@ -2276,7 +2284,7 @@ pub fn send_cli_next_tab_action() {
     let mut mock_screen = MockScreen::new(size);
     mock_screen.new_tab(second_tab_layout);
     let session_metadata = mock_screen.clone_session_metadata();
-    let screen_thread = mock_screen.run(Some(initial_layout));
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
     let received_server_instructions = Arc::new(Mutex::new(vec![]));
     let server_receiver = mock_screen.server_receiver.take().unwrap();
     let server_thread = log_actions_in_thread!(
@@ -2312,7 +2320,7 @@ pub fn send_cli_previous_tab_action() {
     let mut mock_screen = MockScreen::new(size);
     mock_screen.new_tab(second_tab_layout);
     let session_metadata = mock_screen.clone_session_metadata();
-    let screen_thread = mock_screen.run(Some(initial_layout));
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
     let received_server_instructions = Arc::new(Mutex::new(vec![]));
     let server_receiver = mock_screen.server_receiver.take().unwrap();
     let server_thread = log_actions_in_thread!(
@@ -2348,7 +2356,7 @@ pub fn send_cli_goto_tab_action() {
     let mut mock_screen = MockScreen::new(size);
     mock_screen.new_tab(second_tab_layout);
     let session_metadata = mock_screen.clone_session_metadata();
-    let screen_thread = mock_screen.run(Some(initial_layout));
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
     let received_server_instructions = Arc::new(Mutex::new(vec![]));
     let server_receiver = mock_screen.server_receiver.take().unwrap();
     let server_thread = log_actions_in_thread!(
@@ -2384,7 +2392,7 @@ pub fn send_cli_close_tab_action() {
     let mut mock_screen = MockScreen::new(size);
     mock_screen.new_tab(second_tab_layout);
     let session_metadata = mock_screen.clone_session_metadata();
-    let screen_thread = mock_screen.run(Some(initial_layout));
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
     let received_server_instructions = Arc::new(Mutex::new(vec![]));
     let server_receiver = mock_screen.server_receiver.take().unwrap();
     let server_thread = log_actions_in_thread!(
@@ -2420,7 +2428,7 @@ pub fn send_cli_rename_tab() {
     let mut mock_screen = MockScreen::new(size);
     mock_screen.new_tab(second_tab_layout);
     let session_metadata = mock_screen.clone_session_metadata();
-    let screen_thread = mock_screen.run(Some(initial_layout));
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
     let received_plugin_instructions = Arc::new(Mutex::new(vec![]));
     let plugin_receiver = mock_screen.plugin_receiver.take().unwrap();
     let plugin_thread = log_actions_in_thread!(
@@ -2465,7 +2473,7 @@ pub fn send_cli_undo_rename_tab() {
     let mut mock_screen = MockScreen::new(size);
     mock_screen.new_tab(second_tab_layout);
     let session_metadata = mock_screen.clone_session_metadata();
-    let screen_thread = mock_screen.run(Some(initial_layout));
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
     let received_plugin_instructions = Arc::new(Mutex::new(vec![]));
     let plugin_receiver = mock_screen.plugin_receiver.take().unwrap();
     let plugin_thread = log_actions_in_thread!(
@@ -2509,7 +2517,7 @@ pub fn send_cli_query_tab_names_action() {
     let mut mock_screen = MockScreen::new(size);
     mock_screen.new_tab(TiledPaneLayout::default());
     let session_metadata = mock_screen.clone_session_metadata();
-    let screen_thread = mock_screen.run(Some(TiledPaneLayout::default()));
+    let screen_thread = mock_screen.run(Some(TiledPaneLayout::default()), vec![]);
     let received_server_instructions = Arc::new(Mutex::new(vec![]));
     let server_receiver = mock_screen.server_receiver.take().unwrap();
     let server_thread = log_actions_in_thread!(
@@ -2543,7 +2551,7 @@ pub fn send_cli_launch_or_focus_plugin_action() {
     let mut mock_screen = MockScreen::new(size);
     let plugin_receiver = mock_screen.plugin_receiver.take().unwrap();
     let session_metadata = mock_screen.clone_session_metadata();
-    let screen_thread = mock_screen.run(None);
+    let screen_thread = mock_screen.run(None, vec![]);
     let received_plugin_instructions = Arc::new(Mutex::new(vec![]));
     let plugin_thread = log_actions_in_thread!(
         received_plugin_instructions,
@@ -2593,7 +2601,7 @@ pub fn send_cli_launch_or_focus_plugin_action_when_plugin_is_already_loaded() {
     };
     initial_layout.children_split_direction = SplitDirection::Vertical;
     initial_layout.children = vec![TiledPaneLayout::default(), existing_plugin_pane];
-    let screen_thread = mock_screen.run(Some(initial_layout));
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
     let received_plugin_instructions = Arc::new(Mutex::new(vec![]));
     let plugin_thread = log_actions_in_thread!(
         received_plugin_instructions,
@@ -2653,7 +2661,7 @@ pub fn screen_can_suppress_pane() {
     initial_layout.children_split_direction = SplitDirection::Vertical;
     initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
     let mut mock_screen = MockScreen::new(size);
-    let screen_thread = mock_screen.run(Some(initial_layout));
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
     let received_server_instructions = Arc::new(Mutex::new(vec![]));
     let server_receiver = mock_screen.server_receiver.take().unwrap();
     let server_thread = log_actions_in_thread!(
@@ -2689,7 +2697,7 @@ pub fn screen_can_break_pane_to_a_new_tab() {
     initial_layout.children_split_direction = SplitDirection::Vertical;
     initial_layout.children = vec![pane_to_break_free, pane_to_stay];
     let mut mock_screen = MockScreen::new(size);
-    let screen_thread = mock_screen.run(Some(initial_layout));
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
     let received_server_instructions = Arc::new(Mutex::new(vec![]));
     let server_receiver = mock_screen.server_receiver.take().unwrap();
     let server_thread = log_actions_in_thread!(
@@ -2744,9 +2752,9 @@ pub fn screen_can_break_pane_to_a_new_tab() {
 #[test]
 pub fn screen_cannot_break_last_selectable_pane_to_a_new_tab() {
     let size = Size { cols: 80, rows: 20 };
-    let mut initial_layout = TiledPaneLayout::default();
+    let initial_layout = TiledPaneLayout::default();
     let mut mock_screen = MockScreen::new(size);
-    let screen_thread = mock_screen.run(Some(initial_layout));
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
     let received_server_instructions = Arc::new(Mutex::new(vec![]));
     let server_receiver = mock_screen.server_receiver.take().unwrap();
     let server_thread = log_actions_in_thread!(
@@ -2758,6 +2766,73 @@ pub fn screen_cannot_break_last_selectable_pane_to_a_new_tab() {
     let _ = mock_screen
         .to_screen
         .send(ScreenInstruction::BreakPane(Box::new(Layout::default()), Default::default(), 1));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+
+    let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
+        received_server_instructions.lock().unwrap().iter(),
+        size,
+    );
+    let snapshot_count = snapshots.len();
+    for (_cursor_coordinates, snapshot) in snapshots {
+        assert_snapshot!(format!("{}", snapshot));
+    }
+    assert_snapshot!(format!("{}", snapshot_count));
+}
+
+#[test]
+pub fn screen_can_break_floating_pane_to_a_new_tab() {
+    let size = Size { cols: 80, rows: 20 };
+    let mut initial_layout = TiledPaneLayout::default();
+    let mut pane_to_break_free = TiledPaneLayout::default();
+    pane_to_break_free.name = Some("tiled_pane".to_owned());
+    let mut floating_pane = FloatingPaneLayout::default();
+    floating_pane.name = Some("floating_pane_to_eject".to_owned());
+    let mut floating_panes_layout = vec![floating_pane];
+    initial_layout.children_split_direction = SplitDirection::Vertical;
+    initial_layout.children = vec![pane_to_break_free];
+    let mut mock_screen = MockScreen::new(size);
+    let screen_thread = mock_screen.run(Some(initial_layout), floating_panes_layout.clone());
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::BreakPane(Box::new(Layout::default()), Default::default(), 1));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    // we send ApplyLayout, because in prod this is eventually received after the message traverses
+    // through the plugin and pty threads (to open extra stuff we need in the layout, eg. the
+    // default plugins)
+    floating_panes_layout.get_mut(0).unwrap().already_running = true;
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::ApplyLayout(
+            TiledPaneLayout::default(),
+            floating_panes_layout,
+            vec![(1, None)], // tiled pane ids - send these because one needs to be created under the
+                     // ejected floating pane, lest the tab be closed as having no tiled panes
+                     // (this happens in prod in the pty thread)
+            vec![], // floating panes ids
+            Default::default(),
+            1,
+            1,
+        ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    // move back to make sure the other pane is in the previous tab
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::MoveFocusLeftOrPreviousTab(1));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    // move forward to make sure the broken pane is in the previous tab
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::MoveFocusRightOrNextTab(1));
     std::thread::sleep(std::time::Duration::from_millis(100));
 
     mock_screen.teardown(vec![server_thread, screen_thread]);

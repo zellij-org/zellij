@@ -898,4 +898,14 @@ impl FloatingPanes {
         }
         pane_infos
     }
+    pub fn set_geom_for_pane_with_run(&mut self, run: Option<Run>, geom: PaneGeom) {
+        match self.panes.iter_mut().find(|(_, p)| p.invoked_with() == &run) {
+            Some((_, pane)) => {
+                pane.set_geom(geom);
+            },
+            None => {
+                log::error!("Failed to find pane with run: {:?}", run);
+            }
+        }
+    }
 }

@@ -102,14 +102,12 @@ impl<'a> LayoutApplier<'a> {
         // true => layout has floating panes
         let layout_name = layout.name.clone();
         self.apply_tiled_panes_layout(layout, new_terminal_ids, &mut new_plugin_ids, client_id)?;
-        log::info!("done applying tiled panes layout");
         let layout_has_floating_panes = self.apply_floating_panes_layout(
             floating_panes_layout,
             new_floating_terminal_ids,
             &mut new_plugin_ids,
             layout_name,
         )?;
-        log::info!("done applying floating panes layout");
         return Ok(layout_has_floating_panes);
     }
     pub fn apply_tiled_panes_layout_to_existing_panes(
@@ -198,12 +196,10 @@ impl<'a> LayoutApplier<'a> {
         new_plugin_ids: &mut HashMap<RunPluginLocation, Vec<u32>>,
         client_id: ClientId,
     ) -> Result<()> {
-        log::info!("apply_tiled_panes_layout 1");
         let err_context = || format!("failed to apply tiled panes layout");
         let free_space = self.total_space_for_tiled_panes();
         match layout.position_panes_in_space(&free_space, None) {
             Ok(positions_in_layout) => {
-                log::info!("apply_tiled_panes_layout 2");
                 let mut run_instructions_to_ignore = layout.run_instructions_to_ignore.clone();
                 let positions_and_size = positions_in_layout.iter();
                 let mut new_terminal_ids = new_terminal_ids.iter();
@@ -216,13 +212,10 @@ impl<'a> LayoutApplier<'a> {
                 };
 
                 for (layout, position_and_size) in positions_and_size {
-                    log::info!("apply_tiled_panes_layout 3");
                     if let Some(position) = run_instructions_to_ignore.iter().position(|r| r == &layout.run) {
                         let run = run_instructions_to_ignore.remove(position);
                         self.tiled_panes.set_geom_for_pane_with_run(run, *position_and_size);
-                        log::info!("apply_tiled_panes_layout 4");
                     } else if let Some(Run::Plugin(run)) = layout.run.clone() {
-                        log::info!("apply_tiled_panes_layout 5");
                         let pane_title = run.location.to_string();
                         let pid = new_plugin_ids
                             .get_mut(&run.location)
@@ -256,7 +249,6 @@ impl<'a> LayoutApplier<'a> {
                             .add_pane_with_existing_geom(PaneId::Plugin(pid), Box::new(new_plugin));
                         set_focus_pane_id(layout, PaneId::Plugin(pid));
                     } else {
-                        log::info!("apply_tiled_panes_layout 6");
                         // there are still panes left to fill, use the pids we received in this method
                         if let Some((pid, hold_for_command)) = new_terminal_ids.next() {
                             let next_terminal_position =
@@ -295,18 +287,13 @@ impl<'a> LayoutApplier<'a> {
                         }
                     }
                 }
-                log::info!("apply_tiled_panes_layout 6");
                 for (unused_pid, _) in new_terminal_ids {
-                    log::info!("apply_tiled_panes_layout 7");
                     self.senders
                         .send_to_pty(PtyInstruction::ClosePane(PaneId::Terminal(*unused_pid)))
                         .with_context(err_context)?;
                 }
-                    log::info!("apply_tiled_panes_layout 8");
                 self.adjust_viewport().with_context(err_context)?;
-                    log::info!("apply_tiled_panes_layout 9");
                 self.set_focused_tiled_pane(focus_pane_id, client_id);
-                    log::info!("apply_tiled_panes_layout 10");
             },
             Err(e) => {
                 for (unused_pid, _) in new_terminal_ids {
@@ -337,10 +324,12 @@ impl<'a> LayoutApplier<'a> {
         let mut new_floating_terminal_ids = new_floating_terminal_ids.iter();
         for floating_pane_layout in floating_panes_layout {
             layout_has_floating_panes = true;
-            if let Some(Run::Plugin(run)) = floating_pane_layout.run.clone() {
-                let position_and_size = self
-                    .floating_panes
-                    .position_floating_pane_layout(&floating_pane_layout);
+            let position_and_size = self
+                .floating_panes
+                .position_floating_pane_layout(&floating_pane_layout);
+            if floating_pane_layout.already_running {
+                self.floating_panes.set_geom_for_pane_with_run(floating_pane_layout.run.clone(), position_and_size);
+            } else if let Some(Run::Plugin(run)) = floating_pane_layout.run.clone() {
                 let pane_title = run.location.to_string();
                 let pid = new_plugin_ids
                     .get_mut(&run.location)
@@ -380,9 +369,9 @@ impl<'a> LayoutApplier<'a> {
                     focused_floating_pane = Some(PaneId::Plugin(pid));
                 }
             } else if let Some((pid, hold_for_command)) = new_floating_terminal_ids.next() {
-                let position_and_size = self
-                    .floating_panes
-                    .position_floating_pane_layout(&floating_pane_layout);
+//                 let position_and_size = self
+//                     .floating_panes
+//                     .position_floating_pane_layout(&floating_pane_layout);
                 let next_terminal_position =
                     get_next_terminal_position(&self.tiled_panes, &self.floating_panes);
                 let initial_title = match &floating_pane_layout.run {

@@ -649,9 +649,11 @@ impl Tab {
             new_plugin_ids,
             client_id,
         )?;
-        log::info!("right?");
+        log::info!("right? {:?}", layout_has_floating_panes);
         if layout_has_floating_panes {
+            log::info!("layout_has_floating_panes");
             if !self.floating_panes.panes_are_visible() {
+                log::info!("toggle_floating_panes");
                 self.toggle_floating_panes(Some(client_id), None)?;
             }
         }
@@ -1782,11 +1784,24 @@ impl Tab {
     fn get_tiled_panes(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn Pane>)> {
         self.tiled_panes.get_panes()
     }
+    fn get_floating_panes(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn Pane>)> {
+        self.floating_panes.get_panes()
+    }
     fn get_selectable_tiled_panes(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn Pane>)> {
         self.get_tiled_panes().filter(|(_, p)| p.selectable())
     }
+    fn get_selectable_floating_panes(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn Pane>)> {
+        self.get_floating_panes().filter(|(_, p)| p.selectable())
+    }
     pub fn get_selectable_tiled_panes_count(&self) -> usize {
         self.get_selectable_tiled_panes().count()
+    }
+    pub fn get_visible_selectable_floating_panes_count(&self) -> usize {
+        if self.are_floating_panes_visible() {
+            self.get_selectable_floating_panes().count()
+        } else {
+            0
+        }
     }
     fn get_next_terminal_position(&self) -> usize {
         let tiled_panes_count = self
@@ -3283,13 +3298,13 @@ impl Tab {
             plugin_pane.progress_animation_offset();
         }
     }
-    fn show_floating_panes(&mut self) {
+    pub fn show_floating_panes(&mut self) {
         // this function is to be preferred to directly invoking floating_panes.toggle_show_panes(true)
         self.floating_panes.toggle_show_panes(true);
         self.tiled_panes.unfocus_all_panes();
     }
 
-    fn hide_floating_panes(&mut self) {
+    pub fn hide_floating_panes(&mut self) {
         // this function is to be preferred to directly invoking
         // floating_panes.toggle_show_panes(false)
         self.floating_panes.toggle_show_panes(false);
@@ -3368,7 +3383,7 @@ impl Tab {
             self.add_tiled_pane(pane, pane_id, client_id)
         }
     }
-    fn add_floating_pane(
+    pub fn add_floating_pane(
         &mut self,
         mut pane: Box<dyn Pane>,
         pane_id: PaneId,
@@ -3393,7 +3408,7 @@ impl Tab {
         }
         Ok(())
     }
-    fn add_tiled_pane(
+    pub fn add_tiled_pane(
         &mut self,
         mut pane: Box<dyn Pane>,
         pane_id: PaneId,

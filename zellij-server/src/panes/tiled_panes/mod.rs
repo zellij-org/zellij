@@ -738,7 +738,6 @@ impl TiledPanes {
         self.panes.iter()
     }
     pub fn set_geom_for_pane_with_run(&mut self, run: Option<Run>, geom: PaneGeom) {
-        log::info!("panes: {:?}", self.panes.iter().map(|(_, p)| p.invoked_with()).collect::<Vec<_>>());
         match self.panes.iter_mut().find(|(_, p)| p.invoked_with() == &run) {
             Some((_, pane)) => {
                 pane.set_geom(geom);

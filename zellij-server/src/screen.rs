@@ -2833,7 +2833,7 @@ pub(crate) fn screen_thread_main(
 
                 let client_id = screen.get_first_client_id().with_context(err_context)?;
                 let active_tab = screen.get_active_tab_mut(client_id)?;
-                if active_tab.get_selectable_tiled_panes_count() > 1 {
+                if active_tab.get_selectable_tiled_panes_count() > 1 || active_tab.get_visible_selectable_floating_panes_count() > 0 {
                     let active_pane_id = active_tab.get_active_pane_id(client_id).with_context(err_context)?;
                     let pane_to_break_is_floating = active_tab.are_floating_panes_visible();
                     let active_pane = active_tab.close_pane(active_pane_id, false, Some(client_id)).with_context(err_context)?;
@@ -2844,7 +2844,14 @@ pub(crate) fn screen_thread_main(
                     let tab = screen.tabs
                         .get_mut(&tab_index)
                         .with_context(err_context)?;
-                    tab.add_existing_pane(active_pane, active_pane_id, Some(client_id))?;
+                    // TODO: combine iwth below?
+                    if pane_to_break_is_floating {
+                        tab.add_floating_pane(active_pane, active_pane_id, Some(client_id))?;
+                        tab.show_floating_panes();
+                    } else {
+                        tab.add_tiled_pane(active_pane, active_pane_id, Some(client_id))?;
+                    }
+                    // tab.add_existing_pane(active_pane, active_pane_id, Some(client_id))?;
                     let (mut tiled_panes_layout, mut floating_panes_layout) = default_layout.new_tab();
 
                     if pane_to_break_is_floating {
