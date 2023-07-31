@@ -740,7 +740,7 @@ impl WasmBridge {
                 .plugin_env
                 .set_permissions(HashSet::from_iter(permissions.clone()));
 
-            let mut granted_permission = GrantedPermission::from_default().unwrap_or_default();
+            let mut granted_permission = GrantedPermission::from_cache_or_default();
             granted_permission.insert(
                 running_plugin.plugin_env.plugin.location.to_string(),
                 permissions,

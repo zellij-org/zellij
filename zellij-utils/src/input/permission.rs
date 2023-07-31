@@ -6,7 +6,6 @@ use std::{
 use crate::{
     consts::{ZELLIJ_CACHE_DIR, ZELLIJ_PLUGIN_PERMISSIONS_FILE},
     data::PermissionType,
-    input::config::ConfigError,
 };
 
 #[derive(Default, Debug)]
@@ -25,12 +24,12 @@ impl GrantedPermission {
         self.0.iter()
     }
 
-    pub fn from_default() -> Result<Self, ConfigError> {
+    pub fn from_cache_or_default() -> Self {
         let default_permission = ZELLIJ_CACHE_DIR.join(ZELLIJ_PLUGIN_PERMISSIONS_FILE);
 
-        let raw_string = fs::read_to_string(&default_permission)
-            .map_err(|e| ConfigError::IoPath(e, default_permission.into()))?;
-
-        GrantedPermission::from_string(raw_string)
+        match fs::read_to_string(&default_permission) {
+            Ok(s) => GrantedPermission::from_string(s).unwrap_or_default(),
+            Err(_) => GrantedPermission::default(),
+        }
     }
 }
