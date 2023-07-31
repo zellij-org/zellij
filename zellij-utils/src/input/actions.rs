@@ -510,9 +510,6 @@ impl Action {
                 };
                 Ok(vec![Action::LaunchOrFocusPlugin(run_plugin, floating)])
             },
-            CliAction::BreakPane => {
-                Ok(vec![Action::BreakPane])
-            }
         }
     }
 }
