@@ -994,6 +994,14 @@ Config {
                 ),
             ],
             Char(
+                'b',
+            ): [
+                BreakPane,
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            Char(
                 'h',
             ): [
                 GoToPreviousTab,

@@ -214,7 +214,7 @@ impl<'a> LayoutApplier<'a> {
                 for (layout, position_and_size) in positions_and_size {
                     if let Some(position) = run_instructions_to_ignore.iter().position(|r| r == &layout.run) {
                         let run = run_instructions_to_ignore.remove(position);
-                        self.tiled_panes.set_geom_for_pane_with_run(run, *position_and_size);
+                        self.tiled_panes.set_geom_for_pane_with_run(run, *position_and_size, layout.borderless);
                     } else if let Some(Run::Plugin(run)) = layout.run.clone() {
                         let pane_title = run.location.to_string();
                         let pid = new_plugin_ids

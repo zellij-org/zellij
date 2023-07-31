@@ -750,10 +750,14 @@ impl TiledPanes {
     pub fn get_panes(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn Pane>)> {
         self.panes.iter()
     }
-    pub fn set_geom_for_pane_with_run(&mut self, run: Option<Run>, geom: PaneGeom) {
+    pub fn set_geom_for_pane_with_run(&mut self, run: Option<Run>, geom: PaneGeom, borderless: bool) {
         match self.panes.iter_mut().find(|(_, p)| p.invoked_with() == &run) {
             Some((_, pane)) => {
                 pane.set_geom(geom);
+                pane.set_borderless(borderless);
+                if self.draw_pane_frames {
+                    pane.set_content_offset(Offset::frame(1));
+                }
             },
             None => {
                 log::error!("Failed to find pane with run: {:?}", run);
