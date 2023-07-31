@@ -306,7 +306,6 @@ impl<'a> LayoutApplier<'a> {
                     .non_fatal(); // TODO: propagate this to the user
             },
         };
-        log::info!("returning ok...");
         Ok(())
     }
     fn apply_floating_panes_layout(
@@ -547,7 +546,7 @@ impl<'a> LayoutApplier<'a> {
             *display_area
         };
         self.resize_whole_tab(display_area).context(err_context)?;
-        let boundary_geoms = self.tiled_panes.borderless_pane_geoms();
+        let boundary_geoms = self.tiled_panes.non_selectable_pane_geoms();
         for geom in boundary_geoms {
             self.offset_viewport(&geom)
         }

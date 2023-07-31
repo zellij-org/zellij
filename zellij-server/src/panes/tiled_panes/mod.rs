@@ -254,6 +254,19 @@ impl TiledPanes {
             })
             .collect()
     }
+    pub fn non_selectable_pane_geoms(&self) -> Vec<Viewport> {
+        self.panes
+            .values()
+            .filter_map(|p| {
+                let geom = p.position_and_size();
+                if p.selectable() {
+                    None
+                } else {
+                    Some(geom.into())
+                }
+            })
+            .collect()
+    }
     pub fn first_selectable_pane_id(&self) -> Option<PaneId> {
         self.panes
             .iter()

@@ -2851,7 +2851,6 @@ pub(crate) fn screen_thread_main(
                     } else {
                         tab.add_tiled_pane(active_pane, active_pane_id, Some(client_id))?;
                     }
-                    // tab.add_existing_pane(active_pane, active_pane_id, Some(client_id))?;
                     let (mut tiled_panes_layout, mut floating_panes_layout) = default_layout.new_tab();
 
                     if pane_to_break_is_floating {
