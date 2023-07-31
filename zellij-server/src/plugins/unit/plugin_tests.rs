@@ -4291,7 +4291,8 @@ pub fn request_plugin_permissions() {
 pub fn granted_permission_request_result() {
     let temp_folder = tempdir().unwrap();
     let plugin_host_folder = PathBuf::from(temp_folder.path());
-    let (plugin_thread_sender, _, mut teardown) = create_plugin_thread(Some(plugin_host_folder));
+    let (plugin_thread_sender, _, mut teardown) =
+        create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
     let run_plugin = RunPlugin {
@@ -4336,7 +4337,8 @@ pub fn granted_permission_request_result() {
 pub fn denied_permission_request_result() {
     let temp_folder = tempdir().unwrap();
     let plugin_host_folder = PathBuf::from(temp_folder.path());
-    let (plugin_thread_sender, _, mut teardown) = create_plugin_thread(Some(plugin_host_folder));
+    let (plugin_thread_sender, _, mut teardown) =
+        create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
     let run_plugin = RunPlugin {
