@@ -15,7 +15,7 @@ use std::{
 };
 use wasmer::{Instance, Module, Store, Value};
 use zellij_utils::async_std::task::{self, JoinHandle};
-use zellij_utils::consts::{ZELLIJ_CACHE_DIR, ZELLIJ_PLUGIN_PERMISSIONS_FILE};
+use zellij_utils::consts::ZELLIJ_PLUGIN_PERMISSIONS_CACHE;
 use zellij_utils::data::{PermissionStatus, PermissionType};
 use zellij_utils::input::permission::GrantedPermission;
 use zellij_utils::notify_debouncer_full::{notify::RecommendedWatcher, Debouncer, FileIdMap};
@@ -746,7 +746,7 @@ impl WasmBridge {
                 permissions,
             );
 
-            let mut f = File::create(ZELLIJ_CACHE_DIR.join(ZELLIJ_PLUGIN_PERMISSIONS_FILE))
+            let mut f = File::create(ZELLIJ_PLUGIN_PERMISSIONS_CACHE.as_path())
                 .with_context(err_context)?;
             write!(f, "{}", granted_permission.to_string()).with_context(err_context)?;
         }

@@ -19,7 +19,6 @@ pub const SYSTEM_DEFAULT_CONFIG_DIR: &str = "/etc/zellij";
 pub const SYSTEM_DEFAULT_DATA_DIR_PREFIX: &str = system_default_data_dir();
 
 pub static ZELLIJ_DEFAULT_THEMES: Dir = include_dir!("$CARGO_MANIFEST_DIR/assets/themes");
-pub static ZELLIJ_PLUGIN_PERMISSIONS_FILE: &str = "permissions.kdl";
 
 const fn system_default_data_dir() -> &'static str {
     if let Some(data_dir) = std::option_env!("PREFIX") {
@@ -37,6 +36,16 @@ lazy_static! {
         .cache_dir()
         .to_path_buf()
         .join(format!("{}", Uuid::new_v4()));
+    pub static ref ZELLIJ_PLUGIN_PERMISSIONS_CACHE: PathBuf = {
+        #[cfg(not(test))]
+        {
+            ZELLIJ_CACHE_DIR.join("permissions.kdl")
+        }
+        #[cfg(test)]
+        {
+            std::env::temp_dir().join("permissions.kdl")
+        }
+    };
 }
 
 pub const FEATURES: &[&str] = &[
