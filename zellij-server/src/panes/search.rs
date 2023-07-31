@@ -409,17 +409,27 @@ impl Grid {
         }
         self.search_results = Default::default();
     }
-
+    fn scrolling_area_presearch<'a>(&self, mut rows: impl Iterator<Item = &'a String>) -> bool {
+        let search_str = &self.search_results.needle;
+        let found = rows.find(|r| r.contains(search_str));
+        found.is_some()
+    }
     pub fn set_search_string(&mut self, needle: &str) {
         self.search_results.needle = needle.to_string();
         self.search_viewport();
         // If the current viewport does not contain any hits,
         // we jump around until we find something. Starting
         // going backwards.
-        if self.search_results.selections.is_empty() {
+        // Actual viewport scroll&search is expensive with huge scrolling area (5000+)
+        // instead we can do simple presearch for needle across scrolling area rows.
+        if self.search_results.selections.is_empty()
+            && self.scrolling_area_presearch(self.lines_above_str.iter())
+        {
             self.search_up();
         }
-        if self.search_results.selections.is_empty() {
+        if self.search_results.selections.is_empty()
+            && self.scrolling_area_presearch(self.lines_below_str.iter())
+        {
             self.search_down();
         }
         // We still don't want to pre-select anything at this stage
