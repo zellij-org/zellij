@@ -3,9 +3,7 @@ use std::{
     fs,
 };
 
-use crate::{
-    data::PermissionType, consts::ZELLIJ_PLUGIN_PERMISSIONS_CACHE,
-};
+use crate::{consts::ZELLIJ_PLUGIN_PERMISSIONS_CACHE, data::PermissionType};
 
 #[derive(Default, Debug)]
 pub struct GrantedPermission(HashMap<String, Vec<PermissionType>>);
