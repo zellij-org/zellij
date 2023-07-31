@@ -6,9 +6,10 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 use tempfile::tempdir;
 use wasmer::Store;
-use zellij_utils::data::{Event, Key, PluginCapabilities};
+use zellij_utils::data::{Event, Key, PermissionStatus, PermissionType, PluginCapabilities};
 use zellij_utils::errors::ErrorContext;
 use zellij_utils::input::layout::{Layout, PluginUserConfiguration, RunPlugin, RunPluginLocation};
+use zellij_utils::input::permission::GrantedPermission;
 use zellij_utils::input::plugins::PluginsConfig;
 use zellij_utils::ipc::ClientAttributes;
 use zellij_utils::lazy_static::lazy_static;
@@ -4283,4 +4284,96 @@ pub fn request_plugin_permissions() {
         })
         .clone();
     assert_snapshot!(format!("{:#?}", new_tab_event));
+}
+
+#[test]
+#[ignore]
+pub fn granted_permission_request_result() {
+    let temp_folder = tempdir().unwrap();
+    let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let (plugin_thread_sender, _, mut teardown) =
+        create_plugin_thread(Some(plugin_host_folder));
+    let plugin_should_float = Some(false);
+    let plugin_title = Some("test_plugin".to_owned());
+    let run_plugin = RunPlugin {
+        _allow_exec_host_cmd: false,
+        location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
+    };
+    let tab_index = 1;
+    let client_id = 1;
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+
+    let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
+    let _ = plugin_thread_sender.send(PluginInstruction::Load(
+        plugin_should_float,
+        plugin_title,
+        run_plugin.clone(),
+        tab_index,
+        client_id,
+        size,
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let _ = plugin_thread_sender.send(PluginInstruction::PermissionRequestResult(
+        0,
+        Some(client_id),
+        vec![PermissionType::KeyboardInput],
+        PermissionStatus::Granted,
+    ));
+
+    teardown();
+
+    let granted_permission = GrantedPermission::from_cache_or_default();
+    let permissions = granted_permission.get(&run_plugin.location.to_string());
+
+    assert_snapshot!(format!("{:#?}", permissions));
+}
+
+#[test]
+#[ignore]
+pub fn denied_permission_request_result() {
+    let temp_folder = tempdir().unwrap();
+    let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let (plugin_thread_sender, _, mut teardown) =
+        create_plugin_thread(Some(plugin_host_folder));
+    let plugin_should_float = Some(false);
+    let plugin_title = Some("test_plugin".to_owned());
+    let run_plugin = RunPlugin {
+        _allow_exec_host_cmd: false,
+        location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
+    };
+    let tab_index = 1;
+    let client_id = 1;
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+
+    let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
+    let _ = plugin_thread_sender.send(PluginInstruction::Load(
+        plugin_should_float,
+        plugin_title,
+        run_plugin.clone(),
+        tab_index,
+        client_id,
+        size,
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let _ = plugin_thread_sender.send(PluginInstruction::PermissionRequestResult(
+        0,
+        Some(client_id),
+        vec![PermissionType::KeyboardInput],
+        PermissionStatus::Denied,
+    ));
+
+    teardown();
+
+    let granted_permission = GrantedPermission::from_cache_or_default();
+    let permissions = granted_permission.get(&run_plugin.location.to_string());
+
+    assert_snapshot!(format!("{:#?}", permissions));
 }
