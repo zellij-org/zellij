@@ -605,8 +605,10 @@ impl Pty {
             default_shell.unwrap_or_else(|| self.get_default_terminal(cwd, None));
         self.fill_cwd(&mut default_shell, client_id);
         let extracted_run_instructions = layout.extract_run_instructions();
-        let extracted_floating_run_instructions =
-            floating_panes_layout.iter().filter(|f| !f.already_running).map(|f| f.run.clone());
+        let extracted_floating_run_instructions = floating_panes_layout
+            .iter()
+            .filter(|f| !f.already_running)
+            .map(|f| f.run.clone());
         let mut new_pane_pids: Vec<(u32, bool, Option<RunCommand>, Result<RawFd>)> = vec![]; // (terminal_id,
                                                                                              // starts_held,
                                                                                              // run_command,

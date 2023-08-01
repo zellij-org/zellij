@@ -14,16 +14,16 @@ use zellij_utils::pane_size::{Size, SizeInPixels};
 use zellij_utils::{
     input::command::TerminalAction,
     input::layout::{
-        Layout, FloatingPaneLayout, Run, RunPlugin, RunPluginLocation,
-        SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,
+        FloatingPaneLayout, Layout, Run, RunPlugin, RunPluginLocation, SwapFloatingLayout,
+        SwapTiledLayout, TiledPaneLayout,
     },
     position::Position,
 };
 
+use crate::background_jobs::BackgroundJob;
 use crate::os_input_output::ResizeCache;
 use crate::panes::alacritty_functions::xparse_color;
 use crate::panes::terminal_character::AnsiCode;
-use crate::background_jobs::BackgroundJob;
 
 use crate::{
     output::Output,
@@ -687,8 +687,13 @@ impl Screen {
                     let current_tab_index = current_tab.index;
                     let new_tab_index = new_tab.index;
                     if self.session_is_mirrored {
-                        self.move_clients_between_tabs(current_tab_index, new_tab_index, update_mode_infos, None)
-                            .with_context(err_context)?;
+                        self.move_clients_between_tabs(
+                            current_tab_index,
+                            new_tab_index,
+                            update_mode_infos,
+                            None,
+                        )
+                        .with_context(err_context)?;
                         let all_connected_clients: Vec<ClientId> =
                             self.connected_clients.borrow().iter().copied().collect();
                         for client_id in all_connected_clients {
@@ -1572,45 +1577,60 @@ impl Screen {
         };
         Ok(())
     }
-    pub fn break_pane(&mut self, default_shell: Option<TerminalAction>, default_layout: Box<Layout>, client_id: ClientId) -> Result<()> {
+    pub fn break_pane(
+        &mut self,
+        default_shell: Option<TerminalAction>,
+        default_layout: Box<Layout>,
+        client_id: ClientId,
+    ) -> Result<()> {
         let err_context = || "failed break pane out of tab".to_string();
         let active_tab = self.get_active_tab_mut(client_id)?;
-        if active_tab.get_selectable_tiled_panes_count() > 1 || active_tab.get_visible_selectable_floating_panes_count() > 0 {
-            let active_pane_id = active_tab.get_active_pane_id(client_id).with_context(err_context)?;
+        if active_tab.get_selectable_tiled_panes_count() > 1
+            || active_tab.get_visible_selectable_floating_panes_count() > 0
+        {
+            let active_pane_id = active_tab
+                .get_active_pane_id(client_id)
+                .with_context(err_context)?;
             let pane_to_break_is_floating = active_tab.are_floating_panes_visible();
-            let active_pane = active_tab.close_pane(active_pane_id, false, Some(client_id)).with_context(err_context)?;
+            let active_pane = active_tab
+                .close_pane(active_pane_id, false, Some(client_id))
+                .with_context(err_context)?;
             let active_pane_run_instruction = active_pane.invoked_with().clone();
             let tab_index = self.get_new_tab_index();
-            let swap_layouts = (default_layout.swap_tiled_layouts.clone(), default_layout.swap_floating_layouts.clone());
+            let swap_layouts = (
+                default_layout.swap_tiled_layouts.clone(),
+                default_layout.swap_floating_layouts.clone(),
+            );
             self.new_tab(tab_index, swap_layouts, None, client_id)?;
-            let tab = self.tabs
-                .get_mut(&tab_index)
-                .with_context(err_context)?;
+            let tab = self.tabs.get_mut(&tab_index).with_context(err_context)?;
             let (mut tiled_panes_layout, mut floating_panes_layout) = default_layout.new_tab();
             if pane_to_break_is_floating {
                 tab.show_floating_panes();
                 tab.add_floating_pane(active_pane, active_pane_id, Some(client_id))?;
-                if let Some(mut already_running_layout) = floating_panes_layout.iter_mut().find(|i| i.run == active_pane_run_instruction) {
+                if let Some(mut already_running_layout) = floating_panes_layout
+                    .iter_mut()
+                    .find(|i| i.run == active_pane_run_instruction)
+                {
                     already_running_layout.already_running = true;
                 }
             } else {
                 tab.add_tiled_pane(active_pane, active_pane_id, Some(client_id))?;
                 tiled_panes_layout.ignore_run_instruction(active_pane_run_instruction.clone());
             }
-            self
-                .bus
-                .senders
-                .send_to_plugin(PluginInstruction::NewTab(
-                    None,
-                    default_shell,
-                    Some(tiled_panes_layout),
-                    floating_panes_layout,
-                    tab_index,
-                    client_id,
-                ))?;
+            self.bus.senders.send_to_plugin(PluginInstruction::NewTab(
+                None,
+                default_shell,
+                Some(tiled_panes_layout),
+                floating_panes_layout,
+                tab_index,
+                client_id,
+            ))?;
         } else {
-            let active_pane_id = active_tab.get_active_pane_id(client_id).with_context(err_context)?;
-            self.bus.senders
+            let active_pane_id = active_tab
+                .get_active_pane_id(client_id)
+                .with_context(err_context)?;
+            self.bus
+                .senders
                 .send_to_background_jobs(BackgroundJob::DisplayPaneError(
                     vec![active_pane_id],
                     "Cannot break single pane out!".into(),
@@ -1620,14 +1640,22 @@ impl Screen {
         }
         Ok(())
     }
-    pub fn break_pane_to_new_tab(&mut self, direction: Direction, client_id: ClientId) -> Result<()> {
+    pub fn break_pane_to_new_tab(
+        &mut self,
+        direction: Direction,
+        client_id: ClientId,
+    ) -> Result<()> {
         let err_context = || "failed break pane out of tab".to_string();
         if self.tabs.len() > 1 {
             let (active_pane_id, active_pane, pane_to_break_is_floating) = {
                 let active_tab = self.get_active_tab_mut(client_id)?;
-                let active_pane_id = active_tab.get_active_pane_id(client_id).with_context(err_context)?;
+                let active_pane_id = active_tab
+                    .get_active_pane_id(client_id)
+                    .with_context(err_context)?;
                 let pane_to_break_is_floating = active_tab.are_floating_panes_visible();
-                let active_pane = active_tab.close_pane(active_pane_id, false, Some(client_id)).with_context(err_context)?;
+                let active_pane = active_tab
+                    .close_pane(active_pane_id, false, Some(client_id))
+                    .with_context(err_context)?;
                 (active_pane_id, active_pane, pane_to_break_is_floating)
             };
             let update_mode_infos = false;
@@ -1637,7 +1665,7 @@ impl Screen {
                 },
                 Direction::Left | Direction::Up => {
                     self.switch_tab_prev(None, update_mode_infos, client_id)?;
-                }
+                },
             };
             let new_active_tab = self.get_active_tab_mut(client_id)?;
 
@@ -1654,10 +1682,11 @@ impl Screen {
         } else {
             let active_pane_id = {
                 let active_tab = self.get_active_tab_mut(client_id)?;
-                active_tab.get_active_pane_id(client_id).with_context(err_context)?
+                active_tab
+                    .get_active_pane_id(client_id)
+                    .with_context(err_context)?
             };
-            self
-                .bus
+            self.bus
                 .senders
                 .send_to_background_jobs(BackgroundJob::DisplayPaneError(
                     vec![active_pane_id],
@@ -2931,13 +2960,13 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::BreakPane(default_layout, default_shell, client_id) => {
                 screen.break_pane(default_shell, default_layout, client_id)?;
-            }
+            },
             ScreenInstruction::BreakPaneRight(client_id) => {
                 screen.break_pane_to_new_tab(Direction::Right, client_id)?;
-            }
+            },
             ScreenInstruction::BreakPaneLeft(client_id) => {
                 screen.break_pane_to_new_tab(Direction::Left, client_id)?;
-            }
+            },
         }
     }
     Ok(())

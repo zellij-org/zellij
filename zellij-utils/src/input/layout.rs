@@ -563,7 +563,10 @@ impl TiledPaneLayout {
         }
         let mut successfully_ignored = 0;
         for instruction_to_ignore in &self.run_instructions_to_ignore {
-            if let Some(position) = run_instructions.iter().position(|i| i == instruction_to_ignore) {
+            if let Some(position) = run_instructions
+                .iter()
+                .position(|i| i == instruction_to_ignore)
+            {
                 run_instructions.remove(position);
                 successfully_ignored += 1;
             }
@@ -573,7 +576,11 @@ impl TiledPaneLayout {
         // crash (this can happen for example when breaking a plugin pane into a new tab that does
         // not have room for it but has a terminal instead)
         if successfully_ignored < self.run_instructions_to_ignore.len() {
-            for _ in 0..self.run_instructions_to_ignore.len().saturating_sub(successfully_ignored) {
+            for _ in 0..self
+                .run_instructions_to_ignore
+                .len()
+                .saturating_sub(successfully_ignored)
+            {
                 if let Some(position) = run_instructions.iter().position(|i| i == &None) {
                     run_instructions.remove(position);
                 }

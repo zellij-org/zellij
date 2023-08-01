@@ -180,7 +180,11 @@ impl<'a> LayoutApplier<'a> {
                     }
                 }
                 pane_focuser.focus_tiled_pane(&mut self.tiled_panes);
-                LayoutApplier::offset_viewport(self.viewport.clone(), self.tiled_panes, self.draw_pane_frames);
+                LayoutApplier::offset_viewport(
+                    self.viewport.clone(),
+                    self.tiled_panes,
+                    self.draw_pane_frames,
+                );
             },
             Err(e) => {
                 Err::<(), _>(anyError::msg(e))
@@ -213,9 +217,16 @@ impl<'a> LayoutApplier<'a> {
                 };
 
                 for (layout, position_and_size) in positions_and_size {
-                    if let Some(position) = run_instructions_to_ignore.iter().position(|r| r == &layout.run) {
+                    if let Some(position) = run_instructions_to_ignore
+                        .iter()
+                        .position(|r| r == &layout.run)
+                    {
                         let run = run_instructions_to_ignore.remove(position);
-                        self.tiled_panes.set_geom_for_pane_with_run(run, *position_and_size, layout.borderless);
+                        self.tiled_panes.set_geom_for_pane_with_run(
+                            run,
+                            *position_and_size,
+                            layout.borderless,
+                        );
                     } else if let Some(Run::Plugin(run)) = layout.run.clone() {
                         let pane_title = run.location.to_string();
                         let pid = new_plugin_ids
@@ -328,7 +339,10 @@ impl<'a> LayoutApplier<'a> {
                 .floating_panes
                 .position_floating_pane_layout(&floating_pane_layout);
             if floating_pane_layout.already_running {
-                self.floating_panes.set_geom_for_pane_with_run(floating_pane_layout.run.clone(), position_and_size);
+                self.floating_panes.set_geom_for_pane_with_run(
+                    floating_pane_layout.run.clone(),
+                    position_and_size,
+                );
             } else if let Some(Run::Plugin(run)) = floating_pane_layout.run.clone() {
                 let pane_title = run.location.to_string();
                 let pid = new_plugin_ids
@@ -369,9 +383,9 @@ impl<'a> LayoutApplier<'a> {
                     focused_floating_pane = Some(PaneId::Plugin(pid));
                 }
             } else if let Some((pid, hold_for_command)) = new_floating_terminal_ids.next() {
-//                 let position_and_size = self
-//                     .floating_panes
-//                     .position_floating_pane_layout(&floating_pane_layout);
+                //                 let position_and_size = self
+                //                     .floating_panes
+                //                     .position_floating_pane_layout(&floating_pane_layout);
                 let next_terminal_position =
                     get_next_terminal_position(&self.tiled_panes, &self.floating_panes);
                 let initial_title = match &floating_pane_layout.run {
@@ -510,7 +524,11 @@ impl<'a> LayoutApplier<'a> {
         self.tiled_panes.resize(new_screen_size);
         Ok(())
     }
-    pub fn offset_viewport(viewport: Rc<RefCell<Viewport>>, tiled_panes: &mut TiledPanes, draw_pane_frames: bool) {
+    pub fn offset_viewport(
+        viewport: Rc<RefCell<Viewport>>,
+        tiled_panes: &mut TiledPanes,
+        draw_pane_frames: bool,
+    ) {
         let boundary_geoms = tiled_panes.non_selectable_pane_geoms_inside_viewport();
         {
             // curly braces here is so that we free viewport immediately when we're done
@@ -522,7 +540,9 @@ impl<'a> LayoutApplier<'a> {
                     if position_and_size.y == viewport.y {
                         viewport.y += position_and_size.rows;
                         viewport.rows -= position_and_size.rows;
-                    } else if position_and_size.y + position_and_size.rows == viewport.y + viewport.rows {
+                    } else if position_and_size.y + position_and_size.rows
+                        == viewport.y + viewport.rows
+                    {
                         viewport.rows -= position_and_size.rows;
                     }
                 }
@@ -532,7 +552,9 @@ impl<'a> LayoutApplier<'a> {
                     if position_and_size.x == viewport.x {
                         viewport.x += position_and_size.cols;
                         viewport.cols -= position_and_size.cols;
-                    } else if position_and_size.x + position_and_size.cols == viewport.x + viewport.cols {
+                    } else if position_and_size.x + position_and_size.cols
+                        == viewport.x + viewport.cols
+                    {
                         viewport.cols -= position_and_size.cols;
                     }
                 }
@@ -554,7 +576,11 @@ impl<'a> LayoutApplier<'a> {
             *display_area
         };
         self.resize_whole_tab(display_area).context(err_context)?;
-        LayoutApplier::offset_viewport(self.viewport.clone(), self.tiled_panes, self.draw_pane_frames);
+        LayoutApplier::offset_viewport(
+            self.viewport.clone(),
+            self.tiled_panes,
+            self.draw_pane_frames,
+        );
         Ok(())
     }
     fn set_focused_tiled_pane(&mut self, focus_pane_id: Option<PaneId>, client_id: ClientId) {

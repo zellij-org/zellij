@@ -15,7 +15,7 @@ use zellij_utils::errors::{prelude::*, ErrorContext};
 use zellij_utils::input::actions::Action;
 use zellij_utils::input::command::{RunCommand, TerminalAction};
 use zellij_utils::input::layout::{
-    Layout, Run, RunPlugin, RunPluginLocation, SplitDirection, TiledPaneLayout, FloatingPaneLayout
+    FloatingPaneLayout, Layout, Run, RunPlugin, RunPluginLocation, SplitDirection, TiledPaneLayout,
 };
 use zellij_utils::input::options::Options;
 use zellij_utils::ipc::IpcReceiverWithContext;
@@ -271,7 +271,11 @@ struct MockScreen {
 }
 
 impl MockScreen {
-    pub fn run(&mut self, initial_layout: Option<TiledPaneLayout>, initial_floating_panes_layout: Vec<FloatingPaneLayout>) -> std::thread::JoinHandle<()> {
+    pub fn run(
+        &mut self,
+        initial_layout: Option<TiledPaneLayout>,
+        initial_floating_panes_layout: Vec<FloatingPaneLayout>,
+    ) -> std::thread::JoinHandle<()> {
         let config_options = self.config_options.clone();
         let client_attributes = self.client_attributes.clone();
         let screen_bus = Bus::new(
@@ -2706,24 +2710,24 @@ pub fn screen_can_break_pane_to_a_new_tab() {
         server_receiver
     );
 
-    let _ = mock_screen
-        .to_screen
-        .send(ScreenInstruction::BreakPane(Box::new(Layout::default()), Default::default(), 1));
+    let _ = mock_screen.to_screen.send(ScreenInstruction::BreakPane(
+        Box::new(Layout::default()),
+        Default::default(),
+        1,
+    ));
     std::thread::sleep(std::time::Duration::from_millis(100));
     // we send ApplyLayout, because in prod this is eventually received after the message traverses
     // through the plugin and pty threads (to open extra stuff we need in the layout, eg. the
     // default plugins)
-    let _ = mock_screen
-        .to_screen
-        .send(ScreenInstruction::ApplyLayout(
-            TiledPaneLayout::default(),
-            vec![], // floating_panes_layout
-            Default::default(),
-            vec![], // floating panes ids
-            Default::default(),
-            1,
-            1,
-        ));
+    let _ = mock_screen.to_screen.send(ScreenInstruction::ApplyLayout(
+        TiledPaneLayout::default(),
+        vec![], // floating_panes_layout
+        Default::default(),
+        vec![], // floating panes ids
+        Default::default(),
+        1,
+        1,
+    ));
     std::thread::sleep(std::time::Duration::from_millis(100));
     // move back to make sure the other pane is in the previous tab
     let _ = mock_screen
@@ -2763,9 +2767,11 @@ pub fn screen_cannot_break_last_selectable_pane_to_a_new_tab() {
         server_receiver
     );
 
-    let _ = mock_screen
-        .to_screen
-        .send(ScreenInstruction::BreakPane(Box::new(Layout::default()), Default::default(), 1));
+    let _ = mock_screen.to_screen.send(ScreenInstruction::BreakPane(
+        Box::new(Layout::default()),
+        Default::default(),
+        1,
+    ));
     std::thread::sleep(std::time::Duration::from_millis(100));
 
     mock_screen.teardown(vec![server_thread, screen_thread]);
@@ -2802,27 +2808,27 @@ pub fn screen_can_break_floating_pane_to_a_new_tab() {
         server_receiver
     );
 
-    let _ = mock_screen
-        .to_screen
-        .send(ScreenInstruction::BreakPane(Box::new(Layout::default()), Default::default(), 1));
+    let _ = mock_screen.to_screen.send(ScreenInstruction::BreakPane(
+        Box::new(Layout::default()),
+        Default::default(),
+        1,
+    ));
     std::thread::sleep(std::time::Duration::from_millis(100));
     // we send ApplyLayout, because in prod this is eventually received after the message traverses
     // through the plugin and pty threads (to open extra stuff we need in the layout, eg. the
     // default plugins)
     floating_panes_layout.get_mut(0).unwrap().already_running = true;
-    let _ = mock_screen
-        .to_screen
-        .send(ScreenInstruction::ApplyLayout(
-            TiledPaneLayout::default(),
-            floating_panes_layout,
-            vec![(1, None)], // tiled pane ids - send these because one needs to be created under the
-                     // ejected floating pane, lest the tab be closed as having no tiled panes
-                     // (this happens in prod in the pty thread)
-            vec![], // floating panes ids
-            Default::default(),
-            1,
-            1,
-        ));
+    let _ = mock_screen.to_screen.send(ScreenInstruction::ApplyLayout(
+        TiledPaneLayout::default(),
+        floating_panes_layout,
+        vec![(1, None)], // tiled pane ids - send these because one needs to be created under the
+        // ejected floating pane, lest the tab be closed as having no tiled panes
+        // (this happens in prod in the pty thread)
+        vec![], // floating panes ids
+        Default::default(),
+        1,
+        1,
+    ));
     std::thread::sleep(std::time::Duration::from_millis(100));
     // move back to make sure the other pane is in the previous tab
     let _ = mock_screen
@@ -2873,24 +2879,24 @@ pub fn screen_can_break_plugin_pane_to_a_new_tab() {
         server_receiver
     );
 
-    let _ = mock_screen
-        .to_screen
-        .send(ScreenInstruction::BreakPane(Box::new(Layout::default()), Default::default(), 1));
+    let _ = mock_screen.to_screen.send(ScreenInstruction::BreakPane(
+        Box::new(Layout::default()),
+        Default::default(),
+        1,
+    ));
     std::thread::sleep(std::time::Duration::from_millis(100));
     // we send ApplyLayout, because in prod this is eventually received after the message traverses
     // through the plugin and pty threads (to open extra stuff we need in the layout, eg. the
     // default plugins)
-    let _ = mock_screen
-        .to_screen
-        .send(ScreenInstruction::ApplyLayout(
-            TiledPaneLayout::default(),
-            vec![], // floating_panes_layout
-            Default::default(),
-            vec![], // floating panes ids
-            Default::default(),
-            1,
-            1,
-        ));
+    let _ = mock_screen.to_screen.send(ScreenInstruction::ApplyLayout(
+        TiledPaneLayout::default(),
+        vec![], // floating_panes_layout
+        Default::default(),
+        vec![], // floating panes ids
+        Default::default(),
+        1,
+        1,
+    ));
     std::thread::sleep(std::time::Duration::from_millis(100));
     // move back to make sure the other pane is in the previous tab
     let _ = mock_screen
@@ -2942,27 +2948,27 @@ pub fn screen_can_break_floating_plugin_pane_to_a_new_tab() {
         server_receiver
     );
 
-    let _ = mock_screen
-        .to_screen
-        .send(ScreenInstruction::BreakPane(Box::new(Layout::default()), Default::default(), 1));
+    let _ = mock_screen.to_screen.send(ScreenInstruction::BreakPane(
+        Box::new(Layout::default()),
+        Default::default(),
+        1,
+    ));
     std::thread::sleep(std::time::Duration::from_millis(100));
     // we send ApplyLayout, because in prod this is eventually received after the message traverses
     // through the plugin and pty threads (to open extra stuff we need in the layout, eg. the
     // default plugins)
     floating_panes_layout.get_mut(0).unwrap().already_running = true;
-    let _ = mock_screen
-        .to_screen
-        .send(ScreenInstruction::ApplyLayout(
-            TiledPaneLayout::default(),
-            floating_panes_layout,
-            vec![(1, None)], // tiled pane ids - send these because one needs to be created under the
-                     // ejected floating pane, lest the tab be closed as having no tiled panes
-                     // (this happens in prod in the pty thread)
-            vec![], // floating panes ids
-            Default::default(),
-            1,
-            1,
-        ));
+    let _ = mock_screen.to_screen.send(ScreenInstruction::ApplyLayout(
+        TiledPaneLayout::default(),
+        floating_panes_layout,
+        vec![(1, None)], // tiled pane ids - send these because one needs to be created under the
+        // ejected floating pane, lest the tab be closed as having no tiled panes
+        // (this happens in prod in the pty thread)
+        vec![], // floating panes ids
+        Default::default(),
+        1,
+        1,
+    ));
     std::thread::sleep(std::time::Duration::from_millis(100));
     // move back to make sure the other pane is in the previous tab
     let _ = mock_screen
@@ -3008,9 +3014,11 @@ pub fn screen_can_move_pane_to_a_new_tab_right() {
         server_receiver
     );
 
-    let _ = mock_screen
-        .to_screen
-        .send(ScreenInstruction::BreakPane(Box::new(Layout::default()), Default::default(), 1));
+    let _ = mock_screen.to_screen.send(ScreenInstruction::BreakPane(
+        Box::new(Layout::default()),
+        Default::default(),
+        1,
+    ));
     std::thread::sleep(std::time::Duration::from_millis(100));
     let _ = mock_screen
         .to_screen
@@ -3054,9 +3062,11 @@ pub fn screen_can_move_pane_to_a_new_tab_left() {
         server_receiver
     );
 
-    let _ = mock_screen
-        .to_screen
-        .send(ScreenInstruction::BreakPane(Box::new(Layout::default()), Default::default(), 1));
+    let _ = mock_screen.to_screen.send(ScreenInstruction::BreakPane(
+        Box::new(Layout::default()),
+        Default::default(),
+        1,
+    ));
     std::thread::sleep(std::time::Duration::from_millis(100));
     let _ = mock_screen
         .to_screen

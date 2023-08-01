@@ -2160,7 +2160,11 @@ impl Tab {
         }
         // we do this here because if there is a non-selectable pane on the edge, we consider it
         // outside the viewport (a ui-pane, eg. the status-bar and tab-bar) and need to adjust for it
-        LayoutApplier::offset_viewport(self.viewport.clone(), &mut self.tiled_panes, self.draw_pane_frames);
+        LayoutApplier::offset_viewport(
+            self.viewport.clone(),
+            &mut self.tiled_panes,
+            self.draw_pane_frames,
+        );
     }
     pub fn close_pane(
         &mut self,
