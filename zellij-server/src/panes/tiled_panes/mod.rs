@@ -254,15 +254,15 @@ impl TiledPanes {
             })
             .collect()
     }
-    pub fn non_selectable_pane_geoms(&self) -> Vec<Viewport> {
+    pub fn non_selectable_pane_geoms_inside_viewport(&self) -> Vec<Viewport> {
         self.panes
             .values()
             .filter_map(|p| {
                 let geom = p.position_and_size();
-                if p.selectable() {
-                    None
-                } else {
+                if !p.selectable() && is_inside_viewport(&self.viewport.borrow(), p) {
                     Some(geom.into())
+                } else {
+                    None
                 }
             })
             .collect()
@@ -1530,11 +1530,11 @@ impl TiledPanes {
             self.set_pane_frames(self.draw_pane_frames); // recalculate pane frames and update size
             closed_pane
         } else {
-            self.panes.remove(&pane_id);
+            let closed_pane = self.panes.remove(&pane_id);
             // this is a bit of a roundabout way to say: this is the last pane and so the tab
             // should be destroyed
             self.active_panes.clear(&mut self.panes);
-            None
+            closed_pane
         }
     }
     pub fn hold_pane(

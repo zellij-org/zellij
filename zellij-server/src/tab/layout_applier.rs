@@ -180,6 +180,7 @@ impl<'a> LayoutApplier<'a> {
                     }
                 }
                 pane_focuser.focus_tiled_pane(&mut self.tiled_panes);
+                LayoutApplier::offset_viewport(self.viewport.clone(), self.tiled_panes, self.draw_pane_frames);
             },
             Err(e) => {
                 Err::<(), _>(anyError::msg(e))
@@ -509,28 +510,37 @@ impl<'a> LayoutApplier<'a> {
         self.tiled_panes.resize(new_screen_size);
         Ok(())
     }
-    fn offset_viewport(&mut self, position_and_size: &Viewport) {
-        let mut viewport = self.viewport.borrow_mut();
-        if position_and_size.x == viewport.x
-            && position_and_size.x + position_and_size.cols == viewport.x + viewport.cols
+    pub fn offset_viewport(viewport: Rc<RefCell<Viewport>>, tiled_panes: &mut TiledPanes, draw_pane_frames: bool) {
+        let boundary_geoms = tiled_panes.non_selectable_pane_geoms_inside_viewport();
         {
-            if position_and_size.y == viewport.y {
-                viewport.y += position_and_size.rows;
-                viewport.rows -= position_and_size.rows;
-            } else if position_and_size.y + position_and_size.rows == viewport.y + viewport.rows {
-                viewport.rows -= position_and_size.rows;
+            // curly braces here is so that we free viewport immediately when we're done
+            let mut viewport = viewport.borrow_mut();
+            for position_and_size in boundary_geoms {
+                log::info!("position_and_size: {:?}", position_and_size);
+                log::info!("viewport: {:?}", viewport);
+                if position_and_size.x == viewport.x
+                    && position_and_size.x + position_and_size.cols == viewport.x + viewport.cols
+                {
+                    if position_and_size.y == viewport.y {
+                        viewport.y += position_and_size.rows;
+                        viewport.rows -= position_and_size.rows;
+                    } else if position_and_size.y + position_and_size.rows == viewport.y + viewport.rows {
+                        viewport.rows -= position_and_size.rows;
+                    }
+                }
+                if position_and_size.y == viewport.y
+                    && position_and_size.y + position_and_size.rows == viewport.y + viewport.rows
+                {
+                    if position_and_size.x == viewport.x {
+                        viewport.x += position_and_size.cols;
+                        viewport.cols -= position_and_size.cols;
+                    } else if position_and_size.x + position_and_size.cols == viewport.x + viewport.cols {
+                        viewport.cols -= position_and_size.cols;
+                    }
+                }
             }
         }
-        if position_and_size.y == viewport.y
-            && position_and_size.y + position_and_size.rows == viewport.y + viewport.rows
-        {
-            if position_and_size.x == viewport.x {
-                viewport.x += position_and_size.cols;
-                viewport.cols -= position_and_size.cols;
-            } else if position_and_size.x + position_and_size.cols == viewport.x + viewport.cols {
-                viewport.cols -= position_and_size.cols;
-            }
-        }
+        tiled_panes.set_pane_frames(draw_pane_frames);
     }
     fn adjust_viewport(&mut self) -> Result<()> {
         // here we offset the viewport after applying a tiled panes layout
@@ -546,11 +556,7 @@ impl<'a> LayoutApplier<'a> {
             *display_area
         };
         self.resize_whole_tab(display_area).context(err_context)?;
-        let boundary_geoms = self.tiled_panes.non_selectable_pane_geoms();
-        for geom in boundary_geoms {
-            self.offset_viewport(&geom)
-        }
-        self.tiled_panes.set_pane_frames(self.draw_pane_frames);
+        LayoutApplier::offset_viewport(self.viewport.clone(), self.tiled_panes, self.draw_pane_frames);
         Ok(())
     }
     fn set_focused_tiled_pane(&mut self, focus_pane_id: Option<PaneId>, client_id: ClientId) {

@@ -994,6 +994,22 @@ Config {
                 ),
             ],
             Char(
+                '[',
+            ): [
+                BreakPaneLeft,
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            Char(
+                ']',
+            ): [
+                BreakPaneRight,
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            Char(
                 'b',
             ): [
                 BreakPane,

@@ -555,7 +555,7 @@ pub fn switch_to_prev_tab() {
 
     new_tab(&mut screen, 1, 1);
     new_tab(&mut screen, 2, 2);
-    screen.switch_tab_prev(None, 1).expect("TEST");
+    screen.switch_tab_prev(None, true, 1).expect("TEST");
 
     assert_eq!(
         screen.get_active_tab(1).unwrap().position,
@@ -574,8 +574,8 @@ pub fn switch_to_next_tab() {
 
     new_tab(&mut screen, 1, 1);
     new_tab(&mut screen, 2, 2);
-    screen.switch_tab_prev(None, 1).expect("TEST");
-    screen.switch_tab_next(None, 1).expect("TEST");
+    screen.switch_tab_prev(None, true, 1).expect("TEST");
+    screen.switch_tab_next(None, true, 1).expect("TEST");
 
     assert_eq!(
         screen.get_active_tab(1).unwrap().position,
@@ -649,7 +649,7 @@ pub fn close_the_middle_tab() {
     new_tab(&mut screen, 1, 1);
     new_tab(&mut screen, 2, 2);
     new_tab(&mut screen, 3, 3);
-    screen.switch_tab_prev(None, 1).expect("TEST");
+    screen.switch_tab_prev(None, true, 1).expect("TEST");
     screen.close_tab(1).expect("TEST");
 
     assert_eq!(screen.tabs.len(), 2, "Two tabs left");
@@ -671,7 +671,7 @@ fn move_focus_left_at_left_screen_edge_changes_tab() {
     new_tab(&mut screen, 1, 1);
     new_tab(&mut screen, 2, 2);
     new_tab(&mut screen, 3, 3);
-    screen.switch_tab_prev(None, 1).expect("TEST");
+    screen.switch_tab_prev(None, true, 1).expect("TEST");
     screen.move_focus_left_or_previous_tab(1).expect("TEST");
 
     assert_eq!(
@@ -692,7 +692,7 @@ fn move_focus_right_at_right_screen_edge_changes_tab() {
     new_tab(&mut screen, 1, 1);
     new_tab(&mut screen, 2, 2);
     new_tab(&mut screen, 3, 3);
-    screen.switch_tab_prev(None, 1).expect("TEST");
+    screen.switch_tab_prev(None, true, 1).expect("TEST");
     screen.move_focus_right_or_next_tab(1).expect("TEST");
 
     assert_eq!(
@@ -828,7 +828,7 @@ pub fn toggle_to_previous_tab_delete() {
         "Active tab toggler to previous tab"
     );
 
-    screen.switch_tab_prev(None, 1).expect("TEST");
+    screen.switch_tab_prev(None, true, 1).expect("TEST");
     assert_eq!(
         screen.tab_history.get(&1).unwrap(),
         &[0, 1, 3],
@@ -839,7 +839,7 @@ pub fn toggle_to_previous_tab_delete() {
         2,
         "Active tab toggler to previous tab"
     );
-    screen.switch_tab_prev(None, 1).expect("TEST");
+    screen.switch_tab_prev(None, true, 1).expect("TEST");
     assert_eq!(
         screen.tab_history.get(&1).unwrap(),
         &[0, 3, 2],
@@ -894,7 +894,7 @@ fn switch_to_tab_with_fullscreen() {
     }
     new_tab(&mut screen, 2, 2);
 
-    screen.switch_tab_prev(None, 1).expect("TEST");
+    screen.switch_tab_prev(None, true, 1).expect("TEST");
 
     assert_eq!(
         screen.get_active_tab(1).unwrap().position,
@@ -2973,6 +2973,98 @@ pub fn screen_can_break_floating_plugin_pane_to_a_new_tab() {
     let _ = mock_screen
         .to_screen
         .send(ScreenInstruction::MoveFocusRightOrNextTab(1));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+
+    let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
+        received_server_instructions.lock().unwrap().iter(),
+        size,
+    );
+    let snapshot_count = snapshots.len();
+    for (_cursor_coordinates, snapshot) in snapshots {
+        assert_snapshot!(format!("{}", snapshot));
+    }
+    assert_snapshot!(format!("{}", snapshot_count));
+}
+
+#[test]
+pub fn screen_can_move_pane_to_a_new_tab_right() {
+    let size = Size { cols: 80, rows: 20 };
+    let mut initial_layout = TiledPaneLayout::default();
+    let mut pane_to_break_free = TiledPaneLayout::default();
+    pane_to_break_free.name = Some("pane_to_break_free".to_owned());
+    let mut pane_to_stay = TiledPaneLayout::default();
+    pane_to_stay.name = Some("pane_to_stay".to_owned());
+    initial_layout.children_split_direction = SplitDirection::Vertical;
+    initial_layout.children = vec![pane_to_break_free, pane_to_stay];
+    let mut mock_screen = MockScreen::new(size);
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::BreakPane(Box::new(Layout::default()), Default::default(), 1));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::MoveFocusLeftOrPreviousTab(1));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::BreakPaneRight(1));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+
+    let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
+        received_server_instructions.lock().unwrap().iter(),
+        size,
+    );
+    let snapshot_count = snapshots.len();
+    for (_cursor_coordinates, snapshot) in snapshots {
+        assert_snapshot!(format!("{}", snapshot));
+    }
+    assert_snapshot!(format!("{}", snapshot_count));
+}
+
+#[test]
+pub fn screen_can_move_pane_to_a_new_tab_left() {
+    let size = Size { cols: 80, rows: 20 };
+    let mut initial_layout = TiledPaneLayout::default();
+    let mut pane_to_break_free = TiledPaneLayout::default();
+    pane_to_break_free.name = Some("pane_to_break_free".to_owned());
+    let mut pane_to_stay = TiledPaneLayout::default();
+    pane_to_stay.name = Some("pane_to_stay".to_owned());
+    initial_layout.children_split_direction = SplitDirection::Vertical;
+    initial_layout.children = vec![pane_to_break_free, pane_to_stay];
+    let mut mock_screen = MockScreen::new(size);
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::BreakPane(Box::new(Layout::default()), Default::default(), 1));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::MoveFocusLeftOrPreviousTab(1));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::BreakPaneLeft(1));
     std::thread::sleep(std::time::Duration::from_millis(100));
 
     mock_screen.teardown(vec![server_thread, screen_thread]);

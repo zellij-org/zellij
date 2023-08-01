@@ -2158,6 +2158,9 @@ impl Tab {
                 self.tiled_panes.move_clients_out_of_pane(id);
             }
         }
+        // we do this here because if there is a non-selectable pane on the edge, we consider it
+        // outside the viewport (a ui-pane, eg. the status-bar and tab-bar) and need to adjust for it
+        LayoutApplier::offset_viewport(self.viewport.clone(), &mut self.tiled_panes, self.draw_pane_frames);
     }
     pub fn close_pane(
         &mut self,
@@ -3153,6 +3156,7 @@ impl Tab {
 
     pub fn set_pane_frames(&mut self, should_set_pane_frames: bool) {
         self.tiled_panes.set_pane_frames(should_set_pane_frames);
+        self.draw_pane_frames = should_set_pane_frames;
         self.should_clear_display_before_rendering = true;
         self.set_force_render();
     }
@@ -3371,13 +3375,6 @@ impl Tab {
         }
         pane_info
     }
-    pub fn add_existing_pane(&mut self, pane: Box<dyn Pane>, pane_id: PaneId, client_id: Option<ClientId>) -> Result<()> {
-        if self.are_floating_panes_visible() {
-            self.add_floating_pane(pane, pane_id, client_id)
-        } else {
-            self.add_tiled_pane(pane, pane_id, client_id)
-        }
-    }
     pub fn add_floating_pane(
         &mut self,
         mut pane: Box<dyn Pane>,
@@ -3385,17 +3382,6 @@ impl Tab {
         client_id: Option<ClientId>,
     ) -> Result<()> {
         let err_context = || format!("failed to add floating pane");
-        {
-            // this can sometimes happen because of a race condition when creating tabs, this fixes
-            // it if it happens by resizing the tab to its current state
-            if !self.viewport.borrow().has_positive_size() {
-                let display_area = {
-                    let display_area = self.display_area.borrow();
-                    *display_area
-                };
-                self.resize_whole_tab(display_area).with_context(err_context)?;
-            }
-        }
         if let Some(new_pane_geom) = self.floating_panes.find_room_for_new_pane() {
             pane.set_active_at(Instant::now());
             pane.set_geom(new_pane_geom);

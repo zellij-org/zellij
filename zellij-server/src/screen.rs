@@ -280,6 +280,8 @@ pub enum ScreenInstruction {
     RenamePane(PaneId, Vec<u8>),
     RenameTab(usize, Vec<u8>),
     BreakPane(Box<Layout>, Option<TerminalAction>, ClientId),
+    BreakPaneRight(ClientId),
+    BreakPaneLeft(ClientId),
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -448,6 +450,8 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::RenamePane(..) => ScreenContext::RenamePane,
             ScreenInstruction::RenameTab(..) => ScreenContext::RenameTab,
             ScreenInstruction::BreakPane(..) => ScreenContext::BreakPane,
+            ScreenInstruction::BreakPaneRight(..) => ScreenContext::BreakPaneRight,
+            ScreenInstruction::BreakPaneLeft(..) => ScreenContext::BreakPaneLeft,
         }
     }
 }
@@ -611,6 +615,7 @@ impl Screen {
         &mut self,
         source_tab_index: usize,
         destination_tab_index: usize,
+        update_mode_infos: bool,
         clients_to_move: Option<Vec<ClientId>>,
     ) -> Result<()> {
         let err_context = || {
@@ -631,9 +636,11 @@ impl Screen {
             destination_tab
                 .add_multiple_clients(client_mode_info_in_source_tab)
                 .with_context(err_context)?;
-            destination_tab
-                .update_input_modes()
-                .with_context(err_context)?;
+            if update_mode_infos {
+                destination_tab
+                    .update_input_modes()
+                    .with_context(err_context)?;
+            }
             destination_tab.set_force_render();
             destination_tab.visible(true).with_context(err_context)?;
         }
@@ -659,6 +666,7 @@ impl Screen {
         &mut self,
         new_tab_pos: usize,
         should_change_pane_focus: Option<Direction>,
+        update_mode_infos: bool,
         client_id: ClientId,
     ) -> Result<()> {
         let err_context = || {
@@ -678,7 +686,7 @@ impl Screen {
                     let current_tab_index = current_tab.index;
                     let new_tab_index = new_tab.index;
                     if self.session_is_mirrored {
-                        self.move_clients_between_tabs(current_tab_index, new_tab_index, None)
+                        self.move_clients_between_tabs(current_tab_index, new_tab_index, update_mode_infos, None)
                             .with_context(err_context)?;
                         let all_connected_clients: Vec<ClientId> =
                             self.connected_clients.borrow().iter().copied().collect();
@@ -698,6 +706,7 @@ impl Screen {
                         self.move_clients_between_tabs(
                             current_tab_index,
                             new_tab_index,
+                            update_mode_infos,
                             Some(vec![client_id]),
                         )
                         .with_context(err_context)?;
@@ -738,7 +747,7 @@ impl Screen {
     fn switch_active_tab_name(&mut self, name: String, client_id: ClientId) -> Result<bool> {
         match self.tabs.values().find(|t| t.name == name) {
             Some(new_tab) => {
-                self.switch_active_tab(new_tab.position, None, client_id)?;
+                self.switch_active_tab(new_tab.position, None, true, client_id)?;
                 Ok(true)
             },
             None => Ok(false),
@@ -749,6 +758,7 @@ impl Screen {
     pub fn switch_tab_next(
         &mut self,
         should_change_pane_focus: Option<Direction>,
+        update_mode_infos: bool,
         client_id: ClientId,
     ) -> Result<()> {
         let err_context = || format!("failed to switch to next tab for client {client_id}");
@@ -767,6 +777,7 @@ impl Screen {
                     return self.switch_active_tab(
                         new_tab_pos,
                         should_change_pane_focus,
+                        update_mode_infos,
                         client_id,
                     );
                 },
@@ -780,6 +791,7 @@ impl Screen {
     pub fn switch_tab_prev(
         &mut self,
         should_change_pane_focus: Option<Direction>,
+        update_mode_infos: bool,
         client_id: ClientId,
     ) -> Result<()> {
         let err_context = || format!("failed to switch to previous tab for client {client_id}");
@@ -803,6 +815,7 @@ impl Screen {
                     return self.switch_active_tab(
                         new_tab_pos,
                         should_change_pane_focus,
+                        update_mode_infos,
                         client_id,
                     );
                 },
@@ -813,7 +826,7 @@ impl Screen {
     }
 
     pub fn go_to_tab(&mut self, tab_index: usize, client_id: ClientId) -> Result<()> {
-        self.switch_active_tab(tab_index.saturating_sub(1), None, client_id)
+        self.switch_active_tab(tab_index.saturating_sub(1), None, true, client_id)
     }
 
     pub fn go_to_tab_name(&mut self, name: String, client_id: ClientId) -> Result<bool> {
@@ -1391,6 +1404,7 @@ impl Screen {
         for tab in self.tabs.values_mut() {
             tab.change_mode_info(mode_info.clone(), client_id);
             tab.mark_active_pane_for_rerender(client_id);
+            tab.update_input_modes()?;
         }
 
         if let Some(os_input) = &mut self.bus.os_input {
@@ -1435,7 +1449,7 @@ impl Screen {
                         .move_focus_left(client_id)
                         .and_then(|success| {
                             if !success {
-                                self.switch_tab_prev(Some(Direction::Left), client_id)
+                                self.switch_tab_prev(Some(Direction::Left), true, client_id)
                                     .context("failed to move focus to previous tab")
                             } else {
                                 Ok(())
@@ -1470,7 +1484,7 @@ impl Screen {
                         .move_focus_right(client_id)
                         .and_then(|success| {
                             if !success {
-                                self.switch_tab_next(Some(Direction::Right), client_id)
+                                self.switch_tab_next(Some(Direction::Right), true, client_id)
                                     .context("failed to move focus to next tab")
                             } else {
                                 Ok(())
@@ -2236,12 +2250,12 @@ pub(crate) fn screen_thread_main(
                 screen.report_pane_state()?;
             },
             ScreenInstruction::SwitchTabNext(client_id) => {
-                screen.switch_tab_next(None, client_id)?;
+                screen.switch_tab_next(None, true, client_id)?;
                 screen.unblock_input()?;
                 screen.render()?;
             },
             ScreenInstruction::SwitchTabPrev(client_id) => {
-                screen.switch_tab_prev(None, client_id)?;
+                screen.switch_tab_prev(None, true, client_id)?;
                 screen.unblock_input()?;
                 screen.render()?;
             },
@@ -2818,46 +2832,32 @@ pub(crate) fn screen_thread_main(
                 screen.report_tab_state()?;
             },
             ScreenInstruction::BreakPane(default_layout, default_shell, client_id) => {
-                // TODO: CONTINUE HERE
-                // - find a way to test this - DONE!!bwahaha
-                // - handle a case where it's the last pane in the tab (probably shouldn't work?) -
-                // DONE
-                // - do the same with floating panes <== CONTINUE HERE (28/07)
-                // - try with a plugin (also floating)
-                // - try with keybind
-                // - decide what to do about client_id, cli action, etc.
-                // - consider refactoring?
-                // - test manually with swap layouts to see it behaves well in the source and
-                // destination tab, with dirty layout etc.
                 let err_context = || "failed break pane out of tab".to_string();
 
-                let client_id = screen.get_first_client_id().with_context(err_context)?;
                 let active_tab = screen.get_active_tab_mut(client_id)?;
                 if active_tab.get_selectable_tiled_panes_count() > 1 || active_tab.get_visible_selectable_floating_panes_count() > 0 {
                     let active_pane_id = active_tab.get_active_pane_id(client_id).with_context(err_context)?;
                     let pane_to_break_is_floating = active_tab.are_floating_panes_visible();
                     let active_pane = active_tab.close_pane(active_pane_id, false, Some(client_id)).with_context(err_context)?;
                     let active_pane_run_instruction = active_pane.invoked_with().clone();
+
                     let tab_index = screen.get_new_tab_index();
                     let swap_layouts = (default_layout.swap_tiled_layouts.clone(), default_layout.swap_floating_layouts.clone());
                     screen.new_tab(tab_index, swap_layouts, None, client_id)?;
                     let tab = screen.tabs
                         .get_mut(&tab_index)
                         .with_context(err_context)?;
-                    // TODO: combine iwth below?
-                    if pane_to_break_is_floating {
-                        tab.add_floating_pane(active_pane, active_pane_id, Some(client_id))?;
-                        tab.show_floating_panes();
-                    } else {
-                        tab.add_tiled_pane(active_pane, active_pane_id, Some(client_id))?;
-                    }
+
                     let (mut tiled_panes_layout, mut floating_panes_layout) = default_layout.new_tab();
 
                     if pane_to_break_is_floating {
+                        tab.show_floating_panes();
+                        tab.add_floating_pane(active_pane, active_pane_id, Some(client_id))?;
                         if let Some(mut already_running_layout) = floating_panes_layout.iter_mut().find(|i| i.run == active_pane_run_instruction) {
                             already_running_layout.already_running = true;
                         }
                     } else {
+                        tab.add_tiled_pane(active_pane, active_pane_id, Some(client_id))?;
                         tiled_panes_layout.ignore_run_instruction(active_pane_run_instruction.clone());
                     }
 
@@ -2875,6 +2875,68 @@ pub(crate) fn screen_thread_main(
                 } else {
                     screen.unblock_input()?;
                 }
+            }
+            ScreenInstruction::BreakPaneRight(client_id) => {
+                let err_context = || "failed break pane out of tab right".to_string();
+
+                if screen.tabs.len() > 1 {
+                    let (active_pane, pane_to_break_is_floating) = {
+                        let active_tab = screen.get_active_tab_mut(client_id)?;
+                        let active_pane_id = active_tab.get_active_pane_id(client_id).with_context(err_context)?;
+                        let pane_to_break_is_floating = active_tab.are_floating_panes_visible();
+                        let active_pane = active_tab.close_pane(active_pane_id, false, Some(client_id)).with_context(err_context)?;
+                        (active_pane, pane_to_break_is_floating)
+                    };
+                    let update_mode_infos = false;
+                    screen.switch_tab_next(None, update_mode_infos, client_id)?;
+                    let new_active_tab = screen.get_active_tab_mut(client_id)?;
+
+                    let active_pane_id = active_pane.pid();
+
+                    if pane_to_break_is_floating {
+                        new_active_tab.show_floating_panes();
+                        new_active_tab.add_floating_pane(active_pane, active_pane_id, Some(client_id))?;
+                    } else {
+                        new_active_tab.hide_floating_panes();
+                        new_active_tab.add_tiled_pane(active_pane, active_pane_id, Some(client_id))?;
+                    }
+
+                    screen.report_tab_state()?;
+                    screen.report_pane_state()?;
+                }
+                screen.unblock_input()?;
+                screen.render()?;
+            }
+            ScreenInstruction::BreakPaneLeft(client_id) => {
+                let err_context = || "failed break pane out of tab right".to_string();
+
+                if screen.tabs.len() > 1 {
+                    let (active_pane, pane_to_break_is_floating) = {
+                        let active_tab = screen.get_active_tab_mut(client_id)?;
+                        let active_pane_id = active_tab.get_active_pane_id(client_id).with_context(err_context)?;
+                        let pane_to_break_is_floating = active_tab.are_floating_panes_visible();
+                        let active_pane = active_tab.close_pane(active_pane_id, false, Some(client_id)).with_context(err_context)?;
+                        (active_pane, pane_to_break_is_floating)
+                    };
+                    let update_mode_infos = false;
+                    screen.switch_tab_prev(None, update_mode_infos, client_id)?;
+                    let new_active_tab = screen.get_active_tab_mut(client_id)?;
+
+                    let active_pane_id = active_pane.pid();
+
+                    if pane_to_break_is_floating {
+                        new_active_tab.show_floating_panes();
+                        new_active_tab.add_floating_pane(active_pane, active_pane_id, Some(client_id))?;
+                    } else {
+                        new_active_tab.hide_floating_panes();
+                        new_active_tab.add_tiled_pane(active_pane, active_pane_id, Some(client_id))?;
+                    }
+
+                    screen.report_tab_state()?;
+                    screen.report_pane_state()?;
+                }
+                screen.unblock_input()?;
+                screen.render()?;
             }
         }
     }
