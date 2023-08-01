@@ -23,6 +23,7 @@ use zellij_utils::{
 use crate::os_input_output::ResizeCache;
 use crate::panes::alacritty_functions::xparse_color;
 use crate::panes::terminal_character::AnsiCode;
+use crate::background_jobs::BackgroundJob;
 
 use crate::{
     output::Output,
@@ -1608,6 +1609,13 @@ impl Screen {
                     client_id,
                 ))?;
         } else {
+            let active_pane_id = active_tab.get_active_pane_id(client_id).with_context(err_context)?;
+            self.bus.senders
+                .send_to_background_jobs(BackgroundJob::DisplayPaneError(
+                    vec![active_pane_id],
+                    "Cannot break single pane out!".into(),
+                ))
+                .with_context(err_context)?;
             self.unblock_input()?;
         }
         Ok(())
@@ -1643,6 +1651,19 @@ impl Screen {
 
             self.report_tab_state()?;
             self.report_pane_state()?;
+        } else {
+            let active_pane_id = {
+                let active_tab = self.get_active_tab_mut(client_id)?;
+                active_tab.get_active_pane_id(client_id).with_context(err_context)?
+            };
+            self
+                .bus
+                .senders
+                .send_to_background_jobs(BackgroundJob::DisplayPaneError(
+                    vec![active_pane_id],
+                    "No other tabs to add pane to!".into(),
+                ))
+                .with_context(err_context)?;
         }
         self.unblock_input()?;
         self.render()?;
