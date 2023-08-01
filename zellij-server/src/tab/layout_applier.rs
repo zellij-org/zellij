@@ -383,9 +383,6 @@ impl<'a> LayoutApplier<'a> {
                     focused_floating_pane = Some(PaneId::Plugin(pid));
                 }
             } else if let Some((pid, hold_for_command)) = new_floating_terminal_ids.next() {
-                //                 let position_and_size = self
-                //                     .floating_panes
-                //                     .position_floating_pane_layout(&floating_pane_layout);
                 let next_terminal_position =
                     get_next_terminal_position(&self.tiled_panes, &self.floating_panes);
                 let initial_title = match &floating_pane_layout.run {
