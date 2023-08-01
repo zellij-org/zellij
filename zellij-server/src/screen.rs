@@ -1571,6 +1571,83 @@ impl Screen {
         };
         Ok(())
     }
+    pub fn break_pane(&mut self, default_shell: Option<TerminalAction>, default_layout: Box<Layout>, client_id: ClientId) -> Result<()> {
+        let err_context = || "failed break pane out of tab".to_string();
+        let active_tab = self.get_active_tab_mut(client_id)?;
+        if active_tab.get_selectable_tiled_panes_count() > 1 || active_tab.get_visible_selectable_floating_panes_count() > 0 {
+            let active_pane_id = active_tab.get_active_pane_id(client_id).with_context(err_context)?;
+            let pane_to_break_is_floating = active_tab.are_floating_panes_visible();
+            let active_pane = active_tab.close_pane(active_pane_id, false, Some(client_id)).with_context(err_context)?;
+            let active_pane_run_instruction = active_pane.invoked_with().clone();
+            let tab_index = self.get_new_tab_index();
+            let swap_layouts = (default_layout.swap_tiled_layouts.clone(), default_layout.swap_floating_layouts.clone());
+            self.new_tab(tab_index, swap_layouts, None, client_id)?;
+            let tab = self.tabs
+                .get_mut(&tab_index)
+                .with_context(err_context)?;
+            let (mut tiled_panes_layout, mut floating_panes_layout) = default_layout.new_tab();
+            if pane_to_break_is_floating {
+                tab.show_floating_panes();
+                tab.add_floating_pane(active_pane, active_pane_id, Some(client_id))?;
+                if let Some(mut already_running_layout) = floating_panes_layout.iter_mut().find(|i| i.run == active_pane_run_instruction) {
+                    already_running_layout.already_running = true;
+                }
+            } else {
+                tab.add_tiled_pane(active_pane, active_pane_id, Some(client_id))?;
+                tiled_panes_layout.ignore_run_instruction(active_pane_run_instruction.clone());
+            }
+            self
+                .bus
+                .senders
+                .send_to_plugin(PluginInstruction::NewTab(
+                    None,
+                    default_shell,
+                    Some(tiled_panes_layout),
+                    floating_panes_layout,
+                    tab_index,
+                    client_id,
+                ))?;
+        } else {
+            self.unblock_input()?;
+        }
+        Ok(())
+    }
+    pub fn break_pane_to_new_tab(&mut self, direction: Direction, client_id: ClientId) -> Result<()> {
+        let err_context = || "failed break pane out of tab".to_string();
+        if self.tabs.len() > 1 {
+            let (active_pane_id, active_pane, pane_to_break_is_floating) = {
+                let active_tab = self.get_active_tab_mut(client_id)?;
+                let active_pane_id = active_tab.get_active_pane_id(client_id).with_context(err_context)?;
+                let pane_to_break_is_floating = active_tab.are_floating_panes_visible();
+                let active_pane = active_tab.close_pane(active_pane_id, false, Some(client_id)).with_context(err_context)?;
+                (active_pane_id, active_pane, pane_to_break_is_floating)
+            };
+            let update_mode_infos = false;
+            match direction {
+                Direction::Right | Direction::Down => {
+                    self.switch_tab_next(None, update_mode_infos, client_id)?;
+                },
+                Direction::Left | Direction::Up => {
+                    self.switch_tab_prev(None, update_mode_infos, client_id)?;
+                }
+            };
+            let new_active_tab = self.get_active_tab_mut(client_id)?;
+
+            if pane_to_break_is_floating {
+                new_active_tab.show_floating_panes();
+                new_active_tab.add_floating_pane(active_pane, active_pane_id, Some(client_id))?;
+            } else {
+                new_active_tab.hide_floating_panes();
+                new_active_tab.add_tiled_pane(active_pane, active_pane_id, Some(client_id))?;
+            }
+
+            self.report_tab_state()?;
+            self.report_pane_state()?;
+        }
+        self.unblock_input()?;
+        self.render()?;
+        Ok(())
+    }
 
     fn unblock_input(&self) -> Result<()> {
         self.bus
@@ -2832,111 +2909,13 @@ pub(crate) fn screen_thread_main(
                 screen.report_tab_state()?;
             },
             ScreenInstruction::BreakPane(default_layout, default_shell, client_id) => {
-                let err_context = || "failed break pane out of tab".to_string();
-
-                let active_tab = screen.get_active_tab_mut(client_id)?;
-                if active_tab.get_selectable_tiled_panes_count() > 1 || active_tab.get_visible_selectable_floating_panes_count() > 0 {
-                    let active_pane_id = active_tab.get_active_pane_id(client_id).with_context(err_context)?;
-                    let pane_to_break_is_floating = active_tab.are_floating_panes_visible();
-                    let active_pane = active_tab.close_pane(active_pane_id, false, Some(client_id)).with_context(err_context)?;
-                    let active_pane_run_instruction = active_pane.invoked_with().clone();
-
-                    let tab_index = screen.get_new_tab_index();
-                    let swap_layouts = (default_layout.swap_tiled_layouts.clone(), default_layout.swap_floating_layouts.clone());
-                    screen.new_tab(tab_index, swap_layouts, None, client_id)?;
-                    let tab = screen.tabs
-                        .get_mut(&tab_index)
-                        .with_context(err_context)?;
-
-                    let (mut tiled_panes_layout, mut floating_panes_layout) = default_layout.new_tab();
-
-                    if pane_to_break_is_floating {
-                        tab.show_floating_panes();
-                        tab.add_floating_pane(active_pane, active_pane_id, Some(client_id))?;
-                        if let Some(mut already_running_layout) = floating_panes_layout.iter_mut().find(|i| i.run == active_pane_run_instruction) {
-                            already_running_layout.already_running = true;
-                        }
-                    } else {
-                        tab.add_tiled_pane(active_pane, active_pane_id, Some(client_id))?;
-                        tiled_panes_layout.ignore_run_instruction(active_pane_run_instruction.clone());
-                    }
-
-                    screen
-                        .bus
-                        .senders
-                        .send_to_plugin(PluginInstruction::NewTab(
-                            None,
-                            default_shell,
-                            Some(tiled_panes_layout),
-                            floating_panes_layout,
-                            tab_index,
-                            client_id,
-                        ))?;
-                } else {
-                    screen.unblock_input()?;
-                }
+                screen.break_pane(default_shell, default_layout, client_id)?;
             }
             ScreenInstruction::BreakPaneRight(client_id) => {
-                let err_context = || "failed break pane out of tab right".to_string();
-
-                if screen.tabs.len() > 1 {
-                    let (active_pane, pane_to_break_is_floating) = {
-                        let active_tab = screen.get_active_tab_mut(client_id)?;
-                        let active_pane_id = active_tab.get_active_pane_id(client_id).with_context(err_context)?;
-                        let pane_to_break_is_floating = active_tab.are_floating_panes_visible();
-                        let active_pane = active_tab.close_pane(active_pane_id, false, Some(client_id)).with_context(err_context)?;
-                        (active_pane, pane_to_break_is_floating)
-                    };
-                    let update_mode_infos = false;
-                    screen.switch_tab_next(None, update_mode_infos, client_id)?;
-                    let new_active_tab = screen.get_active_tab_mut(client_id)?;
-
-                    let active_pane_id = active_pane.pid();
-
-                    if pane_to_break_is_floating {
-                        new_active_tab.show_floating_panes();
-                        new_active_tab.add_floating_pane(active_pane, active_pane_id, Some(client_id))?;
-                    } else {
-                        new_active_tab.hide_floating_panes();
-                        new_active_tab.add_tiled_pane(active_pane, active_pane_id, Some(client_id))?;
-                    }
-
-                    screen.report_tab_state()?;
-                    screen.report_pane_state()?;
-                }
-                screen.unblock_input()?;
-                screen.render()?;
+                screen.break_pane_to_new_tab(Direction::Right, client_id)?;
             }
             ScreenInstruction::BreakPaneLeft(client_id) => {
-                let err_context = || "failed break pane out of tab right".to_string();
-
-                if screen.tabs.len() > 1 {
-                    let (active_pane, pane_to_break_is_floating) = {
-                        let active_tab = screen.get_active_tab_mut(client_id)?;
-                        let active_pane_id = active_tab.get_active_pane_id(client_id).with_context(err_context)?;
-                        let pane_to_break_is_floating = active_tab.are_floating_panes_visible();
-                        let active_pane = active_tab.close_pane(active_pane_id, false, Some(client_id)).with_context(err_context)?;
-                        (active_pane, pane_to_break_is_floating)
-                    };
-                    let update_mode_infos = false;
-                    screen.switch_tab_prev(None, update_mode_infos, client_id)?;
-                    let new_active_tab = screen.get_active_tab_mut(client_id)?;
-
-                    let active_pane_id = active_pane.pid();
-
-                    if pane_to_break_is_floating {
-                        new_active_tab.show_floating_panes();
-                        new_active_tab.add_floating_pane(active_pane, active_pane_id, Some(client_id))?;
-                    } else {
-                        new_active_tab.hide_floating_panes();
-                        new_active_tab.add_tiled_pane(active_pane, active_pane_id, Some(client_id))?;
-                    }
-
-                    screen.report_tab_state()?;
-                    screen.report_pane_state()?;
-                }
-                screen.unblock_input()?;
-                screen.render()?;
+                screen.break_pane_to_new_tab(Direction::Left, client_id)?;
             }
         }
     }

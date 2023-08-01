@@ -516,8 +516,6 @@ impl<'a> LayoutApplier<'a> {
             // curly braces here is so that we free viewport immediately when we're done
             let mut viewport = viewport.borrow_mut();
             for position_and_size in boundary_geoms {
-                log::info!("position_and_size: {:?}", position_and_size);
-                log::info!("viewport: {:?}", viewport);
                 if position_and_size.x == viewport.x
                     && position_and_size.x + position_and_size.cols == viewport.x + viewport.cols
                 {
