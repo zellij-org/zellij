@@ -22,6 +22,12 @@ pub struct Viewport {
     pub cols: usize,
 }
 
+impl Viewport {
+    pub fn has_positive_size(&self) -> bool {
+        self.rows > 0 && self.cols > 0
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Offset {
     pub top: usize,

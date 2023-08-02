@@ -1780,8 +1780,24 @@ impl Tab {
     fn get_tiled_panes(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn Pane>)> {
         self.tiled_panes.get_panes()
     }
+    fn get_floating_panes(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn Pane>)> {
+        self.floating_panes.get_panes()
+    }
     fn get_selectable_tiled_panes(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn Pane>)> {
         self.get_tiled_panes().filter(|(_, p)| p.selectable())
+    }
+    fn get_selectable_floating_panes(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn Pane>)> {
+        self.get_floating_panes().filter(|(_, p)| p.selectable())
+    }
+    pub fn get_selectable_tiled_panes_count(&self) -> usize {
+        self.get_selectable_tiled_panes().count()
+    }
+    pub fn get_visible_selectable_floating_panes_count(&self) -> usize {
+        if self.are_floating_panes_visible() {
+            self.get_selectable_floating_panes().count()
+        } else {
+            0
+        }
     }
     fn get_next_terminal_position(&self) -> usize {
         let tiled_panes_count = self
@@ -2142,6 +2158,13 @@ impl Tab {
                 self.tiled_panes.move_clients_out_of_pane(id);
             }
         }
+        // we do this here because if there is a non-selectable pane on the edge, we consider it
+        // outside the viewport (a ui-pane, eg. the status-bar and tab-bar) and need to adjust for it
+        LayoutApplier::offset_viewport(
+            self.viewport.clone(),
+            &mut self.tiled_panes,
+            self.draw_pane_frames,
+        );
     }
     pub fn close_pane(
         &mut self,
@@ -3137,6 +3160,7 @@ impl Tab {
 
     pub fn set_pane_frames(&mut self, should_set_pane_frames: bool) {
         self.tiled_panes.set_pane_frames(should_set_pane_frames);
+        self.draw_pane_frames = should_set_pane_frames;
         self.should_clear_display_before_rendering = true;
         self.set_force_render();
     }
@@ -3278,13 +3302,13 @@ impl Tab {
             plugin_pane.progress_animation_offset();
         }
     }
-    fn show_floating_panes(&mut self) {
+    pub fn show_floating_panes(&mut self) {
         // this function is to be preferred to directly invoking floating_panes.toggle_show_panes(true)
         self.floating_panes.toggle_show_panes(true);
         self.tiled_panes.unfocus_all_panes();
     }
 
-    fn hide_floating_panes(&mut self) {
+    pub fn hide_floating_panes(&mut self) {
         // this function is to be preferred to directly invoking
         // floating_panes.toggle_show_panes(false)
         self.floating_panes.toggle_show_panes(false);
@@ -3355,7 +3379,7 @@ impl Tab {
         }
         pane_info
     }
-    fn add_floating_pane(
+    pub fn add_floating_pane(
         &mut self,
         mut pane: Box<dyn Pane>,
         pane_id: PaneId,
@@ -3380,7 +3404,7 @@ impl Tab {
         }
         Ok(())
     }
-    fn add_tiled_pane(
+    pub fn add_tiled_pane(
         &mut self,
         mut pane: Box<dyn Pane>,
         pane_id: PaneId,

@@ -338,6 +338,9 @@ pub enum ScreenContext {
     FocusPaneWithId,
     RenamePane,
     RenameTab,
+    BreakPane,
+    BreakPaneRight,
+    BreakPaneLeft,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.
