@@ -182,9 +182,13 @@ impl TiledPanes {
         let has_room_for_new_pane = pane_grid
             .find_room_for_new_pane(cursor_height_width_ratio)
             .is_some();
-        has_room_for_new_pane || pane_grid.has_room_for_new_stacked_pane()
+        has_room_for_new_pane || pane_grid.has_room_for_new_stacked_pane() || self.panes.is_empty()
     }
     fn add_pane(&mut self, pane_id: PaneId, mut pane: Box<dyn Pane>, should_relayout: bool) {
+        if self.panes.is_empty() {
+            self.panes.insert(pane_id, pane);
+            return;
+        }
         let cursor_height_width_ratio = self.cursor_height_width_ratio();
         let mut pane_grid = TiledPaneGrid::new(
             &mut self.panes,
@@ -243,6 +247,19 @@ impl TiledPanes {
             .filter_map(|p| {
                 let geom = p.position_and_size();
                 if p.borderless() {
+                    Some(geom.into())
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+    pub fn non_selectable_pane_geoms_inside_viewport(&self) -> Vec<Viewport> {
+        self.panes
+            .values()
+            .filter_map(|p| {
+                let geom = p.position_and_size();
+                if !p.selectable() && is_inside_viewport(&self.viewport.borrow(), p) {
                     Some(geom.into())
                 } else {
                     None
@@ -587,8 +604,6 @@ impl TiledPanes {
     pub fn focused_pane_id(&self, client_id: ClientId) -> Option<PaneId> {
         self.active_panes.get(&client_id).copied()
     }
-    // FIXME: Really not a fan of allowing this... Someone with more energy
-    // than me should clean this up someday...
     #[allow(clippy::borrowed_box)]
     pub fn get_pane(&self, pane_id: PaneId) -> Option<&Box<dyn Pane>> {
         self.panes.get(&pane_id)
@@ -734,6 +749,29 @@ impl TiledPanes {
     }
     pub fn get_panes(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn Pane>)> {
         self.panes.iter()
+    }
+    pub fn set_geom_for_pane_with_run(
+        &mut self,
+        run: Option<Run>,
+        geom: PaneGeom,
+        borderless: bool,
+    ) {
+        match self
+            .panes
+            .iter_mut()
+            .find(|(_, p)| p.invoked_with() == &run)
+        {
+            Some((_, pane)) => {
+                pane.set_geom(geom);
+                pane.set_borderless(borderless);
+                if self.draw_pane_frames {
+                    pane.set_content_offset(Offset::frame(1));
+                }
+            },
+            None => {
+                log::error!("Failed to find pane with run: {:?}", run);
+            },
+        }
     }
     pub fn resize(&mut self, new_screen_size: Size) {
         // this is blocked out to appease the borrow checker
@@ -1501,11 +1539,11 @@ impl TiledPanes {
             self.set_pane_frames(self.draw_pane_frames); // recalculate pane frames and update size
             closed_pane
         } else {
-            self.panes.remove(&pane_id);
+            let closed_pane = self.panes.remove(&pane_id);
             // this is a bit of a roundabout way to say: this is the last pane and so the tab
             // should be destroyed
             self.active_panes.clear(&mut self.panes);
-            None
+            closed_pane
         }
     }
     pub fn hold_pane(

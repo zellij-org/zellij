@@ -1,6 +1,6 @@
 ---
 source: zellij-utils/src/setup.rs
-assertion_line: 665
+assertion_line: 683
 expression: "format!(\"{:#?}\", layout)"
 ---
 Layout {
@@ -20,6 +20,7 @@ Layout {
                 children_are_stacked: false,
                 is_expanded_in_stack: false,
                 exclude_from_sync: None,
+                run_instructions_to_ignore: [],
             },
             [],
         ),
