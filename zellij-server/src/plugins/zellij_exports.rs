@@ -172,6 +172,49 @@ fn host_run_plugin_command(env: &ForeignFunctionEnv) {
                 PluginCommand::NewTab => new_tab(env),
                 PluginCommand::GoToNextTab => go_to_next_tab(env),
                 PluginCommand::GoToPreviousTab => go_to_previous_tab(env),
+                PluginCommand::Resize(resize_payload) => resize(env, resize_payload),
+                PluginCommand::ResizeWithDirection(resize_strategy) => resize_with_direction(env, resize_strategy),
+                PluginCommand::FocusNextPane => focus_next_pane(env),
+                PluginCommand::FocusPreviousPane => focus_previous_pane(env),
+                PluginCommand::MoveFocus(direction) => move_focus(env, direction),
+                PluginCommand::MoveFocusOrTab(direction) => move_focus_or_tab(env, direction),
+                PluginCommand::Detach => detach(env),
+                PluginCommand::EditScrollback => edit_scrollback(env),
+                PluginCommand::Write(bytes) => write(env, bytes),
+                PluginCommand::WriteChars(chars) => write_chars(env, chars),
+                PluginCommand::ToggleTab => toggle_tab(env),
+                PluginCommand::MovePane => move_pane(env),
+                PluginCommand::MovePaneWithDirection(direction) => move_pane_with_direction(env, direction),
+                PluginCommand::ClearScreen => clear_screen(env),
+                PluginCommand::ScrollUp => scroll_up(env),
+                PluginCommand::ScrollDown => scroll_down(env),
+                PluginCommand::ScrollToTop => scroll_to_top(env),
+                PluginCommand::ScrollToBottom => scroll_to_bottom(env),
+                PluginCommand::PageScrollUp => page_scroll_up(env),
+                PluginCommand::PageScrollDown => page_scroll_down(env),
+                PluginCommand::ToggleFocusFullscreen => toggle_focus_fullscreen(env),
+                PluginCommand::TogglePaneFrames => toggle_pane_frames(env),
+                PluginCommand::TogglePaneEmbedOrEject => toggle_pane_embed_or_eject(env),
+                PluginCommand::UndoRenamePane => undo_rename_pane(env),
+                PluginCommand::CloseFocus => close_focus(env),
+                PluginCommand::ToggleActiveTabSync => toggle_active_tab_sync(env),
+                PluginCommand::CloseFocusedTab => close_focused_tab(env),
+                PluginCommand::UndoRenameTab => undo_rename_tab(env),
+                PluginCommand::QuitZellij => quit_zellij(env),
+                PluginCommand::PreviousSwapLayout => previous_swap_layout(env),
+                PluginCommand::NextSwapLayout => next_swap_layout(env),
+                PluginCommand::GoToTabName(tab_name) => go_to_tab_name(env, tab_name),
+                PluginCommand::FocusOrCreateTab(tab_name) => focus_or_create_tab(env, tab_name),
+                PluginCommand::GoToTab(tab_index) => go_to_tab(env, tab_index),
+                PluginCommand::StartOrReloadPlugin(plugin_url) => start_or_reload_plugin(env, &plugin_url)?,
+                PluginCommand::CloseTerminalPane(terminal_pane_id) => close_terminal_pane(env, terminal_pane_id),
+                PluginCommand::ClosePluginPane(plugin_pane_id) => close_plugin_pane(env, plugin_pane_id),
+                PluginCommand::FocusTerminalPane(terminal_pane_id, should_float_if_hidden) => focus_terminal_pane(env, terminal_pane_id, should_float_if_hidden),
+                PluginCommand::FocusPluginPane(plugin_pane_id, should_float_if_hidden) => focus_plugin_pane(env, plugin_pane_id, should_float_if_hidden),
+                PluginCommand::RenameTerminalPane(terminal_pane_id, new_name) => rename_terminal_pane(env, terminal_pane_id, &new_name),
+                PluginCommand::RenamePluginPane(plugin_pane_id, new_name) => rename_plugin_pane(env, plugin_pane_id, &new_name),
+                PluginCommand::RenameTab(tab_index, new_name) => rename_tab(env, tab_index, &new_name),
+                PluginCommand::ReportPanic(crash_payload) => report_panic(env, &crash_payload),
             }
             Ok(())
         })
@@ -854,46 +897,44 @@ fn start_or_reload_plugin(env: &ForeignFunctionEnv, url: &str) -> Result<()> {
     Ok(())
 }
 
-fn close_terminal_pane(env: &ForeignFunctionEnv, terminal_pane_id: i32) {
+fn close_terminal_pane(env: &ForeignFunctionEnv, terminal_pane_id: u32) {
     let error_msg = || {
         format!(
             "failed to change tab focus in plugin {}",
             env.plugin_env.name()
         )
     };
-    let action = Action::CloseTerminalPane(terminal_pane_id as u32);
+    let action = Action::CloseTerminalPane(terminal_pane_id);
     apply_action!(action, error_msg, env);
 }
 
-fn close_plugin_pane(env: &ForeignFunctionEnv, plugin_pane_id: i32) {
+fn close_plugin_pane(env: &ForeignFunctionEnv, plugin_pane_id: u32) {
     let error_msg = || {
         format!(
             "failed to change tab focus in plugin {}",
             env.plugin_env.name()
         )
     };
-    let action = Action::ClosePluginPane(plugin_pane_id as u32);
+    let action = Action::ClosePluginPane(plugin_pane_id);
     apply_action!(action, error_msg, env);
 }
 
 fn focus_terminal_pane(
     env: &ForeignFunctionEnv,
-    terminal_pane_id: i32,
-    should_float_if_hidden: i32,
+    terminal_pane_id: u32,
+    should_float_if_hidden: bool,
 ) {
-    let should_float_if_hidden = should_float_if_hidden != 0;
-    let action = Action::FocusTerminalPaneWithId(terminal_pane_id as u32, should_float_if_hidden);
+    let action = Action::FocusTerminalPaneWithId(terminal_pane_id, should_float_if_hidden);
     let error_msg = || format!("Failed to focus terminal pane");
     apply_action!(action, error_msg, env);
 }
 
 fn focus_plugin_pane(
     env: &ForeignFunctionEnv,
-    plugin_pane_id: i32,
-    should_float_if_hidden: i32,
+    plugin_pane_id: u32,
+    should_float_if_hidden: bool,
 ) {
-    let should_float_if_hidden = should_float_if_hidden != 0;
-    let action = Action::FocusPluginPaneWithId(plugin_pane_id as u32, should_float_if_hidden);
+    let action = Action::FocusPluginPaneWithId(plugin_pane_id, should_float_if_hidden);
     let error_msg = || format!("Failed to focus plugin pane");
     apply_action!(action, error_msg, env);
 }

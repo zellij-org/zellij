@@ -821,7 +821,7 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
            }
            PluginCommand::MoveFocusOrTab(direction) => {
                Ok(ProtobufPluginCommand {
-                   name: CommandName::MoveFocus as i32,
+                   name: CommandName::MoveFocusOrTab as i32,
                    payload: Some(Payload::MoveFocusOrTabPayload(MovePayload {
                        direction: Some(direction.try_into()?),
                    })),
@@ -853,7 +853,7 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
            }
            PluginCommand::ToggleTab => {
                Ok(ProtobufPluginCommand {
-                   name: CommandName::Write as i32,
+                   name: CommandName::ToggleTab as i32,
                    payload: None,
                })
            }
