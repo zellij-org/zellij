@@ -921,7 +921,7 @@ fn host_go_to_tab_name(env: &ForeignFunctionEnv) {
     wasi_read_string(&env.plugin_env.wasi_env)
         .and_then(|tab_name| {
             let create = false;
-            let action = Action::GoToTabName(tab_name, create);
+            let action = Action::GoToTabName(tab_name, create, None);
             apply_action!(action, error_msg, env);
             Ok(())
         })
@@ -939,7 +939,7 @@ fn host_focus_or_create_tab(env: &ForeignFunctionEnv) {
     wasi_read_string(&env.plugin_env.wasi_env)
         .and_then(|tab_name| {
             let create = true;
-            let action = Action::GoToTabName(tab_name, create);
+            let action = Action::GoToTabName(tab_name, create, None);
             apply_action!(action, error_msg, env);
             Ok(())
         })
