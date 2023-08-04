@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix(terminal): occasional glitches while changing focus (https://github.com/zellij-org/zellij/pull/2654)
 * feat(plugins): add utility functions to get focused tab/pane (https://github.com/zellij-org/zellij/pull/2652)
 * feat(ui): break pane to new tab and move panes between tabs (https://github.com/zellij-org/zellij/pull/2664)
+* fix(performance): plug memory leak (https://github.com/zellij-org/zellij/pull/2675)
 
 ## [0.37.2] - 2023-06-20
 * hotfix: include theme files into binary (https://github.com/zellij-org/zellij/pull/2566)
