@@ -135,8 +135,8 @@ fn transfer_rows_from_lines_above_to_viewport(
                     lines_added_to_viewport -= top_non_canonical_rows_in_dst.len() as isize;
                     next_lines.push(next_line);
                     next_lines.append(&mut top_non_canonical_rows_in_dst);
-                    next_lines = Row::from_rows(next_lines, max_viewport_width)
-                        .split_to_rows_of_length(max_viewport_width);
+                    next_lines =
+                        Row::from_rows(next_lines).split_to_rows_of_length(max_viewport_width);
                     if next_lines.is_empty() {
                         // no more lines at lines_above, the line we popped was probably empty
                         break;
@@ -149,7 +149,7 @@ fn transfer_rows_from_lines_above_to_viewport(
         lines_added_to_viewport += 1;
     }
     if !next_lines.is_empty() {
-        let excess_row = Row::from_rows(next_lines, 0);
+        let excess_row = Row::from_rows(next_lines);
         bounded_push(lines_above, sixel_grid, excess_row);
     }
     match usize::try_from(lines_added_to_viewport) {
@@ -179,7 +179,7 @@ fn transfer_rows_from_viewport_to_lines_above(
                     next_lines.append(&mut bottom_canonical_row_and_wraps_in_dst);
                 }
                 next_lines.push(next_line);
-                next_lines = vec![Row::from_rows(next_lines, 0)];
+                next_lines = vec![Row::from_rows(next_lines)];
             } else {
                 break; // no more rows
             }
@@ -191,8 +191,7 @@ fn transfer_rows_from_viewport_to_lines_above(
         }
     }
     if !next_lines.is_empty() {
-        let excess_rows = Row::from_rows(next_lines, max_viewport_width)
-            .split_to_rows_of_length(max_viewport_width);
+        let excess_rows = Row::from_rows(next_lines).split_to_rows_of_length(max_viewport_width);
         for row in excess_rows {
             viewport.insert(0, row);
         }
@@ -217,12 +216,12 @@ fn transfer_rows_from_lines_below_to_viewport(
                     let mut canonical_line = get_viewport_bottom_canonical_row_and_wraps(viewport);
                     lines_pulled_from_viewport += canonical_line.len();
                     canonical_line.append(&mut top_non_canonical_rows_in_lines_below);
-                    next_lines = Row::from_rows(canonical_line, max_viewport_width)
-                        .split_to_rows_of_length(max_viewport_width);
+                    next_lines =
+                        Row::from_rows(canonical_line).split_to_rows_of_length(max_viewport_width);
                 } else {
                     let canonical_row = get_top_canonical_row_and_wraps(lines_below);
-                    next_lines = Row::from_rows(canonical_row, max_viewport_width)
-                        .split_to_rows_of_length(max_viewport_width);
+                    next_lines =
+                        Row::from_rows(canonical_row).split_to_rows_of_length(max_viewport_width);
                 }
             } else {
                 break; // no more rows
@@ -235,7 +234,7 @@ fn transfer_rows_from_lines_below_to_viewport(
         }
     }
     if !next_lines.is_empty() {
-        let excess_row = Row::from_rows(next_lines, 0);
+        let excess_row = Row::from_rows(next_lines);
         lines_below.insert(0, excess_row);
     }
 }
@@ -404,7 +403,7 @@ impl Debug for Grid {
         let mut buffer: Vec<Row> = self.viewport.clone();
         // pad buffer
         for _ in buffer.len()..self.height {
-            buffer.push(Row::new(self.width).canonical());
+            buffer.push(Row::new().canonical());
         }
 
         // display sixel placeholder
@@ -461,13 +460,14 @@ impl Grid {
         debug: bool,
     ) -> Self {
         let sixel_grid = SixelGrid::new(character_cell_size.clone(), sixel_image_store);
+        // make sure this is initialized as it is used internally
+        // if it was already initialized (which should happen normally unless this is a test or
+        // something changed since this comment was written), we get an Error which we ignore
+        // I don't know why this needs to be a OneCell, but whatevs
+        let _ = SCROLL_BUFFER_SIZE.set(DEFAULT_SCROLL_BUFFER_SIZE);
         Grid {
-            lines_above: VecDeque::with_capacity(
-                // .get_or_init() is used instead of .get().unwrap() to prevent
-                // unit tests from panicking where SCROLL_BUFFER_SIZE is uninitialized.
-                *SCROLL_BUFFER_SIZE.get_or_init(|| DEFAULT_SCROLL_BUFFER_SIZE),
-            ),
-            viewport: vec![Row::new(columns).canonical()],
+            lines_above: VecDeque::new(),
+            viewport: vec![Row::new().canonical()],
             lines_below: vec![],
             horizontal_tabstops: create_horizontal_tabstops(columns),
             cursor: Cursor::new(0, 0),
@@ -823,7 +823,7 @@ impl Grid {
             for mut canonical_line in viewport_canonical_lines {
                 let mut canonical_line_parts: Vec<Row> = vec![];
                 if canonical_line.columns.is_empty() {
-                    canonical_line_parts.push(Row::new(new_columns).canonical());
+                    canonical_line_parts.push(Row::new().canonical());
                 }
                 while !canonical_line.columns.is_empty() {
                     let next_wrap = canonical_line.drain_until(new_columns);
@@ -1248,7 +1248,7 @@ impl Grid {
             // FIXME: this should add an empty line with the pad_character
             // but for some reason this breaks rendering in various situations
             // it needs to be investigated and fixed
-            let new_row = Row::new(self.width).canonical();
+            let new_row = Row::new().canonical();
             self.viewport.push(new_row);
         }
         if self.cursor.y == self.height.saturating_sub(1) {
@@ -1314,13 +1314,10 @@ impl Grid {
             None => {
                 // pad lines until cursor if they do not exist
                 for _ in self.viewport.len()..self.cursor.y {
-                    self.viewport.push(Row::new(self.width).canonical());
+                    self.viewport.push(Row::new().canonical());
                 }
-                self.viewport.push(
-                    Row::new(self.width)
-                        .with_character(terminal_character)
-                        .canonical(),
-                );
+                self.viewport
+                    .push(Row::new().with_character(terminal_character).canonical());
                 self.output_buffer.update_line(self.cursor.y);
             },
         }
@@ -1409,14 +1406,14 @@ impl Grid {
             } else {
                 self.viewport.remove(0);
             }
-            let wrapped_row = Row::new(self.width);
+            let wrapped_row = Row::new();
             self.viewport.push(wrapped_row);
             self.selection.move_up(1);
             self.output_buffer.update_all_lines();
         } else {
             self.cursor.y += 1;
             if self.viewport.len() <= self.cursor.y {
-                let line_wrapped_row = Row::new(self.width);
+                let line_wrapped_row = Row::new();
                 self.viewport.push(line_wrapped_row);
                 self.output_buffer.update_line(self.cursor.y);
             }
@@ -1494,8 +1491,7 @@ impl Grid {
                 if scroll_region_bottom < self.viewport.len() {
                     self.viewport.remove(scroll_region_bottom);
                 }
-                self.viewport
-                    .insert(current_line_index, Row::new(self.width)); // TODO: .canonical() ?
+                self.viewport.insert(current_line_index, Row::new()); // TODO: .canonical() ?
             } else if current_line_index > scroll_region_top
                 && current_line_index <= scroll_region_bottom
             {
@@ -1654,9 +1650,9 @@ impl Grid {
         self.should_render = true;
     }
     pub fn reset_terminal_state(&mut self) {
-        self.lines_above = VecDeque::with_capacity(*SCROLL_BUFFER_SIZE.get().unwrap());
+        self.lines_above = VecDeque::new();
         self.lines_below = vec![];
-        self.viewport = vec![Row::new(self.width).canonical()];
+        self.viewport = vec![Row::new().canonical()];
         self.alternate_screen_state = None;
         self.cursor_key_mode = false;
         self.scroll_region = None;
@@ -2571,14 +2567,10 @@ impl Perform for Grid {
                         },
                         1049 => {
                             // enter alternate buffer
-                            let current_lines_above = std::mem::replace(
-                                &mut self.lines_above,
-                                VecDeque::with_capacity(*SCROLL_BUFFER_SIZE.get().unwrap()),
-                            );
-                            let current_viewport = std::mem::replace(
-                                &mut self.viewport,
-                                vec![Row::new(self.width).canonical()],
-                            );
+                            let current_lines_above =
+                                std::mem::replace(&mut self.lines_above, VecDeque::new());
+                            let current_viewport =
+                                std::mem::replace(&mut self.viewport, vec![Row::new().canonical()]);
                             let current_cursor =
                                 std::mem::replace(&mut self.cursor, Cursor::new(0, 0));
                             let sixel_image_store = self.sixel_grid.sixel_image_store.clone();
@@ -3057,9 +3049,9 @@ impl Debug for Row {
 }
 
 impl Row {
-    pub fn new(width: usize) -> Self {
+    pub fn new() -> Self {
         Row {
-            columns: VecDeque::with_capacity(width),
+            columns: VecDeque::new(),
             is_canonical: false,
             width: None,
         }
@@ -3071,9 +3063,9 @@ impl Row {
             width: None,
         }
     }
-    pub fn from_rows(mut rows: Vec<Row>, width: usize) -> Self {
+    pub fn from_rows(mut rows: Vec<Row>) -> Self {
         if rows.is_empty() {
-            Row::new(width)
+            Row::new()
         } else {
             let mut first_row = rows.remove(0);
             for row in &mut rows {
