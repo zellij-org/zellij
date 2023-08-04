@@ -105,6 +105,7 @@ pub struct TerminalPane {
     prev_pane_name: String,
     frame: HashMap<ClientId, PaneFrame>,
     borderless: bool,
+    hide_title: bool,
     exclude_from_sync: bool,
     fake_cursor_locations: HashSet<(usize, usize)>, // (x, y) - these hold a record of previous fake cursors which we need to clear on render
     search_term: String,
@@ -350,6 +351,8 @@ impl Pane for TerminalPane {
                 modifier_text.push(']');
             }
             format!("SEARCHING: {}{}", self.search_term, modifier_text)
+        } else if self.hide_title {
+            String::new()
         } else if self.pane_name.is_empty() {
             self.grid
                 .title
@@ -611,6 +614,13 @@ impl Pane for TerminalPane {
         self.exclude_from_sync
     }
 
+    fn set_hide_title(&mut self, hide_title: bool) {
+        self.hide_title = hide_title;
+    }
+    fn hide_title(&self) -> bool {
+        self.hide_title
+    }
+
     fn mouse_left_click(&self, position: &Position, is_held: bool) -> Option<String> {
         self.grid.mouse_left_click_signal(position, is_held)
     }
@@ -797,6 +807,7 @@ impl TerminalPane {
             pane_name: pane_name.clone(),
             prev_pane_name: pane_name,
             borderless: false,
+            hide_title: false,
             exclude_from_sync: false,
             fake_cursor_locations: HashSet::new(),
             search_term: String::new(),

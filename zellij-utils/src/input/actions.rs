@@ -328,6 +328,7 @@ impl Action {
                     let (command, args) = (PathBuf::from(command.remove(0)), command);
                     let hold_on_start = start_suspended;
                     let hold_on_close = !close_on_exit;
+                    let hide_title = false;
                     let run_command_action = RunCommandAction {
                         command,
                         args,
@@ -335,6 +336,7 @@ impl Action {
                         direction,
                         hold_on_close,
                         hold_on_start,
+                        hide_title,
                     };
                     if floating {
                         Ok(vec![Action::NewFloatingPane(

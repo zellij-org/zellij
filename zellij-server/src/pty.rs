@@ -475,6 +475,7 @@ impl Pty {
                     cwd, // note: this might also be filled by the calling function, eg. spawn_terminal
                     hold_on_close: false,
                     hold_on_start: false,
+                    hide_title: false,
                 })
             },
         }

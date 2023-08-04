@@ -254,6 +254,7 @@ impl<'a> LayoutApplier<'a> {
                             self.debug,
                         );
                         new_plugin.set_borderless(layout.borderless);
+                        new_plugin.set_hide_title(layout.hide_title);
                         if let Some(exclude_from_sync) = layout.exclude_from_sync {
                             new_plugin.set_exclude_from_sync(exclude_from_sync);
                         }

@@ -584,11 +584,24 @@ impl PaneFrame {
             foreground_color(self.get_corner(boundary_type::TOP_LEFT), self.color);
         let mut right_boundary =
             foreground_color(self.get_corner(boundary_type::TOP_RIGHT), self.color);
-        let total_title_length = self.geom.cols.saturating_sub(2); // 2 for the left and right corners
         let mut middle_padding = String::new();
-        for _ in 0..total_title_length {
-            middle_padding.push_str(boundary_type::HORIZONTAL);
+        let total_title_length = self.geom.cols.saturating_sub(2); // 2 for the left and right corners
+        if let Some((scroll_text, scroll_text_len)) =
+            self.render_title_right_side(total_title_length)
+        {
+            let scroll_text_idx_start = total_title_length - scroll_text_len;
+            for _ in 0..scroll_text_idx_start {
+                middle_padding.push_str(boundary_type::HORIZONTAL);
+            }
+            for tc in scroll_text {
+                middle_padding.push(tc.character);
+            }
+        } else {
+            for _ in 0..total_title_length {
+                middle_padding.push_str(boundary_type::HORIZONTAL);
+            }
         }
+
         let mut ret = vec![];
         ret.append(&mut left_boundary);
         ret.append(&mut foreground_color(&middle_padding, self.color));

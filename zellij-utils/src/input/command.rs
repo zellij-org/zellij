@@ -35,10 +35,16 @@ pub struct RunCommand {
     pub hold_on_close: bool,
     #[serde(default)]
     pub hold_on_start: bool,
+    #[serde(default)]
+    pub hide_title: bool,
 }
 
 impl std::fmt::Display for RunCommand {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.hide_title {
+            return write!(f, "");
+        }
+
         let mut command: String = self
             .command
             .as_path()
@@ -68,6 +74,8 @@ pub struct RunCommandAction {
     pub hold_on_close: bool,
     #[serde(default)]
     pub hold_on_start: bool,
+    #[serde(default)]
+    pub hide_title: bool,
 }
 
 impl From<RunCommandAction> for RunCommand {
@@ -78,6 +86,7 @@ impl From<RunCommandAction> for RunCommand {
             cwd: action.cwd,
             hold_on_close: action.hold_on_close,
             hold_on_start: action.hold_on_start,
+            hide_title: action.hide_title,
         }
     }
 }
@@ -91,6 +100,7 @@ impl From<RunCommand> for RunCommandAction {
             direction: None,
             hold_on_close: run_command.hold_on_close,
             hold_on_start: run_command.hold_on_start,
+            hide_title: run_command.hide_title,
         }
     }
 }
