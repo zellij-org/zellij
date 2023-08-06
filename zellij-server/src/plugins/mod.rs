@@ -307,7 +307,7 @@ pub(crate) fn plugin_thread_main(
                     permissions,
                     status,
                 ) {
-                    log::info!("{}", e);
+                    log::error!("{}", e);
                 }
 
                 let updates = vec![(
