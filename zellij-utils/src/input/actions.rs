@@ -240,6 +240,9 @@ pub enum Action {
     RenameTerminalPane(u32, Vec<u8>),
     RenamePluginPane(u32, Vec<u8>),
     RenameTab(u32, Vec<u8>),
+    BreakPane,
+    BreakPaneRight,
+    BreakPaneLeft,
 }
 
 impl Action {

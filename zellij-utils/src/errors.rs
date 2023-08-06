@@ -339,6 +339,9 @@ pub enum ScreenContext {
     RenamePane,
     RenameTab,
     RequestPluginPermissions,
+    BreakPane,
+    BreakPaneRight,
+    BreakPaneLeft,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.

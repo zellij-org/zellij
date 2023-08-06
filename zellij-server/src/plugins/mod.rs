@@ -237,6 +237,7 @@ pub(crate) fn plugin_thread_main(
                 };
                 let mut extracted_floating_plugins: Vec<Option<Run>> = floating_panes_layout
                     .iter()
+                    .filter(|f| !f.already_running)
                     .map(|f| f.run.clone())
                     .collect();
                 extracted_run_instructions.append(&mut extracted_floating_plugins);

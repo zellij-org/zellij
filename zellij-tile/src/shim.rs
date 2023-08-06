@@ -377,6 +377,31 @@ pub fn rename_tab<S: AsRef<str>>(tab_position: i32, new_name: S) {
     unsafe { host_rename_tab() };
 }
 
+// Utility Functions
+
+/// Returns the `TabInfo` corresponding to the currently active tab
+fn get_focused_tab(tab_infos: &Vec<TabInfo>) -> Option<TabInfo> {
+    for tab_info in tab_infos {
+        if tab_info.active {
+            return Some(tab_info.clone());
+        }
+    }
+    return None;
+}
+
+/// Returns the `PaneInfo` corresponding to the currently active pane (ignoring plugins)
+fn get_focused_pane(tab_position: usize, pane_manifest: &PaneManifest) -> Option<PaneInfo> {
+    let panes = pane_manifest.panes.get(&tab_position);
+    if let Some(panes) = panes {
+        for pane in panes {
+            if pane.is_focused & !pane.is_plugin {
+                return Some(pane.clone());
+            }
+        }
+    }
+    None
+}
+
 // Internal Functions
 
 #[doc(hidden)]

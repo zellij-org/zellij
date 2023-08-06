@@ -23,6 +23,7 @@ Layout {
                         children_are_stacked: false,
                         is_expanded_in_stack: false,
                         exclude_from_sync: None,
+                        run_instructions_to_ignore: [],
                     },
                 ],
                 split_size: None,
@@ -33,6 +34,7 @@ Layout {
                 children_are_stacked: false,
                 is_expanded_in_stack: false,
                 exclude_from_sync: None,
+                run_instructions_to_ignore: [],
             },
             [
                 FloatingPaneLayout {
@@ -43,6 +45,7 @@ Layout {
                     y: None,
                     run: None,
                     focus: None,
+                    already_running: false,
                 },
             ],
         ),
@@ -64,6 +67,7 @@ Layout {
                         children_are_stacked: false,
                         is_expanded_in_stack: false,
                         exclude_from_sync: None,
+                        run_instructions_to_ignore: [],
                     },
                 ],
                 split_size: None,
@@ -74,6 +78,7 @@ Layout {
                 children_are_stacked: false,
                 is_expanded_in_stack: false,
                 exclude_from_sync: None,
+                run_instructions_to_ignore: [],
             },
             [
                 FloatingPaneLayout {
@@ -84,6 +89,7 @@ Layout {
                     y: None,
                     run: None,
                     focus: None,
+                    already_running: false,
                 },
                 FloatingPaneLayout {
                     name: None,
@@ -93,6 +99,7 @@ Layout {
                     y: None,
                     run: None,
                     focus: None,
+                    already_running: false,
                 },
             ],
         ),
@@ -112,6 +119,7 @@ Layout {
                 children_are_stacked: false,
                 is_expanded_in_stack: false,
                 exclude_from_sync: None,
+                run_instructions_to_ignore: [],
             },
             [],
         ),
