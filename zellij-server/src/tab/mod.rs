@@ -1586,6 +1586,7 @@ impl Tab {
                             client_id,
                             permissions,
                             status,
+                            None,
                         ))
                         .with_context(err_context)?;
                     should_update_ui = true;

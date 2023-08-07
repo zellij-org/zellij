@@ -84,6 +84,7 @@ pub enum PluginInstruction {
         Option<ClientId>,
         Vec<PermissionType>,
         PermissionStatus,
+        Option<PathBuf>,
     ),
     Exit,
 }
@@ -301,12 +302,14 @@ pub(crate) fn plugin_thread_main(
                 client_id,
                 permissions,
                 status,
+                cache_path,
             ) => {
-                if let Err(e) = wasm_bridge.caching_plugin_permissions(
+                if let Err(e) = wasm_bridge.cache_plugin_permissions(
                     plugin_id,
                     client_id,
                     permissions,
                     status,
+                    cache_path,
                 ) {
                     log::error!("{}", e);
                 }

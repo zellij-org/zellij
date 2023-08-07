@@ -9,7 +9,7 @@ use wasmer::Store;
 use zellij_utils::data::{Event, Key, PermissionStatus, PermissionType, PluginCapabilities};
 use zellij_utils::errors::ErrorContext;
 use zellij_utils::input::layout::{Layout, PluginUserConfiguration, RunPlugin, RunPluginLocation};
-use zellij_utils::input::permission::GrantedPermission;
+use zellij_utils::input::permission::PermissionCache;
 use zellij_utils::input::plugins::PluginsConfig;
 use zellij_utils::ipc::ClientAttributes;
 use zellij_utils::lazy_static::lazy_static;
@@ -4291,6 +4291,8 @@ pub fn request_plugin_permissions() {
 pub fn granted_permission_request_result() {
     let temp_folder = tempdir().unwrap();
     let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
+
     let (plugin_thread_sender, _, mut teardown) = create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -4321,12 +4323,13 @@ pub fn granted_permission_request_result() {
         Some(client_id),
         vec![PermissionType::KeyboardInput],
         PermissionStatus::Granted,
+        Some(cache_path.clone()),
     ));
 
     teardown();
 
-    let granted_permission = GrantedPermission::from_cache_or_default();
-    let permissions = granted_permission.get(&run_plugin.location.to_string());
+    let permission_cache = PermissionCache::from_path_or_default(Some(cache_path));
+    let permissions = permission_cache.get_permissions(run_plugin.location.to_string());
 
     assert_snapshot!(format!("{:#?}", permissions));
 }
@@ -4336,6 +4339,8 @@ pub fn granted_permission_request_result() {
 pub fn denied_permission_request_result() {
     let temp_folder = tempdir().unwrap();
     let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
+
     let (plugin_thread_sender, _, mut teardown) = create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -4366,12 +4371,13 @@ pub fn denied_permission_request_result() {
         Some(client_id),
         vec![PermissionType::KeyboardInput],
         PermissionStatus::Denied,
+        Some(cache_path.clone()),
     ));
 
     teardown();
 
-    let granted_permission = GrantedPermission::from_cache_or_default();
-    let permissions = granted_permission.get(&run_plugin.location.to_string());
+    let permission_cache = PermissionCache::from_path_or_default(Some(cache_path));
+    let permissions = permission_cache.get_permissions(run_plugin.location.to_string());
 
     assert_snapshot!(format!("{:#?}", permissions));
 }

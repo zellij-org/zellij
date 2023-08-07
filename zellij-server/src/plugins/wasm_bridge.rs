@@ -5,8 +5,6 @@ use crate::plugins::plugin_worker::MessageToWorker;
 use crate::plugins::watch_filesystem::watch_filesystem;
 use crate::plugins::zellij_exports::{wasi_read_string, wasi_write_object};
 use log::info;
-use std::fs::File;
-use std::io::Write;
 use std::{
     collections::{HashMap, HashSet},
     path::PathBuf,
@@ -15,9 +13,8 @@ use std::{
 };
 use wasmer::{Instance, Module, Store, Value};
 use zellij_utils::async_std::task::{self, JoinHandle};
-use zellij_utils::consts::ZELLIJ_PLUGIN_PERMISSIONS_CACHE;
 use zellij_utils::data::{PermissionStatus, PermissionType};
-use zellij_utils::input::permission::GrantedPermission;
+use zellij_utils::input::permission::PermissionCache;
 use zellij_utils::notify_debouncer_full::{notify::RecommendedWatcher, Debouncer, FileIdMap};
 
 use crate::{
@@ -714,12 +711,13 @@ impl WasmBridge {
             };
         }
     }
-    pub fn caching_plugin_permissions(
+    pub fn cache_plugin_permissions(
         &mut self,
         plugin_id: PluginId,
         client_id: Option<ClientId>,
         permissions: Vec<PermissionType>,
         status: PermissionStatus,
+        cache_path: Option<PathBuf>,
     ) -> Result<()> {
         if let Some(running_plugin) = self
             .plugin_map
@@ -740,15 +738,13 @@ impl WasmBridge {
                 .plugin_env
                 .set_permissions(HashSet::from_iter(permissions.clone()));
 
-            let mut granted_permission = GrantedPermission::from_cache_or_default();
-            granted_permission.insert(
+            let mut permission_cache = PermissionCache::from_path_or_default(cache_path);
+            permission_cache.cache(
                 running_plugin.plugin_env.plugin.location.to_string(),
                 permissions,
             );
 
-            let mut f = File::create(ZELLIJ_PLUGIN_PERMISSIONS_CACHE.as_path())
-                .with_context(err_context)?;
-            write!(f, "{}", granted_permission.to_string()).with_context(err_context)?;
+            permission_cache.write_to_file().with_context(err_context)?;
         }
 
         Ok(())

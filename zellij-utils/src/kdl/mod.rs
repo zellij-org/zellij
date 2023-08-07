@@ -5,7 +5,7 @@ use crate::input::config::{Config, ConfigError, KdlError};
 use crate::input::keybinds::Keybinds;
 use crate::input::layout::{Layout, PluginUserConfiguration, RunPlugin, RunPluginLocation};
 use crate::input::options::{Clipboard, OnForceClose, Options};
-use crate::input::permission::GrantedPermission;
+use crate::input::permission::{GrantedPermission, PermissionCache};
 use crate::input::plugins::{PluginConfig, PluginTag, PluginType, PluginsConfig};
 use crate::input::theme::{FrameConfig, Theme, Themes, UiConfig};
 use crate::setup::{find_default_config_dir, get_layout_dir};
@@ -1794,8 +1794,8 @@ impl Themes {
     }
 }
 
-impl GrantedPermission {
-    pub fn from_string(raw_string: String) -> Result<Self, ConfigError> {
+impl PermissionCache {
+    pub fn from_string(raw_string: String) -> Result<GrantedPermission, ConfigError> {
         let kdl_document: KdlDocument = raw_string.parse()?;
 
         let mut granted_permission = GrantedPermission::default();
@@ -1819,10 +1819,10 @@ impl GrantedPermission {
         Ok(granted_permission)
     }
 
-    pub fn to_string(&self) -> String {
+    pub fn to_string(granted: &GrantedPermission) -> String {
         let mut kdl_doucment = KdlDocument::new();
 
-        self.iter().for_each(|(k, v)| {
+        granted.iter().for_each(|(k, v)| {
             let mut node = KdlNode::new(k.as_str());
             let mut children = KdlDocument::new();
 

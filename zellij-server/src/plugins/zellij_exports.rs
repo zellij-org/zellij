@@ -15,7 +15,7 @@ use std::{
 use wasmer::{imports, Function, ImportObject, Store, WasmerEnv};
 use wasmer_wasi::WasiEnv;
 use zellij_utils::data::{PermissionType, PluginPermission};
-use zellij_utils::input::permission::GrantedPermission;
+use zellij_utils::input::permission::PermissionCache;
 
 use url::Url;
 
@@ -218,19 +218,18 @@ fn host_set_selectable(env: &ForeignFunctionEnv, selectable: i32) {
 fn host_request_permission(env: &ForeignFunctionEnv) {
     wasi_read_object::<Vec<PermissionType>>(&env.plugin_env.wasi_env)
         .and_then(|permissions| {
-            if let Some(p) = GrantedPermission::from_cache_or_default()
-                .get(&env.plugin_env.plugin.location.to_string())
+            if PermissionCache::from_path_or_default(None)
+                .check_permissions(env.plugin_env.plugin.location.to_string(), &permissions)
             {
-                if p.to_vec() == permissions {
-                    return env.plugin_env.senders.send_to_plugin(
-                        PluginInstruction::PermissionRequestResult(
-                            env.plugin_env.plugin_id,
-                            Some(env.plugin_env.client_id),
-                            permissions.to_vec(),
-                            zellij_utils::data::PermissionStatus::Granted,
-                        ),
-                    );
-                }
+                return env.plugin_env.senders.send_to_plugin(
+                    PluginInstruction::PermissionRequestResult(
+                        env.plugin_env.plugin_id,
+                        Some(env.plugin_env.client_id),
+                        permissions.to_vec(),
+                        zellij_utils::data::PermissionStatus::Granted,
+                        None,
+                    ),
+                );
             }
 
             env.plugin_env
