@@ -195,7 +195,13 @@ pub fn go_to_previous_tab() {
 }
 
 pub fn report_panic(info: &std::panic::PanicInfo) {
-    let plugin_command = PluginCommand::ReportPanic(format!("{:#?}", info));
+    let panic_payload = if let Some(s) = info.payload().downcast_ref::<&str>() {
+        format!("{}", s)
+    } else {
+        format!("<NO PAYLOAD>")
+    };
+    let panic_stringified = format!("{}\n\r{:#?}", panic_payload, info).replace("\n", "\r\n");
+    let plugin_command = PluginCommand::ReportPanic(panic_stringified);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };

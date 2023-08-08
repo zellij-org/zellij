@@ -112,6 +112,7 @@ macro_rules! register_plugin {
         #[no_mangle]
         pub fn update() -> bool {
             let err_context = "Failed to deserialize event";
+            use std::convert::TryInto;
             use zellij_tile::shim::plugin_api::event::ProtobufEvent;
             use zellij_tile::shim::prost::Message;
             STATE.with(|state| {
