@@ -111,22 +111,16 @@ macro_rules! register_plugin {
 
         #[no_mangle]
         pub fn update() -> bool {
-            let err_context = || "Failed to deserialize event";
+            let err_context = "Failed to deserialize event";
             use zellij_tile::shim::plugin_api::event::ProtobufEvent;
             use zellij_tile::shim::prost::Message;
             STATE.with(|state| {
                 let protobuf_bytes: Vec<u8> = $crate::shim::object_from_stdin()
-                    .with_context(err_context)
-                    .to_stdout()
                     .unwrap();
                 let protobuf_event: ProtobufEvent = ProtobufEvent::decode(protobuf_bytes.as_slice())
-                    .with_context(err_context)
-                    .to_stdout()
                     .unwrap();
                 let event = protobuf_event
                     .try_into()
-                    .with_context(err_context)
-                    .to_stdout()
                     .unwrap();
                 state.borrow_mut().update(event)
             })
