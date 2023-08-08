@@ -5,9 +5,10 @@ use zellij_utils::data::*;
 use zellij_utils::errors::prelude::*;
 use zellij_utils::plugin_api::plugin_command::ProtobufPluginCommand;
 use zellij_utils::plugin_api::plugin_ids::{ProtobufPluginIds, ProtobufZellijVersion};
+pub use zellij_utils::plugin_api;
 
+pub use zellij_utils::prost::{self, *};
 
-use prost::Message;
 // Subscription Handling
 
 /// Subscribe to a list of [`Event`]s represented by their [`EventType`]s that will then trigger the `update` method

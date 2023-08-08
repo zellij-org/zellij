@@ -6,7 +6,7 @@
 // SDK authors in other languages should generate their own equivalent structures based on the
 // `.proto` specification, and then decode the protobuf over the wire into them
 
-pub use super::generated_api::api::resize::{Resize as ProtobufResize, ResizeAction, resize::OptionalDirection, ResizeDirection, MoveDirection as ProtobufMoveDirection};
+pub use super::generated_api::api::resize::{Resize as ProtobufResize, ResizeAction, resize::OptionalDirection, ResizeDirection, MoveDirection as ProtobufMoveDirection, ResizeDirection as ProtobufResizeDirection};
 use crate::data::{Resize, ResizeStrategy, Direction};
 
 use std::convert::TryFrom;
@@ -109,6 +109,30 @@ impl TryFrom<Direction> for ProtobufMoveDirection {
                Direction::Up => ResizeDirection::Up as i32,
                Direction::Down => ResizeDirection::Down as i32,
            },
+       })
+   }
+}
+
+impl TryFrom<ProtobufResizeDirection> for Direction {
+   type Error = &'static str;
+   fn try_from(protobuf_resize_direction: ProtobufResizeDirection) -> Result<Self, &'static str> {
+       match protobuf_resize_direction {
+           ProtobufResizeDirection::Left => Ok(Direction::Left),
+           ProtobufResizeDirection::Right => Ok(Direction::Right),
+           ProtobufResizeDirection::Up => Ok(Direction::Up),
+           ProtobufResizeDirection::Down => Ok(Direction::Down),
+       }
+   }
+}
+
+impl TryFrom<Direction> for ProtobufResizeDirection {
+   type Error = &'static str;
+   fn try_from(direction: Direction) -> Result<Self, &'static str> {
+       Ok(match direction {
+           Direction::Left => ProtobufResizeDirection::Left,
+           Direction::Right => ProtobufResizeDirection::Right,
+           Direction::Up => ProtobufResizeDirection::Up,
+           Direction::Down => ProtobufResizeDirection::Down,
        })
    }
 }

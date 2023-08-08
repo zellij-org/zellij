@@ -136,12 +136,12 @@ impl TryFrom<Key> for ProtobufKey {
                 Ok(ProtobufKey {
                     optional_modifier: None,
                     // 97 is the start of the ASCII alphabet
-                    main_key: Some(MainKey::Char((character as u8 - 97) as i32)),
+                    main_key: Some(MainKey::Char((character as u8) as i32)),
                 })
             }
             Key::Alt(char_or_arrow) => {
                 let main_key = match char_or_arrow {
-                    CharOrArrow::Char(character) => MainKey::Char((character as u8 - 97) as i32),
+                    CharOrArrow::Char(character) => MainKey::Char((character as u8) as i32),
                     CharOrArrow::Direction(Direction::Left) => MainKey::Key(NamedKey::LeftArrow as i32),
                     CharOrArrow::Direction(Direction::Right) => MainKey::Key(NamedKey::RightArrow as i32),
                     CharOrArrow::Direction(Direction::Up) => MainKey::Key(NamedKey::UpArrow as i32),
@@ -155,7 +155,7 @@ impl TryFrom<Key> for ProtobufKey {
             Key::Ctrl(character) => {
                 Ok(ProtobufKey {
                     optional_modifier: Some(OptionalModifier::Modifier(KeyModifier::Ctrl as i32)),
-                    main_key: Some(MainKey::Char((character as u8 - 97) as i32)),
+                    main_key: Some(MainKey::Char((character as u8) as i32)),
                 })
             }
             Key::BackTab => {
@@ -222,7 +222,8 @@ fn parse_optional_modifier(m: &ProtobufKey) -> Option<KeyModifier> {
 
 fn char_index_to_char(char_index: i32) -> char {
     // 97 is the start of the alphabet in the ASCII table
-    (char_index + 97) as u8 as char
+    // (char_index + 97) as u8 as char
+    char_index as u8 as char
 }
 
 fn char_from_main_key(main_key: Option<MainKey>) -> Result<char, &'static str> {

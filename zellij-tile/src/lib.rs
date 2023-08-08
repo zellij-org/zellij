@@ -21,6 +21,8 @@ pub mod shim;
 use serde::{Deserialize, Serialize};
 use zellij_utils::data::Event;
 
+// use zellij_tile::shim::plugin_api::event::ProtobufEvent;
+
 /// This trait should be implemented - once per plugin - on a struct (normally representing the
 /// plugin state). This struct should then be registered with the
 /// [`register_plugin!`](register_plugin) macro.
@@ -92,6 +94,9 @@ macro_rules! register_plugin {
         thread_local! {
             static STATE: std::cell::RefCell<$t> = std::cell::RefCell::new(Default::default());
         }
+//         use zellij_tile::shim::plugin_api::event::ProtobufEvent;
+//         use zellij_tile::shim::prost::messae::Message; // TODO: from zellij-tile
+//         use prost::message::Message; // TODO: from zellij-tile
 
         fn main() {
             // Register custom panic handler
@@ -109,12 +114,18 @@ macro_rules! register_plugin {
 
         #[no_mangle]
         pub fn update() -> bool {
+            // use crate::plugin_api::event::ProtobufEvent;
+            use zellij_tile::shim::plugin_api::event::ProtobufEvent;
+            use zellij_tile::shim::prost::Message;
             STATE.with(|state| {
-                let object = $crate::shim::object_from_stdin()
+                let protobuf_bytes: Vec<u8> = $crate::shim::object_from_stdin()
                     .context($crate::PLUGIN_MISMATCH)
                     .to_stdout()
                     .unwrap();
-                state.borrow_mut().update(object)
+                let protobuf_event: ProtobufEvent = ProtobufEvent::decode(protobuf_bytes.as_slice()).unwrap();// TODO: no unwrap
+                let event = protobuf_event.try_into().unwrap(); // TODO: no unwrap
+                // state.borrow_mut().update(object)
+                state.borrow_mut().update(event)
             })
         }
 

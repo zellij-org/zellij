@@ -6,11 +6,2245 @@
 // SDK authors in other languages should generate their own equivalent structures based on the
 // `.proto` specification, and then decode the protobuf over the wire into them
 
-pub use super::generated_api::api::event::{EventType as ProtobufEventType, EventNameList as ProtobufEventNameList};
-use crate::data::EventType;
+pub use super::generated_api::api::{
+    input_mode::{
+        InputMode as ProtobufInputMode,
+
+    },
+    resize::{MoveDirection as ProtobufMoveDirection, ResizeDirection as ProtobufResizeDirection, Resize as ProtobufResize, resize::OptionalDirection},
+    key:: {
+        Key as ProtobufKey
+    },
+    event::{
+        *,
+        InputModeKeybinds as ProtobufInputModeKeybinds,
+        KeyBind as ProtobufKeyBind,
+        EventType as ProtobufEventType,
+        EventNameList as ProtobufEventNameList,
+        Event as ProtobufEvent,
+        event::Payload as ProtobufEventPayload,
+        Action as ProtobufAction,
+        ActionName as ProtobufActionName,
+        action::OptionalPayload,
+        Position as ProtobufPosition,
+        new_pane_payload,
+        edit_file_payload,
+        new_floating_pane_payload,
+        RunCommandAction as ProtobufRunCommandAction,
+        run_command_action,
+        SearchDirection as ProtobufSearchDirection,
+        SearchOption as ProtobufSearchOption,
+        Style as ProtobufStyle,
+        Palette as ProtobufPalette,
+        Color as ProtobufColor,
+        ThemeHue as ProtobufThemeHue,
+        ColorType as ProtobufColorType,
+        ModeUpdatePayload as ProtobufModeUpdatePayload,
+        TabInfo as ProtobufTabInfo,
+        PaneInfo as ProtobufPaneInfo,
+        PaneManifest as ProtobufPaneManifest,
+        CopyDestination as ProtobufCopyDestination,
+    },
+};
+use crate::data::{EventType, Event, InputMode, Key, ModeInfo, ResizeStrategy, Direction, Style, Palette, PaletteColor, ThemeHue, PluginCapabilities, TabInfo, PaneManifest, PaneInfo, Mouse, CopyDestination};
+use crate::position::Position;
+use crate::input::actions::{SearchDirection, SearchOption};
+use crate::input::actions::Action;
+use crate::input::command::RunCommandAction;
+use crate::input::layout::{RunPlugin, RunPluginLocation};
+use url::Url;
 
 use std::convert::TryFrom;
-use std::collections::HashSet;
+use std::collections::{HashSet, HashMap};
+use std::path::PathBuf;
+
+impl TryFrom<ProtobufEvent> for Event {
+   type Error = &'static str;
+   fn try_from(protobuf_event: ProtobufEvent) -> Result<Self, &'static str> {
+       match ProtobufEventType::from_i32(protobuf_event.name) {
+           Some(ProtobufEventType::ModeUpdate) => {
+               match protobuf_event.payload {
+                   Some(ProtobufEventPayload::ModeUpdatePayload(protobuf_mode_update_payload)) => {
+                       let mode_info: ModeInfo = protobuf_mode_update_payload.try_into()?;
+                       Ok(Event::ModeUpdate(mode_info))
+                   },
+                   _ => Err("Malformed payload for the ModeUpdate Event")
+               }
+           }
+           Some(ProtobufEventType::TabUpdate) => {
+               match protobuf_event.payload {
+                   Some(ProtobufEventPayload::TabUpdatePayload(protobuf_tab_info_payload)) => {
+                       let mut tab_infos: Vec<TabInfo> = vec![];
+                       for protobuf_tab_info in protobuf_tab_info_payload.tab_info {
+                           tab_infos.push(TabInfo::try_from(protobuf_tab_info)?);
+                       }
+                       Ok(Event::TabUpdate(tab_infos))
+
+                   }
+                   _ => Err("Malformed payload for the TabUpdate Event")
+               }
+           }
+           Some(ProtobufEventType::PaneUpdate) => {
+               match protobuf_event.payload {
+                   Some(ProtobufEventPayload::PaneUpdatePayload(protobuf_pane_update_payload)) => {
+                       let mut pane_manifest: HashMap<usize, Vec<PaneInfo>> = HashMap::new();
+                       for protobuf_pane_manifest in protobuf_pane_update_payload.pane_manifest {
+                           let tab_index = protobuf_pane_manifest.tab_index as usize;
+                           let mut panes = vec![];
+                           for protobuf_pane_info in protobuf_pane_manifest.panes {
+                               panes.push(protobuf_pane_info.try_into()?);
+                           }
+                           if pane_manifest.contains_key(&tab_index) {
+                               return Err("Duplicate tab definition in pane manifest");
+                           }
+                           pane_manifest.insert(tab_index, panes);
+                       }
+                       Ok(Event::PaneUpdate(PaneManifest { panes: pane_manifest }))
+                   }
+                   _ => Err("Malformed payload for the PaneUpdate Event")
+               }
+           }
+           Some(ProtobufEventType::Key) => {
+               match protobuf_event.payload {
+                   Some(ProtobufEventPayload::KeyPayload(protobuf_key)) => {
+                       Ok(Event::Key(protobuf_key.try_into()?))
+                   }
+                   _ => Err("Malformed payload for the Key Event")
+               }
+           }
+           Some(ProtobufEventType::Mouse) => {
+               match protobuf_event.payload {
+                   Some(ProtobufEventPayload::MouseEventPayload(protobuf_mouse)) => {
+                       Ok(Event::Mouse(protobuf_mouse.try_into()?))
+                   }
+                   _ => Err("Malformed payload for the Mouse Event")
+               }
+           }
+           Some(ProtobufEventType::Timer) => {
+               match protobuf_event.payload {
+                   Some(ProtobufEventPayload::TimerPayload(seconds)) => {
+                       Ok(Event::Timer(seconds as f64))
+                   }
+                   _ => Err("Malformed payload for the Timer Event")
+               }
+           }
+           Some(ProtobufEventType::CopyToClipboard) => {
+               match protobuf_event.payload {
+                   Some(ProtobufEventPayload::CopyToClipboardPayload(copy_to_clipboard)) => {
+                       let protobuf_copy_to_clipboard = ProtobufCopyDestination::from_i32(copy_to_clipboard).ok_or("Malformed copy to clipboard payload")?;
+                       Ok(Event::CopyToClipboard(protobuf_copy_to_clipboard.try_into()?))
+                   }
+                   _ => Err("Malformed payload for the Copy To Clipboard Event")
+               }
+           }
+           Some(ProtobufEventType::SystemClipboardFailure) => {
+               match protobuf_event.payload {
+                   None => {
+                       Ok(Event::SystemClipboardFailure)
+                   }
+                   _ => Err("Malformed payload for the system clipboard failure Event")
+               }
+           }
+           Some(ProtobufEventType::InputReceived) => {
+               match protobuf_event.payload {
+                   None => {
+                       Ok(Event::InputReceived)
+                   }
+                   _ => Err("Malformed payload for the input received Event")
+               }
+           }
+           Some(ProtobufEventType::Visible) => {
+               match protobuf_event.payload {
+                   Some(ProtobufEventPayload::VisiblePayload(is_visible)) => {
+                       Ok(Event::Visible(is_visible))
+                   }
+                   _ => Err("Malformed payload for the visible Event")
+               }
+           }
+           Some(ProtobufEventType::CustomMessage) => {
+               match protobuf_event.payload {
+                   Some(ProtobufEventPayload::CustomMessagePayload(custom_message_payload)) => {
+                       Ok(Event::CustomMessage(custom_message_payload.message_name, custom_message_payload.payload))
+                   }
+                   _ => Err("Malformed payload for the custom message Event")
+               }
+           }
+           Some(ProtobufEventType::FileSystemCreate) => {
+               match protobuf_event.payload {
+                   Some(ProtobufEventPayload::FileListPayload(file_list_payload)) => {
+                       let file_paths = file_list_payload.paths.iter().map(|p| PathBuf::from(p)).collect();
+                       Ok(Event::FileSystemCreate(file_paths))
+                   }
+                   _ => Err("Malformed payload for the file system create Event")
+               }
+           }
+           Some(ProtobufEventType::FileSystemRead) => {
+               match protobuf_event.payload {
+                   Some(ProtobufEventPayload::FileListPayload(file_list_payload)) => {
+                       let file_paths = file_list_payload.paths.iter().map(|p| PathBuf::from(p)).collect();
+                       Ok(Event::FileSystemRead(file_paths))
+                   }
+                   _ => Err("Malformed payload for the file system read Event")
+               }
+           }
+           Some(ProtobufEventType::FileSystemUpdate) => {
+               match protobuf_event.payload {
+                   Some(ProtobufEventPayload::FileListPayload(file_list_payload)) => {
+                       let file_paths = file_list_payload.paths.iter().map(|p| PathBuf::from(p)).collect();
+                       Ok(Event::FileSystemUpdate(file_paths))
+                   }
+                   _ => Err("Malformed payload for the file system update Event")
+               }
+           }
+           Some(ProtobufEventType::FileSystemDelete) => {
+               match protobuf_event.payload {
+                   Some(ProtobufEventPayload::FileListPayload(file_list_payload)) => {
+                       let file_paths = file_list_payload.paths.iter().map(|p| PathBuf::from(p)).collect();
+                       Ok(Event::FileSystemDelete(file_paths))
+                   }
+                   _ => Err("Malformed payload for the file system delete Event")
+               }
+           }
+           None => Err("Unknown Protobuf Event")
+       }
+   }
+}
+
+impl TryFrom<Event> for ProtobufEvent {
+   type Error = &'static str;
+   fn try_from(event: Event) -> Result<Self, &'static str> {
+       match event {
+            Event::ModeUpdate(mode_info) => {
+                let protobuf_mode_update_payload = mode_info.try_into()?;
+                Ok(ProtobufEvent {
+                    name: ProtobufEventType::ModeUpdate as i32,
+                    payload: Some(event::Payload::ModeUpdatePayload(protobuf_mode_update_payload))
+                })
+            },
+            Event::TabUpdate(tab_infos) => {
+                let mut protobuf_tab_infos = vec![];
+                for tab_info in tab_infos {
+                    protobuf_tab_infos.push(tab_info.try_into()?);
+                }
+                let tab_update_payload = TabUpdatePayload {
+                    tab_info: protobuf_tab_infos
+                };
+                Ok(ProtobufEvent {
+                    name: ProtobufEventType::TabUpdate as i32,
+                    payload: Some(event::Payload::TabUpdatePayload(tab_update_payload)),
+                })
+            }
+            Event::PaneUpdate(pane_manifest) => {
+                let mut protobuf_pane_manifests = vec![];
+                for (tab_index, pane_infos) in pane_manifest.panes {
+                    let mut protobuf_pane_infos = vec![];
+                    for pane_info in pane_infos {
+                        protobuf_pane_infos.push(pane_info.try_into()?);
+                    }
+                    protobuf_pane_manifests.push(ProtobufPaneManifest {
+                        tab_index: tab_index as u32,
+                        panes: protobuf_pane_infos
+                    });
+                }
+                Ok(ProtobufEvent {
+                    name: ProtobufEventType::PaneUpdate as i32,
+                    payload: Some(event::Payload::PaneUpdatePayload(PaneUpdatePayload { pane_manifest: protobuf_pane_manifests })),
+                })
+            }
+            Event::Key(key) => {
+                Ok(ProtobufEvent {
+                    name: ProtobufEventType::Key as i32,
+                    payload: Some(event::Payload::KeyPayload(key.try_into()?))
+                })
+            }
+            Event::Mouse(mouse_event) => {
+                let protobuf_mouse_payload = mouse_event.try_into()?;
+                Ok(ProtobufEvent {
+                    name: ProtobufEventType::Mouse as i32,
+                    payload: Some(event::Payload::MouseEventPayload(protobuf_mouse_payload))
+                })
+            }
+            Event::Timer(seconds) => {
+                Ok(ProtobufEvent {
+                    name: ProtobufEventType::Timer as i32,
+                    payload: Some(event::Payload::TimerPayload(seconds as f32))
+                })
+            }
+            Event::CopyToClipboard(clipboard_destination) => {
+                let protobuf_copy_destination: ProtobufCopyDestination = clipboard_destination.try_into()?;
+                Ok(ProtobufEvent {
+                    name: ProtobufEventType::CopyToClipboard as i32,
+                    payload: Some(event::Payload::CopyToClipboardPayload(protobuf_copy_destination as i32)),
+                })
+            }
+            Event::SystemClipboardFailure => {
+                Ok(ProtobufEvent {
+                    name: ProtobufEventType::SystemClipboardFailure as i32,
+                    payload: None,
+                })
+            }
+            Event::InputReceived => {
+                Ok(ProtobufEvent {
+                    name: ProtobufEventType::InputReceived as i32,
+                    payload: None,
+                })
+            }
+            Event::Visible(is_visible) => {
+                Ok(ProtobufEvent {
+                    name: ProtobufEventType::Visible as i32,
+                    payload: Some(event::Payload::VisiblePayload(is_visible)),
+                })
+            }
+            Event::CustomMessage(message, payload) => {
+                Ok(ProtobufEvent {
+                    name: ProtobufEventType::CustomMessage as i32,
+                    payload: Some(event::Payload::CustomMessagePayload(CustomMessagePayload {
+                        message_name: message,
+                        payload,
+                    })),
+                })
+            }
+            Event::FileSystemCreate(paths) => {
+                let file_list_payload = FileListPayload {
+                    paths: paths.iter().map(|p| p.display().to_string()).collect()
+                };
+                Ok(ProtobufEvent {
+                    name: ProtobufEventType::FileSystemCreate as i32,
+                    payload: Some(event::Payload::FileListPayload(file_list_payload)),
+                })
+            }
+            Event::FileSystemRead(paths) => {
+                let file_list_payload = FileListPayload {
+                    paths: paths.iter().map(|p| p.display().to_string()).collect()
+                };
+                Ok(ProtobufEvent {
+                    name: ProtobufEventType::FileSystemRead as i32,
+                    payload: Some(event::Payload::FileListPayload(file_list_payload)),
+                })
+            }
+            Event::FileSystemUpdate(paths) => {
+                let file_list_payload = FileListPayload {
+                    paths: paths.iter().map(|p| p.display().to_string()).collect()
+                };
+                Ok(ProtobufEvent {
+                    name: ProtobufEventType::FileSystemUpdate as i32,
+                    payload: Some(event::Payload::FileListPayload(file_list_payload)),
+                })
+            }
+            Event::FileSystemDelete(paths) => {
+                let file_list_payload = FileListPayload {
+                    paths: paths.iter().map(|p| p.display().to_string()).collect()
+                };
+                Ok(ProtobufEvent {
+                    name: ProtobufEventType::FileSystemDelete as i32,
+                    payload: Some(event::Payload::FileListPayload(file_list_payload)),
+                })
+            }
+       }
+   }
+}
+
+impl TryFrom<CopyDestination> for ProtobufCopyDestination {
+   type Error = &'static str;
+   fn try_from(copy_destination: CopyDestination) -> Result<Self, &'static str> {
+       match copy_destination {
+           CopyDestination::Command => Ok(ProtobufCopyDestination::Command),
+           CopyDestination::Primary => Ok(ProtobufCopyDestination::Primary),
+           CopyDestination::System => Ok(ProtobufCopyDestination::System),
+       }
+   }
+}
+
+impl TryFrom<ProtobufCopyDestination> for CopyDestination {
+   type Error = &'static str;
+   fn try_from(protobuf_copy_destination: ProtobufCopyDestination) -> Result<Self, &'static str> {
+       match protobuf_copy_destination {
+           ProtobufCopyDestination::Command => Ok(CopyDestination::Command),
+           ProtobufCopyDestination::Primary => Ok(CopyDestination::Primary),
+           ProtobufCopyDestination::System => Ok(CopyDestination::System),
+       }
+   }
+}
+
+impl TryFrom<MouseEventPayload> for Mouse {
+   type Error = &'static str;
+   fn try_from(mouse_event_payload: MouseEventPayload) -> Result<Self, &'static str> {
+       match MouseEventName::from_i32(mouse_event_payload.mouse_event_name) {
+           Some(MouseEventName::MouseScrollUp) => {
+               match mouse_event_payload.mouse_event_payload {
+                   Some(mouse_event_payload::MouseEventPayload::LineCount(line_count)) => {
+                       Ok(Mouse::ScrollUp(line_count as usize))
+                   },
+                   _ => Err("Malformed payload for mouse scroll up")
+               }
+           },
+           Some(MouseEventName::MouseScrollDown) => {
+               match mouse_event_payload.mouse_event_payload {
+                   Some(mouse_event_payload::MouseEventPayload::LineCount(line_count)) => {
+                       Ok(Mouse::ScrollDown(line_count as usize))
+                   },
+                   _ => Err("Malformed payload for mouse scroll down")
+               }
+           },
+           Some(MouseEventName::MouseLeftClick) => {
+               match mouse_event_payload.mouse_event_payload {
+                   Some(mouse_event_payload::MouseEventPayload::Position(position)) => {
+                       Ok(Mouse::LeftClick(position.line as isize, position.column as usize))
+                   },
+                   _ => Err("Malformed payload for mouse left click")
+               }
+           },
+           Some(MouseEventName::MouseRightClick) => {
+               match mouse_event_payload.mouse_event_payload {
+                   Some(mouse_event_payload::MouseEventPayload::Position(position)) => {
+                       Ok(Mouse::RightClick(position.line as isize, position.column as usize))
+                   },
+                   _ => Err("Malformed payload for mouse right click")
+               }
+           },
+           Some(MouseEventName::MouseHold) => {
+               match mouse_event_payload.mouse_event_payload {
+                   Some(mouse_event_payload::MouseEventPayload::Position(position)) => {
+                       Ok(Mouse::Hold(position.line as isize, position.column as usize))
+                   },
+                   _ => Err("Malformed payload for mouse hold")
+               }
+           },
+           Some(MouseEventName::MouseRelease) => {
+               match mouse_event_payload.mouse_event_payload {
+                   Some(mouse_event_payload::MouseEventPayload::Position(position)) => {
+                       Ok(Mouse::Release(position.line as isize, position.column as usize))
+                   },
+                   _ => Err("Malformed payload for mouse release")
+               }
+           },
+           None => Err("Malformed payload for MouseEventName")
+       }
+
+   }
+}
+
+impl TryFrom<Mouse> for MouseEventPayload {
+   type Error = &'static str;
+   fn try_from(mouse: Mouse) -> Result<Self, &'static str> {
+       match mouse {
+           Mouse::ScrollUp(number_of_lines) => {
+               Ok(MouseEventPayload {
+                   mouse_event_name: MouseEventName::MouseScrollUp as i32,
+                   mouse_event_payload: Some(mouse_event_payload::MouseEventPayload::LineCount(number_of_lines as u32)),
+               })
+           }
+           Mouse::ScrollDown(number_of_lines) => {
+               Ok(MouseEventPayload {
+                   mouse_event_name: MouseEventName::MouseScrollDown as i32,
+                   mouse_event_payload: Some(mouse_event_payload::MouseEventPayload::LineCount(number_of_lines as u32)),
+               })
+           }
+           Mouse::LeftClick(line, column) => {
+               Ok(MouseEventPayload {
+                   mouse_event_name: MouseEventName::MouseLeftClick as i32,
+                   mouse_event_payload: Some(mouse_event_payload::MouseEventPayload::Position(ProtobufPosition {
+                       line: line as i64,
+                       column: column as i64,
+                   })),
+               })
+           }
+           Mouse::RightClick(line, column) => {
+               Ok(MouseEventPayload {
+                   mouse_event_name: MouseEventName::MouseRightClick as i32,
+                   mouse_event_payload: Some(mouse_event_payload::MouseEventPayload::Position(ProtobufPosition {
+                       line: line as i64,
+                       column: column as i64,
+                   })),
+               })
+           }
+           Mouse::Hold(line, column) => {
+               Ok(MouseEventPayload {
+                   mouse_event_name: MouseEventName::MouseHold as i32,
+                   mouse_event_payload: Some(mouse_event_payload::MouseEventPayload::Position(ProtobufPosition {
+                       line: line as i64,
+                       column: column as i64,
+                   })),
+               })
+           }
+           Mouse::Release(line, column) => {
+               Ok(MouseEventPayload {
+                   mouse_event_name: MouseEventName::MouseRelease as i32,
+                   mouse_event_payload: Some(mouse_event_payload::MouseEventPayload::Position(ProtobufPosition {
+                       line: line as i64,
+                       column: column as i64,
+                   })),
+               })
+           }
+       }
+   }
+}
+
+
+impl TryFrom<ProtobufPaneInfo> for PaneInfo {
+   type Error = &'static str;
+   fn try_from(protobuf_pane_info: ProtobufPaneInfo) -> Result<Self, &'static str> {
+        Ok(PaneInfo {
+            id: protobuf_pane_info.id,
+            is_plugin: protobuf_pane_info.is_plugin,
+            is_focused: protobuf_pane_info.is_focused,
+            is_fullscreen: protobuf_pane_info.is_fullscreen,
+            is_floating: protobuf_pane_info.is_floating,
+            is_suppressed: protobuf_pane_info.is_suppressed,
+            title: protobuf_pane_info.title,
+            exited: protobuf_pane_info.exited,
+            exit_status: protobuf_pane_info.exit_status,
+            is_held: protobuf_pane_info.is_held,
+            pane_x: protobuf_pane_info.pane_x as usize,
+            pane_content_x: protobuf_pane_info.pane_content_x as usize,
+            pane_y: protobuf_pane_info.pane_y as usize,
+            pane_content_y: protobuf_pane_info.pane_content_y as usize,
+            pane_rows: protobuf_pane_info.pane_rows as usize,
+            pane_content_rows: protobuf_pane_info.pane_content_rows as usize,
+            pane_columns: protobuf_pane_info.pane_columns as usize,
+            pane_content_columns: protobuf_pane_info.pane_content_columns as usize,
+            cursor_coordinates_in_pane: protobuf_pane_info
+                .cursor_coordinates_in_pane
+                .map(|position| (position.column as usize, position.line as usize)),
+            terminal_command: protobuf_pane_info.terminal_command,
+            plugin_url: protobuf_pane_info.plugin_url,
+            is_selectable: protobuf_pane_info.is_selectable,
+        })
+   }
+}
+
+impl TryFrom<PaneInfo> for ProtobufPaneInfo {
+   type Error = &'static str;
+   fn try_from(pane_info: PaneInfo) -> Result<Self, &'static str> {
+        Ok(ProtobufPaneInfo {
+            id: pane_info.id,
+            is_plugin: pane_info.is_plugin,
+            is_focused: pane_info.is_focused,
+            is_fullscreen: pane_info.is_fullscreen,
+            is_floating: pane_info.is_floating,
+            is_suppressed: pane_info.is_suppressed,
+            title: pane_info.title,
+            exited: pane_info.exited,
+            exit_status: pane_info.exit_status,
+            is_held: pane_info.is_held,
+            pane_x: pane_info.pane_x as u32,
+            pane_content_x: pane_info.pane_content_x as u32,
+            pane_y: pane_info.pane_y as u32,
+            pane_content_y: pane_info.pane_content_y as u32,
+            pane_rows: pane_info.pane_rows as u32,
+            pane_content_rows: pane_info.pane_content_rows as u32,
+            pane_columns: pane_info.pane_columns as u32,
+            pane_content_columns: pane_info.pane_content_columns as u32,
+            cursor_coordinates_in_pane: pane_info
+                .cursor_coordinates_in_pane
+                .map(|(x, y)| ProtobufPosition { column: x as i64, line: y as i64}),
+            terminal_command: pane_info.terminal_command,
+            plugin_url: pane_info.plugin_url,
+            is_selectable: pane_info.is_selectable,
+        })
+   }
+}
+
+impl TryFrom<ProtobufTabInfo> for TabInfo {
+   type Error = &'static str;
+   fn try_from(protobuf_tab_info: ProtobufTabInfo) -> Result<Self, &'static str> {
+       Ok(TabInfo {
+            position: protobuf_tab_info.position as usize,
+            name: protobuf_tab_info.name,
+            active: protobuf_tab_info.active,
+            panes_to_hide: protobuf_tab_info.panes_to_hide as usize,
+            is_fullscreen_active: protobuf_tab_info.is_fullscreen_active,
+            is_sync_panes_active: protobuf_tab_info.is_sync_panes_active,
+            are_floating_panes_visible: protobuf_tab_info.are_floating_panes_visible,
+            other_focused_clients: protobuf_tab_info.other_focused_clients.iter().map(|c| *c as u16).collect(),
+            active_swap_layout_name: protobuf_tab_info.optional_active_swap_layout_name.map(|o| match o {
+                tab_info::OptionalActiveSwapLayoutName::ActiveSwapLayoutName(name) => name
+            }),
+            is_swap_layout_dirty: protobuf_tab_info.is_swap_layout_dirty,
+       })
+   }
+}
+
+impl TryFrom<TabInfo> for ProtobufTabInfo {
+   type Error = &'static str;
+   fn try_from(tab_info: TabInfo) -> Result<Self, &'static str> {
+       Ok(ProtobufTabInfo {
+            position: tab_info.position as u32,
+            name: tab_info.name,
+            active: tab_info.active,
+            panes_to_hide: tab_info.panes_to_hide as u32,
+            is_fullscreen_active: tab_info.is_fullscreen_active,
+            is_sync_panes_active: tab_info.is_sync_panes_active,
+            are_floating_panes_visible: tab_info.are_floating_panes_visible,
+            other_focused_clients: tab_info.other_focused_clients.iter().map(|c| *c as u32).collect(),
+            optional_active_swap_layout_name: tab_info.active_swap_layout_name.map(|name| {
+                tab_info::OptionalActiveSwapLayoutName::ActiveSwapLayoutName(name)
+            }),
+            is_swap_layout_dirty: tab_info.is_swap_layout_dirty,
+       })
+   }
+}
+
+impl TryFrom<ProtobufModeUpdatePayload> for ModeInfo {
+   type Error = &'static str;
+   fn try_from(mut protobuf_mode_update_payload: ProtobufModeUpdatePayload) -> Result<Self, &'static str> {
+       let current_mode: InputMode = ProtobufInputMode::from_i32(protobuf_mode_update_payload.current_mode)
+           .ok_or("Malformed InputMode in the ModeUpdate Event")?.try_into()?;
+       let keybinds: Vec<(InputMode, Vec<(Key, Vec<Action>)>)> = protobuf_mode_update_payload.keybinds
+           .iter_mut()
+           .map(|k| {
+               let input_mode: InputMode = ProtobufInputMode::from_i32(k.mode)
+                   .ok_or("Malformed InputMode in the ModeUpdate Event").unwrap().try_into().unwrap(); // TODO: no unwrap
+               let mut keybinds: Vec<(Key, Vec<Action>)> = vec![];
+               for mut protobuf_keybind in k.key_bind.drain(..) {
+                   let key: Key = protobuf_keybind.key.unwrap().try_into().unwrap(); // TODO: no unwrap
+                   let mut actions: Vec<Action> = vec![];
+                   for action in protobuf_keybind.action.drain(..) {
+                       if let Ok(action) = action.try_into() {
+                           actions.push(action);
+                       }
+                   }
+                   keybinds.push((key, actions));
+               }
+               (input_mode, keybinds)
+           })
+           .collect();
+        let style: Style = protobuf_mode_update_payload.style.and_then(|m| m.try_into().ok()).ok_or("malformed payload for mode_info")?;
+        let session_name = protobuf_mode_update_payload.optional_session_name.map(|o| {
+            match o {
+                mode_update_payload::OptionalSessionName::SessionName(session_name) => session_name
+            }
+        });
+        let capabilities = PluginCapabilities {
+            arrow_fonts: protobuf_mode_update_payload.arrow_fonts_support,
+        };
+        let mode_info = ModeInfo {
+            mode: current_mode,
+            keybinds,
+            style,
+            capabilities,
+            session_name,
+        };
+        Ok(mode_info)
+   }
+}
+
+impl TryFrom<ModeInfo> for ProtobufModeUpdatePayload {
+   type Error = &'static str;
+   fn try_from(mode_info: ModeInfo) -> Result<Self, &'static str> {
+        let current_mode: ProtobufInputMode = mode_info.mode.try_into()?;
+        let style: ProtobufStyle = mode_info.style.try_into()?;
+        let arrow_fonts_support: bool = mode_info.capabilities.arrow_fonts;
+        let optional_session_name = mode_info.session_name.map(|s| mode_update_payload::OptionalSessionName::SessionName(s));
+        let mut protobuf_input_mode_keybinds: Vec<ProtobufInputModeKeybinds> = vec![];
+        for (input_mode, input_mode_keybinds) in mode_info.keybinds {
+            let mode: ProtobufInputMode = input_mode.try_into()?;
+            let mut keybinds: Vec<ProtobufKeyBind> = vec![];
+            for (key, actions) in input_mode_keybinds {
+                let protobuf_key: ProtobufKey = key.try_into()?;
+                let mut protobuf_actions: Vec<ProtobufAction> = vec![];
+                for action in actions {
+                    let protobuf_action: ProtobufAction = action.try_into()?;
+                    protobuf_actions.push(protobuf_action);
+                }
+                let key_bind = ProtobufKeyBind {
+                    key: Some(protobuf_key),
+                    action: protobuf_actions
+                };
+                keybinds.push(key_bind);
+            }
+            let input_mode_keybind = ProtobufInputModeKeybinds {
+                mode: mode as i32,
+                key_bind: keybinds,
+            };
+            protobuf_input_mode_keybinds.push(input_mode_keybind);
+        }
+        Ok(ProtobufModeUpdatePayload {
+            current_mode: current_mode as i32,
+            style: Some(style),
+            keybinds: protobuf_input_mode_keybinds,
+            arrow_fonts_support,
+            optional_session_name
+        })
+   }
+}
+
+impl TryFrom<ProtobufAction> for Action {
+   type Error = &'static str;
+   fn try_from(protobuf_action: ProtobufAction) -> Result<Self, &'static str> {
+       match ProtobufActionName::from_i32(protobuf_action.name) {
+            Some(ProtobufActionName::Quit) =>{
+                match protobuf_action.optional_payload {
+                    Some(_) => {
+                        Err("The Quit Action should not have a payload")
+                    }
+                    None => Ok(Action::Quit)
+                }
+            }
+            Some(ProtobufActionName::Write) =>{
+                match protobuf_action.optional_payload {
+                    Some(OptionalPayload::WritePayload(write_payload)) => {
+                        Ok(Action::Write(write_payload.bytes_to_write))
+                    }
+                    _ =>  {
+                        Err("Wrong payload for Action::Write")
+                    }
+                }
+            }
+            Some(ProtobufActionName::WriteChars) =>{
+                match protobuf_action.optional_payload {
+                    Some(OptionalPayload::WriteCharsPayload(write_chars_payload)) => {
+                        Ok(Action::WriteChars(write_chars_payload.chars))
+                    }
+                    _ =>  {
+                        Err("Wrong payload for Action::WriteChars")
+                    }
+                }
+            }
+            Some(ProtobufActionName::SwitchToMode) =>{
+                match protobuf_action.optional_payload {
+                    Some(OptionalPayload::SwitchToModePayload(switch_to_mode_payload)) => {
+                        let input_mode: InputMode = ProtobufInputMode::from_i32(switch_to_mode_payload.input_mode)
+                            .ok_or("Malformed input mode for SwitchToMode Action")?
+                            .try_into()?;
+                        Ok(Action::SwitchToMode(input_mode))
+                    }
+                    _ =>  {
+                        Err("Wrong payload for Action::SwitchToModePayload")
+                    }
+                }
+            }
+            Some(ProtobufActionName::SwitchModeForAllClients) =>{
+                match protobuf_action.optional_payload {
+                    Some(OptionalPayload::SwitchModeForAllClientsPayload(switch_to_mode_payload)) => {
+                        let input_mode: InputMode = ProtobufInputMode::from_i32(switch_to_mode_payload.input_mode)
+                            .ok_or("Malformed input mode for SwitchToMode Action")?
+                            .try_into()?;
+                        Ok(Action::SwitchModeForAllClients(input_mode))
+                    }
+                    _ =>  {
+                        Err("Wrong payload for Action::SwitchModeForAllClients")
+                    }
+                }
+            }
+            Some(ProtobufActionName::Resize) =>{
+                match protobuf_action.optional_payload {
+                    Some(OptionalPayload::ResizePayload(resize_payload)) => {
+                        let resize_strategy: ResizeStrategy = resize_payload.try_into()?;
+                        Ok(Action::Resize(resize_strategy.resize, resize_strategy.direction))
+                    }
+                    _ =>  {
+                        Err("Wrong payload for Action::Resize")
+                    }
+                }
+            }
+            Some(ProtobufActionName::FocusNextPane) =>{
+                match protobuf_action.optional_payload {
+                    Some(_) => Err("FocusNextPane should not have a payload"),
+                    None => {
+                        Ok(Action::FocusNextPane)
+                    }
+                }
+            }
+            Some(ProtobufActionName::FocusPreviousPane) =>{
+                match protobuf_action.optional_payload {
+                    Some(_) => Err("FocusPreviousPane should not have a payload"),
+                    None => {
+                        Ok(Action::FocusPreviousPane)
+                    }
+                }
+            }
+            Some(ProtobufActionName::SwitchFocus) =>{
+                match protobuf_action.optional_payload {
+                    Some(_) => Err("FocusPreviousPane should not have a payload"),
+                    None => {
+                        Ok(Action::FocusPreviousPane)
+                    }
+                }
+            }
+            Some(ProtobufActionName::MoveFocus) =>{
+                match protobuf_action.optional_payload {
+                    Some(OptionalPayload::MoveFocusPayload(move_focus_payload)) => {
+                        let direction: Direction = ProtobufResizeDirection::from_i32(move_focus_payload)
+                            .ok_or("Malformed resize direction for Action::MoveFocus")?
+                            .try_into()?;
+                        Ok(Action::MoveFocus(direction))
+                    }
+                    _ =>  {
+                        Err("Wrong payload for Action::MoveFocus")
+                    }
+                }
+            }
+            Some(ProtobufActionName::MoveFocusOrTab) =>{
+                match protobuf_action.optional_payload {
+                    Some(OptionalPayload::MoveFocusOrTabPayload(move_focus_or_tab_payload)) => {
+                        let direction: Direction = ProtobufResizeDirection::from_i32(move_focus_or_tab_payload)
+                            .ok_or("Malformed resize direction for Action::MoveFocusOrTab")?
+                            .try_into()?;
+                        Ok(Action::MoveFocus(direction))
+                    }
+                    _ =>  {
+                        Err("Wrong payload for Action::MoveFocusOrTab")
+                    }
+                }
+            }
+            Some(ProtobufActionName::MovePane) =>{
+                match protobuf_action.optional_payload {
+                    Some(OptionalPayload::MovePanePayload(payload)) => {
+                    let direction: Option<Direction> = payload.optional_direction
+                        .and_then(|p| match p {
+                            move_pane_payload::OptionalDirection::Direction(i) => {
+                                ProtobufResizeDirection::from_i32(i).and_then(|d| d.try_into().ok())
+                            }
+                        });
+                        Ok(Action::MovePane(direction))
+                    }
+                    _ =>  {
+                        Err("Wrong payload for Action::MovePane")
+                    }
+                }
+            }
+            Some(ProtobufActionName::MovePaneBackwards) =>{
+                match protobuf_action.optional_payload {
+                    Some(_) => Err("MovePaneBackwards should not have a payload"),
+                    None => {
+                        Ok(Action::MovePaneBackwards)
+                    }
+                }
+            }
+            Some(ProtobufActionName::ClearScreen) =>{
+                match protobuf_action.optional_payload {
+                    Some(_) => Err("ClearScreen should not have a payload"),
+                    None => {
+                        Ok(Action::ClearScreen)
+                    }
+                }
+            }
+            Some(ProtobufActionName::DumpScreen) =>{
+                match protobuf_action.optional_payload {
+                    Some(OptionalPayload::DumpScreenPayload(payload)) => {
+                        let file_path = payload.file_path;
+                        let include_scrollback = payload.include_scrollback;
+                        Ok(Action::DumpScreen(file_path, include_scrollback))
+                    }
+                    _ =>  {
+                        Err("Wrong payload for Action::DumpScreen")
+                    }
+                }
+            }
+            Some(ProtobufActionName::EditScrollback ) =>{
+                match protobuf_action.optional_payload {
+                    Some(_) => Err("EditScrollback should not have a payload"),
+                    None => {
+                        Ok(Action::EditScrollback)
+                    }
+                }
+            }
+            Some(ProtobufActionName::ScrollUp) =>{
+                match protobuf_action.optional_payload {
+                    Some(_) => Err("ScrollUp should not have a payload"),
+                    None => {
+                        Ok(Action::ScrollUp)
+                    }
+                }
+            }
+            Some(ProtobufActionName::ScrollDown) =>{
+                match protobuf_action.optional_payload {
+                    Some(_) => Err("ScrollDown should not have a payload"),
+                    None => {
+                        Ok(Action::ScrollDown)
+                    }
+                }
+            }
+            Some(ProtobufActionName::ScrollUpAt) =>{
+                match protobuf_action.optional_payload {
+                    Some(OptionalPayload::ScrollUpAtPayload(payload)) => {
+                        let position = payload.position.ok_or("ScrollUpAtPayload must have a position")?.try_into()?;
+                        Ok(Action::ScrollUpAt(position))
+                    }
+                    _ =>  {
+                        Err("Wrong payload for Action::ScrollUpAt")
+                    }
+                }
+            }
+            Some(ProtobufActionName::ScrollDownAt) =>{
+                match protobuf_action.optional_payload {
+                    Some(OptionalPayload::ScrollDownAtPayload(payload)) => {
+                        let position = payload.position.ok_or("ScrollDownAtPayload must have a position")?.try_into()?;
+                        Ok(Action::ScrollDownAt(position))
+                    }
+                    _ =>  {
+                        Err("Wrong payload for Action::ScrollDownAt")
+                    }
+                }
+            }
+            Some(ProtobufActionName::ScrollToBottom) =>{
+                match protobuf_action.optional_payload {
+                    Some(_) => Err("ScrollToBottom should not have a payload"),
+                    None => {
+                        Ok(Action::ScrollToBottom)
+                    }
+                }
+            }
+            Some(ProtobufActionName::ScrollToTop) =>{
+                match protobuf_action.optional_payload {
+                    Some(_) => Err("ScrollToTop should not have a payload"),
+                    None => {
+                        Ok(Action::ScrollToTop)
+                    }
+                }
+            }
+            Some(ProtobufActionName::PageScrollUp) =>{
+                match protobuf_action.optional_payload {
+                    Some(_) => Err("PageScrollUp should not have a payload"),
+                    None => {
+                        Ok(Action::PageScrollUp)
+                    }
+                }
+            }
+            Some(ProtobufActionName::PageScrollDown) =>{
+                match protobuf_action.optional_payload {
+                    Some(_) => Err("PageScrollDown should not have a payload"),
+                    None => {
+                        Ok(Action::PageScrollDown)
+                    }
+                }
+            }
+            Some(ProtobufActionName::HalfPageScrollUp) =>{
+                match protobuf_action.optional_payload {
+                    Some(_) => Err("HalfPageScrollUp should not have a payload"),
+                    None => {
+                        Ok(Action::HalfPageScrollUp)
+                    }
+                }
+            }
+            Some(ProtobufActionName::HalfPageScrollDown) =>{
+                match protobuf_action.optional_payload {
+                    Some(_) => Err("HalfPageScrollDown should not have a payload"),
+                    None => {
+                        Ok(Action::HalfPageScrollDown)
+                    }
+                }
+            }
+            Some(ProtobufActionName::ToggleFocusFullscreen) =>{
+                match protobuf_action.optional_payload {
+                    Some(_) => Err("ToggleFocusFullscreen should not have a payload"),
+                    None => {
+                        Ok(Action::ToggleFocusFullscreen)
+                    }
+                }
+            }
+            Some(ProtobufActionName::TogglePaneFrames) =>{
+                match protobuf_action.optional_payload {
+                    Some(_) => Err("TogglePaneFrames should not have a payload"),
+                    None => {
+                        Ok(Action::TogglePaneFrames)
+                    }
+                }
+            }
+            Some(ProtobufActionName::ToggleActiveSyncTab) =>{
+                match protobuf_action.optional_payload {
+                    Some(_) => Err("ToggleActiveSyncTab should not have a payload"),
+                    None => {
+                        Ok(Action::ToggleActiveSyncTab)
+                    }
+                }
+            }
+            Some(ProtobufActionName::NewPane) =>{
+                match protobuf_action.optional_payload {
+                    Some(OptionalPayload::NewPanePayload(payload)) => {
+                        let direction: Option<Direction> = payload.optional_direction
+                            .and_then(|p| match p {
+                                new_pane_payload::OptionalDirection::Direction(i) => {
+                                    ProtobufResizeDirection::from_i32(i).and_then(|d| d.try_into().ok())
+                                }
+                            });
+                        let pane_name = payload.optional_pane_name.and_then(|s| match s {
+                            new_pane_payload::OptionalPaneName::PaneName(pane_name) => Some(pane_name)
+                        });
+                        Ok(Action::NewPane(direction, pane_name))
+                    }
+                    _ =>  {
+                        Err("Wrong payload for Action::NewPane")
+                    }
+                }
+            }
+            Some(ProtobufActionName::EditFile) => {
+                match protobuf_action.optional_payload {
+                    Some(OptionalPayload::EditFilePayload(payload)) => {
+
+                        let file_to_edit = PathBuf::from(payload.file_to_edit);
+                        let line_number: Option<usize> = payload.optional_line_number
+                            .map(|l| match l {
+                                edit_file_payload::OptionalLineNumber::LineNumber(line_number) => line_number as usize,
+                            });
+                        let cwd: Option<PathBuf> = payload.optional_cwd
+                            .map(|c| match c {
+                                edit_file_payload::OptionalCwd::Cwd(cwd) => PathBuf::from(cwd)
+                            });
+                        let direction: Option<Direction> = payload.optional_direction
+                            .and_then(|p| match p {
+                                edit_file_payload::OptionalDirection::Direction(i) => {
+                                    ProtobufResizeDirection::from_i32(i).and_then(|d| d.try_into().ok())
+                                }
+                            });
+                        let should_float = payload.should_float;
+                        Ok(Action::EditFile(
+                            file_to_edit,
+                            line_number,
+                            cwd,
+                            direction,
+                            should_float
+                        ))
+                    }
+                    _ =>  {
+                        Err("Wrong payload for Action::NewPane")
+                    }
+                }
+            }
+            Some(ProtobufActionName::NewFloatingPane) =>{
+                match protobuf_action.optional_payload {
+                    Some(OptionalPayload::NewFloatingPanePayload(payload)) => {
+                        if let Some(payload) = payload.optional_command.map(|p| match p {
+                            new_floating_pane_payload::OptionalCommand::Command(command) => command
+                        }) {
+                            let pane_name = payload.optional_pane_name.as_ref().and_then(|s| match s {
+                                run_command_action::OptionalPaneName::PaneName(pane_name) => Some(pane_name.clone())
+                            });
+                            let run_command_action: RunCommandAction = payload.try_into()?;
+                            Ok(Action::NewFloatingPane(
+                                Some(run_command_action),
+                                pane_name
+                            ))
+                        } else {
+                            Ok(Action::NewFloatingPane(None, None))
+                        }
+                    }
+                    _ =>  {
+                        Err("Wrong payload for Action::NewFloatingPane")
+                    }
+                }
+            }
+            Some(ProtobufActionName::NewTiledPane) =>{
+                match protobuf_action.optional_payload {
+                    Some(OptionalPayload::NewTiledPanePayload(payload)) => {
+                        let direction: Option<Direction> = payload.optional_direction
+                            .and_then(|p| match p {
+                                new_tiled_pane_payload::OptionalDirection::Direction(i) => {
+                                    ProtobufResizeDirection::from_i32(i).and_then(|d| d.try_into().ok())
+                                }
+                            });
+                        if let Some(payload) = payload.optional_command.map(|p| match p {
+                            new_tiled_pane_payload::OptionalCommand::Command(command) => command
+                        }) {
+                            let pane_name = payload.optional_pane_name.as_ref().and_then(|s| match s {
+                                run_command_action::OptionalPaneName::PaneName(pane_name) => Some(pane_name.clone())
+                            });
+                            let run_command_action: RunCommandAction = payload.try_into()?;
+                            Ok(Action::NewTiledPane(
+                                direction,
+                                Some(run_command_action),
+                                pane_name
+                            ))
+                        } else {
+                            Ok(Action::NewTiledPane(direction, None, None))
+                        }
+                    }
+                    _ =>  {
+                        Err("Wrong payload for Action::NewTiledPane")
+                    }
+                }
+            }
+            Some(ProtobufActionName::TogglePaneEmbedOrFloating) =>{
+                match protobuf_action.optional_payload {
+                    Some(_) => Err("TogglePaneEmbedOrFloating should not have a payload"),
+                    None => {
+                        Ok(Action::TogglePaneEmbedOrFloating)
+                    }
+                }
+            }
+            Some(ProtobufActionName::ToggleFloatingPanes) =>{
+                match protobuf_action.optional_payload {
+                    Some(_) => Err("ToggleFloatingPanes should not have a payload"),
+                    None => {
+                        Ok(Action::ToggleFloatingPanes)
+                    }
+                }
+            }
+            Some(ProtobufActionName::CloseFocus) =>{
+                match protobuf_action.optional_payload {
+                    Some(_) => Err("CloseFocus should not have a payload"),
+                    None => {
+                        Ok(Action::CloseFocus)
+                    }
+                }
+            }
+            Some(ProtobufActionName::PaneNameInput) =>{
+                match protobuf_action.optional_payload {
+                    Some(OptionalPayload::PaneNameInputPayload(bytes)) => {
+                        Ok(Action::PaneNameInput(bytes))
+                    }
+                    _ =>  {
+                        Err("Wrong payload for Action::PaneNameInput")
+                    }
+                }
+            }
+            Some(ProtobufActionName::UndoRenamePane) =>{
+                match protobuf_action.optional_payload {
+                    Some(_) => Err("UndoRenamePane should not have a payload"),
+                    None => {
+                        Ok(Action::UndoRenamePane)
+                    }
+                }
+            }
+            Some(ProtobufActionName::NewTab) =>{
+                match protobuf_action.optional_payload {
+                    Some(_) => Err("NewTab should not have a payload"),
+                    None => {
+                        // we do not serialize the layouts of this action
+                        Ok(Action::NewTab(None, vec![], None, None, None))
+                    }
+                }
+            }
+            Some(ProtobufActionName::NoOp) =>{
+                match protobuf_action.optional_payload {
+                    Some(_) => Err("NoOp should not have a payload"),
+                    None => {
+                        // we do not serialize the layouts of this action
+                        Ok(Action::NoOp)
+                    }
+                }
+            }
+            Some(ProtobufActionName::GoToNextTab) =>{
+                match protobuf_action.optional_payload {
+                    Some(_) => Err("GoToNextTab should not have a payload"),
+                    None => {
+                        // we do not serialize the layouts of this action
+                        Ok(Action::GoToNextTab)
+                    }
+                }
+            }
+            Some(ProtobufActionName::GoToPreviousTab) =>{
+                match protobuf_action.optional_payload {
+                    Some(_) => Err("GoToPreviousTab should not have a payload"),
+                    None => {
+                        // we do not serialize the layouts of this action
+                        Ok(Action::GoToPreviousTab)
+                    }
+                }
+            }
+            Some(ProtobufActionName::CloseTab) =>{
+                match protobuf_action.optional_payload {
+                    Some(_) => Err("CloseTab should not have a payload"),
+                    None => {
+                        // we do not serialize the layouts of this action
+                        Ok(Action::CloseTab)
+                    }
+                }
+            }
+            Some(ProtobufActionName::GoToTab) =>{
+                match protobuf_action.optional_payload {
+                    Some(OptionalPayload::GoToTabPayload(index)) => {
+                        Ok(Action::GoToTab(index))
+                    }
+                    _ =>  {
+                        Err("Wrong payload for Action::GoToTab")
+                    }
+                }
+            }
+            Some(ProtobufActionName::GoToTabName) =>{
+                match protobuf_action.optional_payload {
+                    Some(OptionalPayload::GoToTabNamePayload(payload)) => {
+                        let tab_name = payload.tab_name;
+                        let create = payload.create;
+                        Ok(Action::GoToTabName(tab_name, create))
+                    }
+                    _ =>  {
+                        Err("Wrong payload for Action::GoToTabName")
+                    }
+                }
+            }
+            Some(ProtobufActionName::ToggleTab) =>{
+                match protobuf_action.optional_payload {
+                    Some(_) => Err("ToggleTab should not have a payload"),
+                    None => {
+                        // we do not serialize the layouts of this action
+                        Ok(Action::ToggleTab)
+                    }
+                }
+            }
+            Some(ProtobufActionName::TabNameInput) =>{
+                match protobuf_action.optional_payload {
+                    Some(OptionalPayload::TabNameInputPayload(bytes)) => {
+                        Ok(Action::TabNameInput(bytes))
+                    }
+                    _ =>  {
+                        Err("Wrong payload for Action::TabNameInput")
+                    }
+                }
+            }
+            Some(ProtobufActionName::UndoRenameTab) =>{
+                match protobuf_action.optional_payload {
+                    Some(_) => Err("UndoRenameTab should not have a payload"),
+                    None => {
+                        // we do not serialize the layouts of this action
+                        Ok(Action::UndoRenameTab)
+                    }
+                }
+            }
+            Some(ProtobufActionName::Run) =>{
+                match protobuf_action.optional_payload {
+                    Some(OptionalPayload::RunPayload(run_command_action)) => {
+                        let run_command_action = run_command_action.try_into()?;
+                        Ok(Action::Run(run_command_action))
+                    }
+                    _ =>  {
+                        Err("Wrong payload for Action::Run")
+                    }
+                }
+            }
+            Some(ProtobufActionName::Detach) =>{
+                match protobuf_action.optional_payload {
+                    Some(_) => Err("Detach should not have a payload"),
+                    None => {
+                        // we do not serialize the layouts of this action
+                        Ok(Action::Detach)
+                    }
+                }
+            }
+            Some(ProtobufActionName::LeftClick) =>{
+                match protobuf_action.optional_payload {
+                    Some(OptionalPayload::LeftClickPayload(payload)) => {
+                        let position = payload.try_into()?;
+                        Ok(Action::LeftClick(position))
+                    }
+                    _ =>  {
+                        Err("Wrong payload for Action::LeftClick")
+                    }
+                }
+            }
+            Some(ProtobufActionName::RightClick) =>{
+                match protobuf_action.optional_payload {
+                    Some(OptionalPayload::RightClickPayload(payload)) => {
+                        let position = payload.try_into()?;
+                        Ok(Action::RightClick(position))
+                    }
+                    _ =>  {
+                        Err("Wrong payload for Action::RightClick")
+                    }
+                }
+            }
+            Some(ProtobufActionName::MiddleClick) =>{
+                match protobuf_action.optional_payload {
+                    Some(OptionalPayload::MiddleClickPayload(payload)) => {
+                        let position = payload.try_into()?;
+                        Ok(Action::MiddleClick(position))
+                    }
+                    _ =>  {
+                        Err("Wrong payload for Action::MiddleClick")
+                    }
+                }
+            }
+            Some(ProtobufActionName::LaunchOrFocusPlugin) =>{
+                match protobuf_action.optional_payload {
+                    Some(OptionalPayload::LaunchOrFocusPluginPayload(payload)) => {
+                        let run_plugin_location = RunPluginLocation::parse(&payload.plugin_url, None).map_err(|_| "Malformed LaunchOrFocusPlugin payload")?;
+                        let run_plugin = RunPlugin {
+                            _allow_exec_host_cmd: false,
+                            location: run_plugin_location,
+                        };
+                        let should_float = payload.should_float;
+                        Ok(Action::LaunchOrFocusPlugin(run_plugin, should_float))
+                    }
+                    _ =>  {
+                        Err("Wrong payload for Action::MiddleClick")
+                    }
+                }
+            }
+            Some(ProtobufActionName::LeftMouseRelease) =>{
+                match protobuf_action.optional_payload {
+                    Some(OptionalPayload::LeftMouseReleasePayload(payload)) => {
+                        let position = payload.try_into()?;
+                        Ok(Action::LeftMouseRelease(position))
+                    }
+                    _ =>  {
+                        Err("Wrong payload for Action::LeftMouseRelease")
+                    }
+                }
+            }
+            Some(ProtobufActionName::RightMouseRelease) =>{
+                match protobuf_action.optional_payload {
+                    Some(OptionalPayload::RightMouseReleasePayload(payload)) => {
+                        let position = payload.try_into()?;
+                        Ok(Action::RightMouseRelease(position))
+                    }
+                    _ =>  {
+                        Err("Wrong payload for Action::RightMouseRelease")
+                    }
+                }
+            }
+            Some(ProtobufActionName::MiddleMouseRelease) =>{
+                match protobuf_action.optional_payload {
+                    Some(OptionalPayload::MiddleMouseReleasePayload(payload)) => {
+                        let position = payload.try_into()?;
+                        Ok(Action::MiddleMouseRelease(position))
+                    }
+                    _ =>  {
+                        Err("Wrong payload for Action::MiddleMouseRelease")
+                    }
+                }
+            }
+            Some(ProtobufActionName::MouseHoldLeft) =>{
+                match protobuf_action.optional_payload {
+                    Some(OptionalPayload::MouseHoldLeftPayload(payload)) => {
+                        let position = payload.try_into()?;
+                        Ok(Action::MouseHoldLeft(position))
+                    }
+                    _ =>  {
+                        Err("Wrong payload for Action::MouseHoldLeft")
+                    }
+                }
+            }
+            Some(ProtobufActionName::MouseHoldRight) =>{
+                match protobuf_action.optional_payload {
+                    Some(OptionalPayload::MouseHoldRightPayload(payload)) => {
+                        let position = payload.try_into()?;
+                        Ok(Action::MouseHoldRight(position))
+                    }
+                    _ =>  {
+                        Err("Wrong payload for Action::MouseHoldRight")
+                    }
+                }
+            }
+            Some(ProtobufActionName::MouseHoldMiddle) =>{
+                match protobuf_action.optional_payload {
+                    Some(OptionalPayload::MouseHoldMiddlePayload(payload)) => {
+                        let position = payload.try_into()?;
+                        Ok(Action::MouseHoldMiddle(position))
+                    }
+                    _ =>  {
+                        Err("Wrong payload for Action::MouseHoldMiddle")
+                    }
+                }
+            }
+            Some(ProtobufActionName::SearchInput) =>{
+                match protobuf_action.optional_payload {
+                    Some(OptionalPayload::SearchInputPayload(payload)) => {
+                        Ok(Action::SearchInput(payload))
+                    }
+                    _ =>  {
+                        Err("Wrong payload for Action::SearchInput")
+                    }
+                }
+            }
+            Some(ProtobufActionName::Search) =>{
+                match protobuf_action.optional_payload {
+                    Some(OptionalPayload::SearchPayload(search_direction)) => {
+                        Ok(
+                            Action::Search(
+                                ProtobufSearchDirection::from_i32(search_direction)
+                                  .ok_or("Malformed payload for Action::Search")?
+                                  .try_into()?
+                              )
+                        )
+                    }
+                    _ =>  {
+                        Err("Wrong payload for Action::Search")
+                    }
+                }
+            }
+            Some(ProtobufActionName::SearchToggleOption) =>{
+                match protobuf_action.optional_payload {
+                    Some(OptionalPayload::SearchToggleOptionPayload(search_option)) => {
+                        Ok(
+                            Action::SearchToggleOption(
+                                ProtobufSearchOption::from_i32(search_option)
+                                  .ok_or("Malformed payload for Action::SearchToggleOption")?
+                                  .try_into()?
+                              )
+                        )
+                    }
+                    _ =>  {
+                        Err("Wrong payload for Action::SearchToggleOption")
+                    }
+                }
+            }
+            Some(ProtobufActionName::ToggleMouseMode) =>{
+                match protobuf_action.optional_payload {
+                    Some(_) => Err("ToggleMouseMode should not have a payload"),
+                    None => {
+                        Ok(Action::ToggleMouseMode)
+                    }
+                }
+            }
+            Some(ProtobufActionName::PreviousSwapLayout) =>{
+                match protobuf_action.optional_payload {
+                    Some(_) => Err("PreviousSwapLayout should not have a payload"),
+                    None => {
+                        Ok(Action::PreviousSwapLayout)
+                    }
+                }
+            }
+            Some(ProtobufActionName::NextSwapLayout) =>{
+                match protobuf_action.optional_payload {
+                    Some(_) => Err("NextSwapLayout should not have a payload"),
+                    None => {
+                        Ok(Action::NextSwapLayout)
+                    }
+                }
+            }
+            Some(ProtobufActionName::QueryTabNames) =>{
+                match protobuf_action.optional_payload {
+                    Some(_) => Err("QueryTabNames should not have a payload"),
+                    None => {
+                        Ok(Action::QueryTabNames)
+                    }
+                }
+            }
+            Some(ProtobufActionName::NewTiledPluginPane) =>{
+                match protobuf_action.optional_payload {
+                    Some(OptionalPayload::NewTiledPluginPanePayload(payload)) => {
+                        let run_plugin_location = RunPluginLocation::parse(&payload.plugin_url, None).map_err(|_| "Malformed NewTiledPluginPane payload")?;
+                        let pane_name = payload.optional_pane_name.as_ref().and_then(|s| match s {
+                            new_plugin_pane_payload::OptionalPaneName::PaneName(pane_name) => Some(pane_name.clone())
+                        });
+                        Ok(Action::NewTiledPluginPane(run_plugin_location, pane_name))
+                    }
+                    _ =>  {
+                        Err("Wrong payload for Action::MiddleClick")
+                    }
+                }
+            }
+            Some(ProtobufActionName::NewFloatingPluginPane) =>{
+                match protobuf_action.optional_payload {
+                    Some(OptionalPayload::NewFloatingPluginPanePayload(payload)) => {
+                        let run_plugin_location = RunPluginLocation::parse(&payload.plugin_url, None).map_err(|_| "Malformed NewTiledPluginPane payload")?;
+                        let pane_name = payload.optional_pane_name.as_ref().and_then(|s| match s {
+                            new_plugin_pane_payload::OptionalPaneName::PaneName(pane_name) => Some(pane_name.clone())
+                        });
+                        Ok(Action::NewFloatingPluginPane(run_plugin_location, pane_name))
+                    }
+                    _ =>  {
+                        Err("Wrong payload for Action::MiddleClick")
+                    }
+                }
+            }
+            Some(ProtobufActionName::StartOrReloadPlugin) =>{
+                match protobuf_action.optional_payload {
+                    Some(OptionalPayload::StartOrReloadPluginPayload(payload)) => {
+                        let run_plugin_location = RunPluginLocation::parse(&payload, None).map_err(|_| "Malformed StartOrReloadPluginPayload payload")?;
+                        let run_plugin = RunPlugin {
+                            _allow_exec_host_cmd: false,
+                            location: run_plugin_location,
+                        };
+                        Ok(Action::StartOrReloadPlugin(run_plugin))
+                    }
+                    _ =>  {
+                        Err("Wrong payload for Action::StartOrReloadPlugin")
+                    }
+                }
+            }
+            Some(ProtobufActionName::CloseTerminalPane) =>{
+                match protobuf_action.optional_payload {
+                    Some(OptionalPayload::CloseTerminalPanePayload(payload)) => {
+                        Ok(Action::CloseTerminalPane(payload))
+                    }
+                    _ =>  {
+                        Err("Wrong payload for Action::CloseTerminalPane")
+                    }
+                }
+            }
+            Some(ProtobufActionName::ClosePluginPane) =>{
+                match protobuf_action.optional_payload {
+                    Some(OptionalPayload::ClosePluginPanePayload(payload)) => {
+                        Ok(Action::ClosePluginPane(payload))
+                    }
+                    _ =>  {
+                        Err("Wrong payload for Action::ClosePluginPane")
+                    }
+                }
+            }
+            Some(ProtobufActionName::FocusTerminalPaneWithId) =>{
+                match protobuf_action.optional_payload {
+                    Some(OptionalPayload::FocusTerminalPaneWithIdPayload(payload)) => {
+                        let terminal_pane_id = payload.pane_id;
+                        let should_float_if_hidden = payload.should_float_if_hidden;
+                        Ok(Action::FocusTerminalPaneWithId(terminal_pane_id, should_float_if_hidden))
+                    }
+                    _ =>  {
+                        Err("Wrong payload for Action::FocusTerminalPaneWithId")
+                    }
+                }
+            }
+            Some(ProtobufActionName::FocusPluginPaneWithId) =>{
+                match protobuf_action.optional_payload {
+                    Some(OptionalPayload::FocusPluginPaneWithIdPayload(payload)) => {
+                        let plugin_pane_id = payload.pane_id;
+                        let should_float_if_hidden = payload.should_float_if_hidden;
+                        Ok(Action::FocusPluginPaneWithId(plugin_pane_id, should_float_if_hidden))
+                    }
+                    _ =>  {
+                        Err("Wrong payload for Action::FocusPluginPaneWithId")
+                    }
+                }
+            }
+            Some(ProtobufActionName::RenameTerminalPane) =>{
+                match protobuf_action.optional_payload {
+                    Some(OptionalPayload::RenameTerminalPanePayload(payload)) => {
+                        let terminal_pane_id = payload.id;
+                        let new_pane_name = payload.name;
+                        Ok(Action::RenameTerminalPane(terminal_pane_id, new_pane_name))
+                    }
+                    _ =>  {
+                        Err("Wrong payload for Action::RenameTerminalPane")
+                    }
+                }
+            }
+            Some(ProtobufActionName::RenamePluginPane) =>{
+                match protobuf_action.optional_payload {
+                    Some(OptionalPayload::RenamePluginPanePayload(payload)) => {
+                        let plugin_pane_id = payload.id;
+                        let new_pane_name = payload.name;
+                        Ok(Action::RenamePluginPane(plugin_pane_id, new_pane_name))
+                    }
+                    _ =>  {
+                        Err("Wrong payload for Action::RenamePluginPane")
+                    }
+                }
+            }
+            Some(ProtobufActionName::RenameTab) =>{
+                match protobuf_action.optional_payload {
+                    Some(OptionalPayload::RenameTabPayload(payload)) => {
+                        let tab_index = payload.id;
+                        let new_tab_name = payload.name;
+                        Ok(Action::RenameTab(tab_index, new_tab_name))
+                    }
+                    _ =>  {
+                        Err("Wrong payload for Action::RenameTab")
+                    }
+                }
+            }
+            _ => {
+                Err("Unknown Action")
+            }
+       }
+   }
+}
+
+impl TryFrom<Action> for ProtobufAction {
+   type Error = &'static str;
+   fn try_from(action: Action) -> Result<Self, &'static str> {
+       match action {
+           Action::Quit => {
+               Ok(ProtobufAction {
+                   name: ActionName::Quit as i32,
+                   optional_payload: None,
+               })
+           },
+           Action::Write(bytes)=> {
+               Ok(ProtobufAction {
+                   name: ActionName::Write as i32,
+                   optional_payload: Some(OptionalPayload::WritePayload(WritePayload {
+                       bytes_to_write: bytes
+                   })),
+               })
+           },
+           Action::WriteChars(chars_to_write)=> {
+               Ok(ProtobufAction {
+                   name: ActionName::WriteChars as i32,
+                   optional_payload: Some(OptionalPayload::WriteCharsPayload(WriteCharsPayload {
+                       chars: chars_to_write
+                   })),
+               })
+           },
+           Action::SwitchToMode(input_mode)=> {
+               let input_mode: ProtobufInputMode = input_mode.try_into()?;
+               Ok(ProtobufAction {
+                   name: ActionName::SwitchToMode as i32,
+                   optional_payload: Some(OptionalPayload::SwitchToModePayload(SwitchToModePayload {
+                       input_mode: input_mode as i32,
+                   })),
+               })
+           },
+           Action::SwitchModeForAllClients(input_mode)=> {
+               let input_mode: ProtobufInputMode = input_mode.try_into()?;
+               Ok(ProtobufAction {
+                   name: ActionName::SwitchModeForAllClients as i32,
+                   optional_payload: Some(OptionalPayload::SwitchModeForAllClientsPayload(SwitchToModePayload {
+                       input_mode: input_mode as i32,
+                   })),
+               })
+           },
+           Action::Resize(resize, direction) => {
+               let mut resize: ProtobufResize = resize.try_into()?;
+               resize.optional_direction = direction.and_then(|d| {
+                   let resize_direction: ProtobufResizeDirection = d.try_into().ok()?;
+                   Some(OptionalDirection::ResizeDirection(resize_direction as i32))
+               });
+               Ok(ProtobufAction {
+                   name: ActionName::Resize as i32,
+                   optional_payload: Some(OptionalPayload::ResizePayload(resize)),
+               })
+           },
+           Action::FocusNextPane => {
+               Ok(ProtobufAction {
+                   name: ActionName::FocusNextPane as i32,
+                   optional_payload: None,
+               })
+           },
+           Action::FocusPreviousPane => {
+               Ok(ProtobufAction {
+                   name: ActionName::FocusPreviousPane as i32,
+                   optional_payload: None,
+               })
+           },
+           Action::SwitchFocus => {
+               Ok(ProtobufAction {
+                   name: ActionName::SwitchFocus as i32,
+                   optional_payload: None,
+               })
+           },
+           Action::MoveFocus(direction) => {
+               let direction: ProtobufResizeDirection = direction.try_into()?;
+               Ok(ProtobufAction {
+                   name: ActionName::MoveFocus as i32,
+                   optional_payload: Some(OptionalPayload::MoveFocusPayload(direction as i32)),
+               })
+           },
+           Action::MoveFocusOrTab(direction) => {
+               let direction: ProtobufResizeDirection = direction.try_into()?;
+               Ok(ProtobufAction {
+                   name: ActionName::MoveFocus as i32,
+                   optional_payload: Some(OptionalPayload::MoveFocusOrTabPayload(direction as i32)),
+               })
+           },
+           Action::MovePane(direction) => {
+               let direction = direction.and_then(|direction| {
+                   let protobuf_direction: ProtobufResizeDirection = direction.try_into().ok()?;
+                   Some(protobuf_direction as i32)
+               });
+               Ok(ProtobufAction {
+                   name: ActionName::MoveFocus as i32,
+                   optional_payload: Some(OptionalPayload::MovePanePayload(MovePanePayload {
+                       optional_direction: direction
+                           .map(|d| move_pane_payload::OptionalDirection::Direction(d))
+                   }))
+               })
+           },
+           Action::MovePaneBackwards => {
+               Ok(ProtobufAction {
+                   name: ActionName::MovePaneBackwards as i32,
+                   optional_payload: None,
+               })
+           },
+           Action::ClearScreen => {
+               Ok(ProtobufAction {
+                   name: ActionName::ClearScreen as i32,
+                   optional_payload: None,
+               })
+           },
+           Action::DumpScreen(file_path, include_scrollback) => {
+               Ok(ProtobufAction {
+                   name: ActionName::DumpScreen as i32,
+                   optional_payload: Some(OptionalPayload::DumpScreenPayload(DumpScreenPayload {
+                       file_path,
+                       include_scrollback
+                   }))
+               })
+           },
+           Action::EditScrollback => {
+               Ok(ProtobufAction {
+                   name: ActionName::EditScrollback as i32,
+                   optional_payload: None,
+               })
+           },
+           Action::ScrollUp => {
+               Ok(ProtobufAction {
+                   name: ActionName::ScrollUp as i32,
+                   optional_payload: None,
+               })
+           },
+           Action::ScrollUpAt(position) => {
+               let position: ProtobufPosition = position.try_into()?;
+               Ok(ProtobufAction {
+                   name: ActionName::ScrollUp as i32,
+                   optional_payload: Some(OptionalPayload::ScrollUpAtPayload(ScrollAtPayload {
+                       position: Some(position),
+                   }))
+               })
+           },
+           Action::ScrollDown => {
+               Ok(ProtobufAction {
+                   name: ActionName::ScrollDown as i32,
+                   optional_payload: None,
+               })
+           },
+           Action::ScrollDownAt(position) => {
+               let position: ProtobufPosition = position.try_into()?;
+               Ok(ProtobufAction {
+                   name: ActionName::ScrollUp as i32,
+                   optional_payload: Some(OptionalPayload::ScrollDownAtPayload(ScrollAtPayload {
+                       position: Some(position),
+                   }))
+               })
+           },
+           Action::ScrollToBottom => {
+               Ok(ProtobufAction {
+                   name: ActionName::ScrollToBottom as i32,
+                   optional_payload: None,
+               })
+           },
+           Action::ScrollToTop => {
+               Ok(ProtobufAction {
+                   name: ActionName::ScrollToTop as i32,
+                   optional_payload: None,
+               })
+           },
+           Action::PageScrollUp => {
+               Ok(ProtobufAction {
+                   name: ActionName::PageScrollUp as i32,
+                   optional_payload: None,
+               })
+           },
+           Action::PageScrollDown => {
+               Ok(ProtobufAction {
+                   name: ActionName::PageScrollDown as i32,
+                   optional_payload: None,
+               })
+           },
+           Action::HalfPageScrollUp => {
+               Ok(ProtobufAction {
+                   name: ActionName::HalfPageScrollUp as i32,
+                   optional_payload: None,
+               })
+           },
+           Action::HalfPageScrollDown => {
+               Ok(ProtobufAction {
+                   name: ActionName::HalfPageScrollDown as i32,
+                   optional_payload: None,
+               })
+           },
+           Action::ToggleFocusFullscreen => {
+               Ok(ProtobufAction {
+                   name: ActionName::ToggleFocusFullscreen as i32,
+                   optional_payload: None,
+               })
+           },
+           Action::TogglePaneFrames => {
+               Ok(ProtobufAction {
+                   name: ActionName::TogglePaneFrames as i32,
+                   optional_payload: None,
+               })
+           },
+           Action::ToggleActiveSyncTab => {
+               Ok(ProtobufAction {
+                   name: ActionName::ToggleActiveSyncTab as i32,
+                   optional_payload: None,
+               })
+           },
+           Action::NewPane(direction, new_pane_name) => {
+               let direction = direction.and_then(|direction| {
+                   let protobuf_direction: ProtobufResizeDirection = direction.try_into().ok()?;
+                   Some(protobuf_direction as i32)
+               });
+               Ok(ProtobufAction {
+                   name: ActionName::NewPane as i32,
+                   optional_payload: Some(OptionalPayload::NewPanePayload(NewPanePayload {
+                       optional_direction: direction
+                           .map(|d| new_pane_payload::OptionalDirection::Direction(d)),
+                       optional_pane_name: new_pane_name.map(|n| new_pane_payload::OptionalPaneName::PaneName(n))
+                   }))
+               })
+           },
+           Action::EditFile(
+               path_to_file,
+               line_number,
+               cwd,
+               direction,
+               should_float
+           ) => {
+               let file_to_edit = path_to_file.display().to_string();
+               let optional_line_number = line_number.map(|line_number| {
+                   edit_file_payload::OptionalLineNumber::LineNumber(line_number as u32)
+               });
+               let optional_cwd = cwd.map(|cwd| {
+                   edit_file_payload::OptionalCwd::Cwd(cwd.display().to_string())
+               });
+               let optional_direction = direction.and_then(|direction| {
+                   let protobuf_direction: ProtobufResizeDirection = direction.try_into().ok()?;
+                   Some(edit_file_payload::OptionalDirection::Direction(protobuf_direction as i32))
+               });
+               Ok(ProtobufAction {
+                   name: ActionName::EditFile as i32,
+                   optional_payload: Some(OptionalPayload::EditFilePayload(EditFilePayload {
+                       file_to_edit,
+                       optional_line_number,
+                       should_float,
+                       optional_direction,
+                       optional_cwd,
+                   }))
+               })
+           },
+           Action::NewFloatingPane(
+               run_command_action,
+               pane_name
+           ) => {
+               let optional_command = run_command_action.and_then(|r| {
+                   let mut protobuf_run_command_action: ProtobufRunCommandAction = r.try_into().ok()?;
+                   let optional_pane_name = pane_name.map(|n| run_command_action::OptionalPaneName::PaneName(n));
+                   protobuf_run_command_action.optional_pane_name = optional_pane_name;
+                   Some(new_floating_pane_payload::OptionalCommand::Command(protobuf_run_command_action))
+               });
+               Ok(ProtobufAction {
+                   name: ActionName::NewFloatingPane as i32,
+                   optional_payload: Some(OptionalPayload::NewFloatingPanePayload(NewFloatingPanePayload {
+                       optional_command,
+                   }))
+               })
+           },
+           Action::NewTiledPane(
+               direction,
+               run_command_action,
+               pane_name
+           ) => {
+               let optional_direction = direction.and_then(|direction| {
+                   let protobuf_direction: ProtobufResizeDirection = direction.try_into().ok()?;
+                   Some(new_tiled_pane_payload::OptionalDirection::Direction(protobuf_direction as i32))
+               });
+               let optional_command = run_command_action.and_then(|r| {
+                   let mut protobuf_run_command_action: ProtobufRunCommandAction = r.try_into().ok()?;
+                   let optional_pane_name = pane_name.map(|n| run_command_action::OptionalPaneName::PaneName(n));
+                   protobuf_run_command_action.optional_pane_name = optional_pane_name;
+                   Some(new_tiled_pane_payload::OptionalCommand::Command(protobuf_run_command_action))
+               });
+               Ok(ProtobufAction {
+                   name: ActionName::NewFloatingPane as i32,
+                   optional_payload: Some(OptionalPayload::NewTiledPanePayload(NewTiledPanePayload {
+                       optional_direction,
+                       optional_command,
+                   }))
+               })
+           },
+           Action::TogglePaneEmbedOrFloating => {
+               Ok(ProtobufAction {
+                   name: ActionName::TogglePaneEmbedOrFloating as i32,
+                   optional_payload: None,
+               })
+           },
+           Action::ToggleFloatingPanes => {
+               Ok(ProtobufAction {
+                   name: ActionName::ToggleFloatingPanes as i32,
+                   optional_payload: None,
+               })
+           },
+           Action::CloseFocus => {
+               Ok(ProtobufAction {
+                   name: ActionName::CloseFocus as i32,
+                   optional_payload: None,
+               })
+           },
+           Action::PaneNameInput(bytes)=> {
+               Ok(ProtobufAction {
+                   name: ActionName::PaneNameInput as i32,
+                   optional_payload: Some(OptionalPayload::PaneNameInputPayload(bytes)),
+               })
+           },
+           Action::UndoRenamePane => {
+               Ok(ProtobufAction {
+                   name: ActionName::UndoRenamePane as i32,
+                   optional_payload: None,
+               })
+           },
+           Action::NewTab(..) => {
+               // we do not serialize the various newtab payloads
+               Ok(ProtobufAction {
+                   name: ActionName::NewTab as i32,
+                   optional_payload: None,
+               })
+           },
+           Action::GoToNextTab => {
+               Ok(ProtobufAction {
+                   name: ActionName::GoToNextTab as i32,
+                   optional_payload: None,
+               })
+           },
+           Action::GoToPreviousTab => {
+               Ok(ProtobufAction {
+                   name: ActionName::GoToPreviousTab as i32,
+                   optional_payload: None,
+               })
+           },
+           Action::CloseTab => {
+               Ok(ProtobufAction {
+                   name: ActionName::CloseTab as i32,
+                   optional_payload: None,
+               })
+           },
+           Action::GoToTab(tab_index)=> {
+               Ok(ProtobufAction {
+                   name: ActionName::GoToTab as i32,
+                   optional_payload: Some(OptionalPayload::GoToTabPayload(tab_index)),
+               })
+           },
+           Action::GoToTabName(tab_name, create)=> {
+               Ok(ProtobufAction {
+                   name: ActionName::GoToTab as i32,
+                   optional_payload: Some(OptionalPayload::GoToTabNamePayload(GoToTabNamePayload {
+                       tab_name,
+                       create,
+                   }))
+               })
+           },
+           Action::ToggleTab => {
+               Ok(ProtobufAction {
+                   name: ActionName::ToggleTab as i32,
+                   optional_payload: None,
+               })
+           },
+           Action::TabNameInput(bytes)=> {
+               Ok(ProtobufAction {
+                   name: ActionName::TabNameInput as i32,
+                   optional_payload: Some(OptionalPayload::TabNameInputPayload(bytes)),
+               })
+           },
+           Action::UndoRenameTab => {
+               Ok(ProtobufAction {
+                   name: ActionName::UndoRenameTab as i32,
+                   optional_payload: None,
+               })
+           },
+           Action::Run(run_command_action)=> {
+               let run_command_action: ProtobufRunCommandAction = run_command_action.try_into()?;
+               Ok(ProtobufAction {
+                   name: ActionName::Run as i32,
+                   optional_payload: Some(OptionalPayload::RunPayload(run_command_action)),
+               })
+           },
+           Action::Detach => {
+               Ok(ProtobufAction {
+                   name: ActionName::Detach as i32,
+                   optional_payload: None,
+               })
+           },
+           Action::LeftClick(position) => {
+               let position: ProtobufPosition = position.try_into()?;
+               Ok(ProtobufAction {
+                   name: ActionName::LeftClick as i32,
+                   optional_payload: Some(OptionalPayload::LeftClickPayload(position)),
+               })
+           },
+           Action::RightClick(position) => {
+               let position: ProtobufPosition = position.try_into()?;
+               Ok(ProtobufAction {
+                   name: ActionName::RightClick as i32,
+                   optional_payload: Some(OptionalPayload::RightClickPayload(position)),
+               })
+           },
+           Action::MiddleClick(position) => {
+               let position: ProtobufPosition = position.try_into()?;
+               Ok(ProtobufAction {
+                   name: ActionName::MiddleClick as i32,
+                   optional_payload: Some(OptionalPayload::MiddleClickPayload(position)),
+               })
+           },
+           Action::LaunchOrFocusPlugin(run_plugin, should_float) => {
+               let url: Url = Url::from(&run_plugin.location);
+               Ok(ProtobufAction {
+                   name: ActionName::LaunchOrFocusPlugin as i32,
+                   optional_payload: Some(OptionalPayload::LaunchOrFocusPluginPayload(LaunchOrFocusPluginPayload {
+                       plugin_url: url.into(),
+                       should_float
+                   }))
+               })
+           },
+           Action::LeftMouseRelease(position) => {
+               let position: ProtobufPosition = position.try_into()?;
+               Ok(ProtobufAction {
+                   name: ActionName::LeftMouseRelease as i32,
+                   optional_payload: Some(OptionalPayload::LeftMouseReleasePayload(position)),
+               })
+           },
+           Action::RightMouseRelease(position) => {
+               let position: ProtobufPosition = position.try_into()?;
+               Ok(ProtobufAction {
+                   name: ActionName::RightMouseRelease as i32,
+                   optional_payload: Some(OptionalPayload::RightMouseReleasePayload(position)),
+               })
+           },
+           Action::MiddleMouseRelease(position) => {
+               let position: ProtobufPosition = position.try_into()?;
+               Ok(ProtobufAction {
+                   name: ActionName::MiddleMouseRelease as i32,
+                   optional_payload: Some(OptionalPayload::MiddleMouseReleasePayload(position)),
+               })
+           },
+           Action::MouseHoldLeft(position) => {
+               let position: ProtobufPosition = position.try_into()?;
+               Ok(ProtobufAction {
+                   name: ActionName::MouseHoldLeft as i32,
+                   optional_payload: Some(OptionalPayload::MouseHoldLeftPayload(position)),
+               })
+           },
+           Action::MouseHoldRight(position) => {
+               let position: ProtobufPosition = position.try_into()?;
+               Ok(ProtobufAction {
+                   name: ActionName::MouseHoldRight as i32,
+                   optional_payload: Some(OptionalPayload::MouseHoldRightPayload(position)),
+               })
+           },
+           Action::MouseHoldMiddle(position) => {
+               let position: ProtobufPosition = position.try_into()?;
+               Ok(ProtobufAction {
+                   name: ActionName::MouseHoldMiddle as i32,
+                   optional_payload: Some(OptionalPayload::MouseHoldMiddlePayload(position)),
+               })
+           },
+           Action::SearchInput(bytes)=> {
+               Ok(ProtobufAction {
+                   name: ActionName::SearchInput as i32,
+                   optional_payload: Some(OptionalPayload::SearchInputPayload(bytes)),
+               })
+           },
+           Action::Search(search_direction)=> {
+               let search_direction: ProtobufSearchDirection = search_direction.try_into()?;
+               Ok(ProtobufAction {
+                   name: ActionName::Search as i32,
+                   optional_payload: Some(OptionalPayload::SearchPayload(search_direction as i32)),
+               })
+           },
+           Action::SearchToggleOption(search_option)=> {
+               let search_option: ProtobufSearchOption = search_option.try_into()?;
+               Ok(ProtobufAction {
+                   name: ActionName::SearchToggleOption as i32,
+                   optional_payload: Some(OptionalPayload::SearchToggleOptionPayload(search_option as i32)),
+               })
+           },
+           Action::ToggleMouseMode => {
+               Ok(ProtobufAction {
+                   name: ActionName::ToggleMouseMode as i32,
+                   optional_payload: None,
+               })
+           },
+           Action::PreviousSwapLayout => {
+               Ok(ProtobufAction {
+                   name: ActionName::PreviousSwapLayout as i32,
+                   optional_payload: None,
+               })
+           },
+           Action::NextSwapLayout => {
+               Ok(ProtobufAction {
+                   name: ActionName::NextSwapLayout as i32,
+                   optional_payload: None,
+               })
+           },
+           Action::QueryTabNames => {
+               Ok(ProtobufAction {
+                   name: ActionName::QueryTabNames as i32,
+                   optional_payload: None,
+               })
+           },
+           Action::NewTiledPluginPane(run_plugin_location, pane_name) => {
+               let plugin_url: Url = Url::from(&run_plugin_location);
+               Ok(ProtobufAction {
+                   name: ActionName::NewTiledPluginPane as i32,
+                   optional_payload: Some(OptionalPayload::NewTiledPluginPanePayload(NewPluginPanePayload {
+                       plugin_url: plugin_url.into(),
+                       optional_pane_name: pane_name.map(|p| new_plugin_pane_payload::OptionalPaneName::PaneName(p))
+                   }))
+               })
+           },
+           Action::NewFloatingPluginPane(run_plugin_location, pane_name) => {
+               let plugin_url: Url = Url::from(&run_plugin_location);
+               Ok(ProtobufAction {
+                   name: ActionName::NewFloatingPluginPane as i32,
+                   optional_payload: Some(OptionalPayload::NewFloatingPluginPanePayload(NewPluginPanePayload {
+                       plugin_url: plugin_url.into(),
+                       optional_pane_name: pane_name.map(|p| new_plugin_pane_payload::OptionalPaneName::PaneName(p))
+                   }))
+               })
+           },
+           Action::StartOrReloadPlugin(run_plugin) => {
+               let plugin_url: Url = Url::from(&run_plugin.location);
+               Ok(ProtobufAction {
+                   name: ActionName::StartOrReloadPlugin as i32,
+                   optional_payload: Some(OptionalPayload::StartOrReloadPluginPayload(plugin_url.into()))
+               })
+           },
+           Action::CloseTerminalPane(terminal_pane_id) => {
+               Ok(ProtobufAction {
+                   name: ActionName::CloseTerminalPane as i32,
+                   optional_payload: Some(OptionalPayload::CloseTerminalPanePayload(terminal_pane_id))
+               })
+           },
+           Action::ClosePluginPane(plugin_pane_id) => {
+               Ok(ProtobufAction {
+                   name: ActionName::ClosePluginPane as i32,
+                   optional_payload: Some(OptionalPayload::ClosePluginPanePayload(plugin_pane_id))
+               })
+           },
+           Action::FocusTerminalPaneWithId(terminal_pane_id, should_float_if_hidden) => {
+               Ok(ProtobufAction {
+                   name: ActionName::FocusTerminalPaneWithId as i32,
+                   optional_payload: Some(OptionalPayload::FocusTerminalPaneWithIdPayload(PaneIdAndShouldFloat {
+                       pane_id: terminal_pane_id,
+                       should_float_if_hidden
+                   }))
+               })
+           },
+           Action::FocusPluginPaneWithId(plugin_pane_id, should_float_if_hidden) => {
+               Ok(ProtobufAction {
+                   name: ActionName::FocusPluginPaneWithId as i32,
+                   optional_payload: Some(OptionalPayload::FocusPluginPaneWithIdPayload(PaneIdAndShouldFloat {
+                       pane_id: plugin_pane_id,
+                       should_float_if_hidden
+                   }))
+               })
+           },
+           Action::RenameTerminalPane(terminal_pane_id, new_name) => {
+               Ok(ProtobufAction {
+                   name: ActionName::RenameTerminalPane as i32,
+                   optional_payload: Some(OptionalPayload::RenameTerminalPanePayload(IdAndName {
+                       name: new_name,
+                       id: terminal_pane_id
+                   }))
+               })
+           },
+           Action::RenamePluginPane(plugin_pane_id, new_name) => {
+               Ok(ProtobufAction {
+                   name: ActionName::RenamePluginPane as i32,
+                   optional_payload: Some(OptionalPayload::RenamePluginPanePayload(IdAndName {
+                       name: new_name,
+                       id: plugin_pane_id
+                   }))
+               })
+           },
+           Action::RenameTab(tab_index, new_name) => {
+               Ok(ProtobufAction {
+                   name: ActionName::RenameTab as i32,
+                   optional_payload: Some(OptionalPayload::RenameTabPayload(IdAndName {
+                       name: new_name,
+                       id: tab_index
+                   }))
+               })
+           },
+           _ => Err("Unrecognized Action")
+       }
+   }
+}
+
+impl TryFrom<ProtobufSearchOption> for SearchOption {
+   type Error = &'static str;
+   fn try_from(protobuf_search_option: ProtobufSearchOption) -> Result<Self, &'static str> {
+       match protobuf_search_option {
+           ProtobufSearchOption::CaseSensitivity => Ok(SearchOption::CaseSensitivity),
+           ProtobufSearchOption::WholeWord => Ok(SearchOption::WholeWord),
+           ProtobufSearchOption::Wrap => Ok(SearchOption::Wrap),
+       }
+   }
+}
+
+impl TryFrom<SearchOption> for ProtobufSearchOption {
+   type Error = &'static str;
+   fn try_from(search_option: SearchOption) -> Result<Self, &'static str> {
+       match search_option {
+           SearchOption::CaseSensitivity => Ok(ProtobufSearchOption::CaseSensitivity),
+           SearchOption::WholeWord => Ok(ProtobufSearchOption::WholeWord),
+           SearchOption::Wrap => Ok(ProtobufSearchOption::Wrap),
+       }
+   }
+}
+
+impl TryFrom<ProtobufSearchDirection> for SearchDirection {
+   type Error = &'static str;
+   fn try_from(protobuf_search_direction: ProtobufSearchDirection) -> Result<Self, &'static str> {
+       match protobuf_search_direction {
+           ProtobufSearchDirection::Up => Ok(SearchDirection::Up),
+           ProtobufSearchDirection::Down => Ok(SearchDirection::Down),
+       }
+   }
+}
+
+impl TryFrom<SearchDirection> for ProtobufSearchDirection {
+   type Error = &'static str;
+   fn try_from(search_direction: SearchDirection) -> Result<Self, &'static str> {
+       match search_direction {
+           SearchDirection::Up => Ok(ProtobufSearchDirection::Up),
+           SearchDirection::Down => Ok(ProtobufSearchDirection::Down),
+       }
+   }
+}
+
+impl TryFrom<ProtobufRunCommandAction> for RunCommandAction {
+   type Error = &'static str;
+   fn try_from(protobuf_run_command_action: ProtobufRunCommandAction) -> Result<Self, &'static str> {
+       let command = PathBuf::from(protobuf_run_command_action.command);
+       let args: Vec<String> = protobuf_run_command_action.args;
+       let cwd: Option<PathBuf> = protobuf_run_command_action.optional_cwd
+           .map(|c| match c {
+               run_command_action::OptionalCwd::Cwd(cwd) => PathBuf::from(cwd)
+           });
+       let direction: Option<Direction> = protobuf_run_command_action.optional_direction
+           .and_then(|p| match p {
+               run_command_action::OptionalDirection::Direction(i) => {
+                   ProtobufResizeDirection::from_i32(i).and_then(|d| d.try_into().ok())
+               }
+           });
+       let hold_on_close = protobuf_run_command_action.hold_on_close;
+       let hold_on_start = protobuf_run_command_action.hold_on_start;
+       Ok(RunCommandAction {
+           command,
+           args,
+           cwd,
+           direction,
+           hold_on_close,
+           hold_on_start,
+       })
+   }
+}
+
+impl TryFrom<RunCommandAction> for ProtobufRunCommandAction {
+   type Error = &'static str;
+   fn try_from(run_command_action: RunCommandAction) -> Result<Self, &'static str> {
+       let command = run_command_action.command.display().to_string();
+       let args: Vec<String> = run_command_action.args;
+       let cwd = run_command_action.cwd
+           .map(|c| run_command_action::OptionalCwd::Cwd(c.display().to_string()));
+       let direction = run_command_action.direction
+           .and_then(|p| {
+               let direction: ProtobufResizeDirection = p.try_into().ok()?;
+               Some(run_command_action::OptionalDirection::Direction(direction as i32))
+           });
+       let hold_on_close = run_command_action.hold_on_close;
+       let hold_on_start = run_command_action.hold_on_start;
+       Ok(ProtobufRunCommandAction {
+           command,
+           args,
+           optional_cwd: cwd,
+           optional_direction: direction,
+           hold_on_close,
+           hold_on_start,
+           optional_pane_name: None
+       })
+   }
+}
+
+impl TryFrom<ProtobufPosition> for Position {
+   type Error = &'static str;
+   fn try_from(protobuf_position: ProtobufPosition) -> Result<Self, &'static str> {
+       Ok(Position::new(protobuf_position.line as i32, protobuf_position.column as u16))
+
+   }
+}
+
+impl TryFrom<Position> for ProtobufPosition {
+   type Error = &'static str;
+   fn try_from(position: Position) -> Result<Self, &'static str> {
+       Ok(ProtobufPosition {
+           line: position.line.0 as i64,
+           column: position.column.0 as i64,
+       })
+   }
+}
  
 impl TryFrom<ProtobufEventNameList> for HashSet<EventType> {
    type Error = &'static str;
@@ -79,6 +2313,155 @@ impl TryFrom<EventType> for ProtobufEventType {
    }
 }
  
+impl TryFrom<ProtobufStyle> for Style {
+   type Error = &'static str;
+   fn try_from(protobuf_style: ProtobufStyle) -> Result<Self, &'static str> {
+       Ok(Style {
+           colors: protobuf_style.palette.ok_or("malformed style payload")?.try_into()?,
+           rounded_corners: protobuf_style.rounded_corners,
+           hide_session_name: protobuf_style.hide_session_name,
+       })
+   }
+}
+
+impl TryFrom<Style> for ProtobufStyle {
+   type Error = &'static str;
+   fn try_from(style: Style) -> Result<Self, &'static str> {
+       Ok(ProtobufStyle {
+           palette: Some(style.colors.try_into()?),
+           rounded_corners: style.rounded_corners,
+           hide_session_name: style.hide_session_name
+       })
+   }
+}
+
+impl TryFrom<ProtobufPalette> for Palette {
+   type Error = &'static str;
+   fn try_from(protobuf_palette: ProtobufPalette) -> Result<Self, &'static str> {
+       Ok(Palette {
+           theme_hue: ProtobufThemeHue::from_i32(protobuf_palette.theme_hue).ok_or("malformed theme_hue payload for Palette")?.try_into()?,
+           fg: protobuf_palette.fg.ok_or("malformed palette payload")?.try_into()?,
+           bg: protobuf_palette.bg.ok_or("malformed palette payload")?.try_into()?,
+           black: protobuf_palette.black.ok_or("malformed palette payload")?.try_into()?,
+           red: protobuf_palette.red.ok_or("malformed palette payload")?.try_into()?,
+           green: protobuf_palette.green.ok_or("malformed palette payload")?.try_into()?,
+           yellow: protobuf_palette.yellow.ok_or("malformed palette payload")?.try_into()?,
+           blue: protobuf_palette.blue.ok_or("malformed palette payload")?.try_into()?,
+           magenta: protobuf_palette.magenta.ok_or("malformed palette payload")?.try_into()?,
+           cyan: protobuf_palette.cyan.ok_or("malformed palette payload")?.try_into()?,
+           white: protobuf_palette.white.ok_or("malformed palette payload")?.try_into()?,
+           orange: protobuf_palette.orange.ok_or("malformed palette payload")?.try_into()?,
+           gray: protobuf_palette.gray.ok_or("malformed palette payload")?.try_into()?,
+           purple: protobuf_palette.purple.ok_or("malformed palette payload")?.try_into()?,
+           gold: protobuf_palette.gold.ok_or("malformed palette payload")?.try_into()?,
+           silver: protobuf_palette.silver.ok_or("malformed palette payload")?.try_into()?,
+           pink: protobuf_palette.pink.ok_or("malformed palette payload")?.try_into()?,
+           brown: protobuf_palette.brown.ok_or("malformed palette payload")?.try_into()?,
+           ..Default::default()
+       })
+
+   }
+}
+
+impl TryFrom<Palette> for ProtobufPalette {
+   type Error = &'static str;
+   fn try_from(palette: Palette) -> Result<Self, &'static str> {
+       let theme_hue: ProtobufThemeHue = palette.theme_hue.try_into().map_err(|_| "malformed payload for palette")?;
+       Ok(ProtobufPalette {
+           theme_hue: theme_hue as i32,
+           fg: Some(palette.fg.try_into()?),
+           bg: Some(palette.bg.try_into()?),
+           black: Some(palette.black.try_into()?),
+           red: Some(palette.red.try_into()?),
+           green: Some(palette.green.try_into()?),
+           yellow: Some(palette.yellow.try_into()?),
+           blue: Some(palette.blue.try_into()?),
+           magenta: Some(palette.magenta.try_into()?),
+           cyan: Some(palette.cyan.try_into()?),
+           white: Some(palette.white.try_into()?),
+           orange: Some(palette.orange.try_into()?),
+           gray: Some(palette.gray.try_into()?),
+           purple: Some(palette.purple.try_into()?),
+           gold: Some(palette.gold.try_into()?),
+           silver: Some(palette.silver.try_into()?),
+           pink: Some(palette.pink.try_into()?),
+           brown: Some(palette.brown.try_into()?),
+           ..Default::default()
+       })
+   }
+}
+
+impl TryFrom<ProtobufColor> for PaletteColor {
+   type Error = &'static str;
+   fn try_from(protobuf_color: ProtobufColor) -> Result<Self, &'static str> {
+       match ProtobufColorType::from_i32(protobuf_color.color_type) {
+           Some(ProtobufColorType::Rgb) => {
+               match protobuf_color.payload {
+                   Some(color::Payload::RgbColorPayload(rgb_color_payload)) => {
+                       Ok(PaletteColor::Rgb((rgb_color_payload.red as u8, rgb_color_payload.green as u8, rgb_color_payload.blue as u8)))
+                   },
+                   _ => Err("malformed payload for Rgb color"),
+               }
+
+           }
+           Some(ProtobufColorType::EightBit) => {
+               match protobuf_color.payload {
+                   Some(color::Payload::EightBitColorPayload(eight_bit_payload)) => {
+                       Ok(PaletteColor::EightBit(eight_bit_payload as u8))
+                   },
+                   _ => Err("malformed payload for 8bit color"),
+               }
+           },
+           None => Err("malformed payload for Color")
+       }
+   }
+}
+
+impl TryFrom<PaletteColor> for ProtobufColor {
+   type Error = &'static str;
+   fn try_from(color: PaletteColor) -> Result<Self, &'static str> {
+       match color {
+           PaletteColor::Rgb((red, green, blue)) => {
+               let red = red as u32;
+               let green = green as u32;
+               let blue = blue as u32;
+               Ok(ProtobufColor {
+                   color_type: ColorType::Rgb as i32,
+                   payload: Some(color::Payload::RgbColorPayload(RgbColorPayload {
+                       red, green, blue
+                   }))
+               })
+           }
+           PaletteColor::EightBit(color) => {
+               Ok(ProtobufColor {
+                   color_type: ColorType::EightBit as i32,
+                   payload: Some(color::Payload::EightBitColorPayload(color as u32)),
+               })
+           }
+       }
+   }
+}
+
+impl TryFrom<ThemeHue> for ProtobufThemeHue {
+   type Error = &'static str;
+   fn try_from(theme_hue: ThemeHue) -> Result<Self, &'static str> {
+       match theme_hue {
+           ThemeHue::Light => Ok(ProtobufThemeHue::Light),
+           ThemeHue::Dark => Ok(ProtobufThemeHue::Dark),
+       }
+   }
+}
+
+impl TryFrom<ProtobufThemeHue> for ThemeHue {
+   type Error = &'static str;
+   fn try_from(protobuf_theme_hue: ProtobufThemeHue) -> Result<Self, &'static str> {
+       match protobuf_theme_hue {
+           ProtobufThemeHue::Light => Ok(ThemeHue::Light),
+           ProtobufThemeHue::Dark => Ok(ThemeHue::Dark),
+       }
+   }
+}
+
 // impl TryFrom<Key> for ProtobufKey {
 //     type Error = &'static str;
 //     fn try_from(key: Key) -> Result<Self, &'static str> {
