@@ -94,9 +94,6 @@ macro_rules! register_plugin {
         thread_local! {
             static STATE: std::cell::RefCell<$t> = std::cell::RefCell::new(Default::default());
         }
-//         use zellij_tile::shim::plugin_api::event::ProtobufEvent;
-//         use zellij_tile::shim::prost::messae::Message; // TODO: from zellij-tile
-//         use prost::message::Message; // TODO: from zellij-tile
 
         fn main() {
             // Register custom panic handler
@@ -114,17 +111,23 @@ macro_rules! register_plugin {
 
         #[no_mangle]
         pub fn update() -> bool {
-            // use crate::plugin_api::event::ProtobufEvent;
+            let err_context = || "Failed to deserialize event";
             use zellij_tile::shim::plugin_api::event::ProtobufEvent;
             use zellij_tile::shim::prost::Message;
             STATE.with(|state| {
                 let protobuf_bytes: Vec<u8> = $crate::shim::object_from_stdin()
-                    .context($crate::PLUGIN_MISMATCH)
+                    .with_context(err_context)
                     .to_stdout()
                     .unwrap();
-                let protobuf_event: ProtobufEvent = ProtobufEvent::decode(protobuf_bytes.as_slice()).unwrap();// TODO: no unwrap
-                let event = protobuf_event.try_into().unwrap(); // TODO: no unwrap
-                // state.borrow_mut().update(object)
+                let protobuf_event: ProtobufEvent = ProtobufEvent::decode(protobuf_bytes.as_slice())
+                    .with_context(err_context)
+                    .to_stdout()
+                    .unwrap();
+                let event = protobuf_event
+                    .try_into()
+                    .with_context(err_context)
+                    .to_stdout()
+                    .unwrap();
                 state.borrow_mut().update(event)
             })
         }

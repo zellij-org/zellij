@@ -843,7 +843,6 @@ pub struct CommandToRun {
 }
 
 impl CommandToRun {
-    // pub fn new<P: AsRef<Path>, A: AsRef<str>>(path: P, args: Vec<A>) {
     pub fn new<P: AsRef<Path>>(path: P) -> Self {
         CommandToRun {
             path: path.as_ref().to_path_buf(),
@@ -883,7 +882,6 @@ impl PluginMessage {
     }
 }
 
-// TODO: move elsewhere
 #[derive(Debug, Clone)]
 pub enum PluginCommand {
     Subscribe(HashSet<EventType>),

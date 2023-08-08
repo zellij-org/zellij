@@ -3,7 +3,7 @@ use crate::plugins::plugin_map::{PluginEnv, Subscriptions};
 use crate::plugins::wasm_bridge::handle_plugin_crash;
 use crate::route::route_action;
 use log::{debug, warn};
-use serde::{de::DeserializeOwned, Serialize};
+use serde::Serialize;
 use std::{
     collections::HashSet,
     path::PathBuf,
@@ -22,18 +22,11 @@ use crate::{panes::PaneId, screen::ScreenInstruction};
 use zellij_utils::{
     plugin_api::{
         plugin_command::ProtobufPluginCommand,
-        // event::ProtobufEventNameList,
-        file::ProtobufFile,
-        command::ProtobufCommand,
-        message::ProtobufMessage,
-        input_mode::ProtobufInputModeMessage,
-        resize::{ProtobufResize, ProtobufMoveDirection},
         plugin_ids::{ProtobufPluginIds, ProtobufZellijVersion},
     },
     consts::VERSION,
-    data::{Direction, Event, EventType, InputMode, PluginIds, Resize, ResizeStrategy, Key, FileToOpen, CommandToRun, PluginMessage, PluginCommand},
+    data::{Direction, Event, EventType, InputMode, PluginIds, Resize, ResizeStrategy, FileToOpen, CommandToRun, PluginMessage, PluginCommand},
     errors::prelude::*,
-    plugin_api::key::ProtobufKey,
     input::{
         actions::Action,
         command::{RunCommand, RunCommandAction, TerminalAction},
@@ -78,49 +71,6 @@ pub fn zellij_exports(
 
     zellij_export! {
         host_run_plugin_command,
-//         host_report_panic,
-//         host_resize,
-//         host_resize_with_direction,
-//         host_focus_next_pane,
-//         host_focus_previous_pane,
-//         host_move_focus,
-//         host_move_focus_or_tab,
-//         host_detach,
-//         host_edit_scrollback,
-//         host_write,
-//         host_write_chars,
-//         host_toggle_tab,
-//         host_move_pane,
-//         host_move_pane_with_direction,
-//         host_clear_screen,
-//         host_scroll_up,
-//         host_scroll_down,
-//         host_scroll_to_top,
-//         host_scroll_to_bottom,
-//         host_page_scroll_up,
-//         host_page_scroll_down,
-//         host_toggle_focus_fullscreen,
-//         host_toggle_pane_frames,
-//         host_toggle_pane_embed_or_eject,
-//         host_undo_rename_pane,
-//         host_close_focus,
-//         host_toggle_active_tab_sync,
-//         host_close_focused_tab,
-//         host_undo_rename_tab,
-//         host_quit_zellij,
-//         host_previous_swap_layout,
-//         host_next_swap_layout,
-//         host_go_to_tab_name,
-//         host_focus_or_create_tab,
-//         host_go_to_tab,
-//         host_start_or_reload_plugin,
-//         host_close_terminal_pane,
-//         host_close_plugin_pane,
-//         host_focus_terminal_pane,
-//         host_focus_plugin_pane,
-//         host_rename_terminal_pane,
-//         host_rename_plugin_pane,
-//         host_rename_tab,
     }
 }
 
@@ -138,9 +88,6 @@ impl ForeignFunctionEnv {
         }
     }
 }
-
-// TODO: CONTINUE HERE - create a host_run_plugin_command function that will accept a PluginCommand
-// (name + payload) and run it
 
 fn host_run_plugin_command(env: &ForeignFunctionEnv) {
     wasi_read_bytes(&env.plugin_env.wasi_env)
@@ -530,7 +477,6 @@ fn hide_self(env: &ForeignFunctionEnv) -> Result<()> {
             env.plugin_env.client_id,
         ))
         .with_context(|| format!("failed to hide self"))
-        // .fatal();
 }
 
 fn show_self(env: &ForeignFunctionEnv, should_float_if_hidden: bool) {
@@ -611,7 +557,6 @@ fn go_to_previous_tab(env: &ForeignFunctionEnv) {
     apply_action!(action, error_msg, env);
 }
 
-// TODO: CONTINUE HERE (21/07/2023) - host_run_plugin_commandify this
 fn resize(env: &ForeignFunctionEnv, resize: Resize) {
     let error_msg = || format!("failed to resize in plugin {}", env.plugin_env.name());
     let action = Action::Resize(resize, None);
@@ -1016,12 +961,6 @@ pub fn wasi_write_object(wasi_env: &WasiEnv, object: &(impl Serialize + ?Sized))
         .map_err(anyError::new)
         .and_then(|string| wasi_write_string(wasi_env, &string))
         .with_context(|| format!("failed to serialize object for WASI env '{wasi_env:?}'"))
-}
-
-pub fn wasi_read_object<T: DeserializeOwned>(wasi_env: &WasiEnv) -> Result<T> {
-    wasi_read_string(wasi_env)
-        .and_then(|string| serde_json::from_str(&string).map_err(anyError::new))
-        .with_context(|| format!("failed to deserialize object from WASI env '{wasi_env:?}'"))
 }
 
 pub fn wasi_read_bytes(wasi_env: &WasiEnv) -> Result<Vec<u8>> {

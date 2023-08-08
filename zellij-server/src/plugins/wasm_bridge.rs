@@ -741,10 +741,8 @@ pub fn apply_event_to_plugin(
     columns: usize,
     plugin_bytes: &mut Vec<(PluginId, ClientId, Vec<u8>)>,
 ) -> Result<()> {
-    // TODO: CONTINUE HERE - 07/08 - convert the event to a protobuf event and then serialize it
-    // oer the wire (write_bytes?), then do the same in zellij-tile and start testing
     let err_context = || format!("Failed to apply event to plugin {plugin_id}");
-    let protobuf_event: ProtobufEvent = event.clone().try_into().map_err(|e| anyhow!("Failed to convert to protobuf: {:?}", e))?; // TODO: proper error and no clone
+    let protobuf_event: ProtobufEvent = event.clone().try_into().map_err(|e| anyhow!("Failed to convert to protobuf: {:?}", e))?;
     let update = instance
         .exports
         .get_function("update")

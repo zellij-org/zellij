@@ -108,9 +108,7 @@ impl SearchState {
                         line_number: Some(line_number),
                         ..Default::default()
                     });
-                    // open_file_with_line_floating(&PathBuf::from(path), line_number);
                 } else {
-                    // open_file_with_line(&PathBuf::from(path), line_number);
                     open_file(FileToOpen {
                         path: PathBuf::from(path),
                         line_number: Some(line_number),

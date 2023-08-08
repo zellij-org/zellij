@@ -135,7 +135,6 @@ impl TryFrom<Key> for ProtobufKey {
             Key::Char(character) => {
                 Ok(ProtobufKey {
                     optional_modifier: None,
-                    // 97 is the start of the ASCII alphabet
                     main_key: Some(MainKey::Char((character as u8) as i32)),
                 })
             }
@@ -221,8 +220,6 @@ fn parse_optional_modifier(m: &ProtobufKey) -> Option<KeyModifier> {
 
 
 fn char_index_to_char(char_index: i32) -> char {
-    // 97 is the start of the alphabet in the ASCII table
-    // (char_index + 97) as u8 as char
     char_index as u8 as char
 }
 

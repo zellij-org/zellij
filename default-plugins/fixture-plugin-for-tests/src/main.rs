@@ -141,14 +141,12 @@ impl ZellijPlugin for State {
                     start_or_reload_plugin(plugin_url)
                 },
                 Key::Ctrl('g') => {
-                    // open_file(std::path::PathBuf::from("/path/to/my/file.rs").as_path());
                     open_file(FileToOpen {
                         path: std::path::PathBuf::from("/path/to/my/file.rs"),
                         ..Default::default()
                     });
                 },
                 Key::Ctrl('h') => {
-                    // open_file_floating(std::path::PathBuf::from("/path/to/my/file.rs").as_path());
                     open_file_floating(FileToOpen {
                         path: std::path::PathBuf::from("/path/to/my/file.rs"),
                         ..Default::default()
@@ -160,10 +158,6 @@ impl ZellijPlugin for State {
                         line_number: Some(42),
                         ..Default::default()
                     });
-//                     open_file(
-//                         std::path::PathBuf::from("/path/to/my/file.rs").as_path(),
-//                         42,
-//                     );
                 },
                 Key::Ctrl('j') => {
                     open_file_floating(FileToOpen {
@@ -171,10 +165,6 @@ impl ZellijPlugin for State {
                         line_number: Some(42),
                         ..Default::default()
                     });
-//                     open_file_with_line_floating(
-//                         std::path::PathBuf::from("/path/to/my/file.rs").as_path(),
-//                         42,
-//                     );
                 },
                 Key::Ctrl('k') => {
                     open_terminal(std::path::PathBuf::from("/path/to/my/file.rs").as_path());
@@ -190,10 +180,6 @@ impl ZellijPlugin for State {
                         args: vec!["arg1".to_owned(), "arg2".to_owned()],
                         ..Default::default()
                     });
-//                    open_command_pane(
-//                        std::path::PathBuf::from("/path/to/my/file.rs").as_path(),
-//                        vec!["arg1".to_owned(), "arg2".to_owned()],
-//                    );
                 },
                 Key::Ctrl('n') => {
                     open_command_pane_floating(CommandToRun {
@@ -201,10 +187,6 @@ impl ZellijPlugin for State {
                         args: vec!["arg1".to_owned(), "arg2".to_owned()],
                         ..Default::default()
                     });
-//                     open_command_pane_floating(
-//                         std::path::PathBuf::from("/path/to/my/file.rs").as_path(),
-//                         vec!["arg1".to_owned(), "arg2".to_owned()],
-//                     );
                 },
                 Key::Ctrl('o') => {
                     switch_tab_to(1);

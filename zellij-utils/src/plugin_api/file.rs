@@ -38,11 +38,9 @@ impl TryFrom<FileToOpen> for ProtobufFile {
    type Error = &'static str;
    fn try_from(file_to_open: FileToOpen) -> Result<Self, &'static str> {
        Ok(ProtobufFile {
-           path: file_to_open.path.to_string_lossy().to_string(), // TODO: find a better way to
-                                                                  // encode non unicode characters
-                                                                  // in protobufs
+           path: file_to_open.path.display().to_string(),
            optional_line_number: file_to_open.line_number.map(|l| OptionalLineNumber::LineNumber(l as i32)),
-           optional_cwd: file_to_open.cwd.map(|c| OptionalCwd::Cwd(c.to_string_lossy().to_string()))
+           optional_cwd: file_to_open.cwd.map(|c| OptionalCwd::Cwd(c.display().to_string()))
        })
    }
 }

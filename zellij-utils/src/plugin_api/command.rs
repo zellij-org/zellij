@@ -34,9 +34,7 @@ impl TryFrom<CommandToRun> for ProtobufCommand {
    type Error = &'static str;
    fn try_from(command_to_run: CommandToRun) -> Result<Self, &'static str> {
        Ok(ProtobufCommand {
-           path: command_to_run.path.to_string_lossy().to_string(), // TODO: find a better way to
-                                                                  // encode non unicode characters
-                                                                  // in protobufs
+           path: command_to_run.path.display().to_string(),
            args: command_to_run.args,
            optional_cwd: command_to_run.cwd.map(|c| OptionalCwd::Cwd(c.to_string_lossy().to_string()))
        })

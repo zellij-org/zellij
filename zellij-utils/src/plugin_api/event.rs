@@ -6,6 +6,7 @@
 // SDK authors in other languages should generate their own equivalent structures based on the
 // `.proto` specification, and then decode the protobuf over the wire into them
 
+use crate::errors::prelude::*;
 pub use super::generated_api::api::{
     input_mode::{
         InputMode as ProtobufInputMode,
@@ -592,12 +593,12 @@ impl TryFrom<ProtobufModeUpdatePayload> for ModeInfo {
            .ok_or("Malformed InputMode in the ModeUpdate Event")?.try_into()?;
        let keybinds: Vec<(InputMode, Vec<(Key, Vec<Action>)>)> = protobuf_mode_update_payload.keybinds
            .iter_mut()
-           .map(|k| {
+           .filter_map(|k| {
                let input_mode: InputMode = ProtobufInputMode::from_i32(k.mode)
-                   .ok_or("Malformed InputMode in the ModeUpdate Event").unwrap().try_into().unwrap(); // TODO: no unwrap
+                   .ok_or("Malformed InputMode in the ModeUpdate Event").ok()?.try_into().ok()?;
                let mut keybinds: Vec<(Key, Vec<Action>)> = vec![];
                for mut protobuf_keybind in k.key_bind.drain(..) {
-                   let key: Key = protobuf_keybind.key.unwrap().try_into().unwrap(); // TODO: no unwrap
+                   let key: Key = protobuf_keybind.key.unwrap().try_into().ok()?;
                    let mut actions: Vec<Action> = vec![];
                    for action in protobuf_keybind.action.drain(..) {
                        if let Ok(action) = action.try_into() {
@@ -606,7 +607,7 @@ impl TryFrom<ProtobufModeUpdatePayload> for ModeInfo {
                    }
                    keybinds.push((key, actions));
                }
-               (input_mode, keybinds)
+               Some((input_mode, keybinds))
            })
            .collect();
         let style: Style = protobuf_mode_update_payload.style.and_then(|m| m.try_into().ok()).ok_or("malformed payload for mode_info")?;
@@ -2269,7 +2270,6 @@ impl TryFrom<ProtobufEventType> for EventType {
    type Error = &'static str;
    fn try_from(protobuf_event_type: ProtobufEventType) -> Result<Self, &'static str> {
        Ok(match protobuf_event_type {
-           // TODO: strum macro?
            ProtobufEventType::ModeUpdate => EventType::ModeUpdate,
            ProtobufEventType::TabUpdate => EventType::TabUpdate,
            ProtobufEventType::PaneUpdate => EventType::PaneUpdate,
@@ -2293,7 +2293,6 @@ impl TryFrom<EventType> for ProtobufEventType {
    type Error = &'static str;
    fn try_from(event_type: EventType) -> Result<Self, &'static str> {
        Ok(match event_type {
-           // TODO: strum macro?
            EventType::ModeUpdate => ProtobufEventType::ModeUpdate,
            EventType::TabUpdate => ProtobufEventType::TabUpdate,
            EventType::PaneUpdate => ProtobufEventType::PaneUpdate,

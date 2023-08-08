@@ -103,11 +103,6 @@ pub fn open_command_pane(command_to_run: CommandToRun) {
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
-
-
-//     let command_to_run = ProtobufCommand::try_from(command_to_run).unwrap();
-//     object_to_stdout(&command_to_run.encode_to_vec());
-//     unsafe { host_open_command_pane() };
 }
 
 /// Open a new floating command pane with the specified command and args (this sort of pane allows the user to control the command, re-run it and see its exit status through the Zellij UI).
@@ -204,11 +199,6 @@ pub fn report_panic(info: &std::panic::PanicInfo) {
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
-
-//     println!("");
-//     println!("A panic occured in a plugin");
-//     println!("{:#?}", info);
-//     unsafe { host_report_panic() };
 }
 
 /// Either Increase or Decrease the size of the focused pane
@@ -238,7 +228,6 @@ pub fn focus_next_pane() {
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
-    // unsafe { host_focus_next_pane() };
 }
 
 /// Change focus to the previous pane in chronological order
@@ -563,7 +552,6 @@ pub fn object_from_stdin<T: DeserializeOwned>() -> Result<T> {
 #[doc(hidden)]
 pub fn bytes_from_stdin() -> Result<Vec<u8>> {
     let err_context = || "failed to deserialize bytes from stdin".to_string();
-
     let mut json = String::new();
     io::stdin().read_line(&mut json).with_context(err_context)?;
     serde_json::from_str(&json).with_context(err_context)
@@ -581,41 +569,14 @@ pub fn post_message_to(plugin_message: PluginMessage) {
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
-
-
-// // pub fn open_command_pane_floating(command_to_run: CommandToRun) {
-//     let plugin_message = ProtobufMessage::try_from(plugin_message).unwrap();
-//     object_to_stdout(&plugin_message.encode_to_vec());
-//     unsafe { host_post_message_to() };
-
-
-
-//     match serde_json::to_string(&(worker_name.as_ref(), message.as_ref(), payload.as_ref())) {
-//         Ok(serialized) => println!("{}", serialized),
-//         Err(e) => eprintln!("Failed to serialize message: {:?}", e),
-//     }
-//     unsafe { host_post_message_to() };
 }
 
 /// Post a message to this plugin, for more information please see [Plugin Workers](https://zellij.dev/documentation/plugin-api-workers.md)
-// pub fn post_message_to_plugin<S: AsRef<str>>(message: S, payload: S) {
 pub fn post_message_to_plugin(plugin_message: PluginMessage) {
     let plugin_command = PluginCommand::PostMessageToPlugin(plugin_message);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
-
-
-
-//     let plugin_message = ProtobufMessage::try_from(plugin_message).unwrap();
-//     object_to_stdout(&plugin_message.encode_to_vec());
-//     unsafe { host_post_message_to_plugin() };
-
-//     match serde_json::to_string(&(message.as_ref(), payload.as_ref())) {
-//         Ok(serialized) => println!("{}", serialized),
-//         Err(e) => eprintln!("Failed to serialize message: {:?}", e),
-//     }
-//     unsafe { host_post_message_to_plugin() };
 }
 
 #[link(wasm_import_module = "zellij")]

@@ -6,13 +6,6 @@
 // SDK authors in other languages should generate their own equivalent structures based on the
 // `.proto` specification, and then decode the protobuf over the wire into them
 
-// pub mod generated_api {
-//     // this is a compile time asset generated from the `.proto` specification file by Prost to give
-//     // us the ProtobufEventType structure we are gathered here to avoid
-//     // include!(concat!(env!("OUT_DIR"), "/api.plugin_command.rs"));
-//     include!(concat!(env!("OUT_DIR"), "/generated_plugin_api.rs"));
-// }
-
 pub use super::generated_api::api::{
     plugin_command::{
         PluginCommand as ProtobufPluginCommand,
