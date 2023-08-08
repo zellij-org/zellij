@@ -2462,228 +2462,265 @@ impl TryFrom<ProtobufThemeHue> for ThemeHue {
    }
 }
 
-// impl TryFrom<Key> for ProtobufKey {
-//     type Error = &'static str;
-//     fn try_from(key: Key) -> Result<Self, &'static str> {
-//         match key {
-//             Key::PageDown => {
-//                 Ok(ProtobufKey {
-//                     optional_modifier: None,
-//                     main_key: Some(MainKey::Key(NamedKey::PageDown as i32)),
-//                 })
-//             },
-//             Key::PageUp => {
-//                 Ok(ProtobufKey {
-//                     optional_modifier: None,
-//                     main_key: Some(MainKey::Key(NamedKey::PageUp as i32)),
-//                 })
-//             },
-//             Key::Left => {
-//                 Ok(ProtobufKey {
-//                     optional_modifier: None,
-//                     main_key: Some(MainKey::Key(NamedKey::LeftArrow as i32)),
-//                 })
-//             }
-//             Key::Down => {
-//                 Ok(ProtobufKey {
-//                     optional_modifier: None,
-//                     main_key: Some(MainKey::Key(NamedKey::DownArrow as i32)),
-//                 })
-//             }
-//             Key::Up => {
-//                 Ok(ProtobufKey {
-//                     optional_modifier: None,
-//                     main_key: Some(MainKey::Key(NamedKey::UpArrow as i32)),
-//                 })
-//             }
-//             Key::Right => {
-//                 Ok(ProtobufKey {
-//                     optional_modifier: None,
-//                     main_key: Some(MainKey::Key(NamedKey::RightArrow as i32)),
-//                 })
-//             }
-//             Key::Home => {
-//                 Ok(ProtobufKey {
-//                     optional_modifier: None,
-//                     main_key: Some(MainKey::Key(NamedKey::Home as i32)),
-//                 })
-//             }
-//             Key::End => {
-//                 Ok(ProtobufKey {
-//                     optional_modifier: None,
-//                     main_key: Some(MainKey::Key(NamedKey::End as i32)),
-//                 })
-//             }
-//             Key::Backspace => {
-//                 Ok(ProtobufKey {
-//                     optional_modifier: None,
-//                     main_key: Some(MainKey::Key(NamedKey::Backspace as i32)),
-//                 })
-//             }
-//             Key::Delete => {
-//                 Ok(ProtobufKey {
-//                     optional_modifier: None,
-//                     main_key: Some(MainKey::Key(NamedKey::Delete as i32)),
-//                 })
-//             }
-//             Key::Insert => {
-//                 Ok(ProtobufKey {
-//                     optional_modifier: None,
-//                     main_key: Some(MainKey::Key(NamedKey::Insert as i32)),
-//                 })
-//             }
-//             Key::F(index) => {
-//                 let main_key = match index {
-//                     1 => Some(MainKey::Key(NamedKey::F1 as i32)),
-//                     2 => Some(MainKey::Key(NamedKey::F2 as i32)),
-//                     3 => Some(MainKey::Key(NamedKey::F3 as i32)),
-//                     4 => Some(MainKey::Key(NamedKey::F4 as i32)),
-//                     5 => Some(MainKey::Key(NamedKey::F5 as i32)),
-//                     6 => Some(MainKey::Key(NamedKey::F6 as i32)),
-//                     7 => Some(MainKey::Key(NamedKey::F7 as i32)),
-//                     8 => Some(MainKey::Key(NamedKey::F8 as i32)),
-//                     9 => Some(MainKey::Key(NamedKey::F9 as i32)),
-//                     10 => Some(MainKey::Key(NamedKey::F10 as i32)),
-//                     11 => Some(MainKey::Key(NamedKey::F11 as i32)),
-//                     12 => Some(MainKey::Key(NamedKey::F12 as i32)),
-//                     _ => return Err("Invalid key"),
-//                 };
-//                 Ok(ProtobufKey {
-//                     optional_modifier: None,
-//                     main_key,
-//                 })
-//             }
-//             Key::Char(character) => {
-//                 Ok(ProtobufKey {
-//                     optional_modifier: None,
-//                     // 97 is the start of the ASCII alphabet
-//                     main_key: Some(MainKey::Char((character as u8 - 97) as i32)),
-//                 })
-//             }
-//             Key::Alt(char_or_arrow) => {
-//                 let main_key = match char_or_arrow {
-//                     CharOrArrow::Char(character) => MainKey::Char((character as u8 - 97) as i32),
-//                     CharOrArrow::Direction(Direction::Left) => MainKey::Key(NamedKey::LeftArrow as i32),
-//                     CharOrArrow::Direction(Direction::Right) => MainKey::Key(NamedKey::RightArrow as i32),
-//                     CharOrArrow::Direction(Direction::Up) => MainKey::Key(NamedKey::UpArrow as i32),
-//                     CharOrArrow::Direction(Direction::Down) => MainKey::Key(NamedKey::DownArrow as i32),
-//                 };
-//                 Ok(ProtobufKey {
-//                     optional_modifier: Some(OptionalModifier::Modifier(KeyModifier::Alt as i32)),
-//                     main_key: Some(main_key)
-//                 })
-//             }
-//             Key::Ctrl(character) => {
-//                 Ok(ProtobufKey {
-//                     optional_modifier: Some(OptionalModifier::Modifier(KeyModifier::Ctrl as i32)),
-//                     main_key: Some(MainKey::Char((character as u8 - 97) as i32)),
-//                 })
-//             }
-//             Key::BackTab => {
-//                 Ok(ProtobufKey {
-//                     optional_modifier: None,
-//                     main_key: Some(MainKey::Key(NamedKey::Tab as i32)),
-//                 })
-//             }
-//             Key::Null => {
-//                 Ok(ProtobufKey {
-//                     optional_modifier: None,
-//                     main_key: None, // TODO: does this break deserialization?
-//                 })
-//             }
-//             Key::Esc => {
-//                 Ok(ProtobufKey {
-//                     optional_modifier: None,
-//                     main_key: Some(MainKey::Key(NamedKey::Esc as i32)),
-//                 })
-//             }
-//         }
-//     }
-// }
-// 
-// impl CharOrArrow {
-//     pub fn from_main_key(main_key: std::option::Option<MainKey>) -> Result<CharOrArrow, &'static str> {
-//         match main_key {
-//             Some(MainKey::Char(encoded_key)) => {
-//                 Ok(CharOrArrow::Char(char_index_to_char(encoded_key)))
-//             },
-//             Some(MainKey::Key(key_index)) => {
-//                 match NamedKey::from_i32(key_index) {
-//                     Some(NamedKey::LeftArrow) => {
-//                         Ok(CharOrArrow::Direction(Direction::Left))
-//                     },
-//                     Some(NamedKey::RightArrow) => {
-//                         Ok(CharOrArrow::Direction(Direction::Right))
-//                     },
-//                     Some(NamedKey::UpArrow) => {
-//                         Ok(CharOrArrow::Direction(Direction::Up))
-//                     },
-//                     Some(NamedKey::DownArrow) => {
-//                         Ok(CharOrArrow::Direction(Direction::Down))
-//                     },
-//                     _ => {
-//                         Err("Unsupported key")
-//                     }
-//                 }
-//             }
-//             _ => {
-//                 return Err("Unsupported key");
-//             }
-//         }
-//     }
-// }
-// 
-// fn parse_optional_modifier(m: &ProtobufKey) -> Option<KeyModifier> {
-//     match m.optional_modifier {
-//         Some(OptionalModifier::Modifier(modifier)) => KeyModifier::from_i32(modifier),
-//         _ => None
-//     }
-// }
-// 
-// 
-// fn char_index_to_char(char_index: i32) -> char {
-//     // 97 is the start of the alphabet in the ASCII table
-//     (char_index + 97) as u8 as char
-// }
-// 
-// fn char_from_main_key(main_key: Option<MainKey>) -> Result<char, &'static str> {
-//     match main_key {
-//         Some(MainKey::Char(encoded_key)) => {
-//             return Ok(char_index_to_char(encoded_key));
-//         },
-//         _ => {
-//             return Err("Unsupported key");
-//         }
-//     }
-// }
-// 
-// fn named_key_to_key(named_key: NamedKey) -> Key {
-//     match named_key {
-//         NamedKey::PageDown => Key::PageDown,
-//         NamedKey::PageUp => Key::PageUp,
-//         NamedKey::LeftArrow => Key::Left,
-//         NamedKey::DownArrow => Key::Down,
-//         NamedKey::UpArrow => Key::Up,
-//         NamedKey::RightArrow => Key::Right,
-//         NamedKey::Home => Key::Home,
-//         NamedKey::End => Key::End,
-//         NamedKey::Backspace => Key::Backspace,
-//         NamedKey::Delete => Key::Delete,
-//         NamedKey::Insert => Key::Insert,
-//         NamedKey::F1 => Key::F(1),
-//         NamedKey::F2 => Key::F(2),
-//         NamedKey::F3 => Key::F(3),
-//         NamedKey::F4 => Key::F(4),
-//         NamedKey::F5 => Key::F(5),
-//         NamedKey::F6 => Key::F(6),
-//         NamedKey::F7 => Key::F(7),
-//         NamedKey::F8 => Key::F(8),
-//         NamedKey::F9 => Key::F(9),
-//         NamedKey::F10 => Key::F(10),
-//         NamedKey::F11 => Key::F(11),
-//         NamedKey::F12 => Key::F(12),
-//         NamedKey::Tab => Key::BackTab,
-//         NamedKey::Esc => Key::Esc,
-//     }
-// }
-// 
+#[test]
+fn serialize_mode_update_event() {
+    use prost::Message;
+    let mode_update_event = Event::ModeUpdate(Default::default());
+    let protobuf_event: ProtobufEvent = mode_update_event.clone().try_into().unwrap();
+    let serialized_protobuf_event = protobuf_event.encode_to_vec();
+    let deserialized_protobuf_event: ProtobufEvent = Message::decode(serialized_protobuf_event.as_slice()).unwrap();
+    let deserialized_event: Event = deserialized_protobuf_event.try_into().unwrap();
+    assert_eq!(mode_update_event, deserialized_event, "Event properly serialized/deserialized without change");
+}
+
+#[test]
+fn serialize_mode_update_event_with_non_default_values() {
+    use prost::Message;
+    let mode_update_event = Event::ModeUpdate(ModeInfo {
+        mode: InputMode::Locked,
+        keybinds: vec![
+            (InputMode::Locked, vec![(Key::Alt(crate::data::CharOrArrow::Char('b')), vec![Action::SwitchToMode(InputMode::Normal)])]),
+            (InputMode::Tab, vec![(Key::Alt(crate::data::CharOrArrow::Direction(Direction::Up)), vec![Action::SwitchToMode(InputMode::Pane)])]),
+            (InputMode::Pane, vec![
+                (Key::Ctrl('b'), vec![Action::SwitchToMode(InputMode::Tmux), Action::Write(vec![10])]),
+                (Key::Char('a'), vec![Action::WriteChars("foo".to_owned())]),
+            ]),
+        ],
+        style: Style {
+            colors: Palette {
+                source: crate::data::PaletteSource::Default,
+                theme_hue: ThemeHue::Light,
+                fg: PaletteColor::Rgb((1, 1, 1)),
+                bg: PaletteColor::Rgb((200, 200, 200)),
+                black: PaletteColor::EightBit(1),
+                red: PaletteColor::EightBit(2),
+                green: PaletteColor::EightBit(2),
+                yellow: PaletteColor::EightBit(2),
+                blue: PaletteColor::EightBit(2),
+                magenta: PaletteColor::EightBit(2),
+                cyan: PaletteColor::EightBit(2),
+                white: PaletteColor::EightBit(2),
+                orange: PaletteColor::EightBit(2),
+                gray: PaletteColor::EightBit(2),
+                purple: PaletteColor::EightBit(2),
+                gold: PaletteColor::EightBit(2),
+                silver: PaletteColor::EightBit(2),
+                pink: PaletteColor::EightBit(2),
+                brown: PaletteColor::Rgb((222, 221, 220))
+            },
+            rounded_corners: true,
+            hide_session_name: false
+        },
+        capabilities: PluginCapabilities {
+            arrow_fonts: false
+        },
+        session_name: Some("my awesome test session".to_owned())
+    });
+    let protobuf_event: ProtobufEvent = mode_update_event.clone().try_into().unwrap();
+    let serialized_protobuf_event = protobuf_event.encode_to_vec();
+    let deserialized_protobuf_event: ProtobufEvent = Message::decode(serialized_protobuf_event.as_slice()).unwrap();
+    let deserialized_event: Event = deserialized_protobuf_event.try_into().unwrap();
+    assert_eq!(mode_update_event, deserialized_event, "Event properly serialized/deserialized without change");
+}
+
+#[test]
+fn serialize_tab_update_event() {
+    use prost::Message;
+    let tab_update_event = Event::TabUpdate(Default::default());
+    let protobuf_event: ProtobufEvent = tab_update_event.clone().try_into().unwrap();
+    let serialized_protobuf_event = protobuf_event.encode_to_vec();
+    let deserialized_protobuf_event: ProtobufEvent = Message::decode(serialized_protobuf_event.as_slice()).unwrap();
+    let deserialized_event: Event = deserialized_protobuf_event.try_into().unwrap();
+    assert_eq!(tab_update_event, deserialized_event, "Event properly serialized/deserialized without change");
+}
+
+#[test]
+fn serialize_tab_update_event_with_non_default_values() {
+    use prost::Message;
+    let tab_update_event = Event::TabUpdate(vec![
+        TabInfo {
+            position: 0,
+            name: "First tab".to_owned(),
+            active: true,
+            panes_to_hide: 2,
+            is_fullscreen_active: true,
+            is_sync_panes_active: false,
+            are_floating_panes_visible: true,
+            other_focused_clients: vec![2, 3, 4],
+            active_swap_layout_name: Some("my cool swap layout".to_owned()),
+            is_swap_layout_dirty: false,
+        },
+        TabInfo {
+            position: 1,
+            name: "Secondtab".to_owned(),
+            active: false,
+            panes_to_hide: 5,
+            is_fullscreen_active: false,
+            is_sync_panes_active: true,
+            are_floating_panes_visible: true,
+            other_focused_clients: vec![1, 5, 111],
+            active_swap_layout_name: None,
+            is_swap_layout_dirty: true,
+        },
+        TabInfo::default()
+    ]);
+    let protobuf_event: ProtobufEvent = tab_update_event.clone().try_into().unwrap();
+    let serialized_protobuf_event = protobuf_event.encode_to_vec();
+    let deserialized_protobuf_event: ProtobufEvent = Message::decode(serialized_protobuf_event.as_slice()).unwrap();
+    let deserialized_event: Event = deserialized_protobuf_event.try_into().unwrap();
+    assert_eq!(tab_update_event, deserialized_event, "Event properly serialized/deserialized without change");
+}
+
+#[test]
+fn serialize_pane_update_event() {
+    use prost::Message;
+    let pane_update_event = Event::PaneUpdate(Default::default());
+    let protobuf_event: ProtobufEvent = pane_update_event.clone().try_into().unwrap();
+    let serialized_protobuf_event = protobuf_event.encode_to_vec();
+    let deserialized_protobuf_event: ProtobufEvent = Message::decode(serialized_protobuf_event.as_slice()).unwrap();
+    let deserialized_event: Event = deserialized_protobuf_event.try_into().unwrap();
+    assert_eq!(pane_update_event, deserialized_event, "Event properly serialized/deserialized without change");
+}
+
+#[test]
+fn serialize_key_event() {
+    use prost::Message;
+    let key_event = Event::Key(Key::Ctrl('a'));
+    let protobuf_event: ProtobufEvent = key_event.clone().try_into().unwrap();
+    let serialized_protobuf_event = protobuf_event.encode_to_vec();
+    let deserialized_protobuf_event: ProtobufEvent = Message::decode(serialized_protobuf_event.as_slice()).unwrap();
+    let deserialized_event: Event = deserialized_protobuf_event.try_into().unwrap();
+    assert_eq!(key_event, deserialized_event, "Event properly serialized/deserialized without change");
+}
+
+#[test]
+fn serialize_mouse_event() {
+    use prost::Message;
+    let mouse_event = Event::Mouse(Mouse::LeftClick(1, 1));
+    let protobuf_event: ProtobufEvent = mouse_event.clone().try_into().unwrap();
+    let serialized_protobuf_event = protobuf_event.encode_to_vec();
+    let deserialized_protobuf_event: ProtobufEvent = Message::decode(serialized_protobuf_event.as_slice()).unwrap();
+    let deserialized_event: Event = deserialized_protobuf_event.try_into().unwrap();
+    assert_eq!(mouse_event, deserialized_event, "Event properly serialized/deserialized without change");
+}
+
+#[test]
+fn serialize_mouse_event_without_position() {
+    use prost::Message;
+    let mouse_event = Event::Mouse(Mouse::ScrollUp(17));
+    let protobuf_event: ProtobufEvent = mouse_event.clone().try_into().unwrap();
+    let serialized_protobuf_event = protobuf_event.encode_to_vec();
+    let deserialized_protobuf_event: ProtobufEvent = Message::decode(serialized_protobuf_event.as_slice()).unwrap();
+    let deserialized_event: Event = deserialized_protobuf_event.try_into().unwrap();
+    assert_eq!(mouse_event, deserialized_event, "Event properly serialized/deserialized without change");
+}
+
+#[test]
+fn serialize_timer_event() {
+    use prost::Message;
+    let timer_event = Event::Timer(1.5);
+    let protobuf_event: ProtobufEvent = timer_event.clone().try_into().unwrap();
+    let serialized_protobuf_event = protobuf_event.encode_to_vec();
+    let deserialized_protobuf_event: ProtobufEvent = Message::decode(serialized_protobuf_event.as_slice()).unwrap();
+    let deserialized_event: Event = deserialized_protobuf_event.try_into().unwrap();
+    assert_eq!(timer_event, deserialized_event, "Event properly serialized/deserialized without change");
+}
+
+#[test]
+fn serialize_copy_to_clipboard_event() {
+    use prost::Message;
+    let copy_event = Event::CopyToClipboard(CopyDestination::Primary);
+    let protobuf_event: ProtobufEvent = copy_event.clone().try_into().unwrap();
+    let serialized_protobuf_event = protobuf_event.encode_to_vec();
+    let deserialized_protobuf_event: ProtobufEvent = Message::decode(serialized_protobuf_event.as_slice()).unwrap();
+    let deserialized_event: Event = deserialized_protobuf_event.try_into().unwrap();
+    assert_eq!(copy_event, deserialized_event, "Event properly serialized/deserialized without change");
+}
+
+#[test]
+fn serialize_clipboard_failure_event() {
+    use prost::Message;
+    let copy_event = Event::SystemClipboardFailure;
+    let protobuf_event: ProtobufEvent = copy_event.clone().try_into().unwrap();
+    let serialized_protobuf_event = protobuf_event.encode_to_vec();
+    let deserialized_protobuf_event: ProtobufEvent = Message::decode(serialized_protobuf_event.as_slice()).unwrap();
+    let deserialized_event: Event = deserialized_protobuf_event.try_into().unwrap();
+    assert_eq!(copy_event, deserialized_event, "Event properly serialized/deserialized without change");
+}
+
+#[test]
+fn serialize_input_received_event() {
+    use prost::Message;
+    let input_received_event = Event::InputReceived;
+    let protobuf_event: ProtobufEvent = input_received_event.clone().try_into().unwrap();
+    let serialized_protobuf_event = protobuf_event.encode_to_vec();
+    let deserialized_protobuf_event: ProtobufEvent = Message::decode(serialized_protobuf_event.as_slice()).unwrap();
+    let deserialized_event: Event = deserialized_protobuf_event.try_into().unwrap();
+    assert_eq!(input_received_event, deserialized_event, "Event properly serialized/deserialized without change");
+}
+
+#[test]
+fn serialize_visible_event() {
+    use prost::Message;
+    let visible_event = Event::Visible(true);
+    let protobuf_event: ProtobufEvent = visible_event.clone().try_into().unwrap();
+    let serialized_protobuf_event = protobuf_event.encode_to_vec();
+    let deserialized_protobuf_event: ProtobufEvent = Message::decode(serialized_protobuf_event.as_slice()).unwrap();
+    let deserialized_event: Event = deserialized_protobuf_event.try_into().unwrap();
+    assert_eq!(visible_event, deserialized_event, "Event properly serialized/deserialized without change");
+}
+
+#[test]
+fn serialize_custom_message_event() {
+    use prost::Message;
+    let custom_message_event = Event::CustomMessage("foo".to_owned(), "bar".to_owned());
+    let protobuf_event: ProtobufEvent = custom_message_event.clone().try_into().unwrap();
+    let serialized_protobuf_event = protobuf_event.encode_to_vec();
+    let deserialized_protobuf_event: ProtobufEvent = Message::decode(serialized_protobuf_event.as_slice()).unwrap();
+    let deserialized_event: Event = deserialized_protobuf_event.try_into().unwrap();
+    assert_eq!(custom_message_event, deserialized_event, "Event properly serialized/deserialized without change");
+}
+
+#[test]
+fn serialize_file_system_create_event() {
+    use prost::Message;
+    let file_system_event = Event::FileSystemCreate(vec!["/absolute/path".into(), "./relative_path".into()]);
+    let protobuf_event: ProtobufEvent = file_system_event.clone().try_into().unwrap();
+    let serialized_protobuf_event = protobuf_event.encode_to_vec();
+    let deserialized_protobuf_event: ProtobufEvent = Message::decode(serialized_protobuf_event.as_slice()).unwrap();
+    let deserialized_event: Event = deserialized_protobuf_event.try_into().unwrap();
+    assert_eq!(file_system_event, deserialized_event, "Event properly serialized/deserialized without change");
+}
+
+#[test]
+fn serialize_file_system_read_event() {
+    use prost::Message;
+    let file_system_event = Event::FileSystemRead(vec!["/absolute/path".into(), "./relative_path".into()]);
+    let protobuf_event: ProtobufEvent = file_system_event.clone().try_into().unwrap();
+    let serialized_protobuf_event = protobuf_event.encode_to_vec();
+    let deserialized_protobuf_event: ProtobufEvent = Message::decode(serialized_protobuf_event.as_slice()).unwrap();
+    let deserialized_event: Event = deserialized_protobuf_event.try_into().unwrap();
+    assert_eq!(file_system_event, deserialized_event, "Event properly serialized/deserialized without change");
+}
+
+#[test]
+fn serialize_file_system_update_event() {
+    use prost::Message;
+    let file_system_event = Event::FileSystemUpdate(vec!["/absolute/path".into(), "./relative_path".into()]);
+    let protobuf_event: ProtobufEvent = file_system_event.clone().try_into().unwrap();
+    let serialized_protobuf_event = protobuf_event.encode_to_vec();
+    let deserialized_protobuf_event: ProtobufEvent = Message::decode(serialized_protobuf_event.as_slice()).unwrap();
+    let deserialized_event: Event = deserialized_protobuf_event.try_into().unwrap();
+    assert_eq!(file_system_event, deserialized_event, "Event properly serialized/deserialized without change");
+}
+
+#[test]
+fn serialize_file_system_delete_event() {
+    use prost::Message;
+    let file_system_event = Event::FileSystemDelete(vec!["/absolute/path".into(), "./relative_path".into()]);
+    let protobuf_event: ProtobufEvent = file_system_event.clone().try_into().unwrap();
+    let serialized_protobuf_event = protobuf_event.encode_to_vec();
+    let deserialized_protobuf_event: ProtobufEvent = Message::decode(serialized_protobuf_event.as_slice()).unwrap();
+    let deserialized_event: Event = deserialized_protobuf_event.try_into().unwrap();
+    assert_eq!(file_system_event, deserialized_event, "Event properly serialized/deserialized without change");
+}
