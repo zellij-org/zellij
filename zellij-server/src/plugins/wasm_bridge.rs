@@ -1,5 +1,5 @@
 use super::{PluginId, PluginInstruction};
-use crate::plugins::plugin_loader::{PluginLoader, VersionMismatchError};
+use crate::plugins::plugin_loader::PluginLoader;
 use crate::plugins::plugin_map::{AtomicEvent, PluginEnv, PluginMap, RunningPlugin, Subscriptions};
 use crate::plugins::plugin_worker::MessageToWorker;
 use crate::plugins::watch_filesystem::watch_filesystem;
@@ -25,7 +25,6 @@ use crate::{
     ui::loading_indication::LoadingIndication, ClientId,
 };
 use zellij_utils::{
-    consts::VERSION,
     data::{Event, EventType, PluginCapabilities},
     errors::prelude::*,
     input::{
@@ -748,21 +747,7 @@ pub fn apply_event_to_plugin(
         .get_function("update")
         .with_context(err_context)?;
     wasi_write_object(&plugin_env.wasi_env, &protobuf_event.encode_to_vec()).with_context(err_context)?;
-    let update_return =
-        update
-            .call(&[])
-            .or_else::<anyError, _>(|e| match e.downcast::<serde_json::Error>() {
-                Ok(_) => panic!(
-                    "{}",
-                    anyError::new(VersionMismatchError::new(
-                        VERSION,
-                        "Unavailable",
-                        &plugin_env.plugin.path,
-                        plugin_env.plugin.is_builtin(),
-                    ))
-                ),
-                Err(e) => Err(e).with_context(err_context),
-            })?;
+    let update_return = update.call(&[]).with_context(err_context)?;
     let should_render = match update_return.get(0) {
         Some(Value::I32(n)) => *n == 1,
         _ => false,

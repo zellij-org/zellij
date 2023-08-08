@@ -1,4 +1,3 @@
-use crate::plugins::plugin_loader::VersionMismatchError;
 use crate::plugins::plugin_map::PluginEnv;
 use crate::plugins::zellij_exports::wasi_write_object;
 use wasmer::Instance;
@@ -6,7 +5,7 @@ use wasmer::Instance;
 use zellij_utils::async_channel::{unbounded, Receiver, Sender};
 use zellij_utils::async_std::task;
 use zellij_utils::errors::prelude::*;
-use zellij_utils::{consts::VERSION, input::plugins::PluginConfig};
+use zellij_utils::input::plugins::PluginConfig;
 
 pub struct RunningWorker {
     pub instance: Instance,
@@ -31,7 +30,6 @@ impl RunningWorker {
     }
     pub fn send_message(&self, message: String, payload: String) -> Result<()> {
         let err_context = || format!("Failed to send message to worker");
-
         let work_function = self
             .instance
             .exports
@@ -39,21 +37,7 @@ impl RunningWorker {
             .with_context(err_context)?;
         wasi_write_object(&self.plugin_env.wasi_env, &(message, payload))
             .with_context(err_context)?;
-        work_function.call(&[]).or_else::<anyError, _>(|e| {
-            match e.downcast::<serde_json::Error>() {
-                Ok(_) => panic!(
-                    "{}",
-                    anyError::new(VersionMismatchError::new(
-                        VERSION,
-                        "Unavailable",
-                        &self.plugin_config.path,
-                        self.plugin_config.is_builtin(),
-                    ))
-                ),
-                Err(e) => Err(e).with_context(err_context),
-            }
-        })?;
-
+        work_function.call(&[]).with_context(err_context)?;
         Ok(())
     }
 }
