@@ -1,22 +1,20 @@
+use std::fs;
 use prost_build;
 
 fn main() {
-    // TODO: include all .proto files dynamically somehow
     let mut prost_build = prost_build::Config::new();
     prost_build.include_file("generated_plugin_api.rs");
-    prost_build.compile_protos(
-        &[
-            "src/plugin_api/key.proto",
-            "src/plugin_api/event.proto",
-            "src/plugin_api/file.proto",
-            "src/plugin_api/command.proto",
-            "src/plugin_api/message.proto",
-            "src/plugin_api/input_mode.proto",
-            "src/plugin_api/resize.proto",
-            "src/plugin_api/plugin_ids.proto",
-            "src/plugin_api/plugin_command.proto",
-        ],
-        &["src/plugin_api"]
-    ).unwrap();
+    let mut proto_files = vec![];
+    for entry in fs::read_dir("src/plugin_api").unwrap() {
+        let entry_path = entry.unwrap().path();
+        if entry_path.is_file() {
+            if let Some(extension) = entry_path.extension() {
+                if extension == "proto" {
+                    proto_files.push(entry_path.display().to_string())
+                }
+            }
+        }
+    }
+    prost_build.compile_protos(&proto_files, &["src/plugin_api"]).unwrap();
 }
 

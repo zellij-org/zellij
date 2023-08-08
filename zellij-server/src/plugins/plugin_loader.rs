@@ -534,7 +534,6 @@ impl<'a> PluginLoader<'a> {
         &mut self,
         module: Module,
     ) -> Result<(Instance, PluginEnv, Arc<Mutex<Subscriptions>>)> {
-        let err_context = || format!("Failed to create environment for plugin");
         let (instance, plugin_env, subscriptions) =
             self.create_plugin_instance_env_and_subscriptions(&module)?;
         // Only do an insert when everything went well!

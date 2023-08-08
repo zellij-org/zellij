@@ -58,19 +58,12 @@ pub fn zellij_exports(
     plugin_env: &PluginEnv,
     subscriptions: &Arc<Mutex<Subscriptions>>,
 ) -> ImportObject {
-    macro_rules! zellij_export {
-        ($($host_function:ident),+ $(,)?) => {
-            imports! {
-                "zellij" => {
-                    $(stringify!($host_function) =>
-                        Function::new_native_with_env(store, ForeignFunctionEnv::new(plugin_env, subscriptions), $host_function),)+
-                }
-            }
+    imports! {
+        "zellij" => {
+          "host_run_plugin_command" => {
+            Function::new_native_with_env(store, ForeignFunctionEnv::new(plugin_env, subscriptions), host_run_plugin_command)
+          }
         }
-    }
-
-    zellij_export! {
-        host_run_plugin_command,
     }
 }
 
@@ -910,7 +903,7 @@ fn rename_tab(env: &ForeignFunctionEnv, tab_index: u32, new_name: &str) {
 // code trying to deserialize an `Event` upon a plugin state update, we read some panic message,
 // formatted as string from the plugin.
 fn report_panic(env: &ForeignFunctionEnv, msg: &str) {
-    log::error!("PANIC IN PLUGIN! {}", msg);
+    log::error!("PANIC IN PLUGIN!\n\r{}", msg);
     handle_plugin_crash(
         env.plugin_env.plugin_id,
         msg.to_owned(),
