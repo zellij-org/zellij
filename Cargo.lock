@@ -4572,7 +4572,6 @@ name = "zellij-tile"
 version = "0.37.2"
 dependencies = [
  "clap",
- "prost",
  "serde",
  "serde_json",
  "strum",
