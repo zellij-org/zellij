@@ -1,0 +1,175 @@
+syntax = "proto3";
+
+import "event.proto";
+import "file.proto";
+import "command.proto";
+import "message.proto";
+import "input_mode.proto";
+import "resize.proto";
+
+package api.plugin_command;
+
+enum CommandName {
+  Subscribe = 0;
+  Unsubscribe = 1;
+  SetSelectable = 2;
+  GetPluginIds = 3;
+  GetZellijVersion = 4;
+  OpenFile = 5;
+  OpenFileFloating = 6;
+  OpenTerminal = 7;
+  OpenTerminalFloating = 8;
+  OpenCommandPane = 9;
+  OpenCommandPaneFloating = 10;
+  SwitchTabTo = 11;
+  SetTimeout = 12;
+  ExecCmd = 13;
+  PostMessageTo = 14;
+  PostMessageToPlugin = 15;
+  HideSelf = 16;
+  ShowSelf = 17;
+  SwitchToMode = 18;
+  NewTabsWithLayout = 19;
+  NewTab = 20;
+  GoToNextTab = 21;
+  GoToPreviousTab = 22;
+  Resize = 23;
+  ResizeWithDirection = 24;
+  FocusNextPane = 25;
+  FocusPreviousPane = 26;
+  MoveFocus = 27;
+  MoveFocusOrTab = 28;
+  Detach = 29;
+  EditScrollback = 30;
+  Write = 31;
+  WriteChars = 32;
+  ToggleTab = 33;
+  MovePane = 34;
+  MovePaneWithDirection = 35;
+  ClearScreen = 36;
+  ScrollUp = 37;
+  ScrollDown = 38;
+  ScrollToTop = 39;
+  ScrollToBottom = 40;
+  PageScrollUp = 41;
+  PageScrollDown = 42;
+  ToggleFocusFullscreen = 43;
+  TogglePaneFrames = 44;
+  TogglePaneEmbedOrEject = 45;
+  UndoRenamePane = 46;
+  CloseFocus = 47;
+  ToggleActiveTabSync = 48;
+  CloseFocusedTab = 49;
+  UndoRenameTab = 50;
+  QuitZellij = 51;
+  PreviousSwapLayout = 52;
+  NextSwapLayout = 53;
+  GoToTabName = 54;
+  FocusOrCreateTab = 55;
+  GoToTab = 56;
+  StartOrReloadPlugin = 57;
+  CloseTerminalPane = 58;
+  ClosePluginPane = 59;
+  FocusTerminalPane = 60;
+  FocusPluginPane = 61;
+  RenameTerminalPane = 62;
+  RenamePluginPane = 63;
+  RenameTab = 64;
+  ReportCrash = 65;
+}
+
+message PluginCommand {
+  CommandName name = 1;
+  oneof payload {
+    SubscribePayload subscribe_payload = 2;
+    UnsubscribePayload unsubscribe_payload = 3;
+    bool set_selectable_payload = 4;
+    OpenFilePayload open_file_payload = 5;
+    OpenFilePayload open_file_floating_payload = 6;
+    OpenFilePayload open_terminal_payload = 7;
+    OpenFilePayload open_terminal_floating_payload = 8;
+    OpenCommandPanePayload open_command_pane_payload = 9;
+    OpenCommandPanePayload open_command_pane_floating_payload = 10;
+    SwitchTabToPayload switch_tab_to_payload = 11;
+    SetTimeoutPayload set_timeout_payload = 12;
+    ExecCmdPayload exec_cmd_payload = 13;
+    PluginMessagePayload post_message_to_payload = 14;
+    PluginMessagePayload post_message_to_plugin_payload = 15;
+    bool show_self_payload = 16;
+    SwitchToModePayload switch_to_mode_payload = 17;
+    string new_tabs_with_layout_payload = 18;
+    ResizePayload resize_payload = 19;
+    ResizePayload resize_with_direction_payload = 20;
+    MovePayload move_focus_payload = 21;
+    MovePayload move_focus_or_tab_payload = 22;
+    bytes write_payload = 23;
+    string write_chars_payload = 24;
+    MovePayload move_pane_with_direction_payload = 25;
+    string go_to_tab_name_payload = 26;
+    string focus_or_create_tab_payload = 27;
+    int32 go_to_tab_payload = 28;
+    string start_or_reload_plugin_payload = 29;
+    int32 close_terminal_pane_payload = 30;
+    int32 close_plugin_pane_payload = 31;
+    PaneIdAndShouldFloat focus_terminal_pane_payload = 32;
+    PaneIdAndShouldFloat focus_plugin_pane_payload = 33;
+    IdAndNewName rename_terminal_pane_payload = 34;
+    IdAndNewName rename_plugin_pane_payload = 35;
+    IdAndNewName rename_tab_payload = 36;
+    string report_crash_payload = 37;
+  }
+}
+
+message SubscribePayload {
+  event.EventNameList subscriptions = 1;
+}
+
+message UnsubscribePayload {
+  event.EventNameList subscriptions = 1;
+}
+
+message OpenFilePayload {
+  file.File file_to_open = 1;
+}
+
+message OpenCommandPanePayload {
+  command.Command command_to_run = 1;
+}
+
+message SwitchTabToPayload {
+  int32 tab_index = 1;
+}
+
+message SetTimeoutPayload {
+  float seconds = 1;
+}
+
+message ExecCmdPayload {
+  repeated string command_line = 1;
+}
+
+message PluginMessagePayload {
+  api.message.Message message = 1;
+}
+
+message SwitchToModePayload {
+  input_mode.InputModeMessage input_mode = 1;
+}
+
+message ResizePayload {
+  resize.Resize resize = 1;
+}
+
+message MovePayload {
+  resize.MoveDirection direction = 1;
+}
+
+message PaneIdAndShouldFloat {
+  int32 pane_id = 1;
+  bool should_float = 2;
+}
+
+message IdAndNewName {
+  int32 id = 1; // pane id or tab index
+  string new_name = 2;
+}

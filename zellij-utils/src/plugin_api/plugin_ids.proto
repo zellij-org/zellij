@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+package api.plugin_ids;
+
+message PluginIds {
+  int32 plugin_id = 1;
+  int32 zellij_pid = 2;
+}
+
+message ZellijVersion {
+  string version = 1;
+}

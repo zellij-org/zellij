@@ -1,0 +1,9 @@
+syntax = "proto3";
+
+package api.message;
+
+message Message {
+  string name = 1;
+  string payload = 2;
+  optional string worker_name = 3;
+}

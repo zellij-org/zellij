@@ -6,7 +6,7 @@ pub mod errors;
 pub mod input;
 pub mod kdl;
 pub mod pane_size;
-pub mod persistence;
+pub mod plugin_api;
 pub mod position;
 pub mod setup;
 pub mod shared;
@@ -25,3 +25,5 @@ pub use ::{
     anyhow, async_channel, async_std, clap, interprocess, lazy_static, libc, miette, nix,
     notify_debouncer_full, regex, serde, signal_hook, tempfile, termwiz, vte,
 };
+
+pub use ::prost;

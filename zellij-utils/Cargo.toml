@@ -42,6 +42,7 @@ shellexpand = "3.0.0"
 uuid = { version = "0.8.2", features = ["serde", "v4"] }
 async-channel = "1.8.0"
 include_dir = "0.7.3"
+prost = "0.11.9"
 
 #[cfg(not(target_family = "wasm"))]
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
@@ -55,6 +56,9 @@ notify-debouncer-full = "0.1.0"
 [dev-dependencies]
 insta = { version = "1.6.0", features = ["backtrace"] }
 expect-test = "1.4.1"
+
+[build-dependencies]
+prost-build = "0.11.9"
 
 [features]
 # If this feature is NOT set (default):
