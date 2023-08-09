@@ -20,6 +20,7 @@ use crate::{
     ui::loading_indication::LoadingIndication, ClientId,
 };
 
+use zellij_utils::plugin_api::action::ProtobufPluginConfiguration;
 use zellij_utils::{
     consts::{ZELLIJ_CACHE_DIR, ZELLIJ_SESSION_CACHE_DIR, ZELLIJ_TMP_DIR},
     data::PluginCapabilities,
@@ -30,7 +31,6 @@ use zellij_utils::{
     ipc::ClientAttributes,
     pane_size::Size,
 };
-use zellij_utils::plugin_api::action::ProtobufPluginConfiguration;
 
 macro_rules! display_loading_stage {
     ($loading_stage:ident, $loading_indication:expr, $senders:expr, $plugin_id:expr) => {{
@@ -613,7 +613,12 @@ impl<'a> PluginLoader<'a> {
         }
         start_function.call(&[]).with_context(err_context)?;
 
-        let protobuf_plugin_configuration: ProtobufPluginConfiguration = self.plugin.userspace_configuration.clone().try_into().map_err(|e| anyhow!("Failed to serialize user configuration: {:?}", e))?;
+        let protobuf_plugin_configuration: ProtobufPluginConfiguration = self
+            .plugin
+            .userspace_configuration
+            .clone()
+            .try_into()
+            .map_err(|e| anyhow!("Failed to serialize user configuration: {:?}", e))?;
         let protobuf_bytes = protobuf_plugin_configuration.encode_to_vec();
         wasi_write_object(
             &plugin_env.wasi_env,

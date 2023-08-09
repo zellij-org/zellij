@@ -106,14 +106,15 @@ macro_rules! register_plugin {
         #[no_mangle]
         fn load() {
             STATE.with(|state| {
-                use std::convert::TryInto;
                 use std::collections::BTreeMap;
+                use std::convert::TryInto;
                 use zellij_tile::shim::plugin_api::action::ProtobufPluginConfiguration;
                 use zellij_tile::shim::prost::Message;
                 let protobuf_bytes: Vec<u8> = $crate::shim::object_from_stdin().unwrap();
                 let protobuf_configuration: ProtobufPluginConfiguration =
                     ProtobufPluginConfiguration::decode(protobuf_bytes.as_slice()).unwrap();
-                let plugin_configuration: BTreeMap<String, String> = BTreeMap::try_from(&protobuf_configuration).unwrap();
+                let plugin_configuration: BTreeMap<String, String> =
+                    BTreeMap::try_from(&protobuf_configuration).unwrap();
                 state.borrow_mut().load(plugin_configuration);
             });
         }

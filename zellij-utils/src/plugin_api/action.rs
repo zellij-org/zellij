@@ -2,13 +2,12 @@ pub use super::generated_api::api::{
     action::{
         action::OptionalPayload, Action as ProtobufAction, ActionName as ProtobufActionName,
         DumpScreenPayload, EditFilePayload, GoToTabNamePayload, IdAndName,
-        LaunchOrFocusPluginPayload, MovePanePayload, NewFloatingPanePayload, NewPanePayload,
-        NewPluginPanePayload, NewTiledPanePayload, PaneIdAndShouldFloat,
+        LaunchOrFocusPluginPayload, MovePanePayload, NameAndValue as ProtobufNameAndValue,
+        NewFloatingPanePayload, NewPanePayload, NewPluginPanePayload, NewTiledPanePayload,
+        PaneIdAndShouldFloat, PluginConfiguration as ProtobufPluginConfiguration,
         Position as ProtobufPosition, RunCommandAction as ProtobufRunCommandAction,
         ScrollAtPayload, SearchDirection as ProtobufSearchDirection,
         SearchOption as ProtobufSearchOption, SwitchToModePayload, WriteCharsPayload, WritePayload,
-        PluginConfiguration as ProtobufPluginConfiguration,
-        NameAndValue as ProtobufNameAndValue,
     },
     input_mode::InputMode as ProtobufInputMode,
     resize::{Resize as ProtobufResize, ResizeDirection as ProtobufResizeDirection},
@@ -18,13 +17,13 @@ use crate::errors::prelude::*;
 use crate::input::actions::Action;
 use crate::input::actions::{SearchDirection, SearchOption};
 use crate::input::command::RunCommandAction;
-use crate::input::layout::{RunPlugin, RunPluginLocation, PluginUserConfiguration};
+use crate::input::layout::{PluginUserConfiguration, RunPlugin, RunPluginLocation};
 use crate::position::Position;
 use url::Url;
 
+use std::collections::BTreeMap;
 use std::convert::TryFrom;
 use std::path::PathBuf;
-use std::collections::BTreeMap;
 
 impl TryFrom<ProtobufAction> for Action {
     type Error = &'static str;
@@ -390,7 +389,10 @@ impl TryFrom<ProtobufAction> for Action {
                         let run_plugin_location =
                             RunPluginLocation::parse(&payload.plugin_url, None)
                                 .map_err(|_| "Malformed LaunchOrFocusPlugin payload")?;
-                        let configuration: PluginUserConfiguration = payload.plugin_configuration.and_then(|p| PluginUserConfiguration::try_from(p).ok()).unwrap_or_default();
+                        let configuration: PluginUserConfiguration = payload
+                            .plugin_configuration
+                            .and_then(|p| PluginUserConfiguration::try_from(p).ok())
+                            .unwrap_or_default();
                         let run_plugin = RunPlugin {
                             _allow_exec_host_cmd: false,
                             location: run_plugin_location,
@@ -519,10 +521,7 @@ impl TryFrom<ProtobufAction> for Action {
                             configuration: PluginUserConfiguration::default(),
                         };
                         let pane_name = payload.pane_name;
-                        Ok(Action::NewFloatingPluginPane(
-                            run_plugin,
-                            pane_name,
-                        ))
+                        Ok(Action::NewFloatingPluginPane(run_plugin, pane_name))
                     },
                     _ => Err("Wrong payload for Action::MiddleClick"),
                 }
@@ -1142,7 +1141,11 @@ impl TryFrom<Action> for ProtobufAction {
                 name: ProtobufActionName::BreakPaneLeft as i32,
                 optional_payload: None,
             }),
-            Action::NoOp | Action::Confirm | Action::Deny | Action::Copy | Action::SkipConfirm(..) => Err("Unsupported action"),
+            Action::NoOp
+            | Action::Confirm
+            | Action::Deny
+            | Action::Copy
+            | Action::SkipConfirm(..) => Err("Unsupported action"),
         }
     }
 }
@@ -1276,12 +1279,12 @@ impl TryFrom<PluginUserConfiguration> for ProtobufPluginConfiguration {
         for (name, value) in plugin_configuration.inner() {
             let name_and_value = ProtobufNameAndValue {
                 name: name.to_owned(),
-                value: value.to_owned()
+                value: value.to_owned(),
             };
             converted.push(name_and_value);
         }
         Ok(ProtobufPluginConfiguration {
-            name_and_value: converted
+            name_and_value: converted,
         })
     }
 }
@@ -1291,7 +1294,10 @@ impl TryFrom<&ProtobufPluginConfiguration> for BTreeMap<String, String> {
     fn try_from(plugin_configuration: &ProtobufPluginConfiguration) -> Result<Self, &'static str> {
         let mut converted = BTreeMap::new();
         for name_and_value in &plugin_configuration.name_and_value {
-            converted.insert(name_and_value.name.to_owned(), name_and_value.value.to_owned());
+            converted.insert(
+                name_and_value.name.to_owned(),
+                name_and_value.value.to_owned(),
+            );
         }
         Ok(converted)
     }
