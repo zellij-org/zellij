@@ -138,9 +138,7 @@ message TabInfo {
     bool is_sync_panes_active = 6;
     bool are_floating_panes_visible = 7;
     repeated uint32 other_focused_clients = 8;
-    oneof optional_active_swap_layout_name {
-      string active_swap_layout_name = 9;
-    }
+    optional string active_swap_layout_name = 9;
     bool is_swap_layout_dirty = 10;
 }
 
@@ -149,9 +147,7 @@ message ModeUpdatePayload {
   repeated InputModeKeybinds keybinds = 2;
   Style style = 3;
   bool arrow_fonts_support = 4;
-  oneof optional_session_name {
-    string session_name = 5;
-  }
+  optional string session_name = 5;
 }
 
 message Style {
@@ -276,9 +272,7 @@ message PaneIdAndShouldFloat {
 
 message NewPluginPanePayload {
   string plugin_url = 1;
-  oneof optional_pane_name {
-    string pane_name = 2;
-  }
+  optional string pane_name = 2;
 }
 
 enum SearchDirection {
@@ -303,37 +297,23 @@ message GoToTabNamePayload {
 }
 
 message NewFloatingPanePayload {
-  oneof optional_command {
-    RunCommandAction command = 1;
-  }
+  optional RunCommandAction command = 1;
 }
 
 message NewTiledPanePayload {
-  oneof optional_command {
-    RunCommandAction command = 1;
-  }
-  oneof optional_direction {
-    resize.ResizeDirection direction = 4;
-  }
+  optional RunCommandAction command = 1;
+  optional resize.ResizeDirection direction = 2;
 }
 
 message MovePanePayload {
-  oneof optional_direction {
-    resize.ResizeDirection direction = 1;
-  }
+  optional resize.ResizeDirection direction = 1;
 }
 
 message EditFilePayload {
   string file_to_edit = 1;
-  oneof optional_line_number {
-    uint32 line_number = 2;
-  }
-  oneof optional_cwd {
-    string cwd = 3;
-  }
-  oneof optional_direction {
-    resize.ResizeDirection direction = 4;
-  }
+  optional uint32 line_number = 2;
+  optional string cwd = 3;
+  optional resize.ResizeDirection direction = 4;
   bool should_float = 5;
 }
 
@@ -342,12 +322,8 @@ message ScrollAtPayload {
 }
 
 message NewPanePayload {
-  oneof optional_direction {
-    resize.ResizeDirection direction = 1;
-  }
-  oneof optional_pane_name {
-    string pane_name = 2;
-  }
+  optional resize.ResizeDirection direction = 1;
+  optional string pane_name = 2;
 }
 
 message SwitchToModePayload {
@@ -455,15 +431,9 @@ message Position {
 message RunCommandAction {
   string command = 1;
   repeated string args = 2;
-  oneof optional_cwd {
-    string cwd = 3;
-  }
-  oneof optional_direction {
-    resize.ResizeDirection direction = 4;
-  }
-  oneof optional_pane_name {
-    string pane_name = 5;
-  }
+  optional string cwd = 3;
+  optional resize.ResizeDirection direction = 4;
+  optional string pane_name = 5;
   bool hold_on_close = 6;
   bool hold_on_start = 7;
 }

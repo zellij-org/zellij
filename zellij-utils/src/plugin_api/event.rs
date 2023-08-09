@@ -28,11 +28,7 @@ pub use super::generated_api::api::{
         ActionName as ProtobufActionName,
         action::OptionalPayload,
         Position as ProtobufPosition,
-        new_pane_payload,
-        edit_file_payload,
-        new_floating_pane_payload,
         RunCommandAction as ProtobufRunCommandAction,
-        run_command_action,
         SearchDirection as ProtobufSearchDirection,
         SearchOption as ProtobufSearchOption,
         Style as ProtobufStyle,
@@ -558,9 +554,7 @@ impl TryFrom<ProtobufTabInfo> for TabInfo {
             is_sync_panes_active: protobuf_tab_info.is_sync_panes_active,
             are_floating_panes_visible: protobuf_tab_info.are_floating_panes_visible,
             other_focused_clients: protobuf_tab_info.other_focused_clients.iter().map(|c| *c as u16).collect(),
-            active_swap_layout_name: protobuf_tab_info.optional_active_swap_layout_name.map(|o| match o {
-                tab_info::OptionalActiveSwapLayoutName::ActiveSwapLayoutName(name) => name
-            }),
+            active_swap_layout_name: protobuf_tab_info.active_swap_layout_name,
             is_swap_layout_dirty: protobuf_tab_info.is_swap_layout_dirty,
        })
    }
@@ -578,9 +572,7 @@ impl TryFrom<TabInfo> for ProtobufTabInfo {
             is_sync_panes_active: tab_info.is_sync_panes_active,
             are_floating_panes_visible: tab_info.are_floating_panes_visible,
             other_focused_clients: tab_info.other_focused_clients.iter().map(|c| *c as u32).collect(),
-            optional_active_swap_layout_name: tab_info.active_swap_layout_name.map(|name| {
-                tab_info::OptionalActiveSwapLayoutName::ActiveSwapLayoutName(name)
-            }),
+            active_swap_layout_name: tab_info.active_swap_layout_name,
             is_swap_layout_dirty: tab_info.is_swap_layout_dirty,
        })
    }
@@ -611,11 +603,7 @@ impl TryFrom<ProtobufModeUpdatePayload> for ModeInfo {
            })
            .collect();
         let style: Style = protobuf_mode_update_payload.style.and_then(|m| m.try_into().ok()).ok_or("malformed payload for mode_info")?;
-        let session_name = protobuf_mode_update_payload.optional_session_name.map(|o| {
-            match o {
-                mode_update_payload::OptionalSessionName::SessionName(session_name) => session_name
-            }
-        });
+        let session_name = protobuf_mode_update_payload.session_name;
         let capabilities = PluginCapabilities {
             arrow_fonts: protobuf_mode_update_payload.arrow_fonts_support,
         };
@@ -636,7 +624,7 @@ impl TryFrom<ModeInfo> for ProtobufModeUpdatePayload {
         let current_mode: ProtobufInputMode = mode_info.mode.try_into()?;
         let style: ProtobufStyle = mode_info.style.try_into()?;
         let arrow_fonts_support: bool = mode_info.capabilities.arrow_fonts;
-        let optional_session_name = mode_info.session_name.map(|s| mode_update_payload::OptionalSessionName::SessionName(s));
+        let session_name = mode_info.session_name;
         let mut protobuf_input_mode_keybinds: Vec<ProtobufInputModeKeybinds> = vec![];
         for (input_mode, input_mode_keybinds) in mode_info.keybinds {
             let mode: ProtobufInputMode = input_mode.try_into()?;
@@ -665,7 +653,7 @@ impl TryFrom<ModeInfo> for ProtobufModeUpdatePayload {
             style: Some(style),
             keybinds: protobuf_input_mode_keybinds,
             arrow_fonts_support,
-            optional_session_name
+            session_name
         })
    }
 }
@@ -792,12 +780,10 @@ impl TryFrom<ProtobufAction> for Action {
             Some(ProtobufActionName::MovePane) =>{
                 match protobuf_action.optional_payload {
                     Some(OptionalPayload::MovePanePayload(payload)) => {
-                    let direction: Option<Direction> = payload.optional_direction
-                        .and_then(|p| match p {
-                            move_pane_payload::OptionalDirection::Direction(i) => {
-                                ProtobufResizeDirection::from_i32(i).and_then(|d| d.try_into().ok())
-                            }
-                        });
+                        let direction: Option<Direction> = payload
+                            .direction
+                            .and_then(|d| ProtobufResizeDirection::from_i32(d))
+                            .and_then(|d| d.try_into().ok());
                         Ok(Action::MovePane(direction))
                     }
                     _ =>  {
@@ -954,15 +940,11 @@ impl TryFrom<ProtobufAction> for Action {
             Some(ProtobufActionName::NewPane) =>{
                 match protobuf_action.optional_payload {
                     Some(OptionalPayload::NewPanePayload(payload)) => {
-                        let direction: Option<Direction> = payload.optional_direction
-                            .and_then(|p| match p {
-                                new_pane_payload::OptionalDirection::Direction(i) => {
-                                    ProtobufResizeDirection::from_i32(i).and_then(|d| d.try_into().ok())
-                                }
-                            });
-                        let pane_name = payload.optional_pane_name.and_then(|s| match s {
-                            new_pane_payload::OptionalPaneName::PaneName(pane_name) => Some(pane_name)
-                        });
+                        let direction: Option<Direction> = payload
+                            .direction
+                            .and_then(|d| ProtobufResizeDirection::from_i32(d))
+                            .and_then(|d| d.try_into().ok());
+                        let pane_name = payload.pane_name;
                         Ok(Action::NewPane(direction, pane_name))
                     }
                     _ =>  {
@@ -975,20 +957,12 @@ impl TryFrom<ProtobufAction> for Action {
                     Some(OptionalPayload::EditFilePayload(payload)) => {
 
                         let file_to_edit = PathBuf::from(payload.file_to_edit);
-                        let line_number: Option<usize> = payload.optional_line_number
-                            .map(|l| match l {
-                                edit_file_payload::OptionalLineNumber::LineNumber(line_number) => line_number as usize,
-                            });
-                        let cwd: Option<PathBuf> = payload.optional_cwd
-                            .map(|c| match c {
-                                edit_file_payload::OptionalCwd::Cwd(cwd) => PathBuf::from(cwd)
-                            });
-                        let direction: Option<Direction> = payload.optional_direction
-                            .and_then(|p| match p {
-                                edit_file_payload::OptionalDirection::Direction(i) => {
-                                    ProtobufResizeDirection::from_i32(i).and_then(|d| d.try_into().ok())
-                                }
-                            });
+                        let line_number: Option<usize> = payload.line_number.map(|l| l as usize);
+                        let cwd: Option<PathBuf> = payload.cwd.map(|p| PathBuf::from(p));
+                        let direction: Option<Direction> = payload
+                            .direction
+                            .and_then(|d| ProtobufResizeDirection::from_i32(d))
+                            .and_then(|d| d.try_into().ok());
                         let should_float = payload.should_float;
                         Ok(Action::EditFile(
                             file_to_edit,
@@ -1006,12 +980,8 @@ impl TryFrom<ProtobufAction> for Action {
             Some(ProtobufActionName::NewFloatingPane) =>{
                 match protobuf_action.optional_payload {
                     Some(OptionalPayload::NewFloatingPanePayload(payload)) => {
-                        if let Some(payload) = payload.optional_command.map(|p| match p {
-                            new_floating_pane_payload::OptionalCommand::Command(command) => command
-                        }) {
-                            let pane_name = payload.optional_pane_name.as_ref().and_then(|s| match s {
-                                run_command_action::OptionalPaneName::PaneName(pane_name) => Some(pane_name.clone())
-                            });
+                        if let Some(payload) = payload.command {
+                            let pane_name = payload.pane_name.clone();
                             let run_command_action: RunCommandAction = payload.try_into()?;
                             Ok(Action::NewFloatingPane(
                                 Some(run_command_action),
@@ -1029,18 +999,12 @@ impl TryFrom<ProtobufAction> for Action {
             Some(ProtobufActionName::NewTiledPane) =>{
                 match protobuf_action.optional_payload {
                     Some(OptionalPayload::NewTiledPanePayload(payload)) => {
-                        let direction: Option<Direction> = payload.optional_direction
-                            .and_then(|p| match p {
-                                new_tiled_pane_payload::OptionalDirection::Direction(i) => {
-                                    ProtobufResizeDirection::from_i32(i).and_then(|d| d.try_into().ok())
-                                }
-                            });
-                        if let Some(payload) = payload.optional_command.map(|p| match p {
-                            new_tiled_pane_payload::OptionalCommand::Command(command) => command
-                        }) {
-                            let pane_name = payload.optional_pane_name.as_ref().and_then(|s| match s {
-                                run_command_action::OptionalPaneName::PaneName(pane_name) => Some(pane_name.clone())
-                            });
+                        let direction: Option<Direction> = payload
+                            .direction
+                            .and_then(|d| ProtobufResizeDirection::from_i32(d))
+                            .and_then(|d| d.try_into().ok());
+                        if let Some(payload) = payload.command {
+                            let pane_name = payload.pane_name.clone();
                             let run_command_action: RunCommandAction = payload.try_into()?;
                             Ok(Action::NewTiledPane(
                                 direction,
@@ -1111,7 +1075,6 @@ impl TryFrom<ProtobufAction> for Action {
                 match protobuf_action.optional_payload {
                     Some(_) => Err("NoOp should not have a payload"),
                     None => {
-                        // we do not serialize the layouts of this action
                         Ok(Action::NoOp)
                     }
                 }
@@ -1120,7 +1083,6 @@ impl TryFrom<ProtobufAction> for Action {
                 match protobuf_action.optional_payload {
                     Some(_) => Err("GoToNextTab should not have a payload"),
                     None => {
-                        // we do not serialize the layouts of this action
                         Ok(Action::GoToNextTab)
                     }
                 }
@@ -1129,7 +1091,6 @@ impl TryFrom<ProtobufAction> for Action {
                 match protobuf_action.optional_payload {
                     Some(_) => Err("GoToPreviousTab should not have a payload"),
                     None => {
-                        // we do not serialize the layouts of this action
                         Ok(Action::GoToPreviousTab)
                     }
                 }
@@ -1138,7 +1099,6 @@ impl TryFrom<ProtobufAction> for Action {
                 match protobuf_action.optional_payload {
                     Some(_) => Err("CloseTab should not have a payload"),
                     None => {
-                        // we do not serialize the layouts of this action
                         Ok(Action::CloseTab)
                     }
                 }
@@ -1169,7 +1129,6 @@ impl TryFrom<ProtobufAction> for Action {
                 match protobuf_action.optional_payload {
                     Some(_) => Err("ToggleTab should not have a payload"),
                     None => {
-                        // we do not serialize the layouts of this action
                         Ok(Action::ToggleTab)
                     }
                 }
@@ -1188,7 +1147,6 @@ impl TryFrom<ProtobufAction> for Action {
                 match protobuf_action.optional_payload {
                     Some(_) => Err("UndoRenameTab should not have a payload"),
                     None => {
-                        // we do not serialize the layouts of this action
                         Ok(Action::UndoRenameTab)
                     }
                 }
@@ -1208,7 +1166,6 @@ impl TryFrom<ProtobufAction> for Action {
                 match protobuf_action.optional_payload {
                     Some(_) => Err("Detach should not have a payload"),
                     None => {
-                        // we do not serialize the layouts of this action
                         Ok(Action::Detach)
                     }
                 }
@@ -1406,9 +1363,7 @@ impl TryFrom<ProtobufAction> for Action {
                 match protobuf_action.optional_payload {
                     Some(OptionalPayload::NewTiledPluginPanePayload(payload)) => {
                         let run_plugin_location = RunPluginLocation::parse(&payload.plugin_url, None).map_err(|_| "Malformed NewTiledPluginPane payload")?;
-                        let pane_name = payload.optional_pane_name.as_ref().and_then(|s| match s {
-                            new_plugin_pane_payload::OptionalPaneName::PaneName(pane_name) => Some(pane_name.clone())
-                        });
+                        let pane_name = payload.pane_name;
                         Ok(Action::NewTiledPluginPane(run_plugin_location, pane_name))
                     }
                     _ =>  {
@@ -1420,9 +1375,7 @@ impl TryFrom<ProtobufAction> for Action {
                 match protobuf_action.optional_payload {
                     Some(OptionalPayload::NewFloatingPluginPanePayload(payload)) => {
                         let run_plugin_location = RunPluginLocation::parse(&payload.plugin_url, None).map_err(|_| "Malformed NewTiledPluginPane payload")?;
-                        let pane_name = payload.optional_pane_name.as_ref().and_then(|s| match s {
-                            new_plugin_pane_payload::OptionalPaneName::PaneName(pane_name) => Some(pane_name.clone())
-                        });
+                        let pane_name = payload.pane_name;
                         Ok(Action::NewFloatingPluginPane(run_plugin_location, pane_name))
                     }
                     _ =>  {
@@ -1627,8 +1580,7 @@ impl TryFrom<Action> for ProtobufAction {
                Ok(ProtobufAction {
                    name: ActionName::MoveFocus as i32,
                    optional_payload: Some(OptionalPayload::MovePanePayload(MovePanePayload {
-                       optional_direction: direction
-                           .map(|d| move_pane_payload::OptionalDirection::Direction(d))
+                       direction
                    }))
                })
            },
@@ -1751,9 +1703,8 @@ impl TryFrom<Action> for ProtobufAction {
                Ok(ProtobufAction {
                    name: ActionName::NewPane as i32,
                    optional_payload: Some(OptionalPayload::NewPanePayload(NewPanePayload {
-                       optional_direction: direction
-                           .map(|d| new_pane_payload::OptionalDirection::Direction(d)),
-                       optional_pane_name: new_pane_name.map(|n| new_pane_payload::OptionalPaneName::PaneName(n))
+                       direction,
+                       pane_name: new_pane_name
                    }))
                })
            },
@@ -1765,24 +1716,17 @@ impl TryFrom<Action> for ProtobufAction {
                should_float
            ) => {
                let file_to_edit = path_to_file.display().to_string();
-               let optional_line_number = line_number.map(|line_number| {
-                   edit_file_payload::OptionalLineNumber::LineNumber(line_number as u32)
-               });
-               let optional_cwd = cwd.map(|cwd| {
-                   edit_file_payload::OptionalCwd::Cwd(cwd.display().to_string())
-               });
-               let optional_direction = direction.and_then(|direction| {
-                   let protobuf_direction: ProtobufResizeDirection = direction.try_into().ok()?;
-                   Some(edit_file_payload::OptionalDirection::Direction(protobuf_direction as i32))
-               });
+               let cwd = cwd.map(|cwd| cwd.display().to_string());
+               let direction: Option<i32> = direction.and_then(|d| ProtobufResizeDirection::try_from(d).ok()).map(|d| d as i32);
+               let line_number = line_number.map(|l| l as u32);
                Ok(ProtobufAction {
                    name: ActionName::EditFile as i32,
                    optional_payload: Some(OptionalPayload::EditFilePayload(EditFilePayload {
                        file_to_edit,
-                       optional_line_number,
+                       line_number,
                        should_float,
-                       optional_direction,
-                       optional_cwd,
+                       direction,
+                       cwd,
                    }))
                })
            },
@@ -1790,16 +1734,15 @@ impl TryFrom<Action> for ProtobufAction {
                run_command_action,
                pane_name
            ) => {
-               let optional_command = run_command_action.and_then(|r| {
+               let command = run_command_action.and_then(|r| {
                    let mut protobuf_run_command_action: ProtobufRunCommandAction = r.try_into().ok()?;
-                   let optional_pane_name = pane_name.map(|n| run_command_action::OptionalPaneName::PaneName(n));
-                   protobuf_run_command_action.optional_pane_name = optional_pane_name;
-                   Some(new_floating_pane_payload::OptionalCommand::Command(protobuf_run_command_action))
+                   protobuf_run_command_action.pane_name = pane_name;
+                   Some(protobuf_run_command_action)
                });
                Ok(ProtobufAction {
                    name: ActionName::NewFloatingPane as i32,
                    optional_payload: Some(OptionalPayload::NewFloatingPanePayload(NewFloatingPanePayload {
-                       optional_command,
+                       command,
                    }))
                })
            },
@@ -1808,21 +1751,21 @@ impl TryFrom<Action> for ProtobufAction {
                run_command_action,
                pane_name
            ) => {
-               let optional_direction = direction.and_then(|direction| {
+               let direction = direction.and_then(|direction| {
                    let protobuf_direction: ProtobufResizeDirection = direction.try_into().ok()?;
-                   Some(new_tiled_pane_payload::OptionalDirection::Direction(protobuf_direction as i32))
+                   Some(protobuf_direction as i32)
                });
-               let optional_command = run_command_action.and_then(|r| {
+               let command = run_command_action.and_then(|r| {
                    let mut protobuf_run_command_action: ProtobufRunCommandAction = r.try_into().ok()?;
-                   let optional_pane_name = pane_name.map(|n| run_command_action::OptionalPaneName::PaneName(n));
-                   protobuf_run_command_action.optional_pane_name = optional_pane_name;
-                   Some(new_tiled_pane_payload::OptionalCommand::Command(protobuf_run_command_action))
+                   let pane_name = pane_name.and_then(|n| n.try_into().ok());
+                   protobuf_run_command_action.pane_name = pane_name;
+                   Some(protobuf_run_command_action)
                });
                Ok(ProtobufAction {
                    name: ActionName::NewFloatingPane as i32,
                    optional_payload: Some(OptionalPayload::NewTiledPanePayload(NewTiledPanePayload {
-                       optional_direction,
-                       optional_command,
+                       direction,
+                       command,
                    }))
                })
            },
@@ -2050,7 +1993,7 @@ impl TryFrom<Action> for ProtobufAction {
                    name: ActionName::NewTiledPluginPane as i32,
                    optional_payload: Some(OptionalPayload::NewTiledPluginPanePayload(NewPluginPanePayload {
                        plugin_url: plugin_url.into(),
-                       optional_pane_name: pane_name.map(|p| new_plugin_pane_payload::OptionalPaneName::PaneName(p))
+                       pane_name,
                    }))
                })
            },
@@ -2060,7 +2003,7 @@ impl TryFrom<Action> for ProtobufAction {
                    name: ActionName::NewFloatingPluginPane as i32,
                    optional_payload: Some(OptionalPayload::NewFloatingPluginPanePayload(NewPluginPanePayload {
                        plugin_url: plugin_url.into(),
-                       optional_pane_name: pane_name.map(|p| new_plugin_pane_payload::OptionalPaneName::PaneName(p))
+                       pane_name,
                    }))
                })
            },
@@ -2180,16 +2123,11 @@ impl TryFrom<ProtobufRunCommandAction> for RunCommandAction {
    fn try_from(protobuf_run_command_action: ProtobufRunCommandAction) -> Result<Self, &'static str> {
        let command = PathBuf::from(protobuf_run_command_action.command);
        let args: Vec<String> = protobuf_run_command_action.args;
-       let cwd: Option<PathBuf> = protobuf_run_command_action.optional_cwd
-           .map(|c| match c {
-               run_command_action::OptionalCwd::Cwd(cwd) => PathBuf::from(cwd)
-           });
-       let direction: Option<Direction> = protobuf_run_command_action.optional_direction
-           .and_then(|p| match p {
-               run_command_action::OptionalDirection::Direction(i) => {
-                   ProtobufResizeDirection::from_i32(i).and_then(|d| d.try_into().ok())
-               }
-           });
+       let cwd: Option<PathBuf> = protobuf_run_command_action.cwd.map(|c| PathBuf::from(c));
+       let direction: Option<Direction> = protobuf_run_command_action
+            .direction
+            .and_then(|d| ProtobufResizeDirection::from_i32(d))
+            .and_then(|d| d.try_into().ok());
        let hold_on_close = protobuf_run_command_action.hold_on_close;
        let hold_on_start = protobuf_run_command_action.hold_on_start;
        Ok(RunCommandAction {
@@ -2209,22 +2147,22 @@ impl TryFrom<RunCommandAction> for ProtobufRunCommandAction {
        let command = run_command_action.command.display().to_string();
        let args: Vec<String> = run_command_action.args;
        let cwd = run_command_action.cwd
-           .map(|c| run_command_action::OptionalCwd::Cwd(c.display().to_string()));
+           .map(|c| c.display().to_string());
        let direction = run_command_action.direction
            .and_then(|p| {
                let direction: ProtobufResizeDirection = p.try_into().ok()?;
-               Some(run_command_action::OptionalDirection::Direction(direction as i32))
+               Some(direction as i32)
            });
        let hold_on_close = run_command_action.hold_on_close;
        let hold_on_start = run_command_action.hold_on_start;
        Ok(ProtobufRunCommandAction {
            command,
            args,
-           optional_cwd: cwd,
-           optional_direction: direction,
+           cwd,
+           direction,
            hold_on_close,
            hold_on_start,
-           optional_pane_name: None
+           pane_name: None
        })
    }
 }
