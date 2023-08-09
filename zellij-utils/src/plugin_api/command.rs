@@ -6,7 +6,7 @@
 // SDK authors in other languages should generate their own equivalent structures based on the
 // `.proto` specification, and then decode the protobuf over the wire into them
 
-pub use super::generated_api::api::command::{Command as ProtobufCommand, command::OptionalCwd};
+pub use super::generated_api::api::command::{Command as ProtobufCommand};
 use crate::data::CommandToRun;
 
 use std::convert::TryFrom;
@@ -17,11 +17,7 @@ impl TryFrom<ProtobufCommand> for CommandToRun {
    fn try_from(protobuf_command: ProtobufCommand) -> Result<Self, &'static str> {
        let path = PathBuf::from(protobuf_command.path);
        let args = protobuf_command.args;
-       let cwd = protobuf_command.optional_cwd.map(|c| {
-           match c {
-               OptionalCwd::Cwd(c) => PathBuf::from(c)
-           }
-       });
+       let cwd = protobuf_command.cwd.map(|c| PathBuf::from(c));
        Ok(CommandToRun {
            path,
            args,
@@ -36,7 +32,7 @@ impl TryFrom<CommandToRun> for ProtobufCommand {
        Ok(ProtobufCommand {
            path: command_to_run.path.display().to_string(),
            args: command_to_run.args,
-           optional_cwd: command_to_run.cwd.map(|c| OptionalCwd::Cwd(c.to_string_lossy().to_string()))
+           cwd: command_to_run.cwd.map(|c| c.display().to_string())
        })
    }
 }
