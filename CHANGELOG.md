@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
 * fix(tab-bar,compact-bar): tab switching with mouse sometimes not working (https://github.com/zellij-org/zellij/pull/2587)
+* feat(status-bar): supermode to prevent colliding keybindings (https://github.com/zellij-org/zellij/pull/2619)
+* fix(rendering): occasional glitches while resizing (https://github.com/zellij-org/zellij/pull/2621)
+* fix(rendering): colored paneframes in mirrored sessions (https://github.com/zellij-org/zellij/pull/2625)
+* fix(sessions): use custom lists of adjectives and nouns for generating session names (https://github.com/zellij-org/zellij/pull/2122)
+* feat(plugins): make plugins configurable (https://github.com/zellij-org/zellij/pull/2646)
+* fix(terminal): occasional glitches while changing focus (https://github.com/zellij-org/zellij/pull/2654)
+* feat(plugins): add utility functions to get focused tab/pane (https://github.com/zellij-org/zellij/pull/2652)
+* feat(ui): break pane to new tab and move panes between tabs (https://github.com/zellij-org/zellij/pull/2664)
+* fix(performance): plug memory leak (https://github.com/zellij-org/zellij/pull/2675)
 
 ## [0.37.2] - 2023-06-20
 * hotfix: include theme files into binary (https://github.com/zellij-org/zellij/pull/2566)

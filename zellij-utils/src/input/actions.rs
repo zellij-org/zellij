@@ -230,8 +230,8 @@ pub enum Action {
     /// Query all tab names
     QueryTabNames,
     /// Open a new tiled (embedded, non-floating) plugin pane
-    NewTiledPluginPane(RunPluginLocation, Option<String>), // String is an optional name
-    NewFloatingPluginPane(RunPluginLocation, Option<String>), // String is an optional name
+    NewTiledPluginPane(RunPlugin, Option<String>), // String is an optional name
+    NewFloatingPluginPane(RunPlugin, Option<String>), // String is an optional name
     StartOrReloadPlugin(RunPlugin),
     CloseTerminalPane(u32),
     ClosePluginPane(u32),
@@ -240,6 +240,9 @@ pub enum Action {
     RenameTerminalPane(u32, Vec<u8>),
     RenamePluginPane(u32, Vec<u8>),
     RenameTab(u32, Vec<u8>),
+    BreakPane,
+    BreakPaneRight,
+    BreakPaneLeft,
 }
 
 impl Action {
@@ -292,21 +295,24 @@ impl Action {
                 name,
                 close_on_exit,
                 start_suspended,
+                configuration,
             } => {
                 let current_dir = get_current_dir();
                 let cwd = cwd
                     .map(|cwd| current_dir.join(cwd))
                     .or_else(|| Some(current_dir));
+                let user_configuration = configuration.unwrap_or_default();
                 if let Some(plugin) = plugin {
+                    let location = RunPluginLocation::parse(&plugin, cwd)
+                        .map_err(|e| format!("Failed to parse plugin loction {plugin}: {}", e))?;
+                    let plugin = RunPlugin {
+                        _allow_exec_host_cmd: false,
+                        location,
+                        configuration: user_configuration,
+                    };
                     if floating {
-                        let plugin = RunPluginLocation::parse(&plugin, cwd).map_err(|e| {
-                            format!("Failed to parse plugin loction {plugin}: {}", e)
-                        })?;
                         Ok(vec![Action::NewFloatingPluginPane(plugin, name)])
                     } else {
-                        let plugin = RunPluginLocation::parse(&plugin, cwd).map_err(|e| {
-                            format!("Failed to parse plugin location {plugin}: {}", e)
-                        })?;
                         // it is intentional that a new tiled plugin pane cannot include a
                         // direction
                         // this is because the cli client opening a tiled plugin pane is a
@@ -480,23 +486,29 @@ impl Action {
             CliAction::PreviousSwapLayout => Ok(vec![Action::PreviousSwapLayout]),
             CliAction::NextSwapLayout => Ok(vec![Action::NextSwapLayout]),
             CliAction::QueryTabNames => Ok(vec![Action::QueryTabNames]),
-            CliAction::StartOrReloadPlugin { url } => {
+            CliAction::StartOrReloadPlugin { url, configuration } => {
                 let current_dir = get_current_dir();
                 let run_plugin_location = RunPluginLocation::parse(&url, Some(current_dir))
                     .map_err(|e| format!("Failed to parse plugin location: {}", e))?;
                 let run_plugin = RunPlugin {
                     location: run_plugin_location,
                     _allow_exec_host_cmd: false,
+                    configuration: configuration.unwrap_or_default(),
                 };
                 Ok(vec![Action::StartOrReloadPlugin(run_plugin)])
             },
-            CliAction::LaunchOrFocusPlugin { url, floating } => {
+            CliAction::LaunchOrFocusPlugin {
+                url,
+                floating,
+                configuration,
+            } => {
                 let current_dir = get_current_dir();
                 let run_plugin_location = RunPluginLocation::parse(url.as_str(), Some(current_dir))
                     .map_err(|e| format!("Failed to parse plugin location: {}", e))?;
                 let run_plugin = RunPlugin {
                     location: run_plugin_location,
                     _allow_exec_host_cmd: false,
+                    configuration: configuration.unwrap_or_default(),
                 };
                 Ok(vec![Action::LaunchOrFocusPlugin(run_plugin, floating)])
             },

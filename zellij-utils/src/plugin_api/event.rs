@@ -598,8 +598,9 @@ impl TryFrom<ModeInfo> for ProtobufModeUpdatePayload {
                 let protobuf_key: ProtobufKey = key.try_into()?;
                 let mut protobuf_actions: Vec<ProtobufAction> = vec![];
                 for action in actions {
-                    let protobuf_action: ProtobufAction = action.try_into()?;
-                    protobuf_actions.push(protobuf_action);
+                    if let Ok(protobuf_action) = action.try_into() {
+                        protobuf_actions.push(protobuf_action);
+                    }
                 }
                 let key_bind = ProtobufKeyBind {
                     key: Some(protobuf_key),

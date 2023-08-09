@@ -9,7 +9,7 @@ use zellij_utils::pane_size::Viewport;
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 fn foreground_color(characters: &str, color: Option<PaletteColor>) -> Vec<TerminalCharacter> {
-    let mut colored_string = Vec::with_capacity(characters.chars().count());
+    let mut colored_string = Vec::new();
     for character in characters.chars() {
         let styles = match color {
             Some(palette_color) => {
@@ -36,7 +36,7 @@ fn foreground_color(characters: &str, color: Option<PaletteColor>) -> Vec<Termin
 }
 
 fn background_color(characters: &str, color: Option<PaletteColor>) -> Vec<TerminalCharacter> {
-    let mut colored_string = Vec::with_capacity(characters.chars().count());
+    let mut colored_string = Vec::new();
     for character in characters.chars() {
         let styles = match color {
             Some(palette_color) => {
@@ -367,7 +367,7 @@ impl PaneFrame {
         } else {
             let length_of_each_half = (max_length - middle_truncated_sign.width()) / 2;
 
-            let mut first_part: String = String::with_capacity(length_of_each_half);
+            let mut first_part: String = String::new();
             for char in full_text.chars() {
                 if first_part.width() + char.width().unwrap_or(0) > length_of_each_half {
                     break;
@@ -376,7 +376,7 @@ impl PaneFrame {
                 }
             }
 
-            let mut second_part: String = String::with_capacity(length_of_each_half);
+            let mut second_part: String = String::new();
             for char in full_text.chars().rev() {
                 if second_part.width() + char.width().unwrap_or(0) > length_of_each_half {
                     break;

@@ -1,6 +1,6 @@
 use crate::plugins::plugin_map::{PluginEnv, PluginMap, RunningPlugin, Subscriptions};
 use crate::plugins::plugin_worker::{plugin_worker, RunningWorker};
-use crate::plugins::zellij_exports::zellij_exports;
+use crate::plugins::zellij_exports::{wasi_write_object, zellij_exports};
 use crate::plugins::PluginId;
 use highway::{HighwayHash, PortableHash};
 use log::info;
@@ -13,6 +13,7 @@ use std::{
 use url::Url;
 use wasmer::{ChainableNamedResolver, Instance, Module, Store};
 use wasmer_wasi::{Pipe, WasiState};
+use zellij_utils::prost::Message;
 
 use crate::{
     logging_pipe::LoggingPipe, screen::ScreenInstruction, thread_bus::ThreadSenders,
@@ -29,6 +30,7 @@ use zellij_utils::{
     ipc::ClientAttributes,
     pane_size::Size,
 };
+use zellij_utils::plugin_api::action::ProtobufPluginConfiguration;
 
 macro_rules! display_loading_stage {
     ($loading_stage:ident, $loading_indication:expr, $senders:expr, $plugin_id:expr) => {{
@@ -610,7 +612,17 @@ impl<'a> PluginLoader<'a> {
             }
         }
         start_function.call(&[]).with_context(err_context)?;
+
+        let protobuf_plugin_configuration: ProtobufPluginConfiguration = self.plugin.userspace_configuration.clone().try_into().map_err(|e| anyhow!("Failed to serialize user configuration: {:?}", e))?;
+        let protobuf_bytes = protobuf_plugin_configuration.encode_to_vec();
+        wasi_write_object(
+            &plugin_env.wasi_env,
+            &protobuf_bytes,
+            // &self.plugin.userspace_configuration.inner(),
+        )
+        .with_context(err_context)?;
         load_function.call(&[]).with_context(err_context)?;
+
         display_loading_stage!(
             indicate_starting_plugin_success,
             self.loading_indication,

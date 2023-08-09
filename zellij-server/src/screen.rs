@@ -14,12 +14,14 @@ use zellij_utils::pane_size::{Size, SizeInPixels};
 use zellij_utils::{
     input::command::TerminalAction,
     input::layout::{
-        FloatingPaneLayout, Run, RunPlugin, RunPluginLocation, SwapFloatingLayout, SwapTiledLayout,
-        TiledPaneLayout,
+        FloatingPaneLayout, Layout, Run, RunPlugin, RunPluginLocation, SwapFloatingLayout,
+        SwapTiledLayout, TiledPaneLayout,
     },
     position::Position,
 };
 
+use crate::background_jobs::BackgroundJob;
+use crate::os_input_output::ResizeCache;
 use crate::panes::alacritty_functions::xparse_color;
 use crate::panes::terminal_character::AnsiCode;
 
@@ -257,11 +259,11 @@ pub enum ScreenInstruction {
     PreviousSwapLayout(ClientId),
     NextSwapLayout(ClientId),
     QueryTabNames(ClientId),
-    NewTiledPluginPane(RunPluginLocation, Option<String>, ClientId), // Option<String> is
+    NewTiledPluginPane(RunPlugin, Option<String>, ClientId), // Option<String> is
     // optional pane title
-    NewFloatingPluginPane(RunPluginLocation, Option<String>, ClientId), // Option<String> is an
+    NewFloatingPluginPane(RunPlugin, Option<String>, ClientId), // Option<String> is an
+    // optional pane title
     StartOrReloadPluginPane(RunPlugin, Option<String>),
-    // optional pane title
     AddPlugin(
         Option<bool>, // should_float
         RunPlugin,
@@ -278,6 +280,9 @@ pub enum ScreenInstruction {
     FocusPaneWithId(PaneId, bool, ClientId),        // bool is should_float
     RenamePane(PaneId, Vec<u8>),
     RenameTab(usize, Vec<u8>),
+    BreakPane(Box<Layout>, Option<TerminalAction>, ClientId),
+    BreakPaneRight(ClientId),
+    BreakPaneLeft(ClientId),
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -445,6 +450,9 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::FocusPaneWithId(..) => ScreenContext::FocusPaneWithId,
             ScreenInstruction::RenamePane(..) => ScreenContext::RenamePane,
             ScreenInstruction::RenameTab(..) => ScreenContext::RenameTab,
+            ScreenInstruction::BreakPane(..) => ScreenContext::BreakPane,
+            ScreenInstruction::BreakPaneRight(..) => ScreenContext::BreakPaneRight,
+            ScreenInstruction::BreakPaneLeft(..) => ScreenContext::BreakPaneLeft,
         }
     }
 }
@@ -608,6 +616,7 @@ impl Screen {
         &mut self,
         source_tab_index: usize,
         destination_tab_index: usize,
+        update_mode_infos: bool,
         clients_to_move: Option<Vec<ClientId>>,
     ) -> Result<()> {
         let err_context = || {
@@ -628,9 +637,11 @@ impl Screen {
             destination_tab
                 .add_multiple_clients(client_mode_info_in_source_tab)
                 .with_context(err_context)?;
-            destination_tab
-                .update_input_modes()
-                .with_context(err_context)?;
+            if update_mode_infos {
+                destination_tab
+                    .update_input_modes()
+                    .with_context(err_context)?;
+            }
             destination_tab.set_force_render();
             destination_tab.visible(true).with_context(err_context)?;
         }
@@ -656,6 +667,7 @@ impl Screen {
         &mut self,
         new_tab_pos: usize,
         should_change_pane_focus: Option<Direction>,
+        update_mode_infos: bool,
         client_id: ClientId,
     ) -> Result<()> {
         let err_context = || {
@@ -675,8 +687,13 @@ impl Screen {
                     let current_tab_index = current_tab.index;
                     let new_tab_index = new_tab.index;
                     if self.session_is_mirrored {
-                        self.move_clients_between_tabs(current_tab_index, new_tab_index, None)
-                            .with_context(err_context)?;
+                        self.move_clients_between_tabs(
+                            current_tab_index,
+                            new_tab_index,
+                            update_mode_infos,
+                            None,
+                        )
+                        .with_context(err_context)?;
                         let all_connected_clients: Vec<ClientId> =
                             self.connected_clients.borrow().iter().copied().collect();
                         for client_id in all_connected_clients {
@@ -695,6 +712,7 @@ impl Screen {
                         self.move_clients_between_tabs(
                             current_tab_index,
                             new_tab_index,
+                            update_mode_infos,
                             Some(vec![client_id]),
                         )
                         .with_context(err_context)?;
@@ -735,7 +753,7 @@ impl Screen {
     fn switch_active_tab_name(&mut self, name: String, client_id: ClientId) -> Result<bool> {
         match self.tabs.values().find(|t| t.name == name) {
             Some(new_tab) => {
-                self.switch_active_tab(new_tab.position, None, client_id)?;
+                self.switch_active_tab(new_tab.position, None, true, client_id)?;
                 Ok(true)
             },
             None => Ok(false),
@@ -746,6 +764,7 @@ impl Screen {
     pub fn switch_tab_next(
         &mut self,
         should_change_pane_focus: Option<Direction>,
+        update_mode_infos: bool,
         client_id: ClientId,
     ) -> Result<()> {
         let err_context = || format!("failed to switch to next tab for client {client_id}");
@@ -764,6 +783,7 @@ impl Screen {
                     return self.switch_active_tab(
                         new_tab_pos,
                         should_change_pane_focus,
+                        update_mode_infos,
                         client_id,
                     );
                 },
@@ -777,6 +797,7 @@ impl Screen {
     pub fn switch_tab_prev(
         &mut self,
         should_change_pane_focus: Option<Direction>,
+        update_mode_infos: bool,
         client_id: ClientId,
     ) -> Result<()> {
         let err_context = || format!("failed to switch to previous tab for client {client_id}");
@@ -800,6 +821,7 @@ impl Screen {
                     return self.switch_active_tab(
                         new_tab_pos,
                         should_change_pane_focus,
+                        update_mode_infos,
                         client_id,
                     );
                 },
@@ -810,7 +832,7 @@ impl Screen {
     }
 
     pub fn go_to_tab(&mut self, tab_index: usize, client_id: ClientId) -> Result<()> {
-        self.switch_active_tab(tab_index.saturating_sub(1), None, client_id)
+        self.switch_active_tab(tab_index.saturating_sub(1), None, true, client_id)
     }
 
     pub fn go_to_tab_name(&mut self, name: String, client_id: ClientId) -> Result<bool> {
@@ -1388,6 +1410,7 @@ impl Screen {
         for tab in self.tabs.values_mut() {
             tab.change_mode_info(mode_info.clone(), client_id);
             tab.mark_active_pane_for_rerender(client_id);
+            tab.update_input_modes()?;
         }
 
         if let Some(os_input) = &mut self.bus.os_input {
@@ -1432,7 +1455,7 @@ impl Screen {
                         .move_focus_left(client_id)
                         .and_then(|success| {
                             if !success {
-                                self.switch_tab_prev(Some(Direction::Left), client_id)
+                                self.switch_tab_prev(Some(Direction::Left), true, client_id)
                                     .context("failed to move focus to previous tab")
                             } else {
                                 Ok(())
@@ -1467,7 +1490,7 @@ impl Screen {
                         .move_focus_right(client_id)
                         .and_then(|success| {
                             if !success {
-                                self.switch_tab_next(Some(Direction::Right), client_id)
+                                self.switch_tab_next(Some(Direction::Right), true, client_id)
                                     .context("failed to move focus to next tab")
                             } else {
                                 Ok(())
@@ -1554,6 +1577,127 @@ impl Screen {
         };
         Ok(())
     }
+    pub fn break_pane(
+        &mut self,
+        default_shell: Option<TerminalAction>,
+        default_layout: Box<Layout>,
+        client_id: ClientId,
+    ) -> Result<()> {
+        let err_context = || "failed break pane out of tab".to_string();
+        let active_tab = self.get_active_tab_mut(client_id)?;
+        if active_tab.get_selectable_tiled_panes_count() > 1
+            || active_tab.get_visible_selectable_floating_panes_count() > 0
+        {
+            let active_pane_id = active_tab
+                .get_active_pane_id(client_id)
+                .with_context(err_context)?;
+            let pane_to_break_is_floating = active_tab.are_floating_panes_visible();
+            let active_pane = active_tab
+                .close_pane(active_pane_id, false, Some(client_id))
+                .with_context(err_context)?;
+            let active_pane_run_instruction = active_pane.invoked_with().clone();
+            let tab_index = self.get_new_tab_index();
+            let swap_layouts = (
+                default_layout.swap_tiled_layouts.clone(),
+                default_layout.swap_floating_layouts.clone(),
+            );
+            self.new_tab(tab_index, swap_layouts, None, client_id)?;
+            let tab = self.tabs.get_mut(&tab_index).with_context(err_context)?;
+            let (mut tiled_panes_layout, mut floating_panes_layout) = default_layout.new_tab();
+            if pane_to_break_is_floating {
+                tab.show_floating_panes();
+                tab.add_floating_pane(active_pane, active_pane_id, Some(client_id))?;
+                if let Some(mut already_running_layout) = floating_panes_layout
+                    .iter_mut()
+                    .find(|i| i.run == active_pane_run_instruction)
+                {
+                    already_running_layout.already_running = true;
+                }
+            } else {
+                tab.add_tiled_pane(active_pane, active_pane_id, Some(client_id))?;
+                tiled_panes_layout.ignore_run_instruction(active_pane_run_instruction.clone());
+            }
+            self.bus.senders.send_to_plugin(PluginInstruction::NewTab(
+                None,
+                default_shell,
+                Some(tiled_panes_layout),
+                floating_panes_layout,
+                tab_index,
+                client_id,
+            ))?;
+        } else {
+            let active_pane_id = active_tab
+                .get_active_pane_id(client_id)
+                .with_context(err_context)?;
+            self.bus
+                .senders
+                .send_to_background_jobs(BackgroundJob::DisplayPaneError(
+                    vec![active_pane_id],
+                    "Cannot break single pane out!".into(),
+                ))
+                .with_context(err_context)?;
+            self.unblock_input()?;
+        }
+        Ok(())
+    }
+    pub fn break_pane_to_new_tab(
+        &mut self,
+        direction: Direction,
+        client_id: ClientId,
+    ) -> Result<()> {
+        let err_context = || "failed break pane out of tab".to_string();
+        if self.tabs.len() > 1 {
+            let (active_pane_id, active_pane, pane_to_break_is_floating) = {
+                let active_tab = self.get_active_tab_mut(client_id)?;
+                let active_pane_id = active_tab
+                    .get_active_pane_id(client_id)
+                    .with_context(err_context)?;
+                let pane_to_break_is_floating = active_tab.are_floating_panes_visible();
+                let active_pane = active_tab
+                    .close_pane(active_pane_id, false, Some(client_id))
+                    .with_context(err_context)?;
+                (active_pane_id, active_pane, pane_to_break_is_floating)
+            };
+            let update_mode_infos = false;
+            match direction {
+                Direction::Right | Direction::Down => {
+                    self.switch_tab_next(None, update_mode_infos, client_id)?;
+                },
+                Direction::Left | Direction::Up => {
+                    self.switch_tab_prev(None, update_mode_infos, client_id)?;
+                },
+            };
+            let new_active_tab = self.get_active_tab_mut(client_id)?;
+
+            if pane_to_break_is_floating {
+                new_active_tab.show_floating_panes();
+                new_active_tab.add_floating_pane(active_pane, active_pane_id, Some(client_id))?;
+            } else {
+                new_active_tab.hide_floating_panes();
+                new_active_tab.add_tiled_pane(active_pane, active_pane_id, Some(client_id))?;
+            }
+
+            self.report_tab_state()?;
+            self.report_pane_state()?;
+        } else {
+            let active_pane_id = {
+                let active_tab = self.get_active_tab_mut(client_id)?;
+                active_tab
+                    .get_active_pane_id(client_id)
+                    .with_context(err_context)?
+            };
+            self.bus
+                .senders
+                .send_to_background_jobs(BackgroundJob::DisplayPaneError(
+                    vec![active_pane_id],
+                    "No other tabs to add pane to!".into(),
+                ))
+                .with_context(err_context)?;
+        }
+        self.unblock_input()?;
+        self.render()?;
+        Ok(())
+    }
 
     fn unblock_input(&self) -> Result<()> {
         self.bus
@@ -1583,6 +1727,7 @@ pub(crate) fn screen_thread_main(
         config_options.copy_on_select.unwrap_or(true),
     );
 
+    let thread_senders = bus.senders.clone();
     let mut screen = Screen::new(
         bus,
         &client_attributes,
@@ -1611,6 +1756,9 @@ pub(crate) fn screen_thread_main(
             .recv()
             .context("failed to receive event on channel")?;
         err_ctx.add_call(ContextType::Screen((&event).into()));
+        // here we start caching resizes, so that we'll send them in bulk at the end of each event
+        // when this cache is Dropped, for more information, see the comments in PtyWriter
+        let _resize_cache = ResizeCache::new(thread_senders.clone());
 
         match event {
             ScreenInstruction::PtyBytes(pid, vte_bytes) => {
@@ -2229,12 +2377,12 @@ pub(crate) fn screen_thread_main(
                 screen.report_pane_state()?;
             },
             ScreenInstruction::SwitchTabNext(client_id) => {
-                screen.switch_tab_next(None, client_id)?;
+                screen.switch_tab_next(None, true, client_id)?;
                 screen.unblock_input()?;
                 screen.render()?;
             },
             ScreenInstruction::SwitchTabPrev(client_id) => {
-                screen.switch_tab_prev(None, client_id)?;
+                screen.switch_tab_prev(None, true, client_id)?;
                 screen.unblock_input()?;
                 screen.render()?;
             },
@@ -2627,14 +2775,10 @@ pub(crate) fn screen_thread_main(
                     .senders
                     .send_to_server(ServerInstruction::Log(tab_names, client_id))?;
             },
-            ScreenInstruction::NewTiledPluginPane(run_plugin_location, pane_title, client_id) => {
+            ScreenInstruction::NewTiledPluginPane(run_plugin, pane_title, client_id) => {
                 let tab_index = screen.active_tab_indices.values().next().unwrap_or(&1);
                 let size = Size::default();
                 let should_float = Some(false);
-                let run_plugin = RunPlugin {
-                    _allow_exec_host_cmd: false,
-                    location: run_plugin_location,
-                };
                 screen.bus.senders.send_to_plugin(PluginInstruction::Load(
                     should_float,
                     pane_title,
@@ -2644,28 +2788,26 @@ pub(crate) fn screen_thread_main(
                     size,
                 ))?;
             },
-            ScreenInstruction::NewFloatingPluginPane(
-                run_plugin_location,
-                pane_title,
-                client_id,
-            ) => {
-                let tab_index = screen.active_tab_indices.values().next().unwrap(); // TODO: no
-                                                                                    // unwrap and
-                                                                                    // better
-                let size = Size::default(); // TODO: ???
-                let should_float = Some(true);
-                let run_plugin = RunPlugin {
-                    _allow_exec_host_cmd: false,
-                    location: run_plugin_location,
-                };
-                screen.bus.senders.send_to_plugin(PluginInstruction::Load(
-                    should_float,
-                    pane_title,
-                    run_plugin,
-                    *tab_index,
-                    client_id,
-                    size,
-                ))?;
+            ScreenInstruction::NewFloatingPluginPane(run_plugin, pane_title, client_id) => {
+                match screen.active_tab_indices.values().next() {
+                    Some(tab_index) => {
+                        let size = Size::default();
+                        let should_float = Some(true);
+                        screen.bus.senders.send_to_plugin(PluginInstruction::Load(
+                            should_float,
+                            pane_title,
+                            run_plugin,
+                            *tab_index,
+                            client_id,
+                            size,
+                        ))?;
+                    },
+                    None => {
+                        log::error!(
+                            "Could not find an active tab - is there at least 1 connected user?"
+                        );
+                    },
+                }
             },
             ScreenInstruction::StartOrReloadPluginPane(run_plugin, pane_title) => {
                 let tab_index = screen.active_tab_indices.values().next().unwrap_or(&1);
@@ -2815,6 +2957,15 @@ pub(crate) fn screen_thread_main(
                     },
                 }
                 screen.report_tab_state()?;
+            },
+            ScreenInstruction::BreakPane(default_layout, default_shell, client_id) => {
+                screen.break_pane(default_shell, default_layout, client_id)?;
+            },
+            ScreenInstruction::BreakPaneRight(client_id) => {
+                screen.break_pane_to_new_tab(Direction::Right, client_id)?;
+            },
+            ScreenInstruction::BreakPaneLeft(client_id) => {
+                screen.break_pane_to_new_tab(Direction::Left, client_id)?;
             },
         }
     }

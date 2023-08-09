@@ -874,7 +874,7 @@ impl OutputBuffer {
         y_offset: usize,
     ) -> Vec<CharacterChunk> {
         if self.should_update_all_lines {
-            let mut changed_chunks = Vec::with_capacity(viewport.len());
+            let mut changed_chunks = Vec::new();
             for line_index in 0..viewport_height {
                 let terminal_characters =
                     self.extract_line_from_viewport(line_index, viewport, viewport_width);
@@ -888,7 +888,7 @@ impl OutputBuffer {
             let mut line_changes = self.changed_lines.to_vec();
             line_changes.sort_unstable();
             line_changes.dedup();
-            let mut changed_chunks = Vec::with_capacity(line_changes.len());
+            let mut changed_chunks = Vec::new();
             for line_index in line_changes {
                 let terminal_characters =
                     self.extract_line_from_viewport(line_index, viewport, viewport_width);
@@ -910,6 +910,12 @@ impl OutputBuffer {
         if row_width < viewport_width {
             let mut padding = vec![EMPTY_TERMINAL_CHARACTER; viewport_width - row_width];
             terminal_characters.append(&mut padding);
+        } else if row_width > viewport_width {
+            let width_offset = row.excess_width_until(viewport_width);
+            let truncate_position = viewport_width.saturating_sub(width_offset);
+            if truncate_position < terminal_characters.len() {
+                terminal_characters.truncate(truncate_position);
+            }
         }
         terminal_characters
     }

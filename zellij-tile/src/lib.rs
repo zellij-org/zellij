@@ -19,6 +19,7 @@ pub mod prelude;
 pub mod shim;
 
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use zellij_utils::data::Event;
 
 // use zellij_tile::shim::plugin_api::event::ProtobufEvent;
@@ -29,7 +30,7 @@ use zellij_utils::data::Event;
 #[allow(unused_variables)]
 pub trait ZellijPlugin: Default {
     /// Will be called when the plugin is loaded, this is a good place to [`subscribe`](shim::subscribe) to events that are interesting for this plugin.
-    fn load(&mut self) {}
+    fn load(&mut self, configuration: BTreeMap<String, String>) {}
     /// Will be called with an [`Event`](prelude::Event) if the plugin is subscribed to said event.
     /// If the plugin returns `true` from this function, Zellij will know it should be rendered and call its `render` function.
     fn update(&mut self, event: Event) -> bool {
@@ -105,7 +106,15 @@ macro_rules! register_plugin {
         #[no_mangle]
         fn load() {
             STATE.with(|state| {
-                state.borrow_mut().load();
+                use std::convert::TryInto;
+                use std::collections::BTreeMap;
+                use zellij_tile::shim::plugin_api::action::ProtobufPluginConfiguration;
+                use zellij_tile::shim::prost::Message;
+                let protobuf_bytes: Vec<u8> = $crate::shim::object_from_stdin().unwrap();
+                let protobuf_configuration: ProtobufPluginConfiguration =
+                    ProtobufPluginConfiguration::decode(protobuf_bytes.as_slice()).unwrap();
+                let plugin_configuration: BTreeMap<String, String> = BTreeMap::try_from(&protobuf_configuration).unwrap();
+                state.borrow_mut().load(plugin_configuration);
             });
         }
 

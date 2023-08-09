@@ -7,6 +7,8 @@ pub use super::generated_api::api::{
         Position as ProtobufPosition, RunCommandAction as ProtobufRunCommandAction,
         ScrollAtPayload, SearchDirection as ProtobufSearchDirection,
         SearchOption as ProtobufSearchOption, SwitchToModePayload, WriteCharsPayload, WritePayload,
+        PluginConfiguration as ProtobufPluginConfiguration,
+        NameAndValue as ProtobufNameAndValue,
     },
     input_mode::InputMode as ProtobufInputMode,
     resize::{Resize as ProtobufResize, ResizeDirection as ProtobufResizeDirection},
@@ -16,12 +18,13 @@ use crate::errors::prelude::*;
 use crate::input::actions::Action;
 use crate::input::actions::{SearchDirection, SearchOption};
 use crate::input::command::RunCommandAction;
-use crate::input::layout::{RunPlugin, RunPluginLocation};
+use crate::input::layout::{RunPlugin, RunPluginLocation, PluginUserConfiguration};
 use crate::position::Position;
 use url::Url;
 
 use std::convert::TryFrom;
 use std::path::PathBuf;
+use std::collections::BTreeMap;
 
 impl TryFrom<ProtobufAction> for Action {
     type Error = &'static str;
@@ -387,14 +390,16 @@ impl TryFrom<ProtobufAction> for Action {
                         let run_plugin_location =
                             RunPluginLocation::parse(&payload.plugin_url, None)
                                 .map_err(|_| "Malformed LaunchOrFocusPlugin payload")?;
+                        let configuration: PluginUserConfiguration = payload.plugin_configuration.and_then(|p| PluginUserConfiguration::try_from(p).ok()).unwrap_or_default();
                         let run_plugin = RunPlugin {
                             _allow_exec_host_cmd: false,
                             location: run_plugin_location,
+                            configuration,
                         };
                         let should_float = payload.should_float;
                         Ok(Action::LaunchOrFocusPlugin(run_plugin, should_float))
                     },
-                    _ => Err("Wrong payload for Action::MiddleClick"),
+                    _ => Err("Wrong payload for Action::LaunchOrFocusPlugin"),
                 }
             },
             Some(ProtobufActionName::LeftMouseRelease) => match protobuf_action.optional_payload {
@@ -491,10 +496,15 @@ impl TryFrom<ProtobufAction> for Action {
                         let run_plugin_location =
                             RunPluginLocation::parse(&payload.plugin_url, None)
                                 .map_err(|_| "Malformed NewTiledPluginPane payload")?;
+                        let run_plugin = RunPlugin {
+                            location: run_plugin_location,
+                            _allow_exec_host_cmd: false,
+                            configuration: PluginUserConfiguration::default(),
+                        };
                         let pane_name = payload.pane_name;
-                        Ok(Action::NewTiledPluginPane(run_plugin_location, pane_name))
+                        Ok(Action::NewTiledPluginPane(run_plugin, pane_name))
                     },
-                    _ => Err("Wrong payload for Action::MiddleClick"),
+                    _ => Err("Wrong payload for Action::NewTiledPluginPane"),
                 }
             },
             Some(ProtobufActionName::NewFloatingPluginPane) => {
@@ -503,9 +513,14 @@ impl TryFrom<ProtobufAction> for Action {
                         let run_plugin_location =
                             RunPluginLocation::parse(&payload.plugin_url, None)
                                 .map_err(|_| "Malformed NewTiledPluginPane payload")?;
+                        let run_plugin = RunPlugin {
+                            location: run_plugin_location,
+                            _allow_exec_host_cmd: false,
+                            configuration: PluginUserConfiguration::default(),
+                        };
                         let pane_name = payload.pane_name;
                         Ok(Action::NewFloatingPluginPane(
-                            run_plugin_location,
+                            run_plugin,
                             pane_name,
                         ))
                     },
@@ -520,6 +535,7 @@ impl TryFrom<ProtobufAction> for Action {
                         let run_plugin = RunPlugin {
                             _allow_exec_host_cmd: false,
                             location: run_plugin_location,
+                            configuration: PluginUserConfiguration::default(),
                         };
                         Ok(Action::StartOrReloadPlugin(run_plugin))
                     },
@@ -589,6 +605,18 @@ impl TryFrom<ProtobufAction> for Action {
                     Ok(Action::RenameTab(tab_index, new_tab_name))
                 },
                 _ => Err("Wrong payload for Action::RenameTab"),
+            },
+            Some(ProtobufActionName::BreakPane) => match protobuf_action.optional_payload {
+                Some(_) => Err("BreakPane should not have a payload"),
+                None => Ok(Action::BreakPane),
+            },
+            Some(ProtobufActionName::BreakPaneRight) => match protobuf_action.optional_payload {
+                Some(_) => Err("BreakPaneRight should not have a payload"),
+                None => Ok(Action::BreakPaneRight),
+            },
+            Some(ProtobufActionName::BreakPaneLeft) => match protobuf_action.optional_payload {
+                Some(_) => Err("BreakPaneLeft should not have a payload"),
+                None => Ok(Action::BreakPaneLeft),
             },
             _ => Err("Unknown Action"),
         }
@@ -935,6 +963,7 @@ impl TryFrom<Action> for ProtobufAction {
                         LaunchOrFocusPluginPayload {
                             plugin_url: url.into(),
                             should_float,
+                            plugin_configuration: Some(run_plugin.configuration.try_into()?),
                         },
                     )),
                 })
@@ -1017,8 +1046,8 @@ impl TryFrom<Action> for ProtobufAction {
                 name: ProtobufActionName::QueryTabNames as i32,
                 optional_payload: None,
             }),
-            Action::NewTiledPluginPane(run_plugin_location, pane_name) => {
-                let plugin_url: Url = Url::from(&run_plugin_location);
+            Action::NewTiledPluginPane(run_plugin, pane_name) => {
+                let plugin_url: Url = Url::from(&run_plugin.location);
                 Ok(ProtobufAction {
                     name: ProtobufActionName::NewTiledPluginPane as i32,
                     optional_payload: Some(OptionalPayload::NewTiledPluginPanePayload(
@@ -1029,8 +1058,8 @@ impl TryFrom<Action> for ProtobufAction {
                     )),
                 })
             },
-            Action::NewFloatingPluginPane(run_plugin_location, pane_name) => {
-                let plugin_url: Url = Url::from(&run_plugin_location);
+            Action::NewFloatingPluginPane(run_plugin, pane_name) => {
+                let plugin_url: Url = Url::from(&run_plugin.location);
                 Ok(ProtobufAction {
                     name: ProtobufActionName::NewFloatingPluginPane as i32,
                     optional_payload: Some(OptionalPayload::NewFloatingPluginPanePayload(
@@ -1101,7 +1130,19 @@ impl TryFrom<Action> for ProtobufAction {
                     id: tab_index,
                 })),
             }),
-            _ => Err("Unrecognized Action"),
+            Action::BreakPane => Ok(ProtobufAction {
+                name: ProtobufActionName::BreakPane as i32,
+                optional_payload: None,
+            }),
+            Action::BreakPaneRight => Ok(ProtobufAction {
+                name: ProtobufActionName::BreakPaneRight as i32,
+                optional_payload: None,
+            }),
+            Action::BreakPaneLeft => Ok(ProtobufAction {
+                name: ProtobufActionName::BreakPaneLeft as i32,
+                optional_payload: None,
+            }),
+            Action::NoOp | Action::Confirm | Action::Deny | Action::Copy | Action::SkipConfirm(..) => Err("Unsupported action"),
         }
     }
 }
@@ -1214,5 +1255,44 @@ impl TryFrom<Position> for ProtobufPosition {
             line: position.line.0 as i64,
             column: position.column.0 as i64,
         })
+    }
+}
+
+impl TryFrom<ProtobufPluginConfiguration> for PluginUserConfiguration {
+    type Error = &'static str;
+    fn try_from(plugin_configuration: ProtobufPluginConfiguration) -> Result<Self, &'static str> {
+        let mut converted = BTreeMap::new();
+        for name_and_value in plugin_configuration.name_and_value {
+            converted.insert(name_and_value.name, name_and_value.value);
+        }
+        Ok(PluginUserConfiguration::new(converted))
+    }
+}
+
+impl TryFrom<PluginUserConfiguration> for ProtobufPluginConfiguration {
+    type Error = &'static str;
+    fn try_from(plugin_configuration: PluginUserConfiguration) -> Result<Self, &'static str> {
+        let mut converted = vec![];
+        for (name, value) in plugin_configuration.inner() {
+            let name_and_value = ProtobufNameAndValue {
+                name: name.to_owned(),
+                value: value.to_owned()
+            };
+            converted.push(name_and_value);
+        }
+        Ok(ProtobufPluginConfiguration {
+            name_and_value: converted
+        })
+    }
+}
+
+impl TryFrom<&ProtobufPluginConfiguration> for BTreeMap<String, String> {
+    type Error = &'static str;
+    fn try_from(plugin_configuration: &ProtobufPluginConfiguration) -> Result<Self, &'static str> {
+        let mut converted = BTreeMap::new();
+        for name_and_value in &plugin_configuration.name_and_value {
+            converted.insert(name_and_value.name.to_owned(), name_and_value.value.to_owned());
+        }
+        Ok(converted)
     }
 }

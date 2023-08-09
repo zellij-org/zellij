@@ -338,6 +338,9 @@ pub enum ScreenContext {
     FocusPaneWithId,
     RenamePane,
     RenameTab,
+    BreakPane,
+    BreakPaneRight,
+    BreakPaneLeft,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.
@@ -413,6 +416,9 @@ pub enum ServerContext {
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum PtyWriteContext {
     Write,
+    ResizePty,
+    StartCachingResizes,
+    ApplyCachedResizes,
     Exit,
 }
 

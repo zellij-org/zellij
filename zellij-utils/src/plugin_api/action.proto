@@ -83,6 +83,7 @@ enum SearchOption {
 message LaunchOrFocusPluginPayload {
   string plugin_url = 1;
   bool should_float = 2;
+  optional PluginConfiguration plugin_configuration = 3;
 }
 
 message GoToTabNamePayload {
@@ -215,6 +216,9 @@ enum ActionName {
     RenameTerminalPane = 74;
     RenamePluginPane = 75;
     RenameTab = 76;
+    BreakPane = 77;
+    BreakPaneRight = 78;
+    BreakPaneLeft = 79;
 }
 
 message Position {
@@ -230,4 +234,13 @@ message RunCommandAction {
   optional string pane_name = 5;
   bool hold_on_close = 6;
   bool hold_on_start = 7;
+}
+
+message PluginConfiguration {
+  repeated NameAndValue name_and_value = 1;
+}
+
+message NameAndValue {
+  string name = 1;
+  string value = 2;
 }

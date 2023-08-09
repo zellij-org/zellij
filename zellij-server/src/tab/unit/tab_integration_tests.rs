@@ -175,6 +175,7 @@ impl MockPtyInstructionBus {
                             .unwrap()
                             .push(String::from_utf8_lossy(&msg).to_string()),
                         PtyWriteInstruction::Exit => break,
+                        _ => {},
                     }
                 }
             })
