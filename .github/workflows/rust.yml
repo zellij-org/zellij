@@ -22,6 +22,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v3
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v2
       - name: Setup toolchain
         run: rustup show
       - uses: Swatinem/rust-cache@v2
@@ -40,6 +42,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v3
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v2
       - name: Setup toolchain
         run: rustup show
       - uses: Swatinem/rust-cache@v2
@@ -63,6 +67,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v3
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v2
       - name: Setup toolchain
         run: rustup show
       - uses: Swatinem/rust-cache@v2
