@@ -172,18 +172,15 @@ macro_rules! register_worker {
         }
         #[no_mangle]
         pub fn $worker_name() {
-
+            use zellij_tile::shim::plugin_api::message::ProtobufMessage;
+            use zellij_tile::shim::prost::Message;
             let worker_display_name = std::stringify!($worker_name);
-
-            // read message from STDIN
-            let (message, payload): (String, String) = $crate::shim::object_from_stdin()
-                .unwrap_or_else(|e| {
-                    eprintln!(
-                        "Failed to deserialize message to worker \"{}\": {:?}",
-                        worker_display_name, e
-                    );
-                    Default::default()
-                });
+            let protobuf_bytes: Vec<u8> = $crate::shim::object_from_stdin()
+                .unwrap();
+            let protobuf_message: ProtobufMessage = ProtobufMessage::decode(protobuf_bytes.as_slice())
+                .unwrap();
+            let message = protobuf_message.name;
+            let payload = protobuf_message.payload;
             $worker_static_name.with(|worker_instance| {
                 let mut worker_instance = worker_instance.borrow_mut();
                 worker_instance.on_message(message, payload);
