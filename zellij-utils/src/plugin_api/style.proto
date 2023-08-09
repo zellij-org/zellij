@@ -1,0 +1,54 @@
+syntax = "proto3";
+
+package api.style;
+
+message Style {
+  Palette palette = 1;
+  bool rounded_corners = 2;
+  bool hide_session_name = 3;
+}
+
+message Palette {
+  ThemeHue theme_hue = 1;
+  Color fg = 2;
+  Color bg = 3;
+  Color black = 4;
+  Color red = 5;
+  Color green = 6;
+  Color yellow = 7;
+  Color blue = 8;
+  Color magenta = 9;
+  Color cyan = 10;
+  Color white = 11;
+  Color orange = 12;
+  Color gray = 13;
+  Color purple = 14;
+  Color gold = 15;
+  Color silver = 16;
+  Color pink = 17;
+  Color brown = 18;
+}
+
+message Color {
+  ColorType color_type = 1;
+  oneof payload {
+    RgbColorPayload rgb_color_payload = 2;
+    uint32 eight_bit_color_payload = 3;
+  }
+}
+
+message RgbColorPayload {
+  uint32 red = 1;
+  uint32 green = 2;
+  uint32 blue = 3;
+}
+
+enum ColorType {
+  Rgb = 0;
+  EightBit = 1;
+}
+
+enum ThemeHue {
+  Dark = 0;
+  Light = 1;
+}

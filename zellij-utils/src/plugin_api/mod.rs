@@ -1,5 +1,7 @@
 pub mod key;
 pub mod event;
+pub mod action;
+pub mod style;
 pub mod file;
 pub mod command;
 pub mod message;
