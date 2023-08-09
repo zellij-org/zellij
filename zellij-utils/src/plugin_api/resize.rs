@@ -6,7 +6,7 @@
 // SDK authors in other languages should generate their own equivalent structures based on the
 // `.proto` specification, and then decode the protobuf over the wire into them
 
-pub use super::generated_api::api::resize::{Resize as ProtobufResize, ResizeAction, resize::OptionalDirection, ResizeDirection, MoveDirection as ProtobufMoveDirection, ResizeDirection as ProtobufResizeDirection};
+pub use super::generated_api::api::resize::{Resize as ProtobufResize, ResizeAction, ResizeDirection, MoveDirection as ProtobufMoveDirection, ResizeDirection as ProtobufResizeDirection};
 use crate::data::{Resize, ResizeStrategy, Direction};
 
 use std::convert::TryFrom;
@@ -14,7 +14,7 @@ use std::convert::TryFrom;
 impl TryFrom<ProtobufResize> for Resize {
    type Error = &'static str;
    fn try_from(protobuf_resize: ProtobufResize) -> Result<Self, &'static str> {
-       if protobuf_resize.optional_direction.is_some() {
+       if protobuf_resize.direction.is_some() {
            return Err("Resize cannot have a direction");
        }
        match ResizeAction::from_i32(protobuf_resize.resize_action) {
@@ -33,7 +33,7 @@ impl TryFrom<Resize> for ProtobufResize {
                Resize::Increase => ResizeAction::Increase as i32,
                Resize::Decrease => ResizeAction::Decrease as i32,
            },
-           optional_direction: None,
+           direction: None,
        })
    }
 }
@@ -41,17 +41,12 @@ impl TryFrom<Resize> for ProtobufResize {
 impl TryFrom<ProtobufResize> for ResizeStrategy {
    type Error = &'static str;
    fn try_from(protobuf_resize: ProtobufResize) -> Result<Self, &'static str> {
-       let direction = match protobuf_resize.optional_direction {
-           Some(OptionalDirection::ResizeDirection(direction_index)) => {
-               match ResizeDirection::from_i32(direction_index) {
-                   Some(ResizeDirection::Left) => Some(Direction::Left),
-                   Some(ResizeDirection::Right) => Some(Direction::Right),
-                   Some(ResizeDirection::Up) => Some(Direction::Up),
-                   Some(ResizeDirection::Down) => Some(Direction::Down),
-                   None => None,
-               }
-           },
-           None => None
+       let direction = match protobuf_resize.direction.and_then(|r| ResizeDirection::from_i32(r)) {
+           Some(ResizeDirection::Left) => Some(Direction::Left),
+           Some(ResizeDirection::Right) => Some(Direction::Right),
+           Some(ResizeDirection::Up) => Some(Direction::Up),
+           Some(ResizeDirection::Down) => Some(Direction::Down),
+           None => None,
        };
        let resize = match ResizeAction::from_i32(protobuf_resize.resize_action) {
            Some(ResizeAction::Increase) => Resize::Increase,
@@ -75,11 +70,11 @@ impl TryFrom<ResizeStrategy> for ProtobufResize {
                Resize::Increase => ResizeAction::Increase as i32,
                Resize::Decrease => ResizeAction::Decrease as i32,
            },
-           optional_direction: match resize_strategy.direction {
-               Some(Direction::Left) => Some(OptionalDirection::ResizeDirection(ResizeDirection::Left as i32)),
-               Some(Direction::Right) => Some(OptionalDirection::ResizeDirection(ResizeDirection::Right as i32)),
-               Some(Direction::Up) => Some(OptionalDirection::ResizeDirection(ResizeDirection::Up as i32)),
-               Some(Direction::Down) => Some(OptionalDirection::ResizeDirection(ResizeDirection::Down as i32)),
+           direction: match resize_strategy.direction {
+               Some(Direction::Left) => Some(ResizeDirection::Left as i32),
+               Some(Direction::Right) => Some(ResizeDirection::Right as i32),
+               Some(Direction::Up) => Some(ResizeDirection::Up as i32),
+               Some(Direction::Down) => Some(ResizeDirection::Down as i32),
                None => None
            }
        })

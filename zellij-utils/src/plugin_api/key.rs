@@ -6,7 +6,7 @@
 // SDK authors in other languages should generate their own equivalent structures based on the
 // `.proto` specification, and then decode the protobuf over the wire into them
 
-pub use super::generated_api::api::key::{Key as ProtobufKey, key::{NamedKey, MainKey, OptionalModifier, KeyModifier}};
+pub use super::generated_api::api::key::{Key as ProtobufKey, key::{NamedKey, MainKey, KeyModifier}};
 use crate::data::{CharOrArrow, Direction, Key};
 
 use std::convert::TryFrom;
@@ -47,67 +47,67 @@ impl TryFrom<Key> for ProtobufKey {
         match key {
             Key::PageDown => {
                 Ok(ProtobufKey {
-                    optional_modifier: None,
+                    modifier: None,
                     main_key: Some(MainKey::Key(NamedKey::PageDown as i32)),
                 })
             },
             Key::PageUp => {
                 Ok(ProtobufKey {
-                    optional_modifier: None,
+                    modifier: None,
                     main_key: Some(MainKey::Key(NamedKey::PageUp as i32)),
                 })
             },
             Key::Left => {
                 Ok(ProtobufKey {
-                    optional_modifier: None,
+                    modifier: None,
                     main_key: Some(MainKey::Key(NamedKey::LeftArrow as i32)),
                 })
             }
             Key::Down => {
                 Ok(ProtobufKey {
-                    optional_modifier: None,
+                    modifier: None,
                     main_key: Some(MainKey::Key(NamedKey::DownArrow as i32)),
                 })
             }
             Key::Up => {
                 Ok(ProtobufKey {
-                    optional_modifier: None,
+                    modifier: None,
                     main_key: Some(MainKey::Key(NamedKey::UpArrow as i32)),
                 })
             }
             Key::Right => {
                 Ok(ProtobufKey {
-                    optional_modifier: None,
+                    modifier: None,
                     main_key: Some(MainKey::Key(NamedKey::RightArrow as i32)),
                 })
             }
             Key::Home => {
                 Ok(ProtobufKey {
-                    optional_modifier: None,
+                    modifier: None,
                     main_key: Some(MainKey::Key(NamedKey::Home as i32)),
                 })
             }
             Key::End => {
                 Ok(ProtobufKey {
-                    optional_modifier: None,
+                    modifier: None,
                     main_key: Some(MainKey::Key(NamedKey::End as i32)),
                 })
             }
             Key::Backspace => {
                 Ok(ProtobufKey {
-                    optional_modifier: None,
+                    modifier: None,
                     main_key: Some(MainKey::Key(NamedKey::Backspace as i32)),
                 })
             }
             Key::Delete => {
                 Ok(ProtobufKey {
-                    optional_modifier: None,
+                    modifier: None,
                     main_key: Some(MainKey::Key(NamedKey::Delete as i32)),
                 })
             }
             Key::Insert => {
                 Ok(ProtobufKey {
-                    optional_modifier: None,
+                    modifier: None,
                     main_key: Some(MainKey::Key(NamedKey::Insert as i32)),
                 })
             }
@@ -128,13 +128,13 @@ impl TryFrom<Key> for ProtobufKey {
                     _ => return Err("Invalid key"),
                 };
                 Ok(ProtobufKey {
-                    optional_modifier: None,
+                    modifier: None,
                     main_key,
                 })
             }
             Key::Char(character) => {
                 Ok(ProtobufKey {
-                    optional_modifier: None,
+                    modifier: None,
                     main_key: Some(MainKey::Char((character as u8) as i32)),
                 })
             }
@@ -147,31 +147,31 @@ impl TryFrom<Key> for ProtobufKey {
                     CharOrArrow::Direction(Direction::Down) => MainKey::Key(NamedKey::DownArrow as i32),
                 };
                 Ok(ProtobufKey {
-                    optional_modifier: Some(OptionalModifier::Modifier(KeyModifier::Alt as i32)),
+                    modifier: Some(KeyModifier::Alt as i32),
                     main_key: Some(main_key)
                 })
             }
             Key::Ctrl(character) => {
                 Ok(ProtobufKey {
-                    optional_modifier: Some(OptionalModifier::Modifier(KeyModifier::Ctrl as i32)),
+                    modifier: Some(KeyModifier::Ctrl as i32),
                     main_key: Some(MainKey::Char((character as u8) as i32)),
                 })
             }
             Key::BackTab => {
                 Ok(ProtobufKey {
-                    optional_modifier: None,
+                    modifier: None,
                     main_key: Some(MainKey::Key(NamedKey::Tab as i32)),
                 })
             }
             Key::Null => {
                 Ok(ProtobufKey {
-                    optional_modifier: None,
+                    modifier: None,
                     main_key: None, // TODO: does this break deserialization?
                 })
             }
             Key::Esc => {
                 Ok(ProtobufKey {
-                    optional_modifier: None,
+                    modifier: None,
                     main_key: Some(MainKey::Key(NamedKey::Esc as i32)),
                 })
             }
@@ -212,8 +212,8 @@ impl CharOrArrow {
 }
 
 fn parse_optional_modifier(m: &ProtobufKey) -> Option<KeyModifier> {
-    match m.optional_modifier {
-        Some(OptionalModifier::Modifier(modifier)) => KeyModifier::from_i32(modifier),
+    match m.modifier {
+        Some(modifier) => KeyModifier::from_i32(modifier),
         _ => None
     }
 }

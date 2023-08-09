@@ -75,9 +75,7 @@ message Key {
     nine = 35;
   }
 
-  oneof optional_modifier {
-    KeyModifier modifier = 1;
-  }
+  optional KeyModifier modifier = 1;
   oneof main_key {
     NamedKey key = 2;
     Char char = 3;

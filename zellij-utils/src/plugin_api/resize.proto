@@ -16,9 +16,7 @@ enum ResizeDirection {
 
 message Resize {
   ResizeAction resize_action = 1;
-  oneof optional_direction {
-    ResizeDirection resize_direction = 2;
-  }
+  optional ResizeDirection direction = 2;
 }
 
 message MoveDirection {

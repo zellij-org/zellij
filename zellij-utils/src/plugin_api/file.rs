@@ -6,7 +6,7 @@
 // SDK authors in other languages should generate their own equivalent structures based on the
 // `.proto` specification, and then decode the protobuf over the wire into them
 
-pub use super::generated_api::api::file::{File as ProtobufFile, file::{OptionalLineNumber, OptionalCwd}};
+pub use super::generated_api::api::file::{File as ProtobufFile};
 use crate::data::FileToOpen;
 
 use std::convert::TryFrom;
@@ -16,16 +16,8 @@ impl TryFrom<ProtobufFile> for FileToOpen {
    type Error = &'static str;
    fn try_from(protobuf_file: ProtobufFile) -> Result<Self, &'static str> {
        let path = PathBuf::from(protobuf_file.path);
-       let line_number = protobuf_file.optional_line_number.map(|l| {
-           match l {
-               OptionalLineNumber::LineNumber(l) => l as usize
-           }
-       });
-       let cwd = protobuf_file.optional_cwd.map(|c| {
-           match c {
-               OptionalCwd::Cwd(c) => PathBuf::from(c)
-           }
-       });
+       let line_number = protobuf_file.line_number.map(|l| l as usize);
+       let cwd = protobuf_file.cwd.map(|c| PathBuf::from(c));
        Ok(FileToOpen {
            path,
            line_number,
@@ -39,8 +31,8 @@ impl TryFrom<FileToOpen> for ProtobufFile {
    fn try_from(file_to_open: FileToOpen) -> Result<Self, &'static str> {
        Ok(ProtobufFile {
            path: file_to_open.path.display().to_string(),
-           optional_line_number: file_to_open.line_number.map(|l| OptionalLineNumber::LineNumber(l as i32)),
-           optional_cwd: file_to_open.cwd.map(|c| OptionalCwd::Cwd(c.display().to_string()))
+           line_number: file_to_open.line_number.map(|l| l as i32),
+           cwd: file_to_open.cwd.map(|c| c.display().to_string())
        })
    }
 }

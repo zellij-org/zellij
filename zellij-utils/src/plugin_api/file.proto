@@ -4,10 +4,6 @@ package api.file;
 
 message File {
   string path = 1;
-  oneof optional_line_number {
-    int32 line_number = 2;
-  }
-  oneof optional_cwd {
-    string cwd = 3;
-  }
+  optional int32 line_number = 2;
+  optional string cwd = 3;
 }

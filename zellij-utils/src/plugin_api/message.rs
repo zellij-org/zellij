@@ -6,7 +6,7 @@
 // SDK authors in other languages should generate their own equivalent structures based on the
 // `.proto` specification, and then decode the protobuf over the wire into them
 
-pub use super::generated_api::api::message::{Message as ProtobufMessage, message::OptionalWorkerName};
+pub use super::generated_api::api::message::{Message as ProtobufMessage};
 use crate::data::PluginMessage;
 
 use std::convert::TryFrom;
@@ -16,11 +16,7 @@ impl TryFrom<ProtobufMessage> for PluginMessage {
    fn try_from(protobuf_message: ProtobufMessage) -> Result<Self, &'static str> {
        let name = protobuf_message.name;
        let payload = protobuf_message.payload;
-       let worker_name = protobuf_message.optional_worker_name.map(|n| {
-           match n {
-               OptionalWorkerName::WorkerName(n) => n
-           }
-       });
+       let worker_name = protobuf_message.worker_name;
        Ok(PluginMessage {
            name,
            payload,
@@ -35,7 +31,7 @@ impl TryFrom<PluginMessage> for ProtobufMessage {
        Ok(ProtobufMessage {
            name: plugin_message.name,
            payload: plugin_message.payload,
-           optional_worker_name: plugin_message.worker_name.map(|n| OptionalWorkerName::WorkerName(n))
+           worker_name: plugin_message.worker_name,
        })
    }
 }

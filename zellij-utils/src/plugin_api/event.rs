@@ -12,7 +12,7 @@ pub use super::generated_api::api::{
         InputMode as ProtobufInputMode,
 
     },
-    resize::{MoveDirection as ProtobufMoveDirection, ResizeDirection as ProtobufResizeDirection, Resize as ProtobufResize, resize::OptionalDirection},
+    resize::{MoveDirection as ProtobufMoveDirection, ResizeDirection as ProtobufResizeDirection, Resize as ProtobufResize},
     key:: {
         Key as ProtobufKey
     },
@@ -1531,9 +1531,9 @@ impl TryFrom<Action> for ProtobufAction {
            },
            Action::Resize(resize, direction) => {
                let mut resize: ProtobufResize = resize.try_into()?;
-               resize.optional_direction = direction.and_then(|d| {
+               resize.direction = direction.and_then(|d| {
                    let resize_direction: ProtobufResizeDirection = d.try_into().ok()?;
-                   Some(OptionalDirection::ResizeDirection(resize_direction as i32))
+                   Some(resize_direction as i32)
                });
                Ok(ProtobufAction {
                    name: ActionName::Resize as i32,
