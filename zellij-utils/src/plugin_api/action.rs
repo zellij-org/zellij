@@ -127,9 +127,9 @@ impl TryFrom<ProtobufAction> for Action {
             }
             Some(ProtobufActionName::SwitchFocus) =>{
                 match protobuf_action.optional_payload {
-                    Some(_) => Err("FocusPreviousPane should not have a payload"),
+                    Some(_) => Err("SwitchFocus should not have a payload"),
                     None => {
-                        Ok(Action::FocusPreviousPane)
+                        Ok(Action::SwitchFocus)
                     }
                 }
             }
@@ -152,7 +152,7 @@ impl TryFrom<ProtobufAction> for Action {
                         let direction: Direction = ProtobufResizeDirection::from_i32(move_focus_or_tab_payload)
                             .ok_or("Malformed resize direction for Action::MoveFocusOrTab")?
                             .try_into()?;
-                        Ok(Action::MoveFocus(direction))
+                        Ok(Action::MoveFocusOrTab(direction))
                     }
                     _ =>  {
                         Err("Wrong payload for Action::MoveFocusOrTab")
@@ -950,7 +950,7 @@ impl TryFrom<Action> for ProtobufAction {
            Action::MoveFocusOrTab(direction) => {
                let direction: ProtobufResizeDirection = direction.try_into()?;
                Ok(ProtobufAction {
-                   name: ProtobufActionName::MoveFocus as i32,
+                   name: ProtobufActionName::MoveFocusOrTab as i32,
                    optional_payload: Some(OptionalPayload::MoveFocusOrTabPayload(direction as i32)),
                })
            },
@@ -960,7 +960,7 @@ impl TryFrom<Action> for ProtobufAction {
                    Some(protobuf_direction as i32)
                });
                Ok(ProtobufAction {
-                   name: ProtobufActionName::MoveFocus as i32,
+                   name: ProtobufActionName::MovePane as i32,
                    optional_payload: Some(OptionalPayload::MovePanePayload(MovePanePayload {
                        direction
                    }))
@@ -1002,7 +1002,7 @@ impl TryFrom<Action> for ProtobufAction {
            Action::ScrollUpAt(position) => {
                let position: ProtobufPosition = position.try_into()?;
                Ok(ProtobufAction {
-                   name: ProtobufActionName::ScrollUp as i32,
+                   name: ProtobufActionName::ScrollUpAt as i32,
                    optional_payload: Some(OptionalPayload::ScrollUpAtPayload(ScrollAtPayload {
                        position: Some(position),
                    }))
@@ -1017,7 +1017,7 @@ impl TryFrom<Action> for ProtobufAction {
            Action::ScrollDownAt(position) => {
                let position: ProtobufPosition = position.try_into()?;
                Ok(ProtobufAction {
-                   name: ProtobufActionName::ScrollUp as i32,
+                   name: ProtobufActionName::ScrollDownAt as i32,
                    optional_payload: Some(OptionalPayload::ScrollDownAtPayload(ScrollAtPayload {
                        position: Some(position),
                    }))
@@ -1144,7 +1144,7 @@ impl TryFrom<Action> for ProtobufAction {
                    Some(protobuf_run_command_action)
                });
                Ok(ProtobufAction {
-                   name: ProtobufActionName::NewFloatingPane as i32,
+                   name: ProtobufActionName::NewTiledPane as i32,
                    optional_payload: Some(OptionalPayload::NewTiledPanePayload(NewTiledPanePayload {
                        direction,
                        command,
@@ -1214,7 +1214,7 @@ impl TryFrom<Action> for ProtobufAction {
            },
            Action::GoToTabName(tab_name, create)=> {
                Ok(ProtobufAction {
-                   name: ProtobufActionName::GoToTab as i32,
+                   name: ProtobufActionName::GoToTabName as i32,
                    optional_payload: Some(OptionalPayload::GoToTabNamePayload(GoToTabNamePayload {
                        tab_name,
                        create,
