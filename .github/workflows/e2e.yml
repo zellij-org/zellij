@@ -32,6 +32,8 @@ jobs:
     - uses: actions/checkout@v3
     - name: Install Protoc
       uses: arduino/setup-protoc@v2
+      with:
+        repo-token: ${{ secrets.GITHUB_TOKEN }}
     - name: Add WASM target
       run: rustup target add wasm32-wasi
     - name: Install musl-tools
