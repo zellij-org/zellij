@@ -4,7 +4,7 @@ use clap::ArgEnum;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
-use std::path::{PathBuf, Path};
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use strum_macros::{EnumDiscriminants, EnumIter, EnumString, ToString};
 
@@ -870,7 +870,7 @@ impl PluginMessage {
         PluginMessage {
             name: message.to_owned(),
             payload: payload.to_owned(),
-            worker_name: Some(worker_name.to_owned())
+            worker_name: Some(worker_name.to_owned()),
         }
     }
     pub fn new_to_plugin(message: &str, payload: &str) -> Self {
@@ -891,17 +891,17 @@ pub enum PluginCommand {
     GetZellijVersion,
     OpenFile(FileToOpen),
     OpenFileFloating(FileToOpen),
-    OpenTerminal(FileToOpen), // only used for the path as cwd
+    OpenTerminal(FileToOpen),         // only used for the path as cwd
     OpenTerminalFloating(FileToOpen), // only used for the path as cwd
     OpenCommandPane(CommandToRun),
     OpenCommandPaneFloating(CommandToRun),
     SwitchTabTo(u32), // tab index
-    SetTimeout(f32), // seconds
+    SetTimeout(f32),  // seconds
     ExecCmd(Vec<String>),
     PostMessageTo(PluginMessage),
     PostMessageToPlugin(PluginMessage),
     HideSelf,
-    ShowSelf(bool),  // bool - should float if hidden
+    ShowSelf(bool), // bool - should float if hidden
     SwitchToMode(InputMode),
     NewTabsWithLayout(String), // raw kdl layout
     NewTab,
@@ -940,14 +940,14 @@ pub enum PluginCommand {
     NextSwapLayout,
     GoToTabName(String),
     FocusOrCreateTab(String),
-    GoToTab(u32), // tab index
-    StartOrReloadPlugin(String), // plugin url (eg. file:/path/to/plugin.wasm)
-    CloseTerminalPane(u32), // terminal pane id
-    ClosePluginPane(u32), // plugin pane id
-    FocusTerminalPane(u32, bool), // terminal pane id, should_float_if_hidden
-    FocusPluginPane(u32, bool), // plugin pane id, should_float_if_hidden
+    GoToTab(u32),                    // tab index
+    StartOrReloadPlugin(String),     // plugin url (eg. file:/path/to/plugin.wasm)
+    CloseTerminalPane(u32),          // terminal pane id
+    ClosePluginPane(u32),            // plugin pane id
+    FocusTerminalPane(u32, bool),    // terminal pane id, should_float_if_hidden
+    FocusPluginPane(u32, bool),      // plugin pane id, should_float_if_hidden
     RenameTerminalPane(u32, String), // terminal pane id, new name
-    RenamePluginPane(u32, String), // plugin pane id, new name
-    RenameTab(u32, String), // tab index, new name
-    ReportPanic(String), // stringified panic
+    RenamePluginPane(u32, String),   // plugin pane id, new name
+    RenameTab(u32, String),          // tab index, new name
+    ReportPanic(String),             // stringified panic
 }

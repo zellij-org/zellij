@@ -1,12 +1,14 @@
-pub use super::generated_api::api::input_mode::{InputModeMessage as ProtobufInputModeMessage, InputMode as ProtobufInputMode};
+pub use super::generated_api::api::input_mode::{
+    InputMode as ProtobufInputMode, InputModeMessage as ProtobufInputModeMessage,
+};
 use crate::data::InputMode;
 
 use std::convert::TryFrom;
 
 impl TryFrom<ProtobufInputMode> for InputMode {
-   type Error = &'static str;
-   fn try_from(protobuf_input_mode: ProtobufInputMode) -> Result<Self, &'static str> {
-       match protobuf_input_mode {
+    type Error = &'static str;
+    fn try_from(protobuf_input_mode: ProtobufInputMode) -> Result<Self, &'static str> {
+        match protobuf_input_mode {
             ProtobufInputMode::Normal => Ok(InputMode::Normal),
             ProtobufInputMode::Locked => Ok(InputMode::Locked),
             ProtobufInputMode::Resize => Ok(InputMode::Resize),
@@ -21,14 +23,14 @@ impl TryFrom<ProtobufInputMode> for InputMode {
             ProtobufInputMode::Move => Ok(InputMode::Move),
             ProtobufInputMode::Prompt => Ok(InputMode::Prompt),
             ProtobufInputMode::Tmux => Ok(InputMode::Tmux),
-       }
-   }
+        }
+    }
 }
 
 impl TryFrom<InputMode> for ProtobufInputMode {
-   type Error = &'static str;
-   fn try_from(input_mode: InputMode) -> Result<Self, &'static str> {
-       Ok(match input_mode {
+    type Error = &'static str;
+    fn try_from(input_mode: InputMode) -> Result<Self, &'static str> {
+        Ok(match input_mode {
             InputMode::Normal => ProtobufInputMode::Normal,
             InputMode::Locked => ProtobufInputMode::Locked,
             InputMode::Resize => ProtobufInputMode::Resize,
@@ -43,23 +45,25 @@ impl TryFrom<InputMode> for ProtobufInputMode {
             InputMode::Move => ProtobufInputMode::Move,
             InputMode::Prompt => ProtobufInputMode::Prompt,
             InputMode::Tmux => ProtobufInputMode::Tmux,
-       })
-   }
+        })
+    }
 }
 
 impl TryFrom<ProtobufInputModeMessage> for InputMode {
-   type Error = &'static str;
-   fn try_from(protobuf_input_mode: ProtobufInputModeMessage) -> Result<Self, &'static str> {
-       ProtobufInputMode::from_i32(protobuf_input_mode.input_mode)
-           .and_then(|p| p.try_into().ok())
-           .ok_or("Invalid input mode")
-   }
+    type Error = &'static str;
+    fn try_from(protobuf_input_mode: ProtobufInputModeMessage) -> Result<Self, &'static str> {
+        ProtobufInputMode::from_i32(protobuf_input_mode.input_mode)
+            .and_then(|p| p.try_into().ok())
+            .ok_or("Invalid input mode")
+    }
 }
 
 impl TryFrom<InputMode> for ProtobufInputModeMessage {
-   type Error = &'static str;
-   fn try_from(input_mode: InputMode) -> Result<Self, &'static str> {
-       let protobuf_input_mode: ProtobufInputMode = input_mode.try_into()?;
-       Ok(ProtobufInputModeMessage { input_mode: protobuf_input_mode as i32 })
-   }
+    type Error = &'static str;
+    fn try_from(input_mode: InputMode) -> Result<Self, &'static str> {
+        let protobuf_input_mode: ProtobufInputMode = input_mode.try_into()?;
+        Ok(ProtobufInputModeMessage {
+            input_mode: protobuf_input_mode as i32,
+        })
+    }
 }

@@ -116,13 +116,10 @@ macro_rules! register_plugin {
             use zellij_tile::shim::plugin_api::event::ProtobufEvent;
             use zellij_tile::shim::prost::Message;
             STATE.with(|state| {
-                let protobuf_bytes: Vec<u8> = $crate::shim::object_from_stdin()
-                    .unwrap();
-                let protobuf_event: ProtobufEvent = ProtobufEvent::decode(protobuf_bytes.as_slice())
-                    .unwrap();
-                let event = protobuf_event
-                    .try_into()
-                    .unwrap();
+                let protobuf_bytes: Vec<u8> = $crate::shim::object_from_stdin().unwrap();
+                let protobuf_event: ProtobufEvent =
+                    ProtobufEvent::decode(protobuf_bytes.as_slice()).unwrap();
+                let event = protobuf_event.try_into().unwrap();
                 state.borrow_mut().update(event)
             })
         }

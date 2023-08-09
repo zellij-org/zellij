@@ -6,9 +6,7 @@ use zellij_utils::async_channel::{unbounded, Receiver, Sender};
 use zellij_utils::async_std::task;
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::plugins::PluginConfig;
-use zellij_utils::plugin_api::{
-    message::ProtobufMessage
-};
+use zellij_utils::plugin_api::message::ProtobufMessage;
 use zellij_utils::prost::Message;
 
 pub struct RunningWorker {
@@ -45,8 +43,7 @@ impl RunningWorker {
             .exports
             .get_function(&self.name)
             .with_context(err_context)?;
-        wasi_write_object(&self.plugin_env.wasi_env, &protobuf_bytes)
-            .with_context(err_context)?;
+        wasi_write_object(&self.plugin_env.wasi_env, &protobuf_bytes).with_context(err_context)?;
         work_function.call(&[]).with_context(err_context)?;
         Ok(())
     }

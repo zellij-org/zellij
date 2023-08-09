@@ -1,11 +1,11 @@
 use serde::{de::DeserializeOwned, Serialize};
-use std::{io, path::Path};
 use std::collections::HashSet;
+use std::{io, path::Path};
 use zellij_utils::data::*;
 use zellij_utils::errors::prelude::*;
+pub use zellij_utils::plugin_api;
 use zellij_utils::plugin_api::plugin_command::ProtobufPluginCommand;
 use zellij_utils::plugin_api::plugin_ids::{ProtobufPluginIds, ProtobufZellijVersion};
-pub use zellij_utils::plugin_api;
 
 pub use zellij_utils::prost::{self, *};
 
@@ -46,7 +46,8 @@ pub fn get_plugin_ids() -> PluginIds {
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
-    let protobuf_plugin_ids = ProtobufPluginIds::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
+    let protobuf_plugin_ids =
+        ProtobufPluginIds::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
     PluginIds::try_from(protobuf_plugin_ids).unwrap()
 }
 
@@ -56,7 +57,8 @@ pub fn get_zellij_version() -> String {
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
-    let protobuf_zellij_version = ProtobufZellijVersion::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
+    let protobuf_zellij_version =
+        ProtobufZellijVersion::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
     protobuf_zellij_version.version
 }
 
@@ -132,7 +134,8 @@ pub fn set_timeout(secs: f64) {
 
 #[doc(hidden)]
 pub fn exec_cmd(cmd: &[&str]) {
-    let plugin_command = PluginCommand::ExecCmd(cmd.iter().cloned().map(|s| s.to_owned()).collect());
+    let plugin_command =
+        PluginCommand::ExecCmd(cmd.iter().cloned().map(|s| s.to_owned()).collect());
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
@@ -220,7 +223,7 @@ pub fn resize_focused_pane_with_direction(resize: Resize, direction: Direction) 
     let resize_strategy = ResizeStrategy {
         resize,
         direction: Some(direction),
-        invert_on_boundaries: false
+        invert_on_boundaries: false,
     };
     let plugin_command = PluginCommand::ResizeWithDirection(resize_strategy);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
@@ -521,7 +524,10 @@ pub fn focus_plugin_pane(plugin_pane_id: u32, should_float_if_hidden: bool) {
 }
 
 /// Changes the name (the title that appears in the UI) of the terminal pane with the specified id.
-pub fn rename_terminal_pane<S: AsRef<str>>(terminal_pane_id: u32, new_name: S) where S: ToString {
+pub fn rename_terminal_pane<S: AsRef<str>>(terminal_pane_id: u32, new_name: S)
+where
+    S: ToString,
+{
     let plugin_command = PluginCommand::RenameTerminalPane(terminal_pane_id, new_name.to_string());
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
@@ -529,7 +535,10 @@ pub fn rename_terminal_pane<S: AsRef<str>>(terminal_pane_id: u32, new_name: S) w
 }
 
 /// Changes the name (the title that appears in the UI) of the plugin pane with the specified id.
-pub fn rename_plugin_pane<S: AsRef<str>>(plugin_pane_id: u32, new_name: S) where S: ToString {
+pub fn rename_plugin_pane<S: AsRef<str>>(plugin_pane_id: u32, new_name: S)
+where
+    S: ToString,
+{
     let plugin_command = PluginCommand::RenamePluginPane(plugin_pane_id, new_name.to_string());
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
@@ -537,7 +546,10 @@ pub fn rename_plugin_pane<S: AsRef<str>>(plugin_pane_id: u32, new_name: S) where
 }
 
 /// Changes the name (the title that appears in the UI) of the tab with the specified position.
-pub fn rename_tab<S: AsRef<str>>(tab_position: u32, new_name: S) where S: ToString {
+pub fn rename_tab<S: AsRef<str>>(tab_position: u32, new_name: S)
+where
+    S: ToString,
+{
     let plugin_command = PluginCommand::RenameTab(tab_position, new_name.to_string());
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());

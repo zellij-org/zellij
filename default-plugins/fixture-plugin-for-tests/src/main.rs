@@ -233,7 +233,7 @@ impl ZellijPlugin for State {
                 post_message_to(PluginMessage {
                     worker_name: Some("test".into()),
                     name: "ping".into(),
-                    payload: "gimme_back_my_payload".into()
+                    payload: "gimme_back_my_payload".into(),
                 });
             },
             _ => {},

@@ -14,9 +14,7 @@ use std::{
 use wasmer::{Instance, Module, Store, Value};
 use zellij_utils::async_std::task::{self, JoinHandle};
 use zellij_utils::notify_debouncer_full::{notify::RecommendedWatcher, Debouncer, FileIdMap};
-use zellij_utils::plugin_api::{
-    event::ProtobufEvent
-};
+use zellij_utils::plugin_api::event::ProtobufEvent;
 
 use zellij_utils::prost::Message;
 
@@ -741,12 +739,16 @@ pub fn apply_event_to_plugin(
     plugin_bytes: &mut Vec<(PluginId, ClientId, Vec<u8>)>,
 ) -> Result<()> {
     let err_context = || format!("Failed to apply event to plugin {plugin_id}");
-    let protobuf_event: ProtobufEvent = event.clone().try_into().map_err(|e| anyhow!("Failed to convert to protobuf: {:?}", e))?;
+    let protobuf_event: ProtobufEvent = event
+        .clone()
+        .try_into()
+        .map_err(|e| anyhow!("Failed to convert to protobuf: {:?}", e))?;
     let update = instance
         .exports
         .get_function("update")
         .with_context(err_context)?;
-    wasi_write_object(&plugin_env.wasi_env, &protobuf_event.encode_to_vec()).with_context(err_context)?;
+    wasi_write_object(&plugin_env.wasi_env, &protobuf_event.encode_to_vec())
+        .with_context(err_context)?;
     let update_return = update.call(&[]).with_context(err_context)?;
     let should_render = match update_return.get(0) {
         Some(Value::I32(n)) => *n == 1,

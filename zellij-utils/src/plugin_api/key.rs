@@ -1,4 +1,7 @@
-pub use super::generated_api::api::key::{Key as ProtobufKey, key::{NamedKey, MainKey, KeyModifier}};
+pub use super::generated_api::api::key::{
+    key::{KeyModifier, MainKey, NamedKey},
+    Key as ProtobufKey,
+};
 use crate::data::{CharOrArrow, Direction, Key};
 
 use std::convert::TryFrom;
@@ -11,24 +14,21 @@ impl TryFrom<ProtobufKey> for Key {
             Some(KeyModifier::Ctrl) => {
                 let character = char_from_main_key(protobuf_key.main_key)?;
                 Ok(Key::Ctrl(character))
-
             },
             Some(KeyModifier::Alt) => {
                 let char_or_arrow = CharOrArrow::from_main_key(protobuf_key.main_key)?;
                 Ok(Key::Alt(char_or_arrow))
             },
-            None => {
-                match protobuf_key.main_key.as_ref().ok_or("invalid key")? {
-                    MainKey::Char(_key_index) => {
-                        let character = char_from_main_key(protobuf_key.main_key)?;
-                        Ok(Key::Char(character))
-                    },
-                    MainKey::Key(key_index) => {
-                        let key = NamedKey::from_i32(*key_index).ok_or("invalid_key")?;
-                        Ok(named_key_to_key(key))
-                    }
-                }
-            }
+            None => match protobuf_key.main_key.as_ref().ok_or("invalid key")? {
+                MainKey::Char(_key_index) => {
+                    let character = char_from_main_key(protobuf_key.main_key)?;
+                    Ok(Key::Char(character))
+                },
+                MainKey::Key(key_index) => {
+                    let key = NamedKey::from_i32(*key_index).ok_or("invalid_key")?;
+                    Ok(named_key_to_key(key))
+                },
+            },
         }
     }
 }
@@ -37,72 +37,50 @@ impl TryFrom<Key> for ProtobufKey {
     type Error = &'static str;
     fn try_from(key: Key) -> Result<Self, &'static str> {
         match key {
-            Key::PageDown => {
-                Ok(ProtobufKey {
-                    modifier: None,
-                    main_key: Some(MainKey::Key(NamedKey::PageDown as i32)),
-                })
-            },
-            Key::PageUp => {
-                Ok(ProtobufKey {
-                    modifier: None,
-                    main_key: Some(MainKey::Key(NamedKey::PageUp as i32)),
-                })
-            },
-            Key::Left => {
-                Ok(ProtobufKey {
-                    modifier: None,
-                    main_key: Some(MainKey::Key(NamedKey::LeftArrow as i32)),
-                })
-            }
-            Key::Down => {
-                Ok(ProtobufKey {
-                    modifier: None,
-                    main_key: Some(MainKey::Key(NamedKey::DownArrow as i32)),
-                })
-            }
-            Key::Up => {
-                Ok(ProtobufKey {
-                    modifier: None,
-                    main_key: Some(MainKey::Key(NamedKey::UpArrow as i32)),
-                })
-            }
-            Key::Right => {
-                Ok(ProtobufKey {
-                    modifier: None,
-                    main_key: Some(MainKey::Key(NamedKey::RightArrow as i32)),
-                })
-            }
-            Key::Home => {
-                Ok(ProtobufKey {
-                    modifier: None,
-                    main_key: Some(MainKey::Key(NamedKey::Home as i32)),
-                })
-            }
-            Key::End => {
-                Ok(ProtobufKey {
-                    modifier: None,
-                    main_key: Some(MainKey::Key(NamedKey::End as i32)),
-                })
-            }
-            Key::Backspace => {
-                Ok(ProtobufKey {
-                    modifier: None,
-                    main_key: Some(MainKey::Key(NamedKey::Backspace as i32)),
-                })
-            }
-            Key::Delete => {
-                Ok(ProtobufKey {
-                    modifier: None,
-                    main_key: Some(MainKey::Key(NamedKey::Delete as i32)),
-                })
-            }
-            Key::Insert => {
-                Ok(ProtobufKey {
-                    modifier: None,
-                    main_key: Some(MainKey::Key(NamedKey::Insert as i32)),
-                })
-            }
+            Key::PageDown => Ok(ProtobufKey {
+                modifier: None,
+                main_key: Some(MainKey::Key(NamedKey::PageDown as i32)),
+            }),
+            Key::PageUp => Ok(ProtobufKey {
+                modifier: None,
+                main_key: Some(MainKey::Key(NamedKey::PageUp as i32)),
+            }),
+            Key::Left => Ok(ProtobufKey {
+                modifier: None,
+                main_key: Some(MainKey::Key(NamedKey::LeftArrow as i32)),
+            }),
+            Key::Down => Ok(ProtobufKey {
+                modifier: None,
+                main_key: Some(MainKey::Key(NamedKey::DownArrow as i32)),
+            }),
+            Key::Up => Ok(ProtobufKey {
+                modifier: None,
+                main_key: Some(MainKey::Key(NamedKey::UpArrow as i32)),
+            }),
+            Key::Right => Ok(ProtobufKey {
+                modifier: None,
+                main_key: Some(MainKey::Key(NamedKey::RightArrow as i32)),
+            }),
+            Key::Home => Ok(ProtobufKey {
+                modifier: None,
+                main_key: Some(MainKey::Key(NamedKey::Home as i32)),
+            }),
+            Key::End => Ok(ProtobufKey {
+                modifier: None,
+                main_key: Some(MainKey::Key(NamedKey::End as i32)),
+            }),
+            Key::Backspace => Ok(ProtobufKey {
+                modifier: None,
+                main_key: Some(MainKey::Key(NamedKey::Backspace as i32)),
+            }),
+            Key::Delete => Ok(ProtobufKey {
+                modifier: None,
+                main_key: Some(MainKey::Key(NamedKey::Delete as i32)),
+            }),
+            Key::Insert => Ok(ProtobufKey {
+                modifier: None,
+                main_key: Some(MainKey::Key(NamedKey::Insert as i32)),
+            }),
             Key::F(index) => {
                 let main_key = match index {
                     1 => Some(MainKey::Key(NamedKey::F1 as i32)),
@@ -123,82 +101,70 @@ impl TryFrom<Key> for ProtobufKey {
                     modifier: None,
                     main_key,
                 })
-            }
-            Key::Char(character) => {
-                Ok(ProtobufKey {
-                    modifier: None,
-                    main_key: Some(MainKey::Char((character as u8) as i32)),
-                })
-            }
+            },
+            Key::Char(character) => Ok(ProtobufKey {
+                modifier: None,
+                main_key: Some(MainKey::Char((character as u8) as i32)),
+            }),
             Key::Alt(char_or_arrow) => {
                 let main_key = match char_or_arrow {
                     CharOrArrow::Char(character) => MainKey::Char((character as u8) as i32),
-                    CharOrArrow::Direction(Direction::Left) => MainKey::Key(NamedKey::LeftArrow as i32),
-                    CharOrArrow::Direction(Direction::Right) => MainKey::Key(NamedKey::RightArrow as i32),
+                    CharOrArrow::Direction(Direction::Left) => {
+                        MainKey::Key(NamedKey::LeftArrow as i32)
+                    },
+                    CharOrArrow::Direction(Direction::Right) => {
+                        MainKey::Key(NamedKey::RightArrow as i32)
+                    },
                     CharOrArrow::Direction(Direction::Up) => MainKey::Key(NamedKey::UpArrow as i32),
-                    CharOrArrow::Direction(Direction::Down) => MainKey::Key(NamedKey::DownArrow as i32),
+                    CharOrArrow::Direction(Direction::Down) => {
+                        MainKey::Key(NamedKey::DownArrow as i32)
+                    },
                 };
                 Ok(ProtobufKey {
                     modifier: Some(KeyModifier::Alt as i32),
-                    main_key: Some(main_key)
+                    main_key: Some(main_key),
                 })
-            }
-            Key::Ctrl(character) => {
-                Ok(ProtobufKey {
-                    modifier: Some(KeyModifier::Ctrl as i32),
-                    main_key: Some(MainKey::Char((character as u8) as i32)),
-                })
-            }
-            Key::BackTab => {
-                Ok(ProtobufKey {
-                    modifier: None,
-                    main_key: Some(MainKey::Key(NamedKey::Tab as i32)),
-                })
-            }
+            },
+            Key::Ctrl(character) => Ok(ProtobufKey {
+                modifier: Some(KeyModifier::Ctrl as i32),
+                main_key: Some(MainKey::Char((character as u8) as i32)),
+            }),
+            Key::BackTab => Ok(ProtobufKey {
+                modifier: None,
+                main_key: Some(MainKey::Key(NamedKey::Tab as i32)),
+            }),
             Key::Null => {
                 Ok(ProtobufKey {
                     modifier: None,
                     main_key: None, // TODO: does this break deserialization?
                 })
-            }
-            Key::Esc => {
-                Ok(ProtobufKey {
-                    modifier: None,
-                    main_key: Some(MainKey::Key(NamedKey::Esc as i32)),
-                })
-            }
+            },
+            Key::Esc => Ok(ProtobufKey {
+                modifier: None,
+                main_key: Some(MainKey::Key(NamedKey::Esc as i32)),
+            }),
         }
     }
 }
 
 impl CharOrArrow {
-    pub fn from_main_key(main_key: std::option::Option<MainKey>) -> Result<CharOrArrow, &'static str> {
+    pub fn from_main_key(
+        main_key: std::option::Option<MainKey>,
+    ) -> Result<CharOrArrow, &'static str> {
         match main_key {
             Some(MainKey::Char(encoded_key)) => {
                 Ok(CharOrArrow::Char(char_index_to_char(encoded_key)))
             },
-            Some(MainKey::Key(key_index)) => {
-                match NamedKey::from_i32(key_index) {
-                    Some(NamedKey::LeftArrow) => {
-                        Ok(CharOrArrow::Direction(Direction::Left))
-                    },
-                    Some(NamedKey::RightArrow) => {
-                        Ok(CharOrArrow::Direction(Direction::Right))
-                    },
-                    Some(NamedKey::UpArrow) => {
-                        Ok(CharOrArrow::Direction(Direction::Up))
-                    },
-                    Some(NamedKey::DownArrow) => {
-                        Ok(CharOrArrow::Direction(Direction::Down))
-                    },
-                    _ => {
-                        Err("Unsupported key")
-                    }
-                }
-            }
+            Some(MainKey::Key(key_index)) => match NamedKey::from_i32(key_index) {
+                Some(NamedKey::LeftArrow) => Ok(CharOrArrow::Direction(Direction::Left)),
+                Some(NamedKey::RightArrow) => Ok(CharOrArrow::Direction(Direction::Right)),
+                Some(NamedKey::UpArrow) => Ok(CharOrArrow::Direction(Direction::Up)),
+                Some(NamedKey::DownArrow) => Ok(CharOrArrow::Direction(Direction::Down)),
+                _ => Err("Unsupported key"),
+            },
             _ => {
                 return Err("Unsupported key");
-            }
+            },
         }
     }
 }
@@ -206,10 +172,9 @@ impl CharOrArrow {
 fn parse_optional_modifier(m: &ProtobufKey) -> Option<KeyModifier> {
     match m.modifier {
         Some(modifier) => KeyModifier::from_i32(modifier),
-        _ => None
+        _ => None,
     }
 }
-
 
 fn char_index_to_char(char_index: i32) -> char {
     char_index as u8 as char
@@ -222,7 +187,7 @@ fn char_from_main_key(main_key: Option<MainKey>) -> Result<char, &'static str> {
         },
         _ => {
             return Err("Unsupported key");
-        }
+        },
     }
 }
 
@@ -255,4 +220,3 @@ fn named_key_to_key(named_key: NamedKey) -> Key {
         NamedKey::Esc => Key::Esc,
     }
 }
-

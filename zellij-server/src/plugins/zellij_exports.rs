@@ -20,12 +20,11 @@ use url::Url;
 use crate::{panes::PaneId, screen::ScreenInstruction};
 
 use zellij_utils::{
-    plugin_api::{
-        plugin_command::ProtobufPluginCommand,
-        plugin_ids::{ProtobufPluginIds, ProtobufZellijVersion},
-    },
     consts::VERSION,
-    data::{Direction, Event, EventType, InputMode, PluginIds, Resize, ResizeStrategy, FileToOpen, CommandToRun, PluginMessage, PluginCommand},
+    data::{
+        CommandToRun, Direction, Event, EventType, FileToOpen, InputMode, PluginCommand, PluginIds,
+        PluginMessage, Resize, ResizeStrategy,
+    },
     errors::prelude::*,
     input::{
         actions::Action,
@@ -33,8 +32,12 @@ use zellij_utils::{
         layout::{Layout, RunPlugin, RunPluginLocation},
         plugins::PluginType,
     },
-    serde,
+    plugin_api::{
+        plugin_command::ProtobufPluginCommand,
+        plugin_ids::{ProtobufPluginIds, ProtobufZellijVersion},
+    },
     prost::Message,
+    serde,
 };
 
 macro_rules! apply_action {
@@ -86,7 +89,8 @@ fn host_run_plugin_command(env: &ForeignFunctionEnv) {
     wasi_read_bytes(&env.plugin_env.wasi_env)
         .and_then(|bytes| {
             let command: ProtobufPluginCommand = ProtobufPluginCommand::decode(bytes.as_slice())?;
-            let command: PluginCommand = command.try_into()
+            let command: PluginCommand = command
+                .try_into()
                 .map_err(|e| anyhow!("failed to convert serialized command: {}", e))?;
             match command {
                 PluginCommand::Subscribe(event_list) => subscribe(env, event_list)?,
@@ -95,25 +99,45 @@ fn host_run_plugin_command(env: &ForeignFunctionEnv) {
                 PluginCommand::GetPluginIds => get_plugin_ids(env),
                 PluginCommand::GetZellijVersion => get_zellij_version(env),
                 PluginCommand::OpenFile(file_to_open) => open_file(env, file_to_open),
-                PluginCommand::OpenFileFloating(file_to_open) => open_file_floating(env, file_to_open),
+                PluginCommand::OpenFileFloating(file_to_open) => {
+                    open_file_floating(env, file_to_open)
+                },
                 PluginCommand::OpenTerminal(cwd) => open_terminal(env, cwd.path.try_into()?),
-                PluginCommand::OpenTerminalFloating(cwd) => open_terminal_floating(env, cwd.path.try_into()?),
-                PluginCommand::OpenCommandPane(command_to_run) => open_command_pane(env, command_to_run),
-                PluginCommand::OpenCommandPaneFloating(command_to_run) => open_command_pane_floating(env, command_to_run),
+                PluginCommand::OpenTerminalFloating(cwd) => {
+                    open_terminal_floating(env, cwd.path.try_into()?)
+                },
+                PluginCommand::OpenCommandPane(command_to_run) => {
+                    open_command_pane(env, command_to_run)
+                },
+                PluginCommand::OpenCommandPaneFloating(command_to_run) => {
+                    open_command_pane_floating(env, command_to_run)
+                },
                 PluginCommand::SwitchTabTo(tab_index) => switch_tab_to(env, tab_index),
                 PluginCommand::SetTimeout(seconds) => set_timeout(env, seconds),
                 PluginCommand::ExecCmd(command_line) => exec_cmd(env, command_line),
-                PluginCommand::PostMessageTo(plugin_message) => post_message_to(env, plugin_message)?,
-                PluginCommand::PostMessageToPlugin(plugin_message) => post_message_to_plugin(env, plugin_message)?,
+                PluginCommand::PostMessageTo(plugin_message) => {
+                    post_message_to(env, plugin_message)?
+                },
+                PluginCommand::PostMessageToPlugin(plugin_message) => {
+                    post_message_to_plugin(env, plugin_message)?
+                },
                 PluginCommand::HideSelf => hide_self(env)?,
-                PluginCommand::ShowSelf(should_float_if_hidden)=> show_self(env, should_float_if_hidden),
-                PluginCommand::SwitchToMode(input_mode)=> switch_to_mode(env, input_mode.try_into()?),
-                PluginCommand::NewTabsWithLayout(raw_layout)=> new_tabs_with_layout(env, &raw_layout)?,
+                PluginCommand::ShowSelf(should_float_if_hidden) => {
+                    show_self(env, should_float_if_hidden)
+                },
+                PluginCommand::SwitchToMode(input_mode) => {
+                    switch_to_mode(env, input_mode.try_into()?)
+                },
+                PluginCommand::NewTabsWithLayout(raw_layout) => {
+                    new_tabs_with_layout(env, &raw_layout)?
+                },
                 PluginCommand::NewTab => new_tab(env),
                 PluginCommand::GoToNextTab => go_to_next_tab(env),
                 PluginCommand::GoToPreviousTab => go_to_previous_tab(env),
                 PluginCommand::Resize(resize_payload) => resize(env, resize_payload),
-                PluginCommand::ResizeWithDirection(resize_strategy) => resize_with_direction(env, resize_strategy),
+                PluginCommand::ResizeWithDirection(resize_strategy) => {
+                    resize_with_direction(env, resize_strategy)
+                },
                 PluginCommand::FocusNextPane => focus_next_pane(env),
                 PluginCommand::FocusPreviousPane => focus_previous_pane(env),
                 PluginCommand::MoveFocus(direction) => move_focus(env, direction),
@@ -124,7 +148,9 @@ fn host_run_plugin_command(env: &ForeignFunctionEnv) {
                 PluginCommand::WriteChars(chars) => write_chars(env, chars),
                 PluginCommand::ToggleTab => toggle_tab(env),
                 PluginCommand::MovePane => move_pane(env),
-                PluginCommand::MovePaneWithDirection(direction) => move_pane_with_direction(env, direction),
+                PluginCommand::MovePaneWithDirection(direction) => {
+                    move_pane_with_direction(env, direction)
+                },
                 PluginCommand::ClearScreen => clear_screen(env),
                 PluginCommand::ScrollUp => scroll_up(env),
                 PluginCommand::ScrollDown => scroll_down(env),
@@ -146,14 +172,30 @@ fn host_run_plugin_command(env: &ForeignFunctionEnv) {
                 PluginCommand::GoToTabName(tab_name) => go_to_tab_name(env, tab_name),
                 PluginCommand::FocusOrCreateTab(tab_name) => focus_or_create_tab(env, tab_name),
                 PluginCommand::GoToTab(tab_index) => go_to_tab(env, tab_index),
-                PluginCommand::StartOrReloadPlugin(plugin_url) => start_or_reload_plugin(env, &plugin_url)?,
-                PluginCommand::CloseTerminalPane(terminal_pane_id) => close_terminal_pane(env, terminal_pane_id),
-                PluginCommand::ClosePluginPane(plugin_pane_id) => close_plugin_pane(env, plugin_pane_id),
-                PluginCommand::FocusTerminalPane(terminal_pane_id, should_float_if_hidden) => focus_terminal_pane(env, terminal_pane_id, should_float_if_hidden),
-                PluginCommand::FocusPluginPane(plugin_pane_id, should_float_if_hidden) => focus_plugin_pane(env, plugin_pane_id, should_float_if_hidden),
-                PluginCommand::RenameTerminalPane(terminal_pane_id, new_name) => rename_terminal_pane(env, terminal_pane_id, &new_name),
-                PluginCommand::RenamePluginPane(plugin_pane_id, new_name) => rename_plugin_pane(env, plugin_pane_id, &new_name),
-                PluginCommand::RenameTab(tab_index, new_name) => rename_tab(env, tab_index, &new_name),
+                PluginCommand::StartOrReloadPlugin(plugin_url) => {
+                    start_or_reload_plugin(env, &plugin_url)?
+                },
+                PluginCommand::CloseTerminalPane(terminal_pane_id) => {
+                    close_terminal_pane(env, terminal_pane_id)
+                },
+                PluginCommand::ClosePluginPane(plugin_pane_id) => {
+                    close_plugin_pane(env, plugin_pane_id)
+                },
+                PluginCommand::FocusTerminalPane(terminal_pane_id, should_float_if_hidden) => {
+                    focus_terminal_pane(env, terminal_pane_id, should_float_if_hidden)
+                },
+                PluginCommand::FocusPluginPane(plugin_pane_id, should_float_if_hidden) => {
+                    focus_plugin_pane(env, plugin_pane_id, should_float_if_hidden)
+                },
+                PluginCommand::RenameTerminalPane(terminal_pane_id, new_name) => {
+                    rename_terminal_pane(env, terminal_pane_id, &new_name)
+                },
+                PluginCommand::RenamePluginPane(plugin_pane_id, new_name) => {
+                    rename_plugin_pane(env, plugin_pane_id, &new_name)
+                },
+                PluginCommand::RenameTab(tab_index, new_name) => {
+                    rename_tab(env, tab_index, &new_name)
+                },
                 PluginCommand::ReportPanic(crash_payload) => report_panic(env, &crash_payload),
             }
             Ok(())
@@ -163,7 +205,10 @@ fn host_run_plugin_command(env: &ForeignFunctionEnv) {
 }
 
 fn subscribe(env: &ForeignFunctionEnv, event_list: HashSet<EventType>) -> Result<()> {
-    env.subscriptions.lock().to_anyhow()?.extend(event_list.clone());
+    env.subscriptions
+        .lock()
+        .to_anyhow()?
+        .extend(event_list.clone());
     env.plugin_env
         .senders
         .send_to_plugin(PluginInstruction::PluginSubscribedToEvents(
@@ -232,39 +277,44 @@ fn get_plugin_ids(env: &ForeignFunctionEnv) {
 
 fn get_zellij_version(env: &ForeignFunctionEnv) {
     let protobuf_zellij_version = ProtobufZellijVersion {
-        version: VERSION.to_owned()
+        version: VERSION.to_owned(),
     };
-    wasi_write_object(&env.plugin_env.wasi_env, &protobuf_zellij_version.encode_to_vec())
-        .with_context(|| {
-            format!(
-                "failed to request zellij version from host for plugin {}",
-                env.plugin_env.name()
-            )
-        })
-        .non_fatal();
+    wasi_write_object(
+        &env.plugin_env.wasi_env,
+        &protobuf_zellij_version.encode_to_vec(),
+    )
+    .with_context(|| {
+        format!(
+            "failed to request zellij version from host for plugin {}",
+            env.plugin_env.name()
+        )
+    })
+    .non_fatal();
 }
 
 fn open_file(env: &ForeignFunctionEnv, file_to_open: FileToOpen) {
-    let error_msg = || {
-        format!(
-            "failed to open file in plugin {}",
-            env.plugin_env.name()
-        )
-    };
+    let error_msg = || format!("failed to open file in plugin {}", env.plugin_env.name());
     let floating = false;
-    let action = Action::EditFile(file_to_open.path, file_to_open.line_number, file_to_open.cwd, None, floating);
+    let action = Action::EditFile(
+        file_to_open.path,
+        file_to_open.line_number,
+        file_to_open.cwd,
+        None,
+        floating,
+    );
     apply_action!(action, error_msg, env);
 }
 
 fn open_file_floating(env: &ForeignFunctionEnv, file_to_open: FileToOpen) {
-    let error_msg = || {
-        format!(
-            "failed to open file in plugin {}",
-            env.plugin_env.name()
-        )
-    };
+    let error_msg = || format!("failed to open file in plugin {}", env.plugin_env.name());
     let floating = true;
-    let action = Action::EditFile(file_to_open.path, file_to_open.line_number, file_to_open.cwd, None, floating);
+    let action = Action::EditFile(
+        file_to_open.path,
+        file_to_open.line_number,
+        file_to_open.cwd,
+        None,
+        floating,
+    );
     apply_action!(action, error_msg, env);
 }
 
@@ -301,12 +351,7 @@ fn open_terminal_floating(env: &ForeignFunctionEnv, cwd: PathBuf) {
 }
 
 fn open_command_pane(env: &ForeignFunctionEnv, command_to_run: CommandToRun) {
-    let error_msg = || {
-        format!(
-            "failed to open command in plugin {}",
-            env.plugin_env.name()
-        )
-    };
+    let error_msg = || format!("failed to open command in plugin {}", env.plugin_env.name());
     let command = command_to_run.path;
     let cwd = command_to_run.cwd;
     let args = command_to_run.args;
@@ -327,12 +372,7 @@ fn open_command_pane(env: &ForeignFunctionEnv, command_to_run: CommandToRun) {
 }
 
 fn open_command_pane_floating(env: &ForeignFunctionEnv, command_to_run: CommandToRun) {
-    let error_msg = || {
-        format!(
-            "failed to open command in plugin {}",
-            env.plugin_env.name()
-        )
-    };
+    let error_msg = || format!("failed to open command in plugin {}", env.plugin_env.name());
     let command = command_to_run.path;
     let cwd = command_to_run.cwd;
     let args = command_to_run.args;
@@ -436,7 +476,8 @@ fn exec_cmd(env: &ForeignFunctionEnv, mut command_line: Vec<String>) {
 }
 
 fn post_message_to(env: &ForeignFunctionEnv, plugin_message: PluginMessage) -> Result<()> {
-    let worker_name = plugin_message.worker_name
+    let worker_name = plugin_message
+        .worker_name
         .ok_or(anyhow!("Worker name not specified in message to worker"))?;
     env.plugin_env
         .senders
@@ -450,7 +491,10 @@ fn post_message_to(env: &ForeignFunctionEnv, plugin_message: PluginMessage) -> R
 
 fn post_message_to_plugin(env: &ForeignFunctionEnv, plugin_message: PluginMessage) -> Result<()> {
     if let Some(worker_name) = plugin_message.worker_name {
-        return Err(anyhow!("Worker name (\"{}\") should not be specified in message to plugin", worker_name));
+        return Err(anyhow!(
+            "Worker name (\"{}\") should not be specified in message to plugin",
+            worker_name
+        ));
     }
     env.plugin_env
         .senders
@@ -458,7 +502,7 @@ fn post_message_to_plugin(env: &ForeignFunctionEnv, plugin_message: PluginMessag
             env.plugin_env.plugin_id,
             env.plugin_env.client_id,
             plugin_message.name,
-            plugin_message.payload
+            plugin_message.payload,
         ))
 }
 
@@ -867,11 +911,7 @@ fn focus_terminal_pane(
     apply_action!(action, error_msg, env);
 }
 
-fn focus_plugin_pane(
-    env: &ForeignFunctionEnv,
-    plugin_pane_id: u32,
-    should_float_if_hidden: bool,
-) {
+fn focus_plugin_pane(env: &ForeignFunctionEnv, plugin_pane_id: u32, should_float_if_hidden: bool) {
     let action = Action::FocusPluginPaneWithId(plugin_pane_id, should_float_if_hidden);
     let error_msg = || format!("Failed to focus plugin pane");
     apply_action!(action, error_msg, env);
@@ -886,8 +926,7 @@ fn rename_terminal_pane(env: &ForeignFunctionEnv, terminal_pane_id: u32, new_nam
 
 fn rename_plugin_pane(env: &ForeignFunctionEnv, plugin_pane_id: u32, new_name: &str) {
     let error_msg = || format!("Failed to rename plugin pane");
-    let rename_pane_action =
-        Action::RenamePluginPane(plugin_pane_id, new_name.as_bytes().to_vec());
+    let rename_pane_action = Action::RenamePluginPane(plugin_pane_id, new_name.as_bytes().to_vec());
     apply_action!(rename_pane_action, error_msg, env);
 }
 

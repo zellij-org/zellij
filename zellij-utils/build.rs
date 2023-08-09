@@ -1,5 +1,5 @@
-use std::fs;
 use prost_build;
+use std::fs;
 
 fn main() {
     let mut prost_build = prost_build::Config::new();
@@ -15,6 +15,7 @@ fn main() {
             }
         }
     }
-    prost_build.compile_protos(&proto_files, &["src/plugin_api"]).unwrap();
+    prost_build
+        .compile_protos(&proto_files, &["src/plugin_api"])
+        .unwrap();
 }
-

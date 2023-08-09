@@ -124,7 +124,8 @@ impl Search {
         }
         if let Some(file_contents_search_results) = file_contents_search_results {
             post_message_to_plugin(PluginMessage {
-                name: serde_json::to_string(&MessageToPlugin::UpdateFileContentsSearchResults).unwrap(),
+                name: serde_json::to_string(&MessageToPlugin::UpdateFileContentsSearchResults)
+                    .unwrap(),
                 payload: serde_json::to_string(&file_contents_search_results).unwrap(),
                 ..Default::default()
             });

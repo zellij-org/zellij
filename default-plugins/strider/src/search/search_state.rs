@@ -3,8 +3,8 @@ use crate::search::{MessageToSearch, ResultsOfSearch};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use zellij_tile::prelude::{
-    hide_self, open_file, open_file_floating,
-    open_terminal, open_terminal_floating, post_message_to, Key, FileToOpen, PluginMessage
+    hide_self, open_file, open_file_floating, open_terminal, open_terminal_floating,
+    post_message_to, FileToOpen, Key, PluginMessage,
 };
 
 pub const CURRENT_SEARCH_TERM: &str = "/data/current_search_term";
