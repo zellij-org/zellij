@@ -1,0 +1,162 @@
+syntax = "proto3";
+
+import "input_mode.proto";
+import "key.proto";
+import "style.proto";
+import "action.proto";
+
+package api.event;
+
+enum EventType {
+    /// The input mode or relevant metadata changed
+    ModeUpdate = 0;
+    /// The tab state in the app was changed
+    TabUpdate = 1;
+    /// The pane state in the app was changed
+    PaneUpdate = 2;
+    /// A key was pressed while the user is focused on this plugin's pane
+    Key = 3;
+    /// A mouse event happened while the user is focused on this plugin's pane
+    Mouse = 4;
+    /// A timer expired set by the `set_timeout` method exported by `zellij-tile`.
+    Timer = 5;
+    /// Text was copied to the clipboard anywhere in the app
+    CopyToClipboard = 6;
+    /// Failed to copy text to clipboard anywhere in the app
+    SystemClipboardFailure = 7;
+    /// Input was received anywhere in the app
+    InputReceived = 8;
+    /// This plugin became visible or invisible
+    Visible = 9;
+    /// A message from one of the plugin's workers
+    CustomMessage = 10;
+    /// A file was created somewhere in the Zellij CWD folder
+    FileSystemCreate = 11;
+    /// A file was accessed somewhere in the Zellij CWD folder
+    FileSystemRead = 12;
+    /// A file was modified somewhere in the Zellij CWD folder
+    FileSystemUpdate = 13;
+    /// A file was deleted somewhere in the Zellij CWD folder
+    FileSystemDelete = 14;
+}
+
+message EventNameList {
+  repeated EventType event_types = 1;
+}
+
+message Event {
+  EventType name = 1;
+  oneof payload {
+    ModeUpdatePayload mode_update_payload = 2;
+    TabUpdatePayload tab_update_payload = 3;
+    PaneUpdatePayload pane_update_payload = 4;
+    key.Key key_payload = 5;
+    MouseEventPayload mouse_event_payload = 6;
+    float timer_payload = 7;
+    CopyDestination copy_to_clipboard_payload = 8;
+    bool visible_payload = 9;
+    CustomMessagePayload custom_message_payload = 10;
+    FileListPayload file_list_payload = 11;
+  }
+}
+
+message FileListPayload {
+  repeated string paths = 1;
+}
+
+message CustomMessagePayload {
+  string message_name = 1;
+  string payload = 2;
+}
+
+enum CopyDestination {
+  Command = 0;
+  Primary = 1;
+  System = 2;
+}
+
+message MouseEventPayload {
+  MouseEventName mouse_event_name = 1;
+  oneof mouse_event_payload {
+    uint32 line_count = 2;
+    action.Position position = 3;
+  }
+}
+
+enum MouseEventName {
+    MouseScrollUp = 0;
+    MouseScrollDown = 1;
+    MouseLeftClick = 2;
+    MouseRightClick = 3;
+    MouseHold = 4;
+    MouseRelease = 5;
+}
+
+message TabUpdatePayload {
+    repeated TabInfo tab_info = 1;
+}
+
+message PaneUpdatePayload {
+  repeated PaneManifest pane_manifest = 1;
+}
+
+message PaneManifest {
+  uint32 tab_index = 1;
+  repeated PaneInfo panes = 2;
+}
+
+message PaneInfo {
+    uint32 id = 1;
+    bool is_plugin = 2;
+    bool is_focused = 3;
+    bool is_fullscreen = 4;
+    bool is_floating = 5;
+    bool is_suppressed = 6;
+    string title = 7;
+    bool exited = 8;
+    optional int32 exit_status = 9;
+    bool is_held = 10;
+    uint32 pane_x = 11;
+    uint32 pane_content_x = 12;
+    uint32 pane_y = 13;
+    uint32 pane_content_y = 14;
+    uint32 pane_rows = 15;
+    uint32 pane_content_rows = 16;
+    uint32 pane_columns = 17;
+    uint32 pane_content_columns = 18;
+    optional action.Position cursor_coordinates_in_pane = 19;
+    optional string terminal_command = 20;
+    optional string plugin_url = 21;
+    bool is_selectable = 22;
+}
+
+message TabInfo {
+    uint32 position = 1;
+    string name = 2;
+    bool active = 3;
+    uint32 panes_to_hide = 4;
+    bool is_fullscreen_active = 5;
+    bool is_sync_panes_active = 6;
+    bool are_floating_panes_visible = 7;
+    repeated uint32 other_focused_clients = 8;
+    optional string active_swap_layout_name = 9;
+    bool is_swap_layout_dirty = 10;
+}
+
+message ModeUpdatePayload {
+  input_mode.InputMode current_mode = 1;
+  repeated InputModeKeybinds keybinds = 2;
+  style.Style style = 3;
+  bool arrow_fonts_support = 4;
+  optional string session_name = 5;
+}
+
+message InputModeKeybinds {
+  input_mode.InputMode mode = 1;
+  repeated KeyBind key_bind = 2;
+}
+
+message KeyBind {
+  key.Key key = 1;
+  repeated action.Action action = 2;
+}

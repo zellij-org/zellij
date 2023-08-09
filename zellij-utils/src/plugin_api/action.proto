@@ -1,0 +1,246 @@
+syntax = "proto3";
+
+import "input_mode.proto";
+import "resize.proto";
+
+package api.action;
+
+message Action {
+  ActionName name = 1;
+  oneof optional_payload {
+    SwitchToModePayload switch_to_mode_payload = 2;
+    WritePayload write_payload = 3;
+    WriteCharsPayload write_chars_payload = 4;
+    SwitchToModePayload switch_mode_for_all_clients_payload = 5;
+    resize.Resize resize_payload = 6;
+    resize.ResizeDirection move_focus_payload = 7;
+    resize.ResizeDirection move_focus_or_tab_payload = 8;
+    MovePanePayload move_pane_payload = 9;
+    DumpScreenPayload dump_screen_payload = 10;
+    ScrollAtPayload scroll_up_at_payload = 11;
+    ScrollAtPayload scroll_down_at_payload = 12;
+    NewPanePayload new_pane_payload = 13;
+    EditFilePayload edit_file_payload = 14;
+    NewFloatingPanePayload new_floating_pane_payload = 15;
+    NewTiledPanePayload new_tiled_pane_payload = 16;
+    bytes pane_name_input_payload = 17;
+    uint32 go_to_tab_payload = 18;
+    GoToTabNamePayload go_to_tab_name_payload = 19;
+    bytes tab_name_input_payload = 20;
+    RunCommandAction run_payload = 21;
+    Position left_click_payload = 22;
+    Position right_click_payload = 23;
+    Position middle_click_payload = 24;
+    LaunchOrFocusPluginPayload launch_or_focus_plugin_payload = 25;
+    Position left_mouse_release_payload = 26;
+    Position right_mouse_release_payload = 27;
+    Position middle_mouse_release_payload = 28;
+    Position mouse_hold_left_payload = 29;
+    Position mouse_hold_right_payload = 30;
+    Position mouse_hold_middle_payload = 31;
+    bytes search_input_payload = 32;
+    SearchDirection search_payload = 33;
+    SearchOption search_toggle_option_payload = 34;
+    NewPluginPanePayload new_tiled_plugin_pane_payload = 35;
+    NewPluginPanePayload new_floating_plugin_pane_payload = 36;
+    string start_or_reload_plugin_payload = 37;
+    uint32 close_terminal_pane_payload = 38;
+    uint32 close_plugin_pane_payload = 39;
+    PaneIdAndShouldFloat focus_terminal_pane_with_id_payload = 40;
+    PaneIdAndShouldFloat focus_plugin_pane_with_id_payload = 41;
+    IdAndName rename_terminal_pane_payload = 42;
+    IdAndName rename_plugin_pane_payload = 43;
+    IdAndName rename_tab_payload = 44;
+  }
+}
+
+message IdAndName {
+  bytes name = 1;
+  uint32 id = 2;
+}
+
+message PaneIdAndShouldFloat {
+  uint32 pane_id = 1;
+  bool should_float_if_hidden = 2;
+}
+
+message NewPluginPanePayload {
+  string plugin_url = 1;
+  optional string pane_name = 2;
+}
+
+enum SearchDirection {
+  Up = 0;
+  Down = 1;
+}
+
+enum SearchOption {
+  CaseSensitivity = 0;
+  WholeWord = 1;
+  Wrap = 2;
+}
+
+message LaunchOrFocusPluginPayload {
+  string plugin_url = 1;
+  bool should_float = 2;
+  optional PluginConfiguration plugin_configuration = 3;
+}
+
+message GoToTabNamePayload {
+  string tab_name = 1;
+  bool create = 2;
+}
+
+message NewFloatingPanePayload {
+  optional RunCommandAction command = 1;
+}
+
+message NewTiledPanePayload {
+  optional RunCommandAction command = 1;
+  optional resize.ResizeDirection direction = 2;
+}
+
+message MovePanePayload {
+  optional resize.ResizeDirection direction = 1;
+}
+
+message EditFilePayload {
+  string file_to_edit = 1;
+  optional uint32 line_number = 2;
+  optional string cwd = 3;
+  optional resize.ResizeDirection direction = 4;
+  bool should_float = 5;
+}
+
+message ScrollAtPayload {
+  Position position = 1;
+}
+
+message NewPanePayload {
+  optional resize.ResizeDirection direction = 1;
+  optional string pane_name = 2;
+}
+
+message SwitchToModePayload {
+  input_mode.InputMode input_mode = 1;
+}
+
+message WritePayload {
+  bytes bytes_to_write = 1;
+}
+
+message WriteCharsPayload {
+  string chars = 1;
+}
+
+message DumpScreenPayload {
+  string file_path = 1;
+  bool include_scrollback = 2;
+}
+
+enum ActionName {
+    Quit = 0;
+    Write = 1;
+    WriteChars = 2;
+    SwitchToMode = 3;
+    SwitchModeForAllClients = 4;
+    Resize = 5;
+    FocusNextPane = 6;
+    FocusPreviousPane = 7;
+    SwitchFocus = 8;
+    MoveFocus = 9;
+    MoveFocusOrTab = 10;
+    MovePane = 11;
+    MovePaneBackwards = 12;
+    ClearScreen = 13;
+    DumpScreen = 14;
+    EditScrollback = 15;
+    ScrollUp = 16;
+    ScrollUpAt = 17;
+    ScrollDown = 18;
+    ScrollDownAt = 19;
+    ScrollToBottom = 20;
+    ScrollToTop = 21;
+    PageScrollUp = 22;
+    PageScrollDown = 23;
+    HalfPageScrollUp = 24;
+    HalfPageScrollDown = 25;
+    ToggleFocusFullscreen = 26;
+    TogglePaneFrames = 27;
+    ToggleActiveSyncTab = 28;
+    NewPane = 29;
+    EditFile = 30;
+    NewFloatingPane = 31;
+    NewTiledPane = 32;
+    TogglePaneEmbedOrFloating = 33;
+    ToggleFloatingPanes = 34;
+    CloseFocus = 35;
+    PaneNameInput = 36;
+    UndoRenamePane = 37;
+    NewTab = 38;
+    NoOp = 39;
+    GoToNextTab = 40;
+    GoToPreviousTab = 41;
+    CloseTab = 42;
+    GoToTab = 43;
+    GoToTabName = 44;
+    ToggleTab = 45;
+    TabNameInput = 46;
+    UndoRenameTab = 47;
+    Run = 48;
+    Detach = 49;
+    LeftClick = 50;
+    RightClick = 51;
+    MiddleClick = 52;
+    LaunchOrFocusPlugin = 53;
+    LeftMouseRelease = 54;
+    RightMouseRelease = 55;
+    MiddleMouseRelease = 56;
+    MouseHoldLeft = 57;
+    MouseHoldRight = 58;
+    MouseHoldMiddle = 59;
+    SearchInput = 60;
+    Search = 61;
+    SearchToggleOption = 62;
+    ToggleMouseMode = 63;
+    PreviousSwapLayout = 64;
+    NextSwapLayout = 65;
+    QueryTabNames = 66;
+    NewTiledPluginPane = 67;
+    NewFloatingPluginPane = 68;
+    StartOrReloadPlugin = 69;
+    CloseTerminalPane = 70;
+    ClosePluginPane = 71;
+    FocusTerminalPaneWithId = 72;
+    FocusPluginPaneWithId = 73;
+    RenameTerminalPane = 74;
+    RenamePluginPane = 75;
+    RenameTab = 76;
+    BreakPane = 77;
+    BreakPaneRight = 78;
+    BreakPaneLeft = 79;
+}
+
+message Position {
+  int64 line = 1;
+  int64 column = 2;
+}
+
+message RunCommandAction {
+  string command = 1;
+  repeated string args = 2;
+  optional string cwd = 3;
+  optional resize.ResizeDirection direction = 4;
+  optional string pane_name = 5;
+  bool hold_on_close = 6;
+  bool hold_on_start = 7;
+}
+
+message PluginConfiguration {
+  repeated NameAndValue name_and_value = 1;
+}
+
+message NameAndValue {
+  string name = 1;
+  string value = 2;
+}

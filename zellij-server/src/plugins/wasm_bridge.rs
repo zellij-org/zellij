@@ -1,5 +1,5 @@
 use super::{PluginId, PluginInstruction};
-use crate::plugins::plugin_loader::{PluginLoader, VersionMismatchError};
+use crate::plugins::plugin_loader::PluginLoader;
 use crate::plugins::plugin_map::{AtomicEvent, PluginEnv, PluginMap, RunningPlugin, Subscriptions};
 use crate::plugins::plugin_worker::MessageToWorker;
 use crate::plugins::watch_filesystem::watch_filesystem;
@@ -14,13 +14,15 @@ use std::{
 use wasmer::{Instance, Module, Store, Value};
 use zellij_utils::async_std::task::{self, JoinHandle};
 use zellij_utils::notify_debouncer_full::{notify::RecommendedWatcher, Debouncer, FileIdMap};
+use zellij_utils::plugin_api::event::ProtobufEvent;
+
+use zellij_utils::prost::Message;
 
 use crate::{
     background_jobs::BackgroundJob, screen::ScreenInstruction, thread_bus::ThreadSenders,
     ui::loading_indication::LoadingIndication, ClientId,
 };
 use zellij_utils::{
-    consts::VERSION,
     data::{Event, EventType, PluginCapabilities},
     errors::prelude::*,
     input::{
@@ -737,26 +739,17 @@ pub fn apply_event_to_plugin(
     plugin_bytes: &mut Vec<(PluginId, ClientId, Vec<u8>)>,
 ) -> Result<()> {
     let err_context = || format!("Failed to apply event to plugin {plugin_id}");
+    let protobuf_event: ProtobufEvent = event
+        .clone()
+        .try_into()
+        .map_err(|e| anyhow!("Failed to convert to protobuf: {:?}", e))?;
     let update = instance
         .exports
         .get_function("update")
         .with_context(err_context)?;
-    wasi_write_object(&plugin_env.wasi_env, &event).with_context(err_context)?;
-    let update_return =
-        update
-            .call(&[])
-            .or_else::<anyError, _>(|e| match e.downcast::<serde_json::Error>() {
-                Ok(_) => panic!(
-                    "{}",
-                    anyError::new(VersionMismatchError::new(
-                        VERSION,
-                        "Unavailable",
-                        &plugin_env.plugin.path,
-                        plugin_env.plugin.is_builtin(),
-                    ))
-                ),
-                Err(e) => Err(e).with_context(err_context),
-            })?;
+    wasi_write_object(&plugin_env.wasi_env, &protobuf_event.encode_to_vec())
+        .with_context(err_context)?;
+    let update_return = update.call(&[]).with_context(err_context)?;
     let should_render = match update_return.get(0) {
         Some(Value::I32(n)) => *n == 1,
         _ => false,
