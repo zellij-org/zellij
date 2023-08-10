@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 use tempfile::tempdir;
 use wasmer::Store;
-use zellij_utils::data::{Event, Key, PermissionStatus, PermissionType, PluginCapabilities};
+use zellij_utils::data::{Event, Key, PermissionStatus, PluginCapabilities};
 use zellij_utils::errors::ErrorContext;
 use zellij_utils::input::layout::{Layout, PluginUserConfiguration, RunPlugin, RunPluginLocation};
 use zellij_utils::input::permission::PermissionCache;
@@ -4293,7 +4293,7 @@ pub fn granted_permission_request_result() {
     let plugin_host_folder = PathBuf::from(temp_folder.path());
     let cache_path = plugin_host_folder.join("permissions_test.kdl");
 
-    let (plugin_thread_sender, _, mut teardown) = create_plugin_thread(Some(plugin_host_folder));
+    let (plugin_thread_sender, screen_receiver, mut teardown) = create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
     let run_plugin = RunPlugin {
@@ -4308,6 +4308,37 @@ pub fn granted_permission_request_result() {
         rows: 20,
     };
 
+    // here we create a fake screen thread that will send a PermissionStatus::Granted
+    // message for every permission request it gets
+    let screen_thread = std::thread::Builder::new()
+        .name("fake_screen_thread".to_string())
+        .spawn({
+            let cache_path = cache_path.clone();
+            let plugin_thread_sender = plugin_thread_sender.clone();
+            move || loop {
+                let (event, _err_ctx) = screen_receiver
+                    .recv()
+                    .expect("failed to receive event on channel");
+                match event {
+                    ScreenInstruction::RequestPluginPermissions(_, plugin_permission) => {
+                        let _ = plugin_thread_sender.send(PluginInstruction::PermissionRequestResult(
+                            0,
+                            Some(client_id),
+                            plugin_permission.permissions,
+                            PermissionStatus::Granted,
+                            Some(cache_path.clone()),
+                        ));
+                        break;
+                    },
+                    ScreenInstruction::Exit => {
+                        break;
+                    }
+                    _ => {}
+                }
+            }
+        })
+        .unwrap();
+
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
@@ -4317,15 +4348,12 @@ pub fn granted_permission_request_result() {
         client_id,
         size,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
-    let _ = plugin_thread_sender.send(PluginInstruction::PermissionRequestResult(
-        0,
+    let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
+        None,
         Some(client_id),
-        vec![PermissionType::KeyboardInput],
-        PermissionStatus::Granted,
-        Some(cache_path.clone()),
-    ));
-
+        Event::Key(Key::Ctrl('1')), // this triggers the enent in the fixture plugin
+    )]));
+    screen_thread.join().unwrap();
     teardown();
 
     let permission_cache = PermissionCache::from_path_or_default(Some(cache_path));
@@ -4341,7 +4369,7 @@ pub fn denied_permission_request_result() {
     let plugin_host_folder = PathBuf::from(temp_folder.path());
     let cache_path = plugin_host_folder.join("permissions_test.kdl");
 
-    let (plugin_thread_sender, _, mut teardown) = create_plugin_thread(Some(plugin_host_folder));
+    let (plugin_thread_sender, screen_receiver, mut teardown) = create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
     let run_plugin = RunPlugin {
@@ -4356,6 +4384,37 @@ pub fn denied_permission_request_result() {
         rows: 20,
     };
 
+    // here we create a fake screen thread that will send a PermissionStatus::Granted
+    // message for every permission request it gets
+    let screen_thread = std::thread::Builder::new()
+        .name("fake_screen_thread".to_string())
+        .spawn({
+            let cache_path = cache_path.clone();
+            let plugin_thread_sender = plugin_thread_sender.clone();
+            move || loop {
+                let (event, _err_ctx) = screen_receiver
+                    .recv()
+                    .expect("failed to receive event on channel");
+                match event {
+                    ScreenInstruction::RequestPluginPermissions(_, plugin_permission) => {
+                        let _ = plugin_thread_sender.send(PluginInstruction::PermissionRequestResult(
+                            0,
+                            Some(client_id),
+                            plugin_permission.permissions,
+                            PermissionStatus::Denied,
+                            Some(cache_path.clone()),
+                        ));
+                        break;
+                    },
+                    ScreenInstruction::Exit => {
+                        break;
+                    }
+                    _ => {}
+                }
+            }
+        })
+        .unwrap();
+
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
@@ -4365,15 +4424,12 @@ pub fn denied_permission_request_result() {
         client_id,
         size,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
-    let _ = plugin_thread_sender.send(PluginInstruction::PermissionRequestResult(
-        0,
+    let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
+        None,
         Some(client_id),
-        vec![PermissionType::KeyboardInput],
-        PermissionStatus::Denied,
-        Some(cache_path.clone()),
-    ));
-
+        Event::Key(Key::Ctrl('1')), // this triggers the enent in the fixture plugin
+    )]));
+    screen_thread.join().unwrap();
     teardown();
 
     let permission_cache = PermissionCache::from_path_or_default(Some(cache_path));
