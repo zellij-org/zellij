@@ -57,7 +57,7 @@ use zellij_utils::{
 
 #[macro_export]
 macro_rules! resize_pty {
-    ($pane:expr, $os_input:expr, $senders:expr) => {{
+    ($pane:expr, $senders:expr) => {{
         match $pane.pid() {
             PaneId::Terminal(ref pid) => {
                 $senders
@@ -82,7 +82,7 @@ macro_rules! resize_pty {
             },
         }
     }};
-    ($pane:expr, $os_input:expr, $senders:expr, $character_cell_size:expr) => {{
+    ($pane:expr, $senders:expr, $character_cell_size:expr) => {{
         let (width_in_pixels, height_in_pixels) = {
             let character_cell_size = $character_cell_size.borrow();
             match *character_cell_size {
@@ -637,7 +637,6 @@ impl Tab {
             &mut self.floating_panes,
             self.draw_pane_frames,
             &mut self.focus_pane_id,
-            &self.os_api,
             self.debug,
         )
         .apply_layout(
@@ -697,7 +696,6 @@ impl Tab {
                 &mut self.floating_panes,
                 self.draw_pane_frames,
                 &mut self.focus_pane_id,
-                &self.os_api,
                 self.debug,
             )
             .apply_floating_panes_layout_to_existing_panes(
@@ -751,7 +749,6 @@ impl Tab {
                 &mut self.floating_panes,
                 self.draw_pane_frames,
                 &mut self.focus_pane_id,
-                &self.os_api,
                 self.debug,
             )
             .apply_tiled_panes_layout_to_existing_panes(
@@ -1114,7 +1111,6 @@ impl Tab {
                             .and_then(|current_active_pane| {
                                 resize_pty!(
                                     current_active_pane,
-                                    self.os_api,
                                     self.senders,
                                     self.character_cell_size
                                 )
@@ -1396,13 +1392,8 @@ impl Tab {
             })
         {
             if self.pids_waiting_resize.remove(&pid) {
-                resize_pty!(
-                    terminal_output,
-                    self.os_api,
-                    self.senders,
-                    self.character_cell_size
-                )
-                .with_context(err_context)?;
+                resize_pty!(terminal_output, self.senders, self.character_cell_size)
+                    .with_context(err_context)?;
             }
             terminal_output.handle_pty_bytes(bytes);
             let messages_to_pty = terminal_output.drain_messages_to_pty();
@@ -1835,7 +1826,7 @@ impl Tab {
         self.floating_panes.resize(new_screen_size);
         // we need to do this explicitly because floating_panes.resize does not do this
         self.floating_panes
-            .resize_pty_all_panes(&mut self.os_api)
+            .resize_pty_all_panes()
             .with_context(err_context)?;
         self.tiled_panes.resize(new_screen_size);
         if self.auto_layout && !self.swap_layouts.is_floating_damaged() {
@@ -1862,7 +1853,7 @@ impl Tab {
         if self.floating_panes.panes_are_visible() {
             let successfully_resized = self
                 .floating_panes
-                .resize_active_pane(client_id, &mut self.os_api, &strategy)
+                .resize_active_pane(client_id, &strategy)
                 .with_context(err_context)?;
             if successfully_resized {
                 self.set_force_render(); // we force render here to make sure the panes under the floating pane render and don't leave "garbage" in case of a decrease
@@ -2027,7 +2018,7 @@ impl Tab {
         let search_backwards = false;
         if self.floating_panes.panes_are_visible() {
             self.floating_panes
-                .move_active_pane(search_backwards, &mut self.os_api, client_id);
+                .move_active_pane(search_backwards, client_id);
         } else {
             self.tiled_panes
                 .move_active_pane(search_backwards, client_id);
@@ -2043,7 +2034,7 @@ impl Tab {
         let search_backwards = true;
         if self.floating_panes.panes_are_visible() {
             self.floating_panes
-                .move_active_pane(search_backwards, &mut self.os_api, client_id);
+                .move_active_pane(search_backwards, client_id);
         } else {
             self.tiled_panes
                 .move_active_pane(search_backwards, client_id);
@@ -2280,12 +2271,7 @@ impl Tab {
                     // the pane there we replaced. Now, we need to update its pty about its new size.
                     // We couldn't do that before, and we can't use the original moved item now - so we
                     // need to refetch it
-                    resize_pty!(
-                        suppressed_pane,
-                        self.os_api,
-                        self.senders,
-                        self.character_cell_size
-                    )?;
+                    resize_pty!(suppressed_pane, self.senders, self.character_cell_size)?;
                 }
                 Ok(replaced_pane)
             })
@@ -3390,8 +3376,7 @@ impl Tab {
             pane.set_active_at(Instant::now());
             pane.set_geom(new_pane_geom);
             pane.set_content_offset(Offset::frame(1)); // floating panes always have a frame
-            resize_pty!(pane, self.os_api, self.senders, self.character_cell_size)
-                .with_context(err_context)?;
+            resize_pty!(pane, self.senders, self.character_cell_size).with_context(err_context)?;
             self.floating_panes.add_pane(pane_id, pane);
             self.floating_panes.focus_pane_for_all_clients(pane_id);
         }

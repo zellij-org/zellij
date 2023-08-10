@@ -4,7 +4,6 @@ use crate::resize_pty;
 use crate::tab::{get_next_terminal_position, HoldForCommand, Pane};
 
 use crate::{
-    os_input_output::ServerOsApi,
     panes::sixel::SixelImageStore,
     panes::{FloatingPanes, TiledPanes},
     panes::{LinkHandler, PaneId, PluginPane, TerminalPane},
@@ -37,7 +36,6 @@ pub struct LayoutApplier<'a> {
     floating_panes: &'a mut FloatingPanes,
     draw_pane_frames: bool,
     focus_pane_id: &'a mut Option<PaneId>,
-    os_api: Box<dyn ServerOsApi>,
     debug: bool,
 }
 
@@ -57,7 +55,6 @@ impl<'a> LayoutApplier<'a> {
         floating_panes: &'a mut FloatingPanes,
         draw_pane_frames: bool,
         focus_pane_id: &'a mut Option<PaneId>,
-        os_api: &Box<dyn ServerOsApi>,
         debug: bool,
     ) -> Self {
         let viewport = viewport.clone();
@@ -70,7 +67,6 @@ impl<'a> LayoutApplier<'a> {
         let connected_clients = connected_clients.clone();
         let style = style.clone();
         let display_area = display_area.clone();
-        let os_api = os_api.clone();
         LayoutApplier {
             viewport,
             senders,
@@ -86,7 +82,6 @@ impl<'a> LayoutApplier<'a> {
             floating_panes,
             draw_pane_frames,
             focus_pane_id,
-            os_api,
             debug,
         }
     }
@@ -143,7 +138,7 @@ impl<'a> LayoutApplier<'a> {
                             pane_focuser.set_pane_id_in_focused_location(layout.focus, &pane);
                             pane_focuser
                                 .set_expanded_stacked_pane(layout.is_expanded_in_stack, &pane);
-                            resize_pty!(pane, self.os_api, self.senders, self.character_cell_size)?;
+                            resize_pty!(pane, self.senders, self.character_cell_size)?;
                             self.tiled_panes
                                 .add_pane_with_existing_geom(pane.pid(), pane);
                         },
@@ -167,7 +162,7 @@ impl<'a> LayoutApplier<'a> {
                         );
                         pane_focuser.set_pane_id_in_focused_location(layout.focus, &pane);
                         pane_focuser.set_expanded_stacked_pane(layout.is_expanded_in_stack, &pane);
-                        resize_pty!(pane, self.os_api, self.senders, self.character_cell_size)?;
+                        resize_pty!(pane, self.senders, self.character_cell_size)?;
                         self.tiled_panes
                             .add_pane_with_existing_geom(pane.pid(), pane);
                     }
@@ -371,12 +366,7 @@ impl<'a> LayoutApplier<'a> {
                 );
                 new_pane.set_borderless(false);
                 new_pane.set_content_offset(Offset::frame(1));
-                resize_pty!(
-                    new_pane,
-                    self.os_api,
-                    self.senders,
-                    self.character_cell_size
-                )?;
+                resize_pty!(new_pane, self.senders, self.character_cell_size)?;
                 self.floating_panes
                     .add_pane(PaneId::Plugin(pid), Box::new(new_pane));
                 if floating_pane_layout.focus.unwrap_or(false) {
@@ -409,12 +399,7 @@ impl<'a> LayoutApplier<'a> {
                 if let Some(held_command) = hold_for_command {
                     new_pane.hold(None, true, held_command.clone());
                 }
-                resize_pty!(
-                    new_pane,
-                    self.os_api,
-                    self.senders,
-                    self.character_cell_size
-                )?;
+                resize_pty!(new_pane, self.senders, self.character_cell_size)?;
                 self.floating_panes
                     .add_pane(PaneId::Terminal(*pid), Box::new(new_pane));
                 if floating_pane_layout.focus.unwrap_or(false) {
@@ -472,7 +457,7 @@ impl<'a> LayoutApplier<'a> {
                     .focus
                     .or(Some(!layout_has_focused_pane));
                 pane_focuser.set_pane_id_in_focused_location(pane_is_focused, &pane);
-                resize_pty!(pane, self.os_api, self.senders, self.character_cell_size)?;
+                resize_pty!(pane, self.senders, self.character_cell_size)?;
                 self.floating_panes.add_pane(pane.pid(), pane);
             }
         }
@@ -489,7 +474,7 @@ impl<'a> LayoutApplier<'a> {
                         );
                         pane_focuser
                             .set_pane_id_in_focused_location(Some(!layout_has_focused_pane), &pane);
-                        resize_pty!(pane, self.os_api, self.senders, self.character_cell_size)?;
+                        resize_pty!(pane, self.senders, self.character_cell_size)?;
                         self.floating_panes.add_pane(pane.pid(), pane);
                     }
                 },
@@ -500,7 +485,7 @@ impl<'a> LayoutApplier<'a> {
         }
 
         if layout_has_floating_panes {
-            pane_focuser.focus_floating_pane(&mut self.floating_panes, &mut self.os_api);
+            pane_focuser.focus_floating_pane(&mut self.floating_panes);
             Ok(true)
         } else {
             Ok(false)
@@ -516,7 +501,7 @@ impl<'a> LayoutApplier<'a> {
         self.floating_panes.resize(new_screen_size);
         // we need to do this explicitly because floating_panes.resize does not do this
         self.floating_panes
-            .resize_pty_all_panes(&mut self.os_api)
+            .resize_pty_all_panes()
             .with_context(err_context)?;
         self.tiled_panes.resize(new_screen_size);
         Ok(())
@@ -841,15 +826,11 @@ impl PaneFocuser {
             tiled_panes.expand_pane_in_stack(*pane_id);
         }
     }
-    pub fn focus_floating_pane(
-        &self,
-        floating_panes: &mut FloatingPanes,
-        os_api: &mut Box<dyn ServerOsApi>,
-    ) {
+    pub fn focus_floating_pane(&self, floating_panes: &mut FloatingPanes) {
         floating_panes.reapply_pane_focus();
         if let Some(pane_id_in_focused_location) = self.pane_id_in_focused_location {
             if self.refocus_pane {
-                floating_panes.switch_active_pane_with(os_api, pane_id_in_focused_location);
+                floating_panes.switch_active_pane_with(pane_id_in_focused_location);
             }
         }
     }

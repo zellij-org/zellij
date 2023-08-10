@@ -295,7 +295,7 @@ impl FloatingPanes {
             pane.render_full_viewport();
         }
     }
-    pub fn set_pane_frames(&mut self, os_api: &mut Box<dyn ServerOsApi>) -> Result<()> {
+    pub fn set_pane_frames(&mut self) -> Result<()> {
         let err_context =
             |pane_id: &PaneId| format!("failed to activate frame on pane {pane_id:?}");
 
@@ -307,7 +307,7 @@ impl FloatingPanes {
             } else {
                 pane.set_content_offset(Offset::default());
             }
-            resize_pty!(pane, os_api, self.senders, self.character_cell_size)
+            resize_pty!(pane, self.senders, self.character_cell_size)
                 .with_context(|| err_context(&pane.pid()))?;
         }
         Ok(())
@@ -392,9 +392,9 @@ impl FloatingPanes {
         self.set_force_render();
     }
 
-    pub fn resize_pty_all_panes(&mut self, os_api: &mut Box<dyn ServerOsApi>) -> Result<()> {
+    pub fn resize_pty_all_panes(&mut self) -> Result<()> {
         for pane in self.panes.values_mut() {
-            resize_pty!(pane, os_api, self.senders, self.character_cell_size)
+            resize_pty!(pane, self.senders, self.character_cell_size)
                 .with_context(|| format!("failed to resize PTY in pane {:?}", pane.pid()))?;
         }
         Ok(())
@@ -403,7 +403,6 @@ impl FloatingPanes {
     pub fn resize_active_pane(
         &mut self,
         client_id: ClientId,
-        os_api: &mut Box<dyn ServerOsApi>,
         strategy: &ResizeStrategy,
     ) -> Result<bool> {
         // true => successfully resized
@@ -428,7 +427,7 @@ impl FloatingPanes {
                 .with_context(err_context)?;
 
             for pane in self.panes.values_mut() {
-                resize_pty!(pane, os_api, self.senders, self.character_cell_size)
+                resize_pty!(pane, self.senders, self.character_cell_size)
                     .with_context(err_context)?;
             }
             self.set_force_render();
@@ -599,12 +598,7 @@ impl FloatingPanes {
             self.set_force_render();
         }
     }
-    pub fn move_active_pane(
-        &mut self,
-        search_backwards: bool,
-        os_api: &mut Box<dyn ServerOsApi>,
-        client_id: ClientId,
-    ) {
+    pub fn move_active_pane(&mut self, search_backwards: bool, client_id: ClientId) {
         let active_pane_id = self.get_active_pane_id(client_id).unwrap();
 
         let new_position_id = {
@@ -640,7 +634,7 @@ impl FloatingPanes {
                 current_position.set_geom_override(geom);
             }
             current_position.set_should_render(true);
-            let _ = self.set_pane_frames(os_api);
+            let _ = self.set_pane_frames();
         }
     }
     pub fn move_clients_out_of_pane(&mut self, pane_id: PaneId) {
@@ -838,7 +832,7 @@ impl FloatingPanes {
             self.focus_pane_for_all_clients(focused_pane);
         }
     }
-    pub fn switch_active_pane_with(&mut self, os_api: &mut Box<dyn ServerOsApi>, pane_id: PaneId) {
+    pub fn switch_active_pane_with(&mut self, pane_id: PaneId) {
         if let Some(active_pane_id) = self.first_active_floating_pane_id() {
             let current_position = self.panes.get(&active_pane_id).unwrap();
             let prev_geom = current_position.position_and_size();
@@ -851,7 +845,7 @@ impl FloatingPanes {
             if let Some(geom) = prev_geom_override {
                 new_position.set_geom_override(geom);
             }
-            resize_pty!(new_position, os_api, self.senders, self.character_cell_size).unwrap();
+            resize_pty!(new_position, self.senders, self.character_cell_size).unwrap();
             new_position.set_should_render(true);
 
             let current_position = self.panes.get_mut(&active_pane_id).unwrap();
@@ -859,13 +853,7 @@ impl FloatingPanes {
             if let Some(geom) = next_geom_override {
                 current_position.set_geom_override(geom);
             }
-            resize_pty!(
-                current_position,
-                os_api,
-                self.senders,
-                self.character_cell_size
-            )
-            .unwrap();
+            resize_pty!(current_position, self.senders, self.character_cell_size).unwrap();
             current_position.set_should_render(true);
             self.focus_pane_for_all_clients(active_pane_id);
         }
