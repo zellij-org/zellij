@@ -199,7 +199,9 @@ fn host_run_plugin_command(env: &ForeignFunctionEnv) {
                     rename_tab(env, tab_index, &new_name)
                 },
                 PluginCommand::ReportPanic(crash_payload) => report_panic(env, &crash_payload),
-                PluginCommand::RequestPluginPermissions(permissions) => request_permission(env, permissions)?,
+                PluginCommand::RequestPluginPermissions(permissions) => {
+                    request_permission(env, permissions)?
+                },
             }
             Ok(())
         })
@@ -262,15 +264,16 @@ fn request_permission(env: &ForeignFunctionEnv, permissions: Vec<PermissionType>
     if PermissionCache::from_path_or_default(None)
         .check_permissions(env.plugin_env.plugin.location.to_string(), &permissions)
     {
-        return env.plugin_env.senders.send_to_plugin(
-            PluginInstruction::PermissionRequestResult(
+        return env
+            .plugin_env
+            .senders
+            .send_to_plugin(PluginInstruction::PermissionRequestResult(
                 env.plugin_env.plugin_id,
                 Some(env.plugin_env.client_id),
                 permissions.to_vec(),
                 zellij_utils::data::PermissionStatus::Granted,
                 None,
-            ),
-        );
+            ));
     }
 
     env.plugin_env

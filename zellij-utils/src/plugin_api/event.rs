@@ -14,7 +14,8 @@ pub use super::generated_api::api::{
 };
 use crate::data::{
     CopyDestination, Direction, Event, EventType, InputMode, Key, ModeInfo, Mouse, Palette,
-    PaletteColor, PaneInfo, PaneManifest, PluginCapabilities, Style, TabInfo, ThemeHue, PermissionStatus
+    PaletteColor, PaneInfo, PaneManifest, PermissionStatus, PluginCapabilities, Style, TabInfo,
+    ThemeHue,
 };
 use crate::errors::prelude::*;
 use crate::input::actions::Action;
@@ -169,8 +170,7 @@ impl TryFrom<ProtobufEvent> for Event {
                     }
                 },
                 _ => Err("Malformed payload for the file system delete Event"),
-
-            }
+            },
             None => Err("Unknown Protobuf Event"),
         }
     }
@@ -308,9 +308,9 @@ impl TryFrom<Event> for ProtobufEvent {
                 };
                 Ok(ProtobufEvent {
                     name: ProtobufEventType::PermissionRequestResult as i32,
-                    payload: Some(event::Payload::PermissionRequestResultPayload(PermissionRequestResultPayload {
-                        granted
-                    })),
+                    payload: Some(event::Payload::PermissionRequestResultPayload(
+                        PermissionRequestResultPayload { granted },
+                    )),
                 })
             },
         }
