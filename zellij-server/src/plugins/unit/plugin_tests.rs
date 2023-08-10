@@ -4293,7 +4293,8 @@ pub fn granted_permission_request_result() {
     let plugin_host_folder = PathBuf::from(temp_folder.path());
     let cache_path = plugin_host_folder.join("permissions_test.kdl");
 
-    let (plugin_thread_sender, screen_receiver, mut teardown) = create_plugin_thread(Some(plugin_host_folder));
+    let (plugin_thread_sender, screen_receiver, mut teardown) =
+        create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
     let run_plugin = RunPlugin {
@@ -4321,19 +4322,20 @@ pub fn granted_permission_request_result() {
                     .expect("failed to receive event on channel");
                 match event {
                     ScreenInstruction::RequestPluginPermissions(_, plugin_permission) => {
-                        let _ = plugin_thread_sender.send(PluginInstruction::PermissionRequestResult(
-                            0,
-                            Some(client_id),
-                            plugin_permission.permissions,
-                            PermissionStatus::Granted,
-                            Some(cache_path.clone()),
-                        ));
+                        let _ =
+                            plugin_thread_sender.send(PluginInstruction::PermissionRequestResult(
+                                0,
+                                Some(client_id),
+                                plugin_permission.permissions,
+                                PermissionStatus::Granted,
+                                Some(cache_path.clone()),
+                            ));
                         break;
                     },
                     ScreenInstruction::Exit => {
                         break;
-                    }
-                    _ => {}
+                    },
+                    _ => {},
                 }
             }
         })
@@ -4369,7 +4371,8 @@ pub fn denied_permission_request_result() {
     let plugin_host_folder = PathBuf::from(temp_folder.path());
     let cache_path = plugin_host_folder.join("permissions_test.kdl");
 
-    let (plugin_thread_sender, screen_receiver, mut teardown) = create_plugin_thread(Some(plugin_host_folder));
+    let (plugin_thread_sender, screen_receiver, mut teardown) =
+        create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
     let run_plugin = RunPlugin {
@@ -4397,19 +4400,20 @@ pub fn denied_permission_request_result() {
                     .expect("failed to receive event on channel");
                 match event {
                     ScreenInstruction::RequestPluginPermissions(_, plugin_permission) => {
-                        let _ = plugin_thread_sender.send(PluginInstruction::PermissionRequestResult(
-                            0,
-                            Some(client_id),
-                            plugin_permission.permissions,
-                            PermissionStatus::Denied,
-                            Some(cache_path.clone()),
-                        ));
+                        let _ =
+                            plugin_thread_sender.send(PluginInstruction::PermissionRequestResult(
+                                0,
+                                Some(client_id),
+                                plugin_permission.permissions,
+                                PermissionStatus::Denied,
+                                Some(cache_path.clone()),
+                            ));
                         break;
                     },
                     ScreenInstruction::Exit => {
                         break;
-                    }
-                    _ => {}
+                    },
+                    _ => {},
                 }
             }
         })
