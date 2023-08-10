@@ -1,0 +1,9 @@
+syntax = "proto3";
+
+package api.file;
+
+message File {
+  string path = 1;
+  optional int32 line_number = 2;
+  optional string cwd = 3;
+}

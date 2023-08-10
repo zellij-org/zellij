@@ -2,9 +2,9 @@ use crate::input::actions::Action;
 use crate::input::config::ConversionError;
 use clap::ArgEnum;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use strum_macros::{Display, EnumDiscriminants, EnumIter, EnumString, ToString};
 
@@ -845,4 +845,146 @@ pub enum CopyDestination {
 pub enum PermissionStatus {
     Granted,
     Denied,
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct FileToOpen {
+    pub path: PathBuf,
+    pub line_number: Option<usize>,
+    pub cwd: Option<PathBuf>,
+}
+
+impl FileToOpen {
+    pub fn new<P: AsRef<Path>>(path: P) -> Self {
+        FileToOpen {
+            path: path.as_ref().to_path_buf(),
+            ..Default::default()
+        }
+    }
+    pub fn with_line_number(mut self, line_number: usize) -> Self {
+        self.line_number = Some(line_number);
+        self
+    }
+    pub fn with_cwd(mut self, cwd: PathBuf) -> Self {
+        self.cwd = Some(cwd);
+        self
+    }
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct CommandToRun {
+    pub path: PathBuf,
+    pub args: Vec<String>,
+    pub cwd: Option<PathBuf>,
+}
+
+impl CommandToRun {
+    pub fn new<P: AsRef<Path>>(path: P) -> Self {
+        CommandToRun {
+            path: path.as_ref().to_path_buf(),
+            ..Default::default()
+        }
+    }
+    pub fn new_with_args<P: AsRef<Path>, A: AsRef<str>>(path: P, args: Vec<A>) -> Self {
+        CommandToRun {
+            path: path.as_ref().to_path_buf(),
+            args: args.into_iter().map(|a| a.as_ref().to_owned()).collect(),
+            ..Default::default()
+        }
+    }
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct PluginMessage {
+    pub name: String,
+    pub payload: String,
+    pub worker_name: Option<String>,
+}
+
+impl PluginMessage {
+    pub fn new_to_worker(worker_name: &str, message: &str, payload: &str) -> Self {
+        PluginMessage {
+            name: message.to_owned(),
+            payload: payload.to_owned(),
+            worker_name: Some(worker_name.to_owned()),
+        }
+    }
+    pub fn new_to_plugin(message: &str, payload: &str) -> Self {
+        PluginMessage {
+            name: message.to_owned(),
+            payload: payload.to_owned(),
+            worker_name: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum PluginCommand {
+    Subscribe(HashSet<EventType>),
+    Unsubscribe(HashSet<EventType>),
+    SetSelectable(bool),
+    GetPluginIds,
+    GetZellijVersion,
+    OpenFile(FileToOpen),
+    OpenFileFloating(FileToOpen),
+    OpenTerminal(FileToOpen),         // only used for the path as cwd
+    OpenTerminalFloating(FileToOpen), // only used for the path as cwd
+    OpenCommandPane(CommandToRun),
+    OpenCommandPaneFloating(CommandToRun),
+    SwitchTabTo(u32), // tab index
+    SetTimeout(f32),  // seconds
+    ExecCmd(Vec<String>),
+    PostMessageTo(PluginMessage),
+    PostMessageToPlugin(PluginMessage),
+    HideSelf,
+    ShowSelf(bool), // bool - should float if hidden
+    SwitchToMode(InputMode),
+    NewTabsWithLayout(String), // raw kdl layout
+    NewTab,
+    GoToNextTab,
+    GoToPreviousTab,
+    Resize(Resize),
+    ResizeWithDirection(ResizeStrategy),
+    FocusNextPane,
+    FocusPreviousPane,
+    MoveFocus(Direction),
+    MoveFocusOrTab(Direction),
+    Detach,
+    EditScrollback,
+    Write(Vec<u8>), // bytes
+    WriteChars(String),
+    ToggleTab,
+    MovePane,
+    MovePaneWithDirection(Direction),
+    ClearScreen,
+    ScrollUp,
+    ScrollDown,
+    ScrollToTop,
+    ScrollToBottom,
+    PageScrollUp,
+    PageScrollDown,
+    ToggleFocusFullscreen,
+    TogglePaneFrames,
+    TogglePaneEmbedOrEject,
+    UndoRenamePane,
+    CloseFocus,
+    ToggleActiveTabSync,
+    CloseFocusedTab,
+    UndoRenameTab,
+    QuitZellij,
+    PreviousSwapLayout,
+    NextSwapLayout,
+    GoToTabName(String),
+    FocusOrCreateTab(String),
+    GoToTab(u32),                    // tab index
+    StartOrReloadPlugin(String),     // plugin url (eg. file:/path/to/plugin.wasm)
+    CloseTerminalPane(u32),          // terminal pane id
+    ClosePluginPane(u32),            // plugin pane id
+    FocusTerminalPane(u32, bool),    // terminal pane id, should_float_if_hidden
+    FocusPluginPane(u32, bool),      // plugin pane id, should_float_if_hidden
+    RenameTerminalPane(u32, String), // terminal pane id, new name
+    RenamePluginPane(u32, String),   // plugin pane id, new name
+    RenameTab(u32, String),          // tab index, new name
+    ReportPanic(String),             // stringified panic
+    RequestPluginPermissions(Vec<PermissionType>),
 }

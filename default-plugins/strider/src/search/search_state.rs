@@ -3,8 +3,8 @@ use crate::search::{MessageToSearch, ResultsOfSearch};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use zellij_tile::prelude::{
-    hide_self, open_file, open_file_floating, open_file_with_line, open_file_with_line_floating,
-    open_terminal, open_terminal_floating, post_message_to, Key,
+    hide_self, open_file, open_file_floating, open_terminal, open_terminal_floating,
+    post_message_to, FileToOpen, Key, PluginMessage,
 };
 
 pub const CURRENT_SEARCH_TERM: &str = "/data/current_search_term";
@@ -88,18 +88,32 @@ impl SearchState {
         match self.selected_search_result_entry() {
             Some(SearchResult::File { path, .. }) => {
                 if self.should_open_floating {
-                    open_file_floating(&PathBuf::from(path))
+                    open_file_floating(FileToOpen {
+                        path: PathBuf::from(path),
+                        ..Default::default()
+                    });
                 } else {
-                    open_file(&PathBuf::from(path));
+                    open_file(FileToOpen {
+                        path: PathBuf::from(path),
+                        ..Default::default()
+                    });
                 }
             },
             Some(SearchResult::LineInFile {
                 path, line_number, ..
             }) => {
                 if self.should_open_floating {
-                    open_file_with_line_floating(&PathBuf::from(path), line_number);
+                    open_file_floating(FileToOpen {
+                        path: PathBuf::from(path),
+                        line_number: Some(line_number),
+                        ..Default::default()
+                    });
                 } else {
-                    open_file_with_line(&PathBuf::from(path), line_number);
+                    open_file(FileToOpen {
+                        path: PathBuf::from(path),
+                        line_number: Some(line_number),
+                        ..Default::default()
+                    });
                 }
             },
             None => eprintln!("Search results not found"),
@@ -153,16 +167,16 @@ impl SearchState {
         match std::fs::write(CURRENT_SEARCH_TERM, &self.search_term) {
             Ok(_) => {
                 if !self.search_term.is_empty() {
-                    post_message_to(
-                        "file_name_search",
-                        &serde_json::to_string(&MessageToSearch::Search).unwrap(),
-                        "",
-                    );
-                    post_message_to(
-                        "file_contents_search",
-                        &serde_json::to_string(&MessageToSearch::Search).unwrap(),
-                        "",
-                    );
+                    post_message_to(PluginMessage {
+                        worker_name: Some("file_name_search".into()),
+                        name: serde_json::to_string(&MessageToSearch::Search).unwrap(),
+                        payload: "".into(),
+                    });
+                    post_message_to(PluginMessage {
+                        worker_name: Some("file_contents_search".into()),
+                        name: serde_json::to_string(&MessageToSearch::Search).unwrap(),
+                        payload: "".into(),
+                    });
                     self.file_name_search_results.clear();
                     self.file_contents_search_results.clear();
                 }

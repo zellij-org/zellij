@@ -22,13 +22,14 @@ impl<'de> ZellijWorker<'de> for TestWorker {
     fn on_message(&mut self, message: String, payload: String) {
         if message == "ping" {
             self.number_of_messages_received += 1;
-            post_message_to_plugin(
-                "pong".into(),
-                format!(
+            post_message_to_plugin(PluginMessage {
+                worker_name: None,
+                name: "pong".into(),
+                payload: format!(
                     "{}, received {} messages",
                     payload, self.number_of_messages_received
                 ),
-            );
+            });
         }
     }
 }
@@ -143,22 +144,30 @@ impl ZellijPlugin for State {
                     start_or_reload_plugin(plugin_url)
                 },
                 Key::Ctrl('g') => {
-                    open_file(std::path::PathBuf::from("/path/to/my/file.rs").as_path());
+                    open_file(FileToOpen {
+                        path: std::path::PathBuf::from("/path/to/my/file.rs"),
+                        ..Default::default()
+                    });
                 },
                 Key::Ctrl('h') => {
-                    open_file_floating(std::path::PathBuf::from("/path/to/my/file.rs").as_path());
+                    open_file_floating(FileToOpen {
+                        path: std::path::PathBuf::from("/path/to/my/file.rs"),
+                        ..Default::default()
+                    });
                 },
                 Key::Ctrl('i') => {
-                    open_file_with_line(
-                        std::path::PathBuf::from("/path/to/my/file.rs").as_path(),
-                        42,
-                    );
+                    open_file(FileToOpen {
+                        path: std::path::PathBuf::from("/path/to/my/file.rs"),
+                        line_number: Some(42),
+                        ..Default::default()
+                    });
                 },
                 Key::Ctrl('j') => {
-                    open_file_with_line_floating(
-                        std::path::PathBuf::from("/path/to/my/file.rs").as_path(),
-                        42,
-                    );
+                    open_file_floating(FileToOpen {
+                        path: std::path::PathBuf::from("/path/to/my/file.rs"),
+                        line_number: Some(42),
+                        ..Default::default()
+                    });
                 },
                 Key::Ctrl('k') => {
                     open_terminal(std::path::PathBuf::from("/path/to/my/file.rs").as_path());
@@ -169,16 +178,18 @@ impl ZellijPlugin for State {
                     );
                 },
                 Key::Ctrl('m') => {
-                    open_command_pane(
-                        std::path::PathBuf::from("/path/to/my/file.rs").as_path(),
-                        vec!["arg1".to_owned(), "arg2".to_owned()],
-                    );
+                    open_command_pane(CommandToRun {
+                        path: std::path::PathBuf::from("/path/to/my/file.rs"),
+                        args: vec!["arg1".to_owned(), "arg2".to_owned()],
+                        ..Default::default()
+                    });
                 },
                 Key::Ctrl('n') => {
-                    open_command_pane_floating(
-                        std::path::PathBuf::from("/path/to/my/file.rs").as_path(),
-                        vec!["arg1".to_owned(), "arg2".to_owned()],
-                    );
+                    open_command_pane_floating(CommandToRun {
+                        path: std::path::PathBuf::from("/path/to/my/file.rs"),
+                        args: vec!["arg1".to_owned(), "arg2".to_owned()],
+                        ..Default::default()
+                    });
                 },
                 Key::Ctrl('o') => {
                     switch_tab_to(1);
@@ -228,7 +239,11 @@ impl ZellijPlugin for State {
             },
             Event::SystemClipboardFailure => {
                 // this is just to trigger the worker message
-                post_message_to("test", "ping", "gimme_back_my_payload");
+                post_message_to(PluginMessage {
+                    worker_name: Some("test".into()),
+                    name: "ping".into(),
+                    payload: "gimme_back_my_payload".into(),
+                });
             },
             _ => {},
         }

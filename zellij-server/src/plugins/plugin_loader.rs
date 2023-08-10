@@ -1,27 +1,28 @@
 use crate::plugins::plugin_map::{PluginEnv, PluginMap, RunningPlugin, Subscriptions};
 use crate::plugins::plugin_worker::{plugin_worker, RunningWorker};
-use crate::plugins::zellij_exports::{wasi_read_string, wasi_write_object, zellij_exports};
+use crate::plugins::zellij_exports::{wasi_write_object, zellij_exports};
 use crate::plugins::PluginId;
 use highway::{HighwayHash, PortableHash};
 use log::info;
-use semver::Version;
 use std::{
     collections::{HashMap, HashSet},
-    fmt, fs,
+    fs,
     path::PathBuf,
     sync::{Arc, Mutex},
 };
 use url::Url;
 use wasmer::{ChainableNamedResolver, Instance, Module, Store};
 use wasmer_wasi::{Pipe, WasiState};
+use zellij_utils::prost::Message;
 
 use crate::{
     logging_pipe::LoggingPipe, screen::ScreenInstruction, thread_bus::ThreadSenders,
     ui::loading_indication::LoadingIndication, ClientId,
 };
 
+use zellij_utils::plugin_api::action::ProtobufPluginConfiguration;
 use zellij_utils::{
-    consts::{VERSION, ZELLIJ_CACHE_DIR, ZELLIJ_SESSION_CACHE_DIR, ZELLIJ_TMP_DIR},
+    consts::{ZELLIJ_CACHE_DIR, ZELLIJ_SESSION_CACHE_DIR, ZELLIJ_TMP_DIR},
     data::PluginCapabilities,
     errors::prelude::*,
     input::command::TerminalAction,
@@ -41,116 +42,6 @@ macro_rules! display_loading_stage {
             )),
         );
     }};
-}
-
-/// Custom error for plugin version mismatch.
-///
-/// This is thrown when, during starting a plugin, it is detected that the plugin version doesn't
-/// match the zellij version. This is treated as a fatal error and leads to instantaneous
-/// termination.
-#[derive(Debug)]
-pub struct VersionMismatchError {
-    zellij_version: String,
-    plugin_version: String,
-    plugin_path: PathBuf,
-    // true for builtin plugins
-    builtin: bool,
-}
-
-impl std::error::Error for VersionMismatchError {}
-
-impl VersionMismatchError {
-    pub fn new(
-        zellij_version: &str,
-        plugin_version: &str,
-        plugin_path: &PathBuf,
-        builtin: bool,
-    ) -> Self {
-        VersionMismatchError {
-            zellij_version: zellij_version.to_owned(),
-            plugin_version: plugin_version.to_owned(),
-            plugin_path: plugin_path.to_owned(),
-            builtin,
-        }
-    }
-}
-
-impl fmt::Display for VersionMismatchError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let first_line = if self.builtin {
-            "It seems your version of zellij was built with outdated core plugins."
-        } else {
-            "If you're seeing this error a plugin version doesn't match the current
-zellij version."
-        };
-
-        write!(
-            f,
-            "{}
-Detected versions:
-
-- Plugin version: {}
-- Zellij version: {}
-- Offending plugin: {}
-
-If you're a user:
-    Please contact the distributor of your zellij version and report this error
-    to them.
-
-If you're a developer:
-    Please run zellij with updated plugins. The easiest way to achieve this
-    is to build zellij with `cargo xtask install`. Also refer to the docs:
-    https://github.com/zellij-org/zellij/blob/main/CONTRIBUTING.md#building
-",
-            first_line,
-            self.plugin_version.trim_end(),
-            self.zellij_version.trim_end(),
-            self.plugin_path.display()
-        )
-    }
-}
-
-// Returns `Ok` if the plugin version matches the zellij version.
-// Returns an `Err` otherwise.
-fn assert_plugin_version(instance: &Instance, plugin_env: &PluginEnv) -> Result<()> {
-    let err_context = || {
-        format!(
-            "failed to determine plugin version for plugin {}",
-            plugin_env.plugin.path.display()
-        )
-    };
-
-    let plugin_version_func = match instance.exports.get_function("plugin_version") {
-        Ok(val) => val,
-        Err(_) => {
-            return Err(anyError::new(VersionMismatchError::new(
-                VERSION,
-                "Unavailable",
-                &plugin_env.plugin.path,
-                plugin_env.plugin.is_builtin(),
-            )))
-        },
-    };
-
-    let plugin_version = plugin_version_func
-        .call(&[])
-        .map_err(anyError::new)
-        .and_then(|_| wasi_read_string(&plugin_env.wasi_env))
-        .and_then(|string| Version::parse(&string).context("failed to parse plugin version"))
-        .with_context(err_context)?;
-    let zellij_version = Version::parse(VERSION)
-        .context("failed to parse zellij version")
-        .with_context(err_context)?;
-    if plugin_version != zellij_version {
-        return Err(anyError::new(VersionMismatchError::new(
-            VERSION,
-            &plugin_version.to_string(),
-            &plugin_env.plugin.path,
-            plugin_env.plugin.is_builtin(),
-        )));
-    }
-
-    Ok(())
 }
 
 pub struct PluginLoader<'a> {
@@ -646,10 +537,8 @@ impl<'a> PluginLoader<'a> {
         &mut self,
         module: Module,
     ) -> Result<(Instance, PluginEnv, Arc<Mutex<Subscriptions>>)> {
-        let err_context = || format!("Failed to create environment for plugin");
         let (instance, plugin_env, subscriptions) =
             self.create_plugin_instance_env_and_subscriptions(&module)?;
-        assert_plugin_version(&instance, &plugin_env).with_context(err_context)?;
         // Only do an insert when everything went well!
         let cloned_plugin = self.plugin.clone();
         self.plugin_cache
@@ -738,9 +627,17 @@ impl<'a> PluginLoader<'a> {
             workers,
         );
 
+        let protobuf_plugin_configuration: ProtobufPluginConfiguration = self
+            .plugin
+            .userspace_configuration
+            .clone()
+            .try_into()
+            .map_err(|e| anyhow!("Failed to serialize user configuration: {:?}", e))?;
+        let protobuf_bytes = protobuf_plugin_configuration.encode_to_vec();
         wasi_write_object(
             &plugin_env.wasi_env,
-            &self.plugin.userspace_configuration.inner(),
+            &protobuf_bytes,
+            // &self.plugin.userspace_configuration.inner(),
         )
         .with_context(err_context)?;
         load_function.call(&[]).with_context(err_context)?;

@@ -1,0 +1,83 @@
+syntax = "proto3";
+
+package api.key;
+
+message Key {
+  enum KeyModifier {
+    CTRL = 0;
+    ALT = 1;
+  }
+
+  enum NamedKey {
+    PageDown = 0;
+    PageUp = 1;
+    LeftArrow = 2;
+    DownArrow = 3;
+    UpArrow = 4;
+    RightArrow = 5;
+    Home = 6;
+    End = 7;
+    Backspace = 8;
+    Delete = 9;
+    Insert = 10;
+    F1 = 11;
+    F2 = 12;
+    F3 = 13;
+    F4 = 14;
+    F5 = 15;
+    F6 = 16;
+    F7 = 17;
+    F8 = 18;
+    F9 = 19;
+    F10 = 20;
+    F11 = 21;
+    F12 = 22;
+    Tab = 23;
+    Esc = 24;
+  }
+
+  enum Char {
+    a = 0;
+    b = 1;
+    c = 2;
+    d = 3;
+    e = 4;
+    f = 5;
+    g = 6;
+    h = 7;
+    i = 8;
+    j = 9;
+    k = 10;
+    l = 11;
+    m = 12;
+    n = 13;
+    o = 14;
+    p = 15;
+    q = 16;
+    r = 17;
+    s = 18;
+    t = 19;
+    u = 20;
+    v = 21;
+    w = 22;
+    x = 23;
+    y = 24;
+    z = 25;
+    zero = 26;
+    one = 27;
+    two = 28;
+    three = 29;
+    four = 30;
+    five = 31;
+    six = 32;
+    seven = 33;
+    eight = 34;
+    nine = 35;
+  }
+
+  optional KeyModifier modifier = 1;
+  oneof main_key {
+    NamedKey key = 2;
+    Char char = 3;
+  }
+}

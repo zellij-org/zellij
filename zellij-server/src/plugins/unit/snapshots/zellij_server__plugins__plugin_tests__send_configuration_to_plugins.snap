@@ -1,11 +1,11 @@
 ---
 source: zellij-server/src/plugins/./unit/plugin_tests.rs
-assertion_line: 4220
+assertion_line: 4225
 expression: "format!(\"{:#?}\", go_to_tab_event)"
 ---
 Some(
     GoToTabName(
-        "{\"fake_config_key_1\": \"fake_config_value_1\", \"fake_config_key_2\": \"fake_config_value_2\"}\n\r",
+        "{\"fake_config_key_1\": \"fake_config_value_1\", \"fake_config_key_2\": \"fake_config_value_2\"}",
         (
             [],
             [],
