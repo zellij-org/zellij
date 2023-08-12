@@ -105,6 +105,48 @@ macro_rules! grant_permissions_and_log_actions_in_thread {
     };
 }
 
+macro_rules! deny_permissions_and_log_actions_in_thread {
+    ( $arc_mutex_log:expr, $exit_event:path, $receiver:expr, $exit_after_count:expr, $permission_type:expr, $cache_path:expr, $plugin_thread_sender:expr, $client_id:expr ) => {
+        std::thread::Builder::new()
+            .name("fake_screen_thread".to_string())
+            .spawn({
+                let log = $arc_mutex_log.clone();
+                let mut exit_event_count = 0;
+                let cache_path = $cache_path.clone();
+                let plugin_thread_sender = $plugin_thread_sender.clone();
+                move || loop {
+                    let (event, _err_ctx) = $receiver
+                        .recv()
+                        .expect("failed to receive event on channel");
+                    match event {
+                        $exit_event(..) => {
+                            exit_event_count += 1;
+                            log.lock().unwrap().push(event);
+                            if exit_event_count == $exit_after_count {
+                                break;
+                            }
+                        },
+                        ScreenInstruction::RequestPluginPermissions(_, plugin_permission) => {
+                            let _ =
+                                plugin_thread_sender.send(PluginInstruction::PermissionRequestResult(
+                                    0,
+                                    Some($client_id),
+                                    plugin_permission.permissions,
+                                    PermissionStatus::Denied,
+                                    Some(cache_path.clone()),
+                                ));
+                            break;
+                        },
+                        _ => {
+                            log.lock().unwrap().push(event);
+                        },
+                    }
+                }
+            })
+            .unwrap()
+    };
+}
+
 macro_rules! grant_permissions_and_log_actions_in_thread_naked_variant {
     ( $arc_mutex_log:expr, $exit_event:path, $receiver:expr, $exit_after_count:expr, $permission_type:expr, $cache_path:expr, $plugin_thread_sender:expr, $client_id:expr ) => {
         std::thread::Builder::new()
@@ -751,6 +793,73 @@ pub fn switch_to_mode_plugin_command() {
     };
     let received_screen_instructions = Arc::new(Mutex::new(vec![]));
     let screen_thread = grant_permissions_and_log_actions_in_thread!(
+        received_screen_instructions,
+        ScreenInstruction::ChangeMode,
+        screen_receiver,
+        1,
+        &PermissionType::ChangeApplicationState,
+        cache_path,
+        plugin_thread_sender,
+        client_id
+    );
+
+    let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
+    let _ = plugin_thread_sender.send(PluginInstruction::Load(
+        plugin_should_float,
+        plugin_title,
+        run_plugin,
+        tab_index,
+        client_id,
+        size,
+    ));
+    let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
+        None,
+        Some(client_id),
+        Event::Key(Key::Char('a')), // this triggers a SwitchToMode(Tab) command in the fixture
+                                    // plugin
+    )]));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    screen_thread.join().unwrap(); // this might take a while if the cache is cold
+    teardown();
+    let switch_to_mode_event = received_screen_instructions
+        .lock()
+        .unwrap()
+        .iter()
+        .find_map(|i| {
+            if let ScreenInstruction::ChangeMode(..) = i {
+                Some(i.clone())
+            } else {
+                None
+            }
+        })
+        .clone();
+    assert_snapshot!(format!("{:#?}", switch_to_mode_event));
+}
+
+#[test]
+#[ignore]
+pub fn switch_to_mode_plugin_command_permission_denied() {
+    let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
+                                          // destructor removes the directory
+    let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
+    let (plugin_thread_sender, screen_receiver, mut teardown) =
+        create_plugin_thread(Some(plugin_host_folder));
+    let plugin_should_float = Some(false);
+    let plugin_title = Some("test_plugin".to_owned());
+    let run_plugin = RunPlugin {
+        _allow_exec_host_cmd: false,
+        location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
+    };
+    let tab_index = 1;
+    let client_id = 1;
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let received_screen_instructions = Arc::new(Mutex::new(vec![]));
+    let screen_thread = deny_permissions_and_log_actions_in_thread!(
         received_screen_instructions,
         ScreenInstruction::ChangeMode,
         screen_receiver,
@@ -4853,13 +4962,6 @@ pub fn granted_permission_request_result() {
         permissions.sort_unstable();
         permissions
     });
-//     let permissions = if let Some(mut permissions) = permissions.as_mut() {
-//         let mut permissions = permissions.clone();
-//         permissions.sort_unstable();
-//         Some(permissions)
-//     } else {
-//         None
-//     };
 
     assert_snapshot!(format!("{:#?}", permissions));
 }
