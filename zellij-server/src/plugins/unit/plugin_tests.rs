@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 use tempfile::tempdir;
 use wasmer::Store;
-use zellij_utils::data::{Event, Key, PermissionStatus, PluginCapabilities, PermissionType};
+use zellij_utils::data::{Event, Key, PermissionStatus, PermissionType, PluginCapabilities};
 use zellij_utils::errors::ErrorContext;
 use zellij_utils::input::layout::{Layout, PluginUserConfiguration, RunPlugin, RunPluginLocation};
 use zellij_utils::input::permission::PermissionCache;
@@ -76,23 +76,25 @@ macro_rules! grant_permissions_and_log_actions_in_thread {
                         },
                         ScreenInstruction::RequestPluginPermissions(_, plugin_permission) => {
                             if plugin_permission.permissions.contains($permission_type) {
-                                let _ =
-                                    plugin_thread_sender.send(PluginInstruction::PermissionRequestResult(
+                                let _ = plugin_thread_sender.send(
+                                    PluginInstruction::PermissionRequestResult(
                                         0,
                                         Some($client_id),
                                         plugin_permission.permissions,
                                         PermissionStatus::Granted,
                                         Some(cache_path.clone()),
-                                    ));
+                                    ),
+                                );
                             } else {
-                                let _ =
-                                    plugin_thread_sender.send(PluginInstruction::PermissionRequestResult(
+                                let _ = plugin_thread_sender.send(
+                                    PluginInstruction::PermissionRequestResult(
                                         0,
                                         Some($client_id),
                                         plugin_permission.permissions,
                                         PermissionStatus::Denied,
                                         Some(cache_path.clone()),
-                                    ));
+                                    ),
+                                );
                             }
                         },
                         _ => {
@@ -127,14 +129,15 @@ macro_rules! deny_permissions_and_log_actions_in_thread {
                             }
                         },
                         ScreenInstruction::RequestPluginPermissions(_, plugin_permission) => {
-                            let _ =
-                                plugin_thread_sender.send(PluginInstruction::PermissionRequestResult(
+                            let _ = plugin_thread_sender.send(
+                                PluginInstruction::PermissionRequestResult(
                                     0,
                                     Some($client_id),
                                     plugin_permission.permissions,
                                     PermissionStatus::Denied,
                                     Some(cache_path.clone()),
-                                ));
+                                ),
+                            );
                             break;
                         },
                         _ => {
@@ -170,23 +173,25 @@ macro_rules! grant_permissions_and_log_actions_in_thread_naked_variant {
                         },
                         ScreenInstruction::RequestPluginPermissions(_, plugin_permission) => {
                             if plugin_permission.permissions.contains($permission_type) {
-                                let _ =
-                                    plugin_thread_sender.send(PluginInstruction::PermissionRequestResult(
+                                let _ = plugin_thread_sender.send(
+                                    PluginInstruction::PermissionRequestResult(
                                         0,
                                         Some($client_id),
                                         plugin_permission.permissions,
                                         PermissionStatus::Granted,
                                         Some(cache_path.clone()),
-                                    ));
+                                    ),
+                                );
                             } else {
-                                let _ =
-                                    plugin_thread_sender.send(PluginInstruction::PermissionRequestResult(
+                                let _ = plugin_thread_sender.send(
+                                    PluginInstruction::PermissionRequestResult(
                                         0,
                                         Some($client_id),
                                         plugin_permission.permissions,
                                         PermissionStatus::Denied,
                                         Some(cache_path.clone()),
-                                    ));
+                                    ),
+                                );
                             }
                         },
                         _ => {
@@ -321,8 +326,7 @@ fn create_plugin_thread_with_server_receiver(
     let (to_server, server_receiver): ChannelWithContext<ServerInstruction> = channels::bounded(50);
     let to_server = SenderWithContext::new(to_server);
 
-    let (to_screen, screen_receiver): ChannelWithContext<ScreenInstruction> =
-        channels::unbounded();
+    let (to_screen, screen_receiver): ChannelWithContext<ScreenInstruction> = channels::unbounded();
     let to_screen = SenderWithContext::new(to_screen);
 
     let (to_plugin, plugin_receiver): ChannelWithContext<PluginInstruction> = channels::unbounded();
@@ -388,7 +392,12 @@ fn create_plugin_thread_with_server_receiver(
                                                                        // the plugin cache
         }
     };
-    (to_plugin, server_receiver, screen_receiver, Box::new(teardown))
+    (
+        to_plugin,
+        server_receiver,
+        screen_receiver,
+        Box::new(teardown),
+    )
 }
 
 fn create_plugin_thread_with_pty_receiver(
@@ -404,8 +413,7 @@ fn create_plugin_thread_with_pty_receiver(
         channels::bounded(50);
     let to_server = SenderWithContext::new(to_server);
 
-    let (to_screen, screen_receiver): ChannelWithContext<ScreenInstruction> =
-        channels::unbounded();
+    let (to_screen, screen_receiver): ChannelWithContext<ScreenInstruction> = channels::unbounded();
     let to_screen = SenderWithContext::new(to_screen);
 
     let (to_plugin, plugin_receiver): ChannelWithContext<PluginInstruction> = channels::unbounded();
@@ -4956,7 +4964,9 @@ pub fn granted_permission_request_result() {
     teardown();
 
     let permission_cache = PermissionCache::from_path_or_default(Some(cache_path));
-    let mut permissions = permission_cache.get_permissions(run_plugin.location.to_string()).clone();
+    let mut permissions = permission_cache
+        .get_permissions(run_plugin.location.to_string())
+        .clone();
     let permissions = permissions.as_mut().map(|p| {
         let mut permissions = p.clone();
         permissions.sort_unstable();

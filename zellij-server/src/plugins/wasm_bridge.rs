@@ -769,19 +769,22 @@ fn handle_plugin_loading_failure(
 }
 
 // TODO: move to permissions?
-fn check_event_permission(plugin_env: &PluginEnv, event: &Event) -> (PermissionStatus, Option<PermissionType>) {
+fn check_event_permission(
+    plugin_env: &PluginEnv,
+    event: &Event,
+) -> (PermissionStatus, Option<PermissionType>) {
     if plugin_env.plugin.is_builtin() {
         // built-in plugins can do all the things because they're part of the application and
         // there's no use to deny them anything
-        return (PermissionStatus::Granted, None)
+        return (PermissionStatus::Granted, None);
     }
     let permission = match event {
-        Event::ModeUpdate(..) |
-        Event::TabUpdate(..) |
-        Event::PaneUpdate(..) |
-        Event::CopyToClipboard(..) |
-        Event::SystemClipboardFailure |
-        Event::InputReceived => PermissionType::ReadApplicationState,
+        Event::ModeUpdate(..)
+        | Event::TabUpdate(..)
+        | Event::PaneUpdate(..)
+        | Event::CopyToClipboard(..)
+        | Event::SystemClipboardFailure
+        | Event::InputReceived => PermissionType::ReadApplicationState,
         _ => return (PermissionStatus::Granted, None),
     };
 
@@ -841,7 +844,9 @@ pub fn apply_event_to_plugin(
             log::error!(
                 "PluginId '{}' permission '{}' is not allowed - Event '{:?}' denied",
                 plugin_id,
-                permission.map(|p| p.to_string()).unwrap_or("UNKNOWN".to_owned()),
+                permission
+                    .map(|p| p.to_string())
+                    .unwrap_or("UNKNOWN".to_owned()),
                 EventType::from_str(&event.to_string()).with_context(err_context)?
             );
         },

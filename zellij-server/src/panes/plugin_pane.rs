@@ -1,4 +1,4 @@
-use std::collections::{HashMap, BTreeSet};
+use std::collections::{BTreeSet, HashMap};
 use std::time::Instant;
 
 use crate::output::{CharacterChunk, SixelImageChunk};
@@ -676,7 +676,13 @@ impl PluginPane {
             messages.push_str(&format!(
                 "{} {}. {} {}\n",
                 bold_white.paint("This plugin asks permission to:"),
-                orange.paint(permissions.iter().map(|p| p.to_string()).collect::<Vec<_>>().join(", ")),
+                orange.paint(
+                    permissions
+                        .iter()
+                        .map(|p| p.to_string())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ),
                 bold_white.paint("Allow?"),
                 green.paint("(y/n)"),
             ));

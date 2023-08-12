@@ -497,7 +497,20 @@ pub enum Event {
     PermissionRequestResult(PermissionStatus),
 }
 
-#[derive(Debug, PartialEq, Eq, Hash, Copy, Clone, EnumDiscriminants, ToString, Serialize, Deserialize, PartialOrd, Ord)]
+#[derive(
+    Debug,
+    PartialEq,
+    Eq,
+    Hash,
+    Copy,
+    Clone,
+    EnumDiscriminants,
+    ToString,
+    Serialize,
+    Deserialize,
+    PartialOrd,
+    Ord,
+)]
 #[strum_discriminants(derive(EnumString, Hash, Serialize, Deserialize, Display, PartialOrd, Ord))]
 #[strum_discriminants(name(PermissionType))]
 #[non_exhaustive]
@@ -507,14 +520,18 @@ pub enum Permission {
     OpenFiles,
     RunCommands,
     OpenTerminalsOrPlugins,
-    WriteToStdin
+    WriteToStdin,
 }
 
 impl PermissionType {
     pub fn display_name(&self) -> String {
         match self {
-            PermissionType::ReadApplicationState => "Access Zellij state (Panes, Tabs and UI)".to_owned(),
-            PermissionType::ChangeApplicationState => "Change Zellij state (Panes, Tabs and UI)".to_owned(),
+            PermissionType::ReadApplicationState => {
+                "Access Zellij state (Panes, Tabs and UI)".to_owned()
+            },
+            PermissionType::ChangeApplicationState => {
+                "Change Zellij state (Panes, Tabs and UI)".to_owned()
+            },
             PermissionType::OpenFiles => "Open files (eg. for editing)".to_owned(),
             PermissionType::RunCommands => "Run commands".to_owned(),
             PermissionType::OpenTerminalsOrPlugins => "Start new terminals and plugins".to_owned(),
