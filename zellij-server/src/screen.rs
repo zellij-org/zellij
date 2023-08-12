@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::str;
 
-use zellij_utils::data::{Direction, PaneManifest, Resize, ResizeStrategy};
+use zellij_utils::data::{Direction, PaneManifest, PluginPermission, Resize, ResizeStrategy};
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
 use zellij_utils::input::options::Clipboard;
@@ -282,6 +282,10 @@ pub enum ScreenInstruction {
     FocusPaneWithId(PaneId, bool, ClientId),        // bool is should_float
     RenamePane(PaneId, Vec<u8>),
     RenameTab(usize, Vec<u8>),
+    RequestPluginPermissions(
+        u32, // u32 - plugin_id
+        PluginPermission,
+    ),
     BreakPane(Box<Layout>, Option<TerminalAction>, ClientId),
     BreakPaneRight(ClientId),
     BreakPaneLeft(ClientId),
@@ -453,6 +457,9 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::FocusPaneWithId(..) => ScreenContext::FocusPaneWithId,
             ScreenInstruction::RenamePane(..) => ScreenContext::RenamePane,
             ScreenInstruction::RenameTab(..) => ScreenContext::RenameTab,
+            ScreenInstruction::RequestPluginPermissions(..) => {
+                ScreenContext::RequestPluginPermissions
+            },
             ScreenInstruction::BreakPane(..) => ScreenContext::BreakPane,
             ScreenInstruction::BreakPaneRight(..) => ScreenContext::BreakPaneRight,
             ScreenInstruction::BreakPaneLeft(..) => ScreenContext::BreakPaneLeft,
@@ -2979,6 +2986,24 @@ pub(crate) fn screen_thread_main(
                     },
                 }
                 screen.report_tab_state()?;
+            },
+            ScreenInstruction::RequestPluginPermissions(plugin_id, plugin_permission) => {
+                let all_tabs = screen.get_tabs_mut();
+                let found = all_tabs.values_mut().any(|tab| {
+                    if tab.has_plugin(plugin_id) {
+                        tab.request_plugin_permissions(plugin_id, Some(plugin_permission.clone()));
+                        true
+                    } else {
+                        false
+                    }
+                });
+
+                if !found {
+                    log::error!(
+                        "PluginId '{}' not found - cannot request permissions",
+                        plugin_id
+                    );
+                }
             },
             ScreenInstruction::BreakPane(default_layout, default_shell, client_id) => {
                 screen.break_pane(default_shell, default_layout, client_id)?;

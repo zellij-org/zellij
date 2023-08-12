@@ -39,6 +39,16 @@ register_worker!(TestWorker, test_worker, TEST_WORKER);
 
 impl ZellijPlugin for State {
     fn load(&mut self, configuration: BTreeMap<String, String>) {
+        request_permission(&[
+            PermissionType::ChangeApplicationState,
+            PermissionType::ReadApplicationState,
+            PermissionType::ReadApplicationState,
+            PermissionType::ChangeApplicationState,
+            PermissionType::OpenFiles,
+            PermissionType::RunCommands,
+            PermissionType::OpenTerminalsOrPlugins,
+            PermissionType::WriteToStdin,
+        ]);
         self.configuration = configuration;
         subscribe(&[
             EventType::InputReceived,
@@ -226,6 +236,9 @@ impl ZellijPlugin for State {
                 },
                 Key::Ctrl('z') => {
                     go_to_tab_name(&format!("{:?}", self.configuration));
+                },
+                Key::Ctrl('1') => {
+                    request_permission(&[PermissionType::ReadApplicationState]);
                 },
                 _ => {},
             },

@@ -7,6 +7,7 @@ pub mod key;
 pub mod message;
 pub mod plugin_command;
 pub mod plugin_ids;
+pub mod plugin_permission;
 pub mod resize;
 pub mod style;
 pub mod generated_api {

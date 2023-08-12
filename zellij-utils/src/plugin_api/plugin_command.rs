@@ -3,14 +3,15 @@ pub use super::generated_api::api::{
     plugin_command::{
         plugin_command::Payload, CommandName, ExecCmdPayload, IdAndNewName, MovePayload,
         OpenCommandPanePayload, OpenFilePayload, PaneIdAndShouldFloat,
-        PluginCommand as ProtobufPluginCommand, PluginMessagePayload, ResizePayload,
-        SetTimeoutPayload, SubscribePayload, SwitchTabToPayload, SwitchToModePayload,
-        UnsubscribePayload,
+        PluginCommand as ProtobufPluginCommand, PluginMessagePayload,
+        RequestPluginPermissionPayload, ResizePayload, SetTimeoutPayload, SubscribePayload,
+        SwitchTabToPayload, SwitchToModePayload, UnsubscribePayload,
     },
+    plugin_permission::PermissionType as ProtobufPermissionType,
     resize::ResizeAction as ProtobufResizeAction,
 };
 
-use crate::data::PluginCommand;
+use crate::data::{PermissionType, PluginCommand};
 
 use std::convert::TryFrom;
 
@@ -486,6 +487,19 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 },
                 _ => Err("Mismatched payload for ReportCrash"),
             },
+            Some(CommandName::RequestPluginPermissions) => match protobuf_plugin_command.payload {
+                Some(Payload::RequestPluginPermissionPayload(payload)) => {
+                    Ok(PluginCommand::RequestPluginPermissions(
+                        payload
+                            .permissions
+                            .iter()
+                            .filter_map(|p| ProtobufPermissionType::from_i32(*p))
+                            .filter_map(|p| PermissionType::try_from(p).ok())
+                            .collect(),
+                    ))
+                },
+                _ => Err("Mismatched payload for RequestPluginPermission"),
+            },
             None => Err("Unrecognized plugin command"),
         }
     }
@@ -819,6 +833,18 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
             PluginCommand::ReportPanic(payload) => Ok(ProtobufPluginCommand {
                 name: CommandName::ReportCrash as i32,
                 payload: Some(Payload::ReportCrashPayload(payload)),
+            }),
+            PluginCommand::RequestPluginPermissions(permissions) => Ok(ProtobufPluginCommand {
+                name: CommandName::RequestPluginPermissions as i32,
+                payload: Some(Payload::RequestPluginPermissionPayload(
+                    RequestPluginPermissionPayload {
+                        permissions: permissions
+                            .iter()
+                            .filter_map(|p| ProtobufPermissionType::try_from(*p).ok())
+                            .map(|p| p as i32)
+                            .collect(),
+                    },
+                )),
             }),
         }
     }

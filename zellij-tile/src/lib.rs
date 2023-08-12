@@ -107,6 +107,7 @@ macro_rules! register_plugin {
         fn load() {
             STATE.with(|state| {
                 use std::collections::BTreeMap;
+                use std::convert::TryFrom;
                 use std::convert::TryInto;
                 use zellij_tile::shim::plugin_api::action::ProtobufPluginConfiguration;
                 use zellij_tile::shim::prost::Message;
