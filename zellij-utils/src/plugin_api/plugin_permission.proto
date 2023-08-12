@@ -3,5 +3,10 @@ syntax = "proto3";
 package api.plugin_permission;
 
 enum PermissionType {
-  KeyboardInput = 0;
+  ReadApplicationState = 0;
+  ChangeApplicationState = 1;
+  OpenFiles = 2;
+  RunCommands = 3;
+  OpenTerminalsOrPlugins = 4;
+  WriteToStdin = 5;
 }

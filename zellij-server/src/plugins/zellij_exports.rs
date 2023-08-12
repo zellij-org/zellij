@@ -11,10 +11,11 @@ use std::{
     sync::{Arc, Mutex},
     thread,
     time::{Duration, Instant},
+    str::FromStr,
 };
 use wasmer::{imports, Function, ImportObject, Store, WasmerEnv};
 use wasmer_wasi::WasiEnv;
-use zellij_utils::data::{PermissionType, PluginPermission};
+use zellij_utils::data::{PermissionType, PluginPermission, PermissionStatus, CommandType};
 use zellij_utils::input::permission::PermissionCache;
 
 use url::Url;
@@ -88,121 +89,136 @@ impl ForeignFunctionEnv {
 }
 
 fn host_run_plugin_command(env: &ForeignFunctionEnv) {
+    let err_context = || format!("failed to run plugin command {}", env.plugin_env.name());
     wasi_read_bytes(&env.plugin_env.wasi_env)
         .and_then(|bytes| {
             let command: ProtobufPluginCommand = ProtobufPluginCommand::decode(bytes.as_slice())?;
             let command: PluginCommand = command
                 .try_into()
                 .map_err(|e| anyhow!("failed to convert serialized command: {}", e))?;
-            match command {
-                PluginCommand::Subscribe(event_list) => subscribe(env, event_list)?,
-                PluginCommand::Unsubscribe(event_list) => unsubscribe(env, event_list)?,
-                PluginCommand::SetSelectable(selectable) => set_selectable(env, selectable),
-                PluginCommand::GetPluginIds => get_plugin_ids(env),
-                PluginCommand::GetZellijVersion => get_zellij_version(env),
-                PluginCommand::OpenFile(file_to_open) => open_file(env, file_to_open),
-                PluginCommand::OpenFileFloating(file_to_open) => {
-                    open_file_floating(env, file_to_open)
+            // TODO: CONTINUE HERE - 
+            // * get current tests to work again, then write tests for this and event
+            match check_command_permission(&env.plugin_env, &command) {
+                (PermissionStatus::Granted, _) => {
+                    match command {
+                        PluginCommand::Subscribe(event_list) => subscribe(env, event_list)?,
+                        PluginCommand::Unsubscribe(event_list) => unsubscribe(env, event_list)?,
+                        PluginCommand::SetSelectable(selectable) => set_selectable(env, selectable),
+                        PluginCommand::GetPluginIds => get_plugin_ids(env),
+                        PluginCommand::GetZellijVersion => get_zellij_version(env),
+                        PluginCommand::OpenFile(file_to_open) => open_file(env, file_to_open),
+                        PluginCommand::OpenFileFloating(file_to_open) => {
+                            open_file_floating(env, file_to_open)
+                        },
+                        PluginCommand::OpenTerminal(cwd) => open_terminal(env, cwd.path.try_into()?),
+                        PluginCommand::OpenTerminalFloating(cwd) => {
+                            open_terminal_floating(env, cwd.path.try_into()?)
+                        },
+                        PluginCommand::OpenCommandPane(command_to_run) => {
+                            open_command_pane(env, command_to_run)
+                        },
+                        PluginCommand::OpenCommandPaneFloating(command_to_run) => {
+                            open_command_pane_floating(env, command_to_run)
+                        },
+                        PluginCommand::SwitchTabTo(tab_index) => switch_tab_to(env, tab_index),
+                        PluginCommand::SetTimeout(seconds) => set_timeout(env, seconds),
+                        PluginCommand::ExecCmd(command_line) => exec_cmd(env, command_line),
+                        PluginCommand::PostMessageTo(plugin_message) => {
+                            post_message_to(env, plugin_message)?
+                        },
+                        PluginCommand::PostMessageToPlugin(plugin_message) => {
+                            post_message_to_plugin(env, plugin_message)?
+                        },
+                        PluginCommand::HideSelf => hide_self(env)?,
+                        PluginCommand::ShowSelf(should_float_if_hidden) => {
+                            show_self(env, should_float_if_hidden)
+                        },
+                        PluginCommand::SwitchToMode(input_mode) => {
+                            switch_to_mode(env, input_mode.try_into()?)
+                        },
+                        PluginCommand::NewTabsWithLayout(raw_layout) => {
+                            new_tabs_with_layout(env, &raw_layout)?
+                        },
+                        PluginCommand::NewTab => new_tab(env),
+                        PluginCommand::GoToNextTab => go_to_next_tab(env),
+                        PluginCommand::GoToPreviousTab => go_to_previous_tab(env),
+                        PluginCommand::Resize(resize_payload) => resize(env, resize_payload),
+                        PluginCommand::ResizeWithDirection(resize_strategy) => {
+                            resize_with_direction(env, resize_strategy)
+                        },
+                        PluginCommand::FocusNextPane => focus_next_pane(env),
+                        PluginCommand::FocusPreviousPane => focus_previous_pane(env),
+                        PluginCommand::MoveFocus(direction) => move_focus(env, direction),
+                        PluginCommand::MoveFocusOrTab(direction) => move_focus_or_tab(env, direction),
+                        PluginCommand::Detach => detach(env),
+                        PluginCommand::EditScrollback => edit_scrollback(env),
+                        PluginCommand::Write(bytes) => write(env, bytes),
+                        PluginCommand::WriteChars(chars) => write_chars(env, chars),
+                        PluginCommand::ToggleTab => toggle_tab(env),
+                        PluginCommand::MovePane => move_pane(env),
+                        PluginCommand::MovePaneWithDirection(direction) => {
+                            move_pane_with_direction(env, direction)
+                        },
+                        PluginCommand::ClearScreen => clear_screen(env),
+                        PluginCommand::ScrollUp => scroll_up(env),
+                        PluginCommand::ScrollDown => scroll_down(env),
+                        PluginCommand::ScrollToTop => scroll_to_top(env),
+                        PluginCommand::ScrollToBottom => scroll_to_bottom(env),
+                        PluginCommand::PageScrollUp => page_scroll_up(env),
+                        PluginCommand::PageScrollDown => page_scroll_down(env),
+                        PluginCommand::ToggleFocusFullscreen => toggle_focus_fullscreen(env),
+                        PluginCommand::TogglePaneFrames => toggle_pane_frames(env),
+                        PluginCommand::TogglePaneEmbedOrEject => toggle_pane_embed_or_eject(env),
+                        PluginCommand::UndoRenamePane => undo_rename_pane(env),
+                        PluginCommand::CloseFocus => close_focus(env),
+                        PluginCommand::ToggleActiveTabSync => toggle_active_tab_sync(env),
+                        PluginCommand::CloseFocusedTab => close_focused_tab(env),
+                        PluginCommand::UndoRenameTab => undo_rename_tab(env),
+                        PluginCommand::QuitZellij => quit_zellij(env),
+                        PluginCommand::PreviousSwapLayout => previous_swap_layout(env),
+                        PluginCommand::NextSwapLayout => next_swap_layout(env),
+                        PluginCommand::GoToTabName(tab_name) => go_to_tab_name(env, tab_name),
+                        PluginCommand::FocusOrCreateTab(tab_name) => focus_or_create_tab(env, tab_name),
+                        PluginCommand::GoToTab(tab_index) => go_to_tab(env, tab_index),
+                        PluginCommand::StartOrReloadPlugin(plugin_url) => {
+                            start_or_reload_plugin(env, &plugin_url)?
+                        },
+                        PluginCommand::CloseTerminalPane(terminal_pane_id) => {
+                            close_terminal_pane(env, terminal_pane_id)
+                        },
+                        PluginCommand::ClosePluginPane(plugin_pane_id) => {
+                            close_plugin_pane(env, plugin_pane_id)
+                        },
+                        PluginCommand::FocusTerminalPane(terminal_pane_id, should_float_if_hidden) => {
+                            focus_terminal_pane(env, terminal_pane_id, should_float_if_hidden)
+                        },
+                        PluginCommand::FocusPluginPane(plugin_pane_id, should_float_if_hidden) => {
+                            focus_plugin_pane(env, plugin_pane_id, should_float_if_hidden)
+                        },
+                        PluginCommand::RenameTerminalPane(terminal_pane_id, new_name) => {
+                            rename_terminal_pane(env, terminal_pane_id, &new_name)
+                        },
+                        PluginCommand::RenamePluginPane(plugin_pane_id, new_name) => {
+                            rename_plugin_pane(env, plugin_pane_id, &new_name)
+                        },
+                        PluginCommand::RenameTab(tab_index, new_name) => {
+                            rename_tab(env, tab_index, &new_name)
+                        },
+                        PluginCommand::ReportPanic(crash_payload) => report_panic(env, &crash_payload),
+                        PluginCommand::RequestPluginPermissions(permissions) => {
+                            request_permission(env, permissions)?
+                        },
+                    }
+                }
+                (PermissionStatus::Denied, permission) => {
+                    log::error!(
+                        "Plugin '{}' permission '{}' denied - Command '{:?}' denied",
+                        env.plugin_env.name(),
+                        permission.map(|p| p.to_string()).unwrap_or("UNKNOWN".to_owned()),
+                        CommandType::from_str(&command.to_string()).with_context(err_context)?
+                    );
                 },
-                PluginCommand::OpenTerminal(cwd) => open_terminal(env, cwd.path.try_into()?),
-                PluginCommand::OpenTerminalFloating(cwd) => {
-                    open_terminal_floating(env, cwd.path.try_into()?)
-                },
-                PluginCommand::OpenCommandPane(command_to_run) => {
-                    open_command_pane(env, command_to_run)
-                },
-                PluginCommand::OpenCommandPaneFloating(command_to_run) => {
-                    open_command_pane_floating(env, command_to_run)
-                },
-                PluginCommand::SwitchTabTo(tab_index) => switch_tab_to(env, tab_index),
-                PluginCommand::SetTimeout(seconds) => set_timeout(env, seconds),
-                PluginCommand::ExecCmd(command_line) => exec_cmd(env, command_line),
-                PluginCommand::PostMessageTo(plugin_message) => {
-                    post_message_to(env, plugin_message)?
-                },
-                PluginCommand::PostMessageToPlugin(plugin_message) => {
-                    post_message_to_plugin(env, plugin_message)?
-                },
-                PluginCommand::HideSelf => hide_self(env)?,
-                PluginCommand::ShowSelf(should_float_if_hidden) => {
-                    show_self(env, should_float_if_hidden)
-                },
-                PluginCommand::SwitchToMode(input_mode) => {
-                    switch_to_mode(env, input_mode.try_into()?)
-                },
-                PluginCommand::NewTabsWithLayout(raw_layout) => {
-                    new_tabs_with_layout(env, &raw_layout)?
-                },
-                PluginCommand::NewTab => new_tab(env),
-                PluginCommand::GoToNextTab => go_to_next_tab(env),
-                PluginCommand::GoToPreviousTab => go_to_previous_tab(env),
-                PluginCommand::Resize(resize_payload) => resize(env, resize_payload),
-                PluginCommand::ResizeWithDirection(resize_strategy) => {
-                    resize_with_direction(env, resize_strategy)
-                },
-                PluginCommand::FocusNextPane => focus_next_pane(env),
-                PluginCommand::FocusPreviousPane => focus_previous_pane(env),
-                PluginCommand::MoveFocus(direction) => move_focus(env, direction),
-                PluginCommand::MoveFocusOrTab(direction) => move_focus_or_tab(env, direction),
-                PluginCommand::Detach => detach(env),
-                PluginCommand::EditScrollback => edit_scrollback(env),
-                PluginCommand::Write(bytes) => write(env, bytes),
-                PluginCommand::WriteChars(chars) => write_chars(env, chars),
-                PluginCommand::ToggleTab => toggle_tab(env),
-                PluginCommand::MovePane => move_pane(env),
-                PluginCommand::MovePaneWithDirection(direction) => {
-                    move_pane_with_direction(env, direction)
-                },
-                PluginCommand::ClearScreen => clear_screen(env),
-                PluginCommand::ScrollUp => scroll_up(env),
-                PluginCommand::ScrollDown => scroll_down(env),
-                PluginCommand::ScrollToTop => scroll_to_top(env),
-                PluginCommand::ScrollToBottom => scroll_to_bottom(env),
-                PluginCommand::PageScrollUp => page_scroll_up(env),
-                PluginCommand::PageScrollDown => page_scroll_down(env),
-                PluginCommand::ToggleFocusFullscreen => toggle_focus_fullscreen(env),
-                PluginCommand::TogglePaneFrames => toggle_pane_frames(env),
-                PluginCommand::TogglePaneEmbedOrEject => toggle_pane_embed_or_eject(env),
-                PluginCommand::UndoRenamePane => undo_rename_pane(env),
-                PluginCommand::CloseFocus => close_focus(env),
-                PluginCommand::ToggleActiveTabSync => toggle_active_tab_sync(env),
-                PluginCommand::CloseFocusedTab => close_focused_tab(env),
-                PluginCommand::UndoRenameTab => undo_rename_tab(env),
-                PluginCommand::QuitZellij => quit_zellij(env),
-                PluginCommand::PreviousSwapLayout => previous_swap_layout(env),
-                PluginCommand::NextSwapLayout => next_swap_layout(env),
-                PluginCommand::GoToTabName(tab_name) => go_to_tab_name(env, tab_name),
-                PluginCommand::FocusOrCreateTab(tab_name) => focus_or_create_tab(env, tab_name),
-                PluginCommand::GoToTab(tab_index) => go_to_tab(env, tab_index),
-                PluginCommand::StartOrReloadPlugin(plugin_url) => {
-                    start_or_reload_plugin(env, &plugin_url)?
-                },
-                PluginCommand::CloseTerminalPane(terminal_pane_id) => {
-                    close_terminal_pane(env, terminal_pane_id)
-                },
-                PluginCommand::ClosePluginPane(plugin_pane_id) => {
-                    close_plugin_pane(env, plugin_pane_id)
-                },
-                PluginCommand::FocusTerminalPane(terminal_pane_id, should_float_if_hidden) => {
-                    focus_terminal_pane(env, terminal_pane_id, should_float_if_hidden)
-                },
-                PluginCommand::FocusPluginPane(plugin_pane_id, should_float_if_hidden) => {
-                    focus_plugin_pane(env, plugin_pane_id, should_float_if_hidden)
-                },
-                PluginCommand::RenameTerminalPane(terminal_pane_id, new_name) => {
-                    rename_terminal_pane(env, terminal_pane_id, &new_name)
-                },
-                PluginCommand::RenamePluginPane(plugin_pane_id, new_name) => {
-                    rename_plugin_pane(env, plugin_pane_id, &new_name)
-                },
-                PluginCommand::RenameTab(tab_index, new_name) => {
-                    rename_tab(env, tab_index, &new_name)
-                },
-                PluginCommand::ReportPanic(crash_payload) => report_panic(env, &crash_payload),
-                PluginCommand::RequestPluginPermissions(permissions) => {
-                    request_permission(env, permissions)?
-                },
-            }
+            };
             Ok(())
         })
         .with_context(|| format!("failed to run plugin command {}", env.plugin_env.name()))
@@ -271,7 +287,7 @@ fn request_permission(env: &ForeignFunctionEnv, permissions: Vec<PermissionType>
                 env.plugin_env.plugin_id,
                 Some(env.plugin_env.client_id),
                 permissions.to_vec(),
-                zellij_utils::data::PermissionStatus::Granted,
+                PermissionStatus::Granted,
                 None,
             ));
     }
@@ -1029,4 +1045,79 @@ pub fn wasi_read_bytes(wasi_env: &WasiEnv) -> Result<Vec<u8>> {
     wasi_read_string(wasi_env)
         .and_then(|string| serde_json::from_str(&string).map_err(anyError::new))
         .with_context(|| format!("failed to deserialize object from WASI env '{wasi_env:?}'"))
+}
+
+// TODO: move to permissions?
+fn check_command_permission(plugin_env: &PluginEnv, command: &PluginCommand) -> (PermissionStatus, Option<PermissionType>) {
+    if plugin_env.plugin.is_builtin() {
+        // built-in plugins can do all the things because they're part of the application and
+        // there's no use to deny them anything
+        return (PermissionStatus::Granted, None);
+    }
+    let permission = match command {
+        PluginCommand::OpenFile(..) |
+        PluginCommand::OpenFileFloating(..) => PermissionType::OpenFiles,
+        PluginCommand::OpenTerminal(..) |
+        PluginCommand::StartOrReloadPlugin(..) |
+        PluginCommand::OpenTerminalFloating(..)  => PermissionType::OpenTerminalsOrPlugins,
+        PluginCommand::OpenCommandPane(..) |
+        PluginCommand::OpenCommandPaneFloating(..) |
+        PluginCommand::ExecCmd(..) => PermissionType::RunCommands,
+        PluginCommand::Write(..) |
+        PluginCommand::WriteChars(..) => PermissionType::WriteToStdin,
+        PluginCommand::SwitchTabTo(..) |
+        PluginCommand::SwitchToMode(..) |
+        PluginCommand::NewTabsWithLayout(..) |
+        PluginCommand::NewTab |
+        PluginCommand::GoToNextTab |
+        PluginCommand::GoToPreviousTab |
+        PluginCommand::Resize(..) |
+        PluginCommand::ResizeWithDirection(..) |
+        PluginCommand::FocusNextPane |
+        PluginCommand::MoveFocus(..) |
+        PluginCommand::MoveFocusOrTab(..) |
+        PluginCommand::Detach |
+        PluginCommand::EditScrollback |
+        PluginCommand::ToggleTab |
+        PluginCommand::MovePane |
+        PluginCommand::MovePaneWithDirection(..) |
+        PluginCommand::ClearScreen |
+        PluginCommand::ScrollUp |
+        PluginCommand::ScrollDown |
+        PluginCommand::ScrollToTop |
+        PluginCommand::ScrollToBottom |
+        PluginCommand::PageScrollUp |
+        PluginCommand::PageScrollDown |
+        PluginCommand::ToggleFocusFullscreen |
+        PluginCommand::TogglePaneFrames |
+        PluginCommand::TogglePaneEmbedOrEject |
+        PluginCommand::UndoRenamePane |
+        PluginCommand::CloseFocus |
+        PluginCommand::ToggleActiveTabSync |
+        PluginCommand::CloseFocusedTab |
+        PluginCommand::UndoRenameTab |
+        PluginCommand::QuitZellij |
+        PluginCommand::PreviousSwapLayout |
+        PluginCommand::NextSwapLayout |
+        PluginCommand::GoToTabName(..) |
+        PluginCommand::FocusOrCreateTab(..) |
+        PluginCommand::GoToTab(..) |
+        PluginCommand::CloseTerminalPane(..) |
+        PluginCommand::ClosePluginPane(..) |
+        PluginCommand::FocusTerminalPane(..) |
+        PluginCommand::FocusPluginPane(..) |
+        PluginCommand::RenameTerminalPane(..) |
+        PluginCommand::RenamePluginPane(..) |
+        PluginCommand::RenameTab(..) => PermissionType::ChangeApplicationState,
+        _ => return (PermissionStatus::Granted, None),
+    };
+
+    log::info!("plugin permissions: {:?}", plugin_env.permissions);
+    if let Some(permissions) = plugin_env.permissions.lock().unwrap().as_ref() {
+        if permissions.contains(&permission) {
+            return (PermissionStatus::Granted, None);
+        }
+    }
+
+    (PermissionStatus::Denied, Some(permission))
 }

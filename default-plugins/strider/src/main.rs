@@ -20,7 +20,6 @@ register_worker!(
 
 impl ZellijPlugin for State {
     fn load(&mut self, configuration: BTreeMap<String, String>) {
-        request_permission(&[PermissionType::KeyboardInput]);
         refresh_directory(self);
         self.search_state.loading = true;
         subscribe(&[

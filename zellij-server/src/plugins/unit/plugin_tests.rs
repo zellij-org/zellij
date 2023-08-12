@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 use tempfile::tempdir;
 use wasmer::Store;
-use zellij_utils::data::{Event, Key, PermissionStatus, PluginCapabilities};
+use zellij_utils::data::{Event, Key, PermissionStatus, PluginCapabilities, PermissionType};
 use zellij_utils::errors::ErrorContext;
 use zellij_utils::input::layout::{Layout, PluginUserConfiguration, RunPlugin, RunPluginLocation};
 use zellij_utils::input::permission::PermissionCache;
@@ -41,6 +41,110 @@ macro_rules! log_actions_in_thread {
                             log.lock().unwrap().push(event);
                             if exit_event_count == $exit_after_count {
                                 break;
+                            }
+                        },
+                        _ => {
+                            log.lock().unwrap().push(event);
+                        },
+                    }
+                }
+            })
+            .unwrap()
+    };
+}
+
+macro_rules! grant_permissions_and_log_actions_in_thread {
+    ( $arc_mutex_log:expr, $exit_event:path, $receiver:expr, $exit_after_count:expr, $permission_type:expr, $cache_path:expr, $plugin_thread_sender:expr, $client_id:expr ) => {
+        std::thread::Builder::new()
+            .name("fake_screen_thread".to_string())
+            .spawn({
+                let log = $arc_mutex_log.clone();
+                let mut exit_event_count = 0;
+                let cache_path = $cache_path.clone();
+                let plugin_thread_sender = $plugin_thread_sender.clone();
+                move || loop {
+                    let (event, _err_ctx) = $receiver
+                        .recv()
+                        .expect("failed to receive event on channel");
+                    match event {
+                        $exit_event(..) => {
+                            exit_event_count += 1;
+                            log.lock().unwrap().push(event);
+                            if exit_event_count == $exit_after_count {
+                                break;
+                            }
+                        },
+                        ScreenInstruction::RequestPluginPermissions(_, plugin_permission) => {
+                            if plugin_permission.permissions.contains($permission_type) {
+                                let _ =
+                                    plugin_thread_sender.send(PluginInstruction::PermissionRequestResult(
+                                        0,
+                                        Some($client_id),
+                                        plugin_permission.permissions,
+                                        PermissionStatus::Granted,
+                                        Some(cache_path.clone()),
+                                    ));
+                            } else {
+                                let _ =
+                                    plugin_thread_sender.send(PluginInstruction::PermissionRequestResult(
+                                        0,
+                                        Some($client_id),
+                                        plugin_permission.permissions,
+                                        PermissionStatus::Denied,
+                                        Some(cache_path.clone()),
+                                    ));
+                            }
+                        },
+                        _ => {
+                            log.lock().unwrap().push(event);
+                        },
+                    }
+                }
+            })
+            .unwrap()
+    };
+}
+
+macro_rules! grant_permissions_and_log_actions_in_thread_naked_variant {
+    ( $arc_mutex_log:expr, $exit_event:path, $receiver:expr, $exit_after_count:expr, $permission_type:expr, $cache_path:expr, $plugin_thread_sender:expr, $client_id:expr ) => {
+        std::thread::Builder::new()
+            .name("fake_screen_thread".to_string())
+            .spawn({
+                let log = $arc_mutex_log.clone();
+                let mut exit_event_count = 0;
+                let cache_path = $cache_path.clone();
+                let plugin_thread_sender = $plugin_thread_sender.clone();
+                move || loop {
+                    let (event, _err_ctx) = $receiver
+                        .recv()
+                        .expect("failed to receive event on channel");
+                    match event {
+                        $exit_event => {
+                            exit_event_count += 1;
+                            log.lock().unwrap().push(event);
+                            if exit_event_count == $exit_after_count {
+                                break;
+                            }
+                        },
+                        ScreenInstruction::RequestPluginPermissions(_, plugin_permission) => {
+                            if plugin_permission.permissions.contains($permission_type) {
+                                let _ =
+                                    plugin_thread_sender.send(PluginInstruction::PermissionRequestResult(
+                                        0,
+                                        Some($client_id),
+                                        plugin_permission.permissions,
+                                        PermissionStatus::Granted,
+                                        Some(cache_path.clone()),
+                                    ));
+                            } else {
+                                let _ =
+                                    plugin_thread_sender.send(PluginInstruction::PermissionRequestResult(
+                                        0,
+                                        Some($client_id),
+                                        plugin_permission.permissions,
+                                        PermissionStatus::Denied,
+                                        Some(cache_path.clone()),
+                                    ));
                             }
                         },
                         _ => {
@@ -168,13 +272,14 @@ fn create_plugin_thread_with_server_receiver(
 ) -> (
     SenderWithContext<PluginInstruction>,
     Receiver<(ServerInstruction, ErrorContext)>,
+    Receiver<(ScreenInstruction, ErrorContext)>,
     Box<dyn FnMut()>,
 ) {
     let zellij_cwd = zellij_cwd.unwrap_or_else(|| PathBuf::from("."));
     let (to_server, server_receiver): ChannelWithContext<ServerInstruction> = channels::bounded(50);
     let to_server = SenderWithContext::new(to_server);
 
-    let (to_screen, _screen_receiver): ChannelWithContext<ScreenInstruction> =
+    let (to_screen, screen_receiver): ChannelWithContext<ScreenInstruction> =
         channels::unbounded();
     let to_screen = SenderWithContext::new(to_screen);
 
@@ -241,7 +346,7 @@ fn create_plugin_thread_with_server_receiver(
                                                                        // the plugin cache
         }
     };
-    (to_plugin, server_receiver, Box::new(teardown))
+    (to_plugin, server_receiver, screen_receiver, Box::new(teardown))
 }
 
 fn create_plugin_thread_with_pty_receiver(
@@ -249,6 +354,7 @@ fn create_plugin_thread_with_pty_receiver(
 ) -> (
     SenderWithContext<PluginInstruction>,
     Receiver<(PtyInstruction, ErrorContext)>,
+    Receiver<(ScreenInstruction, ErrorContext)>,
     Box<dyn FnMut()>,
 ) {
     let zellij_cwd = zellij_cwd.unwrap_or_else(|| PathBuf::from("."));
@@ -256,7 +362,7 @@ fn create_plugin_thread_with_pty_receiver(
         channels::bounded(50);
     let to_server = SenderWithContext::new(to_server);
 
-    let (to_screen, _screen_receiver): ChannelWithContext<ScreenInstruction> =
+    let (to_screen, screen_receiver): ChannelWithContext<ScreenInstruction> =
         channels::unbounded();
     let to_screen = SenderWithContext::new(to_screen);
 
@@ -323,7 +429,7 @@ fn create_plugin_thread_with_pty_receiver(
                                                                        // the plugin cache
         }
     };
-    (to_plugin, pty_receiver, Box::new(teardown))
+    (to_plugin, pty_receiver, screen_receiver, Box::new(teardown))
 }
 
 lazy_static! {
@@ -345,6 +451,9 @@ pub fn load_new_plugin_from_hd() {
     // message (this is what the fixture plugin does)
     // we then listen on our mock screen receiver to make sure we got a PluginBytes instruction
     // that contains said render, and assert against it
+    let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
+    let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
     let (plugin_thread_sender, screen_receiver, mut teardown) = create_plugin_thread(None);
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -360,11 +469,15 @@ pub fn load_new_plugin_from_hd() {
         rows: 20,
     };
     let received_screen_instructions = Arc::new(Mutex::new(vec![]));
-    let screen_thread = log_actions_in_thread!(
+    let screen_thread = grant_permissions_and_log_actions_in_thread!(
         received_screen_instructions,
         ScreenInstruction::PluginBytes,
         screen_receiver,
-        2
+        2,
+        &PermissionType::ChangeApplicationState,
+        cache_path,
+        plugin_thread_sender,
+        client_id
     );
 
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
@@ -404,8 +517,12 @@ pub fn load_new_plugin_from_hd() {
 #[test]
 #[ignore]
 pub fn plugin_workers() {
+    let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
+                                          // destructor removes the directory
     let (plugin_thread_sender, screen_receiver, mut teardown) = create_plugin_thread(None);
     let plugin_should_float = Some(false);
+    let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
     let plugin_title = Some("test_plugin".to_owned());
     let run_plugin = RunPlugin {
         _allow_exec_host_cmd: false,
@@ -419,11 +536,15 @@ pub fn plugin_workers() {
         rows: 20,
     };
     let received_screen_instructions = Arc::new(Mutex::new(vec![]));
-    let screen_thread = log_actions_in_thread!(
+    let screen_thread = grant_permissions_and_log_actions_in_thread!(
         received_screen_instructions,
         ScreenInstruction::PluginBytes,
         screen_receiver,
-        3
+        3,
+        &PermissionType::ChangeApplicationState,
+        cache_path,
+        plugin_thread_sender,
+        client_id
     );
 
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
@@ -466,8 +587,12 @@ pub fn plugin_workers() {
 #[test]
 #[ignore]
 pub fn plugin_workers_persist_state() {
+    let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
+                                          // destructor removes the directory
     let (plugin_thread_sender, screen_receiver, mut teardown) = create_plugin_thread(None);
     let plugin_should_float = Some(false);
+    let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
     let plugin_title = Some("test_plugin".to_owned());
     let run_plugin = RunPlugin {
         _allow_exec_host_cmd: false,
@@ -481,11 +606,15 @@ pub fn plugin_workers_persist_state() {
         rows: 20,
     };
     let received_screen_instructions = Arc::new(Mutex::new(vec![]));
-    let screen_thread = log_actions_in_thread!(
+    let screen_thread = grant_permissions_and_log_actions_in_thread!(
         received_screen_instructions,
         ScreenInstruction::PluginBytes,
         screen_receiver,
-        5
+        5,
+        &PermissionType::ChangeApplicationState,
+        cache_path,
+        plugin_thread_sender,
+        client_id
     );
 
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
@@ -604,6 +733,7 @@ pub fn switch_to_mode_plugin_command() {
     let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
     let (plugin_thread_sender, screen_receiver, mut teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
@@ -620,11 +750,15 @@ pub fn switch_to_mode_plugin_command() {
         rows: 20,
     };
     let received_screen_instructions = Arc::new(Mutex::new(vec![]));
-    let screen_thread = log_actions_in_thread!(
+    let screen_thread = grant_permissions_and_log_actions_in_thread!(
         received_screen_instructions,
         ScreenInstruction::ChangeMode,
         screen_receiver,
-        1
+        1,
+        &PermissionType::ChangeApplicationState,
+        cache_path,
+        plugin_thread_sender,
+        client_id
     );
 
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
@@ -666,6 +800,7 @@ pub fn new_tabs_with_layout_plugin_command() {
     let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
     let (plugin_thread_sender, screen_receiver, mut teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
@@ -682,11 +817,15 @@ pub fn new_tabs_with_layout_plugin_command() {
         rows: 20,
     };
     let received_screen_instructions = Arc::new(Mutex::new(vec![]));
-    let screen_thread = log_actions_in_thread!(
+    let screen_thread = grant_permissions_and_log_actions_in_thread!(
         received_screen_instructions,
         ScreenInstruction::NewTab,
         screen_receiver,
-        2
+        2,
+        &PermissionType::ChangeApplicationState,
+        cache_path,
+        plugin_thread_sender,
+        client_id
     );
 
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
@@ -742,6 +881,7 @@ pub fn new_tab_plugin_command() {
     let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
     let (plugin_thread_sender, screen_receiver, mut teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
@@ -758,11 +898,15 @@ pub fn new_tab_plugin_command() {
         rows: 20,
     };
     let received_screen_instructions = Arc::new(Mutex::new(vec![]));
-    let screen_thread = log_actions_in_thread!(
+    let screen_thread = grant_permissions_and_log_actions_in_thread!(
         received_screen_instructions,
         ScreenInstruction::NewTab,
         screen_receiver,
-        1
+        1,
+        &PermissionType::ChangeApplicationState,
+        cache_path,
+        plugin_thread_sender,
+        client_id
     );
 
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
@@ -804,6 +948,7 @@ pub fn go_to_next_tab_plugin_command() {
     let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
     let (plugin_thread_sender, screen_receiver, mut teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
@@ -820,11 +965,15 @@ pub fn go_to_next_tab_plugin_command() {
         rows: 20,
     };
     let received_screen_instructions = Arc::new(Mutex::new(vec![]));
-    let screen_thread = log_actions_in_thread!(
+    let screen_thread = grant_permissions_and_log_actions_in_thread!(
         received_screen_instructions,
         ScreenInstruction::SwitchTabNext,
         screen_receiver,
-        1
+        1,
+        &PermissionType::ChangeApplicationState,
+        cache_path,
+        plugin_thread_sender,
+        client_id
     );
 
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
@@ -865,6 +1014,7 @@ pub fn go_to_previous_tab_plugin_command() {
     let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
     let (plugin_thread_sender, screen_receiver, mut teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
@@ -881,11 +1031,15 @@ pub fn go_to_previous_tab_plugin_command() {
         rows: 20,
     };
     let received_screen_instructions = Arc::new(Mutex::new(vec![]));
-    let screen_thread = log_actions_in_thread!(
+    let screen_thread = grant_permissions_and_log_actions_in_thread!(
         received_screen_instructions,
         ScreenInstruction::SwitchTabPrev,
         screen_receiver,
-        1
+        1,
+        &PermissionType::ChangeApplicationState,
+        cache_path,
+        plugin_thread_sender,
+        client_id
     );
 
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
@@ -926,6 +1080,7 @@ pub fn resize_focused_pane_plugin_command() {
     let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
     let (plugin_thread_sender, screen_receiver, mut teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
@@ -942,11 +1097,15 @@ pub fn resize_focused_pane_plugin_command() {
         rows: 20,
     };
     let received_screen_instructions = Arc::new(Mutex::new(vec![]));
-    let screen_thread = log_actions_in_thread!(
+    let screen_thread = grant_permissions_and_log_actions_in_thread!(
         received_screen_instructions,
         ScreenInstruction::Resize,
         screen_receiver,
-        1
+        1,
+        &PermissionType::ChangeApplicationState,
+        cache_path,
+        plugin_thread_sender,
+        client_id
     );
 
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
@@ -987,6 +1146,7 @@ pub fn resize_focused_pane_with_direction_plugin_command() {
     let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
     let (plugin_thread_sender, screen_receiver, mut teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
@@ -1003,11 +1163,15 @@ pub fn resize_focused_pane_with_direction_plugin_command() {
         rows: 20,
     };
     let received_screen_instructions = Arc::new(Mutex::new(vec![]));
-    let screen_thread = log_actions_in_thread!(
+    let screen_thread = grant_permissions_and_log_actions_in_thread!(
         received_screen_instructions,
         ScreenInstruction::Resize,
         screen_receiver,
-        1
+        1,
+        &PermissionType::ChangeApplicationState,
+        cache_path,
+        plugin_thread_sender,
+        client_id
     );
 
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
@@ -1048,6 +1212,7 @@ pub fn focus_next_pane_plugin_command() {
     let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
     let (plugin_thread_sender, screen_receiver, mut teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
@@ -1064,11 +1229,15 @@ pub fn focus_next_pane_plugin_command() {
         rows: 20,
     };
     let received_screen_instructions = Arc::new(Mutex::new(vec![]));
-    let screen_thread = log_actions_in_thread!(
+    let screen_thread = grant_permissions_and_log_actions_in_thread!(
         received_screen_instructions,
         ScreenInstruction::FocusNextPane,
         screen_receiver,
-        1
+        1,
+        &PermissionType::ChangeApplicationState,
+        cache_path,
+        plugin_thread_sender,
+        client_id
     );
 
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
@@ -1109,6 +1278,7 @@ pub fn focus_previous_pane_plugin_command() {
     let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
     let (plugin_thread_sender, screen_receiver, mut teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
@@ -1125,11 +1295,15 @@ pub fn focus_previous_pane_plugin_command() {
         rows: 20,
     };
     let received_screen_instructions = Arc::new(Mutex::new(vec![]));
-    let screen_thread = log_actions_in_thread!(
+    let screen_thread = grant_permissions_and_log_actions_in_thread!(
         received_screen_instructions,
         ScreenInstruction::FocusPreviousPane,
         screen_receiver,
-        1
+        1,
+        &PermissionType::ChangeApplicationState,
+        cache_path,
+        plugin_thread_sender,
+        client_id
     );
 
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
@@ -1170,6 +1344,7 @@ pub fn move_focus_plugin_command() {
     let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
     let (plugin_thread_sender, screen_receiver, mut teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
@@ -1186,11 +1361,15 @@ pub fn move_focus_plugin_command() {
         rows: 20,
     };
     let received_screen_instructions = Arc::new(Mutex::new(vec![]));
-    let screen_thread = log_actions_in_thread!(
+    let screen_thread = grant_permissions_and_log_actions_in_thread!(
         received_screen_instructions,
         ScreenInstruction::MoveFocusLeft,
         screen_receiver,
-        1
+        1,
+        &PermissionType::ChangeApplicationState,
+        cache_path,
+        plugin_thread_sender,
+        client_id
     );
 
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
@@ -1231,6 +1410,7 @@ pub fn move_focus_or_tab_plugin_command() {
     let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
     let (plugin_thread_sender, screen_receiver, mut teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
@@ -1247,11 +1427,15 @@ pub fn move_focus_or_tab_plugin_command() {
         rows: 20,
     };
     let received_screen_instructions = Arc::new(Mutex::new(vec![]));
-    let screen_thread = log_actions_in_thread!(
+    let screen_thread = grant_permissions_and_log_actions_in_thread!(
         received_screen_instructions,
         ScreenInstruction::MoveFocusLeftOrPreviousTab,
         screen_receiver,
-        1
+        1,
+        &PermissionType::ChangeApplicationState,
+        cache_path,
+        plugin_thread_sender,
+        client_id
     );
 
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
@@ -1292,6 +1476,7 @@ pub fn edit_scrollback_plugin_command() {
     let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
     let (plugin_thread_sender, screen_receiver, mut teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
@@ -1308,11 +1493,15 @@ pub fn edit_scrollback_plugin_command() {
         rows: 20,
     };
     let received_screen_instructions = Arc::new(Mutex::new(vec![]));
-    let screen_thread = log_actions_in_thread!(
+    let screen_thread = grant_permissions_and_log_actions_in_thread!(
         received_screen_instructions,
         ScreenInstruction::EditScrollback,
         screen_receiver,
-        1
+        1,
+        &PermissionType::ChangeApplicationState,
+        cache_path,
+        plugin_thread_sender,
+        client_id
     );
 
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
@@ -1353,6 +1542,7 @@ pub fn write_plugin_command() {
     let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
     let (plugin_thread_sender, screen_receiver, mut teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
@@ -1369,11 +1559,15 @@ pub fn write_plugin_command() {
         rows: 20,
     };
     let received_screen_instructions = Arc::new(Mutex::new(vec![]));
-    let screen_thread = log_actions_in_thread!(
+    let screen_thread = grant_permissions_and_log_actions_in_thread!(
         received_screen_instructions,
         ScreenInstruction::WriteCharacter,
         screen_receiver,
-        1
+        1,
+        &PermissionType::WriteToStdin,
+        cache_path,
+        plugin_thread_sender,
+        client_id
     );
 
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
@@ -1414,6 +1608,7 @@ pub fn write_chars_plugin_command() {
     let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
     let (plugin_thread_sender, screen_receiver, mut teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
@@ -1430,11 +1625,15 @@ pub fn write_chars_plugin_command() {
         rows: 20,
     };
     let received_screen_instructions = Arc::new(Mutex::new(vec![]));
-    let screen_thread = log_actions_in_thread!(
+    let screen_thread = grant_permissions_and_log_actions_in_thread!(
         received_screen_instructions,
         ScreenInstruction::WriteCharacter,
         screen_receiver,
-        1
+        1,
+        &PermissionType::WriteToStdin,
+        cache_path,
+        plugin_thread_sender,
+        client_id
     );
 
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
@@ -1475,6 +1674,7 @@ pub fn toggle_tab_plugin_command() {
     let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
     let (plugin_thread_sender, screen_receiver, mut teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
@@ -1491,11 +1691,15 @@ pub fn toggle_tab_plugin_command() {
         rows: 20,
     };
     let received_screen_instructions = Arc::new(Mutex::new(vec![]));
-    let screen_thread = log_actions_in_thread!(
+    let screen_thread = grant_permissions_and_log_actions_in_thread!(
         received_screen_instructions,
         ScreenInstruction::ToggleTab,
         screen_receiver,
-        1
+        1,
+        &PermissionType::ChangeApplicationState,
+        cache_path,
+        plugin_thread_sender,
+        client_id
     );
 
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
@@ -1536,6 +1740,7 @@ pub fn move_pane_plugin_command() {
     let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
     let (plugin_thread_sender, screen_receiver, mut teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
@@ -1552,11 +1757,15 @@ pub fn move_pane_plugin_command() {
         rows: 20,
     };
     let received_screen_instructions = Arc::new(Mutex::new(vec![]));
-    let screen_thread = log_actions_in_thread!(
+    let screen_thread = grant_permissions_and_log_actions_in_thread!(
         received_screen_instructions,
         ScreenInstruction::MovePane,
         screen_receiver,
-        1
+        1,
+        &PermissionType::ChangeApplicationState,
+        cache_path,
+        plugin_thread_sender,
+        client_id
     );
 
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
@@ -1597,6 +1806,7 @@ pub fn move_pane_with_direction_plugin_command() {
     let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
     let (plugin_thread_sender, screen_receiver, mut teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
@@ -1613,11 +1823,15 @@ pub fn move_pane_with_direction_plugin_command() {
         rows: 20,
     };
     let received_screen_instructions = Arc::new(Mutex::new(vec![]));
-    let screen_thread = log_actions_in_thread!(
+    let screen_thread = grant_permissions_and_log_actions_in_thread!(
         received_screen_instructions,
         ScreenInstruction::MovePaneLeft,
         screen_receiver,
-        1
+        1,
+        &PermissionType::ChangeApplicationState,
+        cache_path,
+        plugin_thread_sender,
+        client_id
     );
 
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
@@ -1658,6 +1872,7 @@ pub fn clear_screen_plugin_command() {
     let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
     let (plugin_thread_sender, screen_receiver, mut teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
@@ -1674,11 +1889,16 @@ pub fn clear_screen_plugin_command() {
         rows: 20,
     };
     let received_screen_instructions = Arc::new(Mutex::new(vec![]));
-    let screen_thread = log_actions_in_thread!(
+
+    let screen_thread = grant_permissions_and_log_actions_in_thread!(
         received_screen_instructions,
         ScreenInstruction::ClearScreen,
         screen_receiver,
-        1
+        1,
+        &PermissionType::ChangeApplicationState,
+        cache_path,
+        plugin_thread_sender,
+        client_id
     );
 
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
@@ -1690,6 +1910,7 @@ pub fn clear_screen_plugin_command() {
         client_id,
         size,
     ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),
@@ -1719,6 +1940,7 @@ pub fn scroll_up_plugin_command() {
     let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
     let (plugin_thread_sender, screen_receiver, mut teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
@@ -1735,11 +1957,16 @@ pub fn scroll_up_plugin_command() {
         rows: 20,
     };
     let received_screen_instructions = Arc::new(Mutex::new(vec![]));
-    let screen_thread = log_actions_in_thread!(
+
+    let screen_thread = grant_permissions_and_log_actions_in_thread!(
         received_screen_instructions,
         ScreenInstruction::ScrollUp,
         screen_receiver,
-        1
+        1,
+        &PermissionType::ChangeApplicationState,
+        cache_path,
+        plugin_thread_sender,
+        client_id
     );
 
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
@@ -1780,6 +2007,7 @@ pub fn scroll_down_plugin_command() {
     let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
     let (plugin_thread_sender, screen_receiver, mut teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
@@ -1796,11 +2024,15 @@ pub fn scroll_down_plugin_command() {
         rows: 20,
     };
     let received_screen_instructions = Arc::new(Mutex::new(vec![]));
-    let screen_thread = log_actions_in_thread!(
+    let screen_thread = grant_permissions_and_log_actions_in_thread!(
         received_screen_instructions,
         ScreenInstruction::ScrollDown,
         screen_receiver,
-        1
+        1,
+        &PermissionType::ChangeApplicationState,
+        cache_path,
+        plugin_thread_sender,
+        client_id
     );
 
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
@@ -1841,6 +2073,7 @@ pub fn scroll_to_top_plugin_command() {
     let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
     let (plugin_thread_sender, screen_receiver, mut teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
@@ -1857,11 +2090,15 @@ pub fn scroll_to_top_plugin_command() {
         rows: 20,
     };
     let received_screen_instructions = Arc::new(Mutex::new(vec![]));
-    let screen_thread = log_actions_in_thread!(
+    let screen_thread = grant_permissions_and_log_actions_in_thread!(
         received_screen_instructions,
         ScreenInstruction::ScrollToTop,
         screen_receiver,
-        1
+        1,
+        &PermissionType::ChangeApplicationState,
+        cache_path,
+        plugin_thread_sender,
+        client_id
     );
 
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
@@ -1902,6 +2139,7 @@ pub fn scroll_to_bottom_plugin_command() {
     let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
     let (plugin_thread_sender, screen_receiver, mut teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
@@ -1918,11 +2156,15 @@ pub fn scroll_to_bottom_plugin_command() {
         rows: 20,
     };
     let received_screen_instructions = Arc::new(Mutex::new(vec![]));
-    let screen_thread = log_actions_in_thread!(
+    let screen_thread = grant_permissions_and_log_actions_in_thread!(
         received_screen_instructions,
         ScreenInstruction::ScrollToBottom,
         screen_receiver,
-        1
+        1,
+        &PermissionType::ChangeApplicationState,
+        cache_path,
+        plugin_thread_sender,
+        client_id
     );
 
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
@@ -1963,6 +2205,7 @@ pub fn page_scroll_up_plugin_command() {
     let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
     let (plugin_thread_sender, screen_receiver, mut teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
@@ -1979,11 +2222,15 @@ pub fn page_scroll_up_plugin_command() {
         rows: 20,
     };
     let received_screen_instructions = Arc::new(Mutex::new(vec![]));
-    let screen_thread = log_actions_in_thread!(
+    let screen_thread = grant_permissions_and_log_actions_in_thread!(
         received_screen_instructions,
         ScreenInstruction::PageScrollUp,
         screen_receiver,
-        1
+        1,
+        &PermissionType::ChangeApplicationState,
+        cache_path,
+        plugin_thread_sender,
+        client_id
     );
 
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
@@ -2024,6 +2271,7 @@ pub fn page_scroll_down_plugin_command() {
     let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
     let (plugin_thread_sender, screen_receiver, mut teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
@@ -2040,11 +2288,15 @@ pub fn page_scroll_down_plugin_command() {
         rows: 20,
     };
     let received_screen_instructions = Arc::new(Mutex::new(vec![]));
-    let screen_thread = log_actions_in_thread!(
+    let screen_thread = grant_permissions_and_log_actions_in_thread!(
         received_screen_instructions,
         ScreenInstruction::PageScrollDown,
         screen_receiver,
-        1
+        1,
+        &PermissionType::ChangeApplicationState,
+        cache_path,
+        plugin_thread_sender,
+        client_id
     );
 
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
@@ -2085,6 +2337,7 @@ pub fn toggle_focus_fullscreen_plugin_command() {
     let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
     let (plugin_thread_sender, screen_receiver, mut teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
@@ -2101,11 +2354,15 @@ pub fn toggle_focus_fullscreen_plugin_command() {
         rows: 20,
     };
     let received_screen_instructions = Arc::new(Mutex::new(vec![]));
-    let screen_thread = log_actions_in_thread!(
+    let screen_thread = grant_permissions_and_log_actions_in_thread!(
         received_screen_instructions,
         ScreenInstruction::ToggleActiveTerminalFullscreen,
         screen_receiver,
-        1
+        1,
+        &PermissionType::ChangeApplicationState,
+        cache_path,
+        plugin_thread_sender,
+        client_id
     );
 
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
@@ -2146,6 +2403,7 @@ pub fn toggle_pane_frames_plugin_command() {
     let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
     let (plugin_thread_sender, screen_receiver, mut teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
@@ -2162,11 +2420,15 @@ pub fn toggle_pane_frames_plugin_command() {
         rows: 20,
     };
     let received_screen_instructions = Arc::new(Mutex::new(vec![]));
-    let screen_thread = log_actions_in_thread_naked_variant!(
+    let screen_thread = grant_permissions_and_log_actions_in_thread_naked_variant!(
         received_screen_instructions,
         ScreenInstruction::TogglePaneFrames,
         screen_receiver,
-        1
+        1,
+        &PermissionType::ChangeApplicationState,
+        cache_path,
+        plugin_thread_sender,
+        client_id
     );
 
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
@@ -2207,6 +2469,7 @@ pub fn toggle_pane_embed_or_eject_plugin_command() {
     let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
     let (plugin_thread_sender, screen_receiver, mut teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
@@ -2223,11 +2486,15 @@ pub fn toggle_pane_embed_or_eject_plugin_command() {
         rows: 20,
     };
     let received_screen_instructions = Arc::new(Mutex::new(vec![]));
-    let screen_thread = log_actions_in_thread!(
+    let screen_thread = grant_permissions_and_log_actions_in_thread!(
         received_screen_instructions,
         ScreenInstruction::TogglePaneEmbedOrFloating,
         screen_receiver,
-        1
+        1,
+        &PermissionType::ChangeApplicationState,
+        cache_path,
+        plugin_thread_sender,
+        client_id
     );
 
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
@@ -2268,6 +2535,7 @@ pub fn undo_rename_pane_plugin_command() {
     let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
     let (plugin_thread_sender, screen_receiver, mut teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
@@ -2284,11 +2552,15 @@ pub fn undo_rename_pane_plugin_command() {
         rows: 20,
     };
     let received_screen_instructions = Arc::new(Mutex::new(vec![]));
-    let screen_thread = log_actions_in_thread!(
+    let screen_thread = grant_permissions_and_log_actions_in_thread!(
         received_screen_instructions,
         ScreenInstruction::UndoRenamePane,
         screen_receiver,
-        1
+        1,
+        &PermissionType::ChangeApplicationState,
+        cache_path,
+        plugin_thread_sender,
+        client_id
     );
 
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
@@ -2329,6 +2601,7 @@ pub fn close_focus_plugin_command() {
     let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
     let (plugin_thread_sender, screen_receiver, mut teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
@@ -2345,11 +2618,15 @@ pub fn close_focus_plugin_command() {
         rows: 20,
     };
     let received_screen_instructions = Arc::new(Mutex::new(vec![]));
-    let screen_thread = log_actions_in_thread!(
+    let screen_thread = grant_permissions_and_log_actions_in_thread!(
         received_screen_instructions,
         ScreenInstruction::CloseFocusedPane,
         screen_receiver,
-        1
+        1,
+        &PermissionType::ChangeApplicationState,
+        cache_path,
+        plugin_thread_sender,
+        client_id
     );
 
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
@@ -2390,6 +2667,7 @@ pub fn toggle_active_tab_sync_plugin_command() {
     let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
     let (plugin_thread_sender, screen_receiver, mut teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
@@ -2406,11 +2684,15 @@ pub fn toggle_active_tab_sync_plugin_command() {
         rows: 20,
     };
     let received_screen_instructions = Arc::new(Mutex::new(vec![]));
-    let screen_thread = log_actions_in_thread!(
+    let screen_thread = grant_permissions_and_log_actions_in_thread!(
         received_screen_instructions,
         ScreenInstruction::ToggleActiveSyncTab,
         screen_receiver,
-        1
+        1,
+        &PermissionType::ChangeApplicationState,
+        cache_path,
+        plugin_thread_sender,
+        client_id
     );
 
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
@@ -2451,6 +2733,7 @@ pub fn close_focused_tab_plugin_command() {
     let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
     let (plugin_thread_sender, screen_receiver, mut teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
@@ -2467,11 +2750,15 @@ pub fn close_focused_tab_plugin_command() {
         rows: 20,
     };
     let received_screen_instructions = Arc::new(Mutex::new(vec![]));
-    let screen_thread = log_actions_in_thread!(
+    let screen_thread = grant_permissions_and_log_actions_in_thread!(
         received_screen_instructions,
         ScreenInstruction::CloseTab,
         screen_receiver,
-        1
+        1,
+        &PermissionType::ChangeApplicationState,
+        cache_path,
+        plugin_thread_sender,
+        client_id
     );
 
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
@@ -2512,6 +2799,7 @@ pub fn undo_rename_tab_plugin_command() {
     let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
     let (plugin_thread_sender, screen_receiver, mut teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
@@ -2528,11 +2816,15 @@ pub fn undo_rename_tab_plugin_command() {
         rows: 20,
     };
     let received_screen_instructions = Arc::new(Mutex::new(vec![]));
-    let screen_thread = log_actions_in_thread!(
+    let screen_thread = grant_permissions_and_log_actions_in_thread!(
         received_screen_instructions,
         ScreenInstruction::UndoRenameTab,
         screen_receiver,
-        1
+        1,
+        &PermissionType::ChangeApplicationState,
+        cache_path,
+        plugin_thread_sender,
+        client_id
     );
 
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
@@ -2573,6 +2865,7 @@ pub fn previous_swap_layout_plugin_command() {
     let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
     let (plugin_thread_sender, screen_receiver, mut teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
@@ -2589,11 +2882,15 @@ pub fn previous_swap_layout_plugin_command() {
         rows: 20,
     };
     let received_screen_instructions = Arc::new(Mutex::new(vec![]));
-    let screen_thread = log_actions_in_thread!(
+    let screen_thread = grant_permissions_and_log_actions_in_thread!(
         received_screen_instructions,
         ScreenInstruction::PreviousSwapLayout,
         screen_receiver,
-        1
+        1,
+        &PermissionType::ChangeApplicationState,
+        cache_path,
+        plugin_thread_sender,
+        client_id
     );
 
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
@@ -2634,6 +2931,7 @@ pub fn next_swap_layout_plugin_command() {
     let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
     let (plugin_thread_sender, screen_receiver, mut teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
@@ -2650,11 +2948,15 @@ pub fn next_swap_layout_plugin_command() {
         rows: 20,
     };
     let received_screen_instructions = Arc::new(Mutex::new(vec![]));
-    let screen_thread = log_actions_in_thread!(
+    let screen_thread = grant_permissions_and_log_actions_in_thread!(
         received_screen_instructions,
         ScreenInstruction::NextSwapLayout,
         screen_receiver,
-        1
+        1,
+        &PermissionType::ChangeApplicationState,
+        cache_path,
+        plugin_thread_sender,
+        client_id
     );
 
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
@@ -2695,6 +2997,7 @@ pub fn go_to_tab_name_plugin_command() {
     let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
     let (plugin_thread_sender, screen_receiver, mut teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
@@ -2711,11 +3014,15 @@ pub fn go_to_tab_name_plugin_command() {
         rows: 20,
     };
     let received_screen_instructions = Arc::new(Mutex::new(vec![]));
-    let screen_thread = log_actions_in_thread!(
+    let screen_thread = grant_permissions_and_log_actions_in_thread!(
         received_screen_instructions,
         ScreenInstruction::GoToTabName,
         screen_receiver,
-        1
+        1,
+        &PermissionType::ChangeApplicationState,
+        cache_path,
+        plugin_thread_sender,
+        client_id
     );
 
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
@@ -2756,6 +3063,7 @@ pub fn focus_or_create_tab_plugin_command() {
     let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
     let (plugin_thread_sender, screen_receiver, mut teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
@@ -2772,11 +3080,15 @@ pub fn focus_or_create_tab_plugin_command() {
         rows: 20,
     };
     let received_screen_instructions = Arc::new(Mutex::new(vec![]));
-    let screen_thread = log_actions_in_thread!(
+    let screen_thread = grant_permissions_and_log_actions_in_thread!(
         received_screen_instructions,
         ScreenInstruction::GoToTabName,
         screen_receiver,
-        1
+        1,
+        &PermissionType::ChangeApplicationState,
+        cache_path,
+        plugin_thread_sender,
+        client_id
     );
 
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
@@ -2817,6 +3129,7 @@ pub fn go_to_tab() {
     let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
     let (plugin_thread_sender, screen_receiver, mut teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
@@ -2833,11 +3146,15 @@ pub fn go_to_tab() {
         rows: 20,
     };
     let received_screen_instructions = Arc::new(Mutex::new(vec![]));
-    let screen_thread = log_actions_in_thread!(
+    let screen_thread = grant_permissions_and_log_actions_in_thread!(
         received_screen_instructions,
         ScreenInstruction::GoToTab,
         screen_receiver,
-        1
+        1,
+        &PermissionType::ChangeApplicationState,
+        cache_path,
+        plugin_thread_sender,
+        client_id
     );
 
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
@@ -2878,6 +3195,7 @@ pub fn start_or_reload_plugin() {
     let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
     let (plugin_thread_sender, screen_receiver, mut teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
@@ -2894,11 +3212,15 @@ pub fn start_or_reload_plugin() {
         rows: 20,
     };
     let received_screen_instructions = Arc::new(Mutex::new(vec![]));
-    let screen_thread = log_actions_in_thread!(
+    let screen_thread = grant_permissions_and_log_actions_in_thread!(
         received_screen_instructions,
         ScreenInstruction::StartOrReloadPluginPane,
         screen_receiver,
-        1
+        1,
+        &PermissionType::ChangeApplicationState,
+        cache_path,
+        plugin_thread_sender,
+        client_id
     );
 
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
@@ -2939,7 +3261,8 @@ pub fn quit_zellij_plugin_command() {
     let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
-    let (plugin_thread_sender, server_receiver, mut teardown) =
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
+    let (plugin_thread_sender, server_receiver, screen_receiver, mut teardown) =
         create_plugin_thread_with_server_receiver(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -2955,11 +3278,22 @@ pub fn quit_zellij_plugin_command() {
         rows: 20,
     };
     let received_server_instruction = Arc::new(Mutex::new(vec![]));
-    let screen_thread = log_actions_in_thread!(
+    let server_thread = log_actions_in_thread!(
         received_server_instruction,
         ServerInstruction::ClientExit,
         server_receiver,
         1
+    );
+    let received_screen_instructions = Arc::new(Mutex::new(vec![]));
+    let _screen_thread = grant_permissions_and_log_actions_in_thread_naked_variant!(
+        received_screen_instructions,
+        ScreenInstruction::Exit,
+        screen_receiver,
+        1,
+        &PermissionType::ChangeApplicationState,
+        cache_path,
+        plugin_thread_sender,
+        client_id
     );
 
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
@@ -2977,7 +3311,7 @@ pub fn quit_zellij_plugin_command() {
         Event::Key(Key::Char('8')), // this triggers the enent in the fixture plugin
     )]));
     std::thread::sleep(std::time::Duration::from_millis(100));
-    screen_thread.join().unwrap(); // this might take a while if the cache is cold
+    server_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
     let new_tab_event = received_server_instruction
         .lock()
@@ -3000,7 +3334,8 @@ pub fn detach_plugin_command() {
     let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
-    let (plugin_thread_sender, server_receiver, mut teardown) =
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
+    let (plugin_thread_sender, server_receiver, screen_receiver, mut teardown) =
         create_plugin_thread_with_server_receiver(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -3016,11 +3351,22 @@ pub fn detach_plugin_command() {
         rows: 20,
     };
     let received_server_instruction = Arc::new(Mutex::new(vec![]));
-    let screen_thread = log_actions_in_thread!(
+    let server_thread = log_actions_in_thread!(
         received_server_instruction,
         ServerInstruction::DetachSession,
         server_receiver,
         1
+    );
+    let received_screen_instructions = Arc::new(Mutex::new(vec![]));
+    let _screen_thread = grant_permissions_and_log_actions_in_thread_naked_variant!(
+        received_screen_instructions,
+        ScreenInstruction::Exit,
+        screen_receiver,
+        1,
+        &PermissionType::ChangeApplicationState,
+        cache_path,
+        plugin_thread_sender,
+        client_id
     );
 
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
@@ -3038,7 +3384,7 @@ pub fn detach_plugin_command() {
         Event::Key(Key::Char('l')), // this triggers the enent in the fixture plugin
     )]));
     std::thread::sleep(std::time::Duration::from_millis(100));
-    screen_thread.join().unwrap(); // this might take a while if the cache is cold
+    server_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
     let new_tab_event = received_server_instruction
         .lock()
@@ -3061,7 +3407,8 @@ pub fn open_file_floating_plugin_command() {
     let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
-    let (plugin_thread_sender, pty_receiver, mut teardown) =
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
+    let (plugin_thread_sender, pty_receiver, screen_receiver, mut teardown) =
         create_plugin_thread_with_pty_receiver(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -3076,12 +3423,23 @@ pub fn open_file_floating_plugin_command() {
         cols: 121,
         rows: 20,
     };
-    let received_screen_instructions = Arc::new(Mutex::new(vec![]));
-    let screen_thread = log_actions_in_thread!(
-        received_screen_instructions,
+    let received_pty_instructions = Arc::new(Mutex::new(vec![]));
+    let pty_thread = log_actions_in_thread!(
+        received_pty_instructions,
         PtyInstruction::SpawnTerminal,
         pty_receiver,
         1
+    );
+    let received_screen_instructions = Arc::new(Mutex::new(vec![]));
+    let _screen_thread = grant_permissions_and_log_actions_in_thread_naked_variant!(
+        received_screen_instructions,
+        ScreenInstruction::Exit,
+        screen_receiver,
+        1,
+        &PermissionType::ChangeApplicationState,
+        cache_path,
+        plugin_thread_sender,
+        client_id
     );
 
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
@@ -3099,9 +3457,9 @@ pub fn open_file_floating_plugin_command() {
         Event::Key(Key::Ctrl('h')), // this triggers the enent in the fixture plugin
     )]));
     std::thread::sleep(std::time::Duration::from_millis(100));
-    screen_thread.join().unwrap(); // this might take a while if the cache is cold
+    pty_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let new_tab_event = received_screen_instructions
+    let new_tab_event = received_pty_instructions
         .lock()
         .unwrap()
         .iter()
@@ -3122,7 +3480,8 @@ pub fn open_file_plugin_command() {
     let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
-    let (plugin_thread_sender, pty_receiver, mut teardown) =
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
+    let (plugin_thread_sender, pty_receiver, screen_receiver, mut teardown) =
         create_plugin_thread_with_pty_receiver(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -3137,12 +3496,23 @@ pub fn open_file_plugin_command() {
         cols: 121,
         rows: 20,
     };
-    let received_screen_instructions = Arc::new(Mutex::new(vec![]));
-    let screen_thread = log_actions_in_thread!(
-        received_screen_instructions,
+    let received_pty_instructions = Arc::new(Mutex::new(vec![]));
+    let pty_thread = log_actions_in_thread!(
+        received_pty_instructions,
         PtyInstruction::SpawnTerminal,
         pty_receiver,
         1
+    );
+    let received_screen_instructions = Arc::new(Mutex::new(vec![]));
+    let _screen_thread = grant_permissions_and_log_actions_in_thread_naked_variant!(
+        received_screen_instructions,
+        ScreenInstruction::Exit,
+        screen_receiver,
+        1,
+        &PermissionType::ChangeApplicationState,
+        cache_path,
+        plugin_thread_sender,
+        client_id
     );
 
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
@@ -3160,9 +3530,9 @@ pub fn open_file_plugin_command() {
         Event::Key(Key::Ctrl('g')), // this triggers the enent in the fixture plugin
     )]));
     std::thread::sleep(std::time::Duration::from_millis(100));
-    screen_thread.join().unwrap(); // this might take a while if the cache is cold
+    pty_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let new_tab_event = received_screen_instructions
+    let new_tab_event = received_pty_instructions
         .lock()
         .unwrap()
         .iter()
@@ -3183,7 +3553,8 @@ pub fn open_file_with_line_plugin_command() {
     let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
-    let (plugin_thread_sender, pty_receiver, mut teardown) =
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
+    let (plugin_thread_sender, pty_receiver, screen_receiver, mut teardown) =
         create_plugin_thread_with_pty_receiver(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -3198,12 +3569,24 @@ pub fn open_file_with_line_plugin_command() {
         cols: 121,
         rows: 20,
     };
-    let received_screen_instructions = Arc::new(Mutex::new(vec![]));
-    let screen_thread = log_actions_in_thread!(
-        received_screen_instructions,
+    let received_pty_instructions = Arc::new(Mutex::new(vec![]));
+    let pty_thread = log_actions_in_thread!(
+        received_pty_instructions,
         PtyInstruction::SpawnTerminal,
         pty_receiver,
         1
+    );
+
+    let received_screen_instructions = Arc::new(Mutex::new(vec![]));
+    let _screen_thread = grant_permissions_and_log_actions_in_thread_naked_variant!(
+        received_screen_instructions,
+        ScreenInstruction::Exit,
+        screen_receiver,
+        1,
+        &PermissionType::ChangeApplicationState,
+        cache_path,
+        plugin_thread_sender,
+        client_id
     );
 
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
@@ -3221,9 +3604,9 @@ pub fn open_file_with_line_plugin_command() {
         Event::Key(Key::Ctrl('i')), // this triggers the enent in the fixture plugin
     )]));
     std::thread::sleep(std::time::Duration::from_millis(100));
-    screen_thread.join().unwrap(); // this might take a while if the cache is cold
+    pty_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let new_tab_event = received_screen_instructions
+    let new_tab_event = received_pty_instructions
         .lock()
         .unwrap()
         .iter()
@@ -3244,7 +3627,8 @@ pub fn open_file_with_line_floating_plugin_command() {
     let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
-    let (plugin_thread_sender, pty_receiver, mut teardown) =
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
+    let (plugin_thread_sender, pty_receiver, screen_receiver, mut teardown) =
         create_plugin_thread_with_pty_receiver(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -3259,12 +3643,23 @@ pub fn open_file_with_line_floating_plugin_command() {
         cols: 121,
         rows: 20,
     };
-    let received_screen_instructions = Arc::new(Mutex::new(vec![]));
-    let screen_thread = log_actions_in_thread!(
-        received_screen_instructions,
+    let received_pty_instructions = Arc::new(Mutex::new(vec![]));
+    let pty_thread = log_actions_in_thread!(
+        received_pty_instructions,
         PtyInstruction::SpawnTerminal,
         pty_receiver,
         1
+    );
+    let received_screen_instructions = Arc::new(Mutex::new(vec![]));
+    let _screen_thread = grant_permissions_and_log_actions_in_thread_naked_variant!(
+        received_screen_instructions,
+        ScreenInstruction::Exit,
+        screen_receiver,
+        1,
+        &PermissionType::ChangeApplicationState,
+        cache_path,
+        plugin_thread_sender,
+        client_id
     );
 
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
@@ -3282,9 +3677,9 @@ pub fn open_file_with_line_floating_plugin_command() {
         Event::Key(Key::Ctrl('j')), // this triggers the enent in the fixture plugin
     )]));
     std::thread::sleep(std::time::Duration::from_millis(100));
-    screen_thread.join().unwrap(); // this might take a while if the cache is cold
+    pty_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let new_tab_event = received_screen_instructions
+    let new_tab_event = received_pty_instructions
         .lock()
         .unwrap()
         .iter()
@@ -3305,7 +3700,8 @@ pub fn open_terminal_plugin_command() {
     let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
-    let (plugin_thread_sender, pty_receiver, mut teardown) =
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
+    let (plugin_thread_sender, pty_receiver, screen_receiver, mut teardown) =
         create_plugin_thread_with_pty_receiver(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -3320,12 +3716,23 @@ pub fn open_terminal_plugin_command() {
         cols: 121,
         rows: 20,
     };
-    let received_screen_instructions = Arc::new(Mutex::new(vec![]));
-    let screen_thread = log_actions_in_thread!(
-        received_screen_instructions,
+    let received_pty_instructions = Arc::new(Mutex::new(vec![]));
+    let pty_thread = log_actions_in_thread!(
+        received_pty_instructions,
         PtyInstruction::SpawnTerminal,
         pty_receiver,
         1
+    );
+    let received_screen_instructions = Arc::new(Mutex::new(vec![]));
+    let _screen_thread = grant_permissions_and_log_actions_in_thread_naked_variant!(
+        received_screen_instructions,
+        ScreenInstruction::Exit,
+        screen_receiver,
+        1,
+        &PermissionType::ChangeApplicationState,
+        cache_path,
+        plugin_thread_sender,
+        client_id
     );
 
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
@@ -3343,9 +3750,9 @@ pub fn open_terminal_plugin_command() {
         Event::Key(Key::Ctrl('k')), // this triggers the enent in the fixture plugin
     )]));
     std::thread::sleep(std::time::Duration::from_millis(100));
-    screen_thread.join().unwrap(); // this might take a while if the cache is cold
+    pty_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let new_tab_event = received_screen_instructions
+    let new_tab_event = received_pty_instructions
         .lock()
         .unwrap()
         .iter()
@@ -3366,7 +3773,8 @@ pub fn open_terminal_floating_plugin_command() {
     let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
-    let (plugin_thread_sender, pty_receiver, mut teardown) =
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
+    let (plugin_thread_sender, pty_receiver, screen_receiver, mut teardown) =
         create_plugin_thread_with_pty_receiver(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -3381,12 +3789,23 @@ pub fn open_terminal_floating_plugin_command() {
         cols: 121,
         rows: 20,
     };
-    let received_screen_instructions = Arc::new(Mutex::new(vec![]));
-    let screen_thread = log_actions_in_thread!(
-        received_screen_instructions,
+    let received_pty_instructions = Arc::new(Mutex::new(vec![]));
+    let pty_thread = log_actions_in_thread!(
+        received_pty_instructions,
         PtyInstruction::SpawnTerminal,
         pty_receiver,
         1
+    );
+    let received_screen_instructions = Arc::new(Mutex::new(vec![]));
+    let _screen_thread = grant_permissions_and_log_actions_in_thread_naked_variant!(
+        received_screen_instructions,
+        ScreenInstruction::Exit,
+        screen_receiver,
+        1,
+        &PermissionType::ChangeApplicationState,
+        cache_path,
+        plugin_thread_sender,
+        client_id
     );
 
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
@@ -3404,9 +3823,9 @@ pub fn open_terminal_floating_plugin_command() {
         Event::Key(Key::Ctrl('l')), // this triggers the enent in the fixture plugin
     )]));
     std::thread::sleep(std::time::Duration::from_millis(100));
-    screen_thread.join().unwrap(); // this might take a while if the cache is cold
+    pty_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let new_tab_event = received_screen_instructions
+    let new_tab_event = received_pty_instructions
         .lock()
         .unwrap()
         .iter()
@@ -3427,7 +3846,8 @@ pub fn open_command_pane_plugin_command() {
     let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
-    let (plugin_thread_sender, pty_receiver, mut teardown) =
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
+    let (plugin_thread_sender, pty_receiver, screen_receiver, mut teardown) =
         create_plugin_thread_with_pty_receiver(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -3442,12 +3862,23 @@ pub fn open_command_pane_plugin_command() {
         cols: 121,
         rows: 20,
     };
-    let received_screen_instructions = Arc::new(Mutex::new(vec![]));
-    let screen_thread = log_actions_in_thread!(
-        received_screen_instructions,
+    let received_pty_instructions = Arc::new(Mutex::new(vec![]));
+    let pty_thread = log_actions_in_thread!(
+        received_pty_instructions,
         PtyInstruction::SpawnTerminal,
         pty_receiver,
         1
+    );
+    let received_screen_instructions = Arc::new(Mutex::new(vec![]));
+    let _screen_thread = grant_permissions_and_log_actions_in_thread_naked_variant!(
+        received_screen_instructions,
+        ScreenInstruction::Exit,
+        screen_receiver,
+        1,
+        &PermissionType::ChangeApplicationState,
+        cache_path,
+        plugin_thread_sender,
+        client_id
     );
 
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
@@ -3465,9 +3896,9 @@ pub fn open_command_pane_plugin_command() {
         Event::Key(Key::Ctrl('m')), // this triggers the enent in the fixture plugin
     )]));
     std::thread::sleep(std::time::Duration::from_millis(100));
-    screen_thread.join().unwrap(); // this might take a while if the cache is cold
+    pty_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let new_tab_event = received_screen_instructions
+    let new_tab_event = received_pty_instructions
         .lock()
         .unwrap()
         .iter()
@@ -3488,7 +3919,8 @@ pub fn open_command_pane_floating_plugin_command() {
     let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
-    let (plugin_thread_sender, pty_receiver, mut teardown) =
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
+    let (plugin_thread_sender, pty_receiver, screen_receiver, mut teardown) =
         create_plugin_thread_with_pty_receiver(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -3503,12 +3935,23 @@ pub fn open_command_pane_floating_plugin_command() {
         cols: 121,
         rows: 20,
     };
-    let received_screen_instructions = Arc::new(Mutex::new(vec![]));
-    let screen_thread = log_actions_in_thread!(
-        received_screen_instructions,
+    let received_pty_instructions = Arc::new(Mutex::new(vec![]));
+    let pty_thread = log_actions_in_thread!(
+        received_pty_instructions,
         PtyInstruction::SpawnTerminal,
         pty_receiver,
         1
+    );
+    let received_screen_instructions = Arc::new(Mutex::new(vec![]));
+    let _screen_thread = grant_permissions_and_log_actions_in_thread_naked_variant!(
+        received_screen_instructions,
+        ScreenInstruction::Exit,
+        screen_receiver,
+        1,
+        &PermissionType::ChangeApplicationState,
+        cache_path,
+        plugin_thread_sender,
+        client_id
     );
 
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
@@ -3526,9 +3969,9 @@ pub fn open_command_pane_floating_plugin_command() {
         Event::Key(Key::Ctrl('n')), // this triggers the enent in the fixture plugin
     )]));
     std::thread::sleep(std::time::Duration::from_millis(100));
-    screen_thread.join().unwrap(); // this might take a while if the cache is cold
+    pty_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let new_tab_event = received_screen_instructions
+    let new_tab_event = received_pty_instructions
         .lock()
         .unwrap()
         .iter()
@@ -3549,6 +3992,7 @@ pub fn switch_to_tab_plugin_command() {
     let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
     let (plugin_thread_sender, screen_receiver, mut teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
@@ -3565,11 +4009,15 @@ pub fn switch_to_tab_plugin_command() {
         rows: 20,
     };
     let received_screen_instructions = Arc::new(Mutex::new(vec![]));
-    let screen_thread = log_actions_in_thread!(
+    let screen_thread = grant_permissions_and_log_actions_in_thread!(
         received_screen_instructions,
         ScreenInstruction::GoToTab,
         screen_receiver,
-        1
+        1,
+        &PermissionType::ChangeApplicationState,
+        cache_path,
+        plugin_thread_sender,
+        client_id
     );
 
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
@@ -3732,6 +4180,7 @@ pub fn close_terminal_pane_plugin_command() {
     let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
     let (plugin_thread_sender, screen_receiver, mut teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
@@ -3748,11 +4197,15 @@ pub fn close_terminal_pane_plugin_command() {
         rows: 20,
     };
     let received_screen_instructions = Arc::new(Mutex::new(vec![]));
-    let screen_thread = log_actions_in_thread!(
+    let screen_thread = grant_permissions_and_log_actions_in_thread!(
         received_screen_instructions,
         ScreenInstruction::ClosePane,
         screen_receiver,
-        1
+        1,
+        &PermissionType::ChangeApplicationState,
+        cache_path,
+        plugin_thread_sender,
+        client_id
     );
 
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
@@ -3793,6 +4246,7 @@ pub fn close_plugin_pane_plugin_command() {
     let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
     let (plugin_thread_sender, screen_receiver, mut teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
@@ -3809,11 +4263,15 @@ pub fn close_plugin_pane_plugin_command() {
         rows: 20,
     };
     let received_screen_instructions = Arc::new(Mutex::new(vec![]));
-    let screen_thread = log_actions_in_thread!(
+    let screen_thread = grant_permissions_and_log_actions_in_thread!(
         received_screen_instructions,
         ScreenInstruction::ClosePane,
         screen_receiver,
-        1
+        1,
+        &PermissionType::ChangeApplicationState,
+        cache_path,
+        plugin_thread_sender,
+        client_id
     );
 
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
@@ -3854,6 +4312,7 @@ pub fn focus_terminal_pane_plugin_command() {
     let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
     let (plugin_thread_sender, screen_receiver, mut teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
@@ -3870,11 +4329,15 @@ pub fn focus_terminal_pane_plugin_command() {
         rows: 20,
     };
     let received_screen_instructions = Arc::new(Mutex::new(vec![]));
-    let screen_thread = log_actions_in_thread!(
+    let screen_thread = grant_permissions_and_log_actions_in_thread!(
         received_screen_instructions,
         ScreenInstruction::FocusPaneWithId,
         screen_receiver,
-        1
+        1,
+        &PermissionType::ChangeApplicationState,
+        cache_path,
+        plugin_thread_sender,
+        client_id
     );
 
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
@@ -3915,6 +4378,7 @@ pub fn focus_plugin_pane_plugin_command() {
     let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
     let (plugin_thread_sender, screen_receiver, mut teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
@@ -3931,11 +4395,15 @@ pub fn focus_plugin_pane_plugin_command() {
         rows: 20,
     };
     let received_screen_instructions = Arc::new(Mutex::new(vec![]));
-    let screen_thread = log_actions_in_thread!(
+    let screen_thread = grant_permissions_and_log_actions_in_thread!(
         received_screen_instructions,
         ScreenInstruction::FocusPaneWithId,
         screen_receiver,
-        1
+        1,
+        &PermissionType::ChangeApplicationState,
+        cache_path,
+        plugin_thread_sender,
+        client_id
     );
 
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
@@ -3976,6 +4444,7 @@ pub fn rename_terminal_pane_plugin_command() {
     let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
     let (plugin_thread_sender, screen_receiver, mut teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
@@ -3992,11 +4461,15 @@ pub fn rename_terminal_pane_plugin_command() {
         rows: 20,
     };
     let received_screen_instructions = Arc::new(Mutex::new(vec![]));
-    let screen_thread = log_actions_in_thread!(
+    let screen_thread = grant_permissions_and_log_actions_in_thread!(
         received_screen_instructions,
         ScreenInstruction::RenamePane,
         screen_receiver,
-        1
+        1,
+        &PermissionType::ChangeApplicationState,
+        cache_path,
+        plugin_thread_sender,
+        client_id
     );
 
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
@@ -4037,6 +4510,7 @@ pub fn rename_plugin_pane_plugin_command() {
     let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
     let (plugin_thread_sender, screen_receiver, mut teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
@@ -4053,11 +4527,15 @@ pub fn rename_plugin_pane_plugin_command() {
         rows: 20,
     };
     let received_screen_instructions = Arc::new(Mutex::new(vec![]));
-    let screen_thread = log_actions_in_thread!(
+    let screen_thread = grant_permissions_and_log_actions_in_thread!(
         received_screen_instructions,
         ScreenInstruction::RenamePane,
         screen_receiver,
-        1
+        1,
+        &PermissionType::ChangeApplicationState,
+        cache_path,
+        plugin_thread_sender,
+        client_id
     );
 
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
@@ -4098,6 +4576,7 @@ pub fn rename_tab_plugin_command() {
     let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
     let (plugin_thread_sender, screen_receiver, mut teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
@@ -4114,11 +4593,15 @@ pub fn rename_tab_plugin_command() {
         rows: 20,
     };
     let received_screen_instructions = Arc::new(Mutex::new(vec![]));
-    let screen_thread = log_actions_in_thread!(
+    let screen_thread = grant_permissions_and_log_actions_in_thread!(
         received_screen_instructions,
         ScreenInstruction::RenameTab,
         screen_receiver,
-        1
+        1,
+        &PermissionType::ChangeApplicationState,
+        cache_path,
+        plugin_thread_sender,
+        client_id
     );
 
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
@@ -4159,6 +4642,7 @@ pub fn send_configuration_to_plugins() {
     let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
     let (plugin_thread_sender, screen_receiver, mut teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
@@ -4184,11 +4668,15 @@ pub fn send_configuration_to_plugins() {
         rows: 20,
     };
     let received_screen_instructions = Arc::new(Mutex::new(vec![]));
-    let screen_thread = log_actions_in_thread!(
+    let screen_thread = grant_permissions_and_log_actions_in_thread!(
         received_screen_instructions,
         ScreenInstruction::GoToTabName,
         screen_receiver,
-        1
+        1,
+        &PermissionType::ChangeApplicationState,
+        cache_path,
+        plugin_thread_sender,
+        client_id
     );
 
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
@@ -4359,7 +4847,19 @@ pub fn granted_permission_request_result() {
     teardown();
 
     let permission_cache = PermissionCache::from_path_or_default(Some(cache_path));
-    let permissions = permission_cache.get_permissions(run_plugin.location.to_string());
+    let mut permissions = permission_cache.get_permissions(run_plugin.location.to_string()).clone();
+    let permissions = permissions.as_mut().map(|p| {
+        let mut permissions = p.clone();
+        permissions.sort_unstable();
+        permissions
+    });
+//     let permissions = if let Some(mut permissions) = permissions.as_mut() {
+//         let mut permissions = permissions.clone();
+//         permissions.sort_unstable();
+//         Some(permissions)
+//     } else {
+//         None
+//     };
 
     assert_snapshot!(format!("{:#?}", permissions));
 }

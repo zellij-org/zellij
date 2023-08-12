@@ -108,6 +108,7 @@ macro_rules! register_plugin {
             STATE.with(|state| {
                 use std::collections::BTreeMap;
                 use std::convert::TryInto;
+                use std::convert::TryFrom;
                 use zellij_tile::shim::plugin_api::action::ProtobufPluginConfiguration;
                 use zellij_tile::shim::prost::Message;
                 let protobuf_bytes: Vec<u8> = $crate::shim::object_from_stdin().unwrap();

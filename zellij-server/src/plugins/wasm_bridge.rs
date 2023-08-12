@@ -36,11 +36,6 @@ use zellij_utils::{
     pane_size::Size,
 };
 
-enum Permission {
-    Allowed,
-    Denied(PermissionType),
-}
-
 pub struct WasmBridge {
     connected_clients: Arc<Mutex<Vec<ClientId>>>,
     plugins: PluginsConfig,
@@ -773,19 +768,30 @@ fn handle_plugin_loading_failure(
     ));
 }
 
-fn check_permission(plugin_env: &PluginEnv, event: &Event) -> Permission {
+// TODO: move to permissions?
+fn check_event_permission(plugin_env: &PluginEnv, event: &Event) -> (PermissionStatus, Option<PermissionType>) {
+    if plugin_env.plugin.is_builtin() {
+        // built-in plugins can do all the things because they're part of the application and
+        // there's no use to deny them anything
+        return (PermissionStatus::Granted, None)
+    }
     let permission = match event {
-        Event::Key(_) => PermissionType::KeyboardInput,
-        _ => return Permission::Allowed,
+        Event::ModeUpdate(..) |
+        Event::TabUpdate(..) |
+        Event::PaneUpdate(..) |
+        Event::CopyToClipboard(..) |
+        Event::SystemClipboardFailure |
+        Event::InputReceived => PermissionType::ReadApplicationState,
+        _ => return (PermissionStatus::Granted, None),
     };
 
-    if let Some(permissions) = &plugin_env.permissions {
-        if !permissions.contains(&permission) {
-            return Permission::Denied(permission);
+    if let Some(permissions) = plugin_env.permissions.lock().unwrap().as_ref() {
+        if permissions.contains(&permission) {
+            return (PermissionStatus::Granted, None);
         }
     }
 
-    Permission::Allowed
+    (PermissionStatus::Denied, Some(permission))
 }
 
 pub fn apply_event_to_plugin(
@@ -799,8 +805,8 @@ pub fn apply_event_to_plugin(
     plugin_bytes: &mut Vec<(PluginId, ClientId, Vec<u8>)>,
 ) -> Result<()> {
     let err_context = || format!("Failed to apply event to plugin {plugin_id}");
-    match check_permission(plugin_env, event) {
-        Permission::Allowed => {
+    match check_event_permission(plugin_env, event) {
+        (PermissionStatus::Granted, _) => {
             let protobuf_event: ProtobufEvent = event
                 .clone()
                 .try_into()
@@ -831,12 +837,12 @@ pub fn apply_event_to_plugin(
                 plugin_bytes.push((plugin_id, client_id, rendered_bytes.as_bytes().to_vec()));
             }
         },
-        Permission::Denied(permission) => {
+        (PermissionStatus::Denied, permission) => {
             log::error!(
                 "PluginId '{}' permission '{}' is not allowed - Event '{:?}' denied",
                 plugin_id,
-                permission,
-                event
+                permission.map(|p| p.to_string()).unwrap_or("UNKNOWN".to_owned()),
+                EventType::from_str(&event.to_string()).with_context(err_context)?
             );
         },
     }
