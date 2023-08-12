@@ -96,8 +96,6 @@ fn host_run_plugin_command(env: &ForeignFunctionEnv) {
             let command: PluginCommand = command
                 .try_into()
                 .map_err(|e| anyhow!("failed to convert serialized command: {}", e))?;
-            // TODO: CONTINUE HERE -
-            // * get current tests to work again, then write tests for this and event
             match check_command_permission(&env.plugin_env, &command) {
                 (PermissionStatus::Granted, _) => match command {
                     PluginCommand::Subscribe(event_list) => subscribe(env, event_list)?,

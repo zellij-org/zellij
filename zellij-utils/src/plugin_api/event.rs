@@ -13,10 +13,10 @@ pub use super::generated_api::api::{
     style::Style as ProtobufStyle,
 };
 use crate::data::{
-    CopyDestination, Direction, Event, EventType, InputMode, Key, ModeInfo, Mouse, Palette,
-    PaletteColor, PaneInfo, PaneManifest, PermissionStatus, PluginCapabilities, Style, TabInfo,
-    ThemeHue,
+    CopyDestination, Event, EventType, InputMode, Key, ModeInfo, Mouse, PaneInfo, PaneManifest,
+    PermissionStatus, PluginCapabilities, Style, TabInfo,
 };
+
 use crate::errors::prelude::*;
 use crate::input::actions::Action;
 
@@ -742,6 +742,7 @@ fn serialize_mode_update_event() {
 
 #[test]
 fn serialize_mode_update_event_with_non_default_values() {
+    use crate::data::{Direction, Palette, PaletteColor, ThemeHue};
     use prost::Message;
     let mode_update_event = Event::ModeUpdate(ModeInfo {
         mode: InputMode::Locked,

@@ -220,10 +220,6 @@ impl PluginEnv {
     pub fn set_permissions(&mut self, permissions: HashSet<PermissionType>) {
         self.permissions.lock().unwrap().replace(permissions);
     }
-
-    pub fn clear_permissions(&mut self) {
-        self.permissions.lock().unwrap().take();
-    }
 }
 
 #[derive(Eq, PartialEq, Hash)]
