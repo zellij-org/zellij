@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, BTreeSet};
 use std::time::Instant;
 
 use crate::output::{CharacterChunk, SixelImageChunk};
@@ -647,28 +647,40 @@ impl PluginPane {
         let green = style!(self.style.colors.green).bold();
 
         let mut messages = String::new();
-        let permissions: HashSet<PermissionType> =
+        let permissions: BTreeSet<PermissionType> =
             plugin_permission.permissions.clone().into_iter().collect();
 
-        messages.push_str(&format!(
-            "{} {} {}\n",
-            bold_white.paint("Plugin"),
-            cyan.paint(&plugin_permission.name),
-            bold_white.paint("asks permission to:"),
-        ));
-        permissions.iter().enumerate().for_each(|(i, p)| {
-            messages.push_str(&format!(
-                "\n\r{}. {}",
-                bold_white.paint(&format!("{}", i + 1)),
-                orange.paint(p.display_name())
-            ));
-        });
+        let min_row_count = permissions.len() + 4;
 
-        messages.push_str(&format!(
-            "\n\n\r{} {}",
-            bold_white.paint("Allow?"),
-            green.paint("(y/n)"),
-        ));
+        if self.rows() >= min_row_count {
+            messages.push_str(&format!(
+                "{} {} {}\n",
+                bold_white.paint("Plugin"),
+                cyan.paint(&plugin_permission.name),
+                bold_white.paint("asks permission to:"),
+            ));
+            permissions.iter().enumerate().for_each(|(i, p)| {
+                messages.push_str(&format!(
+                    "\n\r{}. {}",
+                    bold_white.paint(&format!("{}", i + 1)),
+                    orange.paint(p.display_name())
+                ));
+            });
+
+            messages.push_str(&format!(
+                "\n\n\r{} {}",
+                bold_white.paint("Allow?"),
+                green.paint("(y/n)"),
+            ));
+        } else {
+            messages.push_str(&format!(
+                "{} {}. {} {}\n",
+                bold_white.paint("This plugin asks permission to:"),
+                orange.paint(permissions.iter().map(|p| p.to_string()).collect::<Vec<_>>().join(", ")),
+                bold_white.paint("Allow?"),
+                green.paint("(y/n)"),
+            ));
+        }
 
         messages
     }
