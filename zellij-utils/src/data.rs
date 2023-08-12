@@ -6,7 +6,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
-use strum_macros::{EnumDiscriminants, EnumIter, EnumString, ToString};
+use strum_macros::{Display, EnumDiscriminants, EnumIter, EnumString, ToString};
 
 pub type ClientId = u16; // TODO: merge with crate type?
 
@@ -493,6 +493,63 @@ pub enum Event {
     FileSystemUpdate(Vec<PathBuf>),
     /// A file was deleted somewhere in the Zellij CWD folder
     FileSystemDelete(Vec<PathBuf>),
+    /// A Result of plugin permission request
+    PermissionRequestResult(PermissionStatus),
+}
+
+#[derive(
+    Debug,
+    PartialEq,
+    Eq,
+    Hash,
+    Copy,
+    Clone,
+    EnumDiscriminants,
+    ToString,
+    Serialize,
+    Deserialize,
+    PartialOrd,
+    Ord,
+)]
+#[strum_discriminants(derive(EnumString, Hash, Serialize, Deserialize, Display, PartialOrd, Ord))]
+#[strum_discriminants(name(PermissionType))]
+#[non_exhaustive]
+pub enum Permission {
+    ReadApplicationState,
+    ChangeApplicationState,
+    OpenFiles,
+    RunCommands,
+    OpenTerminalsOrPlugins,
+    WriteToStdin,
+}
+
+impl PermissionType {
+    pub fn display_name(&self) -> String {
+        match self {
+            PermissionType::ReadApplicationState => {
+                "Access Zellij state (Panes, Tabs and UI)".to_owned()
+            },
+            PermissionType::ChangeApplicationState => {
+                "Change Zellij state (Panes, Tabs and UI)".to_owned()
+            },
+            PermissionType::OpenFiles => "Open files (eg. for editing)".to_owned(),
+            PermissionType::RunCommands => "Run commands".to_owned(),
+            PermissionType::OpenTerminalsOrPlugins => "Start new terminals and plugins".to_owned(),
+            PermissionType::WriteToStdin => "Write to standard input (STDIN)".to_owned(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct PluginPermission {
+    pub name: String,
+    pub permissions: Vec<PermissionType>,
+}
+
+impl PluginPermission {
+    pub fn new(name: String, permissions: Vec<PermissionType>) -> Self {
+        PluginPermission { name, permissions }
+    }
 }
 
 /// Describes the different input modes, which change the way that keystrokes will be interpreted.
@@ -811,6 +868,12 @@ pub enum CopyDestination {
     System,
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]
+pub enum PermissionStatus {
+    Granted,
+    Denied,
+}
+
 #[derive(Debug, Default, Clone)]
 pub struct FileToOpen {
     pub path: PathBuf,
@@ -882,7 +945,9 @@ impl PluginMessage {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, EnumDiscriminants, ToString)]
+#[strum_discriminants(derive(EnumString, Hash, Serialize, Deserialize))]
+#[strum_discriminants(name(CommandType))]
 pub enum PluginCommand {
     Subscribe(HashSet<EventType>),
     Unsubscribe(HashSet<EventType>),
@@ -950,4 +1015,5 @@ pub enum PluginCommand {
     RenamePluginPane(u32, String),   // plugin pane id, new name
     RenameTab(u32, String),          // tab index, new name
     ReportPanic(String),             // stringified panic
+    RequestPluginPermissions(Vec<PermissionType>),
 }

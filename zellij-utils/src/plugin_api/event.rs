@@ -13,9 +13,10 @@ pub use super::generated_api::api::{
     style::Style as ProtobufStyle,
 };
 use crate::data::{
-    CopyDestination, Direction, Event, EventType, InputMode, Key, ModeInfo, Mouse, Palette,
-    PaletteColor, PaneInfo, PaneManifest, PluginCapabilities, Style, TabInfo, ThemeHue,
+    CopyDestination, Event, EventType, InputMode, Key, ModeInfo, Mouse, PaneInfo, PaneManifest,
+    PermissionStatus, PluginCapabilities, Style, TabInfo,
 };
+
 use crate::errors::prelude::*;
 use crate::input::actions::Action;
 
@@ -160,6 +161,16 @@ impl TryFrom<ProtobufEvent> for Event {
                 },
                 _ => Err("Malformed payload for the file system delete Event"),
             },
+            Some(ProtobufEventType::PermissionRequestResult) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::PermissionRequestResultPayload(payload)) => {
+                    if payload.granted {
+                        Ok(Event::PermissionRequestResult(PermissionStatus::Granted))
+                    } else {
+                        Ok(Event::PermissionRequestResult(PermissionStatus::Denied))
+                    }
+                },
+                _ => Err("Malformed payload for the file system delete Event"),
+            },
             None => Err("Unknown Protobuf Event"),
         }
     }
@@ -288,6 +299,18 @@ impl TryFrom<Event> for ProtobufEvent {
                 Ok(ProtobufEvent {
                     name: ProtobufEventType::FileSystemDelete as i32,
                     payload: Some(event::Payload::FileListPayload(file_list_payload)),
+                })
+            },
+            Event::PermissionRequestResult(permission_status) => {
+                let granted = match permission_status {
+                    PermissionStatus::Granted => true,
+                    PermissionStatus::Denied => false,
+                };
+                Ok(ProtobufEvent {
+                    name: ProtobufEventType::PermissionRequestResult as i32,
+                    payload: Some(event::Payload::PermissionRequestResultPayload(
+                        PermissionRequestResultPayload { granted },
+                    )),
                 })
             },
         }
@@ -673,6 +696,7 @@ impl TryFrom<ProtobufEventType> for EventType {
             ProtobufEventType::FileSystemRead => EventType::FileSystemRead,
             ProtobufEventType::FileSystemUpdate => EventType::FileSystemUpdate,
             ProtobufEventType::FileSystemDelete => EventType::FileSystemDelete,
+            ProtobufEventType::PermissionRequestResult => EventType::PermissionRequestResult,
         })
     }
 }
@@ -696,6 +720,7 @@ impl TryFrom<EventType> for ProtobufEventType {
             EventType::FileSystemRead => ProtobufEventType::FileSystemRead,
             EventType::FileSystemUpdate => ProtobufEventType::FileSystemUpdate,
             EventType::FileSystemDelete => ProtobufEventType::FileSystemDelete,
+            EventType::PermissionRequestResult => ProtobufEventType::PermissionRequestResult,
         })
     }
 }
@@ -717,6 +742,7 @@ fn serialize_mode_update_event() {
 
 #[test]
 fn serialize_mode_update_event_with_non_default_values() {
+    use crate::data::{Direction, Palette, PaletteColor, ThemeHue};
     use prost::Message;
     let mode_update_event = Event::ModeUpdate(ModeInfo {
         mode: InputMode::Locked,

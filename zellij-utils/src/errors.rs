@@ -338,6 +338,7 @@ pub enum ScreenContext {
     FocusPaneWithId,
     RenamePane,
     RenameTab,
+    RequestPluginPermissions,
     BreakPane,
     BreakPaneRight,
     BreakPaneLeft,
@@ -377,6 +378,7 @@ pub enum PluginContext {
     PostMessageToPluginWorker,
     PostMessageToPlugin,
     PluginSubscribedToEvents,
+    PermissionRequestResult,
 }
 
 /// Stack call representations corresponding to the different types of [`ClientInstruction`]s.

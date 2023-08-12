@@ -39,6 +39,13 @@ pub fn set_selectable(selectable: bool) {
     unsafe { host_run_plugin_command() };
 }
 
+pub fn request_permission(permissions: &[PermissionType]) {
+    let plugin_command = PluginCommand::RequestPluginPermissions(permissions.into());
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 // Query Functions
 /// Returns the unique Zellij pane ID for the plugin as well as the Zellij process id.
 pub fn get_plugin_ids() -> PluginIds {

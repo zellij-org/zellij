@@ -6,6 +6,7 @@ import "command.proto";
 import "message.proto";
 import "input_mode.proto";
 import "resize.proto";
+import "plugin_permission.proto";
 
 package api.plugin_command;
 
@@ -76,6 +77,7 @@ enum CommandName {
   RenamePluginPane = 63;
   RenameTab = 64;
   ReportCrash = 65;
+  RequestPluginPermissions = 66;
 }
 
 message PluginCommand {
@@ -117,7 +119,12 @@ message PluginCommand {
     IdAndNewName rename_plugin_pane_payload = 35;
     IdAndNewName rename_tab_payload = 36;
     string report_crash_payload = 37;
+    RequestPluginPermissionPayload request_plugin_permission_payload = 38;
   }
+}
+
+message RequestPluginPermissionPayload {
+  repeated plugin_permission.PermissionType permissions = 1;
 }
 
 message SubscribePayload {

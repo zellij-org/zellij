@@ -30,6 +30,7 @@ impl ZellijPlugin for State {
             EventType::FileSystemCreate,
             EventType::FileSystemUpdate,
             EventType::FileSystemDelete,
+            EventType::PermissionRequestResult,
         ]);
         post_message_to(PluginMessage {
             worker_name: Some("file_name_search".into()),
@@ -54,6 +55,9 @@ impl ZellijPlugin for State {
         };
         self.ev_history.push_back((event.clone(), Instant::now()));
         match event {
+            Event::PermissionRequestResult(_) => {
+                should_render = true;
+            },
             Event::Timer(_elapsed) => {
                 if self.search_state.loading {
                     set_timeout(0.5);

@@ -38,6 +38,7 @@ enum EventType {
     FileSystemUpdate = 13;
     /// A file was deleted somewhere in the Zellij CWD folder
     FileSystemDelete = 14;
+    PermissionRequestResult = 15;
 }
 
 message EventNameList {
@@ -57,7 +58,12 @@ message Event {
     bool visible_payload = 9;
     CustomMessagePayload custom_message_payload = 10;
     FileListPayload file_list_payload = 11;
+    PermissionRequestResultPayload permission_request_result_payload = 12;
   }
+}
+
+message PermissionRequestResultPayload {
+  bool granted = 1;
 }
 
 message FileListPayload {

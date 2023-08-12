@@ -188,6 +188,7 @@ impl<'a> PluginLoader<'a> {
         display_loading_stage!(end, loading_indication, senders, plugin_id);
         Ok(())
     }
+
     pub fn add_client(
         client_id: ClientId,
         plugin_dir: PathBuf,
@@ -613,6 +614,19 @@ impl<'a> PluginLoader<'a> {
         }
         start_function.call(&[]).with_context(err_context)?;
 
+        plugin_map.lock().unwrap().insert(
+            self.plugin_id,
+            self.client_id,
+            Arc::new(Mutex::new(RunningPlugin::new(
+                main_user_instance,
+                main_user_env,
+                self.size.rows,
+                self.size.cols,
+            ))),
+            subscriptions.clone(),
+            workers,
+        );
+
         let protobuf_plugin_configuration: ProtobufPluginConfiguration = self
             .plugin
             .userspace_configuration
@@ -639,18 +653,6 @@ impl<'a> PluginLoader<'a> {
             self.loading_indication,
             self.senders,
             self.plugin_id
-        );
-        plugin_map.lock().unwrap().insert(
-            self.plugin_id,
-            self.client_id,
-            Arc::new(Mutex::new(RunningPlugin::new(
-                main_user_instance,
-                main_user_env,
-                self.size.rows,
-                self.size.cols,
-            ))),
-            subscriptions.clone(),
-            workers,
         );
         display_loading_stage!(
             indicate_writing_plugin_to_cache_success,
@@ -764,13 +766,13 @@ impl<'a> PluginLoader<'a> {
             })
             .with_context(err_context)?;
         let wasi = wasi_env.import_object(&module).with_context(err_context)?;
-
         let mut mut_plugin = self.plugin.clone();
         mut_plugin.set_tab_index(self.tab_index);
         let plugin_env = PluginEnv {
             plugin_id: self.plugin_id,
             client_id: self.client_id,
             plugin: mut_plugin,
+            permissions: Arc::new(Mutex::new(None)),
             senders: self.senders.clone(),
             wasi_env,
             plugin_own_data_dir: self.plugin_own_data_dir.clone(),
