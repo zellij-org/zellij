@@ -31,6 +31,11 @@ pub fn get_socket_dir() -> Result<String> {
     Ok(var(SOCKET_DIR_ENV_KEY)?)
 }
 
+pub const ZELLIJ_TMP_LOG_FILE_ENV_KEY: &str = "ZELLIJ_TMP_LOG_FILE";
+pub fn set_tmp_log_file(v: String) {
+    set_var(ZELLIJ_TMP_LOG_FILE_ENV_KEY, v);
+}
+
 /// Manage ENVIRONMENT VARIABLES from the configuration and the layout files
 #[derive(Default, Clone, PartialEq, Serialize, Deserialize)]
 pub struct EnvironmentVariables {
