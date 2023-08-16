@@ -10,15 +10,20 @@ use zellij_utils::{
     ipc::{ClientToServerMsg, IpcReceiverWithContext, IpcSenderWithContext, ServerToClientMsg},
 };
 
-pub(crate) fn get_sessions() -> Result<Vec<String>, io::ErrorKind> {
+pub(crate) fn get_sessions(only_unattached: bool) -> Result<Vec<String>, io::ErrorKind> {
     match fs::read_dir(&*ZELLIJ_SOCK_DIR) {
         Ok(files) => {
             let mut sessions = Vec::new();
             files.for_each(|file| {
                 let file = file.unwrap();
                 let file_name = file.file_name().into_string().unwrap();
-                if file.file_type().unwrap().is_socket() && assert_socket(&file_name) {
-                    sessions.push(file_name);
+                if file.file_type().unwrap().is_socket() {
+                    match num_session_clients(&file_name) {
+                        Ok(num_clients) if !only_unattached || num_clients == 1 => {
+                            sessions.push(file_name);
+                        },
+                        _ => (),
+                    }
                 }
             });
             Ok(sessions)
@@ -28,7 +33,7 @@ pub(crate) fn get_sessions() -> Result<Vec<String>, io::ErrorKind> {
     }
 }
 
-pub(crate) fn get_sessions_sorted_by_mtime() -> anyhow::Result<Vec<String>> {
+pub(crate) fn get_sessions_sorted_by_mtime(only_unattached: bool) -> anyhow::Result<Vec<String>> {
     match fs::read_dir(&*ZELLIJ_SOCK_DIR) {
         Ok(files) => {
             let mut sessions_with_mtime: Vec<(String, SystemTime)> = Vec::new();
@@ -36,36 +41,48 @@ pub(crate) fn get_sessions_sorted_by_mtime() -> anyhow::Result<Vec<String>> {
                 let file = file?;
                 let file_name = file.file_name().into_string().unwrap();
                 let file_modified_at = file.metadata()?.modified()?;
-                if file.file_type()?.is_socket() && assert_socket(&file_name) {
-                    sessions_with_mtime.push((file_name, file_modified_at));
+                if file.file_type()?.is_socket() {
+                    match num_session_clients(&file_name) {
+                        Ok(num_clients) if !only_unattached || num_clients == 1 => {
+                            sessions_with_mtime.push((file_name, file_modified_at));
+                        },
+                        _ => (),
+                    }
                 }
             }
             sessions_with_mtime.sort_by_key(|x| x.1); // the oldest one will be the first
-
-            let sessions = sessions_with_mtime.iter().map(|x| x.0.clone()).collect();
-            Ok(sessions)
+            Ok(sessions_with_mtime.into_iter().map(|x| x.0).collect())
         },
         Err(err) if io::ErrorKind::NotFound != err.kind() => Err(err.into()),
         Err(_) => Ok(Vec::with_capacity(0)),
     }
 }
 
-fn assert_socket(name: &str) -> bool {
+fn num_session_clients(name: &str) -> Result<usize, io::ErrorKind> {
     let path = &*ZELLIJ_SOCK_DIR.join(name);
     match LocalSocketStream::connect(path) {
         Ok(stream) => {
             let mut sender = IpcSenderWithContext::new(stream);
-            let _ = sender.send(ClientToServerMsg::ConnStatus);
+            let _ = sender.send(ClientToServerMsg::ListClients);
             let mut receiver: IpcReceiverWithContext<ServerToClientMsg> = sender.get_receiver();
             match receiver.recv() {
-                Some((ServerToClientMsg::Connected, _)) => true,
-                None | Some((_, _)) => false,
+                Some((ServerToClientMsg::ActiveClients(clients), _)) => Ok(clients.len()),
+                None | Some((_, _)) => Err(io::ErrorKind::NotConnected),
             }
         },
         Err(e) if e.kind() == io::ErrorKind::ConnectionRefused => {
             drop(fs::remove_file(path));
-            false
+            Err(e.kind())
         },
+        Err(e) => Err(e.kind()),
+    }
+}
+
+pub(crate) fn session_is_attached(name: &str) -> bool {
+    // if there is more than one client connected to the session, then it is attached
+    // the connection to list the number of clients counts as one connection
+    match num_session_clients(name) {
+        Ok(num_clients) => num_clients > 1,
         Err(_) => false,
     }
 }
@@ -75,6 +92,8 @@ pub(crate) fn print_sessions(sessions: Vec<String>) {
     sessions.iter().for_each(|session| {
         let suffix = if curr_session == *session {
             " (current)"
+        } else if session_is_attached(session) {
+            " (attached)"
         } else {
             ""
         };
@@ -100,8 +119,9 @@ pub(crate) enum ActiveSession {
     Many,
 }
 
-pub(crate) fn get_active_session() -> ActiveSession {
-    match get_sessions() {
+pub(crate) fn get_active_session(only_unattached: bool) -> ActiveSession {
+    let sessions = get_sessions(only_unattached);
+    match sessions {
         Ok(sessions) if sessions.is_empty() => ActiveSession::None,
         Ok(mut sessions) if sessions.len() == 1 => ActiveSession::One(sessions.pop().unwrap()),
         Ok(_) => ActiveSession::Many,
@@ -126,7 +146,7 @@ pub(crate) fn kill_session(name: &str) {
 }
 
 pub(crate) fn list_sessions() {
-    let exit_code = match get_sessions() {
+    let exit_code = match get_sessions(false) {
         Ok(sessions) if !sessions.is_empty() => {
             print_sessions(sessions);
             0
@@ -151,8 +171,11 @@ pub enum SessionNameMatch {
     None,
 }
 
-pub(crate) fn match_session_name(prefix: &str) -> Result<SessionNameMatch, io::ErrorKind> {
-    let sessions = get_sessions()?;
+pub(crate) fn match_session_name(
+    prefix: &str,
+    only_unattached: bool,
+) -> Result<SessionNameMatch, io::ErrorKind> {
+    let sessions = get_sessions(only_unattached)?;
 
     let filtered_sessions: Vec<_> = sessions.iter().filter(|s| s.starts_with(prefix)).collect();
 
@@ -172,7 +195,7 @@ pub(crate) fn match_session_name(prefix: &str) -> Result<SessionNameMatch, io::E
 }
 
 pub(crate) fn session_exists(name: &str) -> Result<bool, io::ErrorKind> {
-    match match_session_name(name) {
+    match match_session_name(name, false) {
         Ok(SessionNameMatch::Exact(_)) => Ok(true),
         Ok(_) => Ok(false),
         Err(e) => Err(e),
@@ -186,7 +209,7 @@ pub(crate) fn assert_session(name: &str) {
                 return;
             } else {
                 println!("No session named {:?} found.", name);
-                if let Some(sugg) = get_sessions().unwrap().suggest(name) {
+                if let Some(sugg) = get_sessions(false).unwrap().suggest(name) {
                     println!("  help: Did you mean `{}`?", sugg);
                 }
             }

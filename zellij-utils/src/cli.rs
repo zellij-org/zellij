@@ -87,6 +87,10 @@ pub enum Sessions {
         #[clap(short, long, value_parser)]
         create: bool,
 
+        /// Only attach to unattached sessions.
+        #[clap(short, long, value_parser)]
+        only_unattached: bool,
+
         /// Number of the session index in the active sessions ordered creation date.
         #[clap(long, value_parser)]
         index: Option<usize>,
