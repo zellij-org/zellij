@@ -365,6 +365,9 @@ pub fn publish(sh: &Shell, flags: flags::Publish) -> anyhow::Result<()> {
                         println!("Aborting publish for crate '{crate_name}'");
                         return Err::<(), _>(err);
                     }
+                } else {
+                    // publish successful, continue to next crate
+                    break;
                 }
             }
         }
