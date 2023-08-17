@@ -38,6 +38,7 @@ lazy_static! {
         .join(format!("{}", Uuid::new_v4()));
     pub static ref ZELLIJ_PLUGIN_PERMISSIONS_CACHE: PathBuf =
         ZELLIJ_CACHE_DIR.join("permissions.kdl");
+    pub static ref ZELLIJ_SESSION_INFO_CACHE_DIR: PathBuf = ZELLIJ_CACHE_DIR.join("session_info");
 }
 
 pub const FEATURES: &[&str] = &[

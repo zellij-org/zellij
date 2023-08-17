@@ -2,7 +2,7 @@ use crate::input::actions::Action;
 use crate::input::config::ConversionError;
 use clap::ArgEnum;
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, BTreeMap};
 use std::fmt;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
@@ -495,6 +495,7 @@ pub enum Event {
     FileSystemDelete(Vec<PathBuf>),
     /// A Result of plugin permission request
     PermissionRequestResult(PermissionStatus),
+    SessionUpdate(Vec<SessionInfo>),
 }
 
 #[derive(
@@ -731,6 +732,32 @@ impl ModeInfo {
             }
         }
         vec![]
+    }
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct SessionInfo {
+    pub name: String,
+    pub tabs: Vec<TabInfo>,
+    pub panes: PaneManifest,
+    pub connected_clients: usize,
+}
+
+impl SessionInfo {
+    pub fn new(name: String) -> Self {
+        SessionInfo {
+            name,
+            ..Default::default()
+        }
+    }
+    pub fn update_tab_info(&mut self, new_tab_info: Vec<TabInfo>) {
+        self.tabs = new_tab_info;
+    }
+    pub fn update_pane_info(&mut self, new_pane_info: PaneManifest) {
+        self.panes = new_pane_info;
+    }
+    pub fn update_connected_clients(&mut self, new_connected_clients: usize) {
+        self.connected_clients = new_connected_clients;
     }
 }
 

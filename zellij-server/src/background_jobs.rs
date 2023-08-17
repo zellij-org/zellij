@@ -1,12 +1,16 @@
 use zellij_utils::async_std::task;
 use zellij_utils::errors::{prelude::*, BackgroundJobContext, ContextType};
+use zellij_utils::consts::{ZELLIJ_SESSION_INFO_CACHE_DIR, ZELLIJ_SOCK_DIR};
+use zellij_utils::data::{SessionInfo};
 
-use std::collections::HashMap;
+use std::collections::{HashMap, BTreeMap};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
 };
 use std::time::{Duration, Instant};
+use std::fs;
+use std::os::unix::fs::FileTypeExt;
 
 use crate::panes::PaneId;
 use crate::screen::ScreenInstruction;
@@ -17,6 +21,7 @@ pub enum BackgroundJob {
     DisplayPaneError(Vec<PaneId>, String),
     AnimatePluginLoading(u32),       // u32 - plugin_id
     StopPluginLoadingAnimation(u32), // u32 - plugin_id
+    ReadAllSessionInfosOnMachine, // u32 - plugin_id
     Exit,
 }
 
@@ -28,6 +33,7 @@ impl From<&BackgroundJob> for BackgroundJobContext {
             BackgroundJob::StopPluginLoadingAnimation(..) => {
                 BackgroundJobContext::StopPluginLoadingAnimation
             },
+            BackgroundJob::ReadAllSessionInfosOnMachine => BackgroundJobContext::ReadAllSessionInfosOnMachine,
             BackgroundJob::Exit => BackgroundJobContext::Exit,
         }
     }
@@ -35,6 +41,7 @@ impl From<&BackgroundJob> for BackgroundJobContext {
 
 static FLASH_DURATION_MS: u64 = 1000;
 static PLUGIN_ANIMATION_OFFSET_DURATION_MD: u64 = 500;
+static SESSION_READ_DURATION: u64 = 1000;
 
 pub(crate) fn background_jobs_main(bus: Bus<BackgroundJob>) -> Result<()> {
     let err_context = || "failed to write to pty".to_string();
@@ -93,6 +100,48 @@ pub(crate) fn background_jobs_main(bus: Bus<BackgroundJob>) -> Result<()> {
                     loading_plugin.store(false, Ordering::SeqCst);
                 }
             },
+            BackgroundJob::ReadAllSessionInfosOnMachine => {
+                // this job should only be run once and it keeps track of other sessions (as well
+                // as this one's) infos (metadata mostly) and sends it to the screen which in turn
+                // forwards it to plugins and other places it needs to be
+                if running_jobs.get(&job).is_some() {
+                    continue;
+                }
+                running_jobs.insert(job, Instant::now());
+                task::spawn({
+                    let senders = bus.senders.clone();
+                    async move {
+                        loop {
+                            let mut other_session_names = vec![];
+                            let mut session_infos_on_machine = BTreeMap::new();
+                            // we do this so that the session infos will be actual and we're
+                            // reasonably sure their session is running
+                            if let Ok(files) = fs::read_dir(&*ZELLIJ_SOCK_DIR) {
+                                files.for_each(|file| {
+                                    if let Ok(file) = file {
+                                        if let Ok(file_name) = file.file_name().into_string() {
+                                            if file.file_type().unwrap().is_socket() {
+                                                other_session_names.push(file_name);
+                                            }
+                                        }
+                                    }
+                                });
+                            }
+
+                            for session_name in other_session_names {
+                                let session_cache_file_name = ZELLIJ_SESSION_INFO_CACHE_DIR.join(format!("{}.kdl", session_name));
+                                if let Ok(raw_session_info) = fs::read_to_string(&session_cache_file_name) {
+                                    if let Ok(session_info) = SessionInfo::from_string(&raw_session_info) {
+                                        session_infos_on_machine.insert(session_name, session_info);
+                                    }
+                                }
+                            }
+                            let _ = senders.send_to_screen(ScreenInstruction::UpdateSessionInfos(session_infos_on_machine));
+                            task::sleep(std::time::Duration::from_millis(SESSION_READ_DURATION)).await;
+                        }
+                    }
+                });
+            }
             BackgroundJob::Exit => {
                 for loading_plugin in loading_plugins.values() {
                     loading_plugin.store(false, Ordering::SeqCst);

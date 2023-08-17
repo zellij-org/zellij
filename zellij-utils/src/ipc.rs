@@ -65,16 +65,6 @@ impl PixelDimensions {
 #[allow(clippy::large_enum_variant)]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ClientToServerMsg {
-    /*// List which sessions are available
-    ListSessions,
-    // Create a new session
-    CreateSession,
-    // Attach to a running session
-    AttachToSession(SessionId, ClientType),
-    // Force detach
-    DetachSession(SessionId),
-    // Disconnect from the session we're connected to
-    DisconnectFromSession,*/
     DetachSession(Vec<ClientId>),
     TerminalPixelDimensions(PixelDimensions),
     BackgroundColor(String),

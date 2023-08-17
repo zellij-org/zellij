@@ -342,6 +342,7 @@ pub enum ScreenContext {
     BreakPane,
     BreakPaneRight,
     BreakPaneLeft,
+    UpdateSessionInfos,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.
@@ -429,6 +430,7 @@ pub enum BackgroundJobContext {
     DisplayPaneError,
     AnimatePluginLoading,
     StopPluginLoadingAnimation,
+    ReadAllSessionInfosOnMachine,
     Exit,
 }
 
