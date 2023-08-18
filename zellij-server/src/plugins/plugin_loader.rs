@@ -1,3 +1,4 @@
+use crate::get_store;
 use crate::plugins::plugin_map::{PluginEnv, PluginMap, RunningPlugin, Subscriptions};
 use crate::plugins::plugin_worker::{plugin_worker, RunningWorker};
 use crate::plugins::zellij_exports::{wasi_read_string, zellij_exports};
@@ -228,8 +229,9 @@ impl<'a> PluginLoader<'a> {
         plugin_loader
             .load_module_from_memory()
             .and_then(|module| plugin_loader.create_plugin_environment(module))
-            .and_then(|(instance, plugin_env, subscriptions)| {
+            .and_then(|(store, instance, plugin_env, subscriptions)| {
                 plugin_loader.load_plugin_instance(
+                    store,
                     &instance,
                     &plugin_env,
                     &plugin_map,
@@ -289,8 +291,9 @@ impl<'a> PluginLoader<'a> {
             .or_else(|_e| plugin_loader.load_module_from_hd_cache())
             .or_else(|_e| plugin_loader.compile_module())
             .and_then(|module| plugin_loader.create_plugin_environment(module))
-            .and_then(|(instance, plugin_env, subscriptions)| {
+            .and_then(|(store, instance, plugin_env, subscriptions)| {
                 plugin_loader.load_plugin_instance(
+                    store,
                     &instance,
                     &plugin_env,
                     &plugin_map,
@@ -347,8 +350,9 @@ impl<'a> PluginLoader<'a> {
             plugin_loader
                 .load_module_from_memory()
                 .and_then(|module| plugin_loader.create_plugin_environment(module))
-                .and_then(|(instance, plugin_env, subscriptions)| {
+                .and_then(|(store, instance, plugin_env, subscriptions)| {
                     plugin_loader.load_plugin_instance(
+                        store,
                         &instance,
                         &plugin_env,
                         &plugin_map,
@@ -404,8 +408,9 @@ impl<'a> PluginLoader<'a> {
         plugin_loader
             .compile_module()
             .and_then(|module| plugin_loader.create_plugin_environment(module))
-            .and_then(|(instance, plugin_env, subscriptions)| {
+            .and_then(|(store, instance, plugin_env, subscriptions)| {
                 plugin_loader.load_plugin_instance(
+                    store,
                     &instance,
                     &plugin_env,
                     &plugin_map,
@@ -657,19 +662,14 @@ impl<'a> PluginLoader<'a> {
     pub fn create_plugin_environment(
         &mut self,
         module: Module,
-    ) -> Result<(Instance, PluginEnv, Arc<Mutex<Subscriptions>>)> {
+    ) -> Result<(Store, Instance, PluginEnv, Arc<Mutex<Subscriptions>>)> {
         log::info!("create plugin environment");
         log::info!("create plugin environment, unlocked store");
 
         let err_context = || format!("Failed to create environment for plugin");
-        let (instance, plugin_env, subscriptions) =
+        let (mut store, instance, plugin_env, subscriptions) =
             self.create_plugin_instance_env_and_subscriptions(&module)?;
-        assert_plugin_version(
-            &mut self.store.lock().unwrap().as_store_mut(),
-            &instance,
-            &plugin_env,
-        )
-        .with_context(err_context)?;
+        assert_plugin_version(&mut store, &instance, &plugin_env).with_context(err_context)?;
         // Only do an insert when everything went well!
         let cloned_plugin = self.plugin.clone();
         self.plugin_cache
@@ -678,11 +678,11 @@ impl<'a> PluginLoader<'a> {
             .insert(cloned_plugin.path, module);
 
         log::info!("created plugin environment");
-        Ok((instance, plugin_env, subscriptions))
+        Ok((store, instance, plugin_env, subscriptions))
     }
     pub fn create_plugin_instance_and_wasi_env_for_worker(
         &mut self,
-    ) -> Result<(Instance, PluginEnv)> {
+    ) -> Result<(Store, Instance, PluginEnv)> {
         let err_context = || {
             format!(
                 "Failed to create instance and plugin env for worker {}",
@@ -696,12 +696,13 @@ impl<'a> PluginLoader<'a> {
             .get(&self.plugin.path)
             .with_context(err_context)?
             .clone();
-        let (instance, plugin_env, _subscriptions) =
+        let (store, instance, plugin_env, _subscriptions) =
             self.create_plugin_instance_env_and_subscriptions(&module)?;
-        Ok((instance, plugin_env))
+        Ok((store, instance, plugin_env))
     }
     pub fn load_plugin_instance(
         &mut self,
+        mut store: Store,
         instance: &Instance,
         plugin_env: &PluginEnv,
         plugin_map: &Arc<Mutex<PluginMap>>,
@@ -729,7 +730,7 @@ impl<'a> PluginLoader<'a> {
         for (function_name, _exported_function) in instance.exports.iter().functions() {
             if function_name.ends_with("_worker") {
                 let plugin_config = self.plugin.clone();
-                let (instance, plugin_env) =
+                let (mut store, instance, plugin_env) =
                     self.create_plugin_instance_and_wasi_env_for_worker()?;
 
                 let start_function_for_worker = instance
@@ -737,25 +738,22 @@ impl<'a> PluginLoader<'a> {
                     .get_function("_start")
                     .with_context(err_context)?;
                 start_function_for_worker
-                    .call(&mut self.store.lock().unwrap().as_store_mut(), &[])
+                    .call(&mut store, &[])
                     .with_context(err_context)?;
 
-                let worker = RunningWorker::new(
-                    self.store.clone(),
-                    instance,
-                    &function_name,
-                    plugin_config,
-                    plugin_env,
-                );
+                let worker =
+                    RunningWorker::new(store, instance, &function_name, plugin_config, plugin_env);
                 let worker_sender = plugin_worker(worker);
                 workers.insert(function_name.into(), worker_sender);
             }
         }
+        log::info!("calling start function!");
         start_function
-            .call(&mut self.store.lock().unwrap().as_store_mut(), &[])
+            .call(&mut store, &[])
             .with_context(err_context)?;
+        log::info!("calling load function!");
         load_function
-            .call(&mut self.store.lock().unwrap().as_store_mut(), &[])
+            .call(&mut store, &[])
             .with_context(err_context)?;
         display_loading_stage!(
             indicate_starting_plugin_success,
@@ -773,6 +771,7 @@ impl<'a> PluginLoader<'a> {
             self.plugin_id,
             self.client_id,
             Arc::new(Mutex::new(RunningPlugin::new(
+                store,
                 main_user_instance,
                 main_user_env,
                 self.size.rows,
@@ -787,6 +786,7 @@ impl<'a> PluginLoader<'a> {
             self.senders,
             self.plugin_id
         );
+        log::info!("load plugin instance finished!");
         Ok(())
     }
     pub fn clone_instance_for_other_clients(
@@ -826,8 +826,9 @@ impl<'a> PluginLoader<'a> {
                 plugin_loader_for_client
                     .load_module_from_memory()
                     .and_then(|module| plugin_loader_for_client.create_plugin_environment(module))
-                    .and_then(|(instance, plugin_env, subscriptions)| {
+                    .and_then(|(store, instance, plugin_env, subscriptions)| {
                         plugin_loader_for_client.load_plugin_instance(
+                            store,
                             &instance,
                             &plugin_env,
                             plugin_map,
@@ -870,7 +871,7 @@ impl<'a> PluginLoader<'a> {
     fn create_plugin_instance_env_and_subscriptions(
         &self,
         module: &Module,
-    ) -> Result<(Instance, PluginEnv, Arc<Mutex<Subscriptions>>)> {
+    ) -> Result<(Store, Instance, PluginEnv, Arc<Mutex<Subscriptions>>)> {
         log::info!("create_plugin_instance_env_and_subscriptions");
         let err_context = || {
             format!(
@@ -878,8 +879,8 @@ impl<'a> PluginLoader<'a> {
                 self.plugin_id
             )
         };
-        let mut store = self.store.lock().unwrap();
-        let store_mut = &mut *store;
+        let mut store = get_store();
+        let store_mut = &mut store;
         let mut wasi_env = WasiState::new("Zellij")
             .env("CLICOLOR_FORCE", "1")
             .map_dir("/host", self.zellij_cwd.clone())
@@ -932,7 +933,7 @@ impl<'a> PluginLoader<'a> {
 
         log::info!("created instance");
 
-        Ok((instance, plugin_env, subscriptions))
+        Ok((store, instance, plugin_env, subscriptions))
     }
 }
 

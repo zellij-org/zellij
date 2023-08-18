@@ -5,7 +5,7 @@ use std::{
     path::PathBuf,
     sync::{Arc, Mutex},
 };
-use wasmer::Instance;
+use wasmer::{Instance, Store};
 use wasmer_wasi::WasiEnv;
 
 use crate::{thread_bus::ThreadSenders, ClientId};
@@ -223,6 +223,7 @@ pub enum AtomicEvent {
 }
 
 pub struct RunningPlugin {
+    pub store: Store,
     pub instance: Instance,
     pub plugin_env: PluginEnv,
     pub rows: usize,
@@ -232,8 +233,15 @@ pub struct RunningPlugin {
 }
 
 impl RunningPlugin {
-    pub fn new(instance: Instance, plugin_env: PluginEnv, rows: usize, columns: usize) -> Self {
+    pub fn new(
+        store: Store,
+        instance: Instance,
+        plugin_env: PluginEnv,
+        rows: usize,
+        columns: usize,
+    ) -> Self {
         RunningPlugin {
+            store,
             instance,
             plugin_env,
             rows,

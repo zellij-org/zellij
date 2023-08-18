@@ -15,12 +15,12 @@ pub struct RunningWorker {
     pub name: String,
     pub plugin_config: PluginConfig,
     pub plugin_env: PluginEnv,
-    store: Arc<Mutex<Store>>,
+    store: Store,
 }
 
 impl RunningWorker {
     pub fn new(
-        store: Arc<Mutex<Store>>,
+        store: Store,
         instance: Instance,
         name: &str,
         plugin_config: PluginConfig,
@@ -34,7 +34,7 @@ impl RunningWorker {
             plugin_env,
         }
     }
-    pub fn send_message(&self, message: String, payload: String) -> Result<()> {
+    pub fn send_message(&mut self, message: String, payload: String) -> Result<()> {
         let err_context = || format!("Failed to send message to worker");
 
         let work_function = self
@@ -45,7 +45,7 @@ impl RunningWorker {
         wasi_write_object(&self.plugin_env.wasi_env, &(message, payload))
             .with_context(err_context)?;
         work_function
-            .call(&mut self.store.lock().unwrap().as_store_mut(), &[])
+            .call(&mut self.store, &[])
             .or_else::<anyError, _>(|e| match e.downcast::<serde_json::Error>() {
                 Ok(_) => panic!(
                     "{}",
@@ -68,7 +68,7 @@ pub enum MessageToWorker {
     Exit,
 }
 
-pub fn plugin_worker(worker: RunningWorker) -> Sender<MessageToWorker> {
+pub fn plugin_worker(mut worker: RunningWorker) -> Sender<MessageToWorker> {
     let (sender, receiver): (Sender<MessageToWorker>, Receiver<MessageToWorker>) = unbounded();
     task::spawn({
         async move {

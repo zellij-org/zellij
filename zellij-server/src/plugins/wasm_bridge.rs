@@ -360,7 +360,6 @@ impl WasmBridge {
                     .lock()
                     .unwrap()
                     .next_event_id(AtomicEvent::Resize);
-                let store = self.store.clone();
                 task::spawn({
                     let senders = self.senders.clone();
                     let running_plugin = running_plugin.clone();
@@ -371,18 +370,20 @@ impl WasmBridge {
                         if running_plugin.apply_event_id(AtomicEvent::Resize, event_id) {
                             running_plugin.rows = new_rows;
                             running_plugin.columns = new_columns;
+
                             let rendered_bytes = running_plugin
                                 .instance
+                                .clone()
                                 .exports
                                 .get_function("render")
                                 .map_err(anyError::new)
                                 .and_then(|render| {
                                     render
                                         .call(
-                                            &mut store.lock().unwrap().as_store_mut(),
+                                            &mut running_plugin.store,
                                             &[
-                                                Value::I32(running_plugin.rows as i32),
-                                                Value::I32(running_plugin.columns as i32),
+                                                Value::I32(new_rows as i32),
+                                                Value::I32(new_columns as i32),
                                             ],
                                         )
                                         .map_err(anyError::new)
@@ -453,7 +454,6 @@ impl WasmBridge {
                         || (cid.is_none() && pid == Some(*plugin_id))
                         || (cid == Some(*client_id) && pid == Some(*plugin_id)))
                 {
-                    let store = self.store.clone();
                     task::spawn({
                         let senders = self.senders.clone();
                         let running_plugin = running_plugin.clone();
@@ -461,17 +461,13 @@ impl WasmBridge {
                         let plugin_id = *plugin_id;
                         let client_id = *client_id;
                         async move {
-                            let running_plugin = running_plugin.lock().unwrap();
+                            let mut running_plugin = running_plugin.lock().unwrap();
                             let mut plugin_bytes = vec![];
                             match apply_event_to_plugin(
                                 plugin_id,
                                 client_id,
-                                store,
-                                &running_plugin.instance,
-                                &running_plugin.plugin_env,
+                                &mut running_plugin,
                                 &event,
-                                running_plugin.rows,
-                                running_plugin.columns,
                                 &mut plugin_bytes,
                             ) {
                                 Ok(()) => {
@@ -570,23 +566,18 @@ impl WasmBridge {
                         if !subs.contains(&event_type) {
                             continue;
                         }
-                        let store = self.store.clone();
                         task::spawn({
                             let senders = self.senders.clone();
                             let running_plugin = running_plugin.clone();
                             let client_id = *client_id;
                             async move {
-                                let running_plugin = running_plugin.lock().unwrap();
+                                let mut running_plugin = running_plugin.lock().unwrap();
                                 let mut plugin_bytes = vec![];
                                 match apply_event_to_plugin(
                                     plugin_id,
                                     client_id,
-                                    store,
-                                    &running_plugin.instance,
-                                    &running_plugin.plugin_env,
+                                    &mut running_plugin,
                                     &event,
-                                    running_plugin.rows,
-                                    running_plugin.columns,
                                     &mut plugin_bytes,
                                 ) {
                                     Ok(()) => {
@@ -737,14 +728,15 @@ fn handle_plugin_loading_failure(
 pub fn apply_event_to_plugin(
     plugin_id: PluginId,
     client_id: ClientId,
-    store: Arc<Mutex<Store>>,
-    instance: &Instance,
-    plugin_env: &PluginEnv,
+    running_plugin: &mut RunningPlugin,
     event: &Event,
-    rows: usize,
-    columns: usize,
     plugin_bytes: &mut Vec<(PluginId, ClientId, Vec<u8>)>,
 ) -> Result<()> {
+    let instance = &running_plugin.instance;
+    let plugin_env = &running_plugin.plugin_env;
+    let rows = running_plugin.rows;
+    let columns = running_plugin.columns;
+
     let err_context = || format!("Failed to apply event to plugin {plugin_id}");
     let update = instance
         .exports
@@ -752,7 +744,7 @@ pub fn apply_event_to_plugin(
         .with_context(err_context)?;
     wasi_write_object(&plugin_env.wasi_env, &event).with_context(err_context)?;
     let update_return = update
-        .call(&mut store.lock().unwrap().as_store_mut(), &[])
+        .call(&mut running_plugin.store, &[])
         .or_else::<anyError, _>(|e| match e.downcast::<serde_json::Error>() {
             Ok(_) => panic!(
                 "{}",
@@ -778,7 +770,7 @@ pub fn apply_event_to_plugin(
             .and_then(|render| {
                 render
                     .call(
-                        &mut store.lock().unwrap().as_store_mut(),
+                        &mut running_plugin.store,
                         &[Value::I32(rows as i32), Value::I32(columns as i32)],
                     )
                     .map_err(anyError::new)
