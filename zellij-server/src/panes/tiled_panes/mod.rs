@@ -1530,7 +1530,7 @@ impl TiledPanes {
             *self.display_area.borrow(),
             *self.viewport.borrow(),
         );
-        if pane_grid.fill_space_over_pane(pane_id) {
+        if pane_grid.fill_space_over_pane(pane_id) || matches!(pane_id, PaneId::Plugin(_)) {
             // successfully filled space over pane
             let closed_pane = self.panes.remove(&pane_id);
             self.move_clients_out_of_pane(pane_id);
