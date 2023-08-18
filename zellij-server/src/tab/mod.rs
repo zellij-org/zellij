@@ -9,7 +9,9 @@ mod swap_layouts;
 use copy_command::CopyCommand;
 use std::env::temp_dir;
 use uuid::Uuid;
-use zellij_utils::data::{Direction, PaneInfo, ResizeStrategy};
+use zellij_utils::data::{
+    Direction, PaneInfo, PermissionStatus, PermissionType, PluginPermission, ResizeStrategy,
+};
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
 use zellij_utils::position::{Column, Line};
@@ -220,6 +222,7 @@ pub trait Pane {
     fn set_should_render_boundaries(&mut self, _should_render: bool) {}
     fn selectable(&self) -> bool;
     fn set_selectable(&mut self, selectable: bool);
+    fn request_permissions_from_user(&mut self, _permissions: Option<PluginPermission>) {}
     fn render(
         &mut self,
         client_id: Option<ClientId>,
@@ -473,6 +476,7 @@ pub trait Pane {
 pub enum AdjustedInput {
     WriteBytesToTerminal(Vec<u8>),
     ReRunCommandInThisPane(RunCommand),
+    PermissionRequestResult(Vec<PermissionType>, PermissionStatus),
     CloseThisPane,
 }
 pub fn get_next_terminal_position(
@@ -1560,17 +1564,35 @@ impl Tab {
                         self.close_pane(PaneId::Terminal(active_terminal_id), false, None);
                         should_update_ui = true;
                     },
+                    Some(_) => {},
                     None => {},
                 }
             },
-            PaneId::Plugin(pid) => {
-                let mut plugin_updates = vec![];
-                for key in parse_keys(&input_bytes) {
-                    plugin_updates.push((Some(pid), client_id, Event::Key(key)));
-                }
-                self.senders
-                    .send_to_plugin(PluginInstruction::Update(plugin_updates))
-                    .with_context(err_context)?;
+            PaneId::Plugin(pid) => match active_terminal.adjust_input_to_terminal(input_bytes) {
+                Some(AdjustedInput::WriteBytesToTerminal(adjusted_input)) => {
+                    let mut plugin_updates = vec![];
+                    for key in parse_keys(&adjusted_input) {
+                        plugin_updates.push((Some(pid), client_id, Event::Key(key)));
+                    }
+                    self.senders
+                        .send_to_plugin(PluginInstruction::Update(plugin_updates))
+                        .with_context(err_context)?;
+                },
+                Some(AdjustedInput::PermissionRequestResult(permissions, status)) => {
+                    self.request_plugin_permissions(pid, None);
+                    self.senders
+                        .send_to_plugin(PluginInstruction::PermissionRequestResult(
+                            pid,
+                            client_id,
+                            permissions,
+                            status,
+                            None,
+                        ))
+                        .with_context(err_context)?;
+                    should_update_ui = true;
+                },
+                Some(_) => {},
+                None => {},
             },
         }
         Ok(should_update_ui)
@@ -1780,8 +1802,24 @@ impl Tab {
     fn get_tiled_panes(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn Pane>)> {
         self.tiled_panes.get_panes()
     }
+    fn get_floating_panes(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn Pane>)> {
+        self.floating_panes.get_panes()
+    }
     fn get_selectable_tiled_panes(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn Pane>)> {
         self.get_tiled_panes().filter(|(_, p)| p.selectable())
+    }
+    fn get_selectable_floating_panes(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn Pane>)> {
+        self.get_floating_panes().filter(|(_, p)| p.selectable())
+    }
+    pub fn get_selectable_tiled_panes_count(&self) -> usize {
+        self.get_selectable_tiled_panes().count()
+    }
+    pub fn get_visible_selectable_floating_panes_count(&self) -> usize {
+        if self.are_floating_panes_visible() {
+            self.get_selectable_floating_panes().count()
+        } else {
+            0
+        }
     }
     fn get_next_terminal_position(&self) -> usize {
         let tiled_panes_count = self
@@ -2142,6 +2180,13 @@ impl Tab {
                 self.tiled_panes.move_clients_out_of_pane(id);
             }
         }
+        // we do this here because if there is a non-selectable pane on the edge, we consider it
+        // outside the viewport (a ui-pane, eg. the status-bar and tab-bar) and need to adjust for it
+        LayoutApplier::offset_viewport(
+            self.viewport.clone(),
+            &mut self.tiled_panes,
+            self.draw_pane_frames,
+        );
     }
     pub fn close_pane(
         &mut self,
@@ -3137,6 +3182,7 @@ impl Tab {
 
     pub fn set_pane_frames(&mut self, should_set_pane_frames: bool) {
         self.tiled_panes.set_pane_frames(should_set_pane_frames);
+        self.draw_pane_frames = should_set_pane_frames;
         self.should_clear_display_before_rendering = true;
         self.set_force_render();
     }
@@ -3278,13 +3324,13 @@ impl Tab {
             plugin_pane.progress_animation_offset();
         }
     }
-    fn show_floating_panes(&mut self) {
+    pub fn show_floating_panes(&mut self) {
         // this function is to be preferred to directly invoking floating_panes.toggle_show_panes(true)
         self.floating_panes.toggle_show_panes(true);
         self.tiled_panes.unfocus_all_panes();
     }
 
-    fn hide_floating_panes(&mut self) {
+    pub fn hide_floating_panes(&mut self) {
         // this function is to be preferred to directly invoking
         // floating_panes.toggle_show_panes(false)
         self.floating_panes.toggle_show_panes(false);
@@ -3355,7 +3401,7 @@ impl Tab {
         }
         pane_info
     }
-    fn add_floating_pane(
+    pub fn add_floating_pane(
         &mut self,
         mut pane: Box<dyn Pane>,
         pane_id: PaneId,
@@ -3380,7 +3426,7 @@ impl Tab {
         }
         Ok(())
     }
-    fn add_tiled_pane(
+    pub fn add_tiled_pane(
         &mut self,
         mut pane: Box<dyn Pane>,
         pane_id: PaneId,
@@ -3412,6 +3458,20 @@ impl Tab {
             self.next_swap_layout(client_id, true)?;
         }
         Ok(())
+    }
+    pub fn request_plugin_permissions(&mut self, pid: u32, permissions: Option<PluginPermission>) {
+        if let Some(plugin_pane) = self
+            .tiled_panes
+            .get_pane_mut(PaneId::Plugin(pid))
+            .or_else(|| self.floating_panes.get_pane_mut(PaneId::Plugin(pid)))
+            .or_else(|| {
+                self.suppressed_panes
+                    .values_mut()
+                    .find(|s_p| s_p.pid() == PaneId::Plugin(pid))
+            })
+        {
+            plugin_pane.request_permissions_from_user(permissions);
+        }
     }
 }
 

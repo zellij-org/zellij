@@ -19,7 +19,7 @@ use crate::{pty::PtyInstruction, thread_bus::Bus, ClientId, ServerInstruction};
 use wasm_bridge::WasmBridge;
 
 use zellij_utils::{
-    data::{Event, EventType, PluginCapabilities},
+    data::{Event, EventType, PermissionStatus, PermissionType, PluginCapabilities},
     errors::{prelude::*, ContextType, PluginContext},
     input::{
         command::TerminalAction,
@@ -80,6 +80,13 @@ pub enum PluginInstruction {
         String, // serialized payload
     ),
     PluginSubscribedToEvents(PluginId, ClientId, HashSet<EventType>),
+    PermissionRequestResult(
+        PluginId,
+        Option<ClientId>,
+        Vec<PermissionType>,
+        PermissionStatus,
+        Option<PathBuf>,
+    ),
     Exit,
 }
 
@@ -105,6 +112,9 @@ impl From<&PluginInstruction> for PluginContext {
             PluginInstruction::PostMessageToPlugin(..) => PluginContext::PostMessageToPlugin,
             PluginInstruction::PluginSubscribedToEvents(..) => {
                 PluginContext::PluginSubscribedToEvents
+            },
+            PluginInstruction::PermissionRequestResult(..) => {
+                PluginContext::PermissionRequestResult
             },
         }
     }
@@ -231,6 +241,7 @@ pub(crate) fn plugin_thread_main(
                 };
                 let mut extracted_floating_plugins: Vec<Option<Run>> = floating_panes_layout
                     .iter()
+                    .filter(|f| !f.already_running)
                     .map(|f| f.run.clone())
                     .collect();
                 extracted_run_instructions.append(&mut extracted_floating_plugins);
@@ -288,6 +299,30 @@ pub(crate) fn plugin_thread_main(
                         wasm_bridge.start_fs_watcher_if_not_started();
                     }
                 }
+            },
+            PluginInstruction::PermissionRequestResult(
+                plugin_id,
+                client_id,
+                permissions,
+                status,
+                cache_path,
+            ) => {
+                if let Err(e) = wasm_bridge.cache_plugin_permissions(
+                    plugin_id,
+                    client_id,
+                    permissions,
+                    status,
+                    cache_path,
+                ) {
+                    log::error!("{}", e);
+                }
+
+                let updates = vec![(
+                    Some(plugin_id),
+                    client_id,
+                    Event::PermissionRequestResult(status),
+                )];
+                wasm_bridge.update_plugins(updates)?;
             },
             PluginInstruction::Exit => {
                 wasm_bridge.cleanup();

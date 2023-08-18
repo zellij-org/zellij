@@ -166,7 +166,12 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<Key>)> {
         (s("Rename"), s("Rename"),
             action_key(&km, &[A::SwitchToMode(IM::RenameTab), A::TabNameInput(vec![0])])),
         (s("Sync"), s("Sync"), action_key(&km, &[A::ToggleActiveSyncTab, TO_NORMAL])),
-        (s("Toggle"), s("Toggle"), action_key(&km, &[A::ToggleTab])),
+        (s("Break pane to new tab"), s("Break"), action_key(&km, &[A::BreakPane, TO_NORMAL])),
+        (s("Break pane to next/prev tab"), s("Break next/prev"),
+            action_key_group(&km, &[
+                &[A::BreakPaneLeft, TO_NORMAL],
+                &[A::BreakPaneRight, TO_NORMAL]
+            ])),
         (s("Select pane"), s("Select"), to_normal_key),
     ]} else if mi.mode == IM::Resize { vec![
         (s("Increase/Decrease size"), s("Increase/Decrease"),

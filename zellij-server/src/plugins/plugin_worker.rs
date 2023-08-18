@@ -1,6 +1,3 @@
-use std::sync::{Arc, Mutex};
-
-use crate::plugins::plugin_loader::VersionMismatchError;
 use crate::plugins::plugin_map::PluginEnv;
 use crate::plugins::zellij_exports::wasi_write_object;
 use wasmer::{AsStoreMut, Instance, Store};
@@ -8,7 +5,9 @@ use wasmer::{AsStoreMut, Instance, Store};
 use zellij_utils::async_channel::{unbounded, Receiver, Sender};
 use zellij_utils::async_std::task;
 use zellij_utils::errors::prelude::*;
-use zellij_utils::{consts::VERSION, input::plugins::PluginConfig};
+use zellij_utils::input::plugins::PluginConfig;
+use zellij_utils::plugin_api::message::ProtobufMessage;
+use zellij_utils::prost::Message;
 
 pub struct RunningWorker {
     pub instance: Instance,
@@ -36,29 +35,21 @@ impl RunningWorker {
     }
     pub fn send_message(&mut self, message: String, payload: String) -> Result<()> {
         let err_context = || format!("Failed to send message to worker");
-
+        let protobuf_message = ProtobufMessage {
+            name: message,
+            payload,
+            ..Default::default()
+        };
+        let protobuf_bytes = protobuf_message.encode_to_vec();
         let work_function = self
             .instance
             .exports
             .get_function(&self.name)
             .with_context(err_context)?;
-        wasi_write_object(&self.plugin_env.wasi_env, &(message, payload))
-            .with_context(err_context)?;
+        wasi_write_object(&self.plugin_env.wasi_env, &protobuf_bytes).with_context(err_context)?;
         work_function
             .call(&mut self.store, &[])
-            .or_else::<anyError, _>(|e| match e.downcast::<serde_json::Error>() {
-                Ok(_) => panic!(
-                    "{}",
-                    anyError::new(VersionMismatchError::new(
-                        VERSION,
-                        "Unavailable",
-                        &self.plugin_config.path,
-                        self.plugin_config.is_builtin(),
-                    ))
-                ),
-                Err(e) => Err(e).with_context(err_context),
-            })?;
-
+            .with_context(err_context)?;
         Ok(())
     }
 }

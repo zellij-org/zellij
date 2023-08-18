@@ -295,7 +295,7 @@ impl FloatingPanes {
             pane.render_full_viewport();
         }
     }
-    pub fn set_pane_frames(&mut self, os_api: &mut Box<dyn ServerOsApi>) -> Result<()> {
+    pub fn set_pane_frames(&mut self, _os_api: &mut Box<dyn ServerOsApi>) -> Result<()> {
         let err_context =
             |pane_id: &PaneId| format!("failed to activate frame on pane {pane_id:?}");
 
@@ -392,7 +392,7 @@ impl FloatingPanes {
         self.set_force_render();
     }
 
-    pub fn resize_pty_all_panes(&mut self, os_api: &mut Box<dyn ServerOsApi>) -> Result<()> {
+    pub fn resize_pty_all_panes(&mut self, _os_api: &mut Box<dyn ServerOsApi>) -> Result<()> {
         for pane in self.panes.values_mut() {
             resize_pty!(pane, os_api, self.senders, self.character_cell_size)
                 .with_context(|| format!("failed to resize PTY in pane {:?}", pane.pid()))?;
@@ -403,7 +403,7 @@ impl FloatingPanes {
     pub fn resize_active_pane(
         &mut self,
         client_id: ClientId,
-        os_api: &mut Box<dyn ServerOsApi>,
+        _os_api: &mut Box<dyn ServerOsApi>,
         strategy: &ResizeStrategy,
     ) -> Result<bool> {
         // true => successfully resized
@@ -838,7 +838,7 @@ impl FloatingPanes {
             self.focus_pane_for_all_clients(focused_pane);
         }
     }
-    pub fn switch_active_pane_with(&mut self, os_api: &mut Box<dyn ServerOsApi>, pane_id: PaneId) {
+    pub fn switch_active_pane_with(&mut self, _os_api: &mut Box<dyn ServerOsApi>, pane_id: PaneId) {
         if let Some(active_pane_id) = self.first_active_floating_pane_id() {
             let current_position = self.panes.get(&active_pane_id).unwrap();
             let prev_geom = current_position.position_and_size();
@@ -897,5 +897,19 @@ impl FloatingPanes {
             pane_infos.push(pane_info_for_pane);
         }
         pane_infos
+    }
+    pub fn set_geom_for_pane_with_run(&mut self, run: Option<Run>, geom: PaneGeom) {
+        match self
+            .panes
+            .iter_mut()
+            .find(|(_, p)| p.invoked_with() == &run)
+        {
+            Some((_, pane)) => {
+                pane.set_geom(geom);
+            },
+            None => {
+                log::error!("Failed to find pane with run: {:?}", run);
+            },
+        }
     }
 }

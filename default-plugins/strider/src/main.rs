@@ -6,6 +6,7 @@ use search::{FileContentsWorker, FileNameWorker, MessageToSearch, ResultsOfSearc
 use serde::{Deserialize, Serialize};
 use serde_json;
 use state::{refresh_directory, FsEntry, State};
+use std::collections::BTreeMap;
 use std::{cmp::min, time::Instant};
 use zellij_tile::prelude::*;
 
@@ -18,7 +19,7 @@ register_worker!(
 );
 
 impl ZellijPlugin for State {
-    fn load(&mut self) {
+    fn load(&mut self, configuration: BTreeMap<String, String>) {
         refresh_directory(self);
         self.search_state.loading = true;
         subscribe(&[
@@ -29,17 +30,18 @@ impl ZellijPlugin for State {
             EventType::FileSystemCreate,
             EventType::FileSystemUpdate,
             EventType::FileSystemDelete,
+            EventType::PermissionRequestResult,
         ]);
-        post_message_to(
-            "file_name_search",
-            &serde_json::to_string(&MessageToSearch::ScanFolder).unwrap(),
-            "",
-        );
-        post_message_to(
-            "file_contents_search",
-            &serde_json::to_string(&MessageToSearch::ScanFolder).unwrap(),
-            "",
-        );
+        post_message_to(PluginMessage {
+            worker_name: Some("file_name_search".into()),
+            name: serde_json::to_string(&MessageToSearch::ScanFolder).unwrap(),
+            payload: "".into(),
+        });
+        post_message_to(PluginMessage {
+            worker_name: Some("file_contents_search".into()),
+            name: serde_json::to_string(&MessageToSearch::ScanFolder).unwrap(),
+            payload: "".into(),
+        });
         self.search_state.loading = true;
         set_timeout(0.5); // for displaying loading animation
     }
@@ -53,6 +55,9 @@ impl ZellijPlugin for State {
         };
         self.ev_history.push_back((event.clone(), Instant::now()));
         match event {
+            Event::PermissionRequestResult(_) => {
+                should_render = true;
+            },
             Event::Timer(_elapsed) => {
                 if self.search_state.loading {
                     set_timeout(0.5);
@@ -190,48 +195,48 @@ impl ZellijPlugin for State {
                     .iter()
                     .map(|p| p.to_string_lossy().to_string())
                     .collect();
-                post_message_to(
-                    "file_name_search",
-                    &serde_json::to_string(&MessageToSearch::FileSystemCreate).unwrap(),
-                    &serde_json::to_string(&paths).unwrap(),
-                );
-                post_message_to(
-                    "file_contents_search",
-                    &serde_json::to_string(&MessageToSearch::FileSystemCreate).unwrap(),
-                    &serde_json::to_string(&paths).unwrap(),
-                );
+                post_message_to(PluginMessage {
+                    worker_name: Some("file_name_search".into()),
+                    name: serde_json::to_string(&MessageToSearch::FileSystemCreate).unwrap(),
+                    payload: serde_json::to_string(&paths).unwrap(),
+                });
+                post_message_to(PluginMessage {
+                    worker_name: Some("file_contents_search".into()),
+                    name: serde_json::to_string(&MessageToSearch::FileSystemCreate).unwrap(),
+                    payload: serde_json::to_string(&paths).unwrap(),
+                });
             },
             Event::FileSystemUpdate(paths) => {
                 let paths: Vec<String> = paths
                     .iter()
                     .map(|p| p.to_string_lossy().to_string())
                     .collect();
-                post_message_to(
-                    "file_name_search",
-                    &serde_json::to_string(&MessageToSearch::FileSystemUpdate).unwrap(),
-                    &serde_json::to_string(&paths).unwrap(),
-                );
-                post_message_to(
-                    "file_contents_search",
-                    &serde_json::to_string(&MessageToSearch::FileSystemUpdate).unwrap(),
-                    &serde_json::to_string(&paths).unwrap(),
-                );
+                post_message_to(PluginMessage {
+                    worker_name: Some("file_name_search".into()),
+                    name: serde_json::to_string(&MessageToSearch::FileSystemUpdate).unwrap(),
+                    payload: serde_json::to_string(&paths).unwrap(),
+                });
+                post_message_to(PluginMessage {
+                    worker_name: Some("file_contents_search".into()),
+                    name: serde_json::to_string(&MessageToSearch::FileSystemUpdate).unwrap(),
+                    payload: serde_json::to_string(&paths).unwrap(),
+                });
             },
             Event::FileSystemDelete(paths) => {
                 let paths: Vec<String> = paths
                     .iter()
                     .map(|p| p.to_string_lossy().to_string())
                     .collect();
-                post_message_to(
-                    "file_name_search",
-                    &serde_json::to_string(&MessageToSearch::FileSystemDelete).unwrap(),
-                    &serde_json::to_string(&paths).unwrap(),
-                );
-                post_message_to(
-                    "file_contents_search",
-                    &serde_json::to_string(&MessageToSearch::FileSystemDelete).unwrap(),
-                    &serde_json::to_string(&paths).unwrap(),
-                );
+                post_message_to(PluginMessage {
+                    worker_name: Some("file_name_search".into()),
+                    name: serde_json::to_string(&MessageToSearch::FileSystemDelete).unwrap(),
+                    payload: serde_json::to_string(&paths).unwrap(),
+                });
+                post_message_to(PluginMessage {
+                    worker_name: Some("file_contents_search".into()),
+                    name: serde_json::to_string(&MessageToSearch::FileSystemDelete).unwrap(),
+                    payload: serde_json::to_string(&paths).unwrap(),
+                });
             },
             _ => {
                 dbg!("Unknown event {:?}", event);

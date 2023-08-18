@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package api.resize;
+
+enum ResizeAction {
+  Increase = 0;
+  Decrease = 1;
+}
+
+enum ResizeDirection {
+  Left = 0;
+  Right = 1;
+  Up = 2;
+  Down = 3;
+}
+
+message Resize {
+  ResizeAction resize_action = 1;
+  optional ResizeDirection direction = 2;
+}
+
+message MoveDirection {
+  ResizeDirection direction = 1;
+}

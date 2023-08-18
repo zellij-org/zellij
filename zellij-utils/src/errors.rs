@@ -338,6 +338,10 @@ pub enum ScreenContext {
     FocusPaneWithId,
     RenamePane,
     RenameTab,
+    RequestPluginPermissions,
+    BreakPane,
+    BreakPaneRight,
+    BreakPaneLeft,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.
@@ -374,6 +378,7 @@ pub enum PluginContext {
     PostMessageToPluginWorker,
     PostMessageToPlugin,
     PluginSubscribedToEvents,
+    PermissionRequestResult,
 }
 
 /// Stack call representations corresponding to the different types of [`ClientInstruction`]s.

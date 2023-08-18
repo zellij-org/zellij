@@ -1,5 +1,5 @@
 use super::{PluginId, PluginInstruction};
-use crate::plugins::plugin_loader::{PluginLoader, VersionMismatchError};
+use crate::plugins::plugin_loader::PluginLoader;
 use crate::plugins::plugin_map::{AtomicEvent, PluginEnv, PluginMap, RunningPlugin, Subscriptions};
 use crate::plugins::plugin_worker::MessageToWorker;
 use crate::plugins::watch_filesystem::watch_filesystem;
@@ -13,14 +13,18 @@ use std::{
 };
 use wasmer::{AsStoreMut, Instance, Module, Store, Value};
 use zellij_utils::async_std::task::{self, JoinHandle};
+use zellij_utils::data::{PermissionStatus, PermissionType};
+use zellij_utils::input::permission::PermissionCache;
 use zellij_utils::notify_debouncer_full::{notify::RecommendedWatcher, Debouncer, FileIdMap};
+use zellij_utils::plugin_api::event::ProtobufEvent;
+
+use zellij_utils::prost::Message;
 
 use crate::{
     background_jobs::BackgroundJob, screen::ScreenInstruction, thread_bus::ThreadSenders,
     ui::loading_indication::LoadingIndication, ClientId,
 };
 use zellij_utils::{
-    consts::VERSION,
     data::{Event, EventType, PluginCapabilities},
     errors::prelude::*,
     input::{
@@ -703,6 +707,44 @@ impl WasmBridge {
             };
         }
     }
+    pub fn cache_plugin_permissions(
+        &mut self,
+        plugin_id: PluginId,
+        client_id: Option<ClientId>,
+        permissions: Vec<PermissionType>,
+        status: PermissionStatus,
+        cache_path: Option<PathBuf>,
+    ) -> Result<()> {
+        if let Some(running_plugin) = self
+            .plugin_map
+            .lock()
+            .unwrap()
+            .get_running_plugin(plugin_id, client_id)
+        {
+            let err_context = || format!("Failed to write plugin permission {plugin_id}");
+
+            let mut running_plugin = running_plugin.lock().unwrap();
+            let permissions = if status == PermissionStatus::Granted {
+                permissions
+            } else {
+                vec![]
+            };
+
+            running_plugin
+                .plugin_env
+                .set_permissions(HashSet::from_iter(permissions.clone()));
+
+            let mut permission_cache = PermissionCache::from_path_or_default(cache_path);
+            permission_cache.cache(
+                running_plugin.plugin_env.plugin.location.to_string(),
+                permissions,
+            );
+
+            permission_cache.write_to_file().with_context(err_context)?;
+        }
+
+        Ok(())
+    }
 }
 
 fn handle_plugin_successful_loading(senders: &ThreadSenders, plugin_id: PluginId) {
@@ -725,6 +767,35 @@ fn handle_plugin_loading_failure(
     ));
 }
 
+// TODO: move to permissions?
+fn check_event_permission(
+    plugin_env: &PluginEnv,
+    event: &Event,
+) -> (PermissionStatus, Option<PermissionType>) {
+    if plugin_env.plugin.is_builtin() {
+        // built-in plugins can do all the things because they're part of the application and
+        // there's no use to deny them anything
+        return (PermissionStatus::Granted, None);
+    }
+    let permission = match event {
+        Event::ModeUpdate(..)
+        | Event::TabUpdate(..)
+        | Event::PaneUpdate(..)
+        | Event::CopyToClipboard(..)
+        | Event::SystemClipboardFailure
+        | Event::InputReceived => PermissionType::ReadApplicationState,
+        _ => return (PermissionStatus::Granted, None),
+    };
+
+    if let Some(permissions) = plugin_env.permissions.lock().unwrap().as_ref() {
+        if permissions.contains(&permission) {
+            return (PermissionStatus::Granted, None);
+        }
+    }
+
+    (PermissionStatus::Denied, Some(permission))
+}
+
 pub fn apply_event_to_plugin(
     plugin_id: PluginId,
     client_id: ClientId,
@@ -738,46 +809,53 @@ pub fn apply_event_to_plugin(
     let columns = running_plugin.columns;
 
     let err_context = || format!("Failed to apply event to plugin {plugin_id}");
-    let update = instance
-        .exports
-        .get_function("update")
-        .with_context(err_context)?;
-    wasi_write_object(&plugin_env.wasi_env, &event).with_context(err_context)?;
-    let update_return = update
-        .call(&mut running_plugin.store, &[])
-        .or_else::<anyError, _>(|e| match e.downcast::<serde_json::Error>() {
-            Ok(_) => panic!(
-                "{}",
-                anyError::new(VersionMismatchError::new(
-                    VERSION,
-                    "Unavailable",
-                    &plugin_env.plugin.path,
-                    plugin_env.plugin.is_builtin(),
-                ))
-            ),
-            Err(e) => Err(e).with_context(err_context),
-        })?;
-    let should_render = match update_return.get(0) {
-        Some(Value::I32(n)) => *n == 1,
-        _ => false,
-    };
-
-    if rows > 0 && columns > 0 && should_render {
-        let rendered_bytes = instance
-            .exports
-            .get_function("render")
-            .map_err(anyError::new)
-            .and_then(|render| {
-                render
-                    .call(
-                        &mut running_plugin.store,
-                        &[Value::I32(rows as i32), Value::I32(columns as i32)],
-                    )
+    match check_event_permission(plugin_env, event) {
+        (PermissionStatus::Granted, _) => {
+            let protobuf_event: ProtobufEvent = event
+                .clone()
+                .try_into()
+                .map_err(|e| anyhow!("Failed to convert to protobuf: {:?}", e))?;
+            let update = instance
+                .exports
+                .get_function("update")
+                .with_context(err_context)?;
+            wasi_write_object(&plugin_env.wasi_env, &protobuf_event.encode_to_vec())
+                .with_context(err_context)?;
+            let update_return = update
+                .call(&mut running_plugin.store, &[])
+                .with_context(err_context)?;
+            let should_render = match update_return.get(0) {
+                Some(Value::I32(n)) => *n == 1,
+                _ => false,
+            };
+            if rows > 0 && columns > 0 && should_render {
+                let rendered_bytes = instance
+                    .exports
+                    .get_function("render")
                     .map_err(anyError::new)
-            })
-            .and_then(|_| wasi_read_string(&plugin_env.wasi_env))
-            .with_context(err_context)?;
-        plugin_bytes.push((plugin_id, client_id, rendered_bytes.as_bytes().to_vec()));
+                    .and_then(|render| {
+                        render
+                            .call(
+                                &mut running_plugin.store,
+                                &[Value::I32(rows as i32), Value::I32(columns as i32)],
+                            )
+                            .map_err(anyError::new)
+                    })
+                    .and_then(|_| wasi_read_string(&plugin_env.wasi_env))
+                    .with_context(err_context)?;
+                plugin_bytes.push((plugin_id, client_id, rendered_bytes.as_bytes().to_vec()));
+            }
+        },
+        (PermissionStatus::Denied, permission) => {
+            log::error!(
+                "PluginId '{}' permission '{}' is not allowed - Event '{:?}' denied",
+                plugin_id,
+                permission
+                    .map(|p| p.to_string())
+                    .unwrap_or("UNKNOWN".to_owned()),
+                EventType::from_str(&event.to_string()).with_context(err_context)?
+            );
+        },
     }
     Ok(())
 }

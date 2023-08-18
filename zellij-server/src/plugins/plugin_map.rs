@@ -11,7 +11,6 @@ use wasmer_wasi::WasiEnv;
 use crate::{thread_bus::ThreadSenders, ClientId};
 
 use zellij_utils::async_channel::Sender;
-use zellij_utils::errors::prelude::*;
 use zellij_utils::{
     data::EventType,
     data::PluginCapabilities,
@@ -20,6 +19,7 @@ use zellij_utils::{
     input::plugins::PluginConfig,
     ipc::ClientAttributes,
 };
+use zellij_utils::{data::PermissionType, errors::prelude::*};
 
 // the idea here is to provide atomicity when adding/removing plugins from the map (eg. when a new
 // client connects) but to also allow updates/renders not to block each other
@@ -193,6 +193,7 @@ pub type Subscriptions = HashSet<EventType>;
 pub struct PluginEnv {
     pub plugin_id: PluginId,
     pub plugin: PluginConfig,
+    pub permissions: Arc<Mutex<Option<HashSet<PermissionType>>>>,
     pub senders: ThreadSenders,
     pub wasi_env: WasiEnv,
     pub tab_index: usize,
@@ -214,6 +215,10 @@ impl PluginEnv {
             self.plugin.path.display().to_string(),
             self.plugin_id
         )
+    }
+
+    pub fn set_permissions(&mut self, permissions: HashSet<PermissionType>) {
+        self.permissions.lock().unwrap().replace(permissions);
     }
 }
 

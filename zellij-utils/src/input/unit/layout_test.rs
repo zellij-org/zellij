@@ -504,9 +504,18 @@ fn layout_with_plugin_panes() {
             pane {
                 plugin location="file:/path/to/my/plugin.wasm"
             }
+            pane {
+                plugin location="zellij:status-bar" {
+                    config_key_1 "config_value_1"
+                    "2" true
+                }
+            }
         }
     "#;
     let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into(), None, None).unwrap();
+    let mut expected_plugin_configuration = BTreeMap::new();
+    expected_plugin_configuration.insert("config_key_1".to_owned(), "config_value_1".to_owned());
+    expected_plugin_configuration.insert("2".to_owned(), "true".to_owned());
     let expected_layout = Layout {
         template: Some((
             TiledPaneLayout {
@@ -515,6 +524,7 @@ fn layout_with_plugin_panes() {
                         run: Some(Run::Plugin(RunPlugin {
                             location: RunPluginLocation::Zellij(PluginTag::new("tab-bar")),
                             _allow_exec_host_cmd: false,
+                            configuration: Default::default(),
                         })),
                         ..Default::default()
                     },
@@ -524,6 +534,15 @@ fn layout_with_plugin_panes() {
                                 "/path/to/my/plugin.wasm",
                             )),
                             _allow_exec_host_cmd: false,
+                            configuration: Default::default(),
+                        })),
+                        ..Default::default()
+                    },
+                    TiledPaneLayout {
+                        run: Some(Run::Plugin(RunPlugin {
+                            location: RunPluginLocation::Zellij(PluginTag::new("status-bar")),
+                            _allow_exec_host_cmd: false,
+                            configuration: PluginUserConfiguration(expected_plugin_configuration),
                         })),
                         ..Default::default()
                     },
@@ -2016,6 +2035,7 @@ fn run_plugin_location_parsing() {
                         run: Some(Run::Plugin(RunPlugin {
                             _allow_exec_host_cmd: false,
                             location: RunPluginLocation::Zellij(PluginTag::new("tab-bar")),
+                            configuration: Default::default(),
                         })),
                         ..Default::default()
                     },
@@ -2025,6 +2045,7 @@ fn run_plugin_location_parsing() {
                             location: RunPluginLocation::File(PathBuf::from(
                                 "/path/to/my/plugin.wasm",
                             )),
+                            configuration: Default::default(),
                         })),
                         ..Default::default()
                     },
@@ -2032,6 +2053,7 @@ fn run_plugin_location_parsing() {
                         run: Some(Run::Plugin(RunPlugin {
                             _allow_exec_host_cmd: false,
                             location: RunPluginLocation::File(PathBuf::from("plugin.wasm")),
+                            configuration: Default::default(),
                         })),
                         ..Default::default()
                     },
@@ -2041,6 +2063,7 @@ fn run_plugin_location_parsing() {
                             location: RunPluginLocation::File(PathBuf::from(
                                 "relative/with space/plugin.wasm",
                             )),
+                            configuration: Default::default(),
                         })),
                         ..Default::default()
                     },
@@ -2050,6 +2073,7 @@ fn run_plugin_location_parsing() {
                             location: RunPluginLocation::File(PathBuf::from(
                                 "/absolute/with space/plugin.wasm",
                             )),
+                            configuration: Default::default(),
                         })),
                         ..Default::default()
                     },
@@ -2059,6 +2083,7 @@ fn run_plugin_location_parsing() {
                             location: RunPluginLocation::File(PathBuf::from(
                                 "c:/absolute/windows/plugin.wasm",
                             )),
+                            configuration: Default::default(),
                         })),
                         ..Default::default()
                     },

@@ -19,7 +19,10 @@ pub mod prelude;
 pub mod shim;
 
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use zellij_utils::data::Event;
+
+// use zellij_tile::shim::plugin_api::event::ProtobufEvent;
 
 /// This trait should be implemented - once per plugin - on a struct (normally representing the
 /// plugin state). This struct should then be registered with the
@@ -27,7 +30,7 @@ use zellij_utils::data::Event;
 #[allow(unused_variables)]
 pub trait ZellijPlugin: Default {
     /// Will be called when the plugin is loaded, this is a good place to [`subscribe`](shim::subscribe) to events that are interesting for this plugin.
-    fn load(&mut self) {}
+    fn load(&mut self, configuration: BTreeMap<String, String>) {}
     /// Will be called with an [`Event`](prelude::Event) if the plugin is subscribed to said event.
     /// If the plugin returns `true` from this function, Zellij will know it should be rendered and call its `render` function.
     fn update(&mut self, event: Event) -> bool {
@@ -103,18 +106,32 @@ macro_rules! register_plugin {
         #[no_mangle]
         fn load() {
             STATE.with(|state| {
-                state.borrow_mut().load();
+                use std::collections::BTreeMap;
+                use std::convert::TryFrom;
+                use std::convert::TryInto;
+                use zellij_tile::shim::plugin_api::action::ProtobufPluginConfiguration;
+                use zellij_tile::shim::prost::Message;
+                let protobuf_bytes: Vec<u8> = $crate::shim::object_from_stdin().unwrap();
+                let protobuf_configuration: ProtobufPluginConfiguration =
+                    ProtobufPluginConfiguration::decode(protobuf_bytes.as_slice()).unwrap();
+                let plugin_configuration: BTreeMap<String, String> =
+                    BTreeMap::try_from(&protobuf_configuration).unwrap();
+                state.borrow_mut().load(plugin_configuration);
             });
         }
 
         #[no_mangle]
         pub fn update() -> bool {
+            let err_context = "Failed to deserialize event";
+            use std::convert::TryInto;
+            use zellij_tile::shim::plugin_api::event::ProtobufEvent;
+            use zellij_tile::shim::prost::Message;
             STATE.with(|state| {
-                let object = $crate::shim::object_from_stdin()
-                    .context($crate::PLUGIN_MISMATCH)
-                    .to_stdout()
-                    .unwrap();
-                state.borrow_mut().update(object)
+                let protobuf_bytes: Vec<u8> = $crate::shim::object_from_stdin().unwrap();
+                let protobuf_event: ProtobufEvent =
+                    ProtobufEvent::decode(protobuf_bytes.as_slice()).unwrap();
+                let event = protobuf_event.try_into().unwrap();
+                state.borrow_mut().update(event)
             })
         }
 
@@ -163,18 +180,15 @@ macro_rules! register_worker {
         }
         #[no_mangle]
         pub fn $worker_name() {
-
+            use zellij_tile::shim::plugin_api::message::ProtobufMessage;
+            use zellij_tile::shim::prost::Message;
             let worker_display_name = std::stringify!($worker_name);
-
-            // read message from STDIN
-            let (message, payload): (String, String) = $crate::shim::object_from_stdin()
-                .unwrap_or_else(|e| {
-                    eprintln!(
-                        "Failed to deserialize message to worker \"{}\": {:?}",
-                        worker_display_name, e
-                    );
-                    Default::default()
-                });
+            let protobuf_bytes: Vec<u8> = $crate::shim::object_from_stdin()
+                .unwrap();
+            let protobuf_message: ProtobufMessage = ProtobufMessage::decode(protobuf_bytes.as_slice())
+                .unwrap();
+            let message = protobuf_message.name;
+            let payload = protobuf_message.payload;
             $worker_static_name.with(|worker_instance| {
                 let mut worker_instance = worker_instance.borrow_mut();
                 worker_instance.on_message(message, payload);

@@ -1,11 +1,11 @@
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::time::Instant;
 
 use crate::output::{CharacterChunk, SixelImageChunk};
 use crate::panes::{grid::Grid, sixel::SixelImageStore, LinkHandler, PaneId};
 use crate::plugins::PluginInstruction;
 use crate::pty::VteBytes;
-use crate::tab::Pane;
+use crate::tab::{AdjustedInput, Pane};
 use crate::ui::{
     loading_indication::LoadingIndication,
     pane_boundaries_frame::{FrameParams, PaneFrame},
@@ -13,6 +13,7 @@ use crate::ui::{
 use crate::ClientId;
 use std::cell::RefCell;
 use std::rc::Rc;
+use zellij_utils::data::{PermissionStatus, PermissionType, PluginPermission};
 use zellij_utils::pane_size::{Offset, SizeInPixels};
 use zellij_utils::position::Position;
 use zellij_utils::{
@@ -24,6 +25,15 @@ use zellij_utils::{
     shared::make_terminal_title,
     vte,
 };
+
+macro_rules! style {
+    ($fg:expr) => {
+        ansi_term::Style::new().fg(match $fg {
+            PaletteColor::Rgb((r, g, b)) => ansi_term::Color::RGB(r, g, b),
+            PaletteColor::EightBit(color) => ansi_term::Color::Fixed(color),
+        })
+    };
+}
 
 macro_rules! get_or_create_grid {
     ($self:ident, $client_id:ident) => {{
@@ -73,6 +83,7 @@ pub(crate) struct PluginPane {
     pane_frame_color_override: Option<(PaletteColor, Option<String>)>,
     invoked_with: Option<Run>,
     loading_indication: LoadingIndication,
+    requesting_permissions: Option<PluginPermission>,
     debug: bool,
 }
 
@@ -121,6 +132,7 @@ impl PluginPane {
             pane_frame_color_override: None,
             invoked_with,
             loading_indication,
+            requesting_permissions: None,
             debug,
         };
         for client_id in currently_connected_clients {
@@ -181,6 +193,14 @@ impl Pane for PluginPane {
     }
     fn handle_plugin_bytes(&mut self, client_id: ClientId, bytes: VteBytes) {
         self.set_client_should_render(client_id, true);
+
+        let mut vte_bytes = bytes;
+        if let Some(plugin_permission) = &self.requesting_permissions {
+            vte_bytes = self
+                .display_request_permission_message(plugin_permission)
+                .into();
+        }
+
         let grid = get_or_create_grid!(self, client_id);
 
         // this is part of the plugin contract, whenever we update the plugin and call its render function, we delete the existing viewport
@@ -193,13 +213,35 @@ impl Pane for PluginPane {
             .vte_parsers
             .entry(client_id)
             .or_insert_with(|| vte::Parser::new());
-        for &byte in &bytes {
+
+        for &byte in &vte_bytes {
             vte_parser.advance(grid, byte);
         }
+
         self.should_render.insert(client_id, true);
     }
     fn cursor_coordinates(&self) -> Option<(usize, usize)> {
         None
+    }
+    fn adjust_input_to_terminal(&mut self, input_bytes: Vec<u8>) -> Option<AdjustedInput> {
+        if let Some(requesting_permissions) = &self.requesting_permissions {
+            let permissions = requesting_permissions.permissions.clone();
+            match input_bytes.as_slice() {
+                // Y or y
+                &[89] | &[121] => Some(AdjustedInput::PermissionRequestResult(
+                    permissions,
+                    PermissionStatus::Granted,
+                )),
+                // N or n
+                &[78] | &[110] => Some(AdjustedInput::PermissionRequestResult(
+                    permissions,
+                    PermissionStatus::Denied,
+                )),
+                _ => None,
+            }
+        } else {
+            Some(AdjustedInput::WriteBytesToTerminal(input_bytes))
+        }
     }
     fn position_and_size(&self) -> PaneGeom {
         self.geom
@@ -232,6 +274,9 @@ impl Pane for PluginPane {
     }
     fn set_selectable(&mut self, selectable: bool) {
         self.selectable = selectable;
+    }
+    fn request_permissions_from_user(&mut self, permissions: Option<PluginPermission>) {
+        self.requesting_permissions = permissions;
     }
     fn render(
         &mut self,
@@ -594,5 +639,55 @@ impl PluginPane {
         for client_id in client_ids {
             self.handle_plugin_bytes(client_id, bytes.clone());
         }
+    }
+    fn display_request_permission_message(&self, plugin_permission: &PluginPermission) -> String {
+        let bold_white = style!(self.style.colors.white).bold();
+        let cyan = style!(self.style.colors.cyan).bold();
+        let orange = style!(self.style.colors.orange).bold();
+        let green = style!(self.style.colors.green).bold();
+
+        let mut messages = String::new();
+        let permissions: BTreeSet<PermissionType> =
+            plugin_permission.permissions.clone().into_iter().collect();
+
+        let min_row_count = permissions.len() + 4;
+
+        if self.rows() >= min_row_count {
+            messages.push_str(&format!(
+                "{} {} {}\n",
+                bold_white.paint("Plugin"),
+                cyan.paint(&plugin_permission.name),
+                bold_white.paint("asks permission to:"),
+            ));
+            permissions.iter().enumerate().for_each(|(i, p)| {
+                messages.push_str(&format!(
+                    "\n\r{}. {}",
+                    bold_white.paint(&format!("{}", i + 1)),
+                    orange.paint(p.display_name())
+                ));
+            });
+
+            messages.push_str(&format!(
+                "\n\n\r{} {}",
+                bold_white.paint("Allow?"),
+                green.paint("(y/n)"),
+            ));
+        } else {
+            messages.push_str(&format!(
+                "{} {}. {} {}\n",
+                bold_white.paint("This plugin asks permission to:"),
+                orange.paint(
+                    permissions
+                        .iter()
+                        .map(|p| p.to_string())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ),
+                bold_white.paint("Allow?"),
+                green.paint("(y/n)"),
+            ));
+        }
+
+        messages
     }
 }
