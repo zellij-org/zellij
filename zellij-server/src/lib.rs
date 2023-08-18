@@ -664,13 +664,12 @@ fn init_session(
         plugins,
     } = options;
 
-    SCROLL_BUFFER_SIZE
+    let _ = SCROLL_BUFFER_SIZE
         .set(
             config_options
                 .scroll_buffer_size
                 .unwrap_or(DEFAULT_SCROLL_BUFFER_SIZE),
-        )
-        .unwrap();
+        );
 
     let (to_screen, screen_receiver): ChannelWithContext<ScreenInstruction> = channels::unbounded();
     let to_screen = SenderWithContext::new(to_screen);
