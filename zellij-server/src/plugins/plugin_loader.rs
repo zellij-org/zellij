@@ -625,8 +625,24 @@ impl<'a> PluginLoader<'a> {
                 workers.insert(function_name.into(), worker_sender);
             }
         }
+
+        let plugin = Arc::new(Mutex::new(RunningPlugin::new(
+            store,
+            main_user_instance,
+            main_user_env,
+            self.size.rows,
+            self.size.cols,
+        )));
+        plugin_map.lock().unwrap().insert(
+            self.plugin_id,
+            self.client_id,
+            plugin.clone(),
+            subscriptions.clone(),
+            workers,
+        );
+
         start_function
-            .call(&mut store, &[])
+            .call(&mut plugin.lock().unwrap().store, &[])
             .with_context(err_context)?;
 
         let protobuf_plugin_configuration: ProtobufPluginConfiguration = self
@@ -643,7 +659,7 @@ impl<'a> PluginLoader<'a> {
         )
         .with_context(err_context)?;
         load_function
-            .call(&mut store, &[])
+            .call(&mut plugin.lock().unwrap().store, &[])
             .with_context(err_context)?;
 
         display_loading_stage!(
@@ -665,19 +681,7 @@ impl<'a> PluginLoader<'a> {
             self.plugin_id
         );
         log::info!("load plugin instance finished!");
-        plugin_map.lock().unwrap().insert(
-            self.plugin_id,
-            self.client_id,
-            Arc::new(Mutex::new(RunningPlugin::new(
-                store,
-                main_user_instance,
-                main_user_env,
-                self.size.rows,
-                self.size.cols,
-            ))),
-            subscriptions.clone(),
-            workers,
-        );
+
         Ok(())
     }
     pub fn clone_instance_for_other_clients(
