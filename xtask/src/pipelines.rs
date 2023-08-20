@@ -179,6 +179,13 @@ pub fn dist(sh: &Shell, _flags: flags::Dist) -> anyhow::Result<()> {
         .with_context(err_context)
 }
 
+/// Actions for the user to choose from to resolve publishing errors/conflicts.
+enum UserAction {
+    Retry,
+    Abort,
+    Ignore,
+}
+
 /// Make a zellij release and publish all crates.
 pub fn publish(sh: &Shell, flags: flags::Publish) -> anyhow::Result<()> {
     let err_context = "failed to publish zellij";
@@ -333,37 +340,42 @@ pub fn publish(sh: &Shell, flags: flags::Publish) -> anyhow::Result<()> {
                     println!("Publishing crate '{crate_name}' failed with error:");
                     println!("{:?}", err);
                     println!();
-                    println!("Retry? [y/n]");
+                    println!("Please choose what to do: [r]etry/[a]bort/[i]gnore");
 
                     let stdin = std::io::stdin();
-                    let mut buffer = String::new();
-                    let retry: bool;
+                    let action;
 
                     loop {
+                        let mut buffer = String::new();
                         stdin.read_line(&mut buffer).context(err_context)?;
-
                         match buffer.trim_end() {
-                            "y" | "Y" => {
-                                retry = true;
+                            "r" | "R" => {
+                                action = UserAction::Retry;
                                 break;
                             },
-                            "n" | "N" => {
-                                retry = false;
+                            "a" | "A" => {
+                                action = UserAction::Abort;
+                                break;
+                            },
+                            "i" | "I" => {
+                                action = UserAction::Ignore;
                                 break;
                             },
                             _ => {
                                 println!(" --> Unknown input '{buffer}', ignoring...");
                                 println!();
-                                println!("Retry? [y/n]");
+                                println!("Please choose what to do: [r]etry/[a]bort/[i]gnore");
                             },
                         }
                     }
 
-                    if retry {
-                        continue;
-                    } else {
-                        println!("Aborting publish for crate '{crate_name}'");
-                        return Err::<(), _>(err);
+                    match action {
+                        UserAction::Retry => continue,
+                        UserAction::Ignore => break,
+                        UserAction::Abort => {
+                            eprintln!("Aborting publish for crate '{crate_name}'");
+                            return Err::<(), _>(err);
+                        },
                     }
                 } else {
                     // publish successful, continue to next crate
