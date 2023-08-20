@@ -606,8 +606,7 @@ impl<'a> PluginLoader<'a> {
                     .call(&[])
                     .with_context(err_context)?;
 
-                let worker =
-                    RunningWorker::new(instance, &function_name, plugin_config, plugin_env);
+                let worker = RunningWorker::new(instance, &function_name, plugin_env);
                 let worker_sender = plugin_worker(worker);
                 workers.insert(function_name.into(), worker_sender);
             }
