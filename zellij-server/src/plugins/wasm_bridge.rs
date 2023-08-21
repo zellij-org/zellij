@@ -11,7 +11,8 @@ use std::{
     str::FromStr,
     sync::{Arc, Mutex},
 };
-use wasmer::{AsStoreMut, Instance, Module, Store, Value};
+use wasmer::{Module, Store, Value};
+use zellij_utils::async_channel::Sender;
 use zellij_utils::async_std::task::{self, JoinHandle};
 use zellij_utils::data::{PermissionStatus, PermissionType};
 use zellij_utils::input::permission::PermissionCache;
@@ -60,6 +61,7 @@ pub struct WasmBridge {
     client_attributes: ClientAttributes,
     default_shell: Option<TerminalAction>,
     default_layout: Box<Layout>,
+    shutdown_send: Sender<()>,
 }
 
 impl WasmBridge {
@@ -74,6 +76,7 @@ impl WasmBridge {
         client_attributes: ClientAttributes,
         default_shell: Option<TerminalAction>,
         default_layout: Box<Layout>,
+        shutdown_send: Sender<()>,
     ) -> Self {
         let plugin_map = Arc::new(Mutex::new(PluginMap::default()));
         let connected_clients: Arc<Mutex<Vec<ClientId>>> = Arc::new(Mutex::new(vec![]));
@@ -101,6 +104,7 @@ impl WasmBridge {
             client_attributes,
             default_shell,
             default_layout,
+            shutdown_send,
         }
     }
     pub fn load_plugin(
@@ -464,6 +468,7 @@ impl WasmBridge {
                         let event = event.clone();
                         let plugin_id = *plugin_id;
                         let client_id = *client_id;
+                        let _s = self.shutdown_send.clone(); // used for shutdown!
                         async move {
                             let mut running_plugin = running_plugin.lock().unwrap();
                             let mut plugin_bytes = vec![];

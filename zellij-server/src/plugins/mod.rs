@@ -19,6 +19,7 @@ use crate::{pty::PtyInstruction, thread_bus::Bus, ClientId, ServerInstruction};
 use wasm_bridge::WasmBridge;
 
 use zellij_utils::{
+    async_std::{channel, task},
     data::{Event, EventType, PermissionStatus, PermissionType, PluginCapabilities},
     errors::{prelude::*, ContextType, PluginContext},
     input::{
@@ -139,6 +140,10 @@ pub(crate) fn plugin_thread_main(
 
     let store = Arc::new(Mutex::new(store));
 
+    // use this channel to ensure that tasks spawned from this thread terminate before exiting
+    // https://tokio.rs/tokio/topics/shutdown#waiting-for-things-to-finish-shutting-down
+    let (shutdown_send, shutdown_receive) = channel::bounded::<()>(1);
+
     let mut wasm_bridge = WasmBridge::new(
         plugins,
         bus.senders.clone(),
@@ -150,6 +155,7 @@ pub(crate) fn plugin_thread_main(
         client_attributes,
         default_shell,
         layout.clone(),
+        shutdown_send.clone(),
     );
 
     loop {
@@ -331,6 +337,11 @@ pub(crate) fn plugin_thread_main(
         }
     }
     info!("wasm main thread exits");
+
+    drop(shutdown_send);
+    task::block_on(async {
+        let _ = shutdown_receive.recv().await;
+    });
 
     fs::remove_dir_all(&plugin_global_data_dir)
         .or_else(|err| {
