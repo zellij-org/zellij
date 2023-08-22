@@ -1268,7 +1268,8 @@ fn serialize_session_update_event_with_non_default_values() {
         panes: PaneManifest {
             panes
         },
-        connected_clients: 2
+        connected_clients: 2,
+        is_current_session: true,
     };
     let session_info_2 = SessionInfo {
         name: "session 2".to_owned(),
@@ -1277,6 +1278,7 @@ fn serialize_session_update_event_with_non_default_values() {
             panes: HashMap::new()
         },
         connected_clients: 0,
+        is_current_session: false,
     };
     let session_infos = vec![session_info_1, session_info_2];
 

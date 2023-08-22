@@ -2280,7 +2280,7 @@ pub fn parse_plugin_user_configuration(
 fn serialize_and_deserialize_session_info() {
     let session_info = SessionInfo::default();
     let serialized = session_info.to_string();
-    let deserealized = SessionInfo::from_string(&serialized).unwrap();
+    let deserealized = SessionInfo::from_string(&serialized, "not this session").unwrap();
     assert_eq!(session_info, deserealized);
     insta::assert_snapshot!(serialized);
 }
@@ -2371,9 +2371,10 @@ fn serialize_and_deserialize_session_info_with_data() {
             panes,
         },
         connected_clients: 2,
+        is_current_session: false,
     };
     let serialized = session_info.to_string();
-    let deserealized = SessionInfo::from_string(&serialized).unwrap();
+    let deserealized = SessionInfo::from_string(&serialized, "not this session").unwrap();
     assert_eq!(session_info, deserealized);
     insta::assert_snapshot!(serialized);
 }
