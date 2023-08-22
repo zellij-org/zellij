@@ -1,7 +1,7 @@
 //! IPC stuff for starting to split things into a client and server model.
 use crate::{
     cli::CliArgs,
-    data::{ClientId, InputMode, Style},
+    data::{ClientId, InputMode, Style, ConnectToSession},
     errors::{get_current_ctx, prelude::*, ErrorContext},
     input::keybinds::Keybinds,
     input::{actions::Action, layout::Layout, options::Options, plugins::PluginsConfig},
@@ -78,7 +78,12 @@ pub enum ClientToServerMsg {
         Box<Layout>,
         Option<PluginsConfig>,
     ),
-    AttachClient(ClientAttributes, Options),
+    AttachClient(
+        ClientAttributes,
+        Options,
+        Option<usize>, // tab position to focus
+        Option<(u32, bool)> // (pane_id, is_plugin) => pane id to focus
+    ),
     Action(Action, Option<ClientId>),
     ClientExited,
     KillSession,
@@ -89,10 +94,6 @@ pub enum ClientToServerMsg {
 // Types of messages sent from the server to the client
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ServerToClientMsg {
-    /*// Info about a particular session
-    SessionInfo(Session),
-    // A list of sessions
-    SessionList(HashSet<Session>),*/
     Render(String),
     UnblockInputThread,
     Exit(ExitReason),
@@ -100,6 +101,7 @@ pub enum ServerToClientMsg {
     Connected,
     ActiveClients(Vec<ClientId>),
     Log(Vec<String>),
+    SwitchSession(ConnectToSession),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

@@ -362,7 +362,8 @@ impl TryFrom<SessionInfo> for ProtobufSessionManifest {
             name: session_info.name,
             panes: protobuf_pane_manifests,
             tabs: session_info.tabs.iter().filter_map(|t| t.clone().try_into().ok()).collect(),
-            connected_clients: session_info.connected_clients as u32
+            connected_clients: session_info.connected_clients as u32,
+            is_current_session: session_info.is_current_session,
         })
     }
 }
@@ -390,6 +391,7 @@ impl TryFrom<ProtobufSessionManifest> for SessionInfo {
             tabs: protobuf_session_manifest.tabs.iter().filter_map(|t| t.clone().try_into().ok()).collect(),
             panes,
             connected_clients: protobuf_session_manifest.connected_clients as usize,
+            is_current_session: protobuf_session_manifest.is_current_session,
         })
     }
 }

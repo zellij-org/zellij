@@ -24,7 +24,7 @@ use crate::{
 use zellij_utils::{
     channels::{self, ChannelWithContext, SenderWithContext},
     consts::{ZELLIJ_SOCK_DIR, set_permissions},
-    data::{ClientId, InputMode, Style},
+    data::{ClientId, InputMode, Style, ConnectToSession},
     envs,
     errors::{ClientContext, ContextType, ErrorInstruction},
     input::{config::Config, options::Options},
@@ -46,6 +46,7 @@ pub(crate) enum ClientInstruction {
     StartedParsingStdinQuery,
     DoneParsingStdinQuery,
     Log(Vec<String>),
+    SwitchSession(ConnectToSession),
 }
 
 impl From<ServerToClientMsg> for ClientInstruction {
@@ -60,6 +61,7 @@ impl From<ServerToClientMsg> for ClientInstruction {
             ServerToClientMsg::Connected => ClientInstruction::Connected,
             ServerToClientMsg::ActiveClients(clients) => ClientInstruction::ActiveClients(clients),
             ServerToClientMsg::Log(log_lines) => ClientInstruction::Log(log_lines),
+            ServerToClientMsg::SwitchSession(connect_to_session) => ClientInstruction::SwitchSession(connect_to_session),
         }
     }
 }
@@ -77,6 +79,7 @@ impl From<&ClientInstruction> for ClientContext {
             ClientInstruction::Log(_) => ClientContext::Log,
             ClientInstruction::StartedParsingStdinQuery => ClientContext::StartedParsingStdinQuery,
             ClientInstruction::DoneParsingStdinQuery => ClientContext::DoneParsingStdinQuery,
+            ClientInstruction::SwitchSession(..) => ClientContext::SwitchSession,
         }
     }
 }
@@ -133,10 +136,10 @@ pub(crate) enum InputInstruction {
     Exit,
 }
 
-#[derive(Default, Debug)]
-pub struct ReconnectToSession {
-    pub name: Option<String>
-}
+// #[derive(Default, Debug)]
+// pub struct ReconnectToSession {
+//     pub name: Option<String>
+// }
 
 pub fn start_client(
     mut os_input: Box<dyn ClientOsApi>,
@@ -145,7 +148,9 @@ pub fn start_client(
     config_options: Options,
     info: ClientInfo,
     layout: Option<Layout>,
-) -> Option<ReconnectToSession> {
+    tab_position_to_focus: Option<usize>,
+    pane_id_to_focus: Option<(u32, bool)>, // (pane_id, is_plugin)
+) -> Option<ConnectToSession> {
     info!("Starting Zellij client!");
 
     let mut reconnect_to_session = None;
@@ -194,7 +199,14 @@ pub fn start_client(
             os_input.update_session_name(name);
             let ipc_pipe = create_ipc_pipe();
 
-            (ClientToServerMsg::AttachClient(client_attributes, config_options), ipc_pipe)
+            (ClientToServerMsg::AttachClient(
+                    client_attributes,
+                    config_options,
+                    tab_position_to_focus,
+                    pane_id_to_focus
+                ),
+                ipc_pipe
+            )
         },
         ClientInfo::New(name) => {
             envs::set_session_name(name.clone());
@@ -434,6 +446,12 @@ pub fn start_client(
                 for line in lines_to_log {
                     log::info!("{line}");
                 }
+            },
+            ClientInstruction::SwitchSession(connect_to_session) => {
+                log::info!("got switch session in client");
+                reconnect_to_session = Some(connect_to_session);
+                os_input.send_to_server(ClientToServerMsg::ClientExited);
+                break;
             },
             _ => {},
         }

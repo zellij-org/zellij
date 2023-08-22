@@ -5,13 +5,13 @@ pub use super::generated_api::api::{
         OpenCommandPanePayload, OpenFilePayload, PaneIdAndShouldFloat,
         PluginCommand as ProtobufPluginCommand, PluginMessagePayload,
         RequestPluginPermissionPayload, ResizePayload, SetTimeoutPayload, SubscribePayload,
-        SwitchTabToPayload, SwitchToModePayload, UnsubscribePayload,
+        SwitchTabToPayload, SwitchToModePayload, UnsubscribePayload, SwitchSessionPayload
     },
     plugin_permission::PermissionType as ProtobufPermissionType,
     resize::ResizeAction as ProtobufResizeAction,
 };
 
-use crate::data::{PermissionType, PluginCommand};
+use crate::data::{PermissionType, PluginCommand, ConnectToSession};
 
 use std::convert::TryFrom;
 
@@ -500,6 +500,23 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 },
                 _ => Err("Mismatched payload for RequestPluginPermission"),
             },
+            Some(CommandName::SwitchSession) => match protobuf_plugin_command.payload {
+                Some(Payload::SwitchSessionPayload(payload)) => {
+                    let pane_id = match (payload.pane_id, payload.pane_id_is_plugin) {
+                        (Some(pane_id), Some(is_plugin)) => Some((pane_id, is_plugin)),
+                        (None, None) => None,
+                        _ => {
+                            return Err("Malformed payload for SwitchSession, 'pane_id' and 'is_plugin' must be included together or not at all")
+                        }
+                    };
+                    Ok(PluginCommand::SwitchSession(ConnectToSession {
+                        name: payload.name,
+                        tab_position: payload.tab_position.map(|p| p as usize),
+                        pane_id,
+                    }))
+                },
+                _ => Err("Mismatched payload for SwitchSession"),
+            },
             None => Err("Unrecognized plugin command"),
         }
     }
@@ -843,6 +860,17 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                             .filter_map(|p| ProtobufPermissionType::try_from(*p).ok())
                             .map(|p| p as i32)
                             .collect(),
+                    },
+                )),
+            }),
+            PluginCommand::SwitchSession(switch_to_session) => Ok(ProtobufPluginCommand {
+                name: CommandName::SwitchSession as i32,
+                payload: Some(Payload::SwitchSessionPayload(
+                    SwitchSessionPayload {
+                        name: switch_to_session.name,
+                        tab_position: switch_to_session.tab_position.map(|t| t as u32),
+                        pane_id: switch_to_session.pane_id.map(|p| p.0),
+                        pane_id_is_plugin: switch_to_session.pane_id.map(|p| p.1),
                     },
                 )),
             }),

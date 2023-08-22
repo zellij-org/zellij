@@ -11,10 +11,11 @@ use zellij_client::{
         config_yaml_to_config_kdl, convert_old_yaml_files, layout_yaml_to_layout_kdl,
     },
     os_input_output::get_client_os_input,
-    start_client as start_client_impl, ClientInfo, ReconnectToSession
+    start_client as start_client_impl, ClientInfo,
 };
 use zellij_server::{os_input_output::get_server_os_input, start_server as start_server_impl};
 use zellij_utils::{
+    data::ConnectToSession,
     cli::{CliArgs, Command, SessionCommand, Sessions},
     envs,
     input::{
@@ -331,7 +332,7 @@ pub(crate) fn start_client(opts: CliArgs) {
             process::exit(1);
         },
     };
-    let mut reconnect_to_session: Option<ReconnectToSession> = None;
+    let mut reconnect_to_session: Option<ConnectToSession> = None;
     let os_input = get_os_input(get_client_os_input);
     loop {
         let os_input = os_input.clone();
@@ -399,6 +400,8 @@ pub(crate) fn start_client(opts: CliArgs) {
                 ClientInfo::New(_) => Some(layout),
             };
 
+            let tab_position_to_focus = reconnect_to_session.as_ref().and_then(|r| r.tab_position.clone());
+            let pane_id_to_focus = reconnect_to_session.as_ref().and_then(|r| r.pane_id.clone());
             reconnect_to_session = start_client_impl(
                 Box::new(os_input),
                 opts,
@@ -406,6 +409,8 @@ pub(crate) fn start_client(opts: CliArgs) {
                 config_options,
                 client,
                 attach_layout,
+                tab_position_to_focus,
+                pane_id_to_focus,
             );
         } else {
             if let Some(session_name) = opts.session.clone() {
@@ -417,6 +422,8 @@ pub(crate) fn start_client(opts: CliArgs) {
                     config_options,
                     ClientInfo::New(session_name),
                     Some(layout),
+                    None,
+                    None,
                 );
             } else {
                 if let Some(session_name) = config_options.session_name.as_ref() {
@@ -451,6 +458,8 @@ pub(crate) fn start_client(opts: CliArgs) {
                                 config_options,
                                 client,
                                 attach_layout,
+                                None,
+                                None,
                             );
                         },
                         _ => {
@@ -462,6 +471,8 @@ pub(crate) fn start_client(opts: CliArgs) {
                                 config_options.clone(),
                                 ClientInfo::New(session_name.clone()),
                                 Some(layout),
+                                None,
+                                None,
                             );
                         },
                     }
@@ -482,6 +493,8 @@ pub(crate) fn start_client(opts: CliArgs) {
                     config_options,
                     ClientInfo::New(session_name),
                     Some(layout),
+                    None,
+                    None,
                 );
             }
         }

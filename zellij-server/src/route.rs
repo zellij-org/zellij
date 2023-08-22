@@ -860,9 +860,9 @@ pub(crate) fn route_thread_main(
                                 .send(new_client_instruction)
                                 .with_context(err_context)?;
                         },
-                        ClientToServerMsg::AttachClient(client_attributes, opts) => {
+                        ClientToServerMsg::AttachClient(client_attributes, opts, tab_position_to_focus, pane_id_to_focus) => {
                             let attach_client_instruction =
-                                ServerInstruction::AttachClient(client_attributes, opts, client_id);
+                                ServerInstruction::AttachClient(client_attributes, opts, tab_position_to_focus, pane_id_to_focus, client_id);
                             to_server
                                 .send(attach_client_instruction)
                                 .with_context(err_context)?;

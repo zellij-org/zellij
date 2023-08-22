@@ -1841,8 +1841,7 @@ impl PermissionCache {
 }
 
 impl SessionInfo {
-    pub fn from_string(raw_session_info: &str) -> Result<Self, String> {
-        // TODO: CONTINUE HERE: better error handling all over
+    pub fn from_string(raw_session_info: &str, current_session_name: &str) -> Result<Self, String> {
         let kdl_document: KdlDocument = raw_session_info.parse().map_err(|e| format!("Failed to parse kdl document: {}", e))?;
         let name = kdl_document.get("name")
             .and_then(|n| n.entries().iter().next())
@@ -1864,11 +1863,13 @@ impl SessionInfo {
             Some(tab_nodes)
         }).ok_or("Failed to parse tabs")?;
         let panes: PaneManifest = kdl_document.get("panes").and_then(|p| p.children()).map(|p| PaneManifest::decode_from_kdl(p)).ok_or("Failed to parse panes")?;
+        let is_current_session = name == current_session_name;
         Ok(SessionInfo {
             name,
             tabs,
             panes,
             connected_clients,
+            is_current_session,
         })
     }
     pub fn to_string(&self) -> String {

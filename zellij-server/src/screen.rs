@@ -244,7 +244,11 @@ pub enum ScreenInstruction {
     MouseHoldRight(Position, ClientId),
     MouseHoldMiddle(Position, ClientId),
     Copy(ClientId),
-    AddClient(ClientId),
+    AddClient(
+        ClientId,
+        Option<usize>, // tab position to focus
+        Option<(u32, bool)> // (pane_id, is_plugin) => pane_id to focus
+    ),
     RemoveClient(ClientId),
     AddOverlay(Overlay, ClientId),
     RemoveOverlay(ClientId),
@@ -1254,6 +1258,30 @@ impl Screen {
     pub fn generate_and_report_tab_state(&mut self) -> Result<Vec<TabInfo>> {
         let mut plugin_updates = vec![];
         let mut tab_infos_for_screen_state = BTreeMap::new();
+        for tab in self.tabs.values() {
+            let all_focused_clients: Vec<ClientId> = self.active_tab_indices
+                .iter()
+                .filter(|(_c_id, tab_position)| {
+                    **tab_position == tab.index
+                })
+                .map(|(c_id, _)| c_id)
+                .copied()
+                .collect();
+            let (active_swap_layout_name, is_swap_layout_dirty) = tab.swap_layout_info();
+            let tab_info_for_screen = TabInfo {
+                position: tab.position,
+                name: tab.name.clone(),
+                active: self.active_tab_indices.values().any(|i| i == &tab.index),
+                panes_to_hide: tab.panes_to_hide_count(),
+                is_fullscreen_active: tab.is_fullscreen_active(),
+                is_sync_panes_active: tab.is_sync_panes_active(),
+                are_floating_panes_visible: tab.are_floating_panes_visible(),
+                other_focused_clients: all_focused_clients,
+                active_swap_layout_name,
+                is_swap_layout_dirty,
+            };
+            tab_infos_for_screen_state.insert(tab.position, tab_info_for_screen);
+        }
         for (client_id, active_tab_index) in self.active_tab_indices.iter() {
             let mut plugin_tab_updates = vec![];
             for tab in self.tabs.values() {
@@ -1269,14 +1297,6 @@ impl Screen {
                         .copied()
                         .collect()
                 };
-                let all_focused_clients: Vec<ClientId> = self.active_tab_indices
-                    .iter()
-                    .filter(|(_c_id, tab_position)| {
-                        **tab_position == tab.index
-                    })
-                    .map(|(c_id, _)| c_id)
-                    .copied()
-                    .collect();
                 let (active_swap_layout_name, is_swap_layout_dirty) = tab.swap_layout_info();
                 let tab_info_for_plugins = TabInfo {
                     position: tab.position,
@@ -1290,10 +1310,7 @@ impl Screen {
                     active_swap_layout_name,
                     is_swap_layout_dirty,
                 };
-                let mut tab_info_for_screen = tab_info_for_plugins.clone();
-                tab_info_for_screen.other_focused_clients = all_focused_clients;
                 plugin_tab_updates.push(tab_info_for_plugins);
-                tab_infos_for_screen_state.insert(tab.position, tab_info_for_screen);
             }
             plugin_updates.push((None, Some(*client_id), Event::TabUpdate(plugin_tab_updates)));
         }
@@ -1331,25 +1348,17 @@ impl Screen {
             tabs: tab_infos,
             panes: pane_manifest,
             connected_clients: self.active_tab_indices.keys().len(),
+            is_current_session: true,
         };
-        // write it to disk
-        let cache_file_name = self.cache_file_name();
-        let wrote_file = std::fs::create_dir_all(ZELLIJ_SESSION_INFO_CACHE_DIR.as_path())
-            .and_then(|_| std::fs::File::create(cache_file_name))
-            .and_then(|mut f| write!(f, "{}", session_info.to_string()));
-        // start a background job (if not already running) that'll periodically read this and other
-        // sesion infos and report back
-        match wrote_file {
-            Ok(_) => {
-                self.bus
-                    .senders
-                    .send_to_background_jobs(BackgroundJob::ReadAllSessionInfosOnMachine)
-                    .with_context(err_context)?;
-            },
-            Err(e) => {
-                log::error!("Failed to write session info file: {}", e);
-            }
-        };
+        self.bus
+            .senders
+            .send_to_background_jobs(BackgroundJob::ReportSessionInfo(self.session_name.to_owned(), session_info))
+            .with_context(err_context)?;
+        self.bus
+            .senders
+            .send_to_background_jobs(BackgroundJob::ReadAllSessionInfosOnMachine)
+            .with_context(err_context)?;
+
         Ok(())
     }
     pub fn update_session_infos(&mut self, new_session_infos: BTreeMap<String, SessionInfo>) -> Result<()> {
@@ -1780,9 +1789,9 @@ impl Screen {
             .send_to_server(ServerInstruction::UnblockInputThread)
             .context("failed to unblock input")
     }
-    fn cache_file_name(&self) -> PathBuf {
-        ZELLIJ_SESSION_INFO_CACHE_DIR.join(format!("{}.kdl", &self.session_name))
-    }
+//     fn cache_file_name(&self) -> PathBuf {
+//         ZELLIJ_SESSION_INFO_CACHE_DIR.join(format!("{}.kdl", &self.session_name))
+//     }
 }
 
 // The box is here in order to make the
@@ -2682,8 +2691,16 @@ pub(crate) fn screen_thread_main(
                 screen.unblock_input()?;
                 screen.render()?;
             },
-            ScreenInstruction::AddClient(client_id) => {
+            ScreenInstruction::AddClient(client_id, tab_position_to_focus, pane_id_to_focus) => {
+                log::info!("AddClient");
                 screen.add_client(client_id)?;
+                let pane_id = pane_id_to_focus.map(|(pane_id, is_plugin)| if is_plugin { PaneId::Plugin(pane_id) } else { PaneId::Terminal(pane_id) });
+                if let Some(pane_id) = pane_id {
+                    screen.focus_pane_with_id(pane_id, true, client_id)?;
+                } else if let Some(tab_position_to_focus) = tab_position_to_focus {
+                    log::info!("go_to_tab: {:?}", tab_position_to_focus);
+                    screen.go_to_tab(tab_position_to_focus, client_id)?;
+                }
                 screen.log_and_report_session_state()?;
                 screen.render()?;
             },
@@ -3045,13 +3062,13 @@ pub(crate) fn screen_thread_main(
     Ok(())
 }
 
-impl Drop for Screen {
-    fn drop(&mut self) {
-        // remove HD assets for this session
-        let cache_file_name = self.cache_file_name();
-        let _ = std::fs::remove_file(cache_file_name);
-    }
-}
+// impl Drop for Screen {
+//     fn drop(&mut self) {
+//         // remove HD assets for this session
+//         let cache_file_name = self.cache_file_name();
+//         let _ = std::fs::remove_file(cache_file_name);
+//     }
+// }
 
 #[path = "./unit/screen_tests.rs"]
 #[cfg(test)]

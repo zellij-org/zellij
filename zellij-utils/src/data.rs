@@ -2,7 +2,7 @@ use crate::input::actions::Action;
 use crate::input::config::ConversionError;
 use clap::ArgEnum;
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet, BTreeMap};
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
@@ -741,6 +741,15 @@ pub struct SessionInfo {
     pub tabs: Vec<TabInfo>,
     pub panes: PaneManifest,
     pub connected_clients: usize,
+    pub is_current_session: bool,
+}
+
+use std::hash::{Hash, Hasher};
+
+impl Hash for SessionInfo {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.name.hash(state);
+    }
 }
 
 impl SessionInfo {
@@ -948,6 +957,14 @@ impl CommandToRun {
     }
 }
 
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+pub struct ConnectToSession {
+    pub name: Option<String>,
+    pub tab_position: Option<usize>,
+    pub pane_id: Option<(u32, bool)>, // (id, is_plugin)
+}
+
+
 #[derive(Debug, Default, Clone)]
 pub struct PluginMessage {
     pub name: String,
@@ -1043,4 +1060,5 @@ pub enum PluginCommand {
     RenameTab(u32, String),          // tab index, new name
     ReportPanic(String),             // stringified panic
     RequestPluginPermissions(Vec<PermissionType>),
+    SwitchSession(ConnectToSession),
 }

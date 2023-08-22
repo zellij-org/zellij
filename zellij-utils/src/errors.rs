@@ -397,6 +397,7 @@ pub enum ClientContext {
     OwnClientId,
     StartedParsingStdinQuery,
     DoneParsingStdinQuery,
+    SwitchSession,
 }
 
 /// Stack call representations corresponding to the different types of [`ServerInstruction`]s.
@@ -414,6 +415,7 @@ pub enum ServerContext {
     ConnStatus,
     ActiveClients,
     Log,
+    SwitchSession,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -431,6 +433,7 @@ pub enum BackgroundJobContext {
     AnimatePluginLoading,
     StopPluginLoadingAnimation,
     ReadAllSessionInfosOnMachine,
+    ReportSessionInfo,
     Exit,
 }
 
