@@ -358,7 +358,7 @@ pub(crate) fn plugin_thread_main(
         .context("failed to cleanup plugin data directory")
 }
 
-const EXIT_TIMEOUT: Duration = Duration::from_secs(1);
+const EXIT_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[path = "./unit/plugin_tests.rs"]
 #[cfg(test)]
