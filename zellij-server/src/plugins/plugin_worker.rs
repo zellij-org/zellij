@@ -1,6 +1,6 @@
 use crate::plugins::plugin_map::PluginEnv;
 use crate::plugins::zellij_exports::wasi_write_object;
-use wasmer::{AsStoreMut, Instance, Store};
+use wasmer::{Instance, Store};
 
 use zellij_utils::async_channel::{unbounded, Receiver, Sender};
 use zellij_utils::async_std::task;

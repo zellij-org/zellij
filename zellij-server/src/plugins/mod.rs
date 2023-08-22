@@ -10,6 +10,7 @@ use std::{
     fs,
     path::PathBuf,
     sync::{Arc, Mutex},
+    time::Duration,
 };
 use wasmer::Store;
 
@@ -19,7 +20,7 @@ use crate::{pty::PtyInstruction, thread_bus::Bus, ClientId, ServerInstruction};
 use wasm_bridge::WasmBridge;
 
 use zellij_utils::{
-    async_std::{channel, task},
+    async_std::{channel, future::timeout, task},
     data::{Event, EventType, PermissionStatus, PermissionType, PluginCapabilities},
     errors::{prelude::*, ContextType, PluginContext},
     input::{
@@ -155,7 +156,6 @@ pub(crate) fn plugin_thread_main(
         client_attributes,
         default_shell,
         layout.clone(),
-        shutdown_send.clone(),
     );
 
     loop {
@@ -179,7 +179,7 @@ pub(crate) fn plugin_thread_main(
                 }
             },
             PluginInstruction::Update(updates) => {
-                wasm_bridge.update_plugins(updates)?;
+                wasm_bridge.update_plugins(updates, shutdown_send.clone())?;
             },
             PluginInstruction::Unload(pid) => {
                 wasm_bridge.unload_plugin(pid)?;
@@ -293,7 +293,7 @@ pub(crate) fn plugin_thread_main(
                     Some(client_id),
                     Event::CustomMessage(message, payload),
                 )];
-                wasm_bridge.update_plugins(updates)?;
+                wasm_bridge.update_plugins(updates, shutdown_send.clone())?;
             },
             PluginInstruction::PluginSubscribedToEvents(_plugin_id, _client_id, events) => {
                 for event in events {
@@ -328,20 +328,24 @@ pub(crate) fn plugin_thread_main(
                     client_id,
                     Event::PermissionRequestResult(status),
                 )];
-                wasm_bridge.update_plugins(updates)?;
+                wasm_bridge.update_plugins(updates, shutdown_send.clone())?;
             },
             PluginInstruction::Exit => {
-                wasm_bridge.cleanup();
                 break;
             },
         }
     }
     info!("wasm main thread exits");
 
+    // first drop our sender, then call recv.
+    // once all senders are dropped or the timeout is reached, recv will return an error, that we ignore
     drop(shutdown_send);
     task::block_on(async {
         let _ = shutdown_receive.recv().await;
+        let _ = timeout(EXIT_TIMEOUT, shutdown_receive.recv()).await;
     });
+
+    wasm_bridge.cleanup();
 
     fs::remove_dir_all(&plugin_global_data_dir)
         .or_else(|err| {
@@ -354,6 +358,8 @@ pub(crate) fn plugin_thread_main(
         })
         .context("failed to cleanup plugin data directory")
 }
+
+const EXIT_TIMEOUT: Duration = Duration::from_secs(1);
 
 #[path = "./unit/plugin_tests.rs"]
 #[cfg(test)]

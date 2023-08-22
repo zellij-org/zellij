@@ -238,7 +238,7 @@ fn create_plugin_thread(
 ) -> (
     SenderWithContext<PluginInstruction>,
     Receiver<(ScreenInstruction, ErrorContext)>,
-    Box<dyn FnMut()>,
+    Box<dyn FnOnce()>,
 ) {
     let zellij_cwd = zellij_cwd.unwrap_or_else(|| PathBuf::from("."));
     let (to_server, _server_receiver): ChannelWithContext<ServerInstruction> =
@@ -278,7 +278,7 @@ fn create_plugin_thread(
     let plugin_capabilities = PluginCapabilities::default();
     let client_attributes = ClientAttributes::default();
     let default_shell_action = None; // TODO: change me
-    let _plugin_thread = std::thread::Builder::new()
+    let plugin_thread = std::thread::Builder::new()
         .name("plugin_thread".to_string())
         .spawn(move || {
             set_var("ZELLIJ_SESSION_NAME", "zellij-test");
@@ -305,10 +305,7 @@ fn create_plugin_thread(
             let _ = to_screen.send(ScreenInstruction::Exit);
             let _ = to_server.send(ServerInstruction::KillSession);
             let _ = to_plugin.send(PluginInstruction::Exit);
-            std::thread::sleep(std::time::Duration::from_millis(100)); // we need to do this
-                                                                       // otherwise there are race
-                                                                       // conditions with removing
-                                                                       // the plugin cache
+            let _ = plugin_thread.join();
         }
     };
     (to_plugin, screen_receiver, Box::new(teardown))
@@ -320,7 +317,7 @@ fn create_plugin_thread_with_server_receiver(
     SenderWithContext<PluginInstruction>,
     Receiver<(ServerInstruction, ErrorContext)>,
     Receiver<(ScreenInstruction, ErrorContext)>,
-    Box<dyn FnMut()>,
+    Box<dyn FnOnce()>,
 ) {
     let zellij_cwd = zellij_cwd.unwrap_or_else(|| PathBuf::from("."));
     let (to_server, server_receiver): ChannelWithContext<ServerInstruction> = channels::bounded(50);
@@ -359,7 +356,7 @@ fn create_plugin_thread_with_server_receiver(
     let plugin_capabilities = PluginCapabilities::default();
     let client_attributes = ClientAttributes::default();
     let default_shell_action = None; // TODO: change me
-    let _plugin_thread = std::thread::Builder::new()
+    let plugin_thread = std::thread::Builder::new()
         .name("plugin_thread".to_string())
         .spawn(move || {
             set_var("ZELLIJ_SESSION_NAME", "zellij-test");
@@ -386,10 +383,7 @@ fn create_plugin_thread_with_server_receiver(
             let _ = to_screen.send(ScreenInstruction::Exit);
             let _ = to_server.send(ServerInstruction::KillSession);
             let _ = to_plugin.send(PluginInstruction::Exit);
-            std::thread::sleep(std::time::Duration::from_millis(100)); // we need to do this
-                                                                       // otherwise there are race
-                                                                       // conditions with removing
-                                                                       // the plugin cache
+            let _ = plugin_thread.join();
         }
     };
     (
@@ -406,7 +400,7 @@ fn create_plugin_thread_with_pty_receiver(
     SenderWithContext<PluginInstruction>,
     Receiver<(PtyInstruction, ErrorContext)>,
     Receiver<(ScreenInstruction, ErrorContext)>,
-    Box<dyn FnMut()>,
+    Box<dyn FnOnce()>,
 ) {
     let zellij_cwd = zellij_cwd.unwrap_or_else(|| PathBuf::from("."));
     let (to_server, _server_receiver): ChannelWithContext<ServerInstruction> =
@@ -446,7 +440,7 @@ fn create_plugin_thread_with_pty_receiver(
     let plugin_capabilities = PluginCapabilities::default();
     let client_attributes = ClientAttributes::default();
     let default_shell_action = None; // TODO: change me
-    let _plugin_thread = std::thread::Builder::new()
+    let plugin_thread = std::thread::Builder::new()
         .name("plugin_thread".to_string())
         .spawn(move || {
             set_var("ZELLIJ_SESSION_NAME", "zellij-test");
@@ -473,10 +467,7 @@ fn create_plugin_thread_with_pty_receiver(
             let _ = to_screen.send(ScreenInstruction::Exit);
             let _ = to_server.send(ServerInstruction::KillSession);
             let _ = to_plugin.send(PluginInstruction::Exit);
-            std::thread::sleep(std::time::Duration::from_millis(100)); // we need to do this
-                                                                       // otherwise there are race
-                                                                       // conditions with removing
-                                                                       // the plugin cache
+            let _ = plugin_thread.join();
         }
     };
     (to_plugin, pty_receiver, screen_receiver, Box::new(teardown))
@@ -504,7 +495,7 @@ pub fn load_new_plugin_from_hd() {
     let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
     let plugin_host_folder = PathBuf::from(temp_folder.path());
     let cache_path = plugin_host_folder.join("permissions_test.kdl");
-    let (plugin_thread_sender, screen_receiver, mut teardown) = create_plugin_thread(None);
+    let (plugin_thread_sender, screen_receiver, teardown) = create_plugin_thread(None);
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
     let run_plugin = RunPlugin {
@@ -569,7 +560,7 @@ pub fn load_new_plugin_from_hd() {
 pub fn plugin_workers() {
     let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
                                           // destructor removes the directory
-    let (plugin_thread_sender, screen_receiver, mut teardown) = create_plugin_thread(None);
+    let (plugin_thread_sender, screen_receiver, teardown) = create_plugin_thread(None);
     let plugin_should_float = Some(false);
     let plugin_host_folder = PathBuf::from(temp_folder.path());
     let cache_path = plugin_host_folder.join("permissions_test.kdl");
@@ -639,7 +630,7 @@ pub fn plugin_workers() {
 pub fn plugin_workers_persist_state() {
     let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
                                           // destructor removes the directory
-    let (plugin_thread_sender, screen_receiver, mut teardown) = create_plugin_thread(None);
+    let (plugin_thread_sender, screen_receiver, teardown) = create_plugin_thread(None);
     let plugin_should_float = Some(false);
     let plugin_host_folder = PathBuf::from(temp_folder.path());
     let cache_path = plugin_host_folder.join("permissions_test.kdl");
@@ -718,7 +709,7 @@ pub fn can_subscribe_to_hd_events() {
     let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
-    let (plugin_thread_sender, screen_receiver, mut teardown) =
+    let (plugin_thread_sender, screen_receiver, teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -784,7 +775,7 @@ pub fn switch_to_mode_plugin_command() {
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
     let cache_path = plugin_host_folder.join("permissions_test.kdl");
-    let (plugin_thread_sender, screen_receiver, mut teardown) =
+    let (plugin_thread_sender, screen_receiver, teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -851,7 +842,7 @@ pub fn switch_to_mode_plugin_command_permission_denied() {
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
     let cache_path = plugin_host_folder.join("permissions_test.kdl");
-    let (plugin_thread_sender, screen_receiver, mut teardown) =
+    let (plugin_thread_sender, screen_receiver, teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -918,7 +909,7 @@ pub fn new_tabs_with_layout_plugin_command() {
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
     let cache_path = plugin_host_folder.join("permissions_test.kdl");
-    let (plugin_thread_sender, screen_receiver, mut teardown) =
+    let (plugin_thread_sender, screen_receiver, teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -999,7 +990,7 @@ pub fn new_tab_plugin_command() {
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
     let cache_path = plugin_host_folder.join("permissions_test.kdl");
-    let (plugin_thread_sender, screen_receiver, mut teardown) =
+    let (plugin_thread_sender, screen_receiver, teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -1066,7 +1057,7 @@ pub fn go_to_next_tab_plugin_command() {
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
     let cache_path = plugin_host_folder.join("permissions_test.kdl");
-    let (plugin_thread_sender, screen_receiver, mut teardown) =
+    let (plugin_thread_sender, screen_receiver, teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -1132,7 +1123,7 @@ pub fn go_to_previous_tab_plugin_command() {
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
     let cache_path = plugin_host_folder.join("permissions_test.kdl");
-    let (plugin_thread_sender, screen_receiver, mut teardown) =
+    let (plugin_thread_sender, screen_receiver, teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -1198,7 +1189,7 @@ pub fn resize_focused_pane_plugin_command() {
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
     let cache_path = plugin_host_folder.join("permissions_test.kdl");
-    let (plugin_thread_sender, screen_receiver, mut teardown) =
+    let (plugin_thread_sender, screen_receiver, teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -1264,7 +1255,7 @@ pub fn resize_focused_pane_with_direction_plugin_command() {
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
     let cache_path = plugin_host_folder.join("permissions_test.kdl");
-    let (plugin_thread_sender, screen_receiver, mut teardown) =
+    let (plugin_thread_sender, screen_receiver, teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -1330,7 +1321,7 @@ pub fn focus_next_pane_plugin_command() {
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
     let cache_path = plugin_host_folder.join("permissions_test.kdl");
-    let (plugin_thread_sender, screen_receiver, mut teardown) =
+    let (plugin_thread_sender, screen_receiver, teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -1396,7 +1387,7 @@ pub fn focus_previous_pane_plugin_command() {
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
     let cache_path = plugin_host_folder.join("permissions_test.kdl");
-    let (plugin_thread_sender, screen_receiver, mut teardown) =
+    let (plugin_thread_sender, screen_receiver, teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -1462,7 +1453,7 @@ pub fn move_focus_plugin_command() {
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
     let cache_path = plugin_host_folder.join("permissions_test.kdl");
-    let (plugin_thread_sender, screen_receiver, mut teardown) =
+    let (plugin_thread_sender, screen_receiver, teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -1528,7 +1519,7 @@ pub fn move_focus_or_tab_plugin_command() {
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
     let cache_path = plugin_host_folder.join("permissions_test.kdl");
-    let (plugin_thread_sender, screen_receiver, mut teardown) =
+    let (plugin_thread_sender, screen_receiver, teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -1594,7 +1585,7 @@ pub fn edit_scrollback_plugin_command() {
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
     let cache_path = plugin_host_folder.join("permissions_test.kdl");
-    let (plugin_thread_sender, screen_receiver, mut teardown) =
+    let (plugin_thread_sender, screen_receiver, teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -1660,7 +1651,7 @@ pub fn write_plugin_command() {
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
     let cache_path = plugin_host_folder.join("permissions_test.kdl");
-    let (plugin_thread_sender, screen_receiver, mut teardown) =
+    let (plugin_thread_sender, screen_receiver, teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -1726,7 +1717,7 @@ pub fn write_chars_plugin_command() {
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
     let cache_path = plugin_host_folder.join("permissions_test.kdl");
-    let (plugin_thread_sender, screen_receiver, mut teardown) =
+    let (plugin_thread_sender, screen_receiver, teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -1792,7 +1783,7 @@ pub fn toggle_tab_plugin_command() {
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
     let cache_path = plugin_host_folder.join("permissions_test.kdl");
-    let (plugin_thread_sender, screen_receiver, mut teardown) =
+    let (plugin_thread_sender, screen_receiver, teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -1858,7 +1849,7 @@ pub fn move_pane_plugin_command() {
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
     let cache_path = plugin_host_folder.join("permissions_test.kdl");
-    let (plugin_thread_sender, screen_receiver, mut teardown) =
+    let (plugin_thread_sender, screen_receiver, teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -1924,7 +1915,7 @@ pub fn move_pane_with_direction_plugin_command() {
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
     let cache_path = plugin_host_folder.join("permissions_test.kdl");
-    let (plugin_thread_sender, screen_receiver, mut teardown) =
+    let (plugin_thread_sender, screen_receiver, teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -1990,7 +1981,7 @@ pub fn clear_screen_plugin_command() {
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
     let cache_path = plugin_host_folder.join("permissions_test.kdl");
-    let (plugin_thread_sender, screen_receiver, mut teardown) =
+    let (plugin_thread_sender, screen_receiver, teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -2058,7 +2049,7 @@ pub fn scroll_up_plugin_command() {
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
     let cache_path = plugin_host_folder.join("permissions_test.kdl");
-    let (plugin_thread_sender, screen_receiver, mut teardown) =
+    let (plugin_thread_sender, screen_receiver, teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -2125,7 +2116,7 @@ pub fn scroll_down_plugin_command() {
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
     let cache_path = plugin_host_folder.join("permissions_test.kdl");
-    let (plugin_thread_sender, screen_receiver, mut teardown) =
+    let (plugin_thread_sender, screen_receiver, teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -2191,7 +2182,7 @@ pub fn scroll_to_top_plugin_command() {
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
     let cache_path = plugin_host_folder.join("permissions_test.kdl");
-    let (plugin_thread_sender, screen_receiver, mut teardown) =
+    let (plugin_thread_sender, screen_receiver, teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -2257,7 +2248,7 @@ pub fn scroll_to_bottom_plugin_command() {
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
     let cache_path = plugin_host_folder.join("permissions_test.kdl");
-    let (plugin_thread_sender, screen_receiver, mut teardown) =
+    let (plugin_thread_sender, screen_receiver, teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -2323,7 +2314,7 @@ pub fn page_scroll_up_plugin_command() {
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
     let cache_path = plugin_host_folder.join("permissions_test.kdl");
-    let (plugin_thread_sender, screen_receiver, mut teardown) =
+    let (plugin_thread_sender, screen_receiver, teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -2389,7 +2380,7 @@ pub fn page_scroll_down_plugin_command() {
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
     let cache_path = plugin_host_folder.join("permissions_test.kdl");
-    let (plugin_thread_sender, screen_receiver, mut teardown) =
+    let (plugin_thread_sender, screen_receiver, teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -2455,7 +2446,7 @@ pub fn toggle_focus_fullscreen_plugin_command() {
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
     let cache_path = plugin_host_folder.join("permissions_test.kdl");
-    let (plugin_thread_sender, screen_receiver, mut teardown) =
+    let (plugin_thread_sender, screen_receiver, teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -2521,7 +2512,7 @@ pub fn toggle_pane_frames_plugin_command() {
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
     let cache_path = plugin_host_folder.join("permissions_test.kdl");
-    let (plugin_thread_sender, screen_receiver, mut teardown) =
+    let (plugin_thread_sender, screen_receiver, teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -2587,7 +2578,7 @@ pub fn toggle_pane_embed_or_eject_plugin_command() {
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
     let cache_path = plugin_host_folder.join("permissions_test.kdl");
-    let (plugin_thread_sender, screen_receiver, mut teardown) =
+    let (plugin_thread_sender, screen_receiver, teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -2653,7 +2644,7 @@ pub fn undo_rename_pane_plugin_command() {
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
     let cache_path = plugin_host_folder.join("permissions_test.kdl");
-    let (plugin_thread_sender, screen_receiver, mut teardown) =
+    let (plugin_thread_sender, screen_receiver, teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -2719,7 +2710,7 @@ pub fn close_focus_plugin_command() {
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
     let cache_path = plugin_host_folder.join("permissions_test.kdl");
-    let (plugin_thread_sender, screen_receiver, mut teardown) =
+    let (plugin_thread_sender, screen_receiver, teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -2785,7 +2776,7 @@ pub fn toggle_active_tab_sync_plugin_command() {
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
     let cache_path = plugin_host_folder.join("permissions_test.kdl");
-    let (plugin_thread_sender, screen_receiver, mut teardown) =
+    let (plugin_thread_sender, screen_receiver, teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -2851,7 +2842,7 @@ pub fn close_focused_tab_plugin_command() {
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
     let cache_path = plugin_host_folder.join("permissions_test.kdl");
-    let (plugin_thread_sender, screen_receiver, mut teardown) =
+    let (plugin_thread_sender, screen_receiver, teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -2917,7 +2908,7 @@ pub fn undo_rename_tab_plugin_command() {
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
     let cache_path = plugin_host_folder.join("permissions_test.kdl");
-    let (plugin_thread_sender, screen_receiver, mut teardown) =
+    let (plugin_thread_sender, screen_receiver, teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -2983,7 +2974,7 @@ pub fn previous_swap_layout_plugin_command() {
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
     let cache_path = plugin_host_folder.join("permissions_test.kdl");
-    let (plugin_thread_sender, screen_receiver, mut teardown) =
+    let (plugin_thread_sender, screen_receiver, teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -3049,7 +3040,7 @@ pub fn next_swap_layout_plugin_command() {
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
     let cache_path = plugin_host_folder.join("permissions_test.kdl");
-    let (plugin_thread_sender, screen_receiver, mut teardown) =
+    let (plugin_thread_sender, screen_receiver, teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -3115,7 +3106,7 @@ pub fn go_to_tab_name_plugin_command() {
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
     let cache_path = plugin_host_folder.join("permissions_test.kdl");
-    let (plugin_thread_sender, screen_receiver, mut teardown) =
+    let (plugin_thread_sender, screen_receiver, teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -3181,7 +3172,7 @@ pub fn focus_or_create_tab_plugin_command() {
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
     let cache_path = plugin_host_folder.join("permissions_test.kdl");
-    let (plugin_thread_sender, screen_receiver, mut teardown) =
+    let (plugin_thread_sender, screen_receiver, teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -3247,7 +3238,7 @@ pub fn go_to_tab() {
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
     let cache_path = plugin_host_folder.join("permissions_test.kdl");
-    let (plugin_thread_sender, screen_receiver, mut teardown) =
+    let (plugin_thread_sender, screen_receiver, teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -3313,7 +3304,7 @@ pub fn start_or_reload_plugin() {
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
     let cache_path = plugin_host_folder.join("permissions_test.kdl");
-    let (plugin_thread_sender, screen_receiver, mut teardown) =
+    let (plugin_thread_sender, screen_receiver, teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -3379,7 +3370,7 @@ pub fn quit_zellij_plugin_command() {
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
     let cache_path = plugin_host_folder.join("permissions_test.kdl");
-    let (plugin_thread_sender, server_receiver, screen_receiver, mut teardown) =
+    let (plugin_thread_sender, server_receiver, screen_receiver, teardown) =
         create_plugin_thread_with_server_receiver(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -3452,7 +3443,7 @@ pub fn detach_plugin_command() {
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
     let cache_path = plugin_host_folder.join("permissions_test.kdl");
-    let (plugin_thread_sender, server_receiver, screen_receiver, mut teardown) =
+    let (plugin_thread_sender, server_receiver, screen_receiver, teardown) =
         create_plugin_thread_with_server_receiver(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -3525,7 +3516,7 @@ pub fn open_file_floating_plugin_command() {
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
     let cache_path = plugin_host_folder.join("permissions_test.kdl");
-    let (plugin_thread_sender, pty_receiver, screen_receiver, mut teardown) =
+    let (plugin_thread_sender, pty_receiver, screen_receiver, teardown) =
         create_plugin_thread_with_pty_receiver(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -3598,7 +3589,7 @@ pub fn open_file_plugin_command() {
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
     let cache_path = plugin_host_folder.join("permissions_test.kdl");
-    let (plugin_thread_sender, pty_receiver, screen_receiver, mut teardown) =
+    let (plugin_thread_sender, pty_receiver, screen_receiver, teardown) =
         create_plugin_thread_with_pty_receiver(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -3671,7 +3662,7 @@ pub fn open_file_with_line_plugin_command() {
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
     let cache_path = plugin_host_folder.join("permissions_test.kdl");
-    let (plugin_thread_sender, pty_receiver, screen_receiver, mut teardown) =
+    let (plugin_thread_sender, pty_receiver, screen_receiver, teardown) =
         create_plugin_thread_with_pty_receiver(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -3745,7 +3736,7 @@ pub fn open_file_with_line_floating_plugin_command() {
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
     let cache_path = plugin_host_folder.join("permissions_test.kdl");
-    let (plugin_thread_sender, pty_receiver, screen_receiver, mut teardown) =
+    let (plugin_thread_sender, pty_receiver, screen_receiver, teardown) =
         create_plugin_thread_with_pty_receiver(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -3818,7 +3809,7 @@ pub fn open_terminal_plugin_command() {
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
     let cache_path = plugin_host_folder.join("permissions_test.kdl");
-    let (plugin_thread_sender, pty_receiver, screen_receiver, mut teardown) =
+    let (plugin_thread_sender, pty_receiver, screen_receiver, teardown) =
         create_plugin_thread_with_pty_receiver(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -3891,7 +3882,7 @@ pub fn open_terminal_floating_plugin_command() {
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
     let cache_path = plugin_host_folder.join("permissions_test.kdl");
-    let (plugin_thread_sender, pty_receiver, screen_receiver, mut teardown) =
+    let (plugin_thread_sender, pty_receiver, screen_receiver, teardown) =
         create_plugin_thread_with_pty_receiver(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -3964,7 +3955,7 @@ pub fn open_command_pane_plugin_command() {
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
     let cache_path = plugin_host_folder.join("permissions_test.kdl");
-    let (plugin_thread_sender, pty_receiver, screen_receiver, mut teardown) =
+    let (plugin_thread_sender, pty_receiver, screen_receiver, teardown) =
         create_plugin_thread_with_pty_receiver(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -4037,7 +4028,7 @@ pub fn open_command_pane_floating_plugin_command() {
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
     let cache_path = plugin_host_folder.join("permissions_test.kdl");
-    let (plugin_thread_sender, pty_receiver, screen_receiver, mut teardown) =
+    let (plugin_thread_sender, pty_receiver, screen_receiver, teardown) =
         create_plugin_thread_with_pty_receiver(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -4110,7 +4101,7 @@ pub fn switch_to_tab_plugin_command() {
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
     let cache_path = plugin_host_folder.join("permissions_test.kdl");
-    let (plugin_thread_sender, screen_receiver, mut teardown) =
+    let (plugin_thread_sender, screen_receiver, teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -4175,7 +4166,7 @@ pub fn hide_self_plugin_command() {
     let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
-    let (plugin_thread_sender, screen_receiver, mut teardown) =
+    let (plugin_thread_sender, screen_receiver, teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -4236,7 +4227,7 @@ pub fn show_self_plugin_command() {
     let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
-    let (plugin_thread_sender, screen_receiver, mut teardown) =
+    let (plugin_thread_sender, screen_receiver, teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -4298,7 +4289,7 @@ pub fn close_terminal_pane_plugin_command() {
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
     let cache_path = plugin_host_folder.join("permissions_test.kdl");
-    let (plugin_thread_sender, screen_receiver, mut teardown) =
+    let (plugin_thread_sender, screen_receiver, teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -4364,7 +4355,7 @@ pub fn close_plugin_pane_plugin_command() {
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
     let cache_path = plugin_host_folder.join("permissions_test.kdl");
-    let (plugin_thread_sender, screen_receiver, mut teardown) =
+    let (plugin_thread_sender, screen_receiver, teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -4430,7 +4421,7 @@ pub fn focus_terminal_pane_plugin_command() {
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
     let cache_path = plugin_host_folder.join("permissions_test.kdl");
-    let (plugin_thread_sender, screen_receiver, mut teardown) =
+    let (plugin_thread_sender, screen_receiver, teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -4496,7 +4487,7 @@ pub fn focus_plugin_pane_plugin_command() {
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
     let cache_path = plugin_host_folder.join("permissions_test.kdl");
-    let (plugin_thread_sender, screen_receiver, mut teardown) =
+    let (plugin_thread_sender, screen_receiver, teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -4562,7 +4553,7 @@ pub fn rename_terminal_pane_plugin_command() {
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
     let cache_path = plugin_host_folder.join("permissions_test.kdl");
-    let (plugin_thread_sender, screen_receiver, mut teardown) =
+    let (plugin_thread_sender, screen_receiver, teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -4628,7 +4619,7 @@ pub fn rename_plugin_pane_plugin_command() {
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
     let cache_path = plugin_host_folder.join("permissions_test.kdl");
-    let (plugin_thread_sender, screen_receiver, mut teardown) =
+    let (plugin_thread_sender, screen_receiver, teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -4694,7 +4685,7 @@ pub fn rename_tab_plugin_command() {
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
     let cache_path = plugin_host_folder.join("permissions_test.kdl");
-    let (plugin_thread_sender, screen_receiver, mut teardown) =
+    let (plugin_thread_sender, screen_receiver, teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -4760,7 +4751,7 @@ pub fn send_configuration_to_plugins() {
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
     let cache_path = plugin_host_folder.join("permissions_test.kdl");
-    let (plugin_thread_sender, screen_receiver, mut teardown) =
+    let (plugin_thread_sender, screen_receiver, teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -4836,7 +4827,7 @@ pub fn send_configuration_to_plugins() {
 pub fn request_plugin_permissions() {
     let temp_folder = tempdir().unwrap();
     let plugin_host_folder = PathBuf::from(temp_folder.path());
-    let (plugin_thread_sender, screen_receiver, mut teardown) =
+    let (plugin_thread_sender, screen_receiver, teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -4898,7 +4889,7 @@ pub fn granted_permission_request_result() {
     let plugin_host_folder = PathBuf::from(temp_folder.path());
     let cache_path = plugin_host_folder.join("permissions_test.kdl");
 
-    let (plugin_thread_sender, screen_receiver, mut teardown) =
+    let (plugin_thread_sender, screen_receiver, teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
@@ -4983,7 +4974,7 @@ pub fn denied_permission_request_result() {
     let plugin_host_folder = PathBuf::from(temp_folder.path());
     let cache_path = plugin_host_folder.join("permissions_test.kdl");
 
-    let (plugin_thread_sender, screen_receiver, mut teardown) =
+    let (plugin_thread_sender, screen_receiver, teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());

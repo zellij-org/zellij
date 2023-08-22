@@ -12,7 +12,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 use url::Url;
-use wasmer::{AsStoreMut, AsStoreRef, Instance, Module, Store};
+use wasmer::{AsStoreRef, Instance, Module, Store};
 use wasmer_wasi::{Pipe, WasiState};
 use zellij_utils::prost::Message;
 
@@ -580,7 +580,7 @@ impl<'a> PluginLoader<'a> {
     }
     pub fn load_plugin_instance(
         &mut self,
-        mut store: Store,
+        store: Store,
         instance: &Instance,
         plugin_env: &PluginEnv,
         plugin_map: &Arc<Mutex<PluginMap>>,

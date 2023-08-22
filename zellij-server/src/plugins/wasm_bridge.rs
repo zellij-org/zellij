@@ -61,7 +61,6 @@ pub struct WasmBridge {
     client_attributes: ClientAttributes,
     default_shell: Option<TerminalAction>,
     default_layout: Box<Layout>,
-    shutdown_send: Sender<()>,
 }
 
 impl WasmBridge {
@@ -76,7 +75,6 @@ impl WasmBridge {
         client_attributes: ClientAttributes,
         default_shell: Option<TerminalAction>,
         default_layout: Box<Layout>,
-        shutdown_send: Sender<()>,
     ) -> Self {
         let plugin_map = Arc::new(Mutex::new(PluginMap::default()));
         let connected_clients: Arc<Mutex<Vec<ClientId>>> = Arc::new(Mutex::new(vec![]));
@@ -104,7 +102,6 @@ impl WasmBridge {
             client_attributes,
             default_shell,
             default_layout,
-            shutdown_send,
         }
     }
     pub fn load_plugin(
@@ -429,6 +426,7 @@ impl WasmBridge {
     pub fn update_plugins(
         &mut self,
         mut updates: Vec<(Option<PluginId>, Option<ClientId>, Event)>,
+        shutdown_sender: Sender<()>,
     ) -> Result<()> {
         let err_context = || "failed to update plugin state".to_string();
 
@@ -468,10 +466,11 @@ impl WasmBridge {
                         let event = event.clone();
                         let plugin_id = *plugin_id;
                         let client_id = *client_id;
-                        let _s = self.shutdown_send.clone(); // used for shutdown!
+                        let _s = shutdown_sender.clone();
                         async move {
                             let mut running_plugin = running_plugin.lock().unwrap();
                             let mut plugin_bytes = vec![];
+                            let _s = _s; // allow the task to complete before cleanup/shutdown
                             match apply_event_to_plugin(
                                 plugin_id,
                                 client_id,
