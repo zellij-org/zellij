@@ -341,7 +341,6 @@ pub(crate) fn plugin_thread_main(
     // once all senders are dropped or the timeout is reached, recv will return an error, that we ignore
     drop(shutdown_send);
     task::block_on(async {
-        let _ = shutdown_receive.recv().await;
         let _ = timeout(EXIT_TIMEOUT, shutdown_receive.recv()).await;
     });
 
