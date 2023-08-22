@@ -27,12 +27,16 @@ impl PermissionCache {
     pub fn check_permissions(
         &self,
         plugin_name: String,
-        permissions: &Vec<PermissionType>,
+        permissions_to_check: &Vec<PermissionType>,
     ) -> bool {
         if let Some(target) = self.granted.get(&plugin_name) {
-            if target == permissions {
-                return true;
+            let mut all_granted = true;
+            for permission in permissions_to_check {
+                if !target.contains(permission) {
+                    all_granted = false;
+                }
             }
+            return all_granted;
         }
 
         false
