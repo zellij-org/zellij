@@ -93,6 +93,7 @@ mod not_wasm {
             add_plugin!(assets, "status-bar.wasm");
             add_plugin!(assets, "tab-bar.wasm");
             add_plugin!(assets, "strider.wasm");
+            add_plugin!(assets, "session-manager.wasm");
             assets
         };
     }
