@@ -160,6 +160,7 @@ pub(crate) fn plugin_thread_main(
 
     loop {
         let (event, mut err_ctx) = bus.recv().expect("failed to receive event on channel");
+        println!("plugin thread received event: {event:?}");
         err_ctx.add_call(ContextType::Plugin((&event).into()));
         match event {
             PluginInstruction::Load(should_float, pane_title, run, tab_index, client_id, size) => {
