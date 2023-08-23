@@ -188,7 +188,6 @@ fn host_run_plugin_command(env: &ForeignFunctionEnv) {
                         close_plugin_pane(env, plugin_pane_id)
                     },
                     PluginCommand::FocusTerminalPane(terminal_pane_id, should_float_if_hidden) => {
-                        log::info!("focus_terminal_pane: {:?}", terminal_pane_id);
                         focus_terminal_pane(env, terminal_pane_id, should_float_if_hidden)
                     },
                     PluginCommand::FocusPluginPane(plugin_pane_id, should_float_if_hidden) => {
@@ -981,7 +980,6 @@ fn focus_terminal_pane(
 ) {
     let action = Action::FocusTerminalPaneWithId(terminal_pane_id, should_float_if_hidden);
     let error_msg = || format!("Failed to focus terminal pane");
-    log::info!("applying action");
     apply_action!(action, error_msg, env);
 }
 
@@ -1143,14 +1141,11 @@ fn check_command_permission(
         _ => return (PermissionStatus::Granted, None),
     };
 
-    log::info!("plugin permissions: {:?}", plugin_env.permissions);
     if let Some(permissions) = plugin_env.permissions.lock().unwrap().as_ref() {
         if permissions.contains(&permission) {
-            log::info!("granted");
             return (PermissionStatus::Granted, None);
         }
     }
 
-    log::info!("not granted");
     (PermissionStatus::Denied, Some(permission))
 }
