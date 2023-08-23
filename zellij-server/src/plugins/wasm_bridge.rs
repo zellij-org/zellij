@@ -497,6 +497,7 @@ impl WasmBridge {
                                     );
                                 },
                             }
+                            println!("update plugin task finished");
                         }
                     });
                 }

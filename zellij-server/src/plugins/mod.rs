@@ -339,12 +339,16 @@ pub(crate) fn plugin_thread_main(
 
     // first drop our sender, then call recv.
     // once all senders are dropped or the timeout is reached, recv will return an error, that we ignore
+
+    println!("waiting for tasks to exit");
     drop(shutdown_send);
     task::block_on(async {
         let _ = timeout(EXIT_TIMEOUT, shutdown_receive.recv()).await;
     });
 
     wasm_bridge.cleanup();
+
+    println!("cleanup called");
 
     fs::remove_dir_all(&plugin_global_data_dir)
         .or_else(|err| {
