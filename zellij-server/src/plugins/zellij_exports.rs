@@ -207,16 +207,6 @@ fn host_run_plugin_command(env: &ForeignFunctionEnv) {
                         request_permission(env, permissions)?
                     },
                     PluginCommand::SwitchSession(connect_to_session) => {
-//                         let pane_id = match connect_to_session.pane_id {
-//                             Some((pane_id, is_plugin)) => {
-//                                 if is_plugin {
-//                                     Some(PaneId::Plugin(pane_id))
-//                                 } else {
-//                                     Some(PaneId::Terminal(pane_id))
-//                                 }
-//                             },
-//                             None => None,
-//                         };
                         switch_session(env, connect_to_session.name, connect_to_session.tab_position, connect_to_session.pane_id)?
                     },
                 },

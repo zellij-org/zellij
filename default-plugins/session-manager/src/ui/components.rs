@@ -101,6 +101,7 @@ impl UiSpan {
     }
 }
 
+#[allow(dead_code)] // in the future this will be moved to be its own component
 #[derive(Debug)]
 pub enum SpanStyle {
     None,
@@ -164,7 +165,6 @@ impl TruncatableUiSpan {
         } else {
             let mut truncated = String::new();
             for character in self.text.chars() {
-                // TODO: performance? width lookup might be taxing
                 if truncated.width() + character.width().unwrap_or(0) <= *remaining_cols {
                     truncated.push(character);
                 } else {
@@ -252,7 +252,6 @@ impl LineToRender {
         self.is_selected = true;
         match self.colors.palette.gray {
             PaletteColor::EightBit(byte) => {
-                // self.line = format!("\u{1b}[48;5;{GRAY_LIGHT}m\u{1b}[K\r\u{1b}[48;5;{GRAY_LIGHT}m{}", self.line)
                 self.line = format!("\u{1b}[48;5;{byte}m\u{1b}[K\r\u{1b}[48;5;{byte}m{}", self.line);
             }
             PaletteColor::Rgb((r, g, b)) => {
@@ -271,7 +270,6 @@ impl LineToRender {
 
         line.push_str(&more);
         if self.is_selected {
-            // format!("\u{1b}[48;5;{GRAY_LIGHT}m\u{1b}[K\r{}", line)
             self.line.clone()
         } else {
             format!("\u{1b}[49m{}", line)
@@ -432,16 +430,6 @@ pub fn render_controls_line(is_searching: bool, row: usize, colors: Colors) {
     let to_hide = colors.bold("Hide");
     print!("\u{1b}[m\u{1b}[{row}HHelp: {arrows} - {navigate}, {enter} - {select}, {esc} - {to_hide}");
 }
-
-// pub const CYAN: u8 = 51;
-// pub const GRAY_LIGHT: u8 = 238;
-// pub const GRAY_DARK: u8 = 245;
-// pub const WHITE: u8 = 15;
-// pub const BLACK: u8 = 16;
-// pub const RED: u8 = 124;
-// pub const GREEN: u8 = 154;
-// pub const ORANGE: u8 = 166;
-// pub const MAGENTA: u8 = 201;
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct Colors {

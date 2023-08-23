@@ -5,13 +5,11 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::str;
-use std::io::Write;
 
 use zellij_utils::data::{Direction, PaneManifest, PluginPermission, Resize, ResizeStrategy, SessionInfo};
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
 use zellij_utils::input::options::Clipboard;
-use zellij_utils::consts::ZELLIJ_SESSION_INFO_CACHE_DIR;
 use zellij_utils::pane_size::{Size, SizeInPixels};
 use zellij_utils::{
     input::command::TerminalAction,
@@ -1789,9 +1787,6 @@ impl Screen {
             .send_to_server(ServerInstruction::UnblockInputThread)
             .context("failed to unblock input")
     }
-//     fn cache_file_name(&self) -> PathBuf {
-//         ZELLIJ_SESSION_INFO_CACHE_DIR.join(format!("{}.kdl", &self.session_name))
-//     }
 }
 
 // The box is here in order to make the
@@ -2692,13 +2687,11 @@ pub(crate) fn screen_thread_main(
                 screen.render()?;
             },
             ScreenInstruction::AddClient(client_id, tab_position_to_focus, pane_id_to_focus) => {
-                log::info!("AddClient");
                 screen.add_client(client_id)?;
                 let pane_id = pane_id_to_focus.map(|(pane_id, is_plugin)| if is_plugin { PaneId::Plugin(pane_id) } else { PaneId::Terminal(pane_id) });
                 if let Some(pane_id) = pane_id {
                     screen.focus_pane_with_id(pane_id, true, client_id)?;
                 } else if let Some(tab_position_to_focus) = tab_position_to_focus {
-                    log::info!("go_to_tab: {:?}", tab_position_to_focus);
                     screen.go_to_tab(tab_position_to_focus, client_id)?;
                 }
                 screen.log_and_report_session_state()?;
@@ -3061,14 +3054,6 @@ pub(crate) fn screen_thread_main(
     }
     Ok(())
 }
-
-// impl Drop for Screen {
-//     fn drop(&mut self) {
-//         // remove HD assets for this session
-//         let cache_file_name = self.cache_file_name();
-//         let _ = std::fs::remove_file(cache_file_name);
-//     }
-// }
 
 #[path = "./unit/screen_tests.rs"]
 #[cfg(test)]

@@ -324,10 +324,6 @@ impl TryFrom<Event> for ProtobufEvent {
                 })
             },
             Event::SessionUpdate(session_infos) => {
-                // TODO: CONTINUE HERE (16/08) - implement all the things to make this happen, then
-                // do the other side of the serialization, then connect the ui and make it play
-                // nice
-
                 let mut protobuf_session_manifests = vec![];
                 for session_info in session_infos {
                     protobuf_session_manifests.push(session_info.try_into()?);

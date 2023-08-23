@@ -126,7 +126,6 @@ impl State {
             }
             should_render = true;
         } else if let Key::Ctrl('c') = key {
-            // TODO: combine with above
             if let Some(new_session_name) = self.new_session_name.as_mut() {
                 if new_session_name.is_empty() {
                     self.new_session_name = None;

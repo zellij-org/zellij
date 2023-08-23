@@ -136,11 +136,6 @@ pub(crate) enum InputInstruction {
     Exit,
 }
 
-// #[derive(Default, Debug)]
-// pub struct ReconnectToSession {
-//     pub name: Option<String>
-// }
-
 pub fn start_client(
     mut os_input: Box<dyn ClientOsApi>,
     opts: CliArgs,
@@ -448,7 +443,6 @@ pub fn start_client(
                 }
             },
             ClientInstruction::SwitchSession(connect_to_session) => {
-                log::info!("got switch session in client");
                 reconnect_to_session = Some(connect_to_session);
                 os_input.send_to_server(ClientToServerMsg::ClientExited);
                 break;
@@ -457,6 +451,7 @@ pub fn start_client(
         }
     }
 
+    // TODO: test if moving this inside the below if shortens the session switching time
     router_thread.join().unwrap();
 
     if reconnect_to_session.is_none() {
