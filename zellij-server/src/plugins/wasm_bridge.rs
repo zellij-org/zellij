@@ -761,6 +761,8 @@ impl WasmBridge {
             );
 
             permission_cache.write_to_file().with_context(err_context)?;
+        } else {
+            panic!("RUNNING PLUGIN NOT FOUND")
         }
 
         Ok(())
