@@ -746,6 +746,7 @@ pub struct SessionInfo {
 
 use std::hash::{Hash, Hasher};
 
+#[allow(clippy::derive_hash_xor_eq)]
 impl Hash for SessionInfo {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.name.hash(state);
