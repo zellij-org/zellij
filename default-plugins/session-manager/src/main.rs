@@ -73,7 +73,7 @@ impl ZellijPlugin for State {
             self.sessions.is_searching,
             self.colors,
         );
-        render_controls_line(self.sessions.is_searching, rows, self.colors);
+        render_controls_line(self.sessions.is_searching, rows, cols, self.colors);
     }
 }
 

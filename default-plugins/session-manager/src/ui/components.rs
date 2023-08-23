@@ -507,19 +507,30 @@ pub fn render_new_session_line(session_name: &Option<String>, is_searching: bool
     }
 }
 
-pub fn render_controls_line(is_searching: bool, row: usize, colors: Colors) {
+pub fn render_controls_line(is_searching: bool, row: usize, max_cols: usize, colors: Colors) {
     let (arrows, navigate) = if is_searching {
         (colors.magenta("<↓↑>"), colors.bold("Navigate"))
     } else {
-        (colors.magenta("<←↓↑→>"), colors.bold("Navigate"))
+        (colors.magenta("<←↓↑→>"), colors.bold("Navigate and Expand"))
     };
     let enter = colors.magenta("<ENTER>");
-    let select = colors.bold("Switch to");
+    let select = colors.bold("Switch to selected");
     let esc = colors.magenta("<ESC>");
     let to_hide = colors.bold("Hide");
-    print!(
-        "\u{1b}[m\u{1b}[{row}HHelp: {arrows} - {navigate}, {enter} - {select}, {esc} - {to_hide}"
-    );
+
+    if max_cols >= 80 {
+        print!(
+            "\u{1b}[m\u{1b}[{row}HHelp: {arrows} - {navigate}, {enter} - {select}, {esc} - {to_hide}"
+        );
+    } else if max_cols >= 57 {
+        let navigate = colors.bold("Navigate");
+        let select = colors.bold("Switch");
+        print!(
+            "\u{1b}[m\u{1b}[{row}HHelp: {arrows} - {navigate}, {enter} - {select}, {esc} - {to_hide}"
+        );
+    } else if max_cols >= 20 {
+        print!("\u{1b}[m\u{1b}[{row}H{arrows}/{enter}/{esc}");
+    }
 }
 
 #[derive(Debug, Default, Clone, Copy)]
