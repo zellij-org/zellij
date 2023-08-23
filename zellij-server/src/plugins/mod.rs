@@ -343,7 +343,8 @@ pub(crate) fn plugin_thread_main(
     println!("waiting for tasks to exit");
     drop(shutdown_send);
     task::block_on(async {
-        let _ = timeout(EXIT_TIMEOUT, shutdown_receive.recv()).await;
+        let result = timeout(EXIT_TIMEOUT, shutdown_receive.recv()).await;
+        println!("timeout result: {result:?}");
     });
 
     wasm_bridge.cleanup();
