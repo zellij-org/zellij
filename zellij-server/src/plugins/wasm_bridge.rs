@@ -870,6 +870,7 @@ pub fn apply_event_to_plugin(
             }
         },
         (PermissionStatus::Denied, permission) => {
+            println!("permission denied for event: {event:?}");
             log::error!(
                 "PluginId '{}' permission '{}' is not allowed - Event '{:?}' denied",
                 plugin_id,
