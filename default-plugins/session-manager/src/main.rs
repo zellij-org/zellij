@@ -1,16 +1,11 @@
-mod ui;
 mod session_list;
+mod ui;
 use zellij_tile::prelude::*;
 
 use std::collections::BTreeMap;
 
 use ui::{
-    components::{
-        render_prompt,
-        render_new_session_line,
-        render_controls_line,
-        Colors,
-    },
+    components::{render_controls_line, render_new_session_line, render_prompt, Colors},
     SessionUiInfo,
 };
 
@@ -30,7 +25,11 @@ register_plugin!(State);
 
 impl ZellijPlugin for State {
     fn load(&mut self, _configuration: BTreeMap<String, String>) {
-        subscribe(&[EventType::ModeUpdate, EventType::SessionUpdate, EventType::Key]);
+        subscribe(&[
+            EventType::ModeUpdate,
+            EventType::SessionUpdate,
+            EventType::Key,
+        ]);
     }
 
     fn update(&mut self, event: Event) -> bool {
@@ -39,31 +38,41 @@ impl ZellijPlugin for State {
             Event::ModeUpdate(mode_info) => {
                 self.colors = Colors::new(mode_info.style.colors);
                 should_render = true;
-            }
+            },
             Event::Key(key) => {
                 should_render = self.handle_key(key);
-            }
+            },
             Event::PermissionRequestResult(_result) => {
                 should_render = true;
-            }
+            },
             Event::SessionUpdate(session_infos) => {
                 self.update_session_infos(session_infos);
                 should_render = true;
-            }
+            },
             _ => (),
         };
         should_render
     }
 
     fn render(&mut self, rows: usize, cols: usize) {
-        render_prompt(self.new_session_name.is_some(), &self.search_term, self.colors);
+        render_prompt(
+            self.new_session_name.is_some(),
+            &self.search_term,
+            self.colors,
+        );
         let room_for_list = rows.saturating_sub(5); // search line and controls
         self.sessions.update_rows(room_for_list);
-        let list = self.sessions.render(room_for_list, cols.saturating_sub(7), self.colors); // 7 for various ui
+        let list = self
+            .sessions
+            .render(room_for_list, cols.saturating_sub(7), self.colors); // 7 for various ui
         for line in list {
             println!("{}", line.render());
         }
-        render_new_session_line(&self.new_session_name, self.sessions.is_searching, self.colors);
+        render_new_session_line(
+            &self.new_session_name,
+            self.sessions.is_searching,
+            self.colors,
+        );
         render_controls_line(self.sessions.is_searching, rows, self.colors);
     }
 }
@@ -101,7 +110,8 @@ impl State {
                 new_session_name.push(character);
             } else {
                 self.search_term.push(character);
-                self.sessions.update_search_term(&self.search_term, &self.colors);
+                self.sessions
+                    .update_search_term(&self.search_term, &self.colors);
             }
             should_render = true;
         } else if let Key::Backspace = key {
@@ -113,7 +123,8 @@ impl State {
                 }
             } else {
                 self.search_term.pop();
-                self.sessions.update_search_term(&self.search_term, &self.colors);
+                self.sessions
+                    .update_search_term(&self.search_term, &self.colors);
             }
             should_render = true;
         } else if let Key::Ctrl('w') = key {
@@ -134,7 +145,8 @@ impl State {
                 }
             } else if !self.search_term.is_empty() {
                 self.search_term.clear();
-                self.sessions.update_search_term(&self.search_term, &self.colors);
+                self.sessions
+                    .update_search_term(&self.search_term, &self.colors);
                 self.reset_selected_index();
             } else {
                 self.reset_selected_index();
@@ -181,13 +193,13 @@ impl State {
             .iter()
             .map(|s| SessionUiInfo::from_session_info(s))
             .collect();
-        let current_session_name = session_infos
-            .iter()
-            .find_map(|s| if s.is_current_session {
+        let current_session_name = session_infos.iter().find_map(|s| {
+            if s.is_current_session {
                 Some(s.name.clone())
             } else {
                 None
-            });
+            }
+        });
         if let Some(current_session_name) = current_session_name {
             self.session_name = Some(current_session_name);
         }

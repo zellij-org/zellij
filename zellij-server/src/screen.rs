@@ -6,7 +6,9 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::str;
 
-use zellij_utils::data::{Direction, PaneManifest, PluginPermission, Resize, ResizeStrategy, SessionInfo};
+use zellij_utils::data::{
+    Direction, PaneManifest, PluginPermission, Resize, ResizeStrategy, SessionInfo,
+};
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
 use zellij_utils::input::options::Clipboard;
@@ -244,8 +246,8 @@ pub enum ScreenInstruction {
     Copy(ClientId),
     AddClient(
         ClientId,
-        Option<usize>, // tab position to focus
-        Option<(u32, bool)> // (pane_id, is_plugin) => pane_id to focus
+        Option<usize>,       // tab position to focus
+        Option<(u32, bool)>, // (pane_id, is_plugin) => pane_id to focus
     ),
     RemoveClient(ClientId),
     AddOverlay(Overlay, ClientId),
@@ -533,7 +535,6 @@ pub(crate) struct Screen {
     session_name: String,
     session_infos_on_machine: BTreeMap<String, SessionInfo>, // String is the session name, can
                                                              // also be this session
-
 }
 
 impl Screen {
@@ -761,7 +762,8 @@ impl Screen {
                             .non_fatal();
                     }
 
-                    self.log_and_report_session_state().with_context(err_context)?;
+                    self.log_and_report_session_state()
+                        .with_context(err_context)?;
                     return self.render().with_context(err_context);
                 },
                 Err(err) => Err::<(), _>(err).with_context(err_context).non_fatal(),
@@ -894,7 +896,8 @@ impl Screen {
                     t.position -= 1;
                 }
             }
-            self.log_and_report_session_state().with_context(err_context)?;
+            self.log_and_report_session_state()
+                .with_context(err_context)?;
             self.render().with_context(err_context)
         }
     }
@@ -931,7 +934,8 @@ impl Screen {
                 .with_context(err_context)?;
             tab.set_force_render();
         }
-        self.log_and_report_session_state().with_context(err_context)?;
+        self.log_and_report_session_state()
+            .with_context(err_context)?;
         self.render().with_context(err_context)
     }
 
@@ -1250,18 +1254,18 @@ impl Screen {
             self.tab_history.remove(&client_id);
         }
         self.connected_clients.borrow_mut().remove(&client_id);
-        self.log_and_report_session_state().with_context(err_context)
+        self.log_and_report_session_state()
+            .with_context(err_context)
     }
 
     pub fn generate_and_report_tab_state(&mut self) -> Result<Vec<TabInfo>> {
         let mut plugin_updates = vec![];
         let mut tab_infos_for_screen_state = BTreeMap::new();
         for tab in self.tabs.values() {
-            let all_focused_clients: Vec<ClientId> = self.active_tab_indices
+            let all_focused_clients: Vec<ClientId> = self
+                .active_tab_indices
                 .iter()
-                .filter(|(_c_id, tab_position)| {
-                    **tab_position == tab.index
-                })
+                .filter(|(_c_id, tab_position)| **tab_position == tab.index)
                 .map(|(c_id, _)| c_id)
                 .copied()
                 .collect();
@@ -1317,7 +1321,6 @@ impl Screen {
             .send_to_plugin(PluginInstruction::Update(plugin_updates))
             .context("failed to update tabs")?;
         Ok(tab_infos_for_screen_state.values().cloned().collect())
-
     }
     fn generate_and_report_pane_state(&mut self) -> Result<PaneManifest> {
         let mut pane_manifest = PaneManifest::default();
@@ -1334,7 +1337,6 @@ impl Screen {
             .context("failed to update tabs")?;
 
         Ok(pane_manifest)
-
     }
     fn log_and_report_session_state(&mut self) -> Result<()> {
         let err_context = || format!("Failed to log and report session state");
@@ -1350,7 +1352,10 @@ impl Screen {
         };
         self.bus
             .senders
-            .send_to_background_jobs(BackgroundJob::ReportSessionInfo(self.session_name.to_owned(), session_info))
+            .send_to_background_jobs(BackgroundJob::ReportSessionInfo(
+                self.session_name.to_owned(),
+                session_info,
+            ))
             .with_context(err_context)?;
         self.bus
             .senders
@@ -1359,7 +1364,10 @@ impl Screen {
 
         Ok(())
     }
-    pub fn update_session_infos(&mut self, new_session_infos: BTreeMap<String, SessionInfo>) -> Result<()> {
+    pub fn update_session_infos(
+        &mut self,
+        new_session_infos: BTreeMap<String, SessionInfo>,
+    ) -> Result<()> {
         self.session_infos_on_machine = new_session_infos;
         self.bus
             .senders
@@ -1404,7 +1412,8 @@ impl Screen {
                                 }
                             },
                         }
-                        self.log_and_report_session_state().with_context(err_context)
+                        self.log_and_report_session_state()
+                            .with_context(err_context)
                     },
                     Err(err) => {
                         Err::<(), _>(err).with_context(err_context).non_fatal();
@@ -1550,7 +1559,8 @@ impl Screen {
                 Err(err) => Err::<(), _>(err).with_context(err_context).non_fatal(),
             };
         }
-        self.log_and_report_session_state().with_context(err_context)?;
+        self.log_and_report_session_state()
+            .with_context(err_context)?;
         Ok(())
     }
     pub fn move_focus_right_or_next_tab(&mut self, client_id: ClientId) -> Result<()> {
@@ -1585,7 +1595,8 @@ impl Screen {
                 Err(err) => Err::<(), _>(err).with_context(err_context).non_fatal(),
             };
         }
-        self.log_and_report_session_state().with_context(err_context)?;
+        self.log_and_report_session_state()
+            .with_context(err_context)?;
         Ok(())
     }
     pub fn toggle_tab(&mut self, client_id: ClientId) -> Result<()> {
@@ -1598,7 +1609,8 @@ impl Screen {
                 .context("failed to toggle tabs")?;
         };
 
-        self.log_and_report_session_state().context("failed to toggle tabs")?;
+        self.log_and_report_session_state()
+            .context("failed to toggle tabs")?;
         self.render()
     }
 
@@ -1626,7 +1638,8 @@ impl Screen {
                     .with_context(err_context)?
                     .focus_pane_with_id(plugin_pane_id, should_float, client_id)
                     .context("failed to focus plugin pane")?;
-                self.log_and_report_session_state().with_context(err_context)?;
+                self.log_and_report_session_state()
+                    .with_context(err_context)?;
                 Ok(true)
             },
             None => Ok(false),
@@ -2688,7 +2701,13 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::AddClient(client_id, tab_position_to_focus, pane_id_to_focus) => {
                 screen.add_client(client_id)?;
-                let pane_id = pane_id_to_focus.map(|(pane_id, is_plugin)| if is_plugin { PaneId::Plugin(pane_id) } else { PaneId::Terminal(pane_id) });
+                let pane_id = pane_id_to_focus.map(|(pane_id, is_plugin)| {
+                    if is_plugin {
+                        PaneId::Plugin(pane_id)
+                    } else {
+                        PaneId::Terminal(pane_id)
+                    }
+                });
                 if let Some(pane_id) = pane_id {
                     screen.focus_pane_with_id(pane_id, true, client_id)?;
                 } else if let Some(tab_position_to_focus) = tab_position_to_focus {
@@ -3047,9 +3066,9 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::BreakPaneLeft(client_id) => {
                 screen.break_pane_to_new_tab(Direction::Left, client_id)?;
             },
-            ScreenInstruction::UpdateSessionInfos(new_session_infos) => { 
+            ScreenInstruction::UpdateSessionInfos(new_session_infos) => {
                 screen.update_session_infos(new_session_infos)?;
-            }
+            },
         }
     }
     Ok(())

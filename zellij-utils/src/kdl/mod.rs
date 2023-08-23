@@ -1,5 +1,8 @@
 mod kdl_layout_parser;
-use crate::data::{Direction, InputMode, Key, Palette, PaletteColor, PermissionType, Resize, SessionInfo, TabInfo, PaneManifest, PaneInfo};
+use crate::data::{
+    Direction, InputMode, Key, Palette, PaletteColor, PaneInfo, PaneManifest, PermissionType,
+    Resize, SessionInfo, TabInfo,
+};
 use crate::envs::EnvironmentVariables;
 use crate::input::config::{Config, ConfigError, KdlError};
 use crate::input::keybinds::Keybinds;
@@ -1842,27 +1845,39 @@ impl PermissionCache {
 
 impl SessionInfo {
     pub fn from_string(raw_session_info: &str, current_session_name: &str) -> Result<Self, String> {
-        let kdl_document: KdlDocument = raw_session_info.parse().map_err(|e| format!("Failed to parse kdl document: {}", e))?;
-        let name = kdl_document.get("name")
+        let kdl_document: KdlDocument = raw_session_info
+            .parse()
+            .map_err(|e| format!("Failed to parse kdl document: {}", e))?;
+        let name = kdl_document
+            .get("name")
             .and_then(|n| n.entries().iter().next())
             .and_then(|e| e.value().as_string())
             .map(|s| s.to_owned())
             .ok_or("Failed to parse session name")?;
-        let connected_clients = kdl_document.get("connected_clients")
+        let connected_clients = kdl_document
+            .get("connected_clients")
             .and_then(|n| n.entries().iter().next())
             .and_then(|e| e.value().as_i64())
             .map(|c| c as usize)
             .ok_or("Failed to parse connected_clients")?;
-        let tabs: Vec<TabInfo> = kdl_document.get("tabs").and_then(|t| t.children()).and_then(|c| {
-            let mut tab_nodes = vec![];
-            for tab_node in c.nodes() {
-                if let Some(tab) = tab_node.children() {
-                    tab_nodes.push(TabInfo::decode_from_kdl(tab).ok()?);
+        let tabs: Vec<TabInfo> = kdl_document
+            .get("tabs")
+            .and_then(|t| t.children())
+            .and_then(|c| {
+                let mut tab_nodes = vec![];
+                for tab_node in c.nodes() {
+                    if let Some(tab) = tab_node.children() {
+                        tab_nodes.push(TabInfo::decode_from_kdl(tab).ok()?);
+                    }
                 }
-            }
-            Some(tab_nodes)
-        }).ok_or("Failed to parse tabs")?;
-        let panes: PaneManifest = kdl_document.get("panes").and_then(|p| p.children()).map(|p| PaneManifest::decode_from_kdl(p)).ok_or("Failed to parse panes")?;
+                Some(tab_nodes)
+            })
+            .ok_or("Failed to parse tabs")?;
+        let panes: PaneManifest = kdl_document
+            .get("panes")
+            .and_then(|p| p.children())
+            .map(|p| PaneManifest::decode_from_kdl(p))
+            .ok_or("Failed to parse panes")?;
         let is_current_session = name == current_session_name;
         Ok(SessionInfo {
             name,
@@ -1913,32 +1928,35 @@ impl TabInfo {
                     .and_then(|e| e.value().as_i64())
                     .map(|e| e as $type)
                     .ok_or(format!("Failed to parse tab {}", $name))?
-            }}
+            }};
         }
         macro_rules! string_node {
             ($name:expr) => {{
-                kdl_document.get($name)
+                kdl_document
+                    .get($name)
                     .and_then(|n| n.entries().iter().next())
                     .and_then(|e| e.value().as_string())
                     .map(|s| s.to_owned())
                     .ok_or(format!("Failed to parse tab {}", $name))?
-            }}
+            }};
         }
         macro_rules! optional_string_node {
             ($name:expr) => {{
-                kdl_document.get($name)
+                kdl_document
+                    .get($name)
                     .and_then(|n| n.entries().iter().next())
                     .and_then(|e| e.value().as_string())
                     .map(|s| s.to_owned())
-            }}
+            }};
         }
         macro_rules! bool_node {
             ($name:expr) => {{
-                kdl_document.get($name)
+                kdl_document
+                    .get($name)
                     .and_then(|n| n.entries().iter().next())
                     .and_then(|e| e.value().as_bool())
                     .ok_or(format!("Failed to parse tab {}", $name))?
-            }}
+            }};
         }
 
         let position = int_node!("position", usize);
@@ -1949,7 +1967,10 @@ impl TabInfo {
         let is_sync_panes_active = bool_node!("is_sync_panes_active");
         let are_floating_panes_visible = bool_node!("are_floating_panes_visible");
         let mut other_focused_clients = vec![];
-        if let Some(tab_other_focused_clients) = kdl_document.get("other_focused_clients").map(|n| n.entries()) {
+        if let Some(tab_other_focused_clients) = kdl_document
+            .get("other_focused_clients")
+            .map(|n| n.entries())
+        {
             for entry in tab_other_focused_clients {
                 if let Some(entry_parsed) = entry.value().as_i64() {
                     other_focused_clients.push(entry_parsed as u16);
@@ -2030,16 +2051,16 @@ impl PaneManifest {
         for node in kdl_doucment.nodes() {
             if node.name().to_string() == "pane" {
                 if let Some(pane_document) = node.children() {
-                    if let Ok((tab_position, pane_info)) = PaneInfo::decode_from_kdl(pane_document) {
-                        let panes_in_tab_position = panes.entry(tab_position).or_insert_with(Vec::new);
+                    if let Ok((tab_position, pane_info)) = PaneInfo::decode_from_kdl(pane_document)
+                    {
+                        let panes_in_tab_position =
+                            panes.entry(tab_position).or_insert_with(Vec::new);
                         panes_in_tab_position.push(pane_info);
                     }
                 }
             }
         }
-        PaneManifest {
-            panes
-        }
+        PaneManifest { panes }
     }
     pub fn encode_to_kdl(&self) -> KdlDocument {
         let mut kdl_doucment = KdlDocument::new();
@@ -2061,10 +2082,12 @@ impl PaneManifest {
 }
 
 impl PaneInfo {
-    pub fn decode_from_kdl(kdl_document: &KdlDocument) -> Result<(usize, Self), String> { // usize is the tab position
+    pub fn decode_from_kdl(kdl_document: &KdlDocument) -> Result<(usize, Self), String> {
+        // usize is the tab position
         macro_rules! int_node {
             ($name:expr, $type:ident) => {{
-                kdl_document.get($name)
+                kdl_document
+                    .get($name)
                     .and_then(|n| n.entries().iter().next())
                     .and_then(|e| e.value().as_i64())
                     .map(|e| e as $type)
@@ -2073,7 +2096,8 @@ impl PaneInfo {
         }
         macro_rules! optional_int_node {
             ($name:expr, $type:ident) => {{
-                kdl_document.get($name)
+                kdl_document
+                    .get($name)
                     .and_then(|n| n.entries().iter().next())
                     .and_then(|e| e.value().as_i64())
                     .map(|e| e as $type)
@@ -2081,7 +2105,8 @@ impl PaneInfo {
         }
         macro_rules! bool_node {
             ($name:expr) => {{
-                kdl_document.get($name)
+                kdl_document
+                    .get($name)
                     .and_then(|n| n.entries().iter().next())
                     .and_then(|e| e.value().as_bool())
                     .ok_or(format!("Failed to parse pane {}", $name))?
@@ -2089,7 +2114,8 @@ impl PaneInfo {
         }
         macro_rules! string_node {
             ($name:expr) => {{
-                kdl_document.get($name)
+                kdl_document
+                    .get($name)
                     .and_then(|n| n.entries().iter().next())
                     .and_then(|e| e.value().as_string())
                     .map(|s| s.to_owned())
@@ -2098,7 +2124,8 @@ impl PaneInfo {
         }
         macro_rules! optional_string_node {
             ($name:expr) => {{
-                kdl_document.get($name)
+                kdl_document
+                    .get($name)
                     .and_then(|n| n.entries().iter().next())
                     .and_then(|e| e.value().as_string())
                     .map(|s| s.to_owned())
@@ -2124,7 +2151,8 @@ impl PaneInfo {
         let pane_content_rows = int_node!("pane_content_rows", usize);
         let pane_columns = int_node!("pane_columns", usize);
         let pane_content_columns = int_node!("pane_content_columns", usize);
-        let cursor_coordinates_in_pane = kdl_document.get("cursor_coordinates_in_pane")
+        let cursor_coordinates_in_pane = kdl_document
+            .get("cursor_coordinates_in_pane")
             .map(|n| {
                 let mut entries = n.entries().iter();
                 (entries.next(), entries.next())
@@ -2134,7 +2162,7 @@ impl PaneInfo {
                 let y = y.and_then(|y| y.value().as_i64()).map(|y| y as usize);
                 match (x, y) {
                     (Some(x), Some(y)) => Some((x, y)),
-                    _ => None
+                    _ => None,
                 }
             });
         let terminal_command = optional_string_node!("terminal_command");
@@ -2220,7 +2248,7 @@ impl PaneInfo {
         if let Some(terminal_command) = &self.terminal_command {
             string_node!("terminal_command", terminal_command.to_string());
         }
-        if let Some(plugin_url) = &self.plugin_url{
+        if let Some(plugin_url) = &self.plugin_url {
             string_node!("plugin_url", plugin_url.to_string());
         }
         bool_node!("is_selectable", self.is_selectable);
@@ -2335,7 +2363,7 @@ fn serialize_and_deserialize_session_info_with_data() {
             terminal_command: None,
             plugin_url: Some("i_am_a_fake_plugin".to_owned()),
             is_selectable: true,
-        }
+        },
     ];
     let mut panes = HashMap::new();
     panes.insert(0, panes_list);
@@ -2352,7 +2380,7 @@ fn serialize_and_deserialize_session_info_with_data() {
                 are_floating_panes_visible: true,
                 other_focused_clients: vec![2, 3],
                 active_swap_layout_name: Some("BASE".to_owned()),
-                is_swap_layout_dirty: true
+                is_swap_layout_dirty: true,
             },
             TabInfo {
                 position: 1,
@@ -2360,16 +2388,14 @@ fn serialize_and_deserialize_session_info_with_data() {
                 active: true,
                 panes_to_hide: 0,
                 is_fullscreen_active: false,
-                is_sync_panes_active: true ,
+                is_sync_panes_active: true,
                 are_floating_panes_visible: true,
                 other_focused_clients: vec![2, 3],
                 active_swap_layout_name: None,
-                is_swap_layout_dirty: false
+                is_swap_layout_dirty: false,
             },
         ],
-        panes: PaneManifest {
-            panes,
-        },
+        panes: PaneManifest { panes },
         connected_clients: 2,
         is_current_session: false,
     };

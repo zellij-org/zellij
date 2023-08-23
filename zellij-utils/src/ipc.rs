@@ -1,7 +1,7 @@
 //! IPC stuff for starting to split things into a client and server model.
 use crate::{
     cli::CliArgs,
-    data::{ClientId, InputMode, Style, ConnectToSession},
+    data::{ClientId, ConnectToSession, InputMode, Style},
     errors::{get_current_ctx, prelude::*, ErrorContext},
     input::keybinds::Keybinds,
     input::{actions::Action, layout::Layout, options::Options, plugins::PluginsConfig},
@@ -81,8 +81,8 @@ pub enum ClientToServerMsg {
     AttachClient(
         ClientAttributes,
         Options,
-        Option<usize>, // tab position to focus
-        Option<(u32, bool)> // (pane_id, is_plugin) => pane id to focus
+        Option<usize>,       // tab position to focus
+        Option<(u32, bool)>, // (pane_id, is_plugin) => pane id to focus
     ),
     Action(Action, Option<ClientId>),
     ClientExited,

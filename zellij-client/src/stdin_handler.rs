@@ -97,7 +97,8 @@ pub(crate) fn stdin_loop(
 
                 let event_count = events.len();
                 for (i, input_event) in events.into_iter().enumerate() {
-                    if holding_mouse && is_mouse_press_or_hold(&input_event) && i == event_count - 1 {
+                    if holding_mouse && is_mouse_press_or_hold(&input_event) && i == event_count - 1
+                    {
                         let mut poller = os_input.stdin_poller();
                         loop {
                             if poller.ready() {
@@ -128,10 +129,9 @@ pub(crate) fn stdin_loop(
                 } else {
                     log::error!("Failed to read from STDIN: {}", e);
                 }
-                let _ = send_input_instructions
-                    .send(InputInstruction::Exit);
+                let _ = send_input_instructions.send(InputInstruction::Exit);
                 break;
-            }
+            },
         }
     }
 }

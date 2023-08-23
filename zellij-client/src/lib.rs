@@ -23,8 +23,8 @@ use crate::{
 };
 use zellij_utils::{
     channels::{self, ChannelWithContext, SenderWithContext},
-    consts::{ZELLIJ_SOCK_DIR, set_permissions},
-    data::{ClientId, InputMode, Style, ConnectToSession},
+    consts::{set_permissions, ZELLIJ_SOCK_DIR},
+    data::{ClientId, ConnectToSession, InputMode, Style},
     envs,
     errors::{ClientContext, ContextType, ErrorInstruction},
     input::{config::Config, options::Options},
@@ -61,7 +61,9 @@ impl From<ServerToClientMsg> for ClientInstruction {
             ServerToClientMsg::Connected => ClientInstruction::Connected,
             ServerToClientMsg::ActiveClients(clients) => ClientInstruction::ActiveClients(clients),
             ServerToClientMsg::Log(log_lines) => ClientInstruction::Log(log_lines),
-            ServerToClientMsg::SwitchSession(connect_to_session) => ClientInstruction::SwitchSession(connect_to_session),
+            ServerToClientMsg::SwitchSession(connect_to_session) => {
+                ClientInstruction::SwitchSession(connect_to_session)
+            },
         }
     }
 }
@@ -194,13 +196,14 @@ pub fn start_client(
             os_input.update_session_name(name);
             let ipc_pipe = create_ipc_pipe();
 
-            (ClientToServerMsg::AttachClient(
+            (
+                ClientToServerMsg::AttachClient(
                     client_attributes,
                     config_options,
                     tab_position_to_focus,
-                    pane_id_to_focus
+                    pane_id_to_focus,
                 ),
-                ipc_pipe
+                ipc_pipe,
             )
         },
         ClientInfo::New(name) => {
@@ -210,13 +213,16 @@ pub fn start_client(
 
             spawn_server(&*ipc_pipe, opts.debug).unwrap();
 
-            (ClientToServerMsg::NewClient(
-                client_attributes,
-                Box::new(opts),
-                Box::new(config_options.clone()),
-                Box::new(layout.unwrap()),
-                Some(config.plugins.clone()),
-            ), ipc_pipe)
+            (
+                ClientToServerMsg::NewClient(
+                    client_attributes,
+                    Box::new(opts),
+                    Box::new(config_options.clone()),
+                    Box::new(layout.unwrap()),
+                    Some(config.plugins.clone()),
+                ),
+                ipc_pipe,
+            )
         },
     };
 
@@ -472,8 +478,7 @@ pub fn start_client(
         stdout.flush().unwrap();
     }
 
-    let _ = send_input_instructions
-        .send(InputInstruction::Exit);
+    let _ = send_input_instructions.send(InputInstruction::Exit);
 
     reconnect_to_session
 }

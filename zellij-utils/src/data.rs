@@ -964,7 +964,6 @@ pub struct ConnectToSession {
     pub pane_id: Option<(u32, bool)>, // (id, is_plugin)
 }
 
-
 #[derive(Debug, Default, Clone)]
 pub struct PluginMessage {
     pub name: String,

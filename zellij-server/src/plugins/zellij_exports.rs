@@ -16,7 +16,9 @@ use std::{
 };
 use wasmer::{imports, Function, ImportObject, Store, WasmerEnv};
 use wasmer_wasi::WasiEnv;
-use zellij_utils::data::{CommandType, PermissionStatus, PermissionType, PluginPermission, ConnectToSession};
+use zellij_utils::data::{
+    CommandType, ConnectToSession, PermissionStatus, PermissionType, PluginPermission,
+};
 use zellij_utils::input::permission::PermissionCache;
 
 use url::Url;
@@ -206,9 +208,12 @@ fn host_run_plugin_command(env: &ForeignFunctionEnv) {
                     PluginCommand::RequestPluginPermissions(permissions) => {
                         request_permission(env, permissions)?
                     },
-                    PluginCommand::SwitchSession(connect_to_session) => {
-                        switch_session(env, connect_to_session.name, connect_to_session.tab_position, connect_to_session.pane_id)?
-                    },
+                    PluginCommand::SwitchSession(connect_to_session) => switch_session(
+                        env,
+                        connect_to_session.name,
+                        connect_to_session.tab_position,
+                        connect_to_session.pane_id,
+                    )?,
                 },
                 (PermissionStatus::Denied, permission) => {
                     log::error!(
@@ -683,7 +688,12 @@ fn detach(env: &ForeignFunctionEnv) {
     apply_action!(action, error_msg, env);
 }
 
-fn switch_session(env: &ForeignFunctionEnv, session_name: Option<String>, tab_position: Option<usize>, pane_id: Option<(u32, bool)>) -> Result<()> {
+fn switch_session(
+    env: &ForeignFunctionEnv,
+    session_name: Option<String>,
+    tab_position: Option<usize>,
+    pane_id: Option<(u32, bool)>,
+) -> Result<()> {
     // pane_id is (id, is_plugin)
     let err_context = || format!("Failed to switch session");
     let client_id = env.plugin_env.client_id;
@@ -693,7 +703,13 @@ fn switch_session(env: &ForeignFunctionEnv, session_name: Option<String>, tab_po
         tab_position,
         pane_id,
     };
-    env.plugin_env.senders.send_to_server(ServerInstruction::SwitchSession(connect_to_session, client_id)).with_context(err_context)?;
+    env.plugin_env
+        .senders
+        .send_to_server(ServerInstruction::SwitchSession(
+            connect_to_session,
+            client_id,
+        ))
+        .with_context(err_context)?;
     Ok(())
 }
 

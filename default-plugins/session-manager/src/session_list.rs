@@ -2,11 +2,7 @@ use fuzzy_matcher::skim::SkimMatcherV2;
 use fuzzy_matcher::FuzzyMatcher;
 
 use crate::ui::{
-    components::{
-        ListItem,
-        LineToRender,
-        Colors,
-    },
+    components::{Colors, LineToRender, ListItem},
     SessionUiInfo,
 };
 
@@ -36,7 +32,9 @@ impl SessionList {
         let mut flattened_assets = self.flatten_assets(colors);
         let mut matches = vec![];
         let matcher = SkimMatcherV2::default().use_cache(true);
-        for (list_item, session_name, tab_position, pane_id, is_current_session) in flattened_assets.drain(..) {
+        for (list_item, session_name, tab_position, pane_id, is_current_session) in
+            flattened_assets.drain(..)
+        {
             if let Some((score, indices)) = matcher.fuzzy_indices(&list_item.name, &search_term) {
                 matches.push(SearchResult::new(
                     score,
@@ -49,25 +47,45 @@ impl SessionList {
                 ));
             }
         }
-        matches
-            .sort_by(|a, b| b.score.cmp(&a.score));
+        matches.sort_by(|a, b| b.score.cmp(&a.score));
         self.search_results = matches;
         self.is_searching = !search_term.is_empty();
         self.selected_search_index = Some(0);
     }
-    fn flatten_assets(&self, colors: &Colors) -> Vec<(ListItem, String, Option<usize>, Option<(u32, bool)>, bool)> {
+    fn flatten_assets(
+        &self,
+        colors: &Colors,
+    ) -> Vec<(ListItem, String, Option<usize>, Option<(u32, bool)>, bool)> {
         // list_item, session_name, tab_position, (pane_id, is_plugin), is_current_session
         let mut list_items = vec![];
         for session in &self.session_ui_infos {
             let session_name = session.name.clone();
             let is_current_session = session.is_current_session;
-            list_items.push((ListItem::from_session_info(session, *colors), session_name.clone(), None, None, is_current_session));
+            list_items.push((
+                ListItem::from_session_info(session, *colors),
+                session_name.clone(),
+                None,
+                None,
+                is_current_session,
+            ));
             for tab in &session.tabs {
                 let tab_position = tab.position;
-                list_items.push((ListItem::from_tab_info(session, tab, *colors), session_name.clone(), Some(tab_position), None, is_current_session));
+                list_items.push((
+                    ListItem::from_tab_info(session, tab, *colors),
+                    session_name.clone(),
+                    Some(tab_position),
+                    None,
+                    is_current_session,
+                ));
                 for pane in &tab.panes {
                     let pane_id = (pane.pane_id, pane.is_plugin);
-                    list_items.push((ListItem::from_pane_info(session, tab, pane, *colors), session_name.clone(), Some(tab_position), Some(pane_id), is_current_session));
+                    list_items.push((
+                        ListItem::from_pane_info(session, tab, pane, *colors),
+                        session_name.clone(),
+                        Some(tab_position),
+                        Some(pane_id),
+                        is_current_session,
+                    ));
                 }
             }
         }
@@ -79,7 +97,10 @@ impl SessionList {
                 .and_then(|i| self.search_results.get(i))
                 .map(|s| s.session_name.clone())
         } else {
-            self.selected_index.0.and_then(|i| self.session_ui_infos.get(i)).map(|s_i| s_i.name.clone())
+            self.selected_index
+                .0
+                .and_then(|i| self.session_ui_infos.get(i))
+                .map(|s_i| s_i.name.clone())
         }
     }
     pub fn selected_is_current_session(&self) -> bool {
@@ -89,7 +110,11 @@ impl SessionList {
                 .map(|s| s.is_current_session)
                 .unwrap_or(false)
         } else {
-            self.selected_index.0.and_then(|i| self.session_ui_infos.get(i)).map(|s_i| s_i.is_current_session).unwrap_or(false)
+            self.selected_index
+                .0
+                .and_then(|i| self.session_ui_infos.get(i))
+                .map(|s_i| s_i.is_current_session)
+                .unwrap_or(false)
         }
     }
     pub fn get_selected_tab_position(&self) -> Option<usize> {
@@ -98,22 +123,38 @@ impl SessionList {
                 .and_then(|i| self.search_results.get(i))
                 .and_then(|s| s.tab_position)
         } else {
-            self.selected_index.0.and_then(|i| self.session_ui_infos.get(i)).and_then(|s_i| {
-                self.selected_index.1.and_then(|i| s_i.tabs.get(i)).map(|t| t.position)
-            })
+            self.selected_index
+                .0
+                .and_then(|i| self.session_ui_infos.get(i))
+                .and_then(|s_i| {
+                    self.selected_index
+                        .1
+                        .and_then(|i| s_i.tabs.get(i))
+                        .map(|t| t.position)
+                })
         }
     }
-    pub fn get_selected_pane_id(&self) -> Option<(u32, bool)> { // (pane_id, is_plugin)
+    pub fn get_selected_pane_id(&self) -> Option<(u32, bool)> {
+        // (pane_id, is_plugin)
         if self.is_searching {
             self.selected_search_index
                 .and_then(|i| self.search_results.get(i))
                 .and_then(|s| s.pane_id)
         } else {
-            self.selected_index.0.and_then(|i| self.session_ui_infos.get(i)).and_then(|s_i| {
-                self.selected_index.1.and_then(|i| s_i.tabs.get(i)).and_then(|t| {
-                    self.selected_index.2.and_then(|i| t.panes.get(i)).map(|p| (p.pane_id, p.is_plugin))
+            self.selected_index
+                .0
+                .and_then(|i| self.session_ui_infos.get(i))
+                .and_then(|s_i| {
+                    self.selected_index
+                        .1
+                        .and_then(|i| s_i.tabs.get(i))
+                        .and_then(|t| {
+                            self.selected_index
+                                .2
+                                .and_then(|i| t.panes.get(i))
+                                .map(|p| (p.pane_id, p.is_plugin))
+                        })
                 })
-            })
         }
     }
     pub fn move_selection_down(&mut self) {
@@ -126,7 +167,7 @@ impl SessionList {
                     if !self.search_results.is_empty() {
                         self.selected_search_index = Some(0);
                     }
-                }
+                },
             }
         } else {
             match self.selected_index {
@@ -143,22 +184,31 @@ impl SessionList {
                         self.selected_index.1 = None;
                         self.selected_index.2 = None;
                     }
-                }
+                },
                 SelectedIndex(Some(selected_session), Some(selected_tab), None) => {
-                    if self.get_session(selected_session).map(|s| s.tabs.len() > selected_tab + 1).unwrap_or(false) {
+                    if self
+                        .get_session(selected_session)
+                        .map(|s| s.tabs.len() > selected_tab + 1)
+                        .unwrap_or(false)
+                    {
                         self.selected_index.1 = Some(selected_tab + 1);
                     } else {
                         self.selected_index.1 = Some(0);
                     }
-                }
+                },
                 SelectedIndex(Some(selected_session), Some(selected_tab), Some(selected_pane)) => {
-                    if self.get_session(selected_session).and_then(|s| s.tabs.get(selected_tab)).map(|t| t.panes.len() > selected_pane + 1).unwrap_or(false) {
+                    if self
+                        .get_session(selected_session)
+                        .and_then(|s| s.tabs.get(selected_tab))
+                        .map(|t| t.panes.len() > selected_pane + 1)
+                        .unwrap_or(false)
+                    {
                         self.selected_index.2 = Some(selected_pane + 1);
                     } else {
                         self.selected_index.2 = Some(0);
                     }
-                }
-                _ => {}
+                },
+                _ => {},
             }
         }
     }
@@ -172,7 +222,7 @@ impl SessionList {
                     if !self.search_results.is_empty() {
                         self.selected_search_index = Some(0);
                     }
-                }
+                },
             }
         } else {
             match self.selected_index {
@@ -187,24 +237,31 @@ impl SessionList {
                     } else {
                         self.selected_index.0 = None;
                     }
-                }
+                },
                 SelectedIndex(Some(selected_session), Some(selected_tab), None) => {
                     if selected_tab > 0 {
                         self.selected_index.1 = Some(selected_tab - 1);
                     } else {
-                        let tab_count = self.get_session(selected_session).map(|s| s.tabs.len()).unwrap_or(0);
+                        let tab_count = self
+                            .get_session(selected_session)
+                            .map(|s| s.tabs.len())
+                            .unwrap_or(0);
                         self.selected_index.1 = Some(tab_count.saturating_sub(1))
                     }
-                }
+                },
                 SelectedIndex(Some(selected_session), Some(selected_tab), Some(selected_pane)) => {
                     if selected_pane > 0 {
                         self.selected_index.2 = Some(selected_pane - 1);
                     } else {
-                        let pane_count = self.get_session(selected_session).and_then(|s| s.tabs.get(selected_tab)).map(|t| t.panes.len()).unwrap_or(0);
+                        let pane_count = self
+                            .get_session(selected_session)
+                            .and_then(|s| s.tabs.get(selected_tab))
+                            .map(|t| t.panes.len())
+                            .unwrap_or(0);
                         self.selected_index.2 = Some(pane_count.saturating_sub(1))
                     }
-                }
-                _ => {}
+                },
+                _ => {},
             }
         }
     }
@@ -222,35 +279,42 @@ impl SessionList {
                 if selected_session_has_tabs {
                     self.selected_index.1 = Some(0);
                 }
-            }
+            },
             SelectedIndex(Some(selected_session), Some(selected_tab), None) => {
-                let selected_tab_has_panes = self.get_session(selected_session).and_then(|s| s.tabs.get(selected_tab)).map(|t| !t.panes.is_empty()).unwrap_or(false);
+                let selected_tab_has_panes = self
+                    .get_session(selected_session)
+                    .and_then(|s| s.tabs.get(selected_tab))
+                    .map(|t| !t.panes.is_empty())
+                    .unwrap_or(false);
                 if selected_tab_has_panes {
                     self.selected_index.2 = Some(0);
                 }
-            }
-            _ => {}
+            },
+            _ => {},
         }
     }
     pub fn result_shrink(&mut self) {
         self.selected_index.result_shrink();
     }
     pub fn update_rows(&mut self, rows: usize) {
-        if let Some(search_result_rows_until_selected) = self.selected_search_index.map(|i| self.search_results.iter().enumerate().take(i + 1).fold(0, |acc, s| acc + s.1.lines_to_render())) {
-            if search_result_rows_until_selected > rows || self.selected_search_index >= Some(self.search_results.len()) {
+        if let Some(search_result_rows_until_selected) = self.selected_search_index.map(|i| {
+            self.search_results
+                .iter()
+                .enumerate()
+                .take(i + 1)
+                .fold(0, |acc, s| acc + s.1.lines_to_render())
+        }) {
+            if search_result_rows_until_selected > rows
+                || self.selected_search_index >= Some(self.search_results.len())
+            {
                 self.selected_search_index = None;
             }
         }
-
     }
 }
 
 #[derive(Debug, Clone, Default)]
-pub struct SelectedIndex(
-    pub Option<usize>, 
-    pub Option<usize>, 
-    pub Option<usize>
-);
+pub struct SelectedIndex(pub Option<usize>, pub Option<usize>, pub Option<usize>);
 
 impl SelectedIndex {
     pub fn tabs_are_visible(&self) -> bool {
@@ -267,16 +331,12 @@ impl SelectedIndex {
     }
     pub fn result_shrink(&mut self) {
         match self {
-            SelectedIndex(Some(_selected_session), None, None) => {
-                self.0 = None
-            }
-            SelectedIndex(Some(_selected_session), Some(_selected_tab), None) => {
-                self.1 = None
-            }
+            SelectedIndex(Some(_selected_session), None, None) => self.0 = None,
+            SelectedIndex(Some(_selected_session), Some(_selected_tab), None) => self.1 = None,
             SelectedIndex(Some(_selected_session), Some(_selected_tab), Some(_selected_pane)) => {
                 self.2 = None
-            }
-            _ => {}
+            },
+            _ => {},
         }
     }
 }
@@ -293,7 +353,15 @@ pub struct SearchResult {
 }
 
 impl SearchResult {
-    pub fn new(score: i64, indices: Vec<usize>, list_item: ListItem, session_name: String, tab_position: Option<usize>, pane_id: Option<(u32, bool)>, is_current_session: bool) -> Self {
+    pub fn new(
+        score: i64,
+        indices: Vec<usize>,
+        list_item: ListItem,
+        session_name: String,
+        tab_position: Option<usize>,
+        pane_id: Option<(u32, bool)>,
+        is_current_session: bool,
+    ) -> Self {
         SearchResult {
             score,
             indices,

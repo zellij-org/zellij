@@ -1,8 +1,8 @@
-use zellij_tile::prelude::*;
-use unicode_width::UnicodeWidthStr;
 use unicode_width::UnicodeWidthChar;
+use unicode_width::UnicodeWidthStr;
+use zellij_tile::prelude::*;
 
-use crate::ui::{SessionUiInfo, TabUiInfo, PaneUiInfo};
+use crate::ui::{PaneUiInfo, SessionUiInfo, TabUiInfo};
 
 #[derive(Debug)]
 pub struct ListItem {
@@ -24,7 +24,11 @@ impl ListItem {
             colors,
         }
     }
-    pub fn from_tab_info(session_ui_info: &SessionUiInfo, tab_ui_info: &TabUiInfo, colors: Colors) -> Self {
+    pub fn from_tab_info(
+        session_ui_info: &SessionUiInfo,
+        tab_ui_info: &TabUiInfo,
+        colors: Colors,
+    ) -> Self {
         let session_ui_line = build_session_ui_line(session_ui_info, colors);
         let tab_ui_line = build_tab_ui_line(tab_ui_info, colors);
         ListItem {
@@ -32,10 +36,15 @@ impl ListItem {
             session_name: Some(session_ui_line),
             tab_name: Some(tab_ui_line),
             pane_name: None,
-            colors
+            colors,
         }
     }
-    pub fn from_pane_info(session_ui_info: &SessionUiInfo, tab_ui_info: &TabUiInfo, pane_ui_info: &PaneUiInfo, colors: Colors) -> Self {
+    pub fn from_pane_info(
+        session_ui_info: &SessionUiInfo,
+        tab_ui_info: &TabUiInfo,
+        pane_ui_info: &PaneUiInfo,
+        colors: Colors,
+    ) -> Self {
         let session_ui_line = build_session_ui_line(session_ui_info, colors);
         let tab_ui_line = build_tab_ui_line(tab_ui_info, colors);
         let pane_ui_line = build_pane_ui_line(pane_ui_info, colors);
@@ -49,28 +58,54 @@ impl ListItem {
     }
     pub fn line_count(&self) -> usize {
         let mut line_count = 0;
-        if self.session_name.is_some() { line_count += 1 };
-        if self.tab_name.is_some() { line_count += 1 };
-        if self.pane_name.is_some() { line_count += 1 };
+        if self.session_name.is_some() {
+            line_count += 1
+        };
+        if self.tab_name.is_some() {
+            line_count += 1
+        };
+        if self.pane_name.is_some() {
+            line_count += 1
+        };
         line_count
     }
     pub fn render(&self, indices: Option<Vec<usize>>, max_cols: usize) -> Vec<LineToRender> {
         let mut lines_to_render = vec![];
         if let Some(session_name) = &self.session_name {
-            let indices = if self.tab_name.is_none() && self.pane_name.is_none() { indices.clone() } else { None };
+            let indices = if self.tab_name.is_none() && self.pane_name.is_none() {
+                indices.clone()
+            } else {
+                None
+            };
             let mut line_to_render = LineToRender::new(self.colors);
             let mut remaining_cols = max_cols;
             for span in session_name {
-                span.render(indices.clone().map(|i| (SpanStyle::ForegroundBold(self.colors.palette.magenta), i)), &mut line_to_render, &mut remaining_cols);
+                span.render(
+                    indices
+                        .clone()
+                        .map(|i| (SpanStyle::ForegroundBold(self.colors.palette.magenta), i)),
+                    &mut line_to_render,
+                    &mut remaining_cols,
+                );
             }
             lines_to_render.push(line_to_render);
         }
         if let Some(tab_name) = &self.tab_name {
-            let indices = if self.pane_name.is_none() { indices.clone() } else { None };
+            let indices = if self.pane_name.is_none() {
+                indices.clone()
+            } else {
+                None
+            };
             let mut line_to_render = LineToRender::new(self.colors);
             let mut remaining_cols = max_cols;
             for span in tab_name {
-                span.render(indices.clone().map(|i| (SpanStyle::ForegroundBold(self.colors.palette.magenta), i)), &mut line_to_render, &mut remaining_cols);
+                span.render(
+                    indices
+                        .clone()
+                        .map(|i| (SpanStyle::ForegroundBold(self.colors.palette.magenta), i)),
+                    &mut line_to_render,
+                    &mut remaining_cols,
+                );
             }
             lines_to_render.push(line_to_render);
         }
@@ -78,7 +113,13 @@ impl ListItem {
             let mut line_to_render = LineToRender::new(self.colors);
             let mut remaining_cols = max_cols;
             for span in pane_name {
-                span.render(indices.clone().map(|i| (SpanStyle::ForegroundBold(self.colors.palette.magenta), i)), &mut line_to_render, &mut remaining_cols);
+                span.render(
+                    indices
+                        .clone()
+                        .map(|i| (SpanStyle::ForegroundBold(self.colors.palette.magenta), i)),
+                    &mut line_to_render,
+                    &mut remaining_cols,
+                );
             }
             lines_to_render.push(line_to_render);
         }
@@ -93,10 +134,19 @@ pub enum UiSpan {
 }
 
 impl UiSpan {
-    pub fn render(&self, indices: Option<(SpanStyle, Vec<usize>)>, line_to_render: &mut LineToRender, remaining_cols: &mut usize) {
+    pub fn render(
+        &self,
+        indices: Option<(SpanStyle, Vec<usize>)>,
+        line_to_render: &mut LineToRender,
+        remaining_cols: &mut usize,
+    ) {
         match self {
-            UiSpan::UiSpanTelescope(ui_span_telescope) => ui_span_telescope.render(line_to_render, remaining_cols),
-            UiSpan::TruncatableUiSpan(truncatable_ui_span) => truncatable_ui_span.render(indices, line_to_render, remaining_cols),
+            UiSpan::UiSpanTelescope(ui_span_telescope) => {
+                ui_span_telescope.render(line_to_render, remaining_cols)
+            },
+            UiSpan::TruncatableUiSpan(truncatable_ui_span) => {
+                truncatable_ui_span.render(indices, line_to_render, remaining_cols)
+            },
         }
     }
 }
@@ -115,26 +165,22 @@ impl SpanStyle {
         match self {
             SpanStyle::None => to_style.to_owned(),
             SpanStyle::Bold => format!("\u{1b}[1m{}\u{1b}[22m", to_style),
-            SpanStyle::Foreground(color) => {
-                match color {
-                    PaletteColor::EightBit(byte) => {
-                        format!("\u{1b}[38;5;{byte}m{}\u{1b}[39m", to_style)
-                    }
-                    PaletteColor::Rgb((r, g, b)) => {
-                        format!("\u{1b}[38;2;{};{};{}m{}\u{1b}[39m", r, g, b, to_style)
-                    }
-                }
-            }
-            SpanStyle::ForegroundBold(color)=> {
-                match color {
-                    PaletteColor::EightBit(byte) => {
-                        format!("\u{1b}[38;5;{byte};1m{}\u{1b}[39;22m", to_style)
-                    }
-                    PaletteColor::Rgb((r, g, b)) => {
-                        format!("\u{1b}[38;2;{};{};{};1m{}\u{1b}[39;22m", r, g, b, to_style)
-                    }
-                }
-            }
+            SpanStyle::Foreground(color) => match color {
+                PaletteColor::EightBit(byte) => {
+                    format!("\u{1b}[38;5;{byte}m{}\u{1b}[39m", to_style)
+                },
+                PaletteColor::Rgb((r, g, b)) => {
+                    format!("\u{1b}[38;2;{};{};{}m{}\u{1b}[39m", r, g, b, to_style)
+                },
+            },
+            SpanStyle::ForegroundBold(color) => match color {
+                PaletteColor::EightBit(byte) => {
+                    format!("\u{1b}[38;5;{byte};1m{}\u{1b}[39;22m", to_style)
+                },
+                PaletteColor::Rgb((r, g, b)) => {
+                    format!("\u{1b}[38;2;{};{};{};1m{}\u{1b}[39;22m", r, g, b, to_style)
+                },
+            },
         }
     }
 }
@@ -148,17 +194,19 @@ impl Default for SpanStyle {
 #[derive(Debug, Default)]
 pub struct TruncatableUiSpan {
     text: String,
-    style: SpanStyle
+    style: SpanStyle,
 }
 
 impl TruncatableUiSpan {
     pub fn new(text: String, style: SpanStyle) -> Self {
-        TruncatableUiSpan {
-            text,
-            style
-        }
+        TruncatableUiSpan { text, style }
     }
-    pub fn render(&self, indices: Option<(SpanStyle, Vec<usize>)>, line_to_render: &mut LineToRender, remaining_cols: &mut usize) {
+    pub fn render(
+        &self,
+        indices: Option<(SpanStyle, Vec<usize>)>,
+        line_to_render: &mut LineToRender,
+        remaining_cols: &mut usize,
+    ) {
         let mut rendered = String::new();
         let truncated = if *remaining_cols >= self.text.width() {
             self.text.clone()
@@ -187,12 +235,11 @@ impl TruncatableUiSpan {
             },
             None => {
                 rendered.push_str(&self.style.style_string(&truncated));
-            }
+            },
         }
         *remaining_cols = remaining_cols.saturating_sub(truncated.width());
         line_to_render.append(&rendered);
     }
-
 }
 
 #[derive(Debug, Default)]
@@ -216,15 +263,12 @@ impl UiSpanTelescope {
 #[derive(Debug, Default, Clone)]
 pub struct StringAndLength {
     pub string: String,
-    pub length: usize
+    pub length: usize,
 }
 
 impl StringAndLength {
     pub fn new(string: String, length: usize) -> Self {
-        StringAndLength {
-            string,
-            length
-        }
+        StringAndLength { string, length }
     }
 }
 
@@ -252,18 +296,25 @@ impl LineToRender {
         self.is_selected = true;
         match self.colors.palette.gray {
             PaletteColor::EightBit(byte) => {
-                self.line = format!("\u{1b}[48;5;{byte}m\u{1b}[K\r\u{1b}[48;5;{byte}m{}", self.line);
-            }
+                self.line = format!(
+                    "\u{1b}[48;5;{byte}m\u{1b}[K\r\u{1b}[48;5;{byte}m{}",
+                    self.line
+                );
+            },
             PaletteColor::Rgb((r, g, b)) => {
-                self.line = format!("\u{1b}[48;2;{};{};{}m\u{1b}[K\r\u{1b}[48;5;{};{};{}m{}", r, g, b, r, g, b, self.line);
-            }
+                self.line = format!(
+                    "\u{1b}[48;2;{};{};{}m\u{1b}[K\r\u{1b}[48;5;{};{};{}m{}",
+                    r, g, b, r, g, b, self.line
+                );
+            },
         }
     }
     pub fn render(&self) -> String {
         let mut line = self.line.clone();
 
         let more = if self.truncated_result_count > 0 {
-            self.colors.red(&format!(" [+{}]", self.truncated_result_count))
+            self.colors
+                .red(&format!(" [+{}]", self.truncated_result_count))
         } else {
             String::new()
         };
@@ -283,7 +334,10 @@ impl LineToRender {
 pub fn build_session_ui_line(session_ui_info: &SessionUiInfo, colors: Colors) -> Vec<UiSpan> {
     let mut ui_spans = vec![];
     let tab_count_text = session_ui_info.tabs.len();
-    let total_pane_count_text = session_ui_info.tabs.iter().fold(0, |acc, tab| acc + tab.panes.len());
+    let total_pane_count_text = session_ui_info
+        .tabs
+        .iter()
+        .fold(0, |acc, tab| acc + tab.panes.len());
     let tab_count = format!("{}", tab_count_text);
     let tab_count_styled = colors.cyan(&tab_count);
     let total_pane_count = format!("{}", total_pane_count_text);
@@ -291,20 +345,34 @@ pub fn build_session_ui_line(session_ui_info: &SessionUiInfo, colors: Colors) ->
     let session_name = &session_ui_info.name;
     let connected_users = format!("{}", session_ui_info.connected_users);
     let connected_users_styled = colors.orange(&connected_users);
-    let session_bullet_span = UiSpan::UiSpanTelescope(UiSpanTelescope::new(vec![
-        StringAndLength::new(format!(" > "), 3),
-    ]));
+    let session_bullet_span =
+        UiSpan::UiSpanTelescope(UiSpanTelescope::new(vec![StringAndLength::new(
+            format!(" > "),
+            3,
+        )]));
     let session_name_span = UiSpan::TruncatableUiSpan(TruncatableUiSpan::new(
         session_name.clone(),
         SpanStyle::ForegroundBold(colors.palette.orange),
     ));
     let tab_and_pane_count = UiSpan::UiSpanTelescope(UiSpanTelescope::new(vec![
-        StringAndLength::new(format!(" ({tab_count_styled} tabs, {total_pane_count_styled} panes)"), 2 + tab_count.width() + 7 + total_pane_count.width() + 7),
-        StringAndLength::new(format!(" ({tab_count_styled}, {total_pane_count_styled})"), 2 + tab_count.width() + 2 + total_pane_count.width() + 3),
+        StringAndLength::new(
+            format!(" ({tab_count_styled} tabs, {total_pane_count_styled} panes)"),
+            2 + tab_count.width() + 7 + total_pane_count.width() + 7,
+        ),
+        StringAndLength::new(
+            format!(" ({tab_count_styled}, {total_pane_count_styled})"),
+            2 + tab_count.width() + 2 + total_pane_count.width() + 3,
+        ),
     ]));
     let connected_users_count = UiSpan::UiSpanTelescope(UiSpanTelescope::new(vec![
-        StringAndLength::new(format!(" [{connected_users_styled} connected users]"), 2 + connected_users.width() + 17),
-        StringAndLength::new(format!(" [{connected_users_styled}]"), 2 + connected_users.width() + 1),
+        StringAndLength::new(
+            format!(" [{connected_users_styled} connected users]"),
+            2 + connected_users.width() + 17,
+        ),
+        StringAndLength::new(
+            format!(" [{connected_users_styled}]"),
+            2 + connected_users.width() + 1,
+        ),
     ]));
     ui_spans.push(session_bullet_span);
     ui_spans.push(session_name_span);
@@ -327,16 +395,24 @@ pub fn build_tab_ui_line(tab_ui_info: &TabUiInfo, colors: Colors) -> Vec<UiSpan>
     let pane_count_text = tab_ui_info.panes.len();
     let pane_count = format!("{}", pane_count_text);
     let pane_count_styled = colors.green(&pane_count);
-    let tab_bullet_span = UiSpan::UiSpanTelescope(UiSpanTelescope::new(vec![
-        StringAndLength::new(format!("  - "), 4),
-    ]));
+    let tab_bullet_span =
+        UiSpan::UiSpanTelescope(UiSpanTelescope::new(vec![StringAndLength::new(
+            format!("  - "),
+            4,
+        )]));
     let tab_name_span = UiSpan::TruncatableUiSpan(TruncatableUiSpan::new(
         tab_name.clone(),
         SpanStyle::ForegroundBold(colors.palette.cyan),
     ));
     let connected_users_count_span = UiSpan::UiSpanTelescope(UiSpanTelescope::new(vec![
-        StringAndLength::new(format!(" ({pane_count_styled} panes)"), 2 + pane_count.width() + 7),
-        StringAndLength::new(format!(" ({pane_count_styled})"), 2 + pane_count.width() + 1),
+        StringAndLength::new(
+            format!(" ({pane_count_styled} panes)"),
+            2 + pane_count.width() + 7,
+        ),
+        StringAndLength::new(
+            format!(" ({pane_count_styled})"),
+            2 + pane_count.width() + 1,
+        ),
     ]));
     ui_spans.push(tab_bullet_span);
     ui_spans.push(tab_name_span);
@@ -356,18 +432,21 @@ pub fn build_pane_ui_line(pane_ui_info: &PaneUiInfo, colors: Colors) -> Vec<UiSp
         };
         exit_code
     });
-    let pane_bullet_span = UiSpan::UiSpanTelescope(UiSpanTelescope::new(vec![
-        StringAndLength::new(format!("    > "), 6)
-    ]));
+    let pane_bullet_span =
+        UiSpan::UiSpanTelescope(UiSpanTelescope::new(vec![StringAndLength::new(
+            format!("    > "),
+            6,
+        )]));
     ui_spans.push(pane_bullet_span);
-    let pane_name_span = UiSpan::TruncatableUiSpan(TruncatableUiSpan::new(
-        pane_name,
-        SpanStyle::Bold,
-    ));
+    let pane_name_span =
+        UiSpan::TruncatableUiSpan(TruncatableUiSpan::new(pane_name, SpanStyle::Bold));
     ui_spans.push(pane_name_span);
     if let Some(exit_code) = exit_code {
         let pane_name_span = UiSpan::UiSpanTelescope(UiSpanTelescope::new(vec![
-            StringAndLength::new(format!(" (EXIT CODE: {exit_code})"), 13 + exit_code.width() + 1),
+            StringAndLength::new(
+                format!(" (EXIT CODE: {exit_code})"),
+                13 + exit_code.width() + 1,
+            ),
             StringAndLength::new(format!(" ({exit_code})"), 2 + exit_code.width() + 1),
         ]));
         ui_spans.push(pane_name_span);
@@ -375,7 +454,12 @@ pub fn build_pane_ui_line(pane_ui_info: &PaneUiInfo, colors: Colors) -> Vec<UiSp
     ui_spans
 }
 
-pub fn minimize_lines(total_count: usize, line_count_to_remove: usize, selected_index: Option<usize>) -> (usize, usize, usize, usize) { // returns: (start_index, anchor_index, end_index, lines_left_to_remove)
+pub fn minimize_lines(
+    total_count: usize,
+    line_count_to_remove: usize,
+    selected_index: Option<usize>,
+) -> (usize, usize, usize, usize) {
+    // returns: (start_index, anchor_index, end_index, lines_left_to_remove)
     let (count_to_render, line_count_to_remove) = if line_count_to_remove > total_count {
         (1, line_count_to_remove.saturating_sub(total_count) + 1)
     } else {
@@ -410,11 +494,16 @@ pub fn render_new_session_line(session_name: &Option<String>, is_searching: bool
     let enter = colors.magenta("<ENTER>");
     match session_name {
         Some(session_name) => {
-            println!("\u{1b}[m > {}_ ({}, {} when done)", colors.orange(session_name), colors.bold("Type optional name"), enter);
+            println!(
+                "\u{1b}[m > {}_ ({}, {} when done)",
+                colors.orange(session_name),
+                colors.bold("Type optional name"),
+                enter
+            );
         },
         None => {
             println!("\u{1b}[m > {new_session_shortcut} - {new_session}");
-        }
+        },
     }
 }
 
@@ -428,7 +517,9 @@ pub fn render_controls_line(is_searching: bool, row: usize, colors: Colors) {
     let select = colors.bold("Switch to");
     let esc = colors.magenta("<ESC>");
     let to_hide = colors.bold("Hide");
-    print!("\u{1b}[m\u{1b}[{row}HHelp: {arrows} - {navigate}, {enter} - {select}, {esc} - {to_hide}");
+    print!(
+        "\u{1b}[m\u{1b}[{row}HHelp: {arrows} - {navigate}, {enter} - {select}, {esc} - {to_hide}"
+    );
 }
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -437,9 +528,7 @@ pub struct Colors {
 }
 impl Colors {
     pub fn new(palette: Palette) -> Self {
-        Colors {
-            palette
-        }
+        Colors { palette }
     }
     pub fn bold(&self, text: &str) -> String {
         format!("\u{1b}[1m{}\u{1b}[22m", text)
@@ -449,10 +538,10 @@ impl Colors {
         match color {
             PaletteColor::EightBit(byte) => {
                 format!("\u{1b}[38;5;{};1m{}\u{1b}[39;22m", byte, text)
-            }
+            },
             PaletteColor::Rgb((r, g, b)) => {
                 format!("\u{1b}[38;2;{};{};{};1m{}\u{1b}[39;22m", r, g, b, text)
-            }
+            },
         }
     }
     pub fn orange(&self, text: &str) -> String {
@@ -474,5 +563,4 @@ impl Colors {
     pub fn magenta(&self, text: &str) -> String {
         self.color(&self.palette.magenta, text)
     }
-
 }

@@ -576,7 +576,11 @@ pub fn switch_session(name: Option<&str>) {
 
 /// Switch to a session with the given name, focusing either the provided pane_id or the provided
 /// tab position (in that order)
-pub fn switch_session_with_focus(name: &str, tab_position: Option<usize>, pane_id: Option<(u32, bool)>) {
+pub fn switch_session_with_focus(
+    name: &str,
+    tab_position: Option<usize>,
+    pane_id: Option<(u32, bool)>,
+) {
     let plugin_command = PluginCommand::SwitchSession(ConnectToSession {
         name: Some(name.to_owned()),
         tab_position,

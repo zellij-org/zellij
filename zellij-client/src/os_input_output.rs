@@ -166,14 +166,17 @@ impl ClientOsApi for ClientOsInputOutput {
                 let read_bytes = Vec::from(buffer);
                 stdin.consume(length);
 
-                let session_name_after_reading_from_stdin = { self.session_name.lock().unwrap().clone() };
-                if session_name_at_calltime.is_some() && session_name_at_calltime != session_name_after_reading_from_stdin {
+                let session_name_after_reading_from_stdin =
+                    { self.session_name.lock().unwrap().clone() };
+                if session_name_at_calltime.is_some()
+                    && session_name_at_calltime != session_name_after_reading_from_stdin
+                {
                     *buffered_bytes = Some(read_bytes);
                     Err("Session ended")
                 } else {
                     Ok(read_bytes)
                 }
-            }
+            },
         }
     }
     fn get_stdout_writer(&self) -> Box<dyn io::Write> {

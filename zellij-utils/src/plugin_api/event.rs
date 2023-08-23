@@ -6,7 +6,7 @@ pub use super::generated_api::api::{
         EventType as ProtobufEventType, InputModeKeybinds as ProtobufInputModeKeybinds,
         KeyBind as ProtobufKeyBind, ModeUpdatePayload as ProtobufModeUpdatePayload,
         PaneInfo as ProtobufPaneInfo, PaneManifest as ProtobufPaneManifest,
-        TabInfo as ProtobufTabInfo, SessionManifest as ProtobufSessionManifest, *,
+        SessionManifest as ProtobufSessionManifest, TabInfo as ProtobufTabInfo, *,
     },
     input_mode::InputMode as ProtobufInputMode,
     key::Key as ProtobufKey,
@@ -14,7 +14,7 @@ pub use super::generated_api::api::{
 };
 use crate::data::{
     CopyDestination, Event, EventType, InputMode, Key, ModeInfo, Mouse, PaneInfo, PaneManifest,
-    PermissionStatus, PluginCapabilities, Style, TabInfo, SessionInfo
+    PermissionStatus, PluginCapabilities, SessionInfo, Style, TabInfo,
 };
 
 use crate::errors::prelude::*;
@@ -172,7 +172,9 @@ impl TryFrom<ProtobufEvent> for Event {
                 _ => Err("Malformed payload for the file system delete Event"),
             },
             Some(ProtobufEventType::SessionUpdate) => match protobuf_event.payload {
-                Some(ProtobufEventPayload::SessionUpdatePayload(protobuf_session_update_payload)) => {
+                Some(ProtobufEventPayload::SessionUpdatePayload(
+                    protobuf_session_update_payload,
+                )) => {
                     let mut session_infos: Vec<SessionInfo> = vec![];
                     for protobuf_session_info in protobuf_session_update_payload.session_manifests {
                         session_infos.push(SessionInfo::try_from(protobuf_session_info)?);
@@ -357,7 +359,11 @@ impl TryFrom<SessionInfo> for ProtobufSessionManifest {
         Ok(ProtobufSessionManifest {
             name: session_info.name,
             panes: protobuf_pane_manifests,
-            tabs: session_info.tabs.iter().filter_map(|t| t.clone().try_into().ok()).collect(),
+            tabs: session_info
+                .tabs
+                .iter()
+                .filter_map(|t| t.clone().try_into().ok())
+                .collect(),
             connected_clients: session_info.connected_clients as u32,
             is_current_session: session_info.is_current_session,
         })
@@ -384,7 +390,11 @@ impl TryFrom<ProtobufSessionManifest> for SessionInfo {
         };
         Ok(SessionInfo {
             name: protobuf_session_manifest.name,
-            tabs: protobuf_session_manifest.tabs.iter().filter_map(|t| t.clone().try_into().ok()).collect(),
+            tabs: protobuf_session_manifest
+                .tabs
+                .iter()
+                .filter_map(|t| t.clone().try_into().ok())
+                .collect(),
             panes,
             connected_clients: protobuf_session_manifest.connected_clients as usize,
             is_current_session: protobuf_session_manifest.is_current_session,
@@ -1255,15 +1265,13 @@ fn serialize_session_update_event_with_non_default_values() {
             terminal_command: None,
             plugin_url: Some("i_am_a_fake_plugin".to_owned()),
             is_selectable: true,
-        }
+        },
     ];
     panes.insert(0, panes_list);
     let session_info_1 = SessionInfo {
         name: "session 1".to_owned(),
         tabs: tab_infos,
-        panes: PaneManifest {
-            panes
-        },
+        panes: PaneManifest { panes },
         connected_clients: 2,
         is_current_session: true,
     };
@@ -1271,7 +1279,7 @@ fn serialize_session_update_event_with_non_default_values() {
         name: "session 2".to_owned(),
         tabs: vec![],
         panes: PaneManifest {
-            panes: HashMap::new()
+            panes: HashMap::new(),
         },
         connected_clients: 0,
         is_current_session: false,

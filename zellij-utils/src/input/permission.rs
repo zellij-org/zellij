@@ -46,13 +46,11 @@ impl PermissionCache {
         let cache_path = cache_path.unwrap_or(ZELLIJ_PLUGIN_PERMISSIONS_CACHE.to_path_buf());
 
         let granted = match fs::read_to_string(cache_path.clone()) {
-            Ok(raw_string) => {
-                PermissionCache::from_string(raw_string).unwrap_or_default()
-            }
+            Ok(raw_string) => PermissionCache::from_string(raw_string).unwrap_or_default(),
             Err(e) => {
                 log::error!("Failed to read permission cache file: {}", e);
                 GrantedPermission::default()
-            }
+            },
         };
 
         PermissionCache {

@@ -15,8 +15,8 @@ use zellij_client::{
 };
 use zellij_server::{os_input_output::get_server_os_input, start_server as start_server_impl};
 use zellij_utils::{
-    data::ConnectToSession,
     cli::{CliArgs, Command, SessionCommand, Sessions},
+    data::ConnectToSession,
     envs,
     input::{
         actions::Action,
@@ -351,7 +351,7 @@ pub(crate) fn start_client(opts: CliArgs) {
                     session_name: reconnect_to_session.name.clone(),
                     create: true,
                     index: None,
-                    options: None
+                    options: None,
                 }));
             } else {
                 opts.command = None;
@@ -372,7 +372,9 @@ pub(crate) fn start_client(opts: CliArgs) {
         })) = opts.command.clone()
         {
             let config_options = match options.as_deref() {
-                Some(SessionCommand::Options(o)) => config_options.merge_from_cli(o.to_owned().into()),
+                Some(SessionCommand::Options(o)) => {
+                    config_options.merge_from_cli(o.to_owned().into())
+                },
                 None => config_options,
             };
 
@@ -400,8 +402,12 @@ pub(crate) fn start_client(opts: CliArgs) {
                 ClientInfo::New(_) => Some(layout),
             };
 
-            let tab_position_to_focus = reconnect_to_session.as_ref().and_then(|r| r.tab_position.clone());
-            let pane_id_to_focus = reconnect_to_session.as_ref().and_then(|r| r.pane_id.clone());
+            let tab_position_to_focus = reconnect_to_session
+                .as_ref()
+                .and_then(|r| r.tab_position.clone());
+            let pane_id_to_focus = reconnect_to_session
+                .as_ref()
+                .and_then(|r| r.pane_id.clone());
             reconnect_to_session = start_client_impl(
                 Box::new(os_input),
                 opts,

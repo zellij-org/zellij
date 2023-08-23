@@ -5,13 +5,13 @@ pub use super::generated_api::api::{
         OpenCommandPanePayload, OpenFilePayload, PaneIdAndShouldFloat,
         PluginCommand as ProtobufPluginCommand, PluginMessagePayload,
         RequestPluginPermissionPayload, ResizePayload, SetTimeoutPayload, SubscribePayload,
-        SwitchTabToPayload, SwitchToModePayload, UnsubscribePayload, SwitchSessionPayload
+        SwitchSessionPayload, SwitchTabToPayload, SwitchToModePayload, UnsubscribePayload,
     },
     plugin_permission::PermissionType as ProtobufPermissionType,
     resize::ResizeAction as ProtobufResizeAction,
 };
 
-use crate::data::{PermissionType, PluginCommand, ConnectToSession};
+use crate::data::{ConnectToSession, PermissionType, PluginCommand};
 
 use std::convert::TryFrom;
 
@@ -865,14 +865,12 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
             }),
             PluginCommand::SwitchSession(switch_to_session) => Ok(ProtobufPluginCommand {
                 name: CommandName::SwitchSession as i32,
-                payload: Some(Payload::SwitchSessionPayload(
-                    SwitchSessionPayload {
-                        name: switch_to_session.name,
-                        tab_position: switch_to_session.tab_position.map(|t| t as u32),
-                        pane_id: switch_to_session.pane_id.map(|p| p.0),
-                        pane_id_is_plugin: switch_to_session.pane_id.map(|p| p.1),
-                    },
-                )),
+                payload: Some(Payload::SwitchSessionPayload(SwitchSessionPayload {
+                    name: switch_to_session.name,
+                    tab_position: switch_to_session.tab_position.map(|t| t as u32),
+                    pane_id: switch_to_session.pane_id.map(|p| p.0),
+                    pane_id_is_plugin: switch_to_session.pane_id.map(|p| p.1),
+                })),
             }),
         }
     }
