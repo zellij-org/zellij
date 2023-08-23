@@ -218,7 +218,7 @@ pub(crate) fn plugin_thread_main(
                 }
             },
             PluginInstruction::Resize(pid, new_columns, new_rows) => {
-                wasm_bridge.resize_plugin(pid, new_columns, new_rows)?;
+                wasm_bridge.resize_plugin(pid, new_columns, new_rows, shutdown_send.clone())?;
             },
             PluginInstruction::AddClient(client_id) => {
                 wasm_bridge.add_client(client_id)?;
@@ -269,7 +269,7 @@ pub(crate) fn plugin_thread_main(
                 )));
             },
             PluginInstruction::ApplyCachedEvents(plugin_id) => {
-                wasm_bridge.apply_cached_events(plugin_id)?;
+                wasm_bridge.apply_cached_events(plugin_id, shutdown_send.clone())?;
             },
             PluginInstruction::ApplyCachedWorkerMessages(plugin_id) => {
                 wasm_bridge.apply_cached_worker_messages(plugin_id)?;

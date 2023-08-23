@@ -343,6 +343,7 @@ impl WasmBridge {
         pid: PluginId,
         new_columns: usize,
         new_rows: usize,
+        shutdown_sender: Sender<()>,
     ) -> Result<()> {
         let err_context = move || format!("failed to resize plugin {pid}");
 
@@ -370,8 +371,10 @@ impl WasmBridge {
                     let running_plugin = running_plugin.clone();
                     let plugin_id = plugin_id;
                     let client_id = client_id;
+                    let _s = shutdown_sender.clone();
                     async move {
                         let mut running_plugin = running_plugin.lock().unwrap();
+                        let _s = _s;
                         if running_plugin.apply_event_id(AtomicEvent::Resize, event_id) {
                             running_plugin.rows = new_rows;
                             running_plugin.columns = new_columns;
@@ -410,6 +413,7 @@ impl WasmBridge {
                                 },
                                 Err(e) => log::error!("{}", e),
                             }
+                            println!("resize plugin task done");
                         }
                     }
                 });
@@ -510,10 +514,14 @@ impl WasmBridge {
         }
         Ok(())
     }
-    pub fn apply_cached_events(&mut self, plugin_ids: Vec<PluginId>) -> Result<()> {
+    pub fn apply_cached_events(
+        &mut self,
+        plugin_ids: Vec<PluginId>,
+        shutdown_sender: Sender<()>,
+    ) -> Result<()> {
         let mut applied_plugin_paths = HashSet::new();
         for plugin_id in plugin_ids {
-            self.apply_cached_events_and_resizes_for_plugin(plugin_id)?;
+            self.apply_cached_events_and_resizes_for_plugin(plugin_id, shutdown_sender.clone())?;
             if let Some(run_plugin) = self.run_plugin_of_plugin_id(plugin_id) {
                 applied_plugin_paths.insert(run_plugin.clone());
             }
@@ -551,7 +559,11 @@ impl WasmBridge {
             .find(|((p_id, _run_plugin), _)| p_id == &plugin_id)
             .map(|((_p_id, run_plugin), _)| run_plugin)
     }
-    fn apply_cached_events_and_resizes_for_plugin(&mut self, plugin_id: PluginId) -> Result<()> {
+    fn apply_cached_events_and_resizes_for_plugin(
+        &mut self,
+        plugin_id: PluginId,
+        shutdown_sender: Sender<()>,
+    ) -> Result<()> {
         let err_context = || format!("Failed to apply cached events to plugin");
         if let Some(events) = self.cached_events_for_pending_plugins.remove(&plugin_id) {
             let all_connected_clients: Vec<ClientId> = self
@@ -579,9 +591,11 @@ impl WasmBridge {
                             let senders = self.senders.clone();
                             let running_plugin = running_plugin.clone();
                             let client_id = *client_id;
+                            let _s = shutdown_sender.clone();
                             async move {
                                 let mut running_plugin = running_plugin.lock().unwrap();
                                 let mut plugin_bytes = vec![];
+                                let _s = _s;
                                 match apply_event_to_plugin(
                                     plugin_id,
                                     client_id,
@@ -598,6 +612,7 @@ impl WasmBridge {
                                         log::error!("{}", e);
                                     },
                                 }
+                                println!("apply cached events plugin task done");
                             }
                         });
                     }
@@ -605,7 +620,7 @@ impl WasmBridge {
             }
         }
         if let Some((rows, columns)) = self.cached_resizes_for_pending_plugins.remove(&plugin_id) {
-            self.resize_plugin(plugin_id, columns, rows)?;
+            self.resize_plugin(plugin_id, columns, rows, shutdown_sender.clone())?;
         }
         self.apply_cached_worker_messages(plugin_id)?;
         Ok(())
