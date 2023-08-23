@@ -2489,6 +2489,29 @@ Config {
             ): [
                 Detach,
             ],
+            Char(
+                'w',
+            ): [
+                LaunchOrFocusPlugin(
+                    RunPlugin {
+                        _allow_exec_host_cmd: false,
+                        location: Zellij(
+                            PluginTag(
+                                "session-manager",
+                            ),
+                        ),
+                        configuration: PluginUserConfiguration(
+                            {
+                                "floating": "true",
+                            },
+                        ),
+                    },
+                    true,
+                ),
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
             Alt(
                 Char(
                     '+',
@@ -3580,6 +3603,23 @@ Config {
             location: Zellij(
                 PluginTag(
                     "compact-bar",
+                ),
+            ),
+            userspace_configuration: PluginUserConfiguration(
+                {},
+            ),
+        },
+        PluginTag(
+            "session-manager",
+        ): PluginConfig {
+            path: "session-manager",
+            run: Pane(
+                None,
+            ),
+            _allow_exec_host_cmd: false,
+            location: Zellij(
+                PluginTag(
+                    "session-manager",
                 ),
             ),
             userspace_configuration: PluginUserConfiguration(
