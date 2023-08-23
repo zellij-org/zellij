@@ -457,7 +457,6 @@ pub fn start_client(
         }
     }
 
-    // TODO: test if moving this inside the below if shortens the session switching time
     router_thread.join().unwrap();
 
     if reconnect_to_session.is_none() {
@@ -475,6 +474,11 @@ pub fn start_client(
         os_input.unset_raw_mode(0).unwrap();
         let mut stdout = os_input.get_stdout_writer();
         let _ = stdout.write(goodbye_message.as_bytes()).unwrap();
+        stdout.flush().unwrap();
+    } else {
+        let clear_screen = "\u{1b}[2J";
+        let mut stdout = os_input.get_stdout_writer();
+        let _ = stdout.write(clear_screen.as_bytes()).unwrap();
         stdout.flush().unwrap();
     }
 

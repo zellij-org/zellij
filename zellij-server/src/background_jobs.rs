@@ -134,7 +134,7 @@ pub(crate) fn background_jobs_main(bus: Bus<BackgroundJob>) -> Result<()> {
                             let cache_file_name =
                                 session_info_cache_file_name(&current_session_name);
                             let current_session_info = current_session_info.lock().unwrap().clone();
-                            let wrote_file =
+                            let _wrote_file =
                                 std::fs::create_dir_all(ZELLIJ_SESSION_INFO_CACHE_DIR.as_path())
                                     .and_then(|_| std::fs::File::create(cache_file_name))
                                     .and_then(|mut f| {
