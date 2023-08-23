@@ -465,6 +465,7 @@ impl WasmBridge {
                         || (cid == Some(*client_id) && pid == Some(*plugin_id)))
                 {
                     task::spawn({
+                        println!("apply event: {event:?}");
                         let senders = self.senders.clone();
                         let running_plugin = running_plugin.clone();
                         let event = event.clone();
