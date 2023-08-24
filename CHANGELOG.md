@@ -17,6 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix(performance): plug memory leak (https://github.com/zellij-org/zellij/pull/2675)
 * feat(plugins): use protocol buffers to communicate across the wasm boundary (https://github.com/zellij-org/zellij/pull/2686)
 * feat(plugins): add permission system (https://github.com/zellij-org/zellij/pull/2624)
+* feat(session): session manager to switch between sessions (https://github.com/zellij-org/zellij/pull/2721)
 
 ## [0.37.2] - 2023-06-20
 * hotfix: include theme files into binary (https://github.com/zellij-org/zellij/pull/2566)
