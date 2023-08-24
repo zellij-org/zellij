@@ -45,7 +45,7 @@ pub fn sync_tab_short(help: &ModeInfo) -> LinePart {
 
 fn add_keybinds(help: &ModeInfo) -> Vec<ANSIString> {
     let to_tab = action_key(
-        &help.get_keybinds_for_mode(InputMode::Normal),
+        &help.get_mode_keybinds(),
         &[Action::SwitchToMode(InputMode::Tab)],
     );
     let sync_tabs = action_key(

@@ -61,7 +61,7 @@ struct Keygroups<'a> {
 }
 
 fn add_keybinds(help: &ModeInfo) -> Keygroups {
-    let normal_keymap = help.get_keybinds_for_mode(InputMode::Normal);
+    let normal_keymap = help.get_mode_keybinds();
     let new_pane_keys = action_key(&normal_keymap, &[Action::NewPane(None, None)]);
     let new_pane = if new_pane_keys.is_empty() {
         vec![Style::new().bold().paint("UNBOUND")]

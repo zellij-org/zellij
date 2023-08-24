@@ -250,6 +250,7 @@ impl Action {
     pub fn shallow_eq(&self, other_action: &Action) -> bool {
         match (self, other_action) {
             (Action::NewTab(..), Action::NewTab(..)) => true,
+            (Action::LaunchOrFocusPlugin(..), Action::LaunchOrFocusPlugin(..)) => true,
             _ => self == other_action,
         }
     }

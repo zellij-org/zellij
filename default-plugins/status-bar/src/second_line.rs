@@ -45,6 +45,20 @@ fn full_length_shortcut(
     }
 }
 
+fn locked_interface_indication(palette: Palette) -> LinePart {
+    let locked_text = " -- INTERFACE LOCKED -- ";
+    let locked_text_len = locked_text.chars().count();
+    let text_color = palette_match!(match palette.theme_hue {
+        ThemeHue::Dark => palette.white,
+        ThemeHue::Light => palette.black,
+    });
+    let locked_styled_text = Style::new().fg(text_color).bold().paint(locked_text);
+    LinePart {
+        part: locked_styled_text.to_string(),
+        len: locked_text_len,
+    }
+}
+
 fn add_shortcut(help: &ModeInfo, linepart: &LinePart, text: &str, keys: Vec<Key>) -> LinePart {
     let shortcut = if linepart.len == 0 {
         full_length_shortcut(true, keys, text, help.style.colors)
@@ -166,12 +180,7 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<Key>)> {
         (s("Rename"), s("Rename"),
             action_key(&km, &[A::SwitchToMode(IM::RenameTab), A::TabNameInput(vec![0])])),
         (s("Sync"), s("Sync"), action_key(&km, &[A::ToggleActiveSyncTab, TO_NORMAL])),
-        (s("Break pane to new tab"), s("Break"), action_key(&km, &[A::BreakPane, TO_NORMAL])),
-        (s("Break pane to next/prev tab"), s("Break next/prev"),
-            action_key_group(&km, &[
-                &[A::BreakPaneLeft, TO_NORMAL],
-                &[A::BreakPaneRight, TO_NORMAL]
-            ])),
+        (s("Toggle"), s("Toggle"), action_key(&km, &[A::ToggleTab])),
         (s("Select pane"), s("Select"), to_normal_key),
     ]} else if mi.mode == IM::Resize { vec![
         (s("Increase/Decrease size"), s("Increase/Decrease"),
@@ -231,6 +240,7 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<Key>)> {
             action_key(&km, &[A::SearchToggleOption(SOpt::WholeWord)])),
     ]} else if mi.mode == IM::Session { vec![
         (s("Detach"), s("Detach"), action_key(&km, &[Action::Detach])),
+        (s("Session Manager"), s("Manager"), action_key(&km, &[A::LaunchOrFocusPlugin(Default::default(), true), TO_NORMAL])), // not entirely accurate
         (s("Select pane"), s("Select"), to_normal_key),
     ]} else if mi.mode == IM::Tmux { vec![
         (s("Move focus"), s("Move"), action_key_group(&km, &[
@@ -255,7 +265,8 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<Key>)> {
 
 fn full_shortcut_list(help: &ModeInfo, tip: TipFn) -> LinePart {
     match help.mode {
-        InputMode::Normal | InputMode::Locked => tip(help),
+        InputMode::Normal => tip(help),
+        InputMode::Locked => locked_interface_indication(help.style.colors),
         _ => full_shortcut_list_nonstandard_mode(help),
     }
 }
@@ -272,7 +283,8 @@ fn shortened_shortcut_list_nonstandard_mode(help: &ModeInfo) -> LinePart {
 
 fn shortened_shortcut_list(help: &ModeInfo, tip: TipFn) -> LinePart {
     match help.mode {
-        InputMode::Normal | InputMode::Locked => tip(help),
+        InputMode::Normal => tip(help),
+        InputMode::Locked => locked_interface_indication(help.style.colors),
         _ => shortened_shortcut_list_nonstandard_mode(help),
     }
 }
@@ -295,8 +307,16 @@ fn best_effort_shortcut_list_nonstandard_mode(help: &ModeInfo, max_len: usize) -
 
 fn best_effort_shortcut_list(help: &ModeInfo, tip: TipFn, max_len: usize) -> LinePart {
     match help.mode {
-        InputMode::Normal | InputMode::Locked => {
+        InputMode::Normal => {
             let line_part = tip(help);
+            if line_part.len <= max_len {
+                line_part
+            } else {
+                LinePart::default()
+            }
+        },
+        InputMode::Locked => {
+            let line_part = locked_interface_indication(help.style.colors);
             if line_part.len <= max_len {
                 line_part
             } else {
@@ -447,6 +467,68 @@ pub fn floating_panes_are_visible(mode_info: &ModeInfo) -> LinePart {
     }
 }
 
+pub fn locked_fullscreen_panes_to_hide(palette: &Palette, panes_to_hide: usize) -> LinePart {
+    let text_color = palette_match!(match palette.theme_hue {
+        ThemeHue::Dark => palette.white,
+        ThemeHue::Light => palette.black,
+    });
+    let green_color = palette_match!(palette.green);
+    let orange_color = palette_match!(palette.orange);
+    let locked_text = " -- INTERFACE LOCKED -- ";
+    let shortcut_left_separator = Style::new().fg(text_color).bold().paint(" (");
+    let shortcut_right_separator = Style::new().fg(text_color).bold().paint("): ");
+    let fullscreen = "FULLSCREEN";
+    let puls = "+ ";
+    let panes = panes_to_hide.to_string();
+    let hide = " hidden panes";
+    let len = locked_text.chars().count()
+        + fullscreen.chars().count()
+        + puls.chars().count()
+        + panes.chars().count()
+        + hide.chars().count()
+        + 5; // 3 for ():'s around shortcut, 2 for the space
+    LinePart {
+        part: format!(
+            "{}{}{}{}{}{}{}",
+            Style::new().fg(text_color).bold().paint(locked_text),
+            shortcut_left_separator,
+            Style::new().fg(orange_color).bold().paint(fullscreen),
+            shortcut_right_separator,
+            Style::new().fg(text_color).bold().paint(puls),
+            Style::new().fg(green_color).bold().paint(panes),
+            Style::new().fg(text_color).bold().paint(hide)
+        ),
+        len,
+    }
+}
+
+pub fn locked_floating_panes_are_visible(palette: &Palette) -> LinePart {
+    let white_color = match palette.white {
+        PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
+        PaletteColor::EightBit(color) => Fixed(color),
+    };
+    let orange_color = match palette.orange {
+        PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
+        PaletteColor::EightBit(color) => Fixed(color),
+    };
+    let shortcut_left_separator = Style::new().fg(white_color).bold().paint(" (");
+    let shortcut_right_separator = Style::new().fg(white_color).bold().paint(")");
+    let locked_text = " -- INTERFACE LOCKED -- ";
+    let floating_panes = "FLOATING PANES VISIBLE";
+
+    let len = locked_text.chars().count() + floating_panes.chars().count();
+    LinePart {
+        part: format!(
+            "{}{}{}{}",
+            Style::new().fg(white_color).bold().paint(locked_text),
+            shortcut_left_separator,
+            Style::new().fg(orange_color).bold().paint(floating_panes),
+            shortcut_right_separator,
+        ),
+        len,
+    }
+}
+
 #[cfg(test)]
 /// Unit tests.
 ///
@@ -581,6 +663,7 @@ mod tests {
 
         assert_eq!(ret, " / Ctrl + <a|b|c> Foobar");
     }
+    //pub fn keybinds(help: &ModeInfo, tip_name: &str, max_width: usize) -> LinePart {
 
     #[test]
     // Note how it leaves out elements that don't exist!
@@ -665,9 +748,6 @@ mod tests {
         let ret = keybinds(&mode_info, "quicknav", 500);
         let ret = unstyle(ret);
 
-        assert_eq!(
-            ret,
-            " <BACKSPACE> New / Ctrl + <a|ENTER|1|SPACE> Change Focus / <ESC> Close / <END> Toggle Fullscreen"
-        );
+        assert_eq!(ret, " <BACKSPACE> New / Ctrl + <a|ENTER|1|SPACE> Change Focus / <ESC> Close / <END> Toggle Fullscreen");
     }
 }

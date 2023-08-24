@@ -458,7 +458,7 @@ impl WasmBridge {
                 // FIXME: This is very janky... Maybe I should write my own macro for Event -> EventType?
                 let event_type =
                     EventType::from_str(&event.to_string()).with_context(err_context)?;
-                if subs.contains(&event_type)
+                if (subs.contains(&event_type) || event_type == EventType::PermissionRequestResult)
                     && ((pid.is_none() && cid.is_none())
                         || (pid.is_none() && cid == Some(*client_id))
                         || (cid.is_none() && pid == Some(*plugin_id))
@@ -849,10 +849,15 @@ pub fn apply_event_to_plugin(
             let update_return = update
                 .call(&mut running_plugin.store, &[])
                 .with_context(err_context)?;
-            let should_render = match update_return.get(0) {
+            let mut should_render = match update_return.get(0) {
                 Some(Value::I32(n)) => *n == 1,
                 _ => false,
             };
+            if let Event::PermissionRequestResult(..) = event {
+                // we always render in this case, otherwise the request permission screen stays on
+                // screen
+                should_render = true;
+            }
             if rows > 0 && columns > 0 && should_render {
                 let rendered_bytes = instance
                     .exports
