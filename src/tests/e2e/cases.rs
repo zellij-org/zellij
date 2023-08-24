@@ -808,7 +808,7 @@ pub fn lock_mode() {
                 name: "Send keys that should not be intercepted by the app",
                 instruction: |mut remote_terminal: RemoteTerminal| -> bool {
                     let mut step_is_complete = false;
-                    if remote_terminal.snapshot_contains("<> PANE") {
+                    if remote_terminal.snapshot_contains("INTERFACE LOCKED") {
                         remote_terminal.send_key(&TAB_MODE);
                         remote_terminal.send_key(&NEW_TAB_IN_TAB_MODE);
                         remote_terminal.send_key("abc".as_bytes());
