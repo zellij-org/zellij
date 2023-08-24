@@ -539,7 +539,7 @@ pub fn load_new_plugin_from_hd() {
         client_id,
         size,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),
@@ -610,7 +610,7 @@ pub fn plugin_workers() {
     // we send a SystemClipboardFailure to trigger the custom handler in the fixture plugin that
     // will send a message to the worker and in turn back to the plugin to be rendered, so we know
     // that this cycle is working
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),
@@ -684,7 +684,7 @@ pub fn plugin_workers_persist_state() {
     // we do this a second time so that the worker will log the first message on its own state and
     // then send us the "received 2 messages" indication we check for below, letting us know it
     // managed to persist its own state and act upon it
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),
@@ -823,7 +823,7 @@ pub fn switch_to_mode_plugin_command() {
         client_id,
         size,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),
@@ -891,7 +891,7 @@ pub fn switch_to_mode_plugin_command_permission_denied() {
         client_id,
         size,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),
@@ -959,7 +959,7 @@ pub fn new_tabs_with_layout_plugin_command() {
         client_id,
         size,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),
@@ -1041,7 +1041,7 @@ pub fn new_tab_plugin_command() {
         client_id,
         size,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),
@@ -1109,7 +1109,7 @@ pub fn go_to_next_tab_plugin_command() {
         client_id,
         size,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),
@@ -1176,7 +1176,7 @@ pub fn go_to_previous_tab_plugin_command() {
         client_id,
         size,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),
@@ -1243,7 +1243,7 @@ pub fn resize_focused_pane_plugin_command() {
         client_id,
         size,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),
@@ -1310,7 +1310,7 @@ pub fn resize_focused_pane_with_direction_plugin_command() {
         client_id,
         size,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),
@@ -1377,7 +1377,7 @@ pub fn focus_next_pane_plugin_command() {
         client_id,
         size,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),
@@ -1444,7 +1444,7 @@ pub fn focus_previous_pane_plugin_command() {
         client_id,
         size,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),
@@ -1511,7 +1511,7 @@ pub fn move_focus_plugin_command() {
         client_id,
         size,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),
@@ -1578,7 +1578,7 @@ pub fn move_focus_or_tab_plugin_command() {
         client_id,
         size,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),
@@ -1645,7 +1645,7 @@ pub fn edit_scrollback_plugin_command() {
         client_id,
         size,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),
@@ -1712,7 +1712,7 @@ pub fn write_plugin_command() {
         client_id,
         size,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),
@@ -1779,7 +1779,7 @@ pub fn write_chars_plugin_command() {
         client_id,
         size,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),
@@ -1846,7 +1846,7 @@ pub fn toggle_tab_plugin_command() {
         client_id,
         size,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),
@@ -1913,7 +1913,7 @@ pub fn move_pane_plugin_command() {
         client_id,
         size,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),
@@ -1980,7 +1980,7 @@ pub fn move_pane_with_direction_plugin_command() {
         client_id,
         size,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),
@@ -2048,7 +2048,7 @@ pub fn clear_screen_plugin_command() {
         client_id,
         size,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),
@@ -2116,7 +2116,7 @@ pub fn scroll_up_plugin_command() {
         client_id,
         size,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),
@@ -2183,7 +2183,7 @@ pub fn scroll_down_plugin_command() {
         client_id,
         size,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),
@@ -2250,7 +2250,7 @@ pub fn scroll_to_top_plugin_command() {
         client_id,
         size,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),
@@ -2317,7 +2317,7 @@ pub fn scroll_to_bottom_plugin_command() {
         client_id,
         size,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),
@@ -2384,7 +2384,7 @@ pub fn page_scroll_up_plugin_command() {
         client_id,
         size,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),
@@ -2451,7 +2451,7 @@ pub fn page_scroll_down_plugin_command() {
         client_id,
         size,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),
@@ -2518,7 +2518,7 @@ pub fn toggle_focus_fullscreen_plugin_command() {
         client_id,
         size,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),
@@ -2585,7 +2585,7 @@ pub fn toggle_pane_frames_plugin_command() {
         client_id,
         size,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),
@@ -2652,7 +2652,7 @@ pub fn toggle_pane_embed_or_eject_plugin_command() {
         client_id,
         size,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),
@@ -2719,7 +2719,7 @@ pub fn undo_rename_pane_plugin_command() {
         client_id,
         size,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),
@@ -2786,7 +2786,7 @@ pub fn close_focus_plugin_command() {
         client_id,
         size,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),
@@ -2853,7 +2853,7 @@ pub fn toggle_active_tab_sync_plugin_command() {
         client_id,
         size,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),
@@ -2920,7 +2920,7 @@ pub fn close_focused_tab_plugin_command() {
         client_id,
         size,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),
@@ -2987,7 +2987,7 @@ pub fn undo_rename_tab_plugin_command() {
         client_id,
         size,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),
@@ -3054,7 +3054,7 @@ pub fn previous_swap_layout_plugin_command() {
         client_id,
         size,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),
@@ -3121,7 +3121,7 @@ pub fn next_swap_layout_plugin_command() {
         client_id,
         size,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),
@@ -3188,7 +3188,7 @@ pub fn go_to_tab_name_plugin_command() {
         client_id,
         size,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),
@@ -3255,7 +3255,7 @@ pub fn focus_or_create_tab_plugin_command() {
         client_id,
         size,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),
@@ -3322,7 +3322,7 @@ pub fn go_to_tab() {
         client_id,
         size,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),
@@ -3389,7 +3389,7 @@ pub fn start_or_reload_plugin() {
         client_id,
         size,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),
@@ -3463,7 +3463,7 @@ pub fn quit_zellij_plugin_command() {
         client_id,
         size,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),
@@ -3537,7 +3537,7 @@ pub fn detach_plugin_command() {
         client_id,
         size,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),
@@ -3611,7 +3611,7 @@ pub fn open_file_floating_plugin_command() {
         client_id,
         size,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),
@@ -3685,7 +3685,7 @@ pub fn open_file_plugin_command() {
         client_id,
         size,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),
@@ -3760,7 +3760,7 @@ pub fn open_file_with_line_plugin_command() {
         client_id,
         size,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),
@@ -3834,7 +3834,7 @@ pub fn open_file_with_line_floating_plugin_command() {
         client_id,
         size,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),
@@ -3908,7 +3908,7 @@ pub fn open_terminal_plugin_command() {
         client_id,
         size,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),
@@ -3982,7 +3982,7 @@ pub fn open_terminal_floating_plugin_command() {
         client_id,
         size,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),
@@ -4056,7 +4056,7 @@ pub fn open_command_pane_plugin_command() {
         client_id,
         size,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),
@@ -4130,7 +4130,7 @@ pub fn open_command_pane_floating_plugin_command() {
         client_id,
         size,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),
@@ -4197,7 +4197,7 @@ pub fn switch_to_tab_plugin_command() {
         client_id,
         size,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),
@@ -4259,7 +4259,7 @@ pub fn hide_self_plugin_command() {
         client_id,
         size,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),
@@ -4321,7 +4321,7 @@ pub fn show_self_plugin_command() {
         client_id,
         size,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),
@@ -4388,7 +4388,7 @@ pub fn close_terminal_pane_plugin_command() {
         client_id,
         size,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),
@@ -4455,7 +4455,7 @@ pub fn close_plugin_pane_plugin_command() {
         client_id,
         size,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),
@@ -4522,7 +4522,7 @@ pub fn focus_terminal_pane_plugin_command() {
         client_id,
         size,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),
@@ -4589,7 +4589,7 @@ pub fn focus_plugin_pane_plugin_command() {
         client_id,
         size,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),
@@ -4656,7 +4656,7 @@ pub fn rename_terminal_pane_plugin_command() {
         client_id,
         size,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),
@@ -4723,7 +4723,7 @@ pub fn rename_plugin_pane_plugin_command() {
         client_id,
         size,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),
@@ -4790,7 +4790,7 @@ pub fn rename_tab_plugin_command() {
         client_id,
         size,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),
@@ -4866,7 +4866,7 @@ pub fn send_configuration_to_plugins() {
         client_id,
         size,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),
@@ -4930,7 +4930,7 @@ pub fn request_plugin_permissions() {
         client_id,
         size,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),
@@ -5018,7 +5018,7 @@ pub fn granted_permission_request_result() {
         client_id,
         size,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),
@@ -5104,7 +5104,7 @@ pub fn denied_permission_request_result() {
         client_id,
         size,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),
