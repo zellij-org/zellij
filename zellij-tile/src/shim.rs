@@ -593,7 +593,6 @@ pub fn switch_session_with_focus(
 
 // Utility Functions
 
-
 #[allow(unused)]
 /// Returns the `TabInfo` corresponding to the currently active tab
 fn get_focused_tab(tab_infos: &Vec<TabInfo>) -> Option<TabInfo> {
