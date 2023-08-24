@@ -1,6 +1,6 @@
 ---
 source: src/tests/e2e/cases.rs
-assertion_line: 840
+assertion_line: 836
 expression: last_snapshot
 ---
  Zellij (e2e-test)  Tab #1 
@@ -26,4 +26,4 @@ expression: last_snapshot
 │                                                                                                                      │
 └──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
  Ctrl + <g> LOCK  <> PANE  <> TAB  <> RESIZE  <> MOVE  <> SEARCH  <> SESSION  <> QUIT 
- Tip: Alt + <n> => new pane. Alt + <←↓↑→> or Alt + <hjkl> => navigate. Alt + <+|-> => resize pane.                      
+ -- INTERFACE LOCKED --                                                                                                 

@@ -1,6 +1,6 @@
 ---
 source: src/tests/e2e/cases.rs
-assertion_line: 305
+assertion_line: 290
 expression: last_snapshot
 ---
  Zellij (e2e-test)  Tab #1 
@@ -26,4 +26,4 @@ expression: last_snapshot
 │                                                          ││li█e21                                                    │
 └──────────────────────────────────────────────────────────┘└──────────────────────────────────────────────────────────┘
  Ctrl + <g> LOCK  <p> PANE  <t> TAB  <n> RESIZE  <h> MOVE  <s> SEARCH  <o> SESSION  <q> QUIT 
- <s> Search / <↓↑> Scroll / <PgDn|PgUp> Scroll / <d|u> Scroll / <e> Edit / <ENTER> Select                               
+ <↓↑> Scroll / <PgDn|PgUp> Scroll / <d|u> Scroll / <e> Edit / <s> Search / <ENTER> Select                               

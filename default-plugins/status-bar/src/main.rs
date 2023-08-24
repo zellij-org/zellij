@@ -14,9 +14,10 @@ use zellij_tile::prelude::actions::Action;
 use zellij_tile::prelude::*;
 use zellij_tile_utils::{palette_match, style};
 
-use first_line::{first_line, first_line_supermode};
+use first_line::first_line;
 use second_line::{
-    floating_panes_are_visible, fullscreen_panes_to_hide, keybinds, system_clipboard_error,
+    floating_panes_are_visible, fullscreen_panes_to_hide, keybinds,
+    locked_floating_panes_are_visible, locked_fullscreen_panes_to_hide, system_clipboard_error,
     text_copied_hint,
 };
 use tip::utils::get_cached_tip_name;
@@ -34,10 +35,6 @@ struct State {
     mode_info: ModeInfo,
     text_copy_destination: Option<CopyDestination>,
     display_system_clipboard_failure: bool,
-
-    supermode: bool,
-    standby_mode: InputMode,
-    current_mode: InputMode,
 }
 
 register_plugin!(State);
@@ -64,7 +61,6 @@ impl Display for LinePart {
 #[derive(Clone, Copy)]
 pub struct ColoredElements {
     pub selected: SegmentStyle,
-    pub selected_standby_shortcut: SegmentStyle,
     pub unselected: SegmentStyle,
     pub unselected_alternate: SegmentStyle,
     pub disabled: SegmentStyle,
@@ -114,14 +110,6 @@ fn color_elements(palette: Palette, different_color_alternates: bool) -> Colored
                 styled_text: style!(background, palette.green).bold(),
                 suffix_separator: style!(palette.green, background).bold(),
             },
-            selected_standby_shortcut: SegmentStyle {
-                prefix_separator: style!(background, palette.green),
-                char_left_separator: style!(background, palette.green).bold(),
-                char_shortcut: style!(palette.red, palette.green).bold(),
-                char_right_separator: style!(background, palette.green).bold(),
-                styled_text: style!(background, palette.green).bold(),
-                suffix_separator: style!(palette.green, palette.fg).bold(),
-            },
             unselected: SegmentStyle {
                 prefix_separator: style!(background, palette.fg),
                 char_left_separator: style!(background, palette.fg).bold(),
@@ -158,14 +146,6 @@ fn color_elements(palette: Palette, different_color_alternates: bool) -> Colored
                 styled_text: style!(background, palette.green).bold(),
                 suffix_separator: style!(palette.green, background).bold(),
             },
-            selected_standby_shortcut: SegmentStyle {
-                prefix_separator: style!(background, palette.green),
-                char_left_separator: style!(background, palette.green).bold(),
-                char_shortcut: style!(palette.red, palette.green).bold(),
-                char_right_separator: style!(background, palette.green).bold(),
-                styled_text: style!(background, palette.green).bold(),
-                suffix_separator: style!(palette.green, palette.fg).bold(),
-            },
             unselected: SegmentStyle {
                 prefix_separator: style!(background, palette.fg),
                 char_left_separator: style!(background, palette.fg).bold(),
@@ -197,7 +177,7 @@ fn color_elements(palette: Palette, different_color_alternates: bool) -> Colored
 }
 
 impl ZellijPlugin for State {
-    fn load(&mut self, configuration: BTreeMap<String, String>) {
+    fn load(&mut self, _configuration: BTreeMap<String, String>) {
         // TODO: Should be able to choose whether to use the cache through config.
         self.tip_name = get_cached_tip_name();
         set_selectable(false);
@@ -208,47 +188,12 @@ impl ZellijPlugin for State {
             EventType::InputReceived,
             EventType::SystemClipboardFailure,
         ]);
-        self.supermode = configuration
-            .get("supermode")
-            .and_then(|s| s.trim().parse().ok())
-            .unwrap_or(false);
-        self.standby_mode = InputMode::Pane;
-        if self.supermode {
-            switch_to_input_mode(&InputMode::Locked); // supermode should start locked (TODO: only
-                                                      // once per app load, let's not do this on
-                                                      // each tab loading)
-        }
     }
 
     fn update(&mut self, event: Event) -> bool {
         let mut should_render = false;
         match event {
             Event::ModeUpdate(mode_info) => {
-                if self.supermode {
-                    // supermode is a "sticky" mode that is not Normal or Locked
-                    // using this configuration, we default to Locked mode in order to avoid key
-                    // collisions with terminal applications
-                    // whenever the user switches away from locked mode, we make sure to place them
-                    // in the standby mode
-                    // whenever the user switches to a mode that is not locked or normal, we set
-                    // that mode as the standby mode
-                    // whenever the user switches away from the standby mode, we palce them in
-                    // normal mode
-                    if mode_info.mode == InputMode::Normal && self.current_mode == InputMode::Locked
-                    {
-                        switch_to_input_mode(&self.standby_mode);
-                    } else if mode_info.mode == InputMode::Normal
-                        && self.current_mode == self.standby_mode
-                    {
-                        switch_to_input_mode(&InputMode::Locked);
-                    } else if mode_info.mode != InputMode::Locked
-                        && mode_info.mode != InputMode::Normal
-                    {
-                        self.standby_mode = mode_info.mode;
-                    }
-                    self.current_mode = mode_info.mode;
-                }
-
                 if self.mode_info != mode_info {
                     should_render = true;
                 }
@@ -300,17 +245,7 @@ impl ZellijPlugin for State {
         };
 
         let active_tab = self.tabs.iter().find(|t| t.active);
-        let first_line = if self.supermode {
-            first_line_supermode(
-                &self.standby_mode,
-                &self.mode_info,
-                active_tab,
-                cols,
-                separator,
-            )
-        } else {
-            first_line(&self.mode_info, active_tab, cols, separator)
-        };
+        let first_line = first_line(&self.mode_info, active_tab, cols, separator);
         let second_line = self.second_line(cols);
 
         let background = match self.mode_info.style.colors.theme_hue {
@@ -362,7 +297,11 @@ impl State {
         } else if let Some(active_tab) = active_tab {
             if active_tab.is_fullscreen_active {
                 match self.mode_info.mode {
-                    InputMode::Normal | InputMode::Locked => fullscreen_panes_to_hide(
+                    InputMode::Normal => fullscreen_panes_to_hide(
+                        &self.mode_info.style.colors,
+                        active_tab.panes_to_hide,
+                    ),
+                    InputMode::Locked => locked_fullscreen_panes_to_hide(
                         &self.mode_info.style.colors,
                         active_tab.panes_to_hide,
                     ),
@@ -370,8 +309,9 @@ impl State {
                 }
             } else if active_tab.are_floating_panes_visible {
                 match self.mode_info.mode {
-                    InputMode::Normal | InputMode::Locked => {
-                        floating_panes_are_visible(&self.mode_info)
+                    InputMode::Normal => floating_panes_are_visible(&self.mode_info),
+                    InputMode::Locked => {
+                        locked_floating_panes_are_visible(&self.mode_info.style.colors)
                     },
                     _ => keybinds(&self.mode_info, &self.tip_name, cols),
                 }
