@@ -374,7 +374,7 @@ impl WasmBridge {
                     let _s = shutdown_sender.clone();
                     async move {
                         let mut running_plugin = running_plugin.lock().unwrap();
-                        let _s = _s;
+                        let _s = _s; // guard to allow the task to complete before cleanup/shutdown
                         if running_plugin.apply_event_id(AtomicEvent::Resize, event_id) {
                             running_plugin.rows = new_rows;
                             running_plugin.columns = new_columns;
@@ -473,7 +473,7 @@ impl WasmBridge {
                         async move {
                             let mut running_plugin = running_plugin.lock().unwrap();
                             let mut plugin_bytes = vec![];
-                            let _s = _s; // allow the task to complete before cleanup/shutdown
+                            let _s = _s; // guard to allow the task to complete before cleanup/shutdown
                             match apply_event_to_plugin(
                                 plugin_id,
                                 client_id,
@@ -593,7 +593,7 @@ impl WasmBridge {
                             async move {
                                 let mut running_plugin = running_plugin.lock().unwrap();
                                 let mut plugin_bytes = vec![];
-                                let _s = _s;
+                                let _s = _s; // guard to allow the task to complete before cleanup/shutdown
                                 match apply_event_to_plugin(
                                     plugin_id,
                                     client_id,
