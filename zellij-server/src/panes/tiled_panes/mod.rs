@@ -523,6 +523,11 @@ impl TiledPanes {
         }
     }
     pub fn focus_pane(&mut self, pane_id: PaneId, client_id: ClientId) {
+        if self.panes_to_hide.contains(&pane_id) {
+            // this means there is a fullscreen pane that is not the current pane, let's unset it
+            // before changing focus
+            self.unset_fullscreen();
+        }
         if self
             .panes
             .get(&pane_id)
@@ -533,7 +538,6 @@ impl TiledPanes {
                 .expand_pane(&pane_id);
             self.reapply_pane_frames();
         }
-
         self.active_panes
             .insert(client_id, pane_id, &mut self.panes);
         if self.session_is_mirrored {

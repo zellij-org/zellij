@@ -38,6 +38,8 @@ lazy_static! {
         .join(format!("{}", Uuid::new_v4()));
     pub static ref ZELLIJ_PLUGIN_PERMISSIONS_CACHE: PathBuf =
         ZELLIJ_CACHE_DIR.join("permissions.kdl");
+    pub static ref ZELLIJ_SESSION_INFO_CACHE_DIR: PathBuf =
+        ZELLIJ_CACHE_DIR.join(VERSION).join("session_info");
 }
 
 pub const FEATURES: &[&str] = &[
@@ -92,6 +94,7 @@ mod not_wasm {
             add_plugin!(assets, "status-bar.wasm");
             add_plugin!(assets, "tab-bar.wasm");
             add_plugin!(assets, "strider.wasm");
+            add_plugin!(assets, "session-manager.wasm");
             assets
         };
     }
@@ -104,20 +107,13 @@ pub use unix_only::*;
 mod unix_only {
     use super::*;
     use crate::envs;
-    use crate::shared::set_permissions;
+    pub use crate::shared::set_permissions;
     use lazy_static::lazy_static;
     use nix::unistd::Uid;
-    use std::{env::temp_dir, fs};
+    use std::env::temp_dir;
 
     lazy_static! {
         static ref UID: Uid = Uid::current();
-        pub static ref ZELLIJ_IPC_PIPE: PathBuf = {
-            let mut sock_dir = ZELLIJ_SOCK_DIR.clone();
-            fs::create_dir_all(&sock_dir).unwrap();
-            set_permissions(&sock_dir, 0o700).unwrap();
-            sock_dir.push(envs::get_session_name().unwrap());
-            sock_dir
-        };
         pub static ref ZELLIJ_TMP_DIR: PathBuf = temp_dir().join(format!("zellij-{}", *UID));
         pub static ref ZELLIJ_TMP_LOG_DIR: PathBuf = ZELLIJ_TMP_DIR.join("zellij-log");
         pub static ref ZELLIJ_TMP_LOG_FILE: PathBuf = ZELLIJ_TMP_LOG_DIR.join("zellij.log");

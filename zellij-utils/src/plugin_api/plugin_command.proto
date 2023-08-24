@@ -78,6 +78,7 @@ enum CommandName {
   RenameTab = 64;
   ReportCrash = 65;
   RequestPluginPermissions = 66;
+  SwitchSession = 67;
 }
 
 message PluginCommand {
@@ -120,7 +121,15 @@ message PluginCommand {
     IdAndNewName rename_tab_payload = 36;
     string report_crash_payload = 37;
     RequestPluginPermissionPayload request_plugin_permission_payload = 38;
+    SwitchSessionPayload switch_session_payload = 39;
   }
+}
+
+message SwitchSessionPayload {
+  optional string name = 1;
+  optional uint32 tab_position = 2;
+  optional uint32 pane_id = 3;
+  optional bool pane_id_is_plugin = 4;
 }
 
 message RequestPluginPermissionPayload {

@@ -6,7 +6,7 @@ pub use super::generated_api::api::{
         EventType as ProtobufEventType, InputModeKeybinds as ProtobufInputModeKeybinds,
         KeyBind as ProtobufKeyBind, ModeUpdatePayload as ProtobufModeUpdatePayload,
         PaneInfo as ProtobufPaneInfo, PaneManifest as ProtobufPaneManifest,
-        TabInfo as ProtobufTabInfo, *,
+        SessionManifest as ProtobufSessionManifest, TabInfo as ProtobufTabInfo, *,
     },
     input_mode::InputMode as ProtobufInputMode,
     key::Key as ProtobufKey,
@@ -14,7 +14,7 @@ pub use super::generated_api::api::{
 };
 use crate::data::{
     CopyDestination, Event, EventType, InputMode, Key, ModeInfo, Mouse, PaneInfo, PaneManifest,
-    PermissionStatus, PluginCapabilities, Style, TabInfo,
+    PermissionStatus, PluginCapabilities, SessionInfo, Style, TabInfo,
 };
 
 use crate::errors::prelude::*;
@@ -171,6 +171,18 @@ impl TryFrom<ProtobufEvent> for Event {
                 },
                 _ => Err("Malformed payload for the file system delete Event"),
             },
+            Some(ProtobufEventType::SessionUpdate) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::SessionUpdatePayload(
+                    protobuf_session_update_payload,
+                )) => {
+                    let mut session_infos: Vec<SessionInfo> = vec![];
+                    for protobuf_session_info in protobuf_session_update_payload.session_manifests {
+                        session_infos.push(SessionInfo::try_from(protobuf_session_info)?);
+                    }
+                    Ok(Event::SessionUpdate(session_infos))
+                },
+                _ => Err("Malformed payload for the SessionUpdate Event"),
+            },
             None => Err("Unknown Protobuf Event"),
         }
     }
@@ -313,7 +325,80 @@ impl TryFrom<Event> for ProtobufEvent {
                     )),
                 })
             },
+            Event::SessionUpdate(session_infos) => {
+                let mut protobuf_session_manifests = vec![];
+                for session_info in session_infos {
+                    protobuf_session_manifests.push(session_info.try_into()?);
+                }
+                let session_update_payload = SessionUpdatePayload {
+                    session_manifests: protobuf_session_manifests,
+                };
+                Ok(ProtobufEvent {
+                    name: ProtobufEventType::SessionUpdate as i32,
+                    payload: Some(event::Payload::SessionUpdatePayload(session_update_payload)),
+                })
+            },
         }
+    }
+}
+
+impl TryFrom<SessionInfo> for ProtobufSessionManifest {
+    type Error = &'static str;
+    fn try_from(session_info: SessionInfo) -> Result<Self, &'static str> {
+        let mut protobuf_pane_manifests = vec![];
+        for (tab_index, pane_infos) in session_info.panes.panes {
+            let mut protobuf_pane_infos = vec![];
+            for pane_info in pane_infos {
+                protobuf_pane_infos.push(pane_info.try_into()?);
+            }
+            protobuf_pane_manifests.push(ProtobufPaneManifest {
+                tab_index: tab_index as u32,
+                panes: protobuf_pane_infos,
+            });
+        }
+        Ok(ProtobufSessionManifest {
+            name: session_info.name,
+            panes: protobuf_pane_manifests,
+            tabs: session_info
+                .tabs
+                .iter()
+                .filter_map(|t| t.clone().try_into().ok())
+                .collect(),
+            connected_clients: session_info.connected_clients as u32,
+            is_current_session: session_info.is_current_session,
+        })
+    }
+}
+
+impl TryFrom<ProtobufSessionManifest> for SessionInfo {
+    type Error = &'static str;
+    fn try_from(protobuf_session_manifest: ProtobufSessionManifest) -> Result<Self, &'static str> {
+        let mut pane_manifest: HashMap<usize, Vec<PaneInfo>> = HashMap::new();
+        for protobuf_pane_manifest in protobuf_session_manifest.panes {
+            let tab_index = protobuf_pane_manifest.tab_index as usize;
+            let mut panes = vec![];
+            for protobuf_pane_info in protobuf_pane_manifest.panes {
+                panes.push(protobuf_pane_info.try_into()?);
+            }
+            if pane_manifest.contains_key(&tab_index) {
+                return Err("Duplicate tab definition in pane manifest");
+            }
+            pane_manifest.insert(tab_index, panes);
+        }
+        let panes = PaneManifest {
+            panes: pane_manifest,
+        };
+        Ok(SessionInfo {
+            name: protobuf_session_manifest.name,
+            tabs: protobuf_session_manifest
+                .tabs
+                .iter()
+                .filter_map(|t| t.clone().try_into().ok())
+                .collect(),
+            panes,
+            connected_clients: protobuf_session_manifest.connected_clients as usize,
+            is_current_session: protobuf_session_manifest.is_current_session,
+        })
     }
 }
 
@@ -697,6 +782,7 @@ impl TryFrom<ProtobufEventType> for EventType {
             ProtobufEventType::FileSystemUpdate => EventType::FileSystemUpdate,
             ProtobufEventType::FileSystemDelete => EventType::FileSystemDelete,
             ProtobufEventType::PermissionRequestResult => EventType::PermissionRequestResult,
+            ProtobufEventType::SessionUpdate => EventType::SessionUpdate,
         })
     }
 }
@@ -721,6 +807,7 @@ impl TryFrom<EventType> for ProtobufEventType {
             EventType::FileSystemUpdate => ProtobufEventType::FileSystemUpdate,
             EventType::FileSystemDelete => ProtobufEventType::FileSystemDelete,
             EventType::PermissionRequestResult => ProtobufEventType::PermissionRequestResult,
+            EventType::SessionUpdate => ProtobufEventType::SessionUpdate,
         })
     }
 }
@@ -1080,6 +1167,133 @@ fn serialize_file_system_delete_event() {
     let deserialized_event: Event = deserialized_protobuf_event.try_into().unwrap();
     assert_eq!(
         file_system_event, deserialized_event,
+        "Event properly serialized/deserialized without change"
+    );
+}
+
+#[test]
+fn serialize_session_update_event() {
+    use prost::Message;
+    let session_update_event = Event::SessionUpdate(Default::default());
+    let protobuf_event: ProtobufEvent = session_update_event.clone().try_into().unwrap();
+    let serialized_protobuf_event = protobuf_event.encode_to_vec();
+    let deserialized_protobuf_event: ProtobufEvent =
+        Message::decode(serialized_protobuf_event.as_slice()).unwrap();
+    let deserialized_event: Event = deserialized_protobuf_event.try_into().unwrap();
+    assert_eq!(
+        session_update_event, deserialized_event,
+        "Event properly serialized/deserialized without change"
+    );
+}
+
+#[test]
+fn serialize_session_update_event_with_non_default_values() {
+    use prost::Message;
+    let tab_infos = vec![
+        TabInfo {
+            position: 0,
+            name: "First tab".to_owned(),
+            active: true,
+            panes_to_hide: 2,
+            is_fullscreen_active: true,
+            is_sync_panes_active: false,
+            are_floating_panes_visible: true,
+            other_focused_clients: vec![2, 3, 4],
+            active_swap_layout_name: Some("my cool swap layout".to_owned()),
+            is_swap_layout_dirty: false,
+        },
+        TabInfo {
+            position: 1,
+            name: "Secondtab".to_owned(),
+            active: false,
+            panes_to_hide: 5,
+            is_fullscreen_active: false,
+            is_sync_panes_active: true,
+            are_floating_panes_visible: true,
+            other_focused_clients: vec![1, 5, 111],
+            active_swap_layout_name: None,
+            is_swap_layout_dirty: true,
+        },
+        TabInfo::default(),
+    ];
+    let mut panes = HashMap::new();
+    let panes_list = vec![
+        PaneInfo {
+            id: 1,
+            is_plugin: false,
+            is_focused: true,
+            is_fullscreen: true,
+            is_floating: false,
+            is_suppressed: false,
+            title: "pane 1".to_owned(),
+            exited: false,
+            exit_status: None,
+            is_held: false,
+            pane_x: 0,
+            pane_content_x: 1,
+            pane_y: 0,
+            pane_content_y: 1,
+            pane_rows: 5,
+            pane_content_rows: 4,
+            pane_columns: 22,
+            pane_content_columns: 21,
+            cursor_coordinates_in_pane: Some((0, 0)),
+            terminal_command: Some("foo".to_owned()),
+            plugin_url: None,
+            is_selectable: true,
+        },
+        PaneInfo {
+            id: 1,
+            is_plugin: true,
+            is_focused: true,
+            is_fullscreen: true,
+            is_floating: false,
+            is_suppressed: false,
+            title: "pane 1".to_owned(),
+            exited: false,
+            exit_status: None,
+            is_held: false,
+            pane_x: 0,
+            pane_content_x: 1,
+            pane_y: 0,
+            pane_content_y: 1,
+            pane_rows: 5,
+            pane_content_rows: 4,
+            pane_columns: 22,
+            pane_content_columns: 21,
+            cursor_coordinates_in_pane: Some((0, 0)),
+            terminal_command: None,
+            plugin_url: Some("i_am_a_fake_plugin".to_owned()),
+            is_selectable: true,
+        },
+    ];
+    panes.insert(0, panes_list);
+    let session_info_1 = SessionInfo {
+        name: "session 1".to_owned(),
+        tabs: tab_infos,
+        panes: PaneManifest { panes },
+        connected_clients: 2,
+        is_current_session: true,
+    };
+    let session_info_2 = SessionInfo {
+        name: "session 2".to_owned(),
+        tabs: vec![],
+        panes: PaneManifest {
+            panes: HashMap::new(),
+        },
+        connected_clients: 0,
+        is_current_session: false,
+    };
+    let session_infos = vec![session_info_1, session_info_2];
+
+    let session_update_event = Event::SessionUpdate(session_infos);
+    let protobuf_event: ProtobufEvent = session_update_event.clone().try_into().unwrap();
+    let serialized_protobuf_event = protobuf_event.encode_to_vec();
+    let deserialized_protobuf_event: ProtobufEvent =
+        Message::decode(serialized_protobuf_event.as_slice()).unwrap();
+    let deserialized_event: Event = deserialized_protobuf_event.try_into().unwrap();
+    assert_eq!(
+        session_update_event, deserialized_event,
         "Event properly serialized/deserialized without change"
     );
 }

@@ -1,5 +1,8 @@
 mod kdl_layout_parser;
-use crate::data::{Direction, InputMode, Key, Palette, PaletteColor, PermissionType, Resize};
+use crate::data::{
+    Direction, InputMode, Key, Palette, PaletteColor, PaneInfo, PaneManifest, PermissionType,
+    Resize, SessionInfo, TabInfo,
+};
 use crate::envs::EnvironmentVariables;
 use crate::input::config::{Config, ConfigError, KdlError};
 use crate::input::keybinds::Keybinds;
@@ -325,7 +328,6 @@ macro_rules! actions_from_kdl {
 pub fn kdl_arguments_that_are_strings<'a>(
     arguments: impl Iterator<Item = &'a KdlEntry>,
 ) -> Result<Vec<String>, ConfigError> {
-    // pub fn kdl_arguments_that_are_strings <'a>(arguments: impl Iterator<Item=&'a KdlValue>) -> Result<Vec<String>, ConfigError> {
     let mut args: Vec<String> = vec![];
     for kdl_entry in arguments {
         match kdl_entry.value().as_string() {
@@ -1841,6 +1843,419 @@ impl PermissionCache {
     }
 }
 
+impl SessionInfo {
+    pub fn from_string(raw_session_info: &str, current_session_name: &str) -> Result<Self, String> {
+        let kdl_document: KdlDocument = raw_session_info
+            .parse()
+            .map_err(|e| format!("Failed to parse kdl document: {}", e))?;
+        let name = kdl_document
+            .get("name")
+            .and_then(|n| n.entries().iter().next())
+            .and_then(|e| e.value().as_string())
+            .map(|s| s.to_owned())
+            .ok_or("Failed to parse session name")?;
+        let connected_clients = kdl_document
+            .get("connected_clients")
+            .and_then(|n| n.entries().iter().next())
+            .and_then(|e| e.value().as_i64())
+            .map(|c| c as usize)
+            .ok_or("Failed to parse connected_clients")?;
+        let tabs: Vec<TabInfo> = kdl_document
+            .get("tabs")
+            .and_then(|t| t.children())
+            .and_then(|c| {
+                let mut tab_nodes = vec![];
+                for tab_node in c.nodes() {
+                    if let Some(tab) = tab_node.children() {
+                        tab_nodes.push(TabInfo::decode_from_kdl(tab).ok()?);
+                    }
+                }
+                Some(tab_nodes)
+            })
+            .ok_or("Failed to parse tabs")?;
+        let panes: PaneManifest = kdl_document
+            .get("panes")
+            .and_then(|p| p.children())
+            .map(|p| PaneManifest::decode_from_kdl(p))
+            .ok_or("Failed to parse panes")?;
+        let is_current_session = name == current_session_name;
+        Ok(SessionInfo {
+            name,
+            tabs,
+            panes,
+            connected_clients,
+            is_current_session,
+        })
+    }
+    pub fn to_string(&self) -> String {
+        let mut kdl_document = KdlDocument::new();
+
+        let mut name = KdlNode::new("name");
+        name.push(self.name.clone());
+
+        let mut connected_clients = KdlNode::new("connected_clients");
+        connected_clients.push(self.connected_clients as i64);
+
+        let mut tabs = KdlNode::new("tabs");
+        let mut tab_children = KdlDocument::new();
+        for tab_info in &self.tabs {
+            let mut tab = KdlNode::new("tab");
+            let kdl_tab_info = tab_info.encode_to_kdl();
+            tab.set_children(kdl_tab_info);
+            tab_children.nodes_mut().push(tab);
+        }
+        tabs.set_children(tab_children);
+
+        let mut panes = KdlNode::new("panes");
+        panes.set_children(self.panes.encode_to_kdl());
+
+        kdl_document.nodes_mut().push(name);
+        kdl_document.nodes_mut().push(tabs);
+        kdl_document.nodes_mut().push(panes);
+        kdl_document.nodes_mut().push(connected_clients);
+        kdl_document.fmt();
+        kdl_document.to_string()
+    }
+}
+
+impl TabInfo {
+    pub fn decode_from_kdl(kdl_document: &KdlDocument) -> Result<Self, String> {
+        macro_rules! int_node {
+            ($name:expr, $type:ident) => {{
+                kdl_document
+                    .get($name)
+                    .and_then(|n| n.entries().iter().next())
+                    .and_then(|e| e.value().as_i64())
+                    .map(|e| e as $type)
+                    .ok_or(format!("Failed to parse tab {}", $name))?
+            }};
+        }
+        macro_rules! string_node {
+            ($name:expr) => {{
+                kdl_document
+                    .get($name)
+                    .and_then(|n| n.entries().iter().next())
+                    .and_then(|e| e.value().as_string())
+                    .map(|s| s.to_owned())
+                    .ok_or(format!("Failed to parse tab {}", $name))?
+            }};
+        }
+        macro_rules! optional_string_node {
+            ($name:expr) => {{
+                kdl_document
+                    .get($name)
+                    .and_then(|n| n.entries().iter().next())
+                    .and_then(|e| e.value().as_string())
+                    .map(|s| s.to_owned())
+            }};
+        }
+        macro_rules! bool_node {
+            ($name:expr) => {{
+                kdl_document
+                    .get($name)
+                    .and_then(|n| n.entries().iter().next())
+                    .and_then(|e| e.value().as_bool())
+                    .ok_or(format!("Failed to parse tab {}", $name))?
+            }};
+        }
+
+        let position = int_node!("position", usize);
+        let name = string_node!("name");
+        let active = bool_node!("active");
+        let panes_to_hide = int_node!("panes_to_hide", usize);
+        let is_fullscreen_active = bool_node!("is_fullscreen_active");
+        let is_sync_panes_active = bool_node!("is_sync_panes_active");
+        let are_floating_panes_visible = bool_node!("are_floating_panes_visible");
+        let mut other_focused_clients = vec![];
+        if let Some(tab_other_focused_clients) = kdl_document
+            .get("other_focused_clients")
+            .map(|n| n.entries())
+        {
+            for entry in tab_other_focused_clients {
+                if let Some(entry_parsed) = entry.value().as_i64() {
+                    other_focused_clients.push(entry_parsed as u16);
+                }
+            }
+        }
+        let active_swap_layout_name = optional_string_node!("active_swap_layout_name");
+        let is_swap_layout_dirty = bool_node!("is_swap_layout_dirty");
+        Ok(TabInfo {
+            position,
+            name,
+            active,
+            panes_to_hide,
+            is_fullscreen_active,
+            is_sync_panes_active,
+            are_floating_panes_visible,
+            other_focused_clients,
+            active_swap_layout_name,
+            is_swap_layout_dirty,
+        })
+    }
+    pub fn encode_to_kdl(&self) -> KdlDocument {
+        let mut kdl_doucment = KdlDocument::new();
+
+        let mut position = KdlNode::new("position");
+        position.push(self.position as i64);
+        kdl_doucment.nodes_mut().push(position);
+
+        let mut name = KdlNode::new("name");
+        name.push(self.name.clone());
+        kdl_doucment.nodes_mut().push(name);
+
+        let mut active = KdlNode::new("active");
+        active.push(self.active);
+        kdl_doucment.nodes_mut().push(active);
+
+        let mut panes_to_hide = KdlNode::new("panes_to_hide");
+        panes_to_hide.push(self.panes_to_hide as i64);
+        kdl_doucment.nodes_mut().push(panes_to_hide);
+
+        let mut is_fullscreen_active = KdlNode::new("is_fullscreen_active");
+        is_fullscreen_active.push(self.is_fullscreen_active);
+        kdl_doucment.nodes_mut().push(is_fullscreen_active);
+
+        let mut is_sync_panes_active = KdlNode::new("is_sync_panes_active");
+        is_sync_panes_active.push(self.is_sync_panes_active);
+        kdl_doucment.nodes_mut().push(is_sync_panes_active);
+
+        let mut are_floating_panes_visible = KdlNode::new("are_floating_panes_visible");
+        are_floating_panes_visible.push(self.are_floating_panes_visible);
+        kdl_doucment.nodes_mut().push(are_floating_panes_visible);
+
+        if !self.other_focused_clients.is_empty() {
+            let mut other_focused_clients = KdlNode::new("other_focused_clients");
+            for client_id in &self.other_focused_clients {
+                other_focused_clients.push(*client_id as i64);
+            }
+            kdl_doucment.nodes_mut().push(other_focused_clients);
+        }
+
+        if let Some(active_swap_layout_name) = self.active_swap_layout_name.as_ref() {
+            let mut active_swap_layout = KdlNode::new("active_swap_layout_name");
+            active_swap_layout.push(active_swap_layout_name.to_string());
+            kdl_doucment.nodes_mut().push(active_swap_layout);
+        }
+
+        let mut is_swap_layout_dirty = KdlNode::new("is_swap_layout_dirty");
+        is_swap_layout_dirty.push(self.is_swap_layout_dirty);
+        kdl_doucment.nodes_mut().push(is_swap_layout_dirty);
+
+        kdl_doucment
+    }
+}
+
+impl PaneManifest {
+    pub fn decode_from_kdl(kdl_doucment: &KdlDocument) -> Self {
+        let mut panes: HashMap<usize, Vec<PaneInfo>> = HashMap::new();
+        for node in kdl_doucment.nodes() {
+            if node.name().to_string() == "pane" {
+                if let Some(pane_document) = node.children() {
+                    if let Ok((tab_position, pane_info)) = PaneInfo::decode_from_kdl(pane_document)
+                    {
+                        let panes_in_tab_position =
+                            panes.entry(tab_position).or_insert_with(Vec::new);
+                        panes_in_tab_position.push(pane_info);
+                    }
+                }
+            }
+        }
+        PaneManifest { panes }
+    }
+    pub fn encode_to_kdl(&self) -> KdlDocument {
+        let mut kdl_doucment = KdlDocument::new();
+        for (tab_position, panes) in &self.panes {
+            for pane in panes {
+                let mut pane_node = KdlNode::new("pane");
+                let mut pane = pane.encode_to_kdl();
+
+                let mut position_node = KdlNode::new("tab_position");
+                position_node.push(*tab_position as i64);
+                pane.nodes_mut().push(position_node);
+
+                pane_node.set_children(pane);
+                kdl_doucment.nodes_mut().push(pane_node);
+            }
+        }
+        kdl_doucment
+    }
+}
+
+impl PaneInfo {
+    pub fn decode_from_kdl(kdl_document: &KdlDocument) -> Result<(usize, Self), String> {
+        // usize is the tab position
+        macro_rules! int_node {
+            ($name:expr, $type:ident) => {{
+                kdl_document
+                    .get($name)
+                    .and_then(|n| n.entries().iter().next())
+                    .and_then(|e| e.value().as_i64())
+                    .map(|e| e as $type)
+                    .ok_or(format!("Failed to parse pane {}", $name))?
+            }};
+        }
+        macro_rules! optional_int_node {
+            ($name:expr, $type:ident) => {{
+                kdl_document
+                    .get($name)
+                    .and_then(|n| n.entries().iter().next())
+                    .and_then(|e| e.value().as_i64())
+                    .map(|e| e as $type)
+            }};
+        }
+        macro_rules! bool_node {
+            ($name:expr) => {{
+                kdl_document
+                    .get($name)
+                    .and_then(|n| n.entries().iter().next())
+                    .and_then(|e| e.value().as_bool())
+                    .ok_or(format!("Failed to parse pane {}", $name))?
+            }};
+        }
+        macro_rules! string_node {
+            ($name:expr) => {{
+                kdl_document
+                    .get($name)
+                    .and_then(|n| n.entries().iter().next())
+                    .and_then(|e| e.value().as_string())
+                    .map(|s| s.to_owned())
+                    .ok_or(format!("Failed to parse pane {}", $name))?
+            }};
+        }
+        macro_rules! optional_string_node {
+            ($name:expr) => {{
+                kdl_document
+                    .get($name)
+                    .and_then(|n| n.entries().iter().next())
+                    .and_then(|e| e.value().as_string())
+                    .map(|s| s.to_owned())
+            }};
+        }
+        let tab_position = int_node!("tab_position", usize);
+        let id = int_node!("id", u32);
+
+        let is_plugin = bool_node!("is_plugin");
+        let is_focused = bool_node!("is_focused");
+        let is_fullscreen = bool_node!("is_fullscreen");
+        let is_floating = bool_node!("is_floating");
+        let is_suppressed = bool_node!("is_suppressed");
+        let title = string_node!("title");
+        let exited = bool_node!("exited");
+        let exit_status = optional_int_node!("exit_status", i32);
+        let is_held = bool_node!("is_held");
+        let pane_x = int_node!("pane_x", usize);
+        let pane_content_x = int_node!("pane_content_x", usize);
+        let pane_y = int_node!("pane_y", usize);
+        let pane_content_y = int_node!("pane_content_y", usize);
+        let pane_rows = int_node!("pane_rows", usize);
+        let pane_content_rows = int_node!("pane_content_rows", usize);
+        let pane_columns = int_node!("pane_columns", usize);
+        let pane_content_columns = int_node!("pane_content_columns", usize);
+        let cursor_coordinates_in_pane = kdl_document
+            .get("cursor_coordinates_in_pane")
+            .map(|n| {
+                let mut entries = n.entries().iter();
+                (entries.next(), entries.next())
+            })
+            .and_then(|(x, y)| {
+                let x = x.and_then(|x| x.value().as_i64()).map(|x| x as usize);
+                let y = y.and_then(|y| y.value().as_i64()).map(|y| y as usize);
+                match (x, y) {
+                    (Some(x), Some(y)) => Some((x, y)),
+                    _ => None,
+                }
+            });
+        let terminal_command = optional_string_node!("terminal_command");
+        let plugin_url = optional_string_node!("plugin_url");
+        let is_selectable = bool_node!("is_selectable");
+
+        let pane_info = PaneInfo {
+            id,
+            is_plugin,
+            is_focused,
+            is_fullscreen,
+            is_floating,
+            is_suppressed,
+            title,
+            exited,
+            exit_status,
+            is_held,
+            pane_x,
+            pane_content_x,
+            pane_y,
+            pane_content_y,
+            pane_rows,
+            pane_content_rows,
+            pane_columns,
+            pane_content_columns,
+            cursor_coordinates_in_pane,
+            terminal_command,
+            plugin_url,
+            is_selectable,
+        };
+        Ok((tab_position, pane_info))
+    }
+    pub fn encode_to_kdl(&self) -> KdlDocument {
+        let mut kdl_doucment = KdlDocument::new();
+        macro_rules! int_node {
+            ($name:expr, $val:expr) => {{
+                let mut att = KdlNode::new($name);
+                att.push($val as i64);
+                kdl_doucment.nodes_mut().push(att);
+            }};
+        }
+        macro_rules! bool_node {
+            ($name:expr, $val:expr) => {{
+                let mut att = KdlNode::new($name);
+                att.push($val);
+                kdl_doucment.nodes_mut().push(att);
+            }};
+        }
+        macro_rules! string_node {
+            ($name:expr, $val:expr) => {{
+                let mut att = KdlNode::new($name);
+                att.push($val);
+                kdl_doucment.nodes_mut().push(att);
+            }};
+        }
+
+        int_node!("id", self.id);
+        bool_node!("is_plugin", self.is_plugin);
+        bool_node!("is_focused", self.is_focused);
+        bool_node!("is_fullscreen", self.is_fullscreen);
+        bool_node!("is_floating", self.is_floating);
+        bool_node!("is_suppressed", self.is_suppressed);
+        string_node!("title", self.title.to_string());
+        bool_node!("exited", self.exited);
+        if let Some(exit_status) = self.exit_status {
+            int_node!("exit_status", exit_status);
+        }
+        bool_node!("is_held", self.is_held);
+        int_node!("pane_x", self.pane_x);
+        int_node!("pane_content_x", self.pane_content_x);
+        int_node!("pane_y", self.pane_y);
+        int_node!("pane_content_y", self.pane_content_y);
+        int_node!("pane_rows", self.pane_rows);
+        int_node!("pane_content_rows", self.pane_content_rows);
+        int_node!("pane_columns", self.pane_columns);
+        int_node!("pane_content_columns", self.pane_content_columns);
+        if let Some((cursor_x, cursor_y)) = self.cursor_coordinates_in_pane {
+            let mut cursor_coordinates_in_pane = KdlNode::new("cursor_coordinates_in_pane");
+            cursor_coordinates_in_pane.push(cursor_x as i64);
+            cursor_coordinates_in_pane.push(cursor_y as i64);
+            kdl_doucment.nodes_mut().push(cursor_coordinates_in_pane);
+        }
+        if let Some(terminal_command) = &self.terminal_command {
+            string_node!("terminal_command", terminal_command.to_string());
+        }
+        if let Some(plugin_url) = &self.plugin_url {
+            string_node!("plugin_url", plugin_url.to_string());
+        }
+        bool_node!("is_selectable", self.is_selectable);
+        kdl_doucment
+    }
+}
+
 pub fn parse_plugin_user_configuration(
     plugin_block: &KdlNode,
 ) -> Result<BTreeMap<String, String>, ConfigError> {
@@ -1887,4 +2302,105 @@ pub fn parse_plugin_user_configuration(
         }
     }
     Ok(configuration)
+}
+
+#[test]
+fn serialize_and_deserialize_session_info() {
+    let session_info = SessionInfo::default();
+    let serialized = session_info.to_string();
+    let deserealized = SessionInfo::from_string(&serialized, "not this session").unwrap();
+    assert_eq!(session_info, deserealized);
+    insta::assert_snapshot!(serialized);
+}
+
+#[test]
+fn serialize_and_deserialize_session_info_with_data() {
+    let panes_list = vec![
+        PaneInfo {
+            id: 1,
+            is_plugin: false,
+            is_focused: true,
+            is_fullscreen: true,
+            is_floating: false,
+            is_suppressed: false,
+            title: "pane 1".to_owned(),
+            exited: false,
+            exit_status: None,
+            is_held: false,
+            pane_x: 0,
+            pane_content_x: 1,
+            pane_y: 0,
+            pane_content_y: 1,
+            pane_rows: 5,
+            pane_content_rows: 4,
+            pane_columns: 22,
+            pane_content_columns: 21,
+            cursor_coordinates_in_pane: Some((0, 0)),
+            terminal_command: Some("foo".to_owned()),
+            plugin_url: None,
+            is_selectable: true,
+        },
+        PaneInfo {
+            id: 1,
+            is_plugin: true,
+            is_focused: true,
+            is_fullscreen: true,
+            is_floating: false,
+            is_suppressed: false,
+            title: "pane 1".to_owned(),
+            exited: false,
+            exit_status: None,
+            is_held: false,
+            pane_x: 0,
+            pane_content_x: 1,
+            pane_y: 0,
+            pane_content_y: 1,
+            pane_rows: 5,
+            pane_content_rows: 4,
+            pane_columns: 22,
+            pane_content_columns: 21,
+            cursor_coordinates_in_pane: Some((0, 0)),
+            terminal_command: None,
+            plugin_url: Some("i_am_a_fake_plugin".to_owned()),
+            is_selectable: true,
+        },
+    ];
+    let mut panes = HashMap::new();
+    panes.insert(0, panes_list);
+    let session_info = SessionInfo {
+        name: "my session name".to_owned(),
+        tabs: vec![
+            TabInfo {
+                position: 0,
+                name: "tab 1".to_owned(),
+                active: true,
+                panes_to_hide: 1,
+                is_fullscreen_active: true,
+                is_sync_panes_active: false,
+                are_floating_panes_visible: true,
+                other_focused_clients: vec![2, 3],
+                active_swap_layout_name: Some("BASE".to_owned()),
+                is_swap_layout_dirty: true,
+            },
+            TabInfo {
+                position: 1,
+                name: "tab 2".to_owned(),
+                active: true,
+                panes_to_hide: 0,
+                is_fullscreen_active: false,
+                is_sync_panes_active: true,
+                are_floating_panes_visible: true,
+                other_focused_clients: vec![2, 3],
+                active_swap_layout_name: None,
+                is_swap_layout_dirty: false,
+            },
+        ],
+        panes: PaneManifest { panes },
+        connected_clients: 2,
+        is_current_session: false,
+    };
+    let serialized = session_info.to_string();
+    let deserealized = SessionInfo::from_string(&serialized, "not this session").unwrap();
+    assert_eq!(session_info, deserealized);
+    insta::assert_snapshot!(serialized);
 }
