@@ -534,6 +534,7 @@ pub fn load_new_plugin_from_hd() {
         client_id,
         size,
     ));
+    std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),
@@ -605,6 +606,7 @@ pub fn plugin_workers() {
     // we send a SystemClipboardFailure to trigger the custom handler in the fixture plugin that
     // will send a message to the worker and in turn back to the plugin to be rendered, so we know
     // that this cycle is working
+    std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),
@@ -679,6 +681,7 @@ pub fn plugin_workers_persist_state() {
     // we do this a second time so that the worker will log the first message on its own state and
     // then send us the "received 2 messages" indication we check for below, letting us know it
     // managed to persist its own state and act upon it
+    std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),

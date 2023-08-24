@@ -2,6 +2,7 @@ use super::PluginInstruction;
 use crate::plugins::plugin_map::{PluginEnv, Subscriptions};
 use crate::plugins::wasm_bridge::handle_plugin_crash;
 use crate::route::route_action;
+use crate::ServerInstruction;
 use log::{debug, warn};
 use serde::Serialize;
 use std::{
@@ -15,7 +16,9 @@ use std::{
 };
 use wasmer::{imports, AsStoreMut, Function, FunctionEnv, FunctionEnvMut, Imports};
 use wasmer_wasi::WasiEnv;
-use zellij_utils::data::{CommandType, PermissionStatus, PermissionType, PluginPermission};
+use zellij_utils::data::{
+    CommandType, ConnectToSession, PermissionStatus, PermissionType, PluginPermission,
+};
 use zellij_utils::input::permission::PermissionCache;
 
 use url::Url;
@@ -207,6 +210,12 @@ fn host_run_plugin_command(env: FunctionEnvMut<ForeignFunctionEnv>) {
                     PluginCommand::RequestPluginPermissions(permissions) => {
                         request_permission(env, permissions)?
                     },
+                    PluginCommand::SwitchSession(connect_to_session) => switch_session(
+                        env,
+                        connect_to_session.name,
+                        connect_to_session.tab_position,
+                        connect_to_session.pane_id,
+                    )?,
                 },
                 (PermissionStatus::Denied, permission) => {
                     log::error!(
@@ -681,6 +690,31 @@ fn detach(env: &ForeignFunctionEnv) {
     apply_action!(action, error_msg, env);
 }
 
+fn switch_session(
+    env: &ForeignFunctionEnv,
+    session_name: Option<String>,
+    tab_position: Option<usize>,
+    pane_id: Option<(u32, bool)>,
+) -> Result<()> {
+    // pane_id is (id, is_plugin)
+    let err_context = || format!("Failed to switch session");
+    let client_id = env.plugin_env.client_id;
+    let tab_position = tab_position.map(|p| p + 1); // ¯\_()_/¯
+    let connect_to_session = ConnectToSession {
+        name: session_name,
+        tab_position,
+        pane_id,
+    };
+    env.plugin_env
+        .senders
+        .send_to_server(ServerInstruction::SwitchSession(
+            connect_to_session,
+            client_id,
+        ))
+        .with_context(err_context)?;
+    Ok(())
+}
+
 fn edit_scrollback(env: &ForeignFunctionEnv) {
     let action = Action::EditScrollback;
     let error_msg = || format!("Failed to edit scrollback");
@@ -900,7 +934,7 @@ fn go_to_tab(env: &ForeignFunctionEnv, tab_index: u32) {
             env.plugin_env.name()
         )
     };
-    let action = Action::GoToTab(tab_index);
+    let action = Action::GoToTab(tab_index + 1);
     apply_action!(action, error_msg, env);
 }
 
@@ -1106,7 +1140,6 @@ fn check_command_permission(
         _ => return (PermissionStatus::Granted, None),
     };
 
-    log::info!("plugin permissions: {:?}", plugin_env.permissions);
     if let Some(permissions) = plugin_env.permissions.lock().unwrap().as_ref() {
         if permissions.contains(&permission) {
             return (PermissionStatus::Granted, None);

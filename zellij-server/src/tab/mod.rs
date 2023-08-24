@@ -3328,6 +3328,7 @@ impl Tab {
         // this function is to be preferred to directly invoking floating_panes.toggle_show_panes(true)
         self.floating_panes.toggle_show_panes(true);
         self.tiled_panes.unfocus_all_panes();
+        self.set_force_render();
     }
 
     pub fn hide_floating_panes(&mut self) {
@@ -3335,6 +3336,7 @@ impl Tab {
         // floating_panes.toggle_show_panes(false)
         self.floating_panes.toggle_show_panes(false);
         self.tiled_panes.focus_all_panes();
+        self.set_force_render();
     }
 
     pub fn find_plugin(&self, run_plugin: &RunPlugin) -> Option<PaneId> {
@@ -3359,6 +3361,7 @@ impl Tab {
         // TODO: should error if pane is not selectable
         self.tiled_panes
             .focus_pane_if_exists(pane_id, client_id)
+            .map(|_| self.hide_floating_panes())
             .or_else(|_| {
                 let focused_floating_pane =
                     self.floating_panes.focus_pane_if_exists(pane_id, client_id);

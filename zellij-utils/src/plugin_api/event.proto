@@ -39,6 +39,7 @@ enum EventType {
     /// A file was deleted somewhere in the Zellij CWD folder
     FileSystemDelete = 14;
     PermissionRequestResult = 15;
+    SessionUpdate = 16;
 }
 
 message EventNameList {
@@ -59,7 +60,12 @@ message Event {
     CustomMessagePayload custom_message_payload = 10;
     FileListPayload file_list_payload = 11;
     PermissionRequestResultPayload permission_request_result_payload = 12;
+    SessionUpdatePayload session_update_payload = 13;
   }
+}
+
+message SessionUpdatePayload {
+  repeated SessionManifest session_manifests = 1;
 }
 
 message PermissionRequestResultPayload {
@@ -109,6 +115,14 @@ message PaneUpdatePayload {
 message PaneManifest {
   uint32 tab_index = 1;
   repeated PaneInfo panes = 2;
+}
+
+message SessionManifest {
+  string name = 1;
+  repeated TabInfo tabs = 2;
+  repeated PaneManifest panes = 3;
+  uint32 connected_clients = 4;
+  bool is_current_session = 5;
 }
 
 message PaneInfo {

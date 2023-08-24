@@ -1,0 +1,81 @@
+---
+source: zellij-utils/src/kdl/mod.rs
+assertion_line: 2377
+expression: serialized
+---
+name "my session name"
+tabs {
+    tab {
+        position 0
+        name "tab 1"
+        active true
+        panes_to_hide 1
+        is_fullscreen_active true
+        is_sync_panes_active false
+        are_floating_panes_visible true
+        other_focused_clients 2 3
+        active_swap_layout_name "BASE"
+        is_swap_layout_dirty true
+    }
+    tab {
+        position 1
+        name "tab 2"
+        active true
+        panes_to_hide 0
+        is_fullscreen_active false
+        is_sync_panes_active true
+        are_floating_panes_visible true
+        other_focused_clients 2 3
+        is_swap_layout_dirty false
+    }
+}
+panes {
+    pane {
+        id 1
+        is_plugin false
+        is_focused true
+        is_fullscreen true
+        is_floating false
+        is_suppressed false
+        title "pane 1"
+        exited false
+        is_held false
+        pane_x 0
+        pane_content_x 1
+        pane_y 0
+        pane_content_y 1
+        pane_rows 5
+        pane_content_rows 4
+        pane_columns 22
+        pane_content_columns 21
+        cursor_coordinates_in_pane 0 0
+        terminal_command "foo"
+        is_selectable true
+        tab_position 0
+    }
+    pane {
+        id 1
+        is_plugin true
+        is_focused true
+        is_fullscreen true
+        is_floating false
+        is_suppressed false
+        title "pane 1"
+        exited false
+        is_held false
+        pane_x 0
+        pane_content_x 1
+        pane_y 0
+        pane_content_y 1
+        pane_rows 5
+        pane_content_rows 4
+        pane_columns 22
+        pane_content_columns 21
+        cursor_coordinates_in_pane 0 0
+        plugin_url "i_am_a_fake_plugin"
+        is_selectable true
+        tab_position 0
+    }
+}
+connected_clients 2
+

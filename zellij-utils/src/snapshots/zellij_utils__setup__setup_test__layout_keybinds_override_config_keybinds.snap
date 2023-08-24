@@ -103,6 +103,23 @@ Config {
             ),
         },
         PluginTag(
+            "session-manager",
+        ): PluginConfig {
+            path: "session-manager",
+            run: Pane(
+                None,
+            ),
+            _allow_exec_host_cmd: false,
+            location: Zellij(
+                PluginTag(
+                    "session-manager",
+                ),
+            ),
+            userspace_configuration: PluginUserConfiguration(
+                {},
+            ),
+        },
+        PluginTag(
             "status-bar",
         ): PluginConfig {
             path: "status-bar",

@@ -154,8 +154,9 @@ impl ClientOsApi for FakeClientOsApi {
     fn get_stdin_reader(&self) -> Box<dyn io::Read> {
         unimplemented!()
     }
-    fn read_from_stdin(&mut self) -> Vec<u8> {
-        self.stdin_buffer.drain(..).collect()
+    fn update_session_name(&mut self, new_session_name: String) {}
+    fn read_from_stdin(&mut self) -> Result<Vec<u8>, &'static str> {
+        Ok(self.stdin_buffer.drain(..).collect())
     }
     fn box_clone(&self) -> Box<dyn ClientOsApi> {
         unimplemented!()

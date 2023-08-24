@@ -495,6 +495,7 @@ pub enum Event {
     FileSystemDelete(Vec<PathBuf>),
     /// A Result of plugin permission request
     PermissionRequestResult(PermissionStatus),
+    SessionUpdate(Vec<SessionInfo>),
 }
 
 #[derive(
@@ -734,6 +735,42 @@ impl ModeInfo {
     }
 }
 
+#[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct SessionInfo {
+    pub name: String,
+    pub tabs: Vec<TabInfo>,
+    pub panes: PaneManifest,
+    pub connected_clients: usize,
+    pub is_current_session: bool,
+}
+
+use std::hash::{Hash, Hasher};
+
+#[allow(clippy::derive_hash_xor_eq)]
+impl Hash for SessionInfo {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.name.hash(state);
+    }
+}
+
+impl SessionInfo {
+    pub fn new(name: String) -> Self {
+        SessionInfo {
+            name,
+            ..Default::default()
+        }
+    }
+    pub fn update_tab_info(&mut self, new_tab_info: Vec<TabInfo>) {
+        self.tabs = new_tab_info;
+    }
+    pub fn update_pane_info(&mut self, new_pane_info: PaneManifest) {
+        self.panes = new_pane_info;
+    }
+    pub fn update_connected_clients(&mut self, new_connected_clients: usize) {
+        self.connected_clients = new_connected_clients;
+    }
+}
+
 /// Contains all the information for a currently opened tab.
 #[derive(Debug, Default, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub struct TabInfo {
@@ -921,6 +958,13 @@ impl CommandToRun {
     }
 }
 
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+pub struct ConnectToSession {
+    pub name: Option<String>,
+    pub tab_position: Option<usize>,
+    pub pane_id: Option<(u32, bool)>, // (id, is_plugin)
+}
+
 #[derive(Debug, Default, Clone)]
 pub struct PluginMessage {
     pub name: String,
@@ -1016,4 +1060,5 @@ pub enum PluginCommand {
     RenameTab(u32, String),          // tab index, new name
     ReportPanic(String),             // stringified panic
     RequestPluginPermissions(Vec<PermissionType>),
+    SwitchSession(ConnectToSession),
 }

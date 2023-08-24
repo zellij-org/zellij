@@ -16,6 +16,7 @@ use zellij_client::{
 use zellij_server::{os_input_output::get_server_os_input, start_server as start_server_impl};
 use zellij_utils::{
     cli::{CliArgs, Command, SessionCommand, Sessions},
+    data::ConnectToSession,
     envs,
     input::{
         actions::Action,
@@ -331,131 +332,180 @@ pub(crate) fn start_client(opts: CliArgs) {
             process::exit(1);
         },
     };
+    let mut reconnect_to_session: Option<ConnectToSession> = None;
     let os_input = get_os_input(get_client_os_input);
+    loop {
+        let os_input = os_input.clone();
+        let config = config.clone();
+        let layout = layout.clone();
+        let mut config_options = config_options.clone();
+        let mut opts = opts.clone();
 
-    let start_client_plan = |session_name: std::string::String| {
-        assert_session_ne(&session_name);
-    };
-
-    if let Some(Command::Sessions(Sessions::Attach {
-        session_name,
-        create,
-        index,
-        options,
-    })) = opts.command.clone()
-    {
-        let config_options = match options.as_deref() {
-            Some(SessionCommand::Options(o)) => config_options.merge_from_cli(o.to_owned().into()),
-            None => config_options,
-        };
-
-        let client = if let Some(idx) = index {
-            attach_with_session_index(config_options.clone(), idx, create)
-        } else {
-            let session_exists = session_name
-                .as_ref()
-                .and_then(|s| session_exists(&s).ok())
-                .unwrap_or(false);
-            if create && !session_exists {
-                session_name.clone().map(start_client_plan);
-            }
-            attach_with_session_name(session_name, config_options.clone(), create)
-        };
-
-        if let Ok(val) = std::env::var(envs::SESSION_NAME_ENV_KEY) {
-            if val == *client.get_session_name() {
-                eprintln!("You are trying to attach to the current session (\"{}\"). Zellij does not support nesting a session in itself.", val);
-                process::exit(1);
+        if let Some(reconnect_to_session) = &reconnect_to_session {
+            // this is integration code to make session reconnects work with this existing,
+            // untested and pretty involved function
+            //
+            // ideally, we should write tests for this whole function and refctor it
+            if reconnect_to_session.name.is_some() {
+                opts.command = Some(Command::Sessions(Sessions::Attach {
+                    session_name: reconnect_to_session.name.clone(),
+                    create: true,
+                    index: None,
+                    options: None,
+                }));
+            } else {
+                opts.command = None;
+                opts.session = None;
+                config_options.attach_to_session = None;
             }
         }
 
-        let attach_layout = match client {
-            ClientInfo::Attach(_, _) => None,
-            ClientInfo::New(_) => Some(layout),
+        let start_client_plan = |session_name: std::string::String| {
+            assert_session_ne(&session_name);
         };
 
-        start_client_impl(
-            Box::new(os_input),
-            opts,
-            config,
-            config_options,
-            client,
-            attach_layout,
-        );
-    } else {
-        if let Some(session_name) = opts.session.clone() {
-            start_client_plan(session_name.clone());
-            start_client_impl(
-                Box::new(os_input),
-                opts,
-                config,
-                config_options,
-                ClientInfo::New(session_name),
-                Some(layout),
-            );
-        } else {
-            if let Some(session_name) = config_options.session_name.as_ref() {
-                if let Ok(val) = envs::get_session_name() {
-                    // This prevents the same type of recursion as above, only that here we
-                    // don't get the command to "attach", but to start a new session instead.
-                    // This occurs for example when declaring the session name inside a layout
-                    // file and then, from within this session, trying to open a new zellij
-                    // session with the same layout. This causes an infinite recursion in the
-                    // `zellij_server::terminal_bytes::listen` task, flooding the server and
-                    // clients with infinite `Render` requests.
-                    if *session_name == val {
-                        eprintln!("You are trying to attach to the current session (\"{}\"). Zellij does not support nesting a session in itself.", session_name);
-                        process::exit(1);
-                    }
+        if let Some(Command::Sessions(Sessions::Attach {
+            session_name,
+            create,
+            index,
+            options,
+        })) = opts.command.clone()
+        {
+            let config_options = match options.as_deref() {
+                Some(SessionCommand::Options(o)) => {
+                    config_options.merge_from_cli(o.to_owned().into())
+                },
+                None => config_options,
+            };
+
+            let client = if let Some(idx) = index {
+                attach_with_session_index(config_options.clone(), idx, create)
+            } else {
+                let session_exists = session_name
+                    .as_ref()
+                    .and_then(|s| session_exists(&s).ok())
+                    .unwrap_or(false);
+                if create && !session_exists {
+                    session_name.clone().map(start_client_plan);
                 }
-                match config_options.attach_to_session {
-                    Some(true) => {
-                        let client = attach_with_session_name(
-                            Some(session_name.clone()),
-                            config_options.clone(),
-                            true,
-                        );
-                        let attach_layout = match client {
-                            ClientInfo::Attach(_, _) => None,
-                            ClientInfo::New(_) => Some(layout),
-                        };
-                        start_client_impl(
-                            Box::new(os_input),
-                            opts,
-                            config,
-                            config_options,
-                            client,
-                            attach_layout,
-                        );
-                    },
-                    _ => {
-                        start_client_plan(session_name.clone());
-                        start_client_impl(
-                            Box::new(os_input),
-                            opts,
-                            config,
-                            config_options.clone(),
-                            ClientInfo::New(session_name.clone()),
-                            Some(layout),
-                        );
-                    },
+                attach_with_session_name(session_name, config_options.clone(), create)
+            };
+
+            if let Ok(val) = std::env::var(envs::SESSION_NAME_ENV_KEY) {
+                if val == *client.get_session_name() {
+                    panic!("You are trying to attach to the current session (\"{}\"). This is not supported.", val);
                 }
-                // after we detach, this happens and so we need to exit before the rest of the
-                // function happens
-                // TODO: offload this to a different function
-                process::exit(0);
             }
 
-            let session_name = generate_unique_session_name();
-            start_client_plan(session_name.clone());
-            start_client_impl(
+            let attach_layout = match client {
+                ClientInfo::Attach(_, _) => None,
+                ClientInfo::New(_) => Some(layout),
+            };
+
+            let tab_position_to_focus = reconnect_to_session
+                .as_ref()
+                .and_then(|r| r.tab_position.clone());
+            let pane_id_to_focus = reconnect_to_session
+                .as_ref()
+                .and_then(|r| r.pane_id.clone());
+            reconnect_to_session = start_client_impl(
                 Box::new(os_input),
                 opts,
                 config,
                 config_options,
-                ClientInfo::New(session_name),
-                Some(layout),
+                client,
+                attach_layout,
+                tab_position_to_focus,
+                pane_id_to_focus,
             );
+        } else {
+            if let Some(session_name) = opts.session.clone() {
+                start_client_plan(session_name.clone());
+                reconnect_to_session = start_client_impl(
+                    Box::new(os_input),
+                    opts,
+                    config,
+                    config_options,
+                    ClientInfo::New(session_name),
+                    Some(layout),
+                    None,
+                    None,
+                );
+            } else {
+                if let Some(session_name) = config_options.session_name.as_ref() {
+                    if let Ok(val) = envs::get_session_name() {
+                        // This prevents the same type of recursion as above, only that here we
+                        // don't get the command to "attach", but to start a new session instead.
+                        // This occurs for example when declaring the session name inside a layout
+                        // file and then, from within this session, trying to open a new zellij
+                        // session with the same layout. This causes an infinite recursion in the
+                        // `zellij_server::terminal_bytes::listen` task, flooding the server and
+                        // clients with infinite `Render` requests.
+                        if *session_name == val {
+                            eprintln!("You are trying to attach to the current session (\"{}\"). Zellij does not support nesting a session in itself.", session_name);
+                            process::exit(1);
+                        }
+                    }
+                    match config_options.attach_to_session {
+                        Some(true) => {
+                            let client = attach_with_session_name(
+                                Some(session_name.clone()),
+                                config_options.clone(),
+                                true,
+                            );
+                            let attach_layout = match client {
+                                ClientInfo::Attach(_, _) => None,
+                                ClientInfo::New(_) => Some(layout),
+                            };
+                            reconnect_to_session = start_client_impl(
+                                Box::new(os_input),
+                                opts,
+                                config,
+                                config_options,
+                                client,
+                                attach_layout,
+                                None,
+                                None,
+                            );
+                        },
+                        _ => {
+                            start_client_plan(session_name.clone());
+                            reconnect_to_session = start_client_impl(
+                                Box::new(os_input),
+                                opts,
+                                config,
+                                config_options.clone(),
+                                ClientInfo::New(session_name.clone()),
+                                Some(layout),
+                                None,
+                                None,
+                            );
+                        },
+                    }
+                    if reconnect_to_session.is_some() {
+                        continue;
+                    }
+                    // after we detach, this happens and so we need to exit before the rest of the
+                    // function happens
+                    process::exit(0);
+                }
+
+                let session_name = generate_unique_session_name();
+                start_client_plan(session_name.clone());
+                reconnect_to_session = start_client_impl(
+                    Box::new(os_input),
+                    opts,
+                    config,
+                    config_options,
+                    ClientInfo::New(session_name),
+                    Some(layout),
+                    None,
+                    None,
+                );
+            }
+        }
+        if reconnect_to_session.is_none() {
+            break;
         }
     }
 }
