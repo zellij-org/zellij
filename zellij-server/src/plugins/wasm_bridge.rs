@@ -413,7 +413,6 @@ impl WasmBridge {
                                 },
                                 Err(e) => log::error!("{}", e),
                             }
-                            println!("resize plugin task done");
                         }
                     }
                 });
@@ -465,7 +464,6 @@ impl WasmBridge {
                         || (cid == Some(*client_id) && pid == Some(*plugin_id)))
                 {
                     task::spawn({
-                        println!("apply event: {event:?}");
                         let senders = self.senders.clone();
                         let running_plugin = running_plugin.clone();
                         let event = event.clone();
@@ -502,7 +500,6 @@ impl WasmBridge {
                                     );
                                 },
                             }
-                            println!("update plugin task finished");
                         }
                     });
                 }
@@ -613,7 +610,6 @@ impl WasmBridge {
                                         log::error!("{}", e);
                                     },
                                 }
-                                println!("apply cached events plugin task done");
                             }
                         });
                     }
@@ -762,7 +758,6 @@ impl WasmBridge {
             );
 
             permission_cache.write_to_file().with_context(err_context)?;
-            println!("permissions file written");
         } else {
             panic!("RUNNING PLUGIN NOT FOUND")
         }
@@ -877,7 +872,6 @@ pub fn apply_event_to_plugin(
             }
         },
         (PermissionStatus::Denied, permission) => {
-            println!("permission denied for event: {event:?}");
             log::error!(
                 "PluginId '{}' permission '{}' is not allowed - Event '{:?}' denied",
                 plugin_id,

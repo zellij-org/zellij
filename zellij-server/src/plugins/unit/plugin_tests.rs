@@ -40,7 +40,6 @@ macro_rules! log_actions_in_thread {
                             exit_event_count += 1;
                             log.lock().unwrap().push(event);
                             if exit_event_count == $exit_after_count {
-                                println!("logger thread exiting!");
                                 break;
                             }
                         },
@@ -72,7 +71,6 @@ macro_rules! grant_permissions_and_log_actions_in_thread {
                             exit_event_count += 1;
                             log.lock().unwrap().push(event);
                             if exit_event_count == $exit_after_count {
-                                println!("screen thread exiting!");
                                 break;
                             }
                         },
@@ -127,7 +125,6 @@ macro_rules! deny_permissions_and_log_actions_in_thread {
                             exit_event_count += 1;
                             log.lock().unwrap().push(event);
                             if exit_event_count == $exit_after_count {
-                                println!("screen thread exiting!");
                                 break;
                             }
                         },
@@ -171,7 +168,6 @@ macro_rules! grant_permissions_and_log_actions_in_thread_naked_variant {
                             exit_event_count += 1;
                             log.lock().unwrap().push(event);
                             if exit_event_count == $exit_after_count {
-                                println!("screen thread exiting!");
                                 break;
                             }
                         },

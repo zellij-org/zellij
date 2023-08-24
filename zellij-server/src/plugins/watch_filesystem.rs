@@ -103,8 +103,6 @@ pub fn watch_filesystem(
         },
     )?;
 
-    println!("starting fs watcher");
-
     debouncer
         .watcher()
         .watch(zellij_cwd, RecursiveMode::Recursive)?;

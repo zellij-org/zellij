@@ -160,7 +160,6 @@ pub(crate) fn plugin_thread_main(
 
     loop {
         let (event, mut err_ctx) = bus.recv().expect("failed to receive event on channel");
-        println!("plugin thread received event: {event:?}");
         err_ctx.add_call(ContextType::Plugin((&event).into()));
         match event {
             PluginInstruction::Load(should_float, pane_title, run, tab_index, client_id, size) => {
@@ -341,16 +340,15 @@ pub(crate) fn plugin_thread_main(
     // first drop our sender, then call recv.
     // once all senders are dropped or the timeout is reached, recv will return an error, that we ignore
 
-    println!("waiting for tasks to exit");
     drop(shutdown_send);
     task::block_on(async {
         let result = timeout(EXIT_TIMEOUT, shutdown_receive.recv()).await;
-        println!("timeout result: {result:?}");
+        if let Err(err) = result {
+            log::error!("timeout waiting for plugin tasks to finish: {}", err);
+        }
     });
 
     wasm_bridge.cleanup();
-
-    println!("cleanup called");
 
     fs::remove_dir_all(&plugin_global_data_dir)
         .or_else(|err| {
