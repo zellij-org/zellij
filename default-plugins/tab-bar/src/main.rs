@@ -31,7 +31,7 @@ static ARROW_SEPARATOR: &str = "";
 register_plugin!(State);
 
 impl ZellijPlugin for State {
-    fn load(&mut self, configuration: BTreeMap<String, String>) {
+    fn load(&mut self, _configuration: BTreeMap<String, String>) {
         set_selectable(false);
         subscribe(&[
             EventType::TabUpdate,
