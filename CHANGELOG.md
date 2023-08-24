@@ -6,7 +6,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
 * fix(tab-bar,compact-bar): tab switching with mouse sometimes not working (https://github.com/zellij-org/zellij/pull/2587)
-* feat(status-bar): supermode to prevent colliding keybindings (https://github.com/zellij-org/zellij/pull/2619)
 * fix(rendering): occasional glitches while resizing (https://github.com/zellij-org/zellij/pull/2621)
 * fix(rendering): colored paneframes in mirrored sessions (https://github.com/zellij-org/zellij/pull/2625)
 * fix(sessions): use custom lists of adjectives and nouns for generating session names (https://github.com/zellij-org/zellij/pull/2122)
@@ -16,7 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat(ui): break pane to new tab and move panes between tabs (https://github.com/zellij-org/zellij/pull/2664)
 * fix(performance): plug memory leak (https://github.com/zellij-org/zellij/pull/2675)
 * feat(plugins): use protocol buffers to communicate across the wasm boundary (https://github.com/zellij-org/zellij/pull/2686)
-* feat(plugins): add permission system (https://github.com/zellij-org/zellij/pull/2624)
+* feat(plugins): add permission system (https://github.com/zellij-org/zellij/pull/2624 and https://github.com/zellij-org/zellij/pull/2722)
 * feat(session): session manager to switch between sessions (https://github.com/zellij-org/zellij/pull/2721)
 
 ## [0.37.2] - 2023-06-20
