@@ -208,12 +208,22 @@ impl Run {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash, Default)]
 pub struct RunPlugin {
     #[serde(default)]
     pub _allow_exec_host_cmd: bool,
     pub location: RunPluginLocation,
     pub configuration: PluginUserConfiguration,
+}
+
+impl RunPlugin {
+    pub fn from_url(url: &str) -> Result<Self, PluginsConfigError> {
+        let location = RunPluginLocation::parse(url, None)?;
+        Ok(RunPlugin {
+            location,
+            ..Default::default()
+        })
+    }
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
@@ -248,6 +258,12 @@ impl FromStr for PluginUserConfiguration {
 pub enum RunPluginLocation {
     File(PathBuf),
     Zellij(PluginTag),
+}
+
+impl Default for RunPluginLocation {
+    fn default() -> Self {
+        RunPluginLocation::File(Default::default())
+    }
 }
 
 impl RunPluginLocation {

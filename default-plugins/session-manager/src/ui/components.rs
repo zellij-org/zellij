@@ -294,7 +294,7 @@ impl LineToRender {
     }
     pub fn make_selected(&mut self) {
         self.is_selected = true;
-        match self.colors.palette.gray {
+        match self.colors.palette.bg {
             PaletteColor::EightBit(byte) => {
                 self.line = format!(
                     "\u{1b}[48;5;{byte}m\u{1b}[K\r\u{1b}[48;5;{byte}m{}",
@@ -303,7 +303,7 @@ impl LineToRender {
             },
             PaletteColor::Rgb((r, g, b)) => {
                 self.line = format!(
-                    "\u{1b}[48;2;{};{};{}m\u{1b}[K\r\u{1b}[48;5;{};{};{}m{}",
+                    "\u{1b}[48;2;{};{};{}m\u{1b}[K\r\u{1b}[48;2;{};{};{}m{}",
                     r, g, b, r, g, b, self.line
                 );
             },
