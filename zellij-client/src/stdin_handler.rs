@@ -59,66 +59,79 @@ pub(crate) fn stdin_loop(
     }
     let mut ansi_stdin_events = vec![];
     loop {
-        let buf = os_input.read_from_stdin();
-        {
-            // here we check if we need to parse specialized ANSI instructions sent over STDIN
-            // this happens either on startup (see above) or on SIGWINCH
-            //
-            // if we need to parse them, we do so with an internal timeout - anything else we
-            // receive on STDIN during that timeout is unceremoniously dropped
-            let mut stdin_ansi_parser = stdin_ansi_parser.lock().unwrap();
-            if stdin_ansi_parser.should_parse() {
-                let events = stdin_ansi_parser.parse(buf);
-                if !events.is_empty() {
-                    ansi_stdin_events.append(&mut events.clone());
-                    let _ = send_input_instructions
-                        .send(InputInstruction::AnsiStdinInstructions(events));
-                }
-                continue;
-            }
-        }
-        if !ansi_stdin_events.is_empty() {
-            stdin_ansi_parser
-                .lock()
-                .unwrap()
-                .write_cache(ansi_stdin_events.drain(..).collect());
-        }
-        current_buffer.append(&mut buf.to_vec());
-        let maybe_more = false; // read_from_stdin should (hopefully) always empty the STDIN buffer completely
-        let mut events = vec![];
-        input_parser.parse(
-            &buf,
-            |input_event: InputEvent| {
-                events.push(input_event);
-            },
-            maybe_more,
-        );
-
-        let event_count = events.len();
-        for (i, input_event) in events.into_iter().enumerate() {
-            if holding_mouse && is_mouse_press_or_hold(&input_event) && i == event_count - 1 {
-                let mut poller = os_input.stdin_poller();
-                loop {
-                    if poller.ready() {
-                        break;
+        match os_input.read_from_stdin() {
+            Ok(buf) => {
+                {
+                    // here we check if we need to parse specialized ANSI instructions sent over STDIN
+                    // this happens either on startup (see above) or on SIGWINCH
+                    //
+                    // if we need to parse them, we do so with an internal timeout - anything else we
+                    // receive on STDIN during that timeout is unceremoniously dropped
+                    let mut stdin_ansi_parser = stdin_ansi_parser.lock().unwrap();
+                    if stdin_ansi_parser.should_parse() {
+                        let events = stdin_ansi_parser.parse(buf);
+                        if !events.is_empty() {
+                            ansi_stdin_events.append(&mut events.clone());
+                            let _ = send_input_instructions
+                                .send(InputInstruction::AnsiStdinInstructions(events));
+                        }
+                        continue;
                     }
+                }
+                if !ansi_stdin_events.is_empty() {
+                    stdin_ansi_parser
+                        .lock()
+                        .unwrap()
+                        .write_cache(ansi_stdin_events.drain(..).collect());
+                }
+                current_buffer.append(&mut buf.to_vec());
+                let maybe_more = false; // read_from_stdin should (hopefully) always empty the STDIN buffer completely
+                let mut events = vec![];
+                input_parser.parse(
+                    &buf,
+                    |input_event: InputEvent| {
+                        events.push(input_event);
+                    },
+                    maybe_more,
+                );
+
+                let event_count = events.len();
+                for (i, input_event) in events.into_iter().enumerate() {
+                    if holding_mouse && is_mouse_press_or_hold(&input_event) && i == event_count - 1
+                    {
+                        let mut poller = os_input.stdin_poller();
+                        loop {
+                            if poller.ready() {
+                                break;
+                            }
+                            send_input_instructions
+                                .send(InputInstruction::KeyEvent(
+                                    input_event.clone(),
+                                    current_buffer.clone(),
+                                ))
+                                .unwrap();
+                        }
+                    }
+
+                    holding_mouse = is_mouse_press_or_hold(&input_event);
+
                     send_input_instructions
                         .send(InputInstruction::KeyEvent(
-                            input_event.clone(),
-                            current_buffer.clone(),
+                            input_event,
+                            current_buffer.drain(..).collect(),
                         ))
                         .unwrap();
                 }
-            }
-
-            holding_mouse = is_mouse_press_or_hold(&input_event);
-
-            send_input_instructions
-                .send(InputInstruction::KeyEvent(
-                    input_event,
-                    current_buffer.drain(..).collect(),
-                ))
-                .unwrap();
+            },
+            Err(e) => {
+                if e == "Session ended" {
+                    log::debug!("Switched sessions, signing this thread off...");
+                } else {
+                    log::error!("Failed to read from STDIN: {}", e);
+                }
+                let _ = send_input_instructions.send(InputInstruction::Exit);
+                break;
+            },
         }
     }
 }

@@ -23,8 +23,8 @@ use crate::{
 };
 use zellij_utils::{
     channels::{self, ChannelWithContext, SenderWithContext},
-    consts::ZELLIJ_IPC_PIPE,
-    data::{ClientId, InputMode, Style},
+    consts::{set_permissions, ZELLIJ_SOCK_DIR},
+    data::{ClientId, ConnectToSession, InputMode, Style},
     envs,
     errors::{ClientContext, ContextType, ErrorInstruction},
     input::{config::Config, options::Options},
@@ -46,6 +46,7 @@ pub(crate) enum ClientInstruction {
     StartedParsingStdinQuery,
     DoneParsingStdinQuery,
     Log(Vec<String>),
+    SwitchSession(ConnectToSession),
 }
 
 impl From<ServerToClientMsg> for ClientInstruction {
@@ -60,6 +61,9 @@ impl From<ServerToClientMsg> for ClientInstruction {
             ServerToClientMsg::Connected => ClientInstruction::Connected,
             ServerToClientMsg::ActiveClients(clients) => ClientInstruction::ActiveClients(clients),
             ServerToClientMsg::Log(log_lines) => ClientInstruction::Log(log_lines),
+            ServerToClientMsg::SwitchSession(connect_to_session) => {
+                ClientInstruction::SwitchSession(connect_to_session)
+            },
         }
     }
 }
@@ -77,6 +81,7 @@ impl From<&ClientInstruction> for ClientContext {
             ClientInstruction::Log(_) => ClientContext::Log,
             ClientInstruction::StartedParsingStdinQuery => ClientContext::StartedParsingStdinQuery,
             ClientInstruction::DoneParsingStdinQuery => ClientContext::DoneParsingStdinQuery,
+            ClientInstruction::SwitchSession(..) => ClientContext::SwitchSession,
         }
     }
 }
@@ -130,6 +135,7 @@ pub(crate) enum InputInstruction {
     AnsiStdinInstructions(Vec<AnsiStdinInstruction>),
     StartedParsing,
     DoneParsing,
+    Exit,
 }
 
 pub fn start_client(
@@ -139,8 +145,12 @@ pub fn start_client(
     config_options: Options,
     info: ClientInfo,
     layout: Option<Layout>,
-) {
+    tab_position_to_focus: Option<usize>,
+    pane_id_to_focus: Option<(u32, bool)>, // (pane_id, is_plugin)
+) -> Option<ConnectToSession> {
     info!("Starting Zellij client!");
+
+    let mut reconnect_to_session = None;
     let clear_client_terminal_attributes = "\u{1b}[?1l\u{1b}=\u{1b}[r\u{1b}[?1000l\u{1b}[?1002l\u{1b}[?1003l\u{1b}[?1005l\u{1b}[?1006l\u{1b}[?12l";
     let take_snapshot = "\u{1b}[?1049h";
     let bracketed_paste = "\u{1b}[?2004h";
@@ -172,28 +182,51 @@ pub fn start_client(
         keybinds: config.keybinds.clone(),
     };
 
-    let first_msg = match info {
-        ClientInfo::Attach(name, config_options) => {
-            envs::set_session_name(name);
+    let create_ipc_pipe = || -> std::path::PathBuf {
+        let mut sock_dir = ZELLIJ_SOCK_DIR.clone();
+        std::fs::create_dir_all(&sock_dir).unwrap();
+        set_permissions(&sock_dir, 0o700).unwrap();
+        sock_dir.push(envs::get_session_name().unwrap());
+        sock_dir
+    };
 
-            ClientToServerMsg::AttachClient(client_attributes, config_options)
+    let (first_msg, ipc_pipe) = match info {
+        ClientInfo::Attach(name, config_options) => {
+            envs::set_session_name(name.clone());
+            os_input.update_session_name(name);
+            let ipc_pipe = create_ipc_pipe();
+
+            (
+                ClientToServerMsg::AttachClient(
+                    client_attributes,
+                    config_options,
+                    tab_position_to_focus,
+                    pane_id_to_focus,
+                ),
+                ipc_pipe,
+            )
         },
         ClientInfo::New(name) => {
-            envs::set_session_name(name);
+            envs::set_session_name(name.clone());
+            os_input.update_session_name(name);
+            let ipc_pipe = create_ipc_pipe();
 
-            spawn_server(&*ZELLIJ_IPC_PIPE, opts.debug).unwrap();
+            spawn_server(&*ipc_pipe, opts.debug).unwrap();
 
-            ClientToServerMsg::NewClient(
-                client_attributes,
-                Box::new(opts),
-                Box::new(config_options.clone()),
-                Box::new(layout.unwrap()),
-                Some(config.plugins.clone()),
+            (
+                ClientToServerMsg::NewClient(
+                    client_attributes,
+                    Box::new(opts),
+                    Box::new(config_options.clone()),
+                    Box::new(layout.unwrap()),
+                    Some(config.plugins.clone()),
+                ),
+                ipc_pipe,
             )
         },
     };
 
-    os_input.connect_to_server(&*ZELLIJ_IPC_PIPE);
+    os_input.connect_to_server(&*ipc_pipe);
     os_input.send_to_server(first_msg);
 
     let mut command_is_executing = CommandIsExecuting::new();
@@ -336,7 +369,7 @@ pub fn start_client(
         std::process::exit(1);
     };
 
-    let exit_msg: String;
+    let mut exit_msg = String::new();
     let mut loading = true;
     let mut pending_instructions = vec![];
 
@@ -415,28 +448,43 @@ pub fn start_client(
                     log::info!("{line}");
                 }
             },
+            ClientInstruction::SwitchSession(connect_to_session) => {
+                reconnect_to_session = Some(connect_to_session);
+                os_input.send_to_server(ClientToServerMsg::ClientExited);
+                break;
+            },
             _ => {},
         }
     }
 
     router_thread.join().unwrap();
 
-    // cleanup();
-    let reset_style = "\u{1b}[m";
-    let show_cursor = "\u{1b}[?25h";
-    let restore_snapshot = "\u{1b}[?1049l";
-    let goto_start_of_last_line = format!("\u{1b}[{};{}H", full_screen_ws.rows, 1);
-    let goodbye_message = format!(
-        "{}\n{}{}{}{}\n",
-        goto_start_of_last_line, restore_snapshot, reset_style, show_cursor, exit_msg
-    );
+    if reconnect_to_session.is_none() {
+        let reset_style = "\u{1b}[m";
+        let show_cursor = "\u{1b}[?25h";
+        let restore_snapshot = "\u{1b}[?1049l";
+        let goto_start_of_last_line = format!("\u{1b}[{};{}H", full_screen_ws.rows, 1);
+        let goodbye_message = format!(
+            "{}\n{}{}{}{}\n",
+            goto_start_of_last_line, restore_snapshot, reset_style, show_cursor, exit_msg
+        );
 
-    os_input.disable_mouse().non_fatal();
-    info!("{}", exit_msg);
-    os_input.unset_raw_mode(0).unwrap();
-    let mut stdout = os_input.get_stdout_writer();
-    let _ = stdout.write(goodbye_message.as_bytes()).unwrap();
-    stdout.flush().unwrap();
+        os_input.disable_mouse().non_fatal();
+        info!("{}", exit_msg);
+        os_input.unset_raw_mode(0).unwrap();
+        let mut stdout = os_input.get_stdout_writer();
+        let _ = stdout.write(goodbye_message.as_bytes()).unwrap();
+        stdout.flush().unwrap();
+    } else {
+        let clear_screen = "\u{1b}[2J";
+        let mut stdout = os_input.get_stdout_writer();
+        let _ = stdout.write(clear_screen.as_bytes()).unwrap();
+        stdout.flush().unwrap();
+    }
+
+    let _ = send_input_instructions.send(InputInstruction::Exit);
+
+    reconnect_to_session
 }
 
 #[cfg(test)]

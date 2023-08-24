@@ -343,6 +343,7 @@ pub enum ScreenContext {
     BreakPane,
     BreakPaneRight,
     BreakPaneLeft,
+    UpdateSessionInfos,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.
@@ -397,6 +398,7 @@ pub enum ClientContext {
     OwnClientId,
     StartedParsingStdinQuery,
     DoneParsingStdinQuery,
+    SwitchSession,
 }
 
 /// Stack call representations corresponding to the different types of [`ServerInstruction`]s.
@@ -414,6 +416,7 @@ pub enum ServerContext {
     ConnStatus,
     ActiveClients,
     Log,
+    SwitchSession,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -430,6 +433,8 @@ pub enum BackgroundJobContext {
     DisplayPaneError,
     AnimatePluginLoading,
     StopPluginLoadingAnimation,
+    ReadAllSessionInfosOnMachine,
+    ReportSessionInfo,
     Exit,
 }
 

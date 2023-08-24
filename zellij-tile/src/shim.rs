@@ -563,6 +563,34 @@ where
     unsafe { host_run_plugin_command() };
 }
 
+/// Switch to a session with the given name, create one if no name is given
+pub fn switch_session(name: Option<&str>) {
+    let plugin_command = PluginCommand::SwitchSession(ConnectToSession {
+        name: name.map(|n| n.to_string()),
+        ..Default::default()
+    });
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+/// Switch to a session with the given name, focusing either the provided pane_id or the provided
+/// tab position (in that order)
+pub fn switch_session_with_focus(
+    name: &str,
+    tab_position: Option<usize>,
+    pane_id: Option<(u32, bool)>,
+) {
+    let plugin_command = PluginCommand::SwitchSession(ConnectToSession {
+        name: Some(name.to_owned()),
+        tab_position,
+        pane_id,
+    });
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 // Utility Functions
 
 /// Returns the `TabInfo` corresponding to the currently active tab

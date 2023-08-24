@@ -41,7 +41,7 @@ use zellij_utils::{
     channels::{self, ChannelWithContext, SenderWithContext},
     cli::CliArgs,
     consts::{DEFAULT_SCROLL_BUFFER_SIZE, SCROLL_BUFFER_SIZE},
-    data::{Event, PluginCapabilities},
+    data::{ConnectToSession, Event, PluginCapabilities},
     errors::{prelude::*, ContextType, ErrorInstruction, FatalError, ServerContext},
     home::get_default_data_dir,
     input::{
@@ -74,10 +74,17 @@ pub enum ServerInstruction {
     Error(String),
     KillSession,
     DetachSession(Vec<ClientId>),
-    AttachClient(ClientAttributes, Options, ClientId),
+    AttachClient(
+        ClientAttributes,
+        Options,
+        Option<usize>,       // tab position to focus
+        Option<(u32, bool)>, // (pane_id, is_plugin) => pane_id to focus
+        ClientId,
+    ),
     ConnStatus(ClientId),
     ActiveClients(ClientId),
     Log(Vec<String>, ClientId),
+    SwitchSession(ConnectToSession, ClientId),
 }
 
 impl From<&ServerInstruction> for ServerContext {
@@ -95,6 +102,7 @@ impl From<&ServerInstruction> for ServerContext {
             ServerInstruction::ConnStatus(..) => ServerContext::ConnStatus,
             ServerInstruction::ActiveClients(_) => ServerContext::ActiveClients,
             ServerInstruction::Log(..) => ServerContext::Log,
+            ServerInstruction::SwitchSession(..) => ServerContext::SwitchSession,
         }
     }
 }
@@ -415,7 +423,13 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .send_to_plugin(PluginInstruction::AddClient(client_id))
                     .unwrap();
             },
-            ServerInstruction::AttachClient(attrs, options, client_id) => {
+            ServerInstruction::AttachClient(
+                attrs,
+                options,
+                tab_position_to_focus,
+                pane_id_to_focus,
+                client_id,
+            ) => {
                 let rlock = session_data.read().unwrap();
                 let session_data = rlock.as_ref().unwrap();
                 session_state
@@ -433,7 +447,11 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .unwrap();
                 session_data
                     .senders
-                    .send_to_screen(ScreenInstruction::AddClient(client_id))
+                    .send_to_screen(ScreenInstruction::AddClient(
+                        client_id,
+                        tab_position_to_focus,
+                        pane_id_to_focus,
+                    ))
                     .unwrap();
                 session_data
                     .senders
@@ -635,6 +653,41 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     session_state
                 );
             },
+            ServerInstruction::SwitchSession(connect_to_session, client_id) => {
+                if let Some(min_size) = session_state.read().unwrap().min_client_terminal_size() {
+                    session_data
+                        .write()
+                        .unwrap()
+                        .as_ref()
+                        .unwrap()
+                        .senders
+                        .send_to_screen(ScreenInstruction::TerminalResize(min_size))
+                        .unwrap();
+                }
+                session_data
+                    .write()
+                    .unwrap()
+                    .as_ref()
+                    .unwrap()
+                    .senders
+                    .send_to_screen(ScreenInstruction::RemoveClient(client_id))
+                    .unwrap();
+                session_data
+                    .write()
+                    .unwrap()
+                    .as_ref()
+                    .unwrap()
+                    .senders
+                    .send_to_plugin(PluginInstruction::RemoveClient(client_id))
+                    .unwrap();
+                send_to_client!(
+                    client_id,
+                    os_input,
+                    ServerToClientMsg::SwitchSession(connect_to_session),
+                    session_state
+                );
+                remove_client!(client_id, os_input, session_state);
+            },
         }
     }
 
@@ -664,13 +717,11 @@ fn init_session(
         plugins,
     } = options;
 
-    SCROLL_BUFFER_SIZE
-        .set(
-            config_options
-                .scroll_buffer_size
-                .unwrap_or(DEFAULT_SCROLL_BUFFER_SIZE),
-        )
-        .unwrap();
+    let _ = SCROLL_BUFFER_SIZE.set(
+        config_options
+            .scroll_buffer_size
+            .unwrap_or(DEFAULT_SCROLL_BUFFER_SIZE),
+    );
 
     let (to_screen, screen_receiver): ChannelWithContext<ScreenInstruction> = channels::unbounded();
     let to_screen = SenderWithContext::new(to_screen);

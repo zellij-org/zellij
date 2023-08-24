@@ -782,6 +782,7 @@ fn check_event_permission(
         Event::ModeUpdate(..)
         | Event::TabUpdate(..)
         | Event::PaneUpdate(..)
+        | Event::SessionUpdate(..)
         | Event::CopyToClipboard(..)
         | Event::SystemClipboardFailure
         | Event::InputReceived => PermissionType::ReadApplicationState,

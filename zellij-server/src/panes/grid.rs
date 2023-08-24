@@ -1351,7 +1351,7 @@ impl Grid {
         self.viewport.get(y).unwrap().absolute_character_index(x)
     }
     pub fn move_cursor_forward_until_edge(&mut self, count: usize) {
-        let count_to_move = std::cmp::min(count, self.width - self.cursor.x);
+        let count_to_move = std::cmp::min(count, self.width.saturating_sub(self.cursor.x));
         self.cursor.x += count_to_move;
     }
     pub fn replace_characters_in_line_after_cursor(&mut self, replace_with: TerminalCharacter) {
