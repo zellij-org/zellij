@@ -144,21 +144,17 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<Key>)> {
     }
 
     if mi.mode == IM::Pane { vec![
-        (s("Move focus"), s("Move"),
+        (s("New"), s("New"), action_key(&km, &[A::NewPane(None, None), TO_NORMAL])),
+        (s("Change Focus"), s("Move"),
             action_key_group(&km, &[&[A::MoveFocus(Dir::Left)], &[A::MoveFocus(Dir::Down)],
                 &[A::MoveFocus(Dir::Up)], &[A::MoveFocus(Dir::Right)]])),
-        (s("New"), s("New"), action_key(&km, &[A::NewPane(None, None), TO_NORMAL])),
         (s("Close"), s("Close"), action_key(&km, &[A::CloseFocus, TO_NORMAL])),
         (s("Rename"), s("Rename"),
             action_key(&km, &[A::SwitchToMode(IM::RenamePane), A::PaneNameInput(vec![0])])),
-        (s("Split down"), s("Down"), action_key(&km, &[A::NewPane(Some(Dir::Down), None), TO_NORMAL])),
-        (s("Split right"), s("Right"), action_key(&km, &[A::NewPane(Some(Dir::Right), None), TO_NORMAL])),
-        (s("Fullscreen"), s("Fullscreen"), action_key(&km, &[A::ToggleFocusFullscreen, TO_NORMAL])),
-        (s("Frames"), s("Frames"), action_key(&km, &[A::TogglePaneFrames, TO_NORMAL])),
-        (s("Floating toggle"), s("Floating"),
+        (s("Toggle Fullscreen"), s("Fullscreen"), action_key(&km, &[A::ToggleFocusFullscreen, TO_NORMAL])),
+        (s("Toggle Floating"), s("Floating"),
             action_key(&km, &[A::ToggleFloatingPanes, TO_NORMAL])),
-        (s("Embed pane"), s("Embed"), action_key(&km, &[A::TogglePaneEmbedOrFloating, TO_NORMAL])),
-        (s("Next"), s("Next"), action_key(&km, &[A::SwitchFocus])),
+        (s("Toggle Embed"), s("Embed"), action_key(&km, &[A::TogglePaneEmbedOrFloating, TO_NORMAL])),
         (s("Select pane"), s("Select"), to_normal_key),
     ]} else if mi.mode == IM::Tab {
         // With the default bindings, "Move focus" for tabs is tricky: It binds all the arrow keys
@@ -178,20 +174,20 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<Key>)> {
         };
 
         vec![
-        (s("Move focus"), s("Move"), focus_keys),
         (s("New"), s("New"), action_key(&km, &[A::NewTab(None, vec![], None, None, None), TO_NORMAL])),
+        (s("Change focus"), s("Move"), focus_keys),
         (s("Close"), s("Close"), action_key(&km, &[A::CloseTab, TO_NORMAL])),
         (s("Rename"), s("Rename"),
             action_key(&km, &[A::SwitchToMode(IM::RenameTab), A::TabNameInput(vec![0])])),
         (s("Sync"), s("Sync"), action_key(&km, &[A::ToggleActiveSyncTab, TO_NORMAL])),
-        (s("Break pane to new tab"), s("Break"), action_key(&km, &[A::BreakPane, TO_NORMAL])),
-        (s("Break pane to next/prev tab"), s("Break next/prev"),
-            action_key_group(&km, &[
-                &[A::BreakPaneLeft, TO_NORMAL],
-                &[A::BreakPaneRight, TO_NORMAL]
-            ])),
+        (s("Toggle"), s("Toggle"), action_key(&km, &[A::ToggleTab])),
         (s("Select pane"), s("Select"), to_normal_key),
     ]} else if mi.mode == IM::Resize { vec![
+        (s("Increase/Decrease size"), s("Increase/Decrease"),
+            action_key_group(&km, &[
+                &[A::Resize(Resize::Increase, None)],
+                &[A::Resize(Resize::Decrease, None)]
+            ])),
         (s("Increase to"), s("Increase"), action_key_group(&km, &[
             &[A::Resize(Resize::Increase, Some(Dir::Left))],
             &[A::Resize(Resize::Increase, Some(Dir::Down))],
@@ -204,19 +200,14 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<Key>)> {
             &[A::Resize(Resize::Decrease, Some(Dir::Up))],
             &[A::Resize(Resize::Decrease, Some(Dir::Right))]
             ])),
-        (s("Increase/Decrease size"), s("Increase/Decrease"),
-            action_key_group(&km, &[
-                &[A::Resize(Resize::Increase, None)],
-                &[A::Resize(Resize::Decrease, None)]
-            ])),
         (s("Select pane"), s("Select"), to_normal_key),
     ]} else if mi.mode == IM::Move { vec![
-        (s("Move"), s("Move"), action_key_group(&km, &[
+        (s("Switch Location"), s("Move"), action_key_group(&km, &[
             &[Action::MovePane(Some(Dir::Left))], &[Action::MovePane(Some(Dir::Down))],
             &[Action::MovePane(Some(Dir::Up))], &[Action::MovePane(Some(Dir::Right))]])),
-        (s("Next pane"), s("Next"), action_key(&km, &[Action::MovePane(None)])),
-        (s("Previous pane"), s("Previous"), action_key(&km, &[Action::MovePaneBackwards])),
     ]} else if mi.mode == IM::Scroll { vec![
+        (s("Enter search term"), s("Search"),
+            action_key(&km, &[A::SwitchToMode(IM::EnterSearch), A::SearchInput(vec![0])])),
         (s("Scroll"), s("Scroll"),
             action_key_group(&km, &[&[Action::ScrollDown], &[Action::ScrollUp]])),
         (s("Scroll page"), s("Scroll"),
@@ -225,22 +216,20 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<Key>)> {
             action_key_group(&km, &[&[Action::HalfPageScrollDown], &[Action::HalfPageScrollUp]])),
         (s("Edit scrollback in default editor"), s("Edit"),
             action_key(&km, &[Action::EditScrollback, TO_NORMAL])),
-        (s("Enter search term"), s("Search"),
-            action_key(&km, &[A::SwitchToMode(IM::EnterSearch), A::SearchInput(vec![0])])),
         (s("Select pane"), s("Select"), to_normal_key),
     ]} else if mi.mode == IM::EnterSearch { vec![
         (s("When done"), s("Done"), action_key(&km, &[A::SwitchToMode(IM::Search)])),
         (s("Cancel"), s("Cancel"),
             action_key(&km, &[A::SearchInput(vec![27]), A::SwitchToMode(IM::Scroll)])),
     ]} else if mi.mode == IM::Search { vec![
+        (s("Enter Search term"), s("Search"),
+            action_key(&km, &[A::SwitchToMode(IM::EnterSearch), A::SearchInput(vec![0])])),
         (s("Scroll"), s("Scroll"),
             action_key_group(&km, &[&[Action::ScrollDown], &[Action::ScrollUp]])),
         (s("Scroll page"), s("Scroll"),
             action_key_group(&km, &[&[Action::PageScrollDown], &[Action::PageScrollUp]])),
         (s("Scroll half page"), s("Scroll"),
             action_key_group(&km, &[&[Action::HalfPageScrollDown], &[Action::HalfPageScrollUp]])),
-        (s("Enter term"), s("Search"),
-            action_key(&km, &[A::SwitchToMode(IM::EnterSearch), A::SearchInput(vec![0])])),
         (s("Search down"), s("Down"), action_key(&km, &[A::Search(SDir::Down)])),
         (s("Search up"), s("Up"), action_key(&km, &[A::Search(SDir::Up)])),
         (s("Case sensitive"), s("Case"),
