@@ -1,10 +1,10 @@
 syntax = "proto3";
 
+import "action.proto";
 import "event.proto";
 import "file.proto";
 import "command.proto";
 import "message.proto";
-import "input_mode.proto";
 import "resize.proto";
 import "plugin_permission.proto";
 
@@ -99,7 +99,7 @@ message PluginCommand {
     PluginMessagePayload post_message_to_payload = 14;
     PluginMessagePayload post_message_to_plugin_payload = 15;
     bool show_self_payload = 16;
-    SwitchToModePayload switch_to_mode_payload = 17;
+    action.SwitchToModePayload switch_to_mode_payload = 17;
     string new_tabs_with_layout_payload = 18;
     ResizePayload resize_payload = 19;
     ResizePayload resize_with_direction_payload = 20;
@@ -110,12 +110,12 @@ message PluginCommand {
     MovePayload move_pane_with_direction_payload = 25;
     string go_to_tab_name_payload = 26;
     string focus_or_create_tab_payload = 27;
-    int32 go_to_tab_payload = 28;
+    uint32 go_to_tab_payload = 28;
     string start_or_reload_plugin_payload = 29;
-    int32 close_terminal_pane_payload = 30;
-    int32 close_plugin_pane_payload = 31;
-    PaneIdAndShouldFloat focus_terminal_pane_payload = 32;
-    PaneIdAndShouldFloat focus_plugin_pane_payload = 33;
+    uint32 close_terminal_pane_payload = 30;
+    uint32 close_plugin_pane_payload = 31;
+    action.PaneIdAndShouldFloat focus_terminal_pane_payload = 32;
+    action.PaneIdAndShouldFloat focus_plugin_pane_payload = 33;
     IdAndNewName rename_terminal_pane_payload = 34;
     IdAndNewName rename_plugin_pane_payload = 35;
     IdAndNewName rename_tab_payload = 36;
@@ -153,11 +153,11 @@ message OpenCommandPanePayload {
 }
 
 message SwitchTabToPayload {
-  int32 tab_index = 1;
+  uint32 tab_index = 1;
 }
 
 message SetTimeoutPayload {
-  float seconds = 1;
+  double seconds = 1;
 }
 
 message ExecCmdPayload {
@@ -168,10 +168,6 @@ message PluginMessagePayload {
   api.message.Message message = 1;
 }
 
-message SwitchToModePayload {
-  input_mode.InputModeMessage input_mode = 1;
-}
-
 message ResizePayload {
   resize.Resize resize = 1;
 }
@@ -180,12 +176,7 @@ message MovePayload {
   resize.MoveDirection direction = 1;
 }
 
-message PaneIdAndShouldFloat {
-  int32 pane_id = 1;
-  bool should_float = 2;
-}
-
 message IdAndNewName {
-  int32 id = 1; // pane id or tab index
+  uint32 id = 1; // pane id or tab index
   string new_name = 2;
 }

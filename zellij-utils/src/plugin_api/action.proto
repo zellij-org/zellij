@@ -61,7 +61,7 @@ message IdAndName {
 
 message PaneIdAndShouldFloat {
   uint32 pane_id = 1;
-  bool should_float_if_hidden = 2;
+  bool should_float = 2;
 }
 
 message NewPluginPanePayload {
