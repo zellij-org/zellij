@@ -16,8 +16,8 @@ use zellij_utils::pane_size::{PaneGeom, Size, SizeInPixels};
 use zellij_utils::{
     input::command::TerminalAction,
     input::layout::{
-        FloatingPaneLayout, Layout, Run, RunPlugin, RunPluginLocation, SwapFloatingLayout,
-        SwapTiledLayout, TiledPaneLayout,
+        FloatingPaneLayout, Layout, PluginUserConfiguration, Run, RunPlugin, RunPluginLocation,
+        SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,
     },
     persistence,
     position::Position,
@@ -210,7 +210,7 @@ pub enum ScreenInstruction {
         Vec<FloatingPaneLayout>,
         Vec<(u32, HoldForCommand)>, // new pane pids
         Vec<(u32, HoldForCommand)>, // new floating pane pids
-        HashMap<RunPluginLocation, Vec<u32>>,
+        HashMap<(RunPluginLocation, PluginUserConfiguration), Vec<u32>>,
         usize, // tab_index
         ClientId,
     ),
@@ -1128,7 +1128,7 @@ impl Screen {
         floating_panes_layout: Vec<FloatingPaneLayout>,
         new_terminal_ids: Vec<(u32, HoldForCommand)>,
         new_floating_terminal_ids: Vec<(u32, HoldForCommand)>,
-        new_plugin_ids: HashMap<RunPluginLocation, Vec<u32>>,
+        new_plugin_ids: HashMap<(RunPluginLocation, PluginUserConfiguration), Vec<u32>>,
         tab_index: usize,
         client_id: ClientId,
     ) -> Result<()> {

@@ -2501,10 +2501,7 @@ Config {
                             ),
                         ),
                         configuration: PluginUserConfiguration(
-                            {
-                                "floating": "true",
-                                "move_to_focused_tab": "true",
-                            },
+                            {},
                         ),
                     },
                     true,
