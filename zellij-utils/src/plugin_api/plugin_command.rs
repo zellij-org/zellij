@@ -2,13 +2,15 @@ pub use super::generated_api::api::{
     event::EventNameList as ProtobufEventNameList,
     plugin_command::{
         plugin_command::Payload, CommandName, ExecCmdPayload, IdAndNewName, MovePayload,
-        OpenCommandPanePayload, OpenFilePayload, PaneIdAndShouldFloat,
+        OpenCommandPanePayload, OpenFilePayload,
         PluginCommand as ProtobufPluginCommand, PluginMessagePayload,
         RequestPluginPermissionPayload, ResizePayload, SetTimeoutPayload, SubscribePayload,
-        SwitchSessionPayload, SwitchTabToPayload, SwitchToModePayload, UnsubscribePayload,
+        SwitchSessionPayload, SwitchTabToPayload, UnsubscribePayload,
     },
     plugin_permission::PermissionType as ProtobufPermissionType,
     resize::ResizeAction as ProtobufResizeAction,
+    action::{PaneIdAndShouldFloat, SwitchToModePayload},
+    input_mode::{InputMode as ProtobufInputMode},
 };
 
 use crate::data::{ConnectToSession, PermissionType, PluginCommand};
@@ -179,8 +181,8 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
             },
             Some(CommandName::SwitchToMode) => match protobuf_plugin_command.payload {
                 Some(Payload::SwitchToModePayload(switch_to_mode_payload)) => {
-                    match switch_to_mode_payload.input_mode {
-                        Some(input_mode) => Ok(PluginCommand::SwitchToMode(input_mode.try_into()?)),
+                    match ProtobufInputMode::from_i32(switch_to_mode_payload.input_mode) {
+                        Some(protobuf_input_mode) => Ok(PluginCommand::SwitchToMode(protobuf_input_mode.try_into()?)),
                         None => Err("Malformed switch to mode payload"),
                     }
                 },
@@ -597,7 +599,7 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
             PluginCommand::SwitchTabTo(tab_index) => Ok(ProtobufPluginCommand {
                 name: CommandName::SwitchTabTo as i32,
                 payload: Some(Payload::SwitchTabToPayload(SwitchTabToPayload {
-                    tab_index: tab_index as i32,
+                    tab_index: tab_index,
                 })),
             }),
             PluginCommand::SetTimeout(seconds) => Ok(ProtobufPluginCommand {
@@ -631,7 +633,7 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
             PluginCommand::SwitchToMode(input_mode) => Ok(ProtobufPluginCommand {
                 name: CommandName::SwitchToMode as i32,
                 payload: Some(Payload::SwitchToModePayload(SwitchToModePayload {
-                    input_mode: Some(input_mode.try_into()?),
+                    input_mode: ProtobufInputMode::try_from(input_mode)? as i32
                 })),
             }),
             PluginCommand::NewTabsWithLayout(raw_layout) => Ok(ProtobufPluginCommand {
@@ -794,7 +796,7 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
             }),
             PluginCommand::GoToTab(tab_index) => Ok(ProtobufPluginCommand {
                 name: CommandName::GoToTab as i32,
-                payload: Some(Payload::GoToTabPayload(tab_index as i32)),
+                payload: Some(Payload::GoToTabPayload(tab_index)),
             }),
             PluginCommand::StartOrReloadPlugin(url) => Ok(ProtobufPluginCommand {
                 name: CommandName::StartOrReloadPlugin as i32,
@@ -802,17 +804,17 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
             }),
             PluginCommand::CloseTerminalPane(pane_id) => Ok(ProtobufPluginCommand {
                 name: CommandName::CloseTerminalPane as i32,
-                payload: Some(Payload::CloseTerminalPanePayload(pane_id as i32)),
+                payload: Some(Payload::CloseTerminalPanePayload(pane_id)),
             }),
             PluginCommand::ClosePluginPane(pane_id) => Ok(ProtobufPluginCommand {
                 name: CommandName::ClosePluginPane as i32,
-                payload: Some(Payload::ClosePluginPanePayload(pane_id as i32)),
+                payload: Some(Payload::ClosePluginPanePayload(pane_id)),
             }),
             PluginCommand::FocusTerminalPane(pane_id, should_float_if_hidden) => {
                 Ok(ProtobufPluginCommand {
                     name: CommandName::FocusTerminalPane as i32,
                     payload: Some(Payload::FocusTerminalPanePayload(PaneIdAndShouldFloat {
-                        pane_id: pane_id as i32,
+                        pane_id: pane_id,
                         should_float: should_float_if_hidden,
                     })),
                 })
@@ -821,7 +823,7 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                 Ok(ProtobufPluginCommand {
                     name: CommandName::FocusPluginPane as i32,
                     payload: Some(Payload::FocusPluginPanePayload(PaneIdAndShouldFloat {
-                        pane_id: pane_id as i32,
+                        pane_id: pane_id,
                         should_float: should_float_if_hidden,
                     })),
                 })
@@ -829,21 +831,21 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
             PluginCommand::RenameTerminalPane(pane_id, new_name) => Ok(ProtobufPluginCommand {
                 name: CommandName::RenameTerminalPane as i32,
                 payload: Some(Payload::RenameTerminalPanePayload(IdAndNewName {
-                    id: pane_id as i32,
+                    id: pane_id,
                     new_name,
                 })),
             }),
             PluginCommand::RenamePluginPane(pane_id, new_name) => Ok(ProtobufPluginCommand {
                 name: CommandName::RenamePluginPane as i32,
                 payload: Some(Payload::RenamePluginPanePayload(IdAndNewName {
-                    id: pane_id as i32,
+                    id: pane_id,
                     new_name,
                 })),
             }),
             PluginCommand::RenameTab(tab_index, new_name) => Ok(ProtobufPluginCommand {
                 name: CommandName::RenameTab as i32,
                 payload: Some(Payload::RenameTabPayload(IdAndNewName {
-                    id: tab_index as i32,
+                    id: tab_index,
                     new_name,
                 })),
             }),

@@ -562,7 +562,7 @@ impl TryFrom<ProtobufAction> for Action {
                 match protobuf_action.optional_payload {
                     Some(OptionalPayload::FocusTerminalPaneWithIdPayload(payload)) => {
                         let terminal_pane_id = payload.pane_id;
-                        let should_float_if_hidden = payload.should_float_if_hidden;
+                        let should_float_if_hidden = payload.should_float;
                         Ok(Action::FocusTerminalPaneWithId(
                             terminal_pane_id,
                             should_float_if_hidden,
@@ -575,7 +575,7 @@ impl TryFrom<ProtobufAction> for Action {
                 match protobuf_action.optional_payload {
                     Some(OptionalPayload::FocusPluginPaneWithIdPayload(payload)) => {
                         let plugin_pane_id = payload.pane_id;
-                        let should_float_if_hidden = payload.should_float_if_hidden;
+                        let should_float_if_hidden = payload.should_float;
                         Ok(Action::FocusPluginPaneWithId(
                             plugin_pane_id,
                             should_float_if_hidden,
@@ -1098,7 +1098,7 @@ impl TryFrom<Action> for ProtobufAction {
                     optional_payload: Some(OptionalPayload::FocusTerminalPaneWithIdPayload(
                         PaneIdAndShouldFloat {
                             pane_id: terminal_pane_id,
-                            should_float_if_hidden,
+                            should_float: should_float_if_hidden,
                         },
                     )),
                 })
@@ -1109,7 +1109,7 @@ impl TryFrom<Action> for ProtobufAction {
                     optional_payload: Some(OptionalPayload::FocusPluginPaneWithIdPayload(
                         PaneIdAndShouldFloat {
                             pane_id: plugin_pane_id,
-                            should_float_if_hidden,
+                            should_float: should_float_if_hidden,
                         },
                     )),
                 })

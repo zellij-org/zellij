@@ -1005,7 +1005,7 @@ pub enum PluginCommand {
     OpenCommandPane(CommandToRun),
     OpenCommandPaneFloating(CommandToRun),
     SwitchTabTo(u32), // tab index
-    SetTimeout(f32),  // seconds
+    SetTimeout(f64),  // seconds
     ExecCmd(Vec<String>),
     PostMessageTo(PluginMessage),
     PostMessageToPlugin(PluginMessage),
