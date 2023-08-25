@@ -870,6 +870,9 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                 let cwd = command_metadata
                     .and_then(|c_m| kdl_child_string_value_for_entry(c_m, "cwd"))
                     .map(|cwd_string| PathBuf::from(cwd_string));
+                let name = command_metadata
+                    .and_then(|c_m| kdl_child_string_value_for_entry(c_m, "name"))
+                    .map(|name_string| name_string.to_string());
                 let direction = command_metadata
                     .and_then(|c_m| kdl_child_string_value_for_entry(c_m, "direction"))
                     .and_then(|direction_string| Direction::from_str(direction_string).ok());
@@ -880,6 +883,9 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                 let hold_on_start = command_metadata
                     .and_then(|c_m| kdl_child_bool_value_for_entry(c_m, "start_suspended"))
                     .unwrap_or(false);
+                let floating = command_metadata
+                    .and_then(|c_m| kdl_child_bool_value_for_entry(c_m, "floating"))
+                    .unwrap_or(false);
                 let run_command_action = RunCommandAction {
                     command: PathBuf::from(command),
                     args,
@@ -888,7 +894,18 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                     hold_on_close,
                     hold_on_start,
                 };
-                Ok(Action::Run(run_command_action))
+                if floating {
+                    Ok(Action::NewFloatingPane(
+                        Some(run_command_action),
+                        name,
+                    ))
+                } else {
+                    Ok(Action::NewTiledPane(
+                        direction,
+                        Some(run_command_action),
+                        name,
+                    ))
+                }
             },
             "LaunchOrFocusPlugin" => {
                 let arguments = action_arguments.iter().copied();
