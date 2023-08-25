@@ -204,7 +204,7 @@ pub enum Action {
     LeftClick(Position),
     RightClick(Position),
     MiddleClick(Position),
-    LaunchOrFocusPlugin(RunPlugin, bool), // bool => should float
+    LaunchOrFocusPlugin(RunPlugin, bool, bool), // bools => should float, move_to_focused_tab
     LeftMouseRelease(Position),
     RightMouseRelease(Position),
     MiddleMouseRelease(Position),
@@ -501,6 +501,7 @@ impl Action {
             CliAction::LaunchOrFocusPlugin {
                 url,
                 floating,
+                move_to_focused_tab,
                 configuration,
             } => {
                 let current_dir = get_current_dir();
@@ -511,7 +512,11 @@ impl Action {
                     _allow_exec_host_cmd: false,
                     configuration: configuration.unwrap_or_default(),
                 };
-                Ok(vec![Action::LaunchOrFocusPlugin(run_plugin, floating)])
+                Ok(vec![Action::LaunchOrFocusPlugin(
+                    run_plugin,
+                    floating,
+                    move_to_focused_tab,
+                )])
             },
         }
     }

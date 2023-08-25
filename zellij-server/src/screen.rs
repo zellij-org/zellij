@@ -281,9 +281,9 @@ pub enum ScreenInstruction {
     StartPluginLoadingIndication(u32, LoadingIndication), // u32 - plugin_id
     ProgressPluginLoadingOffset(u32),                 // u32 - plugin id
     RequestStateUpdateForPlugins,
-    LaunchOrFocusPlugin(RunPlugin, bool, ClientId), // bool is should_float
-    SuppressPane(PaneId, ClientId),                 // bool is should_float
-    FocusPaneWithId(PaneId, bool, ClientId),        // bool is should_float
+    LaunchOrFocusPlugin(RunPlugin, bool, bool, ClientId), // bools are: should_float, move_to_focused_tab
+    SuppressPane(PaneId, ClientId),                       // bool is should_float
+    FocusPaneWithId(PaneId, bool, ClientId),              // bool is should_float
     RenamePane(PaneId, Vec<u8>),
     RenameTab(usize, Vec<u8>),
     RequestPluginPermissions(
@@ -1618,17 +1618,46 @@ impl Screen {
         &mut self,
         run_plugin: &RunPlugin,
         should_float: bool,
+        move_to_focused_tab: bool,
         client_id: ClientId,
     ) -> Result<bool> {
         // true => found and focused, false => not
         let err_context = || format!("failed to focus_plugin_pane");
         let mut tab_index_and_plugin_pane_id = None;
+        let mut plugin_pane_to_move_to_active_tab = None;
+        let focused_tab_index = *self.active_tab_indices.get(&client_id).unwrap_or(&0);
         let all_tabs = self.get_tabs_mut();
         for (tab_index, tab) in all_tabs.iter_mut() {
             if let Some(plugin_pane_id) = tab.find_plugin(&run_plugin) {
                 tab_index_and_plugin_pane_id = Some((*tab_index, plugin_pane_id));
+                if move_to_focused_tab && focused_tab_index != *tab_index {
+                    plugin_pane_to_move_to_active_tab =
+                        tab.extract_pane(plugin_pane_id, Some(client_id));
+                }
+
                 break;
             }
+        }
+        if let Some(plugin_pane_to_move_to_active_tab) = plugin_pane_to_move_to_active_tab.take() {
+            let pane_id = plugin_pane_to_move_to_active_tab.pid();
+            let new_active_tab = self.get_active_tab_mut(client_id)?;
+
+            if should_float {
+                new_active_tab.show_floating_panes();
+                new_active_tab.add_floating_pane(
+                    plugin_pane_to_move_to_active_tab,
+                    pane_id,
+                    Some(client_id),
+                )?;
+            } else {
+                new_active_tab.hide_floating_panes();
+                new_active_tab.add_tiled_pane(
+                    plugin_pane_to_move_to_active_tab,
+                    pane_id,
+                    Some(client_id),
+                )?;
+            }
+            return Ok(true);
         }
         match tab_index_and_plugin_pane_id {
             Some((tab_index, plugin_pane_id)) => {
@@ -2969,7 +2998,12 @@ pub(crate) fn screen_thread_main(
                 screen.log_and_report_session_state()?;
                 screen.render()?;
             },
-            ScreenInstruction::LaunchOrFocusPlugin(run_plugin, should_float, client_id) => {
+            ScreenInstruction::LaunchOrFocusPlugin(
+                run_plugin,
+                should_float,
+                move_to_focused_tab,
+                client_id,
+            ) => {
                 let client_id = if screen.active_tab_indices.contains_key(&client_id) {
                     Some(client_id)
                 } else {
@@ -2983,7 +3017,12 @@ pub(crate) fn screen_thread_main(
                 });
                 match client_id_and_focused_tab {
                     Some((tab_index, client_id)) => {
-                        if screen.focus_plugin_pane(&run_plugin, should_float, client_id)? {
+                        if screen.focus_plugin_pane(
+                            &run_plugin,
+                            should_float,
+                            move_to_focused_tab,
+                            client_id,
+                        )? {
                             screen.render()?;
                             screen.log_and_report_session_state()?;
                         } else {

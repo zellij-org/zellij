@@ -2245,6 +2245,49 @@ impl Tab {
             closed_pane
         }
     }
+    pub fn extract_pane(
+        &mut self,
+        id: PaneId,
+        client_id: Option<ClientId>,
+    ) -> Option<Box<dyn Pane>> {
+        if self.floating_panes.panes_contain(&id) {
+            let closed_pane = self.floating_panes.remove_pane(id);
+            self.floating_panes.move_clients_out_of_pane(id);
+            if !self.floating_panes.has_panes() {
+                self.hide_floating_panes();
+            }
+            self.set_force_render();
+            self.floating_panes.set_force_render();
+            if self.auto_layout
+                && !self.swap_layouts.is_floating_damaged()
+                && self.floating_panes.visible_panes_count() > 0
+            {
+                self.swap_layouts.set_is_floating_damaged();
+                // only relayout if the user is already "in" a layout, otherwise this might be
+                // confusing
+                let _ = self.next_swap_layout(client_id, false);
+            }
+            closed_pane
+        } else if self.tiled_panes.panes_contain(&id) {
+            if self.tiled_panes.fullscreen_is_active() {
+                self.tiled_panes.unset_fullscreen();
+            }
+            let closed_pane = self.tiled_panes.remove_pane(id);
+            self.set_force_render();
+            self.tiled_panes.set_force_render();
+            if self.auto_layout && !self.swap_layouts.is_tiled_damaged() {
+                self.swap_layouts.set_is_tiled_damaged();
+                // only relayout if the user is already "in" a layout, otherwise this might be
+                // confusing
+                let _ = self.next_swap_layout(client_id, false);
+            }
+            closed_pane
+        } else if self.suppressed_panes.contains_key(&id) {
+            self.suppressed_panes.remove(&id)
+        } else {
+            None
+        }
+    }
     pub fn hold_pane(
         &mut self,
         id: PaneId,
