@@ -15,7 +15,10 @@ use zellij_utils::{
     errors::{ContextType, PtyContext},
     input::{
         command::{RunCommand, TerminalAction},
-        layout::{FloatingPaneLayout, Layout, Run, RunPluginLocation, TiledPaneLayout},
+        layout::{
+            FloatingPaneLayout, Layout, PluginUserConfiguration, Run, RunPluginLocation,
+            TiledPaneLayout,
+        },
     },
 };
 
@@ -52,8 +55,8 @@ pub enum PtyInstruction {
         Option<TerminalAction>,
         Option<TiledPaneLayout>,
         Vec<FloatingPaneLayout>,
-        usize,                                // tab_index
-        HashMap<RunPluginLocation, Vec<u32>>, // plugin_ids
+        usize,                                                           // tab_index
+        HashMap<(RunPluginLocation, PluginUserConfiguration), Vec<u32>>, // plugin_ids
         ClientId,
     ), // the String is the tab name
     ClosePane(PaneId),
@@ -595,7 +598,7 @@ impl Pty {
         layout: TiledPaneLayout,
         floating_panes_layout: Vec<FloatingPaneLayout>,
         default_shell: Option<TerminalAction>,
-        plugin_ids: HashMap<RunPluginLocation, Vec<u32>>,
+        plugin_ids: HashMap<(RunPluginLocation, PluginUserConfiguration), Vec<u32>>,
         tab_index: usize,
         client_id: ClientId,
     ) -> Result<()> {
