@@ -311,7 +311,10 @@ impl MockScreen {
         let mut floating_pane_ids = vec![];
         let mut plugin_ids = HashMap::new();
         plugin_ids.insert(
-            RunPluginLocation::File(PathBuf::from("/path/to/fake/plugin")),
+            (
+                RunPluginLocation::File(PathBuf::from("/path/to/fake/plugin")),
+                Default::default(),
+            ),
             vec![1],
         );
         for i in 0..pane_count {

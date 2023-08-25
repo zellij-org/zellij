@@ -22,7 +22,10 @@ use zellij_utils::{
     errors::{prelude::*, ContextType, PluginContext},
     input::{
         command::TerminalAction,
-        layout::{FloatingPaneLayout, Layout, Run, RunPlugin, RunPluginLocation, TiledPaneLayout},
+        layout::{
+            FloatingPaneLayout, Layout, PluginUserConfiguration, Run, RunPlugin, RunPluginLocation,
+            TiledPaneLayout,
+        },
         plugins::PluginsConfig,
     },
     ipc::ClientAttributes,
@@ -225,7 +228,10 @@ pub(crate) fn plugin_thread_main(
                 tab_index,
                 client_id,
             ) => {
-                let mut plugin_ids: HashMap<RunPluginLocation, Vec<PluginId>> = HashMap::new();
+                let mut plugin_ids: HashMap<
+                    (RunPluginLocation, PluginUserConfiguration),
+                    Vec<PluginId>,
+                > = HashMap::new();
                 let mut extracted_run_instructions = tab_layout
                     .clone()
                     .unwrap_or_else(|| layout.new_tab().0)
@@ -246,7 +252,10 @@ pub(crate) fn plugin_thread_main(
                     if let Some(Run::Plugin(run)) = run_instruction {
                         let plugin_id =
                             wasm_bridge.load_plugin(&run, tab_index, size, Some(client_id))?;
-                        plugin_ids.entry(run.location).or_default().push(plugin_id);
+                        plugin_ids
+                            .entry((run.location, run.configuration))
+                            .or_default()
+                            .push(plugin_id);
                     }
                 }
                 drop(bus.senders.send_to_pty(PtyInstruction::NewTab(

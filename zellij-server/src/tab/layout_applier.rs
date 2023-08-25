@@ -18,7 +18,9 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::rc::Rc;
 use zellij_utils::{
     data::{Palette, Style},
-    input::layout::{FloatingPaneLayout, Run, RunPluginLocation, TiledPaneLayout},
+    input::layout::{
+        FloatingPaneLayout, PluginUserConfiguration, Run, RunPluginLocation, TiledPaneLayout,
+    },
     pane_size::{Offset, PaneGeom, Size, SizeInPixels, Viewport},
 };
 
@@ -96,7 +98,7 @@ impl<'a> LayoutApplier<'a> {
         floating_panes_layout: Vec<FloatingPaneLayout>,
         new_terminal_ids: Vec<(u32, HoldForCommand)>,
         new_floating_terminal_ids: Vec<(u32, HoldForCommand)>,
-        mut new_plugin_ids: HashMap<RunPluginLocation, Vec<u32>>,
+        mut new_plugin_ids: HashMap<(RunPluginLocation, PluginUserConfiguration), Vec<u32>>,
         client_id: ClientId,
     ) -> Result<bool> {
         // true => layout has floating panes
@@ -198,7 +200,7 @@ impl<'a> LayoutApplier<'a> {
         &mut self,
         layout: TiledPaneLayout,
         new_terminal_ids: Vec<(u32, HoldForCommand)>,
-        new_plugin_ids: &mut HashMap<RunPluginLocation, Vec<u32>>,
+        new_plugin_ids: &mut HashMap<(RunPluginLocation, PluginUserConfiguration), Vec<u32>>,
         client_id: ClientId,
     ) -> Result<()> {
         let err_context = || format!("failed to apply tiled panes layout");
@@ -230,7 +232,7 @@ impl<'a> LayoutApplier<'a> {
                     } else if let Some(Run::Plugin(run)) = layout.run.clone() {
                         let pane_title = run.location.to_string();
                         let pid = new_plugin_ids
-                            .get_mut(&run.location)
+                            .get_mut(&(run.location, run.configuration))
                             .and_then(|ids| ids.pop())
                             .with_context(err_context)?;
                         let mut new_plugin = PluginPane::new(
@@ -324,7 +326,7 @@ impl<'a> LayoutApplier<'a> {
         &mut self,
         floating_panes_layout: Vec<FloatingPaneLayout>,
         new_floating_terminal_ids: Vec<(u32, HoldForCommand)>,
-        new_plugin_ids: &mut HashMap<RunPluginLocation, Vec<u32>>,
+        new_plugin_ids: &mut HashMap<(RunPluginLocation, PluginUserConfiguration), Vec<u32>>,
         layout_name: Option<String>,
     ) -> Result<bool> {
         // true => has floating panes
@@ -346,7 +348,7 @@ impl<'a> LayoutApplier<'a> {
             } else if let Some(Run::Plugin(run)) = floating_pane_layout.run.clone() {
                 let pane_title = run.location.to_string();
                 let pid = new_plugin_ids
-                    .get_mut(&run.location)
+                    .get_mut(&(run.location, run.configuration))
                     .and_then(|ids| ids.pop())
                     .with_context(err_context)?;
                 let mut new_pane = PluginPane::new(

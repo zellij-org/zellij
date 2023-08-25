@@ -872,6 +872,11 @@ impl FloatingPanes {
     }
     pub fn get_plugin_pane_id(&self, run_plugin: &RunPlugin) -> Option<PaneId> {
         let run = Some(Run::Plugin(run_plugin.clone()));
+        let currently_running_invoked_with: Vec<Option<Run>> = self
+            .panes
+            .iter()
+            .map(|(_, p)| p.invoked_with().clone())
+            .collect();
         self.panes
             .iter()
             .find(|(_id, s_p)| s_p.invoked_with() == &run)

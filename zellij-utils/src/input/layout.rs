@@ -207,7 +207,8 @@ impl Run {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash, Default)]
+#[allow(clippy::derive_hash_xor_eq)]
+#[derive(Debug, Serialize, Deserialize, Clone, Hash, Default)]
 pub struct RunPlugin {
     #[serde(default)]
     pub _allow_exec_host_cmd: bool,
@@ -225,11 +226,30 @@ impl RunPlugin {
     }
 }
 
+#[allow(clippy::derive_hash_xor_eq)]
+impl PartialEq for RunPlugin {
+    fn eq(&self, other: &Self) -> bool {
+        // TODO: normalize paths here if the location is a file so that relative/absolute paths
+        // will work properly
+        (&self.location, &self.configuration) == (&other.location, &other.configuration)
+    }
+}
+impl Eq for RunPlugin {}
+
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct PluginUserConfiguration(BTreeMap<String, String>);
 
 impl PluginUserConfiguration {
-    pub fn new(configuration: BTreeMap<String, String>) -> Self {
+    pub fn new(mut configuration: BTreeMap<String, String>) -> Self {
+        // reserved words
+        configuration.remove("hold_on_close");
+        configuration.remove("hold_on_start");
+        configuration.remove("cwd");
+        configuration.remove("name");
+        configuration.remove("direction");
+        configuration.remove("floating");
+        configuration.remove("move_to_focused_tab");
+
         PluginUserConfiguration(configuration)
     }
     pub fn inner(&self) -> &BTreeMap<String, String> {

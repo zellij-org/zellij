@@ -49,8 +49,8 @@ use zellij_utils::{
     input::{
         command::TerminalAction,
         layout::{
-            FloatingPaneLayout, Run, RunPlugin, RunPluginLocation, SwapFloatingLayout,
-            SwapTiledLayout, TiledPaneLayout,
+            FloatingPaneLayout, PluginUserConfiguration, Run, RunPlugin, RunPluginLocation,
+            SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,
         },
         parse_keys,
     },
@@ -621,7 +621,7 @@ impl Tab {
         floating_panes_layout: Vec<FloatingPaneLayout>,
         new_terminal_ids: Vec<(u32, HoldForCommand)>,
         new_floating_terminal_ids: Vec<(u32, HoldForCommand)>,
-        new_plugin_ids: HashMap<RunPluginLocation, Vec<u32>>,
+        new_plugin_ids: HashMap<(RunPluginLocation, PluginUserConfiguration), Vec<u32>>,
         client_id: ClientId,
     ) -> Result<()> {
         self.swap_layouts
