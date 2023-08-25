@@ -1,16 +1,15 @@
 pub use super::generated_api::api::{
+    action::{PaneIdAndShouldFloat, SwitchToModePayload},
     event::EventNameList as ProtobufEventNameList,
+    input_mode::InputMode as ProtobufInputMode,
     plugin_command::{
         plugin_command::Payload, CommandName, ExecCmdPayload, IdAndNewName, MovePayload,
-        OpenCommandPanePayload, OpenFilePayload,
-        PluginCommand as ProtobufPluginCommand, PluginMessagePayload,
-        RequestPluginPermissionPayload, ResizePayload, SetTimeoutPayload, SubscribePayload,
-        SwitchSessionPayload, SwitchTabToPayload, UnsubscribePayload,
+        OpenCommandPanePayload, OpenFilePayload, PluginCommand as ProtobufPluginCommand,
+        PluginMessagePayload, RequestPluginPermissionPayload, ResizePayload, SetTimeoutPayload,
+        SubscribePayload, SwitchSessionPayload, SwitchTabToPayload, UnsubscribePayload,
     },
     plugin_permission::PermissionType as ProtobufPermissionType,
     resize::ResizeAction as ProtobufResizeAction,
-    action::{PaneIdAndShouldFloat, SwitchToModePayload},
-    input_mode::{InputMode as ProtobufInputMode},
 };
 
 use crate::data::{ConnectToSession, PermissionType, PluginCommand};
@@ -182,7 +181,9 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
             Some(CommandName::SwitchToMode) => match protobuf_plugin_command.payload {
                 Some(Payload::SwitchToModePayload(switch_to_mode_payload)) => {
                     match ProtobufInputMode::from_i32(switch_to_mode_payload.input_mode) {
-                        Some(protobuf_input_mode) => Ok(PluginCommand::SwitchToMode(protobuf_input_mode.try_into()?)),
+                        Some(protobuf_input_mode) => {
+                            Ok(PluginCommand::SwitchToMode(protobuf_input_mode.try_into()?))
+                        },
                         None => Err("Malformed switch to mode payload"),
                     }
                 },
@@ -633,7 +634,7 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
             PluginCommand::SwitchToMode(input_mode) => Ok(ProtobufPluginCommand {
                 name: CommandName::SwitchToMode as i32,
                 payload: Some(Payload::SwitchToModePayload(SwitchToModePayload {
-                    input_mode: ProtobufInputMode::try_from(input_mode)? as i32
+                    input_mode: ProtobufInputMode::try_from(input_mode)? as i32,
                 })),
             }),
             PluginCommand::NewTabsWithLayout(raw_layout) => Ok(ProtobufPluginCommand {
