@@ -621,11 +621,12 @@ pub(crate) fn route_action(
                 .send_to_screen(ScreenInstruction::StartOrReloadPluginPane(run_plugin, None))
                 .with_context(err_context)?;
         },
-        Action::LaunchOrFocusPlugin(run_plugin, should_float) => {
+        Action::LaunchOrFocusPlugin(run_plugin, should_float, move_to_focused_tab) => {
             senders
                 .send_to_screen(ScreenInstruction::LaunchOrFocusPlugin(
                     run_plugin,
                     should_float,
+                    move_to_focused_tab,
                     client_id,
                 ))
                 .with_context(err_context)?;
