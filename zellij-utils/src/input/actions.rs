@@ -512,7 +512,11 @@ impl Action {
                     _allow_exec_host_cmd: false,
                     configuration: configuration.unwrap_or_default(),
                 };
-                Ok(vec![Action::LaunchOrFocusPlugin(run_plugin, floating, move_to_focused_tab)])
+                Ok(vec![Action::LaunchOrFocusPlugin(
+                    run_plugin,
+                    floating,
+                    move_to_focused_tab,
+                )])
             },
         }
     }

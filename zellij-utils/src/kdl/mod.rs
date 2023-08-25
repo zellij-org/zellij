@@ -917,7 +917,11 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                     _allow_exec_host_cmd: false,
                     configuration,
                 };
-                Ok(Action::LaunchOrFocusPlugin(run_plugin, should_float, move_to_focused_tab))
+                Ok(Action::LaunchOrFocusPlugin(
+                    run_plugin,
+                    should_float,
+                    move_to_focused_tab,
+                ))
             },
             "PreviousSwapLayout" => Ok(Action::PreviousSwapLayout),
             "NextSwapLayout" => Ok(Action::NextSwapLayout),
