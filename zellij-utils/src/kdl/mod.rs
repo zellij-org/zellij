@@ -895,10 +895,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                     hold_on_start,
                 };
                 if floating {
-                    Ok(Action::NewFloatingPane(
-                        Some(run_command_action),
-                        name,
-                    ))
+                    Ok(Action::NewFloatingPane(Some(run_command_action), name))
                 } else {
                     Ok(Action::NewTiledPane(
                         direction,
