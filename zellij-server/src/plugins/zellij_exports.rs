@@ -462,7 +462,7 @@ fn switch_tab_to(env: &ForeignFunctionEnv, tab_idx: u32) {
         .non_fatal();
 }
 
-fn set_timeout(env: &ForeignFunctionEnv, secs: f32) {
+fn set_timeout(env: &ForeignFunctionEnv, secs: f64) {
     // There is a fancy, high-performance way to do this with zero additional threads:
     // If the plugin thread keeps a BinaryHeap of timer structs, it can manage multiple and easily `.peek()` at the
     // next time to trigger in O(1) time. Once the wake-up time is known, the `wasm` thread can use `recv_timeout()`
@@ -479,7 +479,7 @@ fn set_timeout(env: &ForeignFunctionEnv, secs: f32) {
     // TODO: we should really use an async task for this
     thread::spawn(move || {
         let start_time = Instant::now();
-        thread::sleep(Duration::from_secs_f32(secs));
+        thread::sleep(Duration::from_secs_f64(secs));
         // FIXME: The way that elapsed time is being calculated here is not exact; it doesn't take into account the
         // time it takes an event to actually reach the plugin after it's sent to the `wasm` thread.
         let elapsed_time = Instant::now().duration_since(start_time).as_secs_f64();

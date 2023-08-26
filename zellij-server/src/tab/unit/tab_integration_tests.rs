@@ -20,8 +20,8 @@ use zellij_utils::data::ResizeStrategy;
 use zellij_utils::envs::set_session_name;
 use zellij_utils::errors::{prelude::*, ErrorContext};
 use zellij_utils::input::layout::{
-    FloatingPaneLayout, Layout, RunPluginLocation, SwapFloatingLayout, SwapTiledLayout,
-    TiledPaneLayout,
+    FloatingPaneLayout, Layout, PluginUserConfiguration, RunPluginLocation, SwapFloatingLayout,
+    SwapTiledLayout, TiledPaneLayout,
 };
 use zellij_utils::input::plugins::PluginTag;
 use zellij_utils::ipc::IpcReceiverWithContext;
@@ -268,7 +268,7 @@ fn create_new_tab_with_swap_layouts(
         Vec<FloatingPaneLayout>,
         Vec<(u32, Option<RunCommand>)>,
         Vec<(u32, Option<RunCommand>)>,
-        HashMap<RunPluginLocation, Vec<u32>>,
+        HashMap<(RunPluginLocation, PluginUserConfiguration), Vec<u32>>,
     )>,
     draw_pane_frames: bool,
 ) -> Tab {
@@ -4955,11 +4955,17 @@ fn layout_with_plugins_and_commands_swaped_properly() {
     let new_floating_terminal_ids = vec![];
     let mut new_plugin_ids = HashMap::new();
     new_plugin_ids.insert(
-        RunPluginLocation::Zellij(PluginTag::new("tab-bar")),
+        (
+            RunPluginLocation::Zellij(PluginTag::new("tab-bar")),
+            Default::default(),
+        ),
         vec![1],
     );
     new_plugin_ids.insert(
-        RunPluginLocation::Zellij(PluginTag::new("status-bar")),
+        (
+            RunPluginLocation::Zellij(PluginTag::new("status-bar")),
+            Default::default(),
+        ),
         vec![2],
     );
 
@@ -5050,11 +5056,17 @@ fn base_layout_is_included_in_swap_layouts() {
     let new_floating_terminal_ids = vec![];
     let mut new_plugin_ids = HashMap::new();
     new_plugin_ids.insert(
-        RunPluginLocation::Zellij(PluginTag::new("tab-bar")),
+        (
+            RunPluginLocation::Zellij(PluginTag::new("tab-bar")),
+            Default::default(),
+        ),
         vec![1],
     );
     new_plugin_ids.insert(
-        RunPluginLocation::Zellij(PluginTag::new("status-bar")),
+        (
+            RunPluginLocation::Zellij(PluginTag::new("status-bar")),
+            Default::default(),
+        ),
         vec![2],
     );
 
@@ -5142,11 +5154,17 @@ fn swap_layouts_including_command_panes_absent_from_existing_layout() {
     let new_floating_terminal_ids = vec![];
     let mut new_plugin_ids = HashMap::new();
     new_plugin_ids.insert(
-        RunPluginLocation::Zellij(PluginTag::new("tab-bar")),
+        (
+            RunPluginLocation::Zellij(PluginTag::new("tab-bar")),
+            Default::default(),
+        ),
         vec![1],
     );
     new_plugin_ids.insert(
-        RunPluginLocation::Zellij(PluginTag::new("status-bar")),
+        (
+            RunPluginLocation::Zellij(PluginTag::new("status-bar")),
+            Default::default(),
+        ),
         vec![2],
     );
 
@@ -5237,11 +5255,17 @@ fn swap_layouts_not_including_command_panes_present_in_existing_layout() {
     let new_floating_terminal_ids = vec![];
     let mut new_plugin_ids = HashMap::new();
     new_plugin_ids.insert(
-        RunPluginLocation::Zellij(PluginTag::new("tab-bar")),
+        (
+            RunPluginLocation::Zellij(PluginTag::new("tab-bar")),
+            Default::default(),
+        ),
         vec![1],
     );
     new_plugin_ids.insert(
-        RunPluginLocation::Zellij(PluginTag::new("status-bar")),
+        (
+            RunPluginLocation::Zellij(PluginTag::new("status-bar")),
+            Default::default(),
+        ),
         vec![2],
     );
 
@@ -5405,11 +5429,17 @@ fn swap_layouts_not_including_plugin_panes_present_in_existing_layout() {
     let new_floating_terminal_ids = vec![];
     let mut new_plugin_ids = HashMap::new();
     new_plugin_ids.insert(
-        RunPluginLocation::Zellij(PluginTag::new("tab-bar")),
+        (
+            RunPluginLocation::Zellij(PluginTag::new("tab-bar")),
+            Default::default(),
+        ),
         vec![1],
     );
     new_plugin_ids.insert(
-        RunPluginLocation::Zellij(PluginTag::new("status-bar")),
+        (
+            RunPluginLocation::Zellij(PluginTag::new("status-bar")),
+            Default::default(),
+        ),
         vec![2],
     );
 
@@ -5889,11 +5919,17 @@ fn floating_layout_with_plugins_and_commands_swaped_properly() {
     let new_terminal_ids = vec![(4, None)];
     let mut new_plugin_ids = HashMap::new();
     new_plugin_ids.insert(
-        RunPluginLocation::Zellij(PluginTag::new("tab-bar")),
+        (
+            RunPluginLocation::Zellij(PluginTag::new("tab-bar")),
+            Default::default(),
+        ),
         vec![1],
     );
     new_plugin_ids.insert(
-        RunPluginLocation::Zellij(PluginTag::new("status-bar")),
+        (
+            RunPluginLocation::Zellij(PluginTag::new("status-bar")),
+            Default::default(),
+        ),
         vec![2],
     );
 
@@ -5982,11 +6018,17 @@ fn base_floating_layout_is_included_in_swap_layouts() {
     let new_terminal_ids = vec![(4, None)];
     let mut new_plugin_ids = HashMap::new();
     new_plugin_ids.insert(
-        RunPluginLocation::Zellij(PluginTag::new("tab-bar")),
+        (
+            RunPluginLocation::Zellij(PluginTag::new("tab-bar")),
+            Default::default(),
+        ),
         vec![1],
     );
     new_plugin_ids.insert(
-        RunPluginLocation::Zellij(PluginTag::new("status-bar")),
+        (
+            RunPluginLocation::Zellij(PluginTag::new("status-bar")),
+            Default::default(),
+        ),
         vec![2],
     );
 
@@ -6074,11 +6116,17 @@ fn swap_floating_layouts_including_command_panes_absent_from_existing_layout() {
     let new_terminal_ids = vec![(4, None)];
     let mut new_plugin_ids = HashMap::new();
     new_plugin_ids.insert(
-        RunPluginLocation::Zellij(PluginTag::new("tab-bar")),
+        (
+            RunPluginLocation::Zellij(PluginTag::new("tab-bar")),
+            Default::default(),
+        ),
         vec![1],
     );
     new_plugin_ids.insert(
-        RunPluginLocation::Zellij(PluginTag::new("status-bar")),
+        (
+            RunPluginLocation::Zellij(PluginTag::new("status-bar")),
+            Default::default(),
+        ),
         vec![2],
     );
 
@@ -6169,11 +6217,17 @@ fn swap_floating_layouts_not_including_command_panes_present_in_existing_layout(
     let new_terminal_ids = vec![(4, None)];
     let mut new_plugin_ids = HashMap::new();
     new_plugin_ids.insert(
-        RunPluginLocation::Zellij(PluginTag::new("tab-bar")),
+        (
+            RunPluginLocation::Zellij(PluginTag::new("tab-bar")),
+            Default::default(),
+        ),
         vec![1],
     );
     new_plugin_ids.insert(
-        RunPluginLocation::Zellij(PluginTag::new("status-bar")),
+        (
+            RunPluginLocation::Zellij(PluginTag::new("status-bar")),
+            Default::default(),
+        ),
         vec![2],
     );
 
@@ -6326,11 +6380,17 @@ fn swap_floating_layouts_not_including_plugin_panes_present_in_existing_layout()
     let new_terminal_ids = vec![(4, None)];
     let mut new_plugin_ids = HashMap::new();
     new_plugin_ids.insert(
-        RunPluginLocation::Zellij(PluginTag::new("tab-bar")),
+        (
+            RunPluginLocation::Zellij(PluginTag::new("tab-bar")),
+            Default::default(),
+        ),
         vec![1],
     );
     new_plugin_ids.insert(
-        RunPluginLocation::Zellij(PluginTag::new("status-bar")),
+        (
+            RunPluginLocation::Zellij(PluginTag::new("status-bar")),
+            Default::default(),
+        ),
         vec![2],
     );
 

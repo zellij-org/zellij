@@ -311,7 +311,10 @@ impl MockScreen {
         let mut floating_pane_ids = vec![];
         let mut plugin_ids = HashMap::new();
         plugin_ids.insert(
-            RunPluginLocation::File(PathBuf::from("/path/to/fake/plugin")),
+            (
+                RunPluginLocation::File(PathBuf::from("/path/to/fake/plugin")),
+                Default::default(),
+            ),
             vec![1],
         );
         for i in 0..pane_count {
@@ -2564,6 +2567,7 @@ pub fn send_cli_launch_or_focus_plugin_action() {
     );
     let cli_action = CliAction::LaunchOrFocusPlugin {
         floating: true,
+        move_to_focused_tab: true,
         url: url::Url::parse("file:/path/to/fake/plugin").unwrap(),
         configuration: Default::default(),
     };
@@ -2621,6 +2625,7 @@ pub fn send_cli_launch_or_focus_plugin_action_when_plugin_is_already_loaded() {
     );
     let cli_action = CliAction::LaunchOrFocusPlugin {
         floating: true,
+        move_to_focused_tab: true,
         url: url::Url::parse("file:/path/to/fake/plugin").unwrap(),
         configuration: Default::default(),
     };

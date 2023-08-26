@@ -2501,11 +2501,10 @@ Config {
                             ),
                         ),
                         configuration: PluginUserConfiguration(
-                            {
-                                "floating": "true",
-                            },
+                            {},
                         ),
                     },
+                    true,
                     true,
                 ),
                 SwitchToMode(

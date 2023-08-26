@@ -399,7 +399,12 @@ impl TryFrom<ProtobufAction> for Action {
                             configuration,
                         };
                         let should_float = payload.should_float;
-                        Ok(Action::LaunchOrFocusPlugin(run_plugin, should_float))
+                        let move_to_focused_tab = payload.move_to_focused_tab;
+                        Ok(Action::LaunchOrFocusPlugin(
+                            run_plugin,
+                            should_float,
+                            move_to_focused_tab,
+                        ))
                     },
                     _ => Err("Wrong payload for Action::LaunchOrFocusPlugin"),
                 }
@@ -557,7 +562,7 @@ impl TryFrom<ProtobufAction> for Action {
                 match protobuf_action.optional_payload {
                     Some(OptionalPayload::FocusTerminalPaneWithIdPayload(payload)) => {
                         let terminal_pane_id = payload.pane_id;
-                        let should_float_if_hidden = payload.should_float_if_hidden;
+                        let should_float_if_hidden = payload.should_float;
                         Ok(Action::FocusTerminalPaneWithId(
                             terminal_pane_id,
                             should_float_if_hidden,
@@ -570,7 +575,7 @@ impl TryFrom<ProtobufAction> for Action {
                 match protobuf_action.optional_payload {
                     Some(OptionalPayload::FocusPluginPaneWithIdPayload(payload)) => {
                         let plugin_pane_id = payload.pane_id;
-                        let should_float_if_hidden = payload.should_float_if_hidden;
+                        let should_float_if_hidden = payload.should_float;
                         Ok(Action::FocusPluginPaneWithId(
                             plugin_pane_id,
                             should_float_if_hidden,
@@ -954,7 +959,7 @@ impl TryFrom<Action> for ProtobufAction {
                     optional_payload: Some(OptionalPayload::MiddleClickPayload(position)),
                 })
             },
-            Action::LaunchOrFocusPlugin(run_plugin, should_float) => {
+            Action::LaunchOrFocusPlugin(run_plugin, should_float, move_to_focused_tab) => {
                 let url: Url = Url::from(&run_plugin.location);
                 Ok(ProtobufAction {
                     name: ProtobufActionName::LaunchOrFocusPlugin as i32,
@@ -962,6 +967,7 @@ impl TryFrom<Action> for ProtobufAction {
                         LaunchOrFocusPluginPayload {
                             plugin_url: url.into(),
                             should_float,
+                            move_to_focused_tab,
                             plugin_configuration: Some(run_plugin.configuration.try_into()?),
                         },
                     )),
@@ -1092,7 +1098,7 @@ impl TryFrom<Action> for ProtobufAction {
                     optional_payload: Some(OptionalPayload::FocusTerminalPaneWithIdPayload(
                         PaneIdAndShouldFloat {
                             pane_id: terminal_pane_id,
-                            should_float_if_hidden,
+                            should_float: should_float_if_hidden,
                         },
                     )),
                 })
@@ -1103,7 +1109,7 @@ impl TryFrom<Action> for ProtobufAction {
                     optional_payload: Some(OptionalPayload::FocusPluginPaneWithIdPayload(
                         PaneIdAndShouldFloat {
                             pane_id: plugin_pane_id,
-                            should_float_if_hidden,
+                            should_float: should_float_if_hidden,
                         },
                     )),
                 })

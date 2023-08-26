@@ -61,7 +61,7 @@ message IdAndName {
 
 message PaneIdAndShouldFloat {
   uint32 pane_id = 1;
-  bool should_float_if_hidden = 2;
+  bool should_float = 2;
 }
 
 message NewPluginPanePayload {
@@ -84,6 +84,7 @@ message LaunchOrFocusPluginPayload {
   string plugin_url = 1;
   bool should_float = 2;
   optional PluginConfiguration plugin_configuration = 3;
+  bool move_to_focused_tab = 4;
 }
 
 message GoToTabNamePayload {
