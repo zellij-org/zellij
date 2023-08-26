@@ -532,10 +532,9 @@ impl Display for CharacterStyles {
                 AnsiCode::On => {
                     write!(f, "\u{1b}[4m")?;
                 },
-                AnsiCode::Reset => {
+                _ => {
                     write!(f, "\u{1b}[24m")?;
                 },
-                _ => {},
             }
         }
         if let Some(ansi_code) = self.dim {
