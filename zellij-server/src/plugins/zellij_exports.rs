@@ -1136,6 +1136,7 @@ fn check_command_permission(
         | PluginCommand::FocusPluginPane(..)
         | PluginCommand::RenameTerminalPane(..)
         | PluginCommand::RenamePluginPane(..)
+        | PluginCommand::SwitchSession(..)
         | PluginCommand::RenameTab(..) => PermissionType::ChangeApplicationState,
         _ => return (PermissionStatus::Granted, None),
     };

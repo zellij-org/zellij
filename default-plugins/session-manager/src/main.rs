@@ -15,7 +15,6 @@ use session_list::SessionList;
 struct State {
     session_name: Option<String>,
     sessions: SessionList,
-    selected_index: Option<usize>,
     search_term: String,
     new_session_name: Option<String>,
     colors: Colors,
@@ -79,7 +78,7 @@ impl ZellijPlugin for State {
 
 impl State {
     fn reset_selected_index(&mut self) {
-        self.selected_index = None;
+        self.sessions.reset_selected_index();
     }
     fn handle_key(&mut self, key: Key) -> bool {
         let mut should_render = false;
@@ -186,6 +185,11 @@ impl State {
                 switch_session_with_focus(&selected_session_name, selected_tab, selected_pane);
             }
         }
+        self.reset_selected_index();
+        self.new_session_name = None;
+        self.search_term.clear();
+        self.sessions
+            .update_search_term(&self.search_term, &self.colors);
         hide_self();
     }
     fn update_session_infos(&mut self, session_infos: Vec<SessionInfo>) {
