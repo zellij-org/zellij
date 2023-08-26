@@ -674,7 +674,7 @@ impl PluginPane {
             ));
         } else {
             messages.push_str(&format!(
-                "{} {}. {} {}\n",
+                "{} {}. {} {}",
                 bold_white.paint("This plugin asks permission to:"),
                 orange.paint(
                     permissions

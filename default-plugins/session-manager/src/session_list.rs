@@ -311,6 +311,9 @@ impl SessionList {
             }
         }
     }
+    pub fn reset_selected_index(&mut self) {
+        self.selected_index.reset();
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -338,6 +341,11 @@ impl SelectedIndex {
             },
             _ => {},
         }
+    }
+    pub fn reset(&mut self) {
+        self.0 = None;
+        self.1 = None;
+        self.2 = None;
     }
 }
 
