@@ -143,15 +143,6 @@ pub struct CharacterStyles {
     pub link_anchor: Option<LinkAnchor>,
 }
 
-enum UnderlineStyle {
-    NONE,
-    UNDERLINE,
-    DOUBLE,
-    UNDERCURL,
-    UNDERDOTTED,
-    UNDERDASHED,
-}
-
 impl CharacterStyles {
     pub fn new() -> Self {
         Self::default()
