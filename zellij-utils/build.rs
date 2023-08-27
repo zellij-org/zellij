@@ -3,6 +3,11 @@ use std::fs;
 
 fn main() {
     let mut prost_build = prost_build::Config::new();
+    let out_dir = concat!(env!("CARGO_MANIFEST_DIR"), "/assets/prost");
+    let out_dir = std::path::Path::new(out_dir);
+
+    std::fs::create_dir_all(out_dir).unwrap();
+    prost_build.out_dir(out_dir);
     prost_build.include_file("generated_plugin_api.rs");
     let mut proto_files = vec![];
     for entry in fs::read_dir("src/plugin_api").unwrap() {

@@ -11,5 +11,8 @@ pub mod plugin_permission;
 pub mod resize;
 pub mod style;
 pub mod generated_api {
-    include!(concat!(env!("OUT_DIR"), "/generated_plugin_api.rs"));
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/assets/prost/generated_plugin_api.rs"
+    ));
 }
