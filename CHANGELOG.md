@@ -19,6 +19,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat(session): session manager to switch between sessions (https://github.com/zellij-org/zellij/pull/2721)
 * feat(plugins): move_to_focused_tab attribute for launching/focusing plugins (https://github.com/zellij-org/zellij/pull/2725)
 * fix(keybinds): allow opening floating pane from a keybinding (https://github.com/zellij-org/zellij/pull/2726)
+* fix(panes): occasional glitches when changing tab focus for stacked panes (https://github.com/zellij-org/zellij/pull/2734)
 
 ## [0.37.2] - 2023-06-20
 * hotfix: include theme files into binary (https://github.com/zellij-org/zellij/pull/2566)
