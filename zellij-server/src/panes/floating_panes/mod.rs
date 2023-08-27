@@ -697,12 +697,8 @@ impl FloatingPanes {
     }
     pub fn focus_pane_if_client_not_focused(&mut self, pane_id: PaneId, client_id: ClientId) {
         match self.active_panes.get(&client_id) {
-            Some(already_focused_pane_id) => {
-                self.focus_pane(*already_focused_pane_id, client_id)
-            },
-            None => {
-                self.focus_pane(pane_id, client_id)
-            }
+            Some(already_focused_pane_id) => self.focus_pane(*already_focused_pane_id, client_id),
+            None => self.focus_pane(pane_id, client_id),
         }
     }
     pub fn defocus_pane(&mut self, pane_id: PaneId, client_id: ClientId) {
