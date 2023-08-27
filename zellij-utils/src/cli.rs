@@ -297,7 +297,7 @@ pub enum CliAction {
             requires("command")
         )]
         start_suspended: bool,
-        #[clap(short, long, value_parser)]
+        #[clap(long, value_parser)]
         configuration: Option<PluginUserConfiguration>,
     },
     /// Open the specified file in a new zellij pane with your default EDITOR
