@@ -395,7 +395,7 @@ pub fn publish(sh: &Shell, flags: flags::Publish) -> anyhow::Result<()> {
     // program. When dry-running we need to undo the release commit first!
     let result = closure();
 
-    if flags.dry_run {
+    if flags.dry_run && !skip_build {
         cmd!(sh, "git reset --hard HEAD~1")
             .run()
             .context(err_context)?;
