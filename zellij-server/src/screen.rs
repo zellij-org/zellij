@@ -1920,13 +1920,14 @@ pub(crate) fn screen_thread_main(
             ) => {
                 match client_or_tab_index {
                     ClientOrTabIndex::ClientId(client_id) => {
-                        active_tab_and_connected_client_id!(screen, client_id, |tab: &mut Tab,
-                                                            client_id: ClientId| tab .new_pane(pid,
-                                                                                               initial_pane_title,
-                                                                                               should_float,
-                                                                                               None,
-                                                                                               Some(client_id)),
-                                                                                               ?);
+                        active_tab_and_connected_client_id!(screen, client_id, |tab: &mut Tab, client_id: ClientId| {
+                            tab.new_pane(pid,
+                               initial_pane_title,
+                               should_float,
+                               None,
+                               Some(client_id)
+                           )
+                        }, ?);
                         if let Some(hold_for_command) = hold_for_command {
                             let is_first_run = true;
                             active_tab_and_connected_client_id!(
