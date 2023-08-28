@@ -25,6 +25,8 @@ inside the repository, so you don't have to install additional dependencies.
 To edit our manpage, the mandown crate (`cargo install --locked
 mandown`) is used and the work is done on a markdown file in docs/MANPAGE.md.
 
+To build zellij, you'll need [`protoc`](https://github.com/protocolbuffers/protobuf#protobuf-compiler-installation) installed. This is used to compile the .proto files into Rust assets. These protocol buffers are used for communication between Zellij and its plugins across the wasm boundary.
+
 Here are some of the commands currently supported by the build system:
 
 ```sh
