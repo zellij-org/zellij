@@ -38,6 +38,38 @@ pub fn build(sh: &Shell, flags: flags::Build) -> anyhow::Result<()> {
             }
         }
 
+        // zellij-utils requires protobuf definition files to be present. Usually these are
+        // auto-generated with `build.rs`-files, but this is currently broken for us.
+        // See [this PR][1] for details.
+        //
+        // [1]: https://github.com/zellij-org/zellij/pull/2711#issuecomment-1695015818
+        {
+            let zellij_utils_basedir = crate::project_root().join("zellij-utils");
+            let _pd = sh.push_dir(zellij_utils_basedir);
+
+            let prost_asset_dir = sh.current_dir().join("assets").join("prost");
+            let protobuf_source_dir = sh.current_dir().join("src").join("plugin_api");
+            std::fs::create_dir_all(&prost_asset_dir).unwrap();
+
+            let mut prost = prost_build::Config::new();
+            prost.out_dir(prost_asset_dir);
+            prost.include_file("generated_plugin_api.rs");
+            let mut proto_files = vec![];
+            for entry in std::fs::read_dir(&protobuf_source_dir).unwrap() {
+                let entry_path = entry.unwrap().path();
+                if entry_path.is_file() {
+                    if let Some(extension) = entry_path.extension() {
+                        if extension == "proto" {
+                            proto_files.push(entry_path.display().to_string())
+                        }
+                    }
+                }
+            }
+            prost
+                .compile_protos(&proto_files, &[protobuf_source_dir])
+                .unwrap();
+        }
+
         let _pd = sh.push_dir(Path::new(crate_name));
         // Tell the user where we are now
         println!();
