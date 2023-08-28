@@ -409,7 +409,7 @@ impl WasmBridge {
                 });
             }
         }
-        for (plugin_id, mut current_size) in self.cached_resizes_for_pending_plugins.iter_mut() {
+        for (plugin_id, current_size) in self.cached_resizes_for_pending_plugins.iter_mut() {
             if *plugin_id == pid {
                 current_size.0 = new_rows;
                 current_size.1 = new_columns;
