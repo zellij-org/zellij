@@ -1,3 +1,7 @@
+// NOTE: This file is generated automatically, do *NOT* edit it by hand!
+// Refer to [the PR introducing this change][1] to learn more about the reasons.
+//
+// [1]: https://github.com/zellij-org/zellij/pull/2711#issuecomment-1695015818
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
 pub enum PermissionType {
