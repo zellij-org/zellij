@@ -1735,7 +1735,7 @@ impl Screen {
             if pane_to_break_is_floating {
                 tab.show_floating_panes();
                 tab.add_floating_pane(active_pane, active_pane_id, Some(client_id))?;
-                if let Some(mut already_running_layout) = floating_panes_layout
+                if let Some(already_running_layout) = floating_panes_layout
                     .iter_mut()
                     .find(|i| i.run == active_pane_run_instruction)
                 {
