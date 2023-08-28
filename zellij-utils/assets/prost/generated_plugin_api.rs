@@ -1,7 +1,3 @@
-// NOTE: This file is generated automatically, do *NOT* edit it by hand!
-// Refer to [the PR introducing this change][1] to learn more about the reasons.
-//
-// [1]: https://github.com/zellij-org/zellij/pull/2711#issuecomment-1695015818
 pub mod api {
     pub mod action {
         include!("api.action.rs");
