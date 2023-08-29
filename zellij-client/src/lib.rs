@@ -147,6 +147,7 @@ pub fn start_client(
     layout: Option<Layout>,
     tab_position_to_focus: Option<usize>,
     pane_id_to_focus: Option<(u32, bool)>, // (pane_id, is_plugin)
+    debug: bool,
 ) -> Option<ConnectToSession> {
     info!("Starting Zellij client!");
 
@@ -156,14 +157,16 @@ pub fn start_client(
     let bracketed_paste = "\u{1b}[?2004h";
     os_input.unset_raw_mode(0).unwrap();
 
-    let _ = os_input
-        .get_stdout_writer()
-        .write(take_snapshot.as_bytes())
-        .unwrap();
-    let _ = os_input
-        .get_stdout_writer()
-        .write(clear_client_terminal_attributes.as_bytes())
-        .unwrap();
+    if debug {
+        let _ = os_input
+            .get_stdout_writer()
+            .write(take_snapshot.as_bytes())
+            .unwrap();
+        let _ = os_input
+            .get_stdout_writer()
+            .write(clear_client_terminal_attributes.as_bytes())
+            .unwrap();
+    }
     envs::set_zellij("0".to_string());
     config.env.set_vars();
 
@@ -172,6 +175,7 @@ pub fn start_client(
         .unwrap_or_else(|| os_input.load_palette());
 
     let full_screen_ws = os_input.get_terminal_size_using_fd(0);
+    log::info!("full_screen_ws: {:?}", full_screen_ws);
     let client_attributes = ClientAttributes {
         size: full_screen_ws,
         style: Style {
