@@ -343,6 +343,7 @@ pub(crate) fn start_client(opts: CliArgs) {
         let layout = layout.clone();
         let mut config_options = config_options.clone();
         let mut opts = opts.clone();
+        let mut is_a_reconnect = false;
 
         if let Some(reconnect_to_session) = &reconnect_to_session {
             // this is integration code to make session reconnects work with this existing,
@@ -361,6 +362,7 @@ pub(crate) fn start_client(opts: CliArgs) {
                 opts.session = None;
                 config_options.attach_to_session = None;
             }
+            is_a_reconnect = true;
         }
 
         let start_client_plan = |session_name: std::string::String| {
@@ -420,6 +422,7 @@ pub(crate) fn start_client(opts: CliArgs) {
                 attach_layout,
                 tab_position_to_focus,
                 pane_id_to_focus,
+                is_a_reconnect,
             );
         } else {
             if let Some(session_name) = opts.session.clone() {
@@ -433,6 +436,7 @@ pub(crate) fn start_client(opts: CliArgs) {
                     Some(layout),
                     None,
                     None,
+                    is_a_reconnect,
                 );
             } else {
                 if let Some(session_name) = config_options.session_name.as_ref() {
@@ -469,6 +473,7 @@ pub(crate) fn start_client(opts: CliArgs) {
                                 attach_layout,
                                 None,
                                 None,
+                                is_a_reconnect,
                             );
                         },
                         _ => {
@@ -482,6 +487,7 @@ pub(crate) fn start_client(opts: CliArgs) {
                                 Some(layout),
                                 None,
                                 None,
+                                is_a_reconnect,
                             );
                         },
                     }
@@ -504,6 +510,7 @@ pub(crate) fn start_client(opts: CliArgs) {
                     Some(layout),
                     None,
                     None,
+                    is_a_reconnect,
                 );
             }
         }
