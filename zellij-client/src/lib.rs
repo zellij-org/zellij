@@ -147,7 +147,7 @@ pub fn start_client(
     layout: Option<Layout>,
     tab_position_to_focus: Option<usize>,
     pane_id_to_focus: Option<(u32, bool)>, // (pane_id, is_plugin)
-    debug: bool,
+    is_a_reconnect: bool,
 ) -> Option<ConnectToSession> {
     info!("Starting Zellij client!");
 
@@ -157,7 +157,10 @@ pub fn start_client(
     let bracketed_paste = "\u{1b}[?2004h";
     os_input.unset_raw_mode(0).unwrap();
 
-    if debug {
+    if !is_a_reconnect {
+        // we don't do this for a reconnect because our controlling terminal already has the
+        // attributes we want from it, and some terminals don't treat these atomically (looking at
+        // your Windows Terminal...)
         let _ = os_input
             .get_stdout_writer()
             .write(take_snapshot.as_bytes())
@@ -379,7 +382,7 @@ pub fn start_client(
 
     let mut stdout = os_input.get_stdout_writer();
     stdout
-        .write_all("\u{1b}[1mLoading Zellij\u{1b}[m\n\r".as_bytes())
+        .write_all("\u{1b}[1m\u{1b}[HLoading Zellij\u{1b}[m\n\r".as_bytes())
         .expect("cannot write to stdout");
     stdout.flush().expect("could not flush");
 
