@@ -829,14 +829,14 @@ impl CharacterChunk {
 
 #[derive(Clone, Debug)]
 pub struct OutputBuffer {
-    pub changed_lines: Vec<usize>, // line index
+    pub changed_lines: HashSet<usize>, // line index
     pub should_update_all_lines: bool,
 }
 
 impl Default for OutputBuffer {
     fn default() -> Self {
         OutputBuffer {
-            changed_lines: vec![],
+            changed_lines: HashSet::new(),
             should_update_all_lines: true, // first time we should do a full render
         }
     }
@@ -845,14 +845,14 @@ impl Default for OutputBuffer {
 impl OutputBuffer {
     pub fn update_line(&mut self, line_index: usize) {
         if !self.should_update_all_lines {
-            self.changed_lines.push(line_index);
+            self.changed_lines.insert(line_index);
         }
     }
     pub fn update_lines(&mut self, start: usize, end: usize) {
         if !self.should_update_all_lines {
             for idx in start..=end {
                 if !self.changed_lines.contains(&idx) {
-                    self.changed_lines.push(idx);
+                    self.changed_lines.insert(idx);
                 }
             }
         }
@@ -885,9 +885,8 @@ impl OutputBuffer {
             }
             changed_chunks
         } else {
-            let mut line_changes = self.changed_lines.to_vec();
+            let mut line_changes: Vec<_> = self.changed_lines.iter().copied().collect();
             line_changes.sort_unstable();
-            line_changes.dedup();
             let mut changed_chunks = Vec::new();
             for line_index in line_changes {
                 let terminal_characters =
