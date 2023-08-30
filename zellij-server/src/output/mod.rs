@@ -885,9 +885,8 @@ impl OutputBuffer {
             }
             changed_chunks
         } else {
-            let mut line_changes: Vec<_> = self.changed_lines.clone().into_iter().collect();
+            let mut line_changes: Vec<_> = self.changed_lines.iter().cloned().collect();
             line_changes.sort_unstable();
-            line_changes.dedup();
             let mut changed_chunks = Vec::new();
             for line_index in line_changes {
                 let terminal_characters =
