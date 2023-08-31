@@ -304,6 +304,8 @@ impl InputHandler {
             | Action::ClearScreen
             | Action::NewPane(..)
             | Action::Run(_)
+            | Action::NewTiledPane(..)
+            | Action::NewFloatingPane(..)
             | Action::ToggleFloatingPanes
             | Action::TogglePaneEmbedOrFloating
             | Action::NewTab(..)
