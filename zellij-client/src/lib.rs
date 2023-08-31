@@ -178,7 +178,6 @@ pub fn start_client(
         .unwrap_or_else(|| os_input.load_palette());
 
     let full_screen_ws = os_input.get_terminal_size_using_fd(0);
-    log::info!("full_screen_ws: {:?}", full_screen_ws);
     let client_attributes = ClientAttributes {
         size: full_screen_ws,
         style: Style {
