@@ -20,7 +20,7 @@ thiserror = "1.0.40"
 names = { version = "0.14.0", default-features = false }
 log = "0.4.17"
 dialoguer = "0.10.4"
-suggest = "0.4.0"
+suggest = "0.5"
 
 [dev-dependencies]
 insta = { version = "1.6.0", features = ["backtrace"] }
