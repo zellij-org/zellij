@@ -1782,7 +1782,7 @@ impl Themes {
         Ok(themes)
     }
 
-    pub fn from_string(raw_string: String) -> Result<Self, ConfigError> {
+    pub fn from_string(raw_string: &String) -> Result<Self, ConfigError> {
         let kdl_config: KdlDocument = raw_string.parse()?;
         let kdl_themes = kdl_config.get("themes").ok_or(ConfigError::new_kdl_error(
             "No theme node found in file".into(),
@@ -1796,8 +1796,17 @@ impl Themes {
     pub fn from_path(path_to_theme_file: PathBuf) -> Result<Self, ConfigError> {
         // String is the theme name
         let kdl_config = std::fs::read_to_string(&path_to_theme_file)
-            .map_err(|e| ConfigError::IoPath(e, path_to_theme_file.into()))?;
-        Themes::from_string(kdl_config)
+            .map_err(|e| ConfigError::IoPath(e, path_to_theme_file.clone()))?;
+        Themes::from_string(&kdl_config).map_err(|e| {
+            if let ConfigError::KdlError(error) = e {
+                return ConfigError::KdlError(error.add_src(
+                    path_to_theme_file.as_path().display().to_string(),
+                    kdl_config,
+                ));
+            } else {
+                return e;
+            }
+        })
     }
 
     pub fn from_dir(path_to_theme_dir: PathBuf) -> Result<Self, ConfigError> {
