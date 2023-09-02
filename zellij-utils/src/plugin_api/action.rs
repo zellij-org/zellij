@@ -232,12 +232,14 @@ impl TryFrom<ProtobufAction> for Action {
                         .and_then(|d| ProtobufResizeDirection::from_i32(d))
                         .and_then(|d| d.try_into().ok());
                     let should_float = payload.should_float;
+                    let should_be_in_place = false; // TODO: implement this
                     Ok(Action::EditFile(
                         file_to_edit,
                         line_number,
                         cwd,
                         direction,
                         should_float,
+                        should_be_in_place
                     ))
                 },
                 _ => Err("Wrong payload for Action::NewPane"),
@@ -814,7 +816,7 @@ impl TryFrom<Action> for ProtobufAction {
                     })),
                 })
             },
-            Action::EditFile(path_to_file, line_number, cwd, direction, should_float) => {
+            Action::EditFile(path_to_file, line_number, cwd, direction, should_float, should_be_in_place) => {
                 let file_to_edit = path_to_file.display().to_string();
                 let cwd = cwd.map(|cwd| cwd.display().to_string());
                 let direction: Option<i32> = direction
@@ -1149,6 +1151,7 @@ impl TryFrom<Action> for ProtobufAction {
             }),
             Action::NoOp
             | Action::Confirm
+            | Action::NewInPlacePane(..) // TODO: implement this
             | Action::Deny
             | Action::Copy
             | Action::SkipConfirm(..) => Err("Unsupported action"),

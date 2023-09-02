@@ -32,7 +32,7 @@ use crate::{
     panes::{FloatingPanes, TiledPanes},
     panes::{LinkHandler, PaneId, PluginPane, TerminalPane},
     plugins::PluginInstruction,
-    pty::{ClientOrTabIndex, PtyInstruction, VteBytes},
+    pty::{ClientTabIndexOrPaneId, PtyInstruction, VteBytes},
     thread_bus::ThreadSenders,
     ClientId, ServerInstruction,
 };
@@ -991,8 +991,8 @@ impl Tab {
                     let name = None;
                     let should_float = true;
                     let client_id_or_tab_index = match client_id {
-                        Some(client_id) => ClientOrTabIndex::ClientId(client_id),
-                        None => ClientOrTabIndex::TabIndex(self.index),
+                        Some(client_id) => ClientTabIndexOrPaneId::ClientId(client_id),
+                        None => ClientTabIndexOrPaneId::TabIndex(self.index),
                     };
                     let instruction = PtyInstruction::SpawnTerminal(
                         default_shell,
@@ -1074,7 +1074,7 @@ impl Tab {
             self.add_tiled_pane(new_pane, pid, client_id)
         }
     }
-    pub fn suppress_active_pane(&mut self, pid: PaneId, client_id: ClientId) -> Result<()> {
+    pub fn replace_active_pane_with_editor_pane(&mut self, pid: PaneId, client_id: ClientId) -> Result<()> {
         // this method creates a new pane from pid and replaces it with the active pane
         // the active pane is then suppressed (hidden and not rendered) until the current
         // created pane is closed, in which case it will be replaced back by it
@@ -1124,6 +1124,64 @@ impl Tab {
                                 )
                             })
                             .with_context(err_context)?;
+                    },
+                    None => {
+                        Err::<(), _>(anyhow!(
+                            "Could not find editor pane to replace - is no pane focused?"
+                        ))
+                        .with_context(err_context)
+                        .non_fatal();
+                    },
+                }
+            },
+            PaneId::Plugin(_pid) => {
+                // TBD, currently unsupported
+            },
+        }
+        Ok(())
+    }
+    pub fn suppress_pane_and_replace_with_pid(&mut self, old_pane_id: PaneId, new_pane_id: PaneId) -> Result<()> {
+        // this method creates a new pane from pid and replaces it with the active pane
+        // the active pane is then suppressed (hidden and not rendered) until the current
+        // created pane is closed, in which case it will be replaced back by it
+        let err_context = || format!("failed to suppress active pane");
+
+        match new_pane_id {
+            PaneId::Terminal(new_pane_id) => {
+                let next_terminal_position = self.get_next_terminal_position(); // TODO: this is not accurate in this case
+                let mut new_pane = TerminalPane::new(
+                    new_pane_id,
+                    PaneGeom::default(), // the initial size will be set later
+                    self.style,
+                    next_terminal_position,
+                    String::new(),
+                    self.link_handler.clone(),
+                    self.character_cell_size.clone(),
+                    self.sixel_image_store.clone(),
+                    self.terminal_emulator_colors.clone(),
+                    self.terminal_emulator_color_codes.clone(),
+                    None,
+                    None,
+                    self.debug,
+                );
+                let replaced_pane = if self.floating_panes.panes_contain(&old_pane_id) {
+                    self.floating_panes
+                        .replace_pane(old_pane_id, Box::new(new_pane))
+                        .ok()
+                } else {
+                    self.tiled_panes
+                        .replace_pane(old_pane_id, Box::new(new_pane))
+                };
+                match replaced_pane {
+                    Some(replaced_pane) => {
+                        resize_pty!(
+                            replaced_pane,
+                            self.os_api,
+                            self.senders,
+                            self.character_cell_size
+                        );
+                        self.suppressed_panes
+                            .insert(PaneId::Terminal(new_pane_id), replaced_pane);
                     },
                     None => {
                         Err::<(), _>(anyhow!(
@@ -3427,6 +3485,10 @@ impl Tab {
             })
     }
     pub fn suppress_pane(&mut self, pane_id: PaneId, client_id: ClientId) {
+        // this method places a pane in the suppressed pane with its own ID - this means we'll
+        // not take it out of there when another pane is closed (eg. like happens with the
+        // scrollback editor), but it has to take itself out on its own (eg. a plugin using the
+        // show_self() method)
         if let Some(pane) = self.close_pane(pane_id, true, Some(client_id)) {
             self.suppressed_panes.insert(pane_id, pane);
         }

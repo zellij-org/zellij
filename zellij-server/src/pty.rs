@@ -26,9 +26,10 @@ pub type VteBytes = Vec<u8>;
 pub type TabIndex = u32;
 
 #[derive(Clone, Copy, Debug)]
-pub enum ClientOrTabIndex {
+pub enum ClientTabIndexOrPaneId {
     ClientId(ClientId),
     TabIndex(usize),
+    PaneId(PaneId),
 }
 
 /// Instructions related to PTYs (pseudoterminals).
@@ -38,7 +39,7 @@ pub enum PtyInstruction {
         Option<TerminalAction>,
         Option<bool>,
         Option<String>,
-        ClientOrTabIndex,
+        ClientTabIndexOrPaneId,
     ), // bool (if Some) is
     // should_float, String is an optional pane name
     OpenInPlaceEditor(PathBuf, Option<usize>, ClientId), // Option<usize> is the optional line number
@@ -62,6 +63,11 @@ pub enum PtyInstruction {
     ClosePane(PaneId),
     CloseTab(Vec<PaneId>),
     ReRunCommandInPane(PaneId, RunCommand),
+    SpawnInPlaceTerminal(
+        Option<TerminalAction>,
+        Option<String>,
+        ClientTabIndexOrPaneId,
+    ), // String is an optional pane name
     Exit,
 }
 
@@ -78,6 +84,7 @@ impl From<&PtyInstruction> for PtyContext {
             PtyInstruction::CloseTab(_) => PtyContext::CloseTab,
             PtyInstruction::NewTab(..) => PtyContext::NewTab,
             PtyInstruction::ReRunCommandInPane(..) => PtyContext::ReRunCommandInPane,
+            PtyInstruction::SpawnInPlaceTerminal(..) => PtyContext::SpawnInPlaceTerminal,
             PtyInstruction::Exit => PtyContext::Exit,
         }
     }
@@ -164,13 +171,76 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     },
                 }
             },
+            PtyInstruction::SpawnInPlaceTerminal(
+                terminal_action,
+                name,
+                client_id_tab_index_or_pane_id,
+            ) => {
+                let err_context =
+                    || format!("failed to spawn terminal for {:?}", client_id_tab_index_or_pane_id);
+                let (hold_on_close, run_command, pane_title) = match &terminal_action {
+                    Some(TerminalAction::RunCommand(run_command)) => (
+                        run_command.hold_on_close,
+                        Some(run_command.clone()),
+                        Some(name.unwrap_or_else(|| run_command.to_string())),
+                    ),
+                    _ => (false, None, name),
+                };
+                match pty
+                    .spawn_terminal(terminal_action, client_id_tab_index_or_pane_id)
+                    .with_context(err_context)
+                {
+                    Ok((pid, starts_held)) => {
+                        let hold_for_command = if starts_held { run_command } else { None };
+                        pty.bus
+                            .senders
+                            .send_to_screen(ScreenInstruction::ReplacePane(
+                                PaneId::Terminal(pid),
+                                hold_for_command,
+                                pane_title,
+                                client_id_tab_index_or_pane_id,
+                            ))
+                            .with_context(err_context)?;
+                    },
+                    Err(err) => match err.downcast_ref::<ZellijError>() {
+                        Some(ZellijError::CommandNotFound { terminal_id, .. }) => {
+                            if hold_on_close {
+                                let hold_for_command = None; // we do not hold an "error" pane
+                                pty.bus
+                                    .senders
+                                    .send_to_screen(ScreenInstruction::ReplacePane(
+                                        PaneId::Terminal(*terminal_id),
+                                        hold_for_command,
+                                        pane_title,
+                                        client_id_tab_index_or_pane_id,
+                                    ))
+                                    .with_context(err_context)?;
+                                if let Some(run_command) = run_command {
+                                    send_command_not_found_to_screen(
+                                        pty.bus.senders.clone(),
+                                        *terminal_id,
+                                        run_command.clone(),
+                                        None,
+                                    )
+                                    .with_context(err_context)?;
+                                }
+                            } else {
+                                log::error!("Failed to spawn terminal: {:?}", err);
+                                pty.close_pane(PaneId::Terminal(*terminal_id))
+                                    .with_context(err_context)?;
+                            }
+                        },
+                        _ => Err::<(), _>(err).non_fatal(),
+                    },
+                }
+            },
             PtyInstruction::OpenInPlaceEditor(temp_file, line_number, client_id) => {
                 let err_context =
                     || format!("failed to open in-place editor for client {}", client_id);
 
                 match pty.spawn_terminal(
                     Some(TerminalAction::OpenFile(temp_file, line_number, None)),
-                    ClientOrTabIndex::ClientId(client_id),
+                    ClientTabIndexOrPaneId::ClientId(client_id),
                 ) {
                     Ok((pid, _starts_held)) => {
                         pty.bus
@@ -199,7 +269,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     _ => (false, None, name),
                 };
                 match pty
-                    .spawn_terminal(terminal_action, ClientOrTabIndex::ClientId(client_id))
+                    .spawn_terminal(terminal_action, ClientTabIndexOrPaneId::ClientId(client_id))
                     .with_context(err_context)
                 {
                     Ok((pid, starts_held)) => {
@@ -270,7 +340,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     _ => (false, None, name),
                 };
                 match pty
-                    .spawn_terminal(terminal_action, ClientOrTabIndex::ClientId(client_id))
+                    .spawn_terminal(terminal_action, ClientTabIndexOrPaneId::ClientId(client_id))
                     .with_context(err_context)
                 {
                     Ok((pid, starts_held)) => {
@@ -501,25 +571,47 @@ impl Pty {
             };
         };
     }
+    fn fill_cwd_from_pane_id(&self, terminal_action: &mut TerminalAction, pane_id: &u32) {
+        if let TerminalAction::RunCommand(run_command) = terminal_action {
+            if run_command.cwd.is_none() {
+                run_command.cwd = self
+                    .id_to_child_pid.get(pane_id)
+                    .and_then(|&id| {
+                        self.bus
+                            .os_input
+                            .as_ref()
+                            .and_then(|input| input.get_cwd(Pid::from_raw(id)))
+                    });
+            };
+        };
+    }
     pub fn spawn_terminal(
         &mut self,
         terminal_action: Option<TerminalAction>,
-        client_or_tab_index: ClientOrTabIndex,
+        client_or_tab_index: ClientTabIndexOrPaneId,
     ) -> Result<(u32, bool)> {
         // bool is starts_held
         let err_context = || format!("failed to spawn terminal for {:?}", client_or_tab_index);
 
         // returns the terminal id
         let terminal_action = match client_or_tab_index {
-            ClientOrTabIndex::ClientId(client_id) => {
+            ClientTabIndexOrPaneId::ClientId(client_id) => {
                 let mut terminal_action =
                     terminal_action.unwrap_or_else(|| self.get_default_terminal(None, None));
                 self.fill_cwd(&mut terminal_action, client_id);
                 terminal_action
             },
-            ClientOrTabIndex::TabIndex(_) => {
+            ClientTabIndexOrPaneId::TabIndex(_) => {
                 terminal_action.unwrap_or_else(|| self.get_default_terminal(None, None))
             },
+            ClientTabIndexOrPaneId::PaneId(pane_id) => {
+                let mut terminal_action =
+                    terminal_action.unwrap_or_else(|| self.get_default_terminal(None, None));
+                if let PaneId::Terminal(terminal_pane_id) = pane_id {
+                    self.fill_cwd_from_pane_id(&mut terminal_action, &terminal_pane_id);
+                }
+                terminal_action
+            }
         };
         let (hold_on_start, hold_on_close) = match &terminal_action {
             TerminalAction::RunCommand(run_command) => {

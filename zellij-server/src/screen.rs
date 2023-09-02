@@ -32,7 +32,7 @@ use crate::{
     panes::sixel::SixelImageStore,
     panes::PaneId,
     plugins::PluginInstruction,
-    pty::{ClientOrTabIndex, PtyInstruction, VteBytes},
+    pty::{ClientTabIndexOrPaneId, PtyInstruction, VteBytes},
     tab::Tab,
     thread_bus::Bus,
     ui::{
@@ -141,7 +141,7 @@ pub enum ScreenInstruction {
         Option<InitialTitle>,
         Option<ShouldFloat>,
         HoldForCommand,
-        ClientOrTabIndex,
+        ClientTabIndexOrPaneId,
     ),
     OpenInPlaceEditor(PaneId, ClientId),
     TogglePaneEmbedOrFloating(ClientId),
@@ -294,6 +294,12 @@ pub enum ScreenInstruction {
     BreakPaneRight(ClientId),
     BreakPaneLeft(ClientId),
     UpdateSessionInfos(BTreeMap<String, SessionInfo>), // String is the session name
+    ReplacePane(
+        PaneId,
+        HoldForCommand,
+        Option<InitialTitle>,
+        ClientTabIndexOrPaneId
+    ),
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -468,6 +474,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::BreakPaneRight(..) => ScreenContext::BreakPaneRight,
             ScreenInstruction::BreakPaneLeft(..) => ScreenContext::BreakPaneLeft,
             ScreenInstruction::UpdateSessionInfos(..) => ScreenContext::UpdateSessionInfos,
+            ScreenInstruction::ReplacePane(..) => ScreenContext::ReplacePane,
         }
     }
 }
@@ -1822,7 +1829,66 @@ impl Screen {
         self.render()?;
         Ok(())
     }
-
+    pub fn replace_pane(
+        &mut self,
+        new_pane_id: PaneId,
+        hold_for_command: HoldForCommand,
+        pane_title: Option<InitialTitle>,
+        client_id_tab_index_or_pane_id: ClientTabIndexOrPaneId
+    ) -> Result<()> {
+        let err_context = || format!("failed to replace pane");
+        let suppress_pane = |tab: &mut Tab, pane_id: PaneId, new_pane_id: PaneId| {
+            tab.suppress_pane_and_replace_with_pid(pane_id, new_pane_id);
+            if let Some(pane_title) = pane_title {
+                tab.rename_pane(pane_title.as_bytes().to_vec(), new_pane_id);
+            }
+            if let Some(hold_for_command) = hold_for_command {
+                let is_first_run = true;
+                tab.hold_pane(
+                    new_pane_id,
+                    None,
+                    is_first_run,
+                    hold_for_command
+                )
+            }
+        };
+        match client_id_tab_index_or_pane_id {
+            ClientTabIndexOrPaneId::ClientId(client_id) => {
+                active_tab!(self, client_id, |tab: &mut Tab| {
+                    match tab.get_active_pane_id(client_id) {
+                        Some(pane_id) => {
+                            suppress_pane(tab, pane_id, new_pane_id);
+                        },
+                        None => {
+                            log::error!("Failed to find active pane for client id: {:?}", client_id);
+                        }
+                    }
+                })
+            }
+            ClientTabIndexOrPaneId::PaneId(pane_id) => {
+                let tab_index = self
+                    .tabs
+                    .iter()
+                    .find(|(_tab_index, tab)| tab.has_pane_with_pid(&pane_id))
+                    .map(|(tab_index, _tab)| *tab_index);
+                match tab_index {
+                    Some(tab_index) => {
+                        let tab = self.tabs
+                            .get_mut(&tab_index)
+                            .with_context(err_context)?;
+                        suppress_pane(tab, pane_id, new_pane_id);
+                    },
+                    None => {
+                        log::error!("Could not find pane with id: {:?}", pane_id);
+                    },
+                };
+            }
+            ClientTabIndexOrPaneId::TabIndex(tab_index) => {
+                log::error!("Cannot replace pane with tab index");
+            }
+        }
+        Ok(())
+    }
     fn unblock_input(&self) -> Result<()> {
         self.bus
             .senders
@@ -1919,7 +1985,7 @@ pub(crate) fn screen_thread_main(
                 client_or_tab_index,
             ) => {
                 match client_or_tab_index {
-                    ClientOrTabIndex::ClientId(client_id) => {
+                    ClientTabIndexOrPaneId::ClientId(client_id) => {
                         active_tab_and_connected_client_id!(screen, client_id, |tab: &mut Tab, client_id: ClientId| {
                             tab.new_pane(pid,
                                initial_pane_title,
@@ -1942,7 +2008,7 @@ pub(crate) fn screen_thread_main(
                             )
                         }
                     },
-                    ClientOrTabIndex::TabIndex(tab_index) => {
+                    ClientTabIndexOrPaneId::TabIndex(tab_index) => {
                         if let Some(active_tab) = screen.tabs.get_mut(&tab_index) {
                             active_tab.new_pane(
                                 pid,
@@ -1959,6 +2025,9 @@ pub(crate) fn screen_thread_main(
                             log::error!("Tab index not found: {:?}", tab_index);
                         }
                     },
+                    ClientTabIndexOrPaneId::PaneId(pane_id) => {
+                        log::error!("cannot open a pane with a pane id??");
+                    }
                 };
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
@@ -1967,7 +2036,7 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::OpenInPlaceEditor(pid, client_id) => {
                 active_tab!(screen, client_id, |tab: &mut Tab| tab
-                    .suppress_active_pane(pid, client_id), ?);
+                    .replace_active_pane_with_editor_pane(pid, client_id), ?);
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
 
@@ -3108,6 +3177,15 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::UpdateSessionInfos(new_session_infos) => {
                 screen.update_session_infos(new_session_infos)?;
+            },
+            ScreenInstruction::ReplacePane(new_pane_id, hold_for_command, pane_title, client_id_tab_index_or_pane_id) => {
+                let err_context = || format!("Failed to replace pane");
+                screen.replace_pane(new_pane_id, hold_for_command, pane_title, client_id_tab_index_or_pane_id)?;
+
+                screen.unblock_input()?;
+                screen.log_and_report_session_state()?;
+
+                screen.render()?;
             },
         }
     }

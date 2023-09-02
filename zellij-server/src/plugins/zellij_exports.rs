@@ -51,6 +51,7 @@ macro_rules! apply_action {
         if let Err(e) = route_action(
             $action,
             $env.plugin_env.client_id,
+            Some(PaneId::Plugin($env.plugin_env.plugin_id)),
             $env.plugin_env.senders.clone(),
             $env.plugin_env.capabilities.clone(),
             $env.plugin_env.client_attributes.clone(),
@@ -347,12 +348,14 @@ fn get_zellij_version(env: &ForeignFunctionEnv) {
 fn open_file(env: &ForeignFunctionEnv, file_to_open: FileToOpen) {
     let error_msg = || format!("failed to open file in plugin {}", env.plugin_env.name());
     let floating = false;
+    let in_place = false;
     let action = Action::EditFile(
         file_to_open.path,
         file_to_open.line_number,
         file_to_open.cwd,
         None,
         floating,
+        in_place,
     );
     apply_action!(action, error_msg, env);
 }
@@ -360,12 +363,14 @@ fn open_file(env: &ForeignFunctionEnv, file_to_open: FileToOpen) {
 fn open_file_floating(env: &ForeignFunctionEnv, file_to_open: FileToOpen) {
     let error_msg = || format!("failed to open file in plugin {}", env.plugin_env.name());
     let floating = true;
+    let in_place = false;
     let action = Action::EditFile(
         file_to_open.path,
         file_to_open.line_number,
         file_to_open.cwd,
         None,
         floating,
+        in_place,
     );
     apply_action!(action, error_msg, env);
 }

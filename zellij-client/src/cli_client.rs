@@ -18,8 +18,9 @@ pub fn start_cli_client(os_input: Box<dyn ClientOsApi>, session_name: &str, acti
         sock_dir
     };
     os_input.connect_to_server(&*zellij_ipc_pipe);
+    let pane_id = os_input.env_variable("ZELLIJ_PANE_ID").and_then(|e| e.trim().parse().ok());
     for action in actions {
-        let msg = ClientToServerMsg::Action(action, None);
+        let msg = ClientToServerMsg::Action(action, pane_id, None);
         os_input.send_to_server(msg);
     }
     loop {
