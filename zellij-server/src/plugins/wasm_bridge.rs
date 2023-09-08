@@ -732,37 +732,34 @@ impl WasmBridge {
         status: PermissionStatus,
         cache_path: Option<PathBuf>,
     ) -> Result<()> {
-        if let Some(running_plugin) = self
+        let err_context = || format!("Failed to write plugin permission {plugin_id}");
+
+        let running_plugin = self
             .plugin_map
             .lock()
             .unwrap()
             .get_running_plugin(plugin_id, client_id)
-        {
-            let err_context = || format!("Failed to write plugin permission {plugin_id}");
+            .ok_or_else(|| anyhow!("Failed to get running plugin"))?;
 
-            let mut running_plugin = running_plugin.lock().unwrap();
-            let permissions = if status == PermissionStatus::Granted {
-                permissions
-            } else {
-                vec![]
-            };
+        let mut running_plugin = running_plugin.lock().unwrap();
 
-            running_plugin
-                .plugin_env
-                .set_permissions(HashSet::from_iter(permissions.clone()));
-
-            let mut permission_cache = PermissionCache::from_path_or_default(cache_path);
-            permission_cache.cache(
-                running_plugin.plugin_env.plugin.location.to_string(),
-                permissions,
-            );
-
-            permission_cache.write_to_file().with_context(err_context)?;
+        let permissions = if status == PermissionStatus::Granted {
+            permissions
         } else {
-            panic!("RUNNING PLUGIN NOT FOUND")
-        }
+            vec![]
+        };
 
-        Ok(())
+        running_plugin
+            .plugin_env
+            .set_permissions(HashSet::from_iter(permissions.clone()));
+
+        let mut permission_cache = PermissionCache::from_path_or_default(cache_path);
+        permission_cache.cache(
+            running_plugin.plugin_env.plugin.location.to_string(),
+            permissions,
+        );
+
+        permission_cache.write_to_file().with_context(err_context)
     }
 }
 
