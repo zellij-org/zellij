@@ -148,7 +148,6 @@ impl<'a> PluginLoader<'a> {
         default_shell: Option<TerminalAction>,
         default_layout: Box<Layout>,
     ) -> Result<()> {
-        log::info!("starting plugin");
         let err_context = || format!("failed to start plugin {plugin_id} for client {client_id}");
         let mut plugin_loader = PluginLoader::new(
             &plugin_cache,
@@ -554,8 +553,6 @@ impl<'a> PluginLoader<'a> {
             .lock()
             .unwrap()
             .insert(cloned_plugin.path, module);
-
-        log::info!("created plugin environment");
         Ok((store, instance, plugin_env, subscriptions))
     }
     pub fn create_plugin_instance_and_wasi_env_for_worker(
@@ -586,7 +583,6 @@ impl<'a> PluginLoader<'a> {
         plugin_map: &Arc<Mutex<PluginMap>>,
         subscriptions: &Arc<Mutex<Subscriptions>>,
     ) -> Result<()> {
-        log::info!("loading plugin instance!");
         let err_context = || format!("failed to load plugin from instance {instance:#?}");
         let main_user_instance = instance.clone();
         let main_user_env = plugin_env.clone();
@@ -680,7 +676,6 @@ impl<'a> PluginLoader<'a> {
             self.senders,
             self.plugin_id
         );
-        log::info!("load plugin instance finished!");
 
         Ok(())
     }
@@ -767,7 +762,6 @@ impl<'a> PluginLoader<'a> {
         &self,
         module: &Module,
     ) -> Result<(Store, Instance, PluginEnv, Arc<Mutex<Subscriptions>>)> {
-        log::info!("create_plugin_instance_env_and_subscriptions");
         let err_context = || {
             format!(
                 "Failed to create instance, plugin env and subscriptions for plugin {}",
@@ -820,8 +814,6 @@ impl<'a> PluginLoader<'a> {
         let instance = Instance::new(store_mut, &module, &zellij).with_context(err_context)?;
 
         wasi_env.initialize(store_mut, &instance)?;
-
-        log::info!("created instance");
 
         Ok((store, instance, plugin_env, subscriptions))
     }
