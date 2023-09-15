@@ -1331,7 +1331,7 @@ impl Grid {
         if character_width == 0 {
             return;
         }
-        if self.cursor.x + character_width > self.width && self.alternate_screen_state.is_none() {
+        if self.cursor.x + character_width > self.width {
             if self.disable_linewrap {
                 return;
             }
