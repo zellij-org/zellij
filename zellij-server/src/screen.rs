@@ -268,20 +268,24 @@ pub enum ScreenInstruction {
     NewTiledPluginPane(RunPlugin, Option<String>, ClientId), // Option<String> is
     // optional pane title
     NewFloatingPluginPane(RunPlugin, Option<String>, ClientId), // Option<String> is an
+    NewInPlacePluginPane(RunPlugin, Option<String>, PaneId, ClientId), // Option<String> is an
     // optional pane title
     StartOrReloadPluginPane(RunPlugin, Option<String>),
     AddPlugin(
         Option<bool>, // should_float
+        bool, // should be opened in place
         RunPlugin,
         Option<String>, // pane title
         usize,          // tab index
         u32,            // plugin id
+        Option<PaneId>,
+        Option<ClientId>,
     ),
     UpdatePluginLoadingStage(u32, LoadingIndication), // u32 - plugin_id
     StartPluginLoadingIndication(u32, LoadingIndication), // u32 - plugin_id
     ProgressPluginLoadingOffset(u32),                 // u32 - plugin id
     RequestStateUpdateForPlugins,
-    LaunchOrFocusPlugin(RunPlugin, bool, bool, ClientId), // bools are: should_float, move_to_focused_tab
+    LaunchOrFocusPlugin(RunPlugin, bool, bool, bool, Option<PaneId>, ClientId), // bools are: should_float, move_to_focused_tab, should_open_in_place Option<PaneId> is the pane id to replace
     SuppressPane(PaneId, ClientId),                       // bool is should_float
     FocusPaneWithId(PaneId, bool, ClientId),              // bool is should_float
     RenamePane(PaneId, Vec<u8>),
@@ -475,6 +479,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::BreakPaneLeft(..) => ScreenContext::BreakPaneLeft,
             ScreenInstruction::UpdateSessionInfos(..) => ScreenContext::UpdateSessionInfos,
             ScreenInstruction::ReplacePane(..) => ScreenContext::ReplacePane,
+            ScreenInstruction::NewInPlacePluginPane(..) => ScreenContext::NewInPlacePluginPane,
         }
     }
 }
@@ -1833,12 +1838,13 @@ impl Screen {
         &mut self,
         new_pane_id: PaneId,
         hold_for_command: HoldForCommand,
+        run_plugin: Option<Run>,
         pane_title: Option<InitialTitle>,
         client_id_tab_index_or_pane_id: ClientTabIndexOrPaneId
     ) -> Result<()> {
         let err_context = || format!("failed to replace pane");
         let suppress_pane = |tab: &mut Tab, pane_id: PaneId, new_pane_id: PaneId| {
-            tab.suppress_pane_and_replace_with_pid(pane_id, new_pane_id);
+            tab.suppress_pane_and_replace_with_pid(pane_id, new_pane_id, run_plugin);
             if let Some(pane_title) = pane_title {
                 tab.rename_pane(pane_title.as_bytes().to_vec(), new_pane_id);
             }
@@ -2961,11 +2967,14 @@ pub(crate) fn screen_thread_main(
                 let tab_index = screen.active_tab_indices.values().next().unwrap_or(&1);
                 let size = Size::default();
                 let should_float = Some(false);
+                let should_be_opened_in_place = false;
                 screen.bus.senders.send_to_plugin(PluginInstruction::Load(
                     should_float,
+                    should_be_opened_in_place,
                     pane_title,
                     run_plugin,
                     *tab_index,
+                    None, // pane it to replace
                     client_id,
                     size,
                 ))?;
@@ -2975,11 +2984,38 @@ pub(crate) fn screen_thread_main(
                     Some(tab_index) => {
                         let size = Size::default();
                         let should_float = Some(true);
+                        let should_be_opened_in_place = false;
                         screen.bus.senders.send_to_plugin(PluginInstruction::Load(
                             should_float,
+                            should_be_opened_in_place,
                             pane_title,
                             run_plugin,
                             *tab_index,
+                            None, // pane id to replace
+                            client_id,
+                            size,
+                        ))?;
+                    },
+                    None => {
+                        log::error!(
+                            "Could not find an active tab - is there at least 1 connected user?"
+                        );
+                    },
+                }
+            },
+            ScreenInstruction::NewInPlacePluginPane(run_plugin, pane_title, pane_id_to_replace, client_id) => {
+                match screen.active_tab_indices.values().next() {
+                    Some(tab_index) => {
+                        let size = Size::default();
+                        let should_float = None;
+                        let should_be_in_place = true;
+                        screen.bus.senders.send_to_plugin(PluginInstruction::Load(
+                            should_float,
+                            should_be_in_place,
+                            pane_title,
+                            run_plugin,
+                            *tab_index,
+                            Some(pane_id_to_replace),
                             client_id,
                             size,
                         ))?;
@@ -3008,15 +3044,29 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::AddPlugin(
                 should_float,
+                should_be_in_place,
                 run_plugin_location,
                 pane_title,
                 tab_index,
                 plugin_id,
+                pane_id_to_replace,
+                client_id,
             ) => {
                 let pane_title =
                     pane_title.unwrap_or_else(|| run_plugin_location.location.to_string());
                 let run_plugin = Run::Plugin(run_plugin_location);
-                if let Some(active_tab) = screen.tabs.get_mut(&tab_index) {
+
+                if should_be_in_place {
+                    if let Some(pane_id_to_replace) = pane_id_to_replace {
+                        let client_tab_index_or_pane_id = ClientTabIndexOrPaneId::PaneId(pane_id_to_replace);
+                        screen.replace_pane(PaneId::Plugin(plugin_id), None, Some(run_plugin), Some(pane_title), client_tab_index_or_pane_id)?;
+                    } else if let Some(client_id) = client_id {
+                        let client_tab_index_or_pane_id = ClientTabIndexOrPaneId::ClientId(client_id);
+                        screen.replace_pane(PaneId::Plugin(plugin_id), None, Some(run_plugin), Some(pane_title), client_tab_index_or_pane_id)?;
+                    } else {
+                        log::error!("Must have pane id to replace or connected client_id if replacing a pane");
+                    }
+                } else if let Some(active_tab) = screen.tabs.get_mut(&tab_index) {
                     active_tab.new_pane(
                         PaneId::Plugin(plugin_id),
                         Some(pane_title),
@@ -3072,41 +3122,73 @@ pub(crate) fn screen_thread_main(
                 run_plugin,
                 should_float,
                 move_to_focused_tab,
+                should_open_in_place,
+                pane_id_to_replace,
                 client_id,
             ) => {
-                let client_id = if screen.active_tab_indices.contains_key(&client_id) {
-                    Some(client_id)
-                } else {
-                    screen.get_first_client_id()
-                };
-                let client_id_and_focused_tab = client_id.and_then(|client_id| {
-                    screen
-                        .active_tab_indices
-                        .get(&client_id)
-                        .map(|tab_index| (*tab_index, client_id))
-                });
-                match client_id_and_focused_tab {
-                    Some((tab_index, client_id)) => {
-                        if screen.focus_plugin_pane(
-                            &run_plugin,
-                            should_float,
-                            move_to_focused_tab,
-                            client_id,
-                        )? {
-                            screen.render()?;
-                            screen.log_and_report_session_state()?;
-                        } else {
-                            screen.bus.senders.send_to_plugin(PluginInstruction::Load(
-                                Some(should_float),
-                                None,
-                                run_plugin,
-                                tab_index,
-                                client_id,
-                                Size::default(),
-                            ))?;
+                match pane_id_to_replace {
+                    Some(pane_id_to_replace) => {
+                        match screen.active_tab_indices.values().next() {
+                            Some(tab_index) => {
+                                let size = Size::default();
+                                let should_float = None;
+                                let should_be_in_place = true;
+                                screen.bus.senders.send_to_plugin(PluginInstruction::Load(
+                                    should_float,
+                                    should_be_in_place,
+                                    None,
+                                    run_plugin,
+                                    *tab_index,
+                                    Some(pane_id_to_replace),
+                                    client_id,
+                                    size,
+                                ))?;
+                            },
+                            None => {
+                                log::error!(
+                                    "Could not find an active tab - is there at least 1 connected user?"
+                                );
+                            },
                         }
                     },
-                    None => log::error!("No connected clients found - cannot load or focus plugin"),
+                    None => {
+                        let client_id = if screen.active_tab_indices.contains_key(&client_id) {
+                            Some(client_id)
+                        } else {
+                            screen.get_first_client_id()
+                        };
+                        let client_id_and_focused_tab = client_id.and_then(|client_id| {
+                            screen
+                                .active_tab_indices
+                                .get(&client_id)
+                                .map(|tab_index| (*tab_index, client_id))
+                        });
+                        match client_id_and_focused_tab {
+                            Some((tab_index, client_id)) => {
+                                if screen.focus_plugin_pane(
+                                    &run_plugin,
+                                    should_float,
+                                    move_to_focused_tab,
+                                    client_id,
+                                )? {
+                                    screen.render()?;
+                                    screen.log_and_report_session_state()?;
+                                } else {
+                                    screen.bus.senders.send_to_plugin(PluginInstruction::Load(
+                                        Some(should_float),
+                                        should_open_in_place,
+                                        None,
+                                        run_plugin,
+                                        tab_index,
+                                        None, // pane id to replace
+                                        client_id,
+                                        Size::default(),
+                                    ))?;
+                                }
+                            },
+                            None => log::error!("No connected clients found - cannot load or focus plugin"),
+                        }
+                    }
                 }
             },
             ScreenInstruction::SuppressPane(pane_id, client_id) => {
@@ -3180,7 +3262,7 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::ReplacePane(new_pane_id, hold_for_command, pane_title, client_id_tab_index_or_pane_id) => {
                 let err_context = || format!("Failed to replace pane");
-                screen.replace_pane(new_pane_id, hold_for_command, pane_title, client_id_tab_index_or_pane_id)?;
+                screen.replace_pane(new_pane_id, hold_for_command, None, pane_title, client_id_tab_index_or_pane_id)?;
 
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;

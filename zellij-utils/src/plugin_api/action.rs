@@ -402,10 +402,12 @@ impl TryFrom<ProtobufAction> for Action {
                         };
                         let should_float = payload.should_float;
                         let move_to_focused_tab = payload.move_to_focused_tab;
+                        let should_open_in_place = payload.should_open_in_place;
                         Ok(Action::LaunchOrFocusPlugin(
                             run_plugin,
                             should_float,
                             move_to_focused_tab,
+                            should_open_in_place,
                         ))
                     },
                     _ => Err("Wrong payload for Action::LaunchOrFocusPlugin"),
@@ -961,7 +963,7 @@ impl TryFrom<Action> for ProtobufAction {
                     optional_payload: Some(OptionalPayload::MiddleClickPayload(position)),
                 })
             },
-            Action::LaunchOrFocusPlugin(run_plugin, should_float, move_to_focused_tab) => {
+            Action::LaunchOrFocusPlugin(run_plugin, should_float, move_to_focused_tab, should_open_in_place) => {
                 let url: Url = Url::from(&run_plugin.location);
                 Ok(ProtobufAction {
                     name: ProtobufActionName::LaunchOrFocusPlugin as i32,
@@ -970,6 +972,7 @@ impl TryFrom<Action> for ProtobufAction {
                             plugin_url: url.into(),
                             should_float,
                             move_to_focused_tab,
+                            should_open_in_place,
                             plugin_configuration: Some(run_plugin.configuration.try_into()?),
                         },
                     )),
@@ -1152,6 +1155,7 @@ impl TryFrom<Action> for ProtobufAction {
             Action::NoOp
             | Action::Confirm
             | Action::NewInPlacePane(..) // TODO: implement this
+            | Action::NewInPlacePluginPane(..) // TODO: implement this
             | Action::Deny
             | Action::Copy
             | Action::SkipConfirm(..) => Err("Unsupported action"),

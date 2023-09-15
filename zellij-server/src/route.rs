@@ -266,25 +266,45 @@ pub(crate) fn route_action(
         Action::EditFile(path_to_file, line_number, cwd, split_direction, should_float, should_open_in_place) => {
             let title = format!("Editing: {}", path_to_file.display());
             let open_file = TerminalAction::OpenFile(path_to_file, line_number, cwd);
-            let pty_instr = match (split_direction, should_float) {
-                (Some(Direction::Left), false) => {
+            let pty_instr = match (split_direction, should_float, should_open_in_place) {
+                (Some(Direction::Left), false, false) => {
                     PtyInstruction::SpawnTerminalVertically(Some(open_file), Some(title), client_id)
                 },
-                (Some(Direction::Right), false) => {
+                (Some(Direction::Right), false, false) => {
                     PtyInstruction::SpawnTerminalVertically(Some(open_file), Some(title), client_id)
                 },
-                (Some(Direction::Up), false) => PtyInstruction::SpawnTerminalHorizontally(
+                (Some(Direction::Up), false, false) => PtyInstruction::SpawnTerminalHorizontally(
                     Some(open_file),
                     Some(title),
                     client_id,
                 ),
-                (Some(Direction::Down), false) => PtyInstruction::SpawnTerminalHorizontally(
+                (Some(Direction::Down), false, false) => PtyInstruction::SpawnTerminalHorizontally(
                     Some(open_file),
                     Some(title),
                     client_id,
                 ),
-                // No direction specified or should float - defer placement to screen
-                (None, _) | (_, true) => PtyInstruction::SpawnTerminal(
+                // open terminal in place
+                (_, _, true) => {
+                    match pane_id {
+                        Some(pane_id) => {
+                            PtyInstruction::SpawnInPlaceTerminal(
+                                Some(open_file),
+                                Some(title),
+                                ClientTabIndexOrPaneId::PaneId(pane_id),
+                            )
+                        },
+                        None => {
+                            PtyInstruction::SpawnInPlaceTerminal(
+                                Some(open_file),
+                                Some(title),
+                                ClientTabIndexOrPaneId::ClientId(client_id)
+                            )
+                        },
+                    }
+                }
+                // Open either floating terminal if we were asked with should_float or defer
+                // placement to screen
+                (None, _, _) | (_, true, _) => PtyInstruction::SpawnTerminal(
                     Some(open_file),
                     Some(should_float),
                     Some(title),
@@ -347,9 +367,6 @@ pub(crate) fn route_action(
                         ))
                         .with_context(err_context)?;
                 },
-                _ => {
-                    log::error!("To open an in place editor, we must have either a pane id or a client id")
-                }
             }
         },
         Action::NewTiledPane(direction, run_command, name) => {
@@ -645,17 +662,30 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
         },
+        Action::NewInPlacePluginPane(run_plugin, name) => {
+            if let Some(pane_id) = pane_id {
+                senders
+                    .send_to_screen(ScreenInstruction::NewInPlacePluginPane(
+                        run_plugin, name, pane_id, client_id,
+                    ))
+                    .with_context(err_context)?;
+            } else {
+                log::error!("Must have pane_id in order to open in place pane");
+            }
+        },
         Action::StartOrReloadPlugin(run_plugin) => {
             senders
                 .send_to_screen(ScreenInstruction::StartOrReloadPluginPane(run_plugin, None))
                 .with_context(err_context)?;
         },
-        Action::LaunchOrFocusPlugin(run_plugin, should_float, move_to_focused_tab) => {
+        Action::LaunchOrFocusPlugin(run_plugin, should_float, move_to_focused_tab, should_open_in_place) => {
             senders
                 .send_to_screen(ScreenInstruction::LaunchOrFocusPlugin(
                     run_plugin,
                     should_float,
                     move_to_focused_tab,
+                    should_open_in_place,
+                    pane_id,
                     client_id,
                 ))
                 .with_context(err_context)?;

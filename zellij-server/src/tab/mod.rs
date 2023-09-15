@@ -1140,7 +1140,7 @@ impl Tab {
         }
         Ok(())
     }
-    pub fn suppress_pane_and_replace_with_pid(&mut self, old_pane_id: PaneId, new_pane_id: PaneId) -> Result<()> {
+    pub fn suppress_pane_and_replace_with_pid(&mut self, old_pane_id: PaneId, new_pane_id: PaneId, run_plugin: Option<Run>) -> Result<()> {
         // this method creates a new pane from pid and replaces it with the active pane
         // the active pane is then suppressed (hidden and not rendered) until the current
         // created pane is closed, in which case it will be replaced back by it
@@ -1192,8 +1192,55 @@ impl Tab {
                     },
                 }
             },
-            PaneId::Plugin(_pid) => {
+            PaneId::Plugin(plugin_pid) => {
                 // TBD, currently unsupported
+                let mut new_pane = PluginPane::new(
+                    plugin_pid,
+                    PaneGeom::default(), // this will be filled out later
+                    self.senders
+                        .to_plugin
+                        .as_ref()
+                        .with_context(err_context)?
+                        .clone(),
+                    String::new(),
+                    String::new(),
+                    self.sixel_image_store.clone(),
+                    self.terminal_emulator_colors.clone(),
+                    self.terminal_emulator_color_codes.clone(),
+                    self.link_handler.clone(),
+                    self.character_cell_size.clone(),
+                    self.connected_clients.borrow().iter().copied().collect(),
+                    self.style,
+                    run_plugin,
+                    self.debug,
+                );
+                let replaced_pane = if self.floating_panes.panes_contain(&old_pane_id) {
+                    self.floating_panes
+                        .replace_pane(old_pane_id, Box::new(new_pane))
+                        .ok()
+                } else {
+                    self.tiled_panes
+                        .replace_pane(old_pane_id, Box::new(new_pane))
+                };
+                match replaced_pane {
+                    Some(replaced_pane) => {
+                        resize_pty!(
+                            replaced_pane,
+                            self.os_api,
+                            self.senders,
+                            self.character_cell_size
+                        );
+                        self.suppressed_panes
+                            .insert(PaneId::Plugin(plugin_pid), replaced_pane);
+                    },
+                    None => {
+                        Err::<(), _>(anyhow!(
+                            "Could not find editor pane to replace - is no pane focused?"
+                        ))
+                        .with_context(err_context)
+                        .non_fatal();
+                    },
+                }
             },
         }
         Ok(())
