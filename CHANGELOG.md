@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [0.38.2] - 2023-09-15
 * fix(terminal): wrap lines in alternate screen mode when adding characters (https://github.com/zellij-org/zellij/pull/2789)
+* fix(utils): validate session name (https://github.com/zellij-org/zellij/pull/2607)
 
 ## [0.38.1] - 2023-08-31
 * refactor(server): remove unnecessary mut (https://github.com/zellij-org/zellij/pull/2735)
