@@ -818,7 +818,7 @@ impl TryFrom<Action> for ProtobufAction {
                     })),
                 })
             },
-            Action::EditFile(path_to_file, line_number, cwd, direction, should_float, should_be_in_place) => {
+            Action::EditFile(path_to_file, line_number, cwd, direction, should_float, _should_be_in_place) => {
                 let file_to_edit = path_to_file.display().to_string();
                 let cwd = cwd.map(|cwd| cwd.display().to_string());
                 let direction: Option<i32> = direction

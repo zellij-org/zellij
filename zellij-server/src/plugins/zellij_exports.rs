@@ -215,6 +215,15 @@ fn host_run_plugin_command(env: &ForeignFunctionEnv) {
                         connect_to_session.tab_position,
                         connect_to_session.pane_id,
                     )?,
+                    PluginCommand::OpenFileInPlace(file_to_open) => {
+                        open_file_in_place(env, file_to_open)
+                    },
+                    PluginCommand::OpenTerminalInPlace(cwd) => {
+                        open_terminal_in_place(env, cwd.path.try_into()?)
+                    },
+                    PluginCommand::OpenCommandPaneInPlace(command_to_run) => {
+                        open_command_pane_in_place(env, command_to_run)
+                    },
                 },
                 (PermissionStatus::Denied, permission) => {
                     log::error!(
@@ -375,6 +384,21 @@ fn open_file_floating(env: &ForeignFunctionEnv, file_to_open: FileToOpen) {
     apply_action!(action, error_msg, env);
 }
 
+fn open_file_in_place(env: &ForeignFunctionEnv, file_to_open: FileToOpen) {
+    let error_msg = || format!("failed to open file in plugin {}", env.plugin_env.name());
+    let floating = false;
+    let in_place = true;
+    let action = Action::EditFile(
+        file_to_open.path,
+        file_to_open.line_number,
+        file_to_open.cwd,
+        None,
+        floating,
+        in_place,
+    );
+    apply_action!(action, error_msg, env);
+}
+
 fn open_terminal(env: &ForeignFunctionEnv, cwd: PathBuf) {
     let error_msg = || format!("failed to open file in plugin {}", env.plugin_env.name());
     let mut default_shell = env
@@ -404,6 +428,22 @@ fn open_terminal_floating(env: &ForeignFunctionEnv, cwd: PathBuf) {
         _ => None,
     };
     let action = Action::NewFloatingPane(run_command_action, None);
+    apply_action!(action, error_msg, env);
+}
+
+fn open_terminal_in_place(env: &ForeignFunctionEnv, cwd: PathBuf) {
+    let error_msg = || format!("failed to open file in plugin {}", env.plugin_env.name());
+    let mut default_shell = env
+        .plugin_env
+        .default_shell
+        .clone()
+        .unwrap_or_else(|| TerminalAction::RunCommand(RunCommand::default()));
+    default_shell.change_cwd(cwd);
+    let run_command_action: Option<RunCommandAction> = match default_shell {
+        TerminalAction::RunCommand(run_command) => Some(run_command.into()),
+        _ => None,
+    };
+    let action = Action::NewInPlacePane(run_command_action, None);
     apply_action!(action, error_msg, env);
 }
 
@@ -446,6 +486,27 @@ fn open_command_pane_floating(env: &ForeignFunctionEnv, command_to_run: CommandT
         hold_on_start,
     };
     let action = Action::NewFloatingPane(Some(run_command_action), name);
+    apply_action!(action, error_msg, env);
+}
+
+fn open_command_pane_in_place(env: &ForeignFunctionEnv, command_to_run: CommandToRun) {
+    let error_msg = || format!("failed to open command in plugin {}", env.plugin_env.name());
+    let command = command_to_run.path;
+    let cwd = command_to_run.cwd;
+    let args = command_to_run.args;
+    let direction = None;
+    let hold_on_close = true;
+    let hold_on_start = false;
+    let name = None;
+    let run_command_action = RunCommandAction {
+        command,
+        args,
+        cwd,
+        direction,
+        hold_on_close,
+        hold_on_start,
+    };
+    let action = Action::NewInPlacePane(Some(run_command_action), name);
     apply_action!(action, error_msg, env);
 }
 
@@ -1095,14 +1156,16 @@ fn check_command_permission(
         return (PermissionStatus::Granted, None);
     }
     let permission = match command {
-        PluginCommand::OpenFile(..) | PluginCommand::OpenFileFloating(..) => {
+        PluginCommand::OpenFile(..) | PluginCommand::OpenFileFloating(..) | PluginCommand::OpenFileInPlace(..) => {
             PermissionType::OpenFiles
         },
         PluginCommand::OpenTerminal(..)
         | PluginCommand::StartOrReloadPlugin(..)
-        | PluginCommand::OpenTerminalFloating(..) => PermissionType::OpenTerminalsOrPlugins,
+        | PluginCommand::OpenTerminalFloating(..)
+        | PluginCommand::OpenTerminalInPlace(..) => PermissionType::OpenTerminalsOrPlugins,
         PluginCommand::OpenCommandPane(..)
         | PluginCommand::OpenCommandPaneFloating(..)
+        | PluginCommand::OpenCommandPaneInPlace(..)
         | PluginCommand::ExecCmd(..) => PermissionType::RunCommands,
         PluginCommand::Write(..) | PluginCommand::WriteChars(..) => PermissionType::WriteToStdin,
         PluginCommand::SwitchTabTo(..)

@@ -5,7 +5,7 @@ pub struct PluginCommand {
     pub name: i32,
     #[prost(
         oneof = "plugin_command::Payload",
-        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39"
+        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42"
     )]
     pub payload: ::core::option::Option<plugin_command::Payload>,
 }
@@ -90,6 +90,12 @@ pub mod plugin_command {
         RequestPluginPermissionPayload(super::RequestPluginPermissionPayload),
         #[prost(message, tag = "39")]
         SwitchSessionPayload(super::SwitchSessionPayload),
+        #[prost(message, tag = "40")]
+        OpenFileInPlacePayload(super::OpenFilePayload),
+        #[prost(message, tag = "41")]
+        OpenTerminalInPlacePayload(super::OpenFilePayload),
+        #[prost(message, tag = "42")]
+        OpenCommandPaneInPlacePayload(super::OpenCommandPanePayload),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -254,6 +260,9 @@ pub enum CommandName {
     ReportCrash = 65,
     RequestPluginPermissions = 66,
     SwitchSession = 67,
+    OpenTerminalInPlace = 68,
+    OpenCommandInPlace = 69,
+    OpenFileInPlace = 70,
 }
 impl CommandName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -330,6 +339,9 @@ impl CommandName {
             CommandName::ReportCrash => "ReportCrash",
             CommandName::RequestPluginPermissions => "RequestPluginPermissions",
             CommandName::SwitchSession => "SwitchSession",
+            CommandName::OpenTerminalInPlace => "OpenTerminalInPlace",
+            CommandName::OpenCommandInPlace => "OpenCommandInPlace",
+            CommandName::OpenFileInPlace => "OpenFileInPlace",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -403,6 +415,9 @@ impl CommandName {
             "ReportCrash" => Some(Self::ReportCrash),
             "RequestPluginPermissions" => Some(Self::RequestPluginPermissions),
             "SwitchSession" => Some(Self::SwitchSession),
+            "OpenTerminalInPlace" => Some(Self::OpenTerminalInPlace),
+            "OpenCommandInPlace" => Some(Self::OpenCommandInPlace),
+            "OpenFileInPlace" => Some(Self::OpenFileInPlace),
             _ => None,
         }
     }

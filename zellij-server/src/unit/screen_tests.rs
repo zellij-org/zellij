@@ -2574,6 +2574,7 @@ pub fn send_cli_launch_or_focus_plugin_action() {
     );
     let cli_action = CliAction::LaunchOrFocusPlugin {
         floating: true,
+        in_place: false,
         move_to_focused_tab: true,
         url: url::Url::parse("file:/path/to/fake/plugin").unwrap(),
         configuration: Default::default(),
@@ -2632,6 +2633,7 @@ pub fn send_cli_launch_or_focus_plugin_action_when_plugin_is_already_loaded() {
     );
     let cli_action = CliAction::LaunchOrFocusPlugin {
         floating: true,
+        in_place: false,
         move_to_focused_tab: true,
         url: url::Url::parse("file:/path/to/fake/plugin").unwrap(),
         configuration: Default::default(),
