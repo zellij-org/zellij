@@ -232,7 +232,7 @@ impl TryFrom<ProtobufAction> for Action {
                         .and_then(|d| ProtobufResizeDirection::from_i32(d))
                         .and_then(|d| d.try_into().ok());
                     let should_float = payload.should_float;
-                    let should_be_in_place = false; // TODO: implement this
+                    let should_be_in_place = false;
                     Ok(Action::EditFile(
                         file_to_edit,
                         line_number,
@@ -1154,8 +1154,8 @@ impl TryFrom<Action> for ProtobufAction {
             }),
             Action::NoOp
             | Action::Confirm
-            | Action::NewInPlacePane(..) // TODO: implement this
-            | Action::NewInPlacePluginPane(..) // TODO: implement this
+            | Action::NewInPlacePane(..)
+            | Action::NewInPlacePluginPane(..)
             | Action::Deny
             | Action::Copy
             | Action::SkipConfirm(..) => Err("Unsupported action"),
