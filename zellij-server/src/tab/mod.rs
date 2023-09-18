@@ -1074,7 +1074,11 @@ impl Tab {
             self.add_tiled_pane(new_pane, pid, client_id)
         }
     }
-    pub fn replace_active_pane_with_editor_pane(&mut self, pid: PaneId, client_id: ClientId) -> Result<()> {
+    pub fn replace_active_pane_with_editor_pane(
+        &mut self,
+        pid: PaneId,
+        client_id: ClientId,
+    ) -> Result<()> {
         // this method creates a new pane from pid and replaces it with the active pane
         // the active pane is then suppressed (hidden and not rendered) until the current
         // created pane is closed, in which case it will be replaced back by it
@@ -1140,7 +1144,12 @@ impl Tab {
         }
         Ok(())
     }
-    pub fn suppress_pane_and_replace_with_pid(&mut self, old_pane_id: PaneId, new_pane_id: PaneId, run_plugin: Option<Run>) -> Result<()> {
+    pub fn suppress_pane_and_replace_with_pid(
+        &mut self,
+        old_pane_id: PaneId,
+        new_pane_id: PaneId,
+        run_plugin: Option<Run>,
+    ) -> Result<()> {
         // this method creates a new pane from pid and replaces it with the active pane
         // the active pane is then suppressed (hidden and not rendered) until the current
         // created pane is closed, in which case it will be replaced back by it

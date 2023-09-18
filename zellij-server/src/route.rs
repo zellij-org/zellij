@@ -263,7 +263,14 @@ pub(crate) fn route_action(
             };
             senders.send_to_pty(pty_instr).with_context(err_context)?;
         },
-        Action::EditFile(path_to_file, line_number, cwd, split_direction, should_float, should_open_in_place) => {
+        Action::EditFile(
+            path_to_file,
+            line_number,
+            cwd,
+            split_direction,
+            should_float,
+            should_open_in_place,
+        ) => {
             let title = format!("Editing: {}", path_to_file.display());
             let open_file = TerminalAction::OpenFile(path_to_file, line_number, cwd);
             let pty_instr = match (split_direction, should_float, should_open_in_place) {
@@ -284,24 +291,18 @@ pub(crate) fn route_action(
                     client_id,
                 ),
                 // open terminal in place
-                (_, _, true) => {
-                    match pane_id {
-                        Some(pane_id) => {
-                            PtyInstruction::SpawnInPlaceTerminal(
-                                Some(open_file),
-                                Some(title),
-                                ClientTabIndexOrPaneId::PaneId(pane_id),
-                            )
-                        },
-                        None => {
-                            PtyInstruction::SpawnInPlaceTerminal(
-                                Some(open_file),
-                                Some(title),
-                                ClientTabIndexOrPaneId::ClientId(client_id)
-                            )
-                        },
-                    }
-                }
+                (_, _, true) => match pane_id {
+                    Some(pane_id) => PtyInstruction::SpawnInPlaceTerminal(
+                        Some(open_file),
+                        Some(title),
+                        ClientTabIndexOrPaneId::PaneId(pane_id),
+                    ),
+                    None => PtyInstruction::SpawnInPlaceTerminal(
+                        Some(open_file),
+                        Some(title),
+                        ClientTabIndexOrPaneId::ClientId(client_id),
+                    ),
+                },
                 // Open either floating terminal if we were asked with should_float or defer
                 // placement to screen
                 (None, _, _) | (_, true, _) => PtyInstruction::SpawnTerminal(
@@ -363,7 +364,7 @@ pub(crate) fn route_action(
                         .send_to_pty(PtyInstruction::SpawnInPlaceTerminal(
                             run_cmd,
                             name,
-                            ClientTabIndexOrPaneId::ClientId(client_id)
+                            ClientTabIndexOrPaneId::ClientId(client_id),
                         ))
                         .with_context(err_context)?;
                 },
@@ -678,7 +679,12 @@ pub(crate) fn route_action(
                 .send_to_screen(ScreenInstruction::StartOrReloadPluginPane(run_plugin, None))
                 .with_context(err_context)?;
         },
-        Action::LaunchOrFocusPlugin(run_plugin, should_float, move_to_focused_tab, should_open_in_place) => {
+        Action::LaunchOrFocusPlugin(
+            run_plugin,
+            should_float,
+            move_to_focused_tab,
+            should_open_in_place,
+        ) => {
             senders
                 .send_to_screen(ScreenInstruction::LaunchOrFocusPlugin(
                     run_plugin,

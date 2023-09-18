@@ -523,9 +523,9 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
             Some(CommandName::OpenTerminalInPlace) => match protobuf_plugin_command.payload {
                 Some(Payload::OpenTerminalInPlacePayload(file_to_open_payload)) => {
                     match file_to_open_payload.file_to_open {
-                        Some(file_to_open) => Ok(PluginCommand::OpenTerminalInPlace(
-                            file_to_open.try_into()?,
-                        )),
+                        Some(file_to_open) => {
+                            Ok(PluginCommand::OpenTerminalInPlace(file_to_open.try_into()?))
+                        },
                         None => Err("Malformed open terminal in-place payload"),
                     }
                 },

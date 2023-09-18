@@ -135,7 +135,15 @@ pub enum Sessions {
         floating: bool,
 
         /// Open the new pane in place of the current pane, temporarily suspending it
-        #[clap(short, long, value_parser, default_value("false"), takes_value(false), conflicts_with("floating"), conflicts_with("direction"))]
+        #[clap(
+            short,
+            long,
+            value_parser,
+            default_value("false"),
+            takes_value(false),
+            conflicts_with("floating"),
+            conflicts_with("direction")
+        )]
         in_place: bool,
 
         /// Name of the new pane
@@ -164,7 +172,15 @@ pub enum Sessions {
         direction: Option<Direction>,
 
         /// Open the new pane in place of the current pane, temporarily suspending it
-        #[clap(short, long, value_parser, default_value("false"), takes_value(false), conflicts_with("floating"), conflicts_with("direction"))]
+        #[clap(
+            short,
+            long,
+            value_parser,
+            default_value("false"),
+            takes_value(false),
+            conflicts_with("floating"),
+            conflicts_with("direction")
+        )]
         in_place: bool,
 
         /// Open the new pane in floating mode
@@ -277,7 +293,15 @@ pub enum CliAction {
         floating: bool,
 
         /// Open the new pane in place of the current pane, temporarily suspending it
-        #[clap(short, long, value_parser, default_value("false"), takes_value(false), conflicts_with("floating"), conflicts_with("direction"))]
+        #[clap(
+            short,
+            long,
+            value_parser,
+            default_value("false"),
+            takes_value(false),
+            conflicts_with("floating"),
+            conflicts_with("direction")
+        )]
         in_place: bool,
 
         /// Name of the new pane
@@ -324,7 +348,15 @@ pub enum CliAction {
         floating: bool,
 
         /// Open the new pane in place of the current pane, temporarily suspending it
-        #[clap(short, long, value_parser, default_value("false"), takes_value(false), conflicts_with("floating"), conflicts_with("direction"))]
+        #[clap(
+            short,
+            long,
+            value_parser,
+            default_value("false"),
+            takes_value(false),
+            conflicts_with("floating"),
+            conflicts_with("direction")
+        )]
         in_place: bool,
 
         /// Change the working directory of the editor

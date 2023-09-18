@@ -208,7 +208,7 @@ pub enum Action {
     RightClick(Position),
     MiddleClick(Position),
     LaunchOrFocusPlugin(RunPlugin, bool, bool, bool), // bools => should float,
-                                                      // move_to_focused_tab, should_open_in_place
+    // move_to_focused_tab, should_open_in_place
     LeftMouseRelease(Position),
     RightMouseRelease(Position),
     MiddleMouseRelease(Position),
@@ -236,7 +236,7 @@ pub enum Action {
     /// Open a new tiled (embedded, non-floating) plugin pane
     NewTiledPluginPane(RunPlugin, Option<String>), // String is an optional name
     NewFloatingPluginPane(RunPlugin, Option<String>), // String is an optional name
-    NewInPlacePluginPane(RunPlugin, Option<String>), // String is an optional name
+    NewInPlacePluginPane(RunPlugin, Option<String>),  // String is an optional name
     StartOrReloadPlugin(RunPlugin),
     CloseTerminalPane(u32),
     ClosePluginPane(u32),
@@ -320,10 +320,7 @@ impl Action {
                     if floating {
                         Ok(vec![Action::NewFloatingPluginPane(plugin, name)])
                     } else if in_place {
-                        Ok(vec![Action::NewInPlacePluginPane(
-                            plugin,
-                            name,
-                        )])
+                        Ok(vec![Action::NewInPlacePluginPane(plugin, name)])
                     } else {
                         // it is intentional that a new tiled plugin pane cannot include a
                         // direction
@@ -354,10 +351,7 @@ impl Action {
                             name,
                         )])
                     } else if in_place {
-                        Ok(vec![Action::NewInPlacePane(
-                            Some(run_command_action),
-                            name,
-                        )])
+                        Ok(vec![Action::NewInPlacePane(Some(run_command_action), name)])
                     } else {
                         Ok(vec![Action::NewTiledPane(
                             direction,

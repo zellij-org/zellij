@@ -1156,9 +1156,9 @@ fn check_command_permission(
         return (PermissionStatus::Granted, None);
     }
     let permission = match command {
-        PluginCommand::OpenFile(..) | PluginCommand::OpenFileFloating(..) | PluginCommand::OpenFileInPlace(..) => {
-            PermissionType::OpenFiles
-        },
+        PluginCommand::OpenFile(..)
+        | PluginCommand::OpenFileFloating(..)
+        | PluginCommand::OpenFileInPlace(..) => PermissionType::OpenFiles,
         PluginCommand::OpenTerminal(..)
         | PluginCommand::StartOrReloadPlugin(..)
         | PluginCommand::OpenTerminalFloating(..)

@@ -239,7 +239,7 @@ impl TryFrom<ProtobufAction> for Action {
                         cwd,
                         direction,
                         should_float,
-                        should_be_in_place
+                        should_be_in_place,
                     ))
                 },
                 _ => Err("Wrong payload for Action::NewPane"),
@@ -818,7 +818,14 @@ impl TryFrom<Action> for ProtobufAction {
                     })),
                 })
             },
-            Action::EditFile(path_to_file, line_number, cwd, direction, should_float, _should_be_in_place) => {
+            Action::EditFile(
+                path_to_file,
+                line_number,
+                cwd,
+                direction,
+                should_float,
+                _should_be_in_place,
+            ) => {
                 let file_to_edit = path_to_file.display().to_string();
                 let cwd = cwd.map(|cwd| cwd.display().to_string());
                 let direction: Option<i32> = direction
@@ -963,7 +970,12 @@ impl TryFrom<Action> for ProtobufAction {
                     optional_payload: Some(OptionalPayload::MiddleClickPayload(position)),
                 })
             },
-            Action::LaunchOrFocusPlugin(run_plugin, should_float, move_to_focused_tab, should_open_in_place) => {
+            Action::LaunchOrFocusPlugin(
+                run_plugin,
+                should_float,
+                move_to_focused_tab,
+                should_open_in_place,
+            ) => {
                 let url: Url = Url::from(&run_plugin.location);
                 Ok(ProtobufAction {
                     name: ProtobufActionName::LaunchOrFocusPlugin as i32,

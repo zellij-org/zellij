@@ -176,8 +176,12 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                 name,
                 client_id_tab_index_or_pane_id,
             ) => {
-                let err_context =
-                    || format!("failed to spawn terminal for {:?}", client_id_tab_index_or_pane_id);
+                let err_context = || {
+                    format!(
+                        "failed to spawn terminal for {:?}",
+                        client_id_tab_index_or_pane_id
+                    )
+                };
                 let (hold_on_close, run_command, pane_title) = match &terminal_action {
                     Some(TerminalAction::RunCommand(run_command)) => (
                         run_command.hold_on_close,
@@ -574,14 +578,12 @@ impl Pty {
     fn fill_cwd_from_pane_id(&self, terminal_action: &mut TerminalAction, pane_id: &u32) {
         if let TerminalAction::RunCommand(run_command) = terminal_action {
             if run_command.cwd.is_none() {
-                run_command.cwd = self
-                    .id_to_child_pid.get(pane_id)
-                    .and_then(|&id| {
-                        self.bus
-                            .os_input
-                            .as_ref()
-                            .and_then(|input| input.get_cwd(Pid::from_raw(id)))
-                    });
+                run_command.cwd = self.id_to_child_pid.get(pane_id).and_then(|&id| {
+                    self.bus
+                        .os_input
+                        .as_ref()
+                        .and_then(|input| input.get_cwd(Pid::from_raw(id)))
+                });
             };
         };
     }
@@ -611,7 +613,7 @@ impl Pty {
                     self.fill_cwd_from_pane_id(&mut terminal_action, &terminal_pane_id);
                 }
                 terminal_action
-            }
+            },
         };
         let (hold_on_start, hold_on_close) = match &terminal_action {
             TerminalAction::RunCommand(run_command) => {

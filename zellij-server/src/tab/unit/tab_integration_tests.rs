@@ -2094,7 +2094,8 @@ fn suppress_tiled_pane() {
     let mut tab = create_new_tab(size, ModeInfo::default());
     let new_pane_id = PaneId::Terminal(2);
     let mut output = Output::default();
-    tab.replace_active_pane_with_editor_pane(new_pane_id, client_id).unwrap();
+    tab.replace_active_pane_with_editor_pane(new_pane_id, client_id)
+        .unwrap();
     tab.handle_pty_bytes(2, Vec::from("\n\n\nI am an editor pane".as_bytes()))
         .unwrap();
     tab.render(&mut output).unwrap();
@@ -2122,7 +2123,8 @@ fn suppress_floating_pane() {
     tab.toggle_floating_panes(Some(client_id), None).unwrap();
     tab.new_pane(new_pane_id, None, None, None, Some(client_id))
         .unwrap();
-    tab.replace_active_pane_with_editor_pane(editor_pane_id, client_id).unwrap();
+    tab.replace_active_pane_with_editor_pane(editor_pane_id, client_id)
+        .unwrap();
     tab.handle_pty_bytes(3, Vec::from("\n\n\nI am an editor pane".as_bytes()))
         .unwrap();
     tab.render(&mut output).unwrap();
@@ -2145,7 +2147,8 @@ fn close_suppressing_tiled_pane() {
     let mut tab = create_new_tab(size, ModeInfo::default());
     let new_pane_id = PaneId::Terminal(2);
     let mut output = Output::default();
-    tab.replace_active_pane_with_editor_pane(new_pane_id, client_id).unwrap();
+    tab.replace_active_pane_with_editor_pane(new_pane_id, client_id)
+        .unwrap();
     tab.handle_pty_bytes(2, Vec::from("\n\n\nI am an editor pane".as_bytes()))
         .unwrap();
     tab.handle_pty_bytes(1, Vec::from("\n\n\nI am the original pane".as_bytes()))
@@ -2176,7 +2179,8 @@ fn close_suppressing_floating_pane() {
     tab.toggle_floating_panes(Some(client_id), None).unwrap();
     tab.new_pane(new_pane_id, None, None, None, Some(client_id))
         .unwrap();
-    tab.replace_active_pane_with_editor_pane(editor_pane_id, client_id).unwrap();
+    tab.replace_active_pane_with_editor_pane(editor_pane_id, client_id)
+        .unwrap();
     tab.handle_pty_bytes(3, Vec::from("\n\n\nI am an editor pane".as_bytes()))
         .unwrap();
     tab.handle_pty_bytes(2, Vec::from("\n\n\nI am the original pane".as_bytes()))
@@ -2202,7 +2206,8 @@ fn suppress_tiled_pane_float_it_and_close() {
     let mut tab = create_new_tab(size, ModeInfo::default());
     let new_pane_id = PaneId::Terminal(2);
     let mut output = Output::default();
-    tab.replace_active_pane_with_editor_pane(new_pane_id, client_id).unwrap();
+    tab.replace_active_pane_with_editor_pane(new_pane_id, client_id)
+        .unwrap();
     tab.handle_pty_bytes(2, Vec::from("\n\n\nI am an editor pane".as_bytes()))
         .unwrap();
     tab.handle_pty_bytes(1, Vec::from("\n\n\nI am the original pane".as_bytes()))
@@ -2234,7 +2239,8 @@ fn suppress_floating_pane_embed_it_and_close_it() {
     tab.toggle_floating_panes(Some(client_id), None).unwrap();
     tab.new_pane(new_pane_id, None, None, None, Some(client_id))
         .unwrap();
-    tab.replace_active_pane_with_editor_pane(editor_pane_id, client_id).unwrap();
+    tab.replace_active_pane_with_editor_pane(editor_pane_id, client_id)
+        .unwrap();
     tab.handle_pty_bytes(3, Vec::from("\n\n\nI am an editor pane".as_bytes()))
         .unwrap();
     tab.handle_pty_bytes(2, Vec::from("\n\n\nI am the original pane".as_bytes()))
@@ -2261,7 +2267,8 @@ fn resize_whole_tab_while_tiled_pane_is_suppressed() {
     let mut tab = create_new_tab(size, ModeInfo::default());
     let new_pane_id = PaneId::Terminal(2);
     let mut output = Output::default();
-    tab.replace_active_pane_with_editor_pane(new_pane_id, client_id).unwrap();
+    tab.replace_active_pane_with_editor_pane(new_pane_id, client_id)
+        .unwrap();
     tab.handle_pty_bytes(2, Vec::from("\n\n\nI am an editor pane".as_bytes()))
         .unwrap();
     tab.resize_whole_tab(Size {
@@ -2294,7 +2301,8 @@ fn resize_whole_tab_while_floting_pane_is_suppressed() {
     tab.toggle_floating_panes(Some(client_id), None).unwrap();
     tab.new_pane(new_pane_id, None, None, None, Some(client_id))
         .unwrap();
-    tab.replace_active_pane_with_editor_pane(editor_pane_id, client_id).unwrap();
+    tab.replace_active_pane_with_editor_pane(editor_pane_id, client_id)
+        .unwrap();
     tab.handle_pty_bytes(3, Vec::from("\n\n\nI am an editor pane".as_bytes()))
         .unwrap();
     tab.resize_whole_tab(Size {

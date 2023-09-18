@@ -330,7 +330,8 @@ fn write_to_suppressed_pane() {
     tab.vertical_split(PaneId::Terminal(2), None, 1).unwrap();
 
     // Suppress pane 2 and remove it from active panes
-    tab.replace_active_pane_with_editor_pane(PaneId::Terminal(2), 1).unwrap();
+    tab.replace_active_pane_with_editor_pane(PaneId::Terminal(2), 1)
+        .unwrap();
     tab.tiled_panes.remove_pane(PaneId::Terminal(2));
 
     // Make sure it's suppressed now
