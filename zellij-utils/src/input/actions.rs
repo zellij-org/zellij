@@ -161,11 +161,14 @@ pub enum Action {
         Option<PathBuf>,
         Option<Direction>,
         bool,
-    ), // usize is an optional line number, Option<PathBuf> is an optional cwd, bool is floating true/false
+        bool,
+    ), // usize is an optional line number, Option<PathBuf> is an optional cwd, bool is floating true/false, second bool is in_place
     /// Open a new floating pane
     NewFloatingPane(Option<RunCommandAction>, Option<String>), // String is an optional pane name
     /// Open a new tiled (embedded, non-floating) pane
     NewTiledPane(Option<Direction>, Option<RunCommandAction>, Option<String>), // String is an
+    /// Open a new pane in place of the focused one, suppressing it instead
+    NewInPlacePane(Option<RunCommandAction>, Option<String>), // String is an
     // optional pane
     // name
     /// Embed focused pane in tab if floating or float focused pane if embedded
@@ -204,7 +207,8 @@ pub enum Action {
     LeftClick(Position),
     RightClick(Position),
     MiddleClick(Position),
-    LaunchOrFocusPlugin(RunPlugin, bool, bool), // bools => should float, move_to_focused_tab
+    LaunchOrFocusPlugin(RunPlugin, bool, bool, bool), // bools => should float,
+    // move_to_focused_tab, should_open_in_place
     LeftMouseRelease(Position),
     RightMouseRelease(Position),
     MiddleMouseRelease(Position),
@@ -232,6 +236,7 @@ pub enum Action {
     /// Open a new tiled (embedded, non-floating) plugin pane
     NewTiledPluginPane(RunPlugin, Option<String>), // String is an optional name
     NewFloatingPluginPane(RunPlugin, Option<String>), // String is an optional name
+    NewInPlacePluginPane(RunPlugin, Option<String>),  // String is an optional name
     StartOrReloadPlugin(RunPlugin),
     CloseTerminalPane(u32),
     ClosePluginPane(u32),
@@ -293,6 +298,7 @@ impl Action {
                 plugin,
                 cwd,
                 floating,
+                in_place,
                 name,
                 close_on_exit,
                 start_suspended,
@@ -313,6 +319,8 @@ impl Action {
                     };
                     if floating {
                         Ok(vec![Action::NewFloatingPluginPane(plugin, name)])
+                    } else if in_place {
+                        Ok(vec![Action::NewInPlacePluginPane(plugin, name)])
                     } else {
                         // it is intentional that a new tiled plugin pane cannot include a
                         // direction
@@ -342,6 +350,8 @@ impl Action {
                             Some(run_command_action),
                             name,
                         )])
+                    } else if in_place {
+                        Ok(vec![Action::NewInPlacePane(Some(run_command_action), name)])
                     } else {
                         Ok(vec![Action::NewTiledPane(
                             direction,
@@ -352,6 +362,8 @@ impl Action {
                 } else {
                     if floating {
                         Ok(vec![Action::NewFloatingPane(None, name)])
+                    } else if in_place {
+                        Ok(vec![Action::NewInPlacePane(None, name)])
                     } else {
                         Ok(vec![Action::NewTiledPane(direction, None, name)])
                     }
@@ -362,6 +374,7 @@ impl Action {
                 file,
                 line_number,
                 floating,
+                in_place,
                 cwd,
             } => {
                 let mut file = file;
@@ -380,6 +393,7 @@ impl Action {
                     cwd,
                     direction,
                     floating,
+                    in_place,
                 )])
             },
             CliAction::SwitchMode { input_mode } => {
@@ -501,6 +515,7 @@ impl Action {
             CliAction::LaunchOrFocusPlugin {
                 url,
                 floating,
+                in_place,
                 move_to_focused_tab,
                 configuration,
             } => {
@@ -516,6 +531,7 @@ impl Action {
                     run_plugin,
                     floating,
                     move_to_focused_tab,
+                    in_place,
                 )])
             },
         }

@@ -316,6 +316,7 @@ pub fn start_client(
                             os_api.send_to_server(ClientToServerMsg::Action(
                                 on_force_close.into(),
                                 None,
+                                None,
                             ));
                         }
                     }),

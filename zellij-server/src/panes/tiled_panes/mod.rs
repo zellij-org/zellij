@@ -159,6 +159,7 @@ impl TiledPanes {
 
         // move clients from the previously active pane to the new pane we just inserted
         self.move_clients_between_panes(pane_id, with_pane_id);
+        self.reapply_pane_frames();
         removed_pane
     }
     pub fn insert_pane(&mut self, pane_id: PaneId, pane: Box<dyn Pane>) {
