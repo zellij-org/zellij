@@ -65,16 +65,23 @@ impl ZellijPlugin for State {
             },
             Event::Mouse(me) => match me {
                 Mouse::LeftClick(_, col) => {
-                    let tab_to_focus = get_tab_to_focus(&self.tab_line, self.active_tab_idx, col);
-                    if let Some(idx) = tab_to_focus {
-                        switch_tab_to(idx.try_into().unwrap());
+                    if self.mode_info.mode != InputMode::Locked {
+                        let tab_to_focus =
+                            get_tab_to_focus(&self.tab_line, self.active_tab_idx, col);
+                        if let Some(idx) = tab_to_focus {
+                            switch_tab_to(idx.try_into().unwrap());
+                        }
                     }
                 },
                 Mouse::ScrollUp(_) => {
-                    switch_tab_to(min(self.active_tab_idx + 1, self.tabs.len()) as u32);
+                    if self.mode_info.mode != InputMode::Locked {
+                        switch_tab_to(min(self.active_tab_idx + 1, self.tabs.len()) as u32);
+                    }
                 },
                 Mouse::ScrollDown(_) => {
-                    switch_tab_to(max(self.active_tab_idx.saturating_sub(1), 1) as u32);
+                    if self.mode_info.mode != InputMode::Locked {
+                        switch_tab_to(max(self.active_tab_idx.saturating_sub(1), 1) as u32);
+                    }
                 },
                 _ => {},
             },
