@@ -525,32 +525,6 @@ impl Action {
                 move_to_focused_tab,
                 configuration,
             } => {
-                // TODO: CONTINUE HERE (before vacation) - add an in_place flag and make it work
-                // - we already did this with the NewPane action above, to test:
-                // * cargo x run --singlepass
-                // * target/dev-opt/zellij action new-pane --in-place --plugin zellij:session-manager
-                // * this also already works with zellij run with the --in-place flag
-                // * we need to make it work with everything, then also make it work with plugins
-                //  - make it work with LaunchOrFocusPlugin - DONE
-                //  - make it work with the edit action - DONE
-                //  - test with keybinding
-                //      * run - DONE
-                //      * launch_or_focus_plugin - DONE (has some issues, might want to test again
-                //      with properly fixed monocle)
-                //  - add to plugins (open_terminal_in_place, open_command_pane_in_place,
-                //  open_file_in_place) <== CONTINUE HERE
-                //  - test these with/without flag
-                //      * zellij run
-                //      * zellij action new-pane (command and plugin)
-                //      * zellij action launch-or-focus-plugin
-                //      * zellij action edit
-                //      * zellij edit
-                //      * keybinding
-                //          - run
-                //          - launch_or_focus_plugin
-                //      * plugins (show_self/hide_self, open_file_in_place(n),
-                //      open_terminal_in_place(n), open_command_pane_in_place(n))
-
                 let current_dir = get_current_dir();
                 let run_plugin_location = RunPluginLocation::parse(url.as_str(), Some(current_dir))
                     .map_err(|e| format!("Failed to parse plugin location: {}", e))?;

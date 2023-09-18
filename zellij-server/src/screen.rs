@@ -3131,11 +3131,9 @@ pub(crate) fn screen_thread_main(
                         match screen.active_tab_indices.values().next() {
                             Some(tab_index) => {
                                 let size = Size::default();
-                                let should_float = None;
-                                let should_be_in_place = true;
                                 screen.bus.senders.send_to_plugin(PluginInstruction::Load(
-                                    should_float,
-                                    should_be_in_place,
+                                    Some(should_float),
+                                    should_open_in_place,
                                     None,
                                     run_plugin,
                                     *tab_index,
