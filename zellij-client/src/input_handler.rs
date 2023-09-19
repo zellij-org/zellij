@@ -283,13 +283,13 @@ impl InputHandler {
             Action::NoOp => {},
             Action::Quit => {
                 self.os_input
-                    .send_to_server(ClientToServerMsg::Action(action, client_id));
+                    .send_to_server(ClientToServerMsg::Action(action, None, client_id));
                 self.exit(ExitReason::Normal);
                 should_break = true;
             },
             Action::Detach => {
                 self.os_input
-                    .send_to_server(ClientToServerMsg::Action(action, client_id));
+                    .send_to_server(ClientToServerMsg::Action(action, None, client_id));
                 self.exit(ExitReason::NormalDetached);
                 should_break = true;
             },
@@ -298,7 +298,7 @@ impl InputHandler {
                 // server later that atomically changes the mode as well
                 self.mode = mode;
                 self.os_input
-                    .send_to_server(ClientToServerMsg::Action(action, None));
+                    .send_to_server(ClientToServerMsg::Action(action, None, None));
             },
             Action::CloseFocus
             | Action::ClearScreen
@@ -318,7 +318,7 @@ impl InputHandler {
             | Action::MoveFocusOrTab(_) => {
                 self.command_is_executing.blocking_input_thread();
                 self.os_input
-                    .send_to_server(ClientToServerMsg::Action(action, client_id));
+                    .send_to_server(ClientToServerMsg::Action(action, None, client_id));
                 self.command_is_executing
                     .wait_until_input_thread_is_unblocked();
             },
@@ -333,7 +333,7 @@ impl InputHandler {
             },
             _ => self
                 .os_input
-                .send_to_server(ClientToServerMsg::Action(action, client_id)),
+                .send_to_server(ClientToServerMsg::Action(action, None, client_id)),
         }
 
         should_break

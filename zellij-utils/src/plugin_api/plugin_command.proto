@@ -79,6 +79,9 @@ enum CommandName {
   ReportCrash = 65;
   RequestPluginPermissions = 66;
   SwitchSession = 67;
+  OpenTerminalInPlace = 68;
+  OpenCommandInPlace = 69;
+  OpenFileInPlace = 70;
 }
 
 message PluginCommand {
@@ -122,6 +125,9 @@ message PluginCommand {
     string report_crash_payload = 37;
     RequestPluginPermissionPayload request_plugin_permission_payload = 38;
     SwitchSessionPayload switch_session_payload = 39;
+    OpenFilePayload open_file_in_place_payload = 40;
+    OpenFilePayload open_terminal_in_place_payload = 41;
+    OpenCommandPanePayload open_command_pane_in_place_payload = 42;
   }
 }
 

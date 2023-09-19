@@ -232,12 +232,14 @@ impl TryFrom<ProtobufAction> for Action {
                         .and_then(|d| ProtobufResizeDirection::from_i32(d))
                         .and_then(|d| d.try_into().ok());
                     let should_float = payload.should_float;
+                    let should_be_in_place = false;
                     Ok(Action::EditFile(
                         file_to_edit,
                         line_number,
                         cwd,
                         direction,
                         should_float,
+                        should_be_in_place,
                     ))
                 },
                 _ => Err("Wrong payload for Action::NewPane"),
@@ -400,10 +402,12 @@ impl TryFrom<ProtobufAction> for Action {
                         };
                         let should_float = payload.should_float;
                         let move_to_focused_tab = payload.move_to_focused_tab;
+                        let should_open_in_place = payload.should_open_in_place;
                         Ok(Action::LaunchOrFocusPlugin(
                             run_plugin,
                             should_float,
                             move_to_focused_tab,
+                            should_open_in_place,
                         ))
                     },
                     _ => Err("Wrong payload for Action::LaunchOrFocusPlugin"),
@@ -814,7 +818,14 @@ impl TryFrom<Action> for ProtobufAction {
                     })),
                 })
             },
-            Action::EditFile(path_to_file, line_number, cwd, direction, should_float) => {
+            Action::EditFile(
+                path_to_file,
+                line_number,
+                cwd,
+                direction,
+                should_float,
+                _should_be_in_place,
+            ) => {
                 let file_to_edit = path_to_file.display().to_string();
                 let cwd = cwd.map(|cwd| cwd.display().to_string());
                 let direction: Option<i32> = direction
@@ -959,7 +970,12 @@ impl TryFrom<Action> for ProtobufAction {
                     optional_payload: Some(OptionalPayload::MiddleClickPayload(position)),
                 })
             },
-            Action::LaunchOrFocusPlugin(run_plugin, should_float, move_to_focused_tab) => {
+            Action::LaunchOrFocusPlugin(
+                run_plugin,
+                should_float,
+                move_to_focused_tab,
+                should_open_in_place,
+            ) => {
                 let url: Url = Url::from(&run_plugin.location);
                 Ok(ProtobufAction {
                     name: ProtobufActionName::LaunchOrFocusPlugin as i32,
@@ -968,6 +984,7 @@ impl TryFrom<Action> for ProtobufAction {
                             plugin_url: url.into(),
                             should_float,
                             move_to_focused_tab,
+                            should_open_in_place,
                             plugin_configuration: Some(run_plugin.configuration.try_into()?),
                         },
                     )),
@@ -1149,8 +1166,11 @@ impl TryFrom<Action> for ProtobufAction {
             }),
             Action::NoOp
             | Action::Confirm
+            | Action::NewInPlacePane(..)
+            | Action::NewInPlacePluginPane(..)
             | Action::Deny
             | Action::Copy
+            | Action::DumpLayout(..) // TODO: implement this?
             | Action::SkipConfirm(..) => Err("Unsupported action"),
         }
     }

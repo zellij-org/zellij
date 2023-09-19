@@ -2506,6 +2506,7 @@ Config {
                     },
                     true,
                     true,
+                    false,
                 ),
                 SwitchToMode(
                     Normal,

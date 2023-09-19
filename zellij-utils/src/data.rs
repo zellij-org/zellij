@@ -1061,4 +1061,7 @@ pub enum PluginCommand {
     ReportPanic(String),             // stringified panic
     RequestPluginPermissions(Vec<PermissionType>),
     SwitchSession(ConnectToSession),
+    OpenTerminalInPlace(FileToOpen), // only used for the path as cwd
+    OpenFileInPlace(FileToOpen),
+    OpenCommandPaneInPlace(CommandToRun),
 }

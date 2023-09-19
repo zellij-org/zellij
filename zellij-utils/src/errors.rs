@@ -344,6 +344,8 @@ pub enum ScreenContext {
     BreakPaneRight,
     BreakPaneLeft,
     UpdateSessionInfos,
+    ReplacePane,
+    NewInPlacePluginPane,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.
@@ -359,6 +361,7 @@ pub enum PtyContext {
     ClosePane,
     CloseTab,
     ReRunCommandInPane,
+    SpawnInPlaceTerminal,
     Exit,
 }
 

@@ -199,7 +199,7 @@ fn extract_actions_sent_to_server(
 ) -> Vec<Action> {
     let events_sent_to_server = events_sent_to_server.lock().unwrap();
     events_sent_to_server.iter().fold(vec![], |mut acc, event| {
-        if let ClientToServerMsg::Action(action, None) = event {
+        if let ClientToServerMsg::Action(action, None, None) = event {
             acc.push(action.clone());
         }
         acc

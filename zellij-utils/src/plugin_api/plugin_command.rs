@@ -82,7 +82,7 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                         None => Err("Malformed open file payload"),
                     }
                 },
-                _ => Err("Mismatched payload for OpenFile"),
+                _ => Err("Mismatched payload for OpenFileFloating"),
             },
             Some(CommandName::OpenTerminal) => match protobuf_plugin_command.payload {
                 Some(Payload::OpenTerminalPayload(file_to_open_payload)) => {
@@ -520,6 +520,39 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 },
                 _ => Err("Mismatched payload for SwitchSession"),
             },
+            Some(CommandName::OpenTerminalInPlace) => match protobuf_plugin_command.payload {
+                Some(Payload::OpenTerminalInPlacePayload(file_to_open_payload)) => {
+                    match file_to_open_payload.file_to_open {
+                        Some(file_to_open) => {
+                            Ok(PluginCommand::OpenTerminalInPlace(file_to_open.try_into()?))
+                        },
+                        None => Err("Malformed open terminal in-place payload"),
+                    }
+                },
+                _ => Err("Mismatched payload for OpenTerminalInPlace"),
+            },
+            Some(CommandName::OpenFileInPlace) => match protobuf_plugin_command.payload {
+                Some(Payload::OpenFileInPlacePayload(file_to_open_payload)) => {
+                    match file_to_open_payload.file_to_open {
+                        Some(file_to_open) => {
+                            Ok(PluginCommand::OpenFileInPlace(file_to_open.try_into()?))
+                        },
+                        None => Err("Malformed open file in place payload"),
+                    }
+                },
+                _ => Err("Mismatched payload for OpenFileInPlace"),
+            },
+            Some(CommandName::OpenCommandInPlace) => match protobuf_plugin_command.payload {
+                Some(Payload::OpenCommandPaneInPlacePayload(command_to_run_payload)) => {
+                    match command_to_run_payload.command_to_run {
+                        Some(command_to_run) => Ok(PluginCommand::OpenCommandPaneInPlace(
+                            command_to_run.try_into()?,
+                        )),
+                        None => Err("Malformed open command pane in-place payload"),
+                    }
+                },
+                _ => Err("Mismatched payload for OpenCommandPaneInPlace"),
+            },
             None => Err("Unrecognized plugin command"),
         }
     }
@@ -874,6 +907,26 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     pane_id: switch_to_session.pane_id.map(|p| p.0),
                     pane_id_is_plugin: switch_to_session.pane_id.map(|p| p.1),
                 })),
+            }),
+            PluginCommand::OpenTerminalInPlace(cwd) => Ok(ProtobufPluginCommand {
+                name: CommandName::OpenTerminalInPlace as i32,
+                payload: Some(Payload::OpenTerminalInPlacePayload(OpenFilePayload {
+                    file_to_open: Some(cwd.try_into()?),
+                })),
+            }),
+            PluginCommand::OpenFileInPlace(file_to_open) => Ok(ProtobufPluginCommand {
+                name: CommandName::OpenFileInPlace as i32,
+                payload: Some(Payload::OpenFileInPlacePayload(OpenFilePayload {
+                    file_to_open: Some(file_to_open.try_into()?),
+                })),
+            }),
+            PluginCommand::OpenCommandPaneInPlace(command_to_run) => Ok(ProtobufPluginCommand {
+                name: CommandName::OpenCommandInPlace as i32,
+                payload: Some(Payload::OpenCommandPaneInPlacePayload(
+                    OpenCommandPanePayload {
+                        command_to_run: Some(command_to_run.try_into()?),
+                    },
+                )),
             }),
         }
     }

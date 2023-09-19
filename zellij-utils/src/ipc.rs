@@ -84,7 +84,7 @@ pub enum ClientToServerMsg {
         Option<usize>,       // tab position to focus
         Option<(u32, bool)>, // (pane_id, is_plugin) => pane id to focus
     ),
-    Action(Action, Option<ClientId>),
+    Action(Action, Option<u32>, Option<ClientId>), // u32 is the terminal id
     ClientExited,
     KillSession,
     ConnStatus,

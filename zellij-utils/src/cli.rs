@@ -158,6 +158,18 @@ pub enum Sessions {
         #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
         floating: bool,
 
+        /// Open the new pane in place of the current pane, temporarily suspending it
+        #[clap(
+            short,
+            long,
+            value_parser,
+            default_value("false"),
+            takes_value(false),
+            conflicts_with("floating"),
+            conflicts_with("direction")
+        )]
+        in_place: bool,
+
         /// Name of the new pane
         #[clap(short, long, value_parser)]
         name: Option<String>,
@@ -182,6 +194,18 @@ pub enum Sessions {
         /// Direction to open the new pane in
         #[clap(short, long, value_parser, conflicts_with("floating"))]
         direction: Option<Direction>,
+
+        /// Open the new pane in place of the current pane, temporarily suspending it
+        #[clap(
+            short,
+            long,
+            value_parser,
+            default_value("false"),
+            takes_value(false),
+            conflicts_with("floating"),
+            conflicts_with("direction")
+        )]
+        in_place: bool,
 
         /// Open the new pane in floating mode
         #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
@@ -297,6 +321,18 @@ pub enum CliAction {
         #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
         floating: bool,
 
+        /// Open the new pane in place of the current pane, temporarily suspending it
+        #[clap(
+            short,
+            long,
+            value_parser,
+            default_value("false"),
+            takes_value(false),
+            conflicts_with("floating"),
+            conflicts_with("direction")
+        )]
+        in_place: bool,
+
         /// Name of the new pane
         #[clap(short, long, value_parser)]
         name: Option<String>,
@@ -339,6 +375,18 @@ pub enum CliAction {
         /// Open the new pane in floating mode
         #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
         floating: bool,
+
+        /// Open the new pane in place of the current pane, temporarily suspending it
+        #[clap(
+            short,
+            long,
+            value_parser,
+            default_value("false"),
+            takes_value(false),
+            conflicts_with("floating"),
+            conflicts_with("direction")
+        )]
+        in_place: bool,
 
         /// Change the working directory of the editor
         #[clap(long, value_parser)]
@@ -413,6 +461,8 @@ pub enum CliAction {
     LaunchOrFocusPlugin {
         #[clap(short, long, value_parser)]
         floating: bool,
+        #[clap(short, long, value_parser)]
+        in_place: bool,
         #[clap(short, long, value_parser)]
         move_to_focused_tab: bool,
         url: Url,

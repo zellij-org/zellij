@@ -114,6 +114,9 @@ pub trait ClientOsApi: Send + Sync {
     fn disable_mouse(&self) -> Result<()>;
     // Repeatedly send action, until stdin is readable again
     fn stdin_poller(&self) -> StdinPoller;
+    fn env_variable(&self, _name: &str) -> Option<String> {
+        None
+    }
 }
 
 impl ClientOsApi for ClientOsInputOutput {
@@ -281,6 +284,10 @@ impl ClientOsApi for ClientOsInputOutput {
 
     fn stdin_poller(&self) -> StdinPoller {
         StdinPoller::default()
+    }
+
+    fn env_variable(&self, name: &str) -> Option<String> {
+        std::env::var(name).ok()
     }
 }
 

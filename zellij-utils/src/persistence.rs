@@ -30,7 +30,28 @@ fn indent(s: &str, prefix: &str) -> String {
     result
 }
 
-fn kdl_string_from_panegeoms(geoms: &Vec<PaneGeom>) -> String {
+pub fn tabs_to_kdl(tab_names_to_tiled_panes: &Vec<(String, Vec<PaneGeom>)>) -> String {
+    let mut kdl_string = String::from("layout {\n");
+    for (tab_name, tiled_panes) in tab_names_to_tiled_panes {
+        kdl_string.push_str(&indent(&stringify_tab(tab_name.clone(), &tiled_panes), INDENT));
+    }
+    kdl_string.push_str("}");
+    kdl_string
+}
+
+pub fn stringify_tab(tab_name: String, tiled_panes: &Vec<PaneGeom>) -> String {
+    let mut kdl_string = String::new();
+    let layout = get_layout_from_panegeoms(tiled_panes, None);
+    let tab = if &layout.children_split_direction != &SplitDirection::default() {
+        vec![layout]
+    } else {
+        layout.children
+    };
+    kdl_string.push_str(&kdl_string_from_tab(&tab));
+    kdl_string
+}
+
+pub fn kdl_string_from_panegeoms(geoms: &Vec<PaneGeom>) -> String {
     let mut kdl_string = String::from("layout {\n");
     let layout = get_layout_from_panegeoms(&geoms, None);
     let tab = if &layout.children_split_direction != &SplitDirection::default() {
