@@ -2265,21 +2265,23 @@ pub(crate) fn screen_thread_main(
                 screen.unblock_input()?;
             },
             ScreenInstruction::DumpLayout(client_id, layout) => {
-                let tabs: Vec<(String, Vec<PaneGeom>)> = screen
+                let err_context = || format!("Failed to dump layout");
+                let tabs: Vec<(String, Vec<(PaneId, PaneGeom)>)> = screen
                     .tabs
                     .values()
                     .into_iter()
                     .map(|tab| {
-                        let panes: Vec<PaneGeom> = tab
+                        let panes: Vec<(PaneId, PaneGeom)> = tab
                             .get_tiled_panes()
-                            .map(|(_, p)| p.position_and_size())
+                            .map(|(pane_id, p)| (*pane_id, p.position_and_size()))
                             .collect();
                         (tab.name.clone(), panes)
                     })
                     .collect();
-                let kdl_config = persistence::tabs_to_kdl(&tabs);
-
-                log::info!("{kdl_config}");
+                screen.bus
+                    .senders
+                    .send_to_pty(PtyInstruction::DumpLayout(tabs))
+                    .with_context(err_context)?;
                 screen.unblock_input()?;
                 screen.render()?;
             },

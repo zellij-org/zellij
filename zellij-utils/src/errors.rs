@@ -362,6 +362,7 @@ pub enum PtyContext {
     CloseTab,
     ReRunCommandInPane,
     SpawnInPlaceTerminal,
+    DumpLayout,
     Exit,
 }
 
