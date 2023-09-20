@@ -19,7 +19,7 @@ use zellij_utils::{
         FloatingPaneLayout, Layout, PluginUserConfiguration, Run, RunPlugin, RunPluginLocation,
         SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,
     },
-    persistence,
+    persistence::{GlobalLayoutManifest, TabLayoutManifest, PaneLayoutManifest},
     position::Position,
 };
 
@@ -125,6 +125,129 @@ macro_rules! active_tab_and_connected_client_id {
             },
         }
     };
+}
+
+// TODO: move elsewhere
+#[derive(Default, Debug, Clone)]
+pub struct SessionLayoutMetadata {
+    tabs: Vec<TabLayoutMetadata>,
+}
+
+impl SessionLayoutMetadata {
+    pub fn add_tab(
+        &mut self,
+        name: String,
+        tiled_panes: Vec<(PaneId, PaneGeom)>,
+        floating_panes: Vec<(PaneId, PaneGeom)>,
+        suppressed_panes: HashMap<PaneId, (PaneId, PaneGeom)>,
+    ) {
+        self.tabs.push(TabLayoutMetadata {
+            name: Some(name), // TODO: tabs don't always have a name...
+            tiled_panes: tiled_panes.into_iter().map(|t_p| t_p.into()).collect(),
+            floating_panes: floating_panes.into_iter().map(|t_p| t_p.into()).collect(),
+            suppressed_panes: suppressed_panes.into_iter().map(|(t_p_id, t_p)| (t_p_id, t_p.into())).collect(),
+        })
+    }
+    pub fn all_terminal_ids(&self) -> Vec<u32> {
+        let mut terminal_ids = vec![];
+        for tab in &self.tabs {
+            for pane_layout_metadata in &tab.tiled_panes {
+                if let PaneId::Terminal(id) = pane_layout_metadata.id {
+                    terminal_ids.push(id);
+                }
+            }
+            for pane_layout_metadata in &tab.floating_panes {
+                if let PaneId::Terminal(id) = pane_layout_metadata.id {
+                    terminal_ids.push(id);
+                }
+            }
+            for pane_layout_metadata in tab.suppressed_panes.values() {
+                if let PaneId::Terminal(id) = pane_layout_metadata.id {
+                    terminal_ids.push(id);
+                }
+            }
+        }
+        terminal_ids
+    }
+    pub fn update_terminal_cmds(&mut self, mut terminal_ids_to_cmds: HashMap<u32, Vec<String>>) {
+        let mut update_cmd_in_pane_metadata = |pane_layout_metadata: &mut PaneLayoutMetadata| {
+            if let PaneId::Terminal(id) = pane_layout_metadata.id {
+                if let Some(command) = terminal_ids_to_cmds.remove(&id) {
+                    let mut command_line = command.iter();
+                    if let Some(command_name) = command_line.next() {
+                        let mut run_command = RunCommand::new(PathBuf::from(command_name));
+                        run_command.args = command_line.map(|c| c.to_owned()).collect();
+                        pane_layout_metadata.run = Some(Run::Command(run_command))
+                    }
+                }
+            }
+        };
+        for tab in self.tabs.iter_mut() {
+            for pane_layout_metadata in tab.tiled_panes.iter_mut() {
+                update_cmd_in_pane_metadata(pane_layout_metadata);
+            }
+            for pane_layout_metadata in tab.floating_panes.iter_mut() {
+                update_cmd_in_pane_metadata(pane_layout_metadata);
+            }
+            for pane_layout_metadata in tab.suppressed_panes.values_mut() {
+                update_cmd_in_pane_metadata(pane_layout_metadata);
+            }
+        }
+    }
+}
+
+impl Into<GlobalLayoutManifest> for SessionLayoutMetadata {
+    fn into(self) -> GlobalLayoutManifest {
+        GlobalLayoutManifest {
+            tabs: self.tabs.into_iter().map(|t| (t.name.clone().unwrap_or_default(), t.into())).collect()
+        }
+    }
+}
+
+impl Into<TabLayoutManifest> for TabLayoutMetadata {
+    fn into(self) -> TabLayoutManifest {
+        TabLayoutManifest {
+            tiled_panes: self.tiled_panes.into_iter().map(|t| t.into()).collect(),
+            floating_panes: self.floating_panes.into_iter().map(|t| t.into()).collect(),
+            suppressed_panes: self.suppressed_panes.values().map(|t| t.clone().into()).collect(),
+        }
+    }
+}
+
+impl Into<PaneLayoutManifest> for PaneLayoutMetadata {
+    fn into(self) -> PaneLayoutManifest {
+        PaneLayoutManifest {
+            geom: self.geom,
+            run: self.run
+        }
+    }
+}
+
+// TODO: move elsewhere
+#[derive(Default, Debug, Clone)]
+pub struct TabLayoutMetadata {
+    name: Option<String>,
+    tiled_panes: Vec<PaneLayoutMetadata>,
+    floating_panes: Vec<PaneLayoutMetadata>,
+    suppressed_panes: HashMap<PaneId, PaneLayoutMetadata>,
+}
+
+// TODO: move elsewhere
+#[derive(Debug, Clone)]
+pub struct PaneLayoutMetadata {
+    id: PaneId,
+    geom: PaneGeom,
+    run: Option<Run>
+}
+
+impl From<(PaneId, PaneGeom)> for PaneLayoutMetadata {
+    fn from(pane_id_and_pane_geom: (PaneId, PaneGeom)) -> Self {
+        PaneLayoutMetadata {
+            id: pane_id_and_pane_geom.0,
+            geom: pane_id_and_pane_geom.1,
+            run: None,
+        }
+    }
 }
 
 type InitialTitle = String;
@@ -2266,21 +2389,43 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::DumpLayout(client_id, layout) => {
                 let err_context = || format!("Failed to dump layout");
-                let tabs: Vec<(String, Vec<(PaneId, PaneGeom)>)> = screen
-                    .tabs
-                    .values()
-                    .into_iter()
-                    .map(|tab| {
-                        let panes: Vec<(PaneId, PaneGeom)> = tab
-                            .get_tiled_panes()
-                            .map(|(pane_id, p)| (*pane_id, p.position_and_size()))
-                            .collect();
-                        (tab.name.clone(), panes)
-                    })
-                    .collect();
+                let mut session_layout_metadata = SessionLayoutMetadata::default();
+                for tab in screen.tabs.values() {
+                    let tiled_panes: Vec<(PaneId, PaneGeom)> = tab
+                        .get_tiled_panes()
+                        .map(|(pane_id, p)| (*pane_id, p.position_and_size()))
+                        .collect();
+                    let floating_panes: Vec<(PaneId, PaneGeom)> = tab
+                        .get_floating_panes()
+                        .map(|(pane_id, p)| (*pane_id, p.position_and_size()))
+                        .collect();
+                    let mut suppressed_panes: HashMap<PaneId, (PaneId, PaneGeom)> = HashMap::new();
+                    for (triggering_pane_id, p) in tab.get_suppressed_panes() {
+                        let pane_id = p.pid();
+                        suppressed_panes.insert(*triggering_pane_id, (pane_id, p.position_and_size()));
+                    }
+                    session_layout_metadata.add_tab(
+                        tab.name.clone(),
+                        tiled_panes,
+                        floating_panes,
+                        suppressed_panes
+                    );
+                }
+//                 let tabs: Vec<(String, Vec<(PaneId, PaneGeom)>)> = screen
+//                     .tabs
+//                     .values()
+//                     .into_iter()
+//                     .map(|tab| {
+//                         let panes: Vec<(PaneId, PaneGeom)> = tab
+//                             .get_tiled_panes()
+//                             .map(|(pane_id, p)| (*pane_id, p.position_and_size()))
+//                             .collect();
+//                         (tab.name.clone(), panes)
+//                     })
+//                     .collect();
                 screen.bus
                     .senders
-                    .send_to_pty(PtyInstruction::DumpLayout(tabs))
+                    .send_to_pty(PtyInstruction::DumpLayout(session_layout_metadata))
                     .with_context(err_context)?;
                 screen.unblock_input()?;
                 screen.render()?;

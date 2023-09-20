@@ -17,6 +17,7 @@ use crate::{
     pane_size::{Constraint, Dimension, PaneGeom},
 };
 
+
 const INDENT: &str = "    ";
 
 /// Copied from textwrap::indent
@@ -32,18 +33,38 @@ fn indent(s: &str, prefix: &str) -> String {
     result
 }
 
-pub fn tabs_to_kdl(tab_names_to_tiled_panes: &Vec<(String, Vec<(PaneGeom, Option<Vec<String>>)>)>) -> String {
-    // Option<String> is an optional pane command
+#[derive(Default, Debug, Clone)]
+pub struct GlobalLayoutManifest {
+    pub tabs: Vec<(String, TabLayoutManifest)>
+}
+
+#[derive(Default, Debug, Clone)]
+pub struct TabLayoutManifest {
+    pub tiled_panes: Vec<PaneLayoutManifest>,
+    pub floating_panes: Vec<PaneLayoutManifest>,
+    pub suppressed_panes: Vec<PaneLayoutManifest>,
+}
+
+#[derive(Default, Debug, Clone)]
+pub struct PaneLayoutManifest {
+    pub geom: PaneGeom,
+    pub run: Option<Run>,
+}
+
+// pub fn tabs_to_kdl(tab_names_to_tiled_panes: &Vec<(String, Vec<(PaneGeom, Option<Vec<String>>)>)>) -> String {
+pub fn tabs_to_kdl(global_layout_manifest: GlobalLayoutManifest) -> String {
     let mut kdl_string = String::from("layout {\n");
-    for (tab_name, tiled_panes) in tab_names_to_tiled_panes {
+    for (tab_name, tab_layout_manifest) in global_layout_manifest.tabs {
+        let tiled_panes = tab_layout_manifest.tiled_panes;
         kdl_string.push_str(&indent(&stringify_tab(tab_name.clone(), &tiled_panes), INDENT));
     }
     kdl_string.push_str("}");
     kdl_string
 }
 
-pub fn stringify_tab(tab_name: String, tiled_panes: &Vec<(PaneGeom, Option<Vec<String>>)>) -> String {
+// pub fn stringify_tab(tab_name: String, tiled_panes: &Vec<(PaneGeom, Option<Vec<String>>)>) -> String {
     // Option<String> is an optional pane command
+pub fn stringify_tab(tab_name: String, tiled_panes: &Vec<PaneLayoutManifest>) -> String {
     let mut kdl_string = String::new();
     let layout = get_layout_from_panegeoms(tiled_panes, None);
     let tab = if &layout.children_split_direction != &SplitDirection::default() {
@@ -55,7 +76,8 @@ pub fn stringify_tab(tab_name: String, tiled_panes: &Vec<(PaneGeom, Option<Vec<S
     kdl_string
 }
 
-pub fn kdl_string_from_panegeoms(geoms: &Vec<(PaneGeom, Option<Vec<String>>)>) -> String {
+// pub fn kdl_string_from_panegeoms(geoms: &Vec<(PaneGeom, Option<Vec<String>>)>) -> String {
+pub fn kdl_string_from_panegeoms(geoms: &Vec<PaneLayoutManifest>) -> String {
     // Option<String> is an optional pane command
     let mut kdl_string = String::from("layout {\n");
     let layout = get_layout_from_panegeoms(&geoms, None);
@@ -190,25 +212,26 @@ fn kdl_string_from_layout(layout: &TiledPaneLayout) -> String {
 
 /// Tab-level parsing
 fn get_layout_from_panegeoms(
-    geoms: &Vec<(PaneGeom, Option<Vec<String>>)>,
+    // geoms: &Vec<(PaneGeom, Option<Vec<String>>)>,
+    geoms: &Vec<PaneLayoutManifest>,
     split_size: Option<SplitSize>,
 ) -> TiledPaneLayout {
     let (children_split_direction, splits) = match get_splits(&geoms) {
         Some(x) => x,
         None => {
-            let run = match geoms.iter().next() {
-                Some((_, Some(command))) => {
-                    let mut command_line = command.iter();
-                    if let Some(command_name) = command_line.next() {
-                        let mut run_command = RunCommand::new(PathBuf::from(command_name));
-                        run_command.args = command_line.map(|c| c.to_owned()).collect();
-                        Some(Run::Command(run_command))
-                    } else {
-                        None
-                    }
-                },
-                _ => None,
-            };
+            let run = geoms.iter().next().and_then(|g| g.run.clone());
+//                 Some(pane_layout_manifest) => pane_layout_manifest.run
+//                     let mut command_line = command.iter();
+//                     if let Some(command_name) = command_line.next() {
+//                         let mut run_command = RunCommand::new(PathBuf::from(command_name));
+//                         run_command.args = command_line.map(|c| c.to_owned()).collect();
+//                         Some(Run::Command(run_command))
+//                     } else {
+//                         None
+//                     }
+//                 },
+//                 _ => None,
+            // };
             return TiledPaneLayout {
                 split_size,
                 run,
@@ -222,16 +245,17 @@ fn get_layout_from_panegeoms(
     let mut new_constraints = Vec::new();
     for i in 1..splits.len() {
         let (v_min, v_max) = (splits[i - 1], splits[i]);
-        let subgeoms: Vec<(PaneGeom, Option<Vec<String>>)>;
+        // let subgeoms: Vec<(PaneGeom, Option<Vec<String>>)>;
+        let subgeoms: Vec<PaneLayoutManifest>;
         (subgeoms, remaining_geoms) = match children_split_direction {
             SplitDirection::Horizontal => remaining_geoms
                 .clone()
                 .into_iter()
-                .partition(|(g, _)| g.y + g.rows.as_usize() <= v_max),
+                .partition(|g| g.geom.y + g.geom.rows.as_usize() <= v_max),
             SplitDirection::Vertical => remaining_geoms
                 .clone()
                 .into_iter()
-                .partition(|(g, _)| g.x + g.cols.as_usize() <= v_max),
+                .partition(|g| g.geom.x + g.geom.cols.as_usize() <= v_max),
         };
         let constraint =
             get_domain_constraint(&subgeoms, &children_split_direction, (v_min, v_max));
@@ -250,20 +274,22 @@ fn get_layout_from_panegeoms(
     }
 }
 
-fn get_x_lims(geoms: &Vec<(PaneGeom, Option<Vec<String>>)>) -> Option<(usize, usize)> {
+// fn get_x_lims(geoms: &Vec<(PaneGeom, Option<Vec<String>>)>) -> Option<(usize, usize)> {
+fn get_x_lims(geoms: &Vec<PaneLayoutManifest>) -> Option<(usize, usize)> {
     match (
-        geoms.iter().map(|(g, _)| g.x).min(),
-        geoms.iter().map(|(g, _)| g.x + g.cols.as_usize()).max(),
+        geoms.iter().map(|g| g.geom.x).min(),
+        geoms.iter().map(|g| g.geom.x + g.geom.cols.as_usize()).max(),
     ) {
         (Some(x_min), Some(x_max)) => Some((x_min, x_max)),
         _ => None,
     }
 }
 
-fn get_y_lims(geoms: &Vec<(PaneGeom, Option<Vec<String>>)>) -> Option<(usize, usize)> {
+// fn get_y_lims(geoms: &Vec<(PaneGeom, Option<Vec<String>>)>) -> Option<(usize, usize)> {
+fn get_y_lims(geoms: &Vec<PaneLayoutManifest>) -> Option<(usize, usize)> {
     match (
-        geoms.iter().map(|(g, _)| g.y).min(),
-        geoms.iter().map(|(g, _)| g.y + g.rows.as_usize()).max(),
+        geoms.iter().map(|g| g.geom.y).min(),
+        geoms.iter().map(|g| g.geom.y + g.geom.rows.as_usize()).max(),
     ) {
         (Some(y_min), Some(y_max)) => Some((y_min, y_max)),
         _ => None,
@@ -274,7 +300,8 @@ fn get_y_lims(geoms: &Vec<(PaneGeom, Option<Vec<String>>)>) -> Option<(usize, us
 /// perpendicular the `SplitDirection`, for which there is a split spanning
 /// the max_cols or max_rows of the domain. The values are ordered
 /// increasingly and contains the boundaries of the domain.
-fn get_splits(geoms: &Vec<(PaneGeom, Option<Vec<String>>)>) -> Option<(SplitDirection, Vec<usize>)> {
+// fn get_splits(geoms: &Vec<(PaneGeom, Option<Vec<String>>)>) -> Option<(SplitDirection, Vec<usize>)> {
+fn get_splits(geoms: &Vec<PaneLayoutManifest>) -> Option<(SplitDirection, Vec<usize>)> {
     if geoms.len() == 1 {
         return None;
     }
@@ -306,22 +333,23 @@ fn get_splits(geoms: &Vec<(PaneGeom, Option<Vec<String>>)>) -> Option<(SplitDire
 /// Returns a vector containing the abscisse (x) of the cols that split the
 /// domain including the boundaries, ie the min and max abscisse values.
 fn get_col_splits(
-    geoms: &Vec<(PaneGeom, Option<Vec<String>>)>,
+    // geoms: &Vec<(PaneGeom, Option<Vec<String>>)>,
+    geoms: &Vec<PaneLayoutManifest>,
     (_, x_max): &(usize, usize),
     (y_min, y_max): &(usize, usize),
 ) -> Vec<usize> {
     let max_rows = y_max - y_min;
     let mut splits = Vec::new();
     let mut sorted_geoms = geoms.clone();
-    sorted_geoms.sort_by_key(|(g, _)| g.x);
-    for x in sorted_geoms.iter().map(|(g, _)| g.x) {
+    sorted_geoms.sort_by_key(|g| g.geom.x);
+    for x in sorted_geoms.iter().map(|g| g.geom.x) {
         if splits.contains(&x) {
             continue;
         }
         if sorted_geoms
             .iter()
-            .filter(|(g, _)| g.x == x)
-            .map(|(g, _)| g.rows.as_usize())
+            .filter(|g| g.geom.x == x)
+            .map(|g| g.geom.rows.as_usize())
             .sum::<usize>()
             == max_rows
         {
@@ -335,22 +363,23 @@ fn get_col_splits(
 /// Returns a vector containing the coordinate (y) of the rows that split the
 /// domain including the boundaries, ie the min and max coordinate values.
 fn get_row_splits(
-    geoms: &Vec<(PaneGeom, Option<Vec<String>>)>,
+    // geoms: &Vec<(PaneGeom, Option<Vec<String>>)>,
+    geoms: &Vec<PaneLayoutManifest>,
     (x_min, x_max): &(usize, usize),
     (_, y_max): &(usize, usize),
 ) -> Vec<usize> {
     let max_cols = x_max - x_min;
     let mut splits = Vec::new();
     let mut sorted_geoms = geoms.clone();
-    sorted_geoms.sort_by_key(|(g, _)| g.y);
-    for y in sorted_geoms.iter().map(|(g, _)| g.y) {
+    sorted_geoms.sort_by_key(|g| g.geom.y);
+    for y in sorted_geoms.iter().map(|g| g.geom.y) {
         if splits.contains(&y) {
             continue;
         }
         if sorted_geoms
             .iter()
-            .filter(|(g, _)| g.y == y)
-            .map(|(g, _)| g.cols.as_usize())
+            .filter(|g| g.geom.y == y)
+            .map(|g| g.geom.cols.as_usize())
             .sum::<usize>()
             == max_cols
         {
@@ -364,7 +393,8 @@ fn get_row_splits(
 /// Get the constraint of the domain considered, base on the rows or columns,
 /// depending on the split direction provided.
 fn get_domain_constraint(
-    geoms: &Vec<(PaneGeom, Option<Vec<String>>)>,
+    // geoms: &Vec<(PaneGeom, Option<Vec<String>>)>,
+    geoms: &Vec<PaneLayoutManifest>,
     split_direction: &SplitDirection,
     (v_min, v_max): (usize, usize),
 ) -> Constraint {
@@ -374,16 +404,17 @@ fn get_domain_constraint(
     }
 }
 
-fn get_domain_col_constraint(geoms: &Vec<(PaneGeom, Option<Vec<String>>)>, (x_min, x_max): (usize, usize)) -> Constraint {
+// fn get_domain_col_constraint(geoms: &Vec<(PaneGeom, Option<Vec<String>>)>, (x_min, x_max): (usize, usize)) -> Constraint {
+fn get_domain_col_constraint(geoms: &Vec<PaneLayoutManifest>, (x_min, x_max): (usize, usize)) -> Constraint {
     let mut percent = 0.0;
     let mut x = x_min;
     while x != x_max {
         // we only look at one (ie the last) geom that has value `x` for `g.x`
-        let geom = geoms.iter().filter(|(g, _)| g.x == x).last().unwrap();
-        if let Some(size) = geom.0.cols.as_percent() {
+        let geom = geoms.iter().filter(|g| g.geom.x == x).last().unwrap();
+        if let Some(size) = geom.geom.cols.as_percent() {
             percent += size;
         }
-        x += geom.0.cols.as_usize();
+        x += geom.geom.cols.as_usize();
     }
     if percent == 0.0 {
         Constraint::Fixed(x_max - x_min)
@@ -392,16 +423,17 @@ fn get_domain_col_constraint(geoms: &Vec<(PaneGeom, Option<Vec<String>>)>, (x_mi
     }
 }
 
-fn get_domain_row_constraint(geoms: &Vec<(PaneGeom, Option<Vec<String>>)>, (y_min, y_max): (usize, usize)) -> Constraint {
+// fn get_domain_row_constraint(geoms: &Vec<(PaneGeom, Option<Vec<String>>)>, (y_min, y_max): (usize, usize)) -> Constraint {
+fn get_domain_row_constraint(geoms: &Vec<PaneLayoutManifest>, (y_min, y_max): (usize, usize)) -> Constraint {
     let mut percent = 0.0;
     let mut y = y_min;
     while y != y_max {
         // we only look at one (ie the last) geom that has value `y` for `g.y`
-        let geom = geoms.iter().filter(|(g, _)| g.y == y).last().unwrap();
-        if let Some(size) = geom.0.rows.as_percent() {
+        let geom = geoms.iter().filter(|g| g.geom.y == y).last().unwrap();
+        if let Some(size) = geom.geom.rows.as_percent() {
             percent += size;
         }
-        y += geom.0.rows.as_usize();
+        y += geom.geom.rows.as_usize();
     }
     if percent == 0.0 {
         Constraint::Fixed(y_max - y_min)

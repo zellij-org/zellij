@@ -2,7 +2,7 @@ use crate::terminal_bytes::TerminalBytes;
 use crate::{
     panes::PaneId,
     plugins::PluginInstruction,
-    screen::ScreenInstruction,
+    screen::{ScreenInstruction, SessionLayoutMetadata},
     thread_bus::{Bus, ThreadSenders},
     ClientId, ServerInstruction,
 };
@@ -26,7 +26,7 @@ use zellij_utils::{
 
 pub type VteBytes = Vec<u8>;
 pub type TabIndex = u32;
-pub type SessionGeometry = Vec<(String, Vec<(PaneId, PaneGeom)>)>;
+// pub type SessionGeometry = Vec<(String, Vec<(PaneId, PaneGeom)>)>;
 
 #[derive(Clone, Copy, Debug)]
 pub enum ClientTabIndexOrPaneId {
@@ -71,7 +71,7 @@ pub enum PtyInstruction {
         Option<String>,
         ClientTabIndexOrPaneId,
     ), // String is an optional pane name
-    DumpLayout(SessionGeometry),
+    DumpLayout(SessionLayoutMetadata),
     Exit,
 }
 
@@ -502,20 +502,36 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     },
                 }
             },
-            PtyInstruction::DumpLayout(session_geometry) => {
-                let session_geometry = session_geometry.iter().map(|(tab_name, pane_ids_and_geoms)| {
-                    let mut pane_geoms_and_cmds = vec![];
-                    for (pane_id, pane_geom) in pane_ids_and_geoms {
-                        let process_id = match pane_id {
-                            PaneId::Terminal(id) => pty.id_to_child_pid.get(&id),
-                            _ => None,
-                        };
-                        let cmd = process_id.as_ref().and_then(|pid| pty.bus.os_input.as_ref().and_then(|os_input| os_input.get_cmd(Pid::from_raw(**pid))));
-                        pane_geoms_and_cmds.push((pane_geom.clone(), cmd));
+            PtyInstruction::DumpLayout(mut session_layout_metadata) => {
+                let terminal_ids = session_layout_metadata.all_terminal_ids();
+                let mut terminal_ids_to_cmds: HashMap<u32, Vec<String>> = HashMap::new();
+                for terminal_id in terminal_ids {
+                    let process_id = pty.id_to_child_pid.get(&terminal_id);
+                    let cmd = process_id.as_ref().and_then(|pid| pty.bus.os_input.as_ref().and_then(|os_input| os_input.get_cmd(Pid::from_raw(**pid))));
+                    if let Some(cmd) = cmd {
+                        terminal_ids_to_cmds.insert(terminal_id, cmd);
                     }
-                    (tab_name.clone(), pane_geoms_and_cmds)
-                }).collect();
-                let kdl_config = persistence::tabs_to_kdl(&session_geometry);
+                }
+                session_layout_metadata.update_terminal_cmds(terminal_ids_to_cmds);
+
+
+
+//                 let session_geometry = session_geometry.iter().map(|(tab_name, pane_ids_and_geoms)| {
+//                     let mut pane_geoms_and_cmds = vec![];
+//                     for (pane_id, pane_geom) in pane_ids_and_geoms {
+//                         let process_id = match pane_id {
+//                             PaneId::Terminal(id) => pty.id_to_child_pid.get(&id),
+//                             _ => None,
+//                         };
+//                         let cmd = process_id.as_ref().and_then(|pid| pty.bus.os_input.as_ref().and_then(|os_input| os_input.get_cmd(Pid::from_raw(**pid))));
+//                         pane_geoms_and_cmds.push((pane_geom.clone(), cmd));
+//                     }
+//                     (tab_name.clone(), pane_geoms_and_cmds)
+//                 }).collect();
+//
+//
+//
+                let kdl_config = persistence::tabs_to_kdl(session_layout_metadata.into());
                 log::info!("{kdl_config}");
             },
             PtyInstruction::Exit => break,
