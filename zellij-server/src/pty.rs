@@ -513,24 +513,6 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     }
                 }
                 session_layout_metadata.update_terminal_cmds(terminal_ids_to_cmds);
-
-
-
-//                 let session_geometry = session_geometry.iter().map(|(tab_name, pane_ids_and_geoms)| {
-//                     let mut pane_geoms_and_cmds = vec![];
-//                     for (pane_id, pane_geom) in pane_ids_and_geoms {
-//                         let process_id = match pane_id {
-//                             PaneId::Terminal(id) => pty.id_to_child_pid.get(&id),
-//                             _ => None,
-//                         };
-//                         let cmd = process_id.as_ref().and_then(|pid| pty.bus.os_input.as_ref().and_then(|os_input| os_input.get_cmd(Pid::from_raw(**pid))));
-//                         pane_geoms_and_cmds.push((pane_geom.clone(), cmd));
-//                     }
-//                     (tab_name.clone(), pane_geoms_and_cmds)
-//                 }).collect();
-//
-//
-//
                 let kdl_config = persistence::tabs_to_kdl(session_layout_metadata.into());
                 log::info!("{kdl_config}");
             },

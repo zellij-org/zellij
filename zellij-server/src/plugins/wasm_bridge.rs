@@ -507,7 +507,7 @@ impl WasmBridge {
         let mut applied_plugin_paths = HashSet::new();
         for plugin_id in plugin_ids {
             self.apply_cached_events_and_resizes_for_plugin(plugin_id)?;
-            if let Some(run_plugin) = self.run_plugin_of_plugin_id(plugin_id) {
+            if let Some(run_plugin) = self.run_plugin_of_loading_plugin_id(plugin_id) {
                 applied_plugin_paths.insert(run_plugin.clone());
             }
             self.loading_plugins
@@ -538,11 +538,14 @@ impl WasmBridge {
             watcher.stop_nonblocking();
         }
     }
-    fn run_plugin_of_plugin_id(&self, plugin_id: PluginId) -> Option<&RunPlugin> {
+    pub fn run_plugin_of_loading_plugin_id(&self, plugin_id: PluginId) -> Option<&RunPlugin> {
         self.loading_plugins
             .iter()
             .find(|((p_id, _run_plugin), _)| p_id == &plugin_id)
             .map(|((_p_id, run_plugin), _)| run_plugin)
+    }
+    pub fn run_plugin_of_plugin_id(&self, plugin_id: PluginId) -> Option<RunPlugin> {
+        self.plugin_map.lock().unwrap().run_plugin_of_plugin_id(plugin_id)
     }
     fn apply_cached_events_and_resizes_for_plugin(&mut self, plugin_id: PluginId) -> Result<()> {
         let err_context = || format!("Failed to apply cached events to plugin");

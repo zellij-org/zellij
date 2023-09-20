@@ -13,7 +13,7 @@ use std::{
 use wasmer::Store;
 
 use crate::panes::PaneId;
-use crate::screen::ScreenInstruction;
+use crate::screen::{ScreenInstruction, SessionLayoutMetadata};
 use crate::{pty::PtyInstruction, thread_bus::Bus, ClientId, ServerInstruction};
 
 use wasm_bridge::WasmBridge;
@@ -92,6 +92,7 @@ pub enum PluginInstruction {
         PermissionStatus,
         Option<PathBuf>,
     ),
+    DumpLayout(SessionLayoutMetadata),
     Exit,
 }
 
@@ -120,6 +121,9 @@ impl From<&PluginInstruction> for PluginContext {
             },
             PluginInstruction::PermissionRequestResult(..) => {
                 PluginContext::PermissionRequestResult
+            },
+            PluginInstruction::DumpLayout(..) => {
+                PluginContext::DumpLayout
             },
         }
     }
@@ -347,6 +351,21 @@ pub(crate) fn plugin_thread_main(
                 )];
                 wasm_bridge.update_plugins(updates)?;
             },
+            PluginInstruction::DumpLayout(mut session_layout_metadata) => {
+                let plugin_ids = session_layout_metadata.all_plugin_ids();
+                let mut plugin_ids_to_cmds: HashMap<u32, RunPlugin> = HashMap::new();
+                for plugin_id in plugin_ids {
+                    let plugin_cmd = wasm_bridge.run_plugin_of_plugin_id(plugin_id);
+                    match plugin_cmd {
+                        Some(plugin_cmd) => {
+                            plugin_ids_to_cmds.insert(plugin_id, plugin_cmd.clone());
+                        },
+                        None => log::error!("Plugin with id: {plugin_id} not found")
+                    }
+                }
+                session_layout_metadata.update_plugin_cmds(plugin_ids_to_cmds);
+                drop(bus.senders.send_to_pty(PtyInstruction::DumpLayout(session_layout_metadata)));
+            }
             PluginInstruction::Exit => {
                 wasm_bridge.cleanup();
                 break;

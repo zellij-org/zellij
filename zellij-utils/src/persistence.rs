@@ -49,6 +49,7 @@ pub struct TabLayoutManifest {
 pub struct PaneLayoutManifest {
     pub geom: PaneGeom,
     pub run: Option<Run>,
+    pub is_borderless: bool,
 }
 
 // pub fn tabs_to_kdl(tab_names_to_tiled_panes: &Vec<(String, Vec<(PaneGeom, Option<Vec<String>>)>)>) -> String {
@@ -175,6 +176,12 @@ fn kdl_string_from_layout(layout: &TiledPaneLayout) -> String {
         },
         _ => (None, vec![])
     };
+    let (plugin, plugin_config) = match &layout.run {
+        Some(Run::Plugin(run_plugin)) => {
+            (Some(run_plugin.location.display()), Some(run_plugin.configuration.clone()))
+        },
+        _ => (None, None)
+    };
     let mut kdl_string = match command {
         Some(command) => format!("pane command=\"{}\"", command),
         None => format!("pane")
@@ -185,6 +192,9 @@ fn kdl_string_from_layout(layout: &TiledPaneLayout) -> String {
         Some(SplitSize::Percent(size)) => kdl_string.push_str(&format!(" size=\"{size}%\"")),
         None => (),
     };
+    if layout.borderless {
+        kdl_string.push_str(&" borderless=true");
+    }
     if layout.children_split_direction != SplitDirection::default() {
         let direction = match layout.children_split_direction {
             SplitDirection::Horizontal => "horizontal",
@@ -192,12 +202,25 @@ fn kdl_string_from_layout(layout: &TiledPaneLayout) -> String {
         };
         kdl_string.push_str(&format!(" split_direction=\"{direction}\""));
     }
-    if layout.children.is_empty() && args.is_empty() {
+    if layout.children.is_empty() && args.is_empty() && plugin.is_none() {
         kdl_string.push_str("\n");
     } else if !args.is_empty() {
         kdl_string.push_str(" {\n");
         let args = args.iter().map(|a| format!("\"{}\"", a)).collect::<Vec<_>>().join(" ");
         kdl_string.push_str(&indent(&format!("args {}\n", args), INDENT));
+        kdl_string.push_str("}\n");
+    } else if let Some(plugin) = plugin {
+        kdl_string.push_str(" {\n");
+        if let Some(plugin_config) = plugin_config.and_then(|p| if p.inner().is_empty() { None } else { Some(p) }) {
+            kdl_string.push_str(&indent(&format!("plugin location=\"{}\" {{\n", plugin), INDENT));
+            for (config_key, config_value) in plugin_config.inner() {
+                kdl_string.push_str(&indent(&format!("{} \"{}\"\n", config_key, config_value), INDENT));
+            }
+            kdl_string.push_str(&indent("}\n", INDENT));
+        } else {
+            kdl_string.push_str(&indent(&format!("plugin location=\"{}\"\n", plugin), INDENT));
+        }
+
         kdl_string.push_str("}\n");
     } else {
         kdl_string.push_str(" {\n");
@@ -219,7 +242,7 @@ fn get_layout_from_panegeoms(
     let (children_split_direction, splits) = match get_splits(&geoms) {
         Some(x) => x,
         None => {
-            let run = geoms.iter().next().and_then(|g| g.run.clone());
+            let (run, borderless) = geoms.iter().next().map(|g| (g.run.clone(), g.is_borderless)).unwrap_or((None, false));
 //                 Some(pane_layout_manifest) => pane_layout_manifest.run
 //                     let mut command_line = command.iter();
 //                     if let Some(command_name) = command_line.next() {
@@ -235,6 +258,7 @@ fn get_layout_from_panegeoms(
             return TiledPaneLayout {
                 split_size,
                 run,
+                borderless,
                 ..Default::default()
             }
         },

@@ -385,6 +385,7 @@ pub enum PluginContext {
     PostMessageToPlugin,
     PluginSubscribedToEvents,
     PermissionRequestResult,
+    DumpLayout,
 }
 
 /// Stack call representations corresponding to the different types of [`ClientInstruction`]s.

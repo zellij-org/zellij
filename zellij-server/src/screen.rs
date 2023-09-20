@@ -137,7 +137,7 @@ impl SessionLayoutMetadata {
     pub fn add_tab(
         &mut self,
         name: String,
-        tiled_panes: Vec<(PaneId, PaneGeom)>,
+        tiled_panes: Vec<(PaneId, PaneGeom, bool)>, // bool => is_borderless
         floating_panes: Vec<(PaneId, PaneGeom)>,
         suppressed_panes: HashMap<PaneId, (PaneId, PaneGeom)>,
     ) {
@@ -169,6 +169,27 @@ impl SessionLayoutMetadata {
         }
         terminal_ids
     }
+    pub fn all_plugin_ids(&self) -> Vec<u32> {
+        let mut plugin_ids = vec![];
+        for tab in &self.tabs {
+            for pane_layout_metadata in &tab.tiled_panes {
+                if let PaneId::Plugin(id) = pane_layout_metadata.id {
+                    plugin_ids.push(id);
+                }
+            }
+            for pane_layout_metadata in &tab.floating_panes {
+                if let PaneId::Plugin(id) = pane_layout_metadata.id {
+                    plugin_ids.push(id);
+                }
+            }
+            for pane_layout_metadata in tab.suppressed_panes.values() {
+                if let PaneId::Plugin(id) = pane_layout_metadata.id {
+                    plugin_ids.push(id);
+                }
+            }
+        }
+        plugin_ids
+    }
     pub fn update_terminal_cmds(&mut self, mut terminal_ids_to_cmds: HashMap<u32, Vec<String>>) {
         let mut update_cmd_in_pane_metadata = |pane_layout_metadata: &mut PaneLayoutMetadata| {
             if let PaneId::Terminal(id) = pane_layout_metadata.id {
@@ -179,6 +200,26 @@ impl SessionLayoutMetadata {
                         run_command.args = command_line.map(|c| c.to_owned()).collect();
                         pane_layout_metadata.run = Some(Run::Command(run_command))
                     }
+                }
+            }
+        };
+        for tab in self.tabs.iter_mut() {
+            for pane_layout_metadata in tab.tiled_panes.iter_mut() {
+                update_cmd_in_pane_metadata(pane_layout_metadata);
+            }
+            for pane_layout_metadata in tab.floating_panes.iter_mut() {
+                update_cmd_in_pane_metadata(pane_layout_metadata);
+            }
+            for pane_layout_metadata in tab.suppressed_panes.values_mut() {
+                update_cmd_in_pane_metadata(pane_layout_metadata);
+            }
+        }
+    }
+    pub fn update_plugin_cmds(&mut self, mut plugin_ids_to_run_plugins: HashMap<u32, RunPlugin>) {
+        let mut update_cmd_in_pane_metadata = |pane_layout_metadata: &mut PaneLayoutMetadata| {
+            if let PaneId::Plugin(id) = pane_layout_metadata.id {
+                if let Some(run_plugin) = plugin_ids_to_run_plugins.remove(&id) {
+                    pane_layout_metadata.run = Some(Run::Plugin(run_plugin));
                 }
             }
         };
@@ -218,7 +259,8 @@ impl Into<PaneLayoutManifest> for PaneLayoutMetadata {
     fn into(self) -> PaneLayoutManifest {
         PaneLayoutManifest {
             geom: self.geom,
-            run: self.run
+            run: self.run,
+            is_borderless: self.is_borderless,
         }
     }
 }
@@ -237,15 +279,28 @@ pub struct TabLayoutMetadata {
 pub struct PaneLayoutMetadata {
     id: PaneId,
     geom: PaneGeom,
-    run: Option<Run>
+    run: Option<Run>,
+    is_borderless: bool,
 }
 
-impl From<(PaneId, PaneGeom)> for PaneLayoutMetadata {
+impl From<(PaneId, PaneGeom, bool)> for PaneLayoutMetadata { // bool => is_borderless
+    fn from(pane_id_and_pane_geom: (PaneId, PaneGeom, bool)) -> Self {
+        PaneLayoutMetadata {
+            id: pane_id_and_pane_geom.0,
+            geom: pane_id_and_pane_geom.1,
+            run: None,
+            is_borderless: pane_id_and_pane_geom.2,
+        }
+    }
+}
+
+impl From<(PaneId, PaneGeom)> for PaneLayoutMetadata { // bool => is_borderless
     fn from(pane_id_and_pane_geom: (PaneId, PaneGeom)) -> Self {
         PaneLayoutMetadata {
             id: pane_id_and_pane_geom.0,
             geom: pane_id_and_pane_geom.1,
             run: None,
+            is_borderless: false,
         }
     }
 }
@@ -2391,9 +2446,9 @@ pub(crate) fn screen_thread_main(
                 let err_context = || format!("Failed to dump layout");
                 let mut session_layout_metadata = SessionLayoutMetadata::default();
                 for tab in screen.tabs.values() {
-                    let tiled_panes: Vec<(PaneId, PaneGeom)> = tab
+                    let tiled_panes: Vec<(PaneId, PaneGeom, bool)> = tab // bool => is_borderless
                         .get_tiled_panes()
-                        .map(|(pane_id, p)| (*pane_id, p.position_and_size()))
+                        .map(|(pane_id, p)| (*pane_id, p.position_and_size(), p.borderless()))
                         .collect();
                     let floating_panes: Vec<(PaneId, PaneGeom)> = tab
                         .get_floating_panes()
@@ -2425,7 +2480,8 @@ pub(crate) fn screen_thread_main(
 //                     .collect();
                 screen.bus
                     .senders
-                    .send_to_pty(PtyInstruction::DumpLayout(session_layout_metadata))
+                    // .send_to_pty(PtyInstruction::DumpLayout(session_layout_metadata))
+                    .send_to_plugin(PluginInstruction::DumpLayout(session_layout_metadata))
                     .with_context(err_context)?;
                 screen.unblock_input()?;
                 screen.render()?;
