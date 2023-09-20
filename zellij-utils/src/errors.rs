@@ -401,6 +401,7 @@ pub enum ClientContext {
     StartedParsingStdinQuery,
     DoneParsingStdinQuery,
     SwitchSession,
+    SetSynchronisedOutput,
 }
 
 /// Stack call representations corresponding to the different types of [`ServerInstruction`]s.
