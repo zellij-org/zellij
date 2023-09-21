@@ -109,7 +109,6 @@ impl Dimension {
                 let leftover = rounded - new_inner;
                 self.set_inner(rounded as usize);
                 leftover
-                // self.set_inner(((percent / 100.0) * full_size as f64).round() as usize);
             },
             Constraint::Fixed(fixed_size) => {
                 self.set_inner(fixed_size);

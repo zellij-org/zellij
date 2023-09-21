@@ -13,11 +13,14 @@ use std::path::PathBuf;
 
 use crate::{
     input::command::RunCommand,
-    input::layout::{Run, SplitDirection, SplitSize, TiledPaneLayout},
+    input::layout::{
+        FloatingPaneLayout, PercentOrFixed, Run, SplitDirection, SplitSize, TiledPaneLayout,
+    },
     pane_size::{Constraint, Dimension, PaneGeom},
 };
 
 const INDENT: &str = "    ";
+const DOUBLE_INDENT: &str = "        ";
 
 /// Copied from textwrap::indent
 fn indent(s: &str, prefix: &str) -> String {
@@ -56,8 +59,9 @@ pub fn tabs_to_kdl(global_layout_manifest: GlobalLayoutManifest) -> String {
     let mut kdl_string = String::from("layout {\n");
     for (tab_name, tab_layout_manifest) in global_layout_manifest.tabs {
         let tiled_panes = tab_layout_manifest.tiled_panes;
+        let floating_panes = tab_layout_manifest.floating_panes;
         kdl_string.push_str(&indent(
-            &stringify_tab(tab_name.clone(), &tiled_panes),
+            &stringify_tab(tab_name.clone(), &tiled_panes, &floating_panes),
             INDENT,
         ));
     }
@@ -67,29 +71,42 @@ pub fn tabs_to_kdl(global_layout_manifest: GlobalLayoutManifest) -> String {
 
 // pub fn stringify_tab(tab_name: String, tiled_panes: &Vec<(PaneGeom, Option<Vec<String>>)>) -> String {
 // Option<String> is an optional pane command
-pub fn stringify_tab(tab_name: String, tiled_panes: &Vec<PaneLayoutManifest>) -> String {
+pub fn stringify_tab(
+    tab_name: String,
+    tiled_panes: &Vec<PaneLayoutManifest>,
+    floating_panes: &Vec<PaneLayoutManifest>,
+) -> String {
     let mut kdl_string = String::new();
-    let layout = get_layout_from_panegeoms(tiled_panes, None);
-    let tab = if &layout.children_split_direction != &SplitDirection::default() {
-        vec![layout]
+    let tiled_panes_layout = get_tiled_panes_layout_from_panegeoms(tiled_panes, None);
+    let floating_panes_layout = get_floating_panes_layout_from_panegeoms(floating_panes);
+    let tiled_panes = if &tiled_panes_layout.children_split_direction != &SplitDirection::default()
+    {
+        vec![tiled_panes_layout]
     } else {
-        layout.children
+        tiled_panes_layout.children
     };
-    kdl_string.push_str(&kdl_string_from_tab(&tab, tab_name));
+    kdl_string.push_str(&kdl_string_from_tab(
+        &tiled_panes,
+        &floating_panes_layout,
+        tab_name,
+    ));
     kdl_string
 }
 
-// pub fn kdl_string_from_panegeoms(geoms: &Vec<(PaneGeom, Option<Vec<String>>)>) -> String {
+// only used for tests...
 pub fn kdl_string_from_panegeoms(geoms: &Vec<PaneLayoutManifest>) -> String {
     // Option<String> is an optional pane command
     let mut kdl_string = String::from("layout {\n");
-    let layout = get_layout_from_panegeoms(&geoms, None);
-    let tab = if &layout.children_split_direction != &SplitDirection::default() {
+    let layout = get_tiled_panes_layout_from_panegeoms(&geoms, None);
+    let tiled_panes = if &layout.children_split_direction != &SplitDirection::default() {
         vec![layout]
     } else {
         layout.children
     };
-    kdl_string.push_str(&indent(&kdl_string_from_tab(&tab, String::new()), INDENT));
+    kdl_string.push_str(&indent(
+        &kdl_string_from_tab(&tiled_panes, &vec![], String::new()),
+        INDENT,
+    ));
     kdl_string.push_str("}");
     kdl_string
 }
@@ -126,52 +143,35 @@ fn get_dim(dim_hm: &Value) -> Dimension {
     dim
 }
 
-// /// Tab declaration
-// fn geoms_to_kdl_tab(name: &str, geoms: &[PaneGeom], tab_n: usize) -> String {
-//     let layout = get_layout_from_panegeoms(geoms, None);
-//     // log::info!("TiledLayout: {layout:?}");
-//     let tab = if &layout.children_split_direction != &SplitDirection::default() {
-//         vec![layout]
-//     } else {
-//         layout.children
-//     };
-
-//     // skip tab decl if the tab is the only one
-//     let mut kdl_string = match tab_n {
-//         1 => format!(""),
-//         _ => format!("tab name=\"{name}\" {{\n"),
-//     };
-
-//     for layout in tab {
-//         kdl_string.push_str(&kdl_string_from_layout(&layout));
-//     }
-
-//     // skip tab closing } if the tab is the only one
-//     match tab_n {
-//         1 => {},
-//         _ => kdl_string.push_str("}"),
-//     };
-
-//     kdl_string
-// }
-
 /// Redundant with `geoms_to_kdl_tab`
-fn kdl_string_from_tab(tab: &Vec<TiledPaneLayout>, tab_name: String) -> String {
+fn kdl_string_from_tab(
+    tiled_panes: &Vec<TiledPaneLayout>,
+    floating_panes: &Vec<FloatingPaneLayout>,
+    tab_name: String,
+) -> String {
     let mut kdl_string = if tab_name.is_empty() {
         format!("tab {{\n")
     } else {
         format!("tab name=\"{}\" {{\n", tab_name)
     };
-    for tiled_pane_layout in tab {
-        let sub_kdl_string = kdl_string_from_layout(&tiled_pane_layout);
+    for tiled_pane_layout in tiled_panes {
+        let sub_kdl_string = kdl_string_from_tiled_pane(&tiled_pane_layout);
         kdl_string.push_str(&indent(&sub_kdl_string, INDENT));
+    }
+    if !floating_panes.is_empty() {
+        kdl_string.push_str(&indent("floating_panes {\n", INDENT));
+        for floating_pane_layout in floating_panes {
+            let sub_kdl_string = kdl_string_from_floating_pane(&floating_pane_layout);
+            kdl_string.push_str(&indent(&sub_kdl_string, DOUBLE_INDENT));
+        }
+        kdl_string.push_str(&indent("}\n", INDENT));
     }
     kdl_string.push_str("}\n");
     kdl_string
 }
 
 /// Pane declaration and recursion
-fn kdl_string_from_layout(layout: &TiledPaneLayout) -> String {
+fn kdl_string_from_tiled_pane(layout: &TiledPaneLayout) -> String {
     let (command, args) = match &layout.run {
         Some(Run::Command(run_command)) => (
             Some(run_command.command.display()),
@@ -244,7 +244,7 @@ fn kdl_string_from_layout(layout: &TiledPaneLayout) -> String {
     } else {
         kdl_string.push_str(" {\n");
         for pane in &layout.children {
-            let sub_kdl_string = kdl_string_from_layout(&pane);
+            let sub_kdl_string = kdl_string_from_tiled_pane(&pane);
             kdl_string.push_str(&indent(&sub_kdl_string, INDENT));
         }
         kdl_string.push_str("}\n");
@@ -252,8 +252,104 @@ fn kdl_string_from_layout(layout: &TiledPaneLayout) -> String {
     kdl_string
 }
 
+// TODO: combine shared logic here with kdl_string_from_tiled_pane
+fn kdl_string_from_floating_pane(layout: &FloatingPaneLayout) -> String {
+    let (command, args) = match &layout.run {
+        Some(Run::Command(run_command)) => (
+            Some(run_command.command.display()),
+            run_command.args.clone(),
+        ),
+        _ => (None, vec![]),
+    };
+    let (plugin, plugin_config) = match &layout.run {
+        Some(Run::Plugin(run_plugin)) => (
+            Some(run_plugin.location.display()),
+            Some(run_plugin.configuration.clone()),
+        ),
+        _ => (None, None),
+    };
+    let mut kdl_string = match command {
+        Some(command) => format!("pane command=\"{}\"", command),
+        None => format!("pane"),
+    };
+    kdl_string.push_str(" {\n");
+
+    if let Some(name) = &layout.name {
+        kdl_string.push_str(&indent(&format!("name {}\n", name), INDENT));
+    }
+
+    match layout.height {
+        Some(PercentOrFixed::Fixed(fixed_height)) => {
+            kdl_string.push_str(&indent(&format!("height {}\n", fixed_height), INDENT));
+        },
+        Some(PercentOrFixed::Percent(percent)) => {
+            kdl_string.push_str(&indent(&format!("height \"{}%\"\n", percent), INDENT));
+        },
+        None => {},
+    }
+    match layout.width {
+        Some(PercentOrFixed::Fixed(fixed_width)) => {
+            kdl_string.push_str(&indent(&format!("width {}\n", fixed_width), INDENT));
+        },
+        Some(PercentOrFixed::Percent(percent)) => {
+            kdl_string.push_str(&indent(&format!("width \"{}%\"\n", percent), INDENT));
+        },
+        None => {},
+    }
+    match layout.x {
+        Some(PercentOrFixed::Fixed(fixed_x)) => {
+            kdl_string.push_str(&indent(&format!("x {}\n", fixed_x), INDENT));
+        },
+        Some(PercentOrFixed::Percent(percent)) => {
+            kdl_string.push_str(&indent(&format!("x \"{}%\"\n", percent), INDENT));
+        },
+        None => {},
+    }
+    match layout.y {
+        Some(PercentOrFixed::Fixed(fixed_y)) => {
+            kdl_string.push_str(&indent(&format!("y {}\n", fixed_y), INDENT));
+        },
+        Some(PercentOrFixed::Percent(percent)) => {
+            kdl_string.push_str(&indent(&format!("y \"{}%\"\n", percent), INDENT));
+        },
+        None => {},
+    }
+    if !args.is_empty() {
+        let args = args
+            .iter()
+            .map(|a| format!("\"{}\"", a))
+            .collect::<Vec<_>>()
+            .join(" ");
+        kdl_string.push_str(&indent(&format!("args {}\n", args), INDENT));
+    }
+    if let Some(plugin) = plugin {
+        if let Some(plugin_config) =
+            plugin_config.and_then(|p| if p.inner().is_empty() { None } else { Some(p) })
+        {
+            kdl_string.push_str(&indent(
+                &format!("plugin location=\"{}\" {{\n", plugin),
+                INDENT,
+            ));
+            for (config_key, config_value) in plugin_config.inner() {
+                kdl_string.push_str(&indent(
+                    &format!("{} \"{}\"\n", config_key, config_value),
+                    INDENT,
+                ));
+            }
+            kdl_string.push_str(&indent("}\n", INDENT));
+        } else {
+            kdl_string.push_str(&indent(
+                &format!("plugin location=\"{}\"\n", plugin),
+                INDENT,
+            ));
+        }
+    }
+    kdl_string.push_str("}\n");
+    kdl_string
+}
+
 /// Tab-level parsing
-fn get_layout_from_panegeoms(
+fn get_tiled_panes_layout_from_panegeoms(
     // geoms: &Vec<(PaneGeom, Option<Vec<String>>)>,
     geoms: &Vec<PaneLayoutManifest>,
     split_size: Option<SplitSize>,
@@ -266,18 +362,6 @@ fn get_layout_from_panegeoms(
                 .next()
                 .map(|g| (g.run.clone(), g.is_borderless))
                 .unwrap_or((None, false));
-            //                 Some(pane_layout_manifest) => pane_layout_manifest.run
-            //                     let mut command_line = command.iter();
-            //                     if let Some(command_name) = command_line.next() {
-            //                         let mut run_command = RunCommand::new(PathBuf::from(command_name));
-            //                         run_command.args = command_line.map(|c| c.to_owned()).collect();
-            //                         Some(Run::Command(run_command))
-            //                     } else {
-            //                         None
-            //                     }
-            //                 },
-            //                 _ => None,
-            // };
             return TiledPaneLayout {
                 split_size,
                 run,
@@ -311,7 +395,10 @@ fn get_layout_from_panegeoms(
     }
     let new_split_sizes = get_split_sizes(&new_constraints);
     for (subgeoms, subsplit_size) in new_geoms.iter().zip(new_split_sizes) {
-        children.push(get_layout_from_panegeoms(&subgeoms, subsplit_size));
+        children.push(get_tiled_panes_layout_from_panegeoms(
+            &subgeoms,
+            subsplit_size,
+        ));
     }
     TiledPaneLayout {
         children_split_direction,
@@ -319,6 +406,24 @@ fn get_layout_from_panegeoms(
         children,
         ..Default::default()
     }
+}
+
+fn get_floating_panes_layout_from_panegeoms(
+    manifests: &Vec<PaneLayoutManifest>,
+) -> Vec<FloatingPaneLayout> {
+    manifests
+        .iter()
+        .map(|m| FloatingPaneLayout {
+            name: None, // TODO: TBD
+            height: Some(m.geom.rows.into()),
+            width: Some(m.geom.cols.into()),
+            x: Some(PercentOrFixed::Fixed(m.geom.x)),
+            y: Some(PercentOrFixed::Fixed(m.geom.y)),
+            run: m.run.clone(),
+            focus: None, // TODO: TBD
+            already_running: false,
+        })
+        .collect()
 }
 
 // fn get_x_lims(geoms: &Vec<(PaneGeom, Option<Vec<String>>)>) -> Option<(usize, usize)> {

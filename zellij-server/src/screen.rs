@@ -19,8 +19,8 @@ use zellij_utils::{
         FloatingPaneLayout, Layout, PluginUserConfiguration, Run, RunPlugin, RunPluginLocation,
         SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,
     },
-    persistence::{GlobalLayoutManifest, PaneLayoutManifest, TabLayoutManifest},
     position::Position,
+    session_serialization::{GlobalLayoutManifest, PaneLayoutManifest, TabLayoutManifest},
 };
 
 use crate::background_jobs::BackgroundJob;

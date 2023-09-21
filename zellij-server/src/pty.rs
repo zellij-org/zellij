@@ -21,7 +21,7 @@ use zellij_utils::{
             TiledPaneLayout,
         },
     },
-    persistence,
+    session_serialization,
 };
 
 pub type VteBytes = Vec<u8>;
@@ -518,7 +518,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     }
                 }
                 session_layout_metadata.update_terminal_cmds(terminal_ids_to_cmds);
-                let kdl_config = persistence::tabs_to_kdl(session_layout_metadata.into());
+                let kdl_config = session_serialization::tabs_to_kdl(session_layout_metadata.into());
                 log::info!("{kdl_config}");
             },
             PtyInstruction::Exit => break,

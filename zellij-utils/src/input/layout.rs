@@ -15,7 +15,7 @@ use crate::{
         command::RunCommand,
         config::{Config, ConfigError},
     },
-    pane_size::{Dimension, PaneGeom},
+    pane_size::{Constraint, Dimension, PaneGeom},
     setup::{self},
 };
 
@@ -389,6 +389,15 @@ pub struct Layout {
 pub enum PercentOrFixed {
     Percent(usize), // 1 to 100
     Fixed(usize),   // An absolute number of columns or rows
+}
+
+impl From<Dimension> for PercentOrFixed {
+    fn from(dimension: Dimension) -> Self {
+        match dimension.constraint {
+            Constraint::Percent(percent) => PercentOrFixed::Percent(percent as usize),
+            Constraint::Fixed(fixed_size) => PercentOrFixed::Fixed(fixed_size),
+        }
+    }
 }
 
 impl PercentOrFixed {

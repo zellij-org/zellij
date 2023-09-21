@@ -7,9 +7,9 @@ pub mod home;
 pub mod input;
 pub mod kdl;
 pub mod pane_size;
-pub mod persistence;
 pub mod plugin_api;
 pub mod position;
+pub mod session_serialization;
 pub mod setup;
 pub mod shared;
 
