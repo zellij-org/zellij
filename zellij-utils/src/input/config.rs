@@ -13,7 +13,7 @@ use super::plugins::{PluginsConfig, PluginsConfigError};
 use super::theme::{Themes, UiConfig};
 use crate::cli::{CliArgs, Command};
 use crate::envs::EnvironmentVariables;
-use crate::{setup, home};
+use crate::{home, setup};
 
 const DEFAULT_CONFIG_FILE_NAME: &str = "config.kdl";
 

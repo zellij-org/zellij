@@ -329,7 +329,7 @@ impl RunPluginLocation {
     pub fn display(&self) -> String {
         match self {
             RunPluginLocation::File(pathbuf) => format!("file:{}", pathbuf.display()),
-            RunPluginLocation::Zellij(plugin_tag) => format!("zellij:{}", plugin_tag)
+            RunPluginLocation::Zellij(plugin_tag) => format!("zellij:{}", plugin_tag),
         }
     }
 }

@@ -12,11 +12,10 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use crate::{
-    input::layout::{SplitDirection, SplitSize, TiledPaneLayout, Run},
     input::command::RunCommand,
+    input::layout::{Run, SplitDirection, SplitSize, TiledPaneLayout},
     pane_size::{Constraint, Dimension, PaneGeom},
 };
-
 
 const INDENT: &str = "    ";
 
@@ -35,7 +34,7 @@ fn indent(s: &str, prefix: &str) -> String {
 
 #[derive(Default, Debug, Clone)]
 pub struct GlobalLayoutManifest {
-    pub tabs: Vec<(String, TabLayoutManifest)>
+    pub tabs: Vec<(String, TabLayoutManifest)>,
 }
 
 #[derive(Default, Debug, Clone)]
@@ -57,14 +56,17 @@ pub fn tabs_to_kdl(global_layout_manifest: GlobalLayoutManifest) -> String {
     let mut kdl_string = String::from("layout {\n");
     for (tab_name, tab_layout_manifest) in global_layout_manifest.tabs {
         let tiled_panes = tab_layout_manifest.tiled_panes;
-        kdl_string.push_str(&indent(&stringify_tab(tab_name.clone(), &tiled_panes), INDENT));
+        kdl_string.push_str(&indent(
+            &stringify_tab(tab_name.clone(), &tiled_panes),
+            INDENT,
+        ));
     }
     kdl_string.push_str("}");
     kdl_string
 }
 
 // pub fn stringify_tab(tab_name: String, tiled_panes: &Vec<(PaneGeom, Option<Vec<String>>)>) -> String {
-    // Option<String> is an optional pane command
+// Option<String> is an optional pane command
 pub fn stringify_tab(tab_name: String, tiled_panes: &Vec<PaneLayoutManifest>) -> String {
     let mut kdl_string = String::new();
     let layout = get_layout_from_panegeoms(tiled_panes, None);
@@ -171,20 +173,22 @@ fn kdl_string_from_tab(tab: &Vec<TiledPaneLayout>, tab_name: String) -> String {
 /// Pane declaration and recursion
 fn kdl_string_from_layout(layout: &TiledPaneLayout) -> String {
     let (command, args) = match &layout.run {
-        Some(Run::Command(run_command)) => {
-            (Some(run_command.command.display()), run_command.args.clone())
-        },
-        _ => (None, vec![])
+        Some(Run::Command(run_command)) => (
+            Some(run_command.command.display()),
+            run_command.args.clone(),
+        ),
+        _ => (None, vec![]),
     };
     let (plugin, plugin_config) = match &layout.run {
-        Some(Run::Plugin(run_plugin)) => {
-            (Some(run_plugin.location.display()), Some(run_plugin.configuration.clone()))
-        },
-        _ => (None, None)
+        Some(Run::Plugin(run_plugin)) => (
+            Some(run_plugin.location.display()),
+            Some(run_plugin.configuration.clone()),
+        ),
+        _ => (None, None),
     };
     let mut kdl_string = match command {
         Some(command) => format!("pane command=\"{}\"", command),
-        None => format!("pane")
+        None => format!("pane"),
     };
 
     match layout.split_size {
@@ -206,19 +210,34 @@ fn kdl_string_from_layout(layout: &TiledPaneLayout) -> String {
         kdl_string.push_str("\n");
     } else if !args.is_empty() {
         kdl_string.push_str(" {\n");
-        let args = args.iter().map(|a| format!("\"{}\"", a)).collect::<Vec<_>>().join(" ");
+        let args = args
+            .iter()
+            .map(|a| format!("\"{}\"", a))
+            .collect::<Vec<_>>()
+            .join(" ");
         kdl_string.push_str(&indent(&format!("args {}\n", args), INDENT));
         kdl_string.push_str("}\n");
     } else if let Some(plugin) = plugin {
         kdl_string.push_str(" {\n");
-        if let Some(plugin_config) = plugin_config.and_then(|p| if p.inner().is_empty() { None } else { Some(p) }) {
-            kdl_string.push_str(&indent(&format!("plugin location=\"{}\" {{\n", plugin), INDENT));
+        if let Some(plugin_config) =
+            plugin_config.and_then(|p| if p.inner().is_empty() { None } else { Some(p) })
+        {
+            kdl_string.push_str(&indent(
+                &format!("plugin location=\"{}\" {{\n", plugin),
+                INDENT,
+            ));
             for (config_key, config_value) in plugin_config.inner() {
-                kdl_string.push_str(&indent(&format!("{} \"{}\"\n", config_key, config_value), INDENT));
+                kdl_string.push_str(&indent(
+                    &format!("{} \"{}\"\n", config_key, config_value),
+                    INDENT,
+                ));
             }
             kdl_string.push_str(&indent("}\n", INDENT));
         } else {
-            kdl_string.push_str(&indent(&format!("plugin location=\"{}\"\n", plugin), INDENT));
+            kdl_string.push_str(&indent(
+                &format!("plugin location=\"{}\"\n", plugin),
+                INDENT,
+            ));
         }
 
         kdl_string.push_str("}\n");
@@ -242,25 +261,29 @@ fn get_layout_from_panegeoms(
     let (children_split_direction, splits) = match get_splits(&geoms) {
         Some(x) => x,
         None => {
-            let (run, borderless) = geoms.iter().next().map(|g| (g.run.clone(), g.is_borderless)).unwrap_or((None, false));
-//                 Some(pane_layout_manifest) => pane_layout_manifest.run
-//                     let mut command_line = command.iter();
-//                     if let Some(command_name) = command_line.next() {
-//                         let mut run_command = RunCommand::new(PathBuf::from(command_name));
-//                         run_command.args = command_line.map(|c| c.to_owned()).collect();
-//                         Some(Run::Command(run_command))
-//                     } else {
-//                         None
-//                     }
-//                 },
-//                 _ => None,
+            let (run, borderless) = geoms
+                .iter()
+                .next()
+                .map(|g| (g.run.clone(), g.is_borderless))
+                .unwrap_or((None, false));
+            //                 Some(pane_layout_manifest) => pane_layout_manifest.run
+            //                     let mut command_line = command.iter();
+            //                     if let Some(command_name) = command_line.next() {
+            //                         let mut run_command = RunCommand::new(PathBuf::from(command_name));
+            //                         run_command.args = command_line.map(|c| c.to_owned()).collect();
+            //                         Some(Run::Command(run_command))
+            //                     } else {
+            //                         None
+            //                     }
+            //                 },
+            //                 _ => None,
             // };
             return TiledPaneLayout {
                 split_size,
                 run,
                 borderless,
                 ..Default::default()
-            }
+            };
         },
     };
     let mut children = Vec::new();
@@ -302,7 +325,10 @@ fn get_layout_from_panegeoms(
 fn get_x_lims(geoms: &Vec<PaneLayoutManifest>) -> Option<(usize, usize)> {
     match (
         geoms.iter().map(|g| g.geom.x).min(),
-        geoms.iter().map(|g| g.geom.x + g.geom.cols.as_usize()).max(),
+        geoms
+            .iter()
+            .map(|g| g.geom.x + g.geom.cols.as_usize())
+            .max(),
     ) {
         (Some(x_min), Some(x_max)) => Some((x_min, x_max)),
         _ => None,
@@ -313,7 +339,10 @@ fn get_x_lims(geoms: &Vec<PaneLayoutManifest>) -> Option<(usize, usize)> {
 fn get_y_lims(geoms: &Vec<PaneLayoutManifest>) -> Option<(usize, usize)> {
     match (
         geoms.iter().map(|g| g.geom.y).min(),
-        geoms.iter().map(|g| g.geom.y + g.geom.rows.as_usize()).max(),
+        geoms
+            .iter()
+            .map(|g| g.geom.y + g.geom.rows.as_usize())
+            .max(),
     ) {
         (Some(y_min), Some(y_max)) => Some((y_min, y_max)),
         _ => None,
@@ -429,7 +458,10 @@ fn get_domain_constraint(
 }
 
 // fn get_domain_col_constraint(geoms: &Vec<(PaneGeom, Option<Vec<String>>)>, (x_min, x_max): (usize, usize)) -> Constraint {
-fn get_domain_col_constraint(geoms: &Vec<PaneLayoutManifest>, (x_min, x_max): (usize, usize)) -> Constraint {
+fn get_domain_col_constraint(
+    geoms: &Vec<PaneLayoutManifest>,
+    (x_min, x_max): (usize, usize),
+) -> Constraint {
     let mut percent = 0.0;
     let mut x = x_min;
     while x != x_max {
@@ -448,7 +480,10 @@ fn get_domain_col_constraint(geoms: &Vec<PaneLayoutManifest>, (x_min, x_max): (u
 }
 
 // fn get_domain_row_constraint(geoms: &Vec<(PaneGeom, Option<Vec<String>>)>, (y_min, y_max): (usize, usize)) -> Constraint {
-fn get_domain_row_constraint(geoms: &Vec<PaneLayoutManifest>, (y_min, y_max): (usize, usize)) -> Constraint {
+fn get_domain_row_constraint(
+    geoms: &Vec<PaneLayoutManifest>,
+    (y_min, y_max): (usize, usize),
+) -> Constraint {
     let mut percent = 0.0;
     let mut y = y_min;
     while y != y_max {

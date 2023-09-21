@@ -12,7 +12,6 @@ use zellij_utils::nix::unistd::Pid;
 use zellij_utils::pane_size::PaneGeom;
 use zellij_utils::{
     async_std,
-    persistence,
     errors::prelude::*,
     errors::{ContextType, PtyContext},
     input::{
@@ -22,6 +21,7 @@ use zellij_utils::{
             TiledPaneLayout,
         },
     },
+    persistence,
 };
 
 pub type VteBytes = Vec<u8>;
@@ -507,7 +507,12 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                 let mut terminal_ids_to_cmds: HashMap<u32, Vec<String>> = HashMap::new();
                 for terminal_id in terminal_ids {
                     let process_id = pty.id_to_child_pid.get(&terminal_id);
-                    let cmd = process_id.as_ref().and_then(|pid| pty.bus.os_input.as_ref().and_then(|os_input| os_input.get_cmd(Pid::from_raw(**pid))));
+                    let cmd = process_id.as_ref().and_then(|pid| {
+                        pty.bus
+                            .os_input
+                            .as_ref()
+                            .and_then(|os_input| os_input.get_cmd(Pid::from_raw(**pid)))
+                    });
                     if let Some(cmd) = cmd {
                         terminal_ids_to_cmds.insert(terminal_id, cmd);
                     }

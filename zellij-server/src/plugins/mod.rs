@@ -122,9 +122,7 @@ impl From<&PluginInstruction> for PluginContext {
             PluginInstruction::PermissionRequestResult(..) => {
                 PluginContext::PermissionRequestResult
             },
-            PluginInstruction::DumpLayout(..) => {
-                PluginContext::DumpLayout
-            },
+            PluginInstruction::DumpLayout(..) => PluginContext::DumpLayout,
         }
     }
 }
@@ -360,12 +358,15 @@ pub(crate) fn plugin_thread_main(
                         Some(plugin_cmd) => {
                             plugin_ids_to_cmds.insert(plugin_id, plugin_cmd.clone());
                         },
-                        None => log::error!("Plugin with id: {plugin_id} not found")
+                        None => log::error!("Plugin with id: {plugin_id} not found"),
                     }
                 }
                 session_layout_metadata.update_plugin_cmds(plugin_ids_to_cmds);
-                drop(bus.senders.send_to_pty(PtyInstruction::DumpLayout(session_layout_metadata)));
-            }
+                drop(
+                    bus.senders
+                        .send_to_pty(PtyInstruction::DumpLayout(session_layout_metadata)),
+                );
+            },
             PluginInstruction::Exit => {
                 wasm_bridge.cleanup();
                 break;

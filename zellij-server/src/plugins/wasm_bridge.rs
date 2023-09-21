@@ -545,7 +545,10 @@ impl WasmBridge {
             .map(|((_p_id, run_plugin), _)| run_plugin)
     }
     pub fn run_plugin_of_plugin_id(&self, plugin_id: PluginId) -> Option<RunPlugin> {
-        self.plugin_map.lock().unwrap().run_plugin_of_plugin_id(plugin_id)
+        self.plugin_map
+            .lock()
+            .unwrap()
+            .run_plugin_of_plugin_id(plugin_id)
     }
     fn apply_cached_events_and_resizes_for_plugin(&mut self, plugin_id: PluginId) -> Result<()> {
         let err_context = || format!("Failed to apply cached events to plugin");

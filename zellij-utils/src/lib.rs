@@ -3,15 +3,15 @@ pub mod consts;
 pub mod data;
 pub mod envs;
 pub mod errors;
+pub mod home;
 pub mod input;
 pub mod kdl;
 pub mod pane_size;
+pub mod persistence;
 pub mod plugin_api;
 pub mod position;
 pub mod setup;
 pub mod shared;
-pub mod home;
-pub mod persistence;
 
 // The following modules can't be used when targeting wasm
 #[cfg(not(target_family = "wasm"))]

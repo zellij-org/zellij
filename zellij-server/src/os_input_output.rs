@@ -505,7 +505,9 @@ pub trait ServerOsApi: Send + Sync {
     /// Returns the current working directory for a given pid
     fn get_cwd(&self, pid: Pid) -> Option<PathBuf>;
     /// Returns the command to invoke this process
-    fn get_cmd(&self, _pid: Pid) -> Option<Vec<String>> { None }
+    fn get_cmd(&self, _pid: Pid) -> Option<Vec<String>> {
+        None
+    }
     /// Writes the given buffer to a string
     fn write_to_file(&mut self, buf: String, file: Option<String>) -> Result<()>;
 
@@ -765,16 +767,22 @@ impl ServerOsApi for ServerOsInputOutput {
         if let Some(output) = Command::new("pgrep")
             .args(vec!["-af", "-P", &format!("{}", pid)])
             .output()
-            .ok() {
-                // TODO: not lossy
-                let output = String::from_utf8_lossy(&output.stdout).to_string();
-                let output: Vec<String> = output.trim().split_ascii_whitespace().skip(1).map(|s| s.to_owned()).collect();
-                if output.is_empty() {
-                    return None;
-                } else {
-                    return Some(output);
-                }
+            .ok()
+        {
+            // TODO: not lossy
+            let output = String::from_utf8_lossy(&output.stdout).to_string();
+            let output: Vec<String> = output
+                .trim()
+                .split_ascii_whitespace()
+                .skip(1)
+                .map(|s| s.to_owned())
+                .collect();
+            if output.is_empty() {
+                return None;
+            } else {
+                return Some(output);
             }
+        }
         None
     }
 
