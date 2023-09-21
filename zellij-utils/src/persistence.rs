@@ -540,6 +540,10 @@ mod tests {
         let geoms = PANEGEOMS_JSON[0]
             .iter()
             .map(|pg| parse_panegeom_from_json(pg))
+            .map(|geom| PaneLayoutManifest {
+                geom,
+                ..Default::default()
+            })
             .collect();
         let kdl = kdl_string_from_panegeoms(&geoms);
         expect![[r#"layout {
@@ -549,11 +553,15 @@ mod tests {
         pane size=2
     }
 }"#]]
-        .assert_debug_eq(&kdl);
+        .assert_eq(&kdl);
 
         let geoms = PANEGEOMS_JSON[1]
             .iter()
             .map(|pg| parse_panegeom_from_json(pg))
+            .map(|geom| PaneLayoutManifest {
+                geom,
+                ..Default::default()
+            })
             .collect();
         let kdl = kdl_string_from_panegeoms(&geoms);
         expect![[r#"layout {
@@ -565,11 +573,15 @@ mod tests {
         }
     }
 }"#]]
-        .assert_debug_eq(&kdl);
+        .assert_eq(&kdl);
 
         let geoms = PANEGEOMS_JSON[2]
             .iter()
             .map(|pg| parse_panegeom_from_json(pg))
+            .map(|geom| PaneLayoutManifest {
+                geom,
+                ..Default::default()
+            })
             .collect();
         let kdl = kdl_string_from_panegeoms(&geoms);
         expect![[r#"layout {
@@ -589,11 +601,15 @@ mod tests {
         }
     }
 }"#]]
-        .assert_debug_eq(&kdl);
+        .assert_eq(&kdl);
 
         let geoms = PANEGEOMS_JSON[3]
             .iter()
             .map(|pg| parse_panegeom_from_json(pg))
+            .map(|geom| PaneLayoutManifest {
+                geom,
+                ..Default::default()
+            })
             .collect();
         let kdl = kdl_string_from_panegeoms(&geoms);
         expect![[r#"layout {
@@ -614,11 +630,15 @@ mod tests {
         }
     }
 }"#]]
-        .assert_debug_eq(&kdl);
+        .assert_eq(&kdl);
 
         let geoms = PANEGEOMS_JSON[4]
             .iter()
             .map(|pg| parse_panegeom_from_json(pg))
+            .map(|geom| PaneLayoutManifest {
+                geom,
+                ..Default::default()
+            })
             .collect();
         let kdl = kdl_string_from_panegeoms(&geoms);
         expect![[r#"layout {
@@ -633,6 +653,6 @@ mod tests {
         pane size=5
     }
 }"#]]
-        .assert_debug_eq(&kdl);
+        .assert_eq(&kdl);
     }
 }
