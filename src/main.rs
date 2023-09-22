@@ -25,6 +25,7 @@ fn main() {
             direction,
             cwd,
             floating,
+            in_place,
             name,
             close_on_exit,
             start_suspended,
@@ -36,6 +37,7 @@ fn main() {
                 direction,
                 cwd,
                 floating,
+                in_place,
                 name,
                 close_on_exit,
                 start_suspended,
@@ -49,6 +51,7 @@ fn main() {
             direction,
             line_number,
             floating,
+            in_place,
             cwd,
         })) = opts.command
         {
@@ -64,6 +67,7 @@ fn main() {
                 direction,
                 line_number,
                 floating,
+                in_place,
                 cwd,
             };
             commands::send_action_to_session(command_cli_action, opts.session, config);

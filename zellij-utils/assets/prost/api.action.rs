@@ -137,6 +137,8 @@ pub struct LaunchOrFocusPluginPayload {
     pub plugin_configuration: ::core::option::Option<PluginConfiguration>,
     #[prost(bool, tag = "4")]
     pub move_to_focused_tab: bool,
+    #[prost(bool, tag = "5")]
+    pub should_open_in_place: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

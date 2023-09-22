@@ -1,6 +1,6 @@
 ---
 source: zellij-server/src/./unit/screen_tests.rs
-assertion_line: 2572
+assertion_line: 2596
 expression: "format!(\"{:#?}\", plugin_load_instruction)"
 ---
 Some(
@@ -8,6 +8,7 @@ Some(
         Some(
             true,
         ),
+        false,
         None,
         RunPlugin {
             _allow_exec_host_cmd: false,
@@ -19,6 +20,7 @@ Some(
             ),
         },
         0,
+        None,
         1,
         Size {
             rows: 0,

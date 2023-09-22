@@ -112,6 +112,8 @@ mod unix_only {
     use nix::unistd::Uid;
     use std::env::temp_dir;
 
+    pub const ZELLIJ_SOCK_MAX_LENGTH: usize = 108;
+
     lazy_static! {
         static ref UID: Uid = Uid::current();
         pub static ref ZELLIJ_TMP_DIR: PathBuf = temp_dir().join(format!("zellij-{}", *UID));

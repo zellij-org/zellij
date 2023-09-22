@@ -14,6 +14,7 @@ use std::{
 };
 use wasmer::Store;
 
+use crate::panes::PaneId;
 use crate::screen::ScreenInstruction;
 use crate::{pty::PtyInstruction, thread_bus::Bus, ClientId, ServerInstruction};
 
@@ -41,9 +42,11 @@ pub type PluginId = u32;
 pub enum PluginInstruction {
     Load(
         Option<bool>,   // should float
+        bool,           // should be opened in place
         Option<String>, // pane title
         RunPlugin,
-        usize, // tab index
+        usize,          // tab index
+        Option<PaneId>, // pane id to replace if this is to be opened "in-place"
         ClientId,
         Size,
     ),
@@ -165,21 +168,31 @@ pub(crate) fn plugin_thread_main(
         let (event, mut err_ctx) = bus.recv().expect("failed to receive event on channel");
         err_ctx.add_call(ContextType::Plugin((&event).into()));
         match event {
-            PluginInstruction::Load(should_float, pane_title, run, tab_index, client_id, size) => {
-                match wasm_bridge.load_plugin(&run, tab_index, size, Some(client_id)) {
-                    Ok(plugin_id) => {
-                        drop(bus.senders.send_to_screen(ScreenInstruction::AddPlugin(
-                            should_float,
-                            run,
-                            pane_title,
-                            tab_index,
-                            plugin_id,
-                        )));
-                    },
-                    Err(e) => {
-                        log::error!("Failed to load plugin: {e}");
-                    },
-                }
+            PluginInstruction::Load(
+                should_float,
+                should_be_open_in_place,
+                pane_title,
+                run,
+                tab_index,
+                pane_id_to_replace,
+                client_id,
+                size,
+            ) => match wasm_bridge.load_plugin(&run, tab_index, size, Some(client_id)) {
+                Ok(plugin_id) => {
+                    drop(bus.senders.send_to_screen(ScreenInstruction::AddPlugin(
+                        should_float,
+                        should_be_open_in_place,
+                        run,
+                        pane_title,
+                        tab_index,
+                        plugin_id,
+                        pane_id_to_replace,
+                        Some(client_id),
+                    )));
+                },
+                Err(e) => {
+                    log::error!("Failed to load plugin: {e}");
+                },
             },
             PluginInstruction::Update(updates) => {
                 wasm_bridge.update_plugins(updates, shutdown_send.clone())?;
@@ -201,12 +214,16 @@ pub(crate) fn plugin_thread_main(
                             // the cli who spawned the command and is not an existing client_id
                             match wasm_bridge.load_plugin(&run, tab_index, size, None) {
                                 Ok(plugin_id) => {
+                                    let should_be_open_in_place = false;
                                     drop(bus.senders.send_to_screen(ScreenInstruction::AddPlugin(
                                         should_float,
+                                        should_be_open_in_place,
                                         run,
                                         pane_title,
                                         tab_index,
                                         plugin_id,
+                                        None,
+                                        None,
                                     )));
                                 },
                                 Err(e) => {

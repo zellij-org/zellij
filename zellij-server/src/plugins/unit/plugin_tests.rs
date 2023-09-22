@@ -524,9 +524,11 @@ pub fn load_new_plugin_from_hd() {
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
+        false,
         plugin_title,
         run_plugin,
         tab_index,
+        None,
         client_id,
         size,
     ));
@@ -592,9 +594,11 @@ pub fn plugin_workers() {
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
+        false,
         plugin_title,
         run_plugin,
         tab_index,
+        None,
         client_id,
         size,
     ));
@@ -664,9 +668,11 @@ pub fn plugin_workers_persist_state() {
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
+        false,
         plugin_title,
         run_plugin,
         tab_index,
+        None,
         client_id,
         size,
     ));
@@ -740,9 +746,11 @@ pub fn can_subscribe_to_hd_events() {
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
+        false,
         plugin_title,
         run_plugin,
         tab_index,
+        None,
         client_id,
         size,
     ));
@@ -810,9 +818,11 @@ pub fn switch_to_mode_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
+        false,
         plugin_title,
         run_plugin,
         tab_index,
+        None,
         client_id,
         size,
     ));
@@ -877,9 +887,11 @@ pub fn switch_to_mode_plugin_command_permission_denied() {
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
+        false,
         plugin_title,
         run_plugin,
         tab_index,
+        None,
         client_id,
         size,
     ));
@@ -944,9 +956,11 @@ pub fn new_tabs_with_layout_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
+        false,
         plugin_title,
         run_plugin,
         tab_index,
+        None,
         client_id,
         size,
     ));
@@ -1025,9 +1039,11 @@ pub fn new_tab_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
+        false,
         plugin_title,
         run_plugin,
         tab_index,
+        None,
         client_id,
         size,
     ));
@@ -1092,9 +1108,11 @@ pub fn go_to_next_tab_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
+        false,
         plugin_title,
         run_plugin,
         tab_index,
+        None,
         client_id,
         size,
     ));
@@ -1158,9 +1176,11 @@ pub fn go_to_previous_tab_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
+        false,
         plugin_title,
         run_plugin,
         tab_index,
+        None,
         client_id,
         size,
     ));
@@ -1224,9 +1244,11 @@ pub fn resize_focused_pane_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
+        false,
         plugin_title,
         run_plugin,
         tab_index,
+        None,
         client_id,
         size,
     ));
@@ -1290,9 +1312,11 @@ pub fn resize_focused_pane_with_direction_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
+        false,
         plugin_title,
         run_plugin,
         tab_index,
+        None,
         client_id,
         size,
     ));
@@ -1356,9 +1380,11 @@ pub fn focus_next_pane_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
+        false,
         plugin_title,
         run_plugin,
         tab_index,
+        None,
         client_id,
         size,
     ));
@@ -1422,9 +1448,11 @@ pub fn focus_previous_pane_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
+        false,
         plugin_title,
         run_plugin,
         tab_index,
+        None,
         client_id,
         size,
     ));
@@ -1488,9 +1516,11 @@ pub fn move_focus_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
+        false,
         plugin_title,
         run_plugin,
         tab_index,
+        None,
         client_id,
         size,
     ));
@@ -1554,9 +1584,11 @@ pub fn move_focus_or_tab_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
+        false,
         plugin_title,
         run_plugin,
         tab_index,
+        None,
         client_id,
         size,
     ));
@@ -1620,9 +1652,11 @@ pub fn edit_scrollback_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
+        false,
         plugin_title,
         run_plugin,
         tab_index,
+        None,
         client_id,
         size,
     ));
@@ -1686,9 +1720,11 @@ pub fn write_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
+        false,
         plugin_title,
         run_plugin,
         tab_index,
+        None,
         client_id,
         size,
     ));
@@ -1752,9 +1788,11 @@ pub fn write_chars_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
+        false,
         plugin_title,
         run_plugin,
         tab_index,
+        None,
         client_id,
         size,
     ));
@@ -1818,9 +1856,11 @@ pub fn toggle_tab_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
+        false,
         plugin_title,
         run_plugin,
         tab_index,
+        None,
         client_id,
         size,
     ));
@@ -1884,9 +1924,11 @@ pub fn move_pane_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
+        false,
         plugin_title,
         run_plugin,
         tab_index,
+        None,
         client_id,
         size,
     ));
@@ -1950,9 +1992,11 @@ pub fn move_pane_with_direction_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
+        false,
         plugin_title,
         run_plugin,
         tab_index,
+        None,
         client_id,
         size,
     ));
@@ -2017,9 +2061,11 @@ pub fn clear_screen_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
+        false,
         plugin_title,
         run_plugin,
         tab_index,
+        None,
         client_id,
         size,
     ));
@@ -2084,9 +2130,11 @@ pub fn scroll_up_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
+        false,
         plugin_title,
         run_plugin,
         tab_index,
+        None,
         client_id,
         size,
     ));
@@ -2150,9 +2198,11 @@ pub fn scroll_down_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
+        false,
         plugin_title,
         run_plugin,
         tab_index,
+        None,
         client_id,
         size,
     ));
@@ -2216,9 +2266,11 @@ pub fn scroll_to_top_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
+        false,
         plugin_title,
         run_plugin,
         tab_index,
+        None,
         client_id,
         size,
     ));
@@ -2282,9 +2334,11 @@ pub fn scroll_to_bottom_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
+        false,
         plugin_title,
         run_plugin,
         tab_index,
+        None,
         client_id,
         size,
     ));
@@ -2348,9 +2402,11 @@ pub fn page_scroll_up_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
+        false,
         plugin_title,
         run_plugin,
         tab_index,
+        None,
         client_id,
         size,
     ));
@@ -2414,9 +2470,11 @@ pub fn page_scroll_down_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
+        false,
         plugin_title,
         run_plugin,
         tab_index,
+        None,
         client_id,
         size,
     ));
@@ -2480,9 +2538,11 @@ pub fn toggle_focus_fullscreen_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
+        false,
         plugin_title,
         run_plugin,
         tab_index,
+        None,
         client_id,
         size,
     ));
@@ -2546,9 +2606,11 @@ pub fn toggle_pane_frames_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
+        false,
         plugin_title,
         run_plugin,
         tab_index,
+        None,
         client_id,
         size,
     ));
@@ -2612,9 +2674,11 @@ pub fn toggle_pane_embed_or_eject_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
+        false,
         plugin_title,
         run_plugin,
         tab_index,
+        None,
         client_id,
         size,
     ));
@@ -2678,9 +2742,11 @@ pub fn undo_rename_pane_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
+        false,
         plugin_title,
         run_plugin,
         tab_index,
+        None,
         client_id,
         size,
     ));
@@ -2744,9 +2810,11 @@ pub fn close_focus_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
+        false,
         plugin_title,
         run_plugin,
         tab_index,
+        None,
         client_id,
         size,
     ));
@@ -2810,9 +2878,11 @@ pub fn toggle_active_tab_sync_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
+        false,
         plugin_title,
         run_plugin,
         tab_index,
+        None,
         client_id,
         size,
     ));
@@ -2876,9 +2946,11 @@ pub fn close_focused_tab_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
+        false,
         plugin_title,
         run_plugin,
         tab_index,
+        None,
         client_id,
         size,
     ));
@@ -2942,9 +3014,11 @@ pub fn undo_rename_tab_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
+        false,
         plugin_title,
         run_plugin,
         tab_index,
+        None,
         client_id,
         size,
     ));
@@ -3008,9 +3082,11 @@ pub fn previous_swap_layout_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
+        false,
         plugin_title,
         run_plugin,
         tab_index,
+        None,
         client_id,
         size,
     ));
@@ -3074,9 +3150,11 @@ pub fn next_swap_layout_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
+        false,
         plugin_title,
         run_plugin,
         tab_index,
+        None,
         client_id,
         size,
     ));
@@ -3140,9 +3218,11 @@ pub fn go_to_tab_name_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
+        false,
         plugin_title,
         run_plugin,
         tab_index,
+        None,
         client_id,
         size,
     ));
@@ -3206,9 +3286,11 @@ pub fn focus_or_create_tab_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
+        false,
         plugin_title,
         run_plugin,
         tab_index,
+        None,
         client_id,
         size,
     ));
@@ -3272,9 +3354,11 @@ pub fn go_to_tab() {
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
+        false,
         plugin_title,
         run_plugin,
         tab_index,
+        None,
         client_id,
         size,
     ));
@@ -3338,9 +3422,11 @@ pub fn start_or_reload_plugin() {
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
+        false,
         plugin_title,
         run_plugin,
         tab_index,
+        None,
         client_id,
         size,
     ));
@@ -3411,9 +3497,11 @@ pub fn quit_zellij_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
+        false,
         plugin_title,
         run_plugin,
         tab_index,
+        None,
         client_id,
         size,
     ));
@@ -3484,9 +3572,11 @@ pub fn detach_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
+        false,
         plugin_title,
         run_plugin,
         tab_index,
+        None,
         client_id,
         size,
     ));
@@ -3557,9 +3647,11 @@ pub fn open_file_floating_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
+        false,
         plugin_title,
         run_plugin,
         tab_index,
+        None,
         client_id,
         size,
     ));
@@ -3630,9 +3722,11 @@ pub fn open_file_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
+        false,
         plugin_title,
         run_plugin,
         tab_index,
+        None,
         client_id,
         size,
     ));
@@ -3704,9 +3798,11 @@ pub fn open_file_with_line_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
+        false,
         plugin_title,
         run_plugin,
         tab_index,
+        None,
         client_id,
         size,
     ));
@@ -3777,9 +3873,11 @@ pub fn open_file_with_line_floating_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
+        false,
         plugin_title,
         run_plugin,
         tab_index,
+        None,
         client_id,
         size,
     ));
@@ -3850,9 +3948,11 @@ pub fn open_terminal_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
+        false,
         plugin_title,
         run_plugin,
         tab_index,
+        None,
         client_id,
         size,
     ));
@@ -3923,9 +4023,11 @@ pub fn open_terminal_floating_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
+        false,
         plugin_title,
         run_plugin,
         tab_index,
+        None,
         client_id,
         size,
     ));
@@ -3996,9 +4098,11 @@ pub fn open_command_pane_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
+        false,
         plugin_title,
         run_plugin,
         tab_index,
+        None,
         client_id,
         size,
     ));
@@ -4069,9 +4173,11 @@ pub fn open_command_pane_floating_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
+        false,
         plugin_title,
         run_plugin,
         tab_index,
+        None,
         client_id,
         size,
     ));
@@ -4135,9 +4241,11 @@ pub fn switch_to_tab_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
+        false,
         plugin_title,
         run_plugin,
         tab_index,
+        None,
         client_id,
         size,
     ));
@@ -4196,9 +4304,11 @@ pub fn hide_self_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
+        false,
         plugin_title,
         run_plugin,
         tab_index,
+        None,
         client_id,
         size,
     ));
@@ -4257,9 +4367,11 @@ pub fn show_self_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
+        false,
         plugin_title,
         run_plugin,
         tab_index,
+        None,
         client_id,
         size,
     ));
@@ -4323,9 +4435,11 @@ pub fn close_terminal_pane_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
+        false,
         plugin_title,
         run_plugin,
         tab_index,
+        None,
         client_id,
         size,
     ));
@@ -4389,9 +4503,11 @@ pub fn close_plugin_pane_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
+        false,
         plugin_title,
         run_plugin,
         tab_index,
+        None,
         client_id,
         size,
     ));
@@ -4455,9 +4571,11 @@ pub fn focus_terminal_pane_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
+        false,
         plugin_title,
         run_plugin,
         tab_index,
+        None,
         client_id,
         size,
     ));
@@ -4521,9 +4639,11 @@ pub fn focus_plugin_pane_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
+        false,
         plugin_title,
         run_plugin,
         tab_index,
+        None,
         client_id,
         size,
     ));
@@ -4587,9 +4707,11 @@ pub fn rename_terminal_pane_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
+        false,
         plugin_title,
         run_plugin,
         tab_index,
+        None,
         client_id,
         size,
     ));
@@ -4653,9 +4775,11 @@ pub fn rename_plugin_pane_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
+        false,
         plugin_title,
         run_plugin,
         tab_index,
+        None,
         client_id,
         size,
     ));
@@ -4719,9 +4843,11 @@ pub fn rename_tab_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
+        false,
         plugin_title,
         run_plugin,
         tab_index,
+        None,
         client_id,
         size,
     ));
@@ -4794,9 +4920,11 @@ pub fn send_configuration_to_plugins() {
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
+        false,
         plugin_title,
         run_plugin,
         tab_index,
+        None,
         client_id,
         size,
     ));
@@ -4857,9 +4985,11 @@ pub fn request_plugin_permissions() {
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
+        false,
         plugin_title,
         run_plugin,
         tab_index,
+        None,
         client_id,
         size,
     ));
@@ -4944,9 +5074,11 @@ pub fn granted_permission_request_result() {
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
+        false,
         plugin_title,
         run_plugin.clone(),
         tab_index,
+        None,
         client_id,
         size,
     ));
@@ -5030,9 +5162,11 @@ pub fn denied_permission_request_result() {
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
+        false,
         plugin_title,
         run_plugin.clone(),
         tab_index,
+        None,
         client_id,
         size,
     ));

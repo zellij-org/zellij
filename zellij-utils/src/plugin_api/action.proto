@@ -85,6 +85,7 @@ message LaunchOrFocusPluginPayload {
   bool should_float = 2;
   optional PluginConfiguration plugin_configuration = 3;
   bool move_to_focused_tab = 4;
+  bool should_open_in_place = 5;
 }
 
 message GoToTabNamePayload {

@@ -157,6 +157,7 @@ impl FloatingPanes {
 
         // move clients from the previously active pane to the new pane we just inserted
         self.move_clients_between_panes(pane_id, with_pane_id);
+        self.set_pane_frames();
         removed_pane
     }
     pub fn remove_pane(&mut self, pane_id: PaneId) -> Option<Box<dyn Pane>> {
@@ -295,7 +296,7 @@ impl FloatingPanes {
             pane.render_full_viewport();
         }
     }
-    pub fn set_pane_frames(&mut self, _os_api: &mut Box<dyn ServerOsApi>) -> Result<()> {
+    pub fn set_pane_frames(&mut self) -> Result<()> {
         let err_context =
             |pane_id: &PaneId| format!("failed to activate frame on pane {pane_id:?}");
 
@@ -640,7 +641,7 @@ impl FloatingPanes {
                 current_position.set_geom_override(geom);
             }
             current_position.set_should_render(true);
-            let _ = self.set_pane_frames(os_api);
+            let _ = self.set_pane_frames();
         }
     }
     pub fn move_clients_out_of_pane(&mut self, pane_id: PaneId) {

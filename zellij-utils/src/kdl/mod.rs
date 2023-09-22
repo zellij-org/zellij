@@ -886,6 +886,9 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                 let floating = command_metadata
                     .and_then(|c_m| kdl_child_bool_value_for_entry(c_m, "floating"))
                     .unwrap_or(false);
+                let in_place = command_metadata
+                    .and_then(|c_m| kdl_child_bool_value_for_entry(c_m, "in_place"))
+                    .unwrap_or(false);
                 let run_command_action = RunCommandAction {
                     command: PathBuf::from(command),
                     args,
@@ -896,6 +899,8 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                 };
                 if floating {
                     Ok(Action::NewFloatingPane(Some(run_command_action), name))
+                } else if in_place {
+                    Ok(Action::NewInPlacePane(Some(run_command_action), name))
                 } else {
                     Ok(Action::NewTiledPane(
                         direction,
@@ -923,6 +928,9 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                 let move_to_focused_tab = command_metadata
                     .and_then(|c_m| kdl_child_bool_value_for_entry(c_m, "move_to_focused_tab"))
                     .unwrap_or(false);
+                let should_open_in_place = command_metadata
+                    .and_then(|c_m| kdl_child_bool_value_for_entry(c_m, "in_place"))
+                    .unwrap_or(false);
                 let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
                 let location = RunPluginLocation::parse(&plugin_path, Some(current_dir))?;
                 let configuration = KdlLayoutParser::parse_plugin_user_configuration(&kdl_action)?;
@@ -935,6 +943,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                     run_plugin,
                     should_float,
                     move_to_focused_tab,
+                    should_open_in_place,
                 ))
             },
             "PreviousSwapLayout" => Ok(Action::PreviousSwapLayout),

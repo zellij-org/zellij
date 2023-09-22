@@ -9,6 +9,30 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use url::Url;
 
+fn validate_session(name: &str) -> Result<String, String> {
+    #[cfg(unix)]
+    {
+        use crate::consts::ZELLIJ_SOCK_MAX_LENGTH;
+
+        let mut socket_path = crate::consts::ZELLIJ_SOCK_DIR.clone();
+        socket_path.push(name);
+
+        if socket_path.as_os_str().len() >= ZELLIJ_SOCK_MAX_LENGTH {
+            // socket path must be less than 108 bytes
+            let available_length = ZELLIJ_SOCK_MAX_LENGTH
+                .saturating_sub(socket_path.as_os_str().len())
+                .saturating_sub(1);
+
+            return Err(format!(
+                "session name must be less than {} characters",
+                available_length
+            ));
+        };
+    };
+
+    Ok(name.to_owned())
+}
+
 #[derive(Parser, Default, Debug, Clone, Serialize, Deserialize)]
 #[clap(version, name = "zellij")]
 pub struct CliArgs {
@@ -25,7 +49,7 @@ pub struct CliArgs {
     pub server: Option<PathBuf>,
 
     /// Specify name of a new session
-    #[clap(long, short, overrides_with = "session", value_parser)]
+    #[clap(long, short, overrides_with = "session", value_parser = validate_session)]
     pub session: Option<String>,
 
     /// Name of a predefined layout inside the layout directory or the path to a layout file
@@ -134,6 +158,18 @@ pub enum Sessions {
         #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
         floating: bool,
 
+        /// Open the new pane in place of the current pane, temporarily suspending it
+        #[clap(
+            short,
+            long,
+            value_parser,
+            default_value("false"),
+            takes_value(false),
+            conflicts_with("floating"),
+            conflicts_with("direction")
+        )]
+        in_place: bool,
+
         /// Name of the new pane
         #[clap(short, long, value_parser)]
         name: Option<String>,
@@ -158,6 +194,18 @@ pub enum Sessions {
         /// Direction to open the new pane in
         #[clap(short, long, value_parser, conflicts_with("floating"))]
         direction: Option<Direction>,
+
+        /// Open the new pane in place of the current pane, temporarily suspending it
+        #[clap(
+            short,
+            long,
+            value_parser,
+            default_value("false"),
+            takes_value(false),
+            conflicts_with("floating"),
+            conflicts_with("direction")
+        )]
+        in_place: bool,
 
         /// Open the new pane in floating mode
         #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
@@ -268,6 +316,18 @@ pub enum CliAction {
         #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
         floating: bool,
 
+        /// Open the new pane in place of the current pane, temporarily suspending it
+        #[clap(
+            short,
+            long,
+            value_parser,
+            default_value("false"),
+            takes_value(false),
+            conflicts_with("floating"),
+            conflicts_with("direction")
+        )]
+        in_place: bool,
+
         /// Name of the new pane
         #[clap(short, long, value_parser)]
         name: Option<String>,
@@ -310,6 +370,18 @@ pub enum CliAction {
         /// Open the new pane in floating mode
         #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
         floating: bool,
+
+        /// Open the new pane in place of the current pane, temporarily suspending it
+        #[clap(
+            short,
+            long,
+            value_parser,
+            default_value("false"),
+            takes_value(false),
+            conflicts_with("floating"),
+            conflicts_with("direction")
+        )]
+        in_place: bool,
 
         /// Change the working directory of the editor
         #[clap(long, value_parser)]
@@ -384,6 +456,8 @@ pub enum CliAction {
     LaunchOrFocusPlugin {
         #[clap(short, long, value_parser)]
         floating: bool,
+        #[clap(short, long, value_parser)]
+        in_place: bool,
         #[clap(short, long, value_parser)]
         move_to_focused_tab: bool,
         url: Url,
