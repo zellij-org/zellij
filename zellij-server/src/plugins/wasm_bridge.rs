@@ -45,7 +45,7 @@ pub struct WasmBridge {
     plugin_cache: Arc<Mutex<HashMap<PathBuf, Module>>>,
     plugin_map: Arc<Mutex<PluginMap>>,
     next_plugin_id: PluginId,
-    cached_events_for_pending_plugins: HashMap<PluginId, Vec<Event>>,
+    cached_events_for_pending_plugins: HashMap<PluginId, Vec<(Option<ClientId>, Event)>>,
     cached_resizes_for_pending_plugins: HashMap<PluginId, (usize, usize)>, // (rows, columns)
     cached_worker_messages: HashMap<PluginId, Vec<(ClientId, String, String, String)>>, // Vec<clientid,
     // worker_name,
@@ -497,7 +497,7 @@ impl WasmBridge {
             }
             for (plugin_id, cached_events) in self.cached_events_for_pending_plugins.iter_mut() {
                 if pid.is_none() || pid.as_ref() == Some(plugin_id) {
-                    cached_events.push(event.clone());
+                    cached_events.push((cid, event.clone()));
                 }
             }
         }
@@ -562,11 +562,16 @@ impl WasmBridge {
                     .get_running_plugin_and_subscriptions(plugin_id, *client_id)
                 {
                     let subs = subscriptions.lock().unwrap().clone();
-                    for event in events.clone() {
+                    for (event_cid, event) in events.clone() {
                         let event_type =
                             EventType::from_str(&event.to_string()).with_context(err_context)?;
                         if !subs.contains(&event_type) {
                             continue;
+                        }
+                        if let Some(cid) = event_cid {
+                            if cid != *client_id {
+                                continue;
+                            }
                         }
                         task::spawn({
                             let senders = self.senders.clone();
