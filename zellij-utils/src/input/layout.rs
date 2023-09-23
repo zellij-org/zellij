@@ -1101,7 +1101,12 @@ fn split_space(
         split_geom.push(geom);
         current_position += split_dimension.as_usize();
     }
-    adjust_geoms_for_rounding_errors(total_pane_size, &mut split_geom, split_dimension_space, layout.children_split_direction);
+    adjust_geoms_for_rounding_errors(
+        total_pane_size,
+        &mut split_geom,
+        split_dimension_space,
+        layout.children_split_direction,
+    );
     let mut pane_positions = Vec::new();
     for (i, part) in layout.children.iter().enumerate() {
         let part_position_and_size = split_geom.get(i).unwrap();
@@ -1121,48 +1126,71 @@ fn split_space(
     Ok(pane_positions)
 }
 
-fn adjust_geoms_for_rounding_errors(total_pane_size: usize, split_geoms: &mut Vec<PaneGeom>, split_dimension_space: Dimension, children_split_direction: SplitDirection) {
+fn adjust_geoms_for_rounding_errors(
+    total_pane_size: usize,
+    split_geoms: &mut Vec<PaneGeom>,
+    split_dimension_space: Dimension,
+    children_split_direction: SplitDirection,
+) {
     if total_pane_size < split_dimension_space.as_usize() {
         // add extra space from rounding errors to the last pane
 
-        let increase_by = split_dimension_space.as_usize().saturating_sub(total_pane_size);
-        let position_of_last_flexible_geom = split_geoms.iter().rposition(|s_g| s_g.is_flexible_in_direction(children_split_direction));
-        position_of_last_flexible_geom.map(|p| split_geoms.iter_mut().skip(p)).map(|mut flexible_geom_and_following_geoms| {
-            if let Some(flexible_geom) = flexible_geom_and_following_geoms.next() {
-                match children_split_direction {
-                    SplitDirection::Vertical => flexible_geom.cols.increase_inner(increase_by),
-                    SplitDirection::Horizontal => flexible_geom.rows.increase_inner(increase_by),
-                }
-            }
-            for following_geom in flexible_geom_and_following_geoms {
-                match children_split_direction {
-                    SplitDirection::Vertical => {
-                        following_geom.x += increase_by;
+        let increase_by = split_dimension_space
+            .as_usize()
+            .saturating_sub(total_pane_size);
+        let position_of_last_flexible_geom = split_geoms
+            .iter()
+            .rposition(|s_g| s_g.is_flexible_in_direction(children_split_direction));
+        position_of_last_flexible_geom
+            .map(|p| split_geoms.iter_mut().skip(p))
+            .map(|mut flexible_geom_and_following_geoms| {
+                if let Some(flexible_geom) = flexible_geom_and_following_geoms.next() {
+                    match children_split_direction {
+                        SplitDirection::Vertical => flexible_geom.cols.increase_inner(increase_by),
+                        SplitDirection::Horizontal => {
+                            flexible_geom.rows.increase_inner(increase_by)
+                        },
                     }
-                    SplitDirection::Horizontal => {
-                        following_geom.y += increase_by;
+                }
+                for following_geom in flexible_geom_and_following_geoms {
+                    match children_split_direction {
+                        SplitDirection::Vertical => {
+                            following_geom.x += increase_by;
+                        },
+                        SplitDirection::Horizontal => {
+                            following_geom.y += increase_by;
+                        },
                     }
                 }
-            }
-        });
+            });
     } else if total_pane_size > split_dimension_space.as_usize() {
         // remove extra space from rounding errors to the last pane
         let decrease_by = total_pane_size - split_dimension_space.as_usize();
-        let position_of_last_flexible_geom = split_geoms.iter().rposition(|s_g| s_g.is_flexible_in_direction(children_split_direction));
-        position_of_last_flexible_geom.map(|p| split_geoms.iter_mut().skip(p)).map(|mut flexible_geom_and_following_geoms| {
-            if let Some(flexible_geom) = flexible_geom_and_following_geoms.next() {
-                match children_split_direction {
-                    SplitDirection::Vertical => flexible_geom.cols.decrease_inner(decrease_by),
-                    SplitDirection::Horizontal => flexible_geom.rows.decrease_inner(decrease_by),
+        let position_of_last_flexible_geom = split_geoms
+            .iter()
+            .rposition(|s_g| s_g.is_flexible_in_direction(children_split_direction));
+        position_of_last_flexible_geom
+            .map(|p| split_geoms.iter_mut().skip(p))
+            .map(|mut flexible_geom_and_following_geoms| {
+                if let Some(flexible_geom) = flexible_geom_and_following_geoms.next() {
+                    match children_split_direction {
+                        SplitDirection::Vertical => flexible_geom.cols.decrease_inner(decrease_by),
+                        SplitDirection::Horizontal => {
+                            flexible_geom.rows.decrease_inner(decrease_by)
+                        },
+                    }
                 }
-            }
-            for following_geom in flexible_geom_and_following_geoms {
-                match children_split_direction {
-                    SplitDirection::Vertical => following_geom.x = following_geom.x.saturating_sub(decrease_by),
-                    SplitDirection::Horizontal => following_geom.y = following_geom.y.saturating_sub(decrease_by)
+                for following_geom in flexible_geom_and_following_geoms {
+                    match children_split_direction {
+                        SplitDirection::Vertical => {
+                            following_geom.x = following_geom.x.saturating_sub(decrease_by)
+                        },
+                        SplitDirection::Horizontal => {
+                            following_geom.y = following_geom.y.saturating_sub(decrease_by)
+                        },
+                    }
                 }
-            }
-        });
+            });
     }
 }
 

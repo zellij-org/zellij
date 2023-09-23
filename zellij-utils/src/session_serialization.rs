@@ -366,7 +366,13 @@ fn get_tiled_panes_layout_from_panegeoms(
             let (run, borderless, is_expanded_in_stack) = geoms
                 .iter()
                 .next()
-                .map(|g| (g.run.clone(), g.is_borderless, g.geom.is_stacked && g.geom.rows.inner > 1))
+                .map(|g| {
+                    (
+                        g.run.clone(),
+                        g.is_borderless,
+                        g.geom.is_stacked && g.geom.rows.inner > 1,
+                    )
+                })
                 .unwrap_or((None, false, false));
             return TiledPaneLayout {
                 split_size,
@@ -406,7 +412,10 @@ fn get_tiled_panes_layout_from_panegeoms(
             subsplit_size,
         ));
     }
-    let children_are_stacked = children_split_direction == SplitDirection::Horizontal && new_geoms.iter().all(|c| c.iter().all(|c| c.geom.is_stacked));
+    let children_are_stacked = children_split_direction == SplitDirection::Horizontal
+        && new_geoms
+            .iter()
+            .all(|c| c.iter().all(|c| c.geom.is_stacked));
     TiledPaneLayout {
         children_split_direction,
         split_size,

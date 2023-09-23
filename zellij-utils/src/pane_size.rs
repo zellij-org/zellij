@@ -4,8 +4,8 @@ use std::{
     hash::{Hash, Hasher},
 };
 
-use crate::position::Position;
 use crate::input::layout::SplitDirection;
+use crate::position::Position;
 
 /// Contains the position and size of a [`Pane`], or more generally of any terminal, measured
 /// in character rows and columns.
@@ -178,7 +178,7 @@ impl PaneGeom {
     pub fn is_flexible_in_direction(&self, split_direction: SplitDirection) -> bool {
         match split_direction {
             SplitDirection::Vertical => self.cols.is_percent(),
-            SplitDirection::Horizontal => self.rows.is_percent()
+            SplitDirection::Horizontal => self.rows.is_percent(),
         }
     }
 }
