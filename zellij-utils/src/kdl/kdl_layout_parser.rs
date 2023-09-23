@@ -39,6 +39,7 @@ pub struct KdlLayoutParser<'a> {
     tab_templates: HashMap<String, (TiledPaneLayout, Vec<FloatingPaneLayout>, KdlNode)>,
     pane_templates: HashMap<String, (PaneOrFloatingPane, KdlNode)>,
     default_tab_template: Option<(TiledPaneLayout, Vec<FloatingPaneLayout>, KdlNode)>,
+    new_tab_template: Option<(TiledPaneLayout, Vec<FloatingPaneLayout>)>,
 }
 
 impl<'a> KdlLayoutParser<'a> {
@@ -48,6 +49,7 @@ impl<'a> KdlLayoutParser<'a> {
             tab_templates: HashMap::new(),
             pane_templates: HashMap::new(),
             default_tab_template: None,
+            new_tab_template: None,
             global_cwd,
         }
     }
@@ -59,6 +61,7 @@ impl<'a> KdlLayoutParser<'a> {
             || word == "pane_template"
             || word == "tab_template"
             || word == "default_tab_template"
+            || word == "new_tab_template"
             || word == "command"
             || word == "edit"
             || word == "plugin"
@@ -1587,6 +1590,12 @@ impl<'a> KdlLayoutParser<'a> {
             Some((tab_template, tab_template_floating_panes, kdl_node.clone()));
         Ok(())
     }
+    fn populate_new_tab_template(&mut self, kdl_node: &KdlNode) -> Result<(), ConfigError> {
+        let (_is_focused, _tab_name, tab_template, tab_template_floating_panes) =
+            self.parse_tab_node(kdl_node)?;
+        self.new_tab_template = Some((tab_template, tab_template_floating_panes));
+        Ok(())
+    }
     fn parse_tab_template_node(
         &self,
         kdl_node: &KdlNode,
@@ -1788,6 +1797,8 @@ impl<'a> KdlLayoutParser<'a> {
                 self.populate_one_tab_template(child)?;
             } else if child_name == "default_tab_template" {
                 self.populate_default_tab_template(child)?;
+            } else if child_name == "new_tab_template" {
+                self.populate_new_tab_template(child)?;
             }
         }
         Ok(())
@@ -2031,13 +2042,19 @@ impl<'a> KdlLayoutParser<'a> {
         swap_tiled_layouts: Vec<SwapTiledLayout>,
         swap_floating_layouts: Vec<SwapFloatingLayout>,
     ) -> Result<Layout, ConfigError> {
-        let template = self
-            .default_template()?
-            .unwrap_or_else(|| TiledPaneLayout::default());
+        let template = if let Some(new_tab_template) = &self.new_tab_template {
+            Some(new_tab_template.clone())
+        } else {
+            let default_tab_tiled_panes_template = self
+                .default_template()?
+                .unwrap_or_else(|| TiledPaneLayout::default());
+            Some((default_tab_tiled_panes_template, vec![]))
+        };
 
         Ok(Layout {
             tabs,
-            template: Some((template, vec![])),
+            // template: Some((default_tab_tiled_panes_template, vec![])),
+            template,
             focused_tab_index,
             swap_tiled_layouts,
             swap_floating_layouts,
@@ -2056,18 +2073,21 @@ impl<'a> KdlLayoutParser<'a> {
             ..Default::default()
         };
         let default_template = self.default_template()?;
-        let tabs = if default_template.is_none() {
+        let tabs = if default_template.is_none() && self.new_tab_template.is_none() {
             // in this case, the layout will be created as the default template and we don't need
             // to explicitly place it in the first tab
             vec![]
         } else {
             vec![(None, main_tab_layout.clone(), floating_panes.clone())]
         };
-        let template = default_template.unwrap_or_else(|| main_tab_layout.clone());
+        let template = default_template
+            .map(|tiled_panes_template| (tiled_panes_template, floating_panes.clone()))
+            .or_else(|| self.new_tab_template.clone())
+            .unwrap_or_else(|| (main_tab_layout.clone(), floating_panes.clone()));
         // create a layout with one tab that has these child panes
         Ok(Layout {
             tabs,
-            template: Some((template, floating_panes)),
+            template: Some(template),
             swap_tiled_layouts,
             swap_floating_layouts,
             ..Default::default()
@@ -2079,11 +2099,20 @@ impl<'a> KdlLayoutParser<'a> {
         swap_tiled_layouts: Vec<SwapTiledLayout>,
         swap_floating_layouts: Vec<SwapFloatingLayout>,
     ) -> Result<Layout, ConfigError> {
-        let template = self
-            .default_template()?
-            .unwrap_or_else(|| TiledPaneLayout::default());
+        let template = if let Some(new_tab_template) = &self.new_tab_template {
+            Some(new_tab_template.clone())
+        } else {
+            let default_tab_tiled_panes_template = self
+                .default_template()?
+                .unwrap_or_else(|| TiledPaneLayout::default());
+            Some((default_tab_tiled_panes_template, child_floating_panes))
+        };
+        //         let template = self
+        //             .default_template()?
+        //             .unwrap_or_else(|| TiledPaneLayout::default());
         Ok(Layout {
-            template: Some((template, child_floating_panes)),
+            // template: Some((template, child_floating_panes)),
+            template,
             swap_tiled_layouts,
             swap_floating_layouts,
             ..Default::default()

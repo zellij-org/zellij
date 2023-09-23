@@ -780,7 +780,7 @@ fn init_session(
                 config_options.scrollback_editor.clone(),
             );
 
-            move || pty_thread_main(pty, layout).fatal()
+            move || pty_thread_main(pty, layout.clone()).fatal()
         })
         .unwrap();
 
@@ -801,6 +801,7 @@ fn init_session(
 
             let client_attributes_clone = client_attributes.clone();
             let debug = opts.debug;
+            let layout = layout.clone();
             move || {
                 screen_thread_main(
                     screen_bus,
@@ -808,6 +809,7 @@ fn init_session(
                     client_attributes_clone,
                     config_options,
                     debug,
+                    layout,
                 )
                 .fatal();
             }

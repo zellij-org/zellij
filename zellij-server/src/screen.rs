@@ -130,7 +130,17 @@ macro_rules! active_tab_and_connected_client_id {
 // TODO: move elsewhere
 #[derive(Default, Debug, Clone)]
 pub struct SessionLayoutMetadata {
+    default_layout: Box<Layout>,
     tabs: Vec<TabLayoutMetadata>,
+}
+
+impl SessionLayoutMetadata {
+    pub fn new(default_layout: Box<Layout>) -> Self {
+        SessionLayoutMetadata {
+            default_layout,
+            ..Default::default()
+        }
+    }
 }
 
 impl SessionLayoutMetadata {
@@ -243,6 +253,7 @@ impl SessionLayoutMetadata {
 impl Into<GlobalLayoutManifest> for SessionLayoutMetadata {
     fn into(self) -> GlobalLayoutManifest {
         GlobalLayoutManifest {
+            default_layout: self.default_layout,
             tabs: self
                 .tabs
                 .into_iter()
@@ -740,7 +751,8 @@ pub(crate) struct Screen {
     debug: bool,
     session_name: String,
     session_infos_on_machine: BTreeMap<String, SessionInfo>, // String is the session name, can
-                                                             // also be this session
+    // also be this session
+    default_layout: Box<Layout>,
 }
 
 impl Screen {
@@ -755,6 +767,7 @@ impl Screen {
         session_is_mirrored: bool,
         copy_options: CopyOptions,
         debug: bool,
+        default_layout: Box<Layout>,
     ) -> Self {
         let session_name = mode_info.session_name.clone().unwrap_or_default();
         let session_info = SessionInfo::new(session_name.clone());
@@ -784,6 +797,7 @@ impl Screen {
             debug,
             session_name,
             session_infos_on_machine,
+            default_layout,
         }
     }
 
@@ -2102,6 +2116,7 @@ pub(crate) fn screen_thread_main(
     client_attributes: ClientAttributes,
     config_options: Box<Options>,
     debug: bool,
+    default_layout: Box<Layout>,
 ) -> Result<()> {
     let capabilities = config_options.simplified_ui;
     let draw_pane_frames = config_options.pane_frames.unwrap_or(true);
@@ -2130,6 +2145,7 @@ pub(crate) fn screen_thread_main(
         session_is_mirrored,
         copy_options,
         debug,
+        default_layout,
     );
 
     let mut pending_tab_ids: HashSet<usize> = HashSet::new();
@@ -2457,7 +2473,8 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::DumpLayout(client_id, layout) => {
                 let err_context = || format!("Failed to dump layout");
-                let mut session_layout_metadata = SessionLayoutMetadata::default();
+                let mut session_layout_metadata =
+                    SessionLayoutMetadata::new(screen.default_layout.clone());
                 for tab in screen.tabs.values() {
                     let tiled_panes: Vec<(PaneId, PaneGeom, bool)> =
                         tab // bool => is_borderless

@@ -234,6 +234,7 @@ fn create_new_screen(size: Size) -> Screen {
     let auto_layout = true;
     let session_is_mirrored = true;
     let copy_options = CopyOptions::default();
+    let default_layout = Box::new(Layout::default());
 
     let debug = false;
     let screen = Screen::new(
@@ -246,6 +247,7 @@ fn create_new_screen(size: Size) -> Screen {
         session_is_mirrored,
         copy_options,
         debug,
+        default_layout,
     );
     screen
 }
@@ -301,6 +303,7 @@ impl MockScreen {
                     client_attributes,
                     Box::new(config_options),
                     debug,
+                    Box::new(Layout::default()),
                 )
                 .expect("TEST")
             })
