@@ -54,7 +54,6 @@ pub struct PaneLayoutManifest {
     pub is_borderless: bool,
 }
 
-// pub fn tabs_to_kdl(tab_names_to_tiled_panes: &Vec<(String, Vec<(PaneGeom, Option<Vec<String>>)>)>) -> String {
 pub fn tabs_to_kdl(global_layout_manifest: GlobalLayoutManifest) -> String {
     let mut kdl_string = String::from("layout {\n");
     for (tab_name, tab_layout_manifest) in global_layout_manifest.tabs {
@@ -69,8 +68,6 @@ pub fn tabs_to_kdl(global_layout_manifest: GlobalLayoutManifest) -> String {
     kdl_string
 }
 
-// pub fn stringify_tab(tab_name: String, tiled_panes: &Vec<(PaneGeom, Option<Vec<String>>)>) -> String {
-// Option<String> is an optional pane command
 pub fn stringify_tab(
     tab_name: String,
     tiled_panes: &Vec<PaneLayoutManifest>,
@@ -155,7 +152,8 @@ fn kdl_string_from_tab(
         format!("tab name=\"{}\" {{\n", tab_name)
     };
     for tiled_pane_layout in tiled_panes {
-        let sub_kdl_string = kdl_string_from_tiled_pane(&tiled_pane_layout);
+        let ignore_size = false;
+        let sub_kdl_string = kdl_string_from_tiled_pane(&tiled_pane_layout, ignore_size);
         kdl_string.push_str(&indent(&sub_kdl_string, INDENT));
     }
     if !floating_panes.is_empty() {
@@ -171,7 +169,7 @@ fn kdl_string_from_tab(
 }
 
 /// Pane declaration and recursion
-fn kdl_string_from_tiled_pane(layout: &TiledPaneLayout) -> String {
+fn kdl_string_from_tiled_pane(layout: &TiledPaneLayout, ignore_size: bool) -> String {
     let (command, args) = match &layout.run {
         Some(Run::Command(run_command)) => (
             Some(run_command.command.display()),
@@ -191,13 +189,21 @@ fn kdl_string_from_tiled_pane(layout: &TiledPaneLayout) -> String {
         None => format!("pane"),
     };
 
-    match layout.split_size {
-        Some(SplitSize::Fixed(size)) => kdl_string.push_str(&format!(" size={size}")),
-        Some(SplitSize::Percent(size)) => kdl_string.push_str(&format!(" size=\"{size}%\"")),
-        None => (),
-    };
+    if !ignore_size {
+        match layout.split_size {
+            Some(SplitSize::Fixed(size)) => kdl_string.push_str(&format!(" size={size}")),
+            Some(SplitSize::Percent(size)) => kdl_string.push_str(&format!(" size=\"{size}%\"")),
+            None => (),
+        };
+    }
     if layout.borderless {
         kdl_string.push_str(&" borderless=true");
+    }
+    if layout.children_are_stacked {
+        kdl_string.push_str(&" stacked=true");
+    }
+    if layout.is_expanded_in_stack {
+        kdl_string.push_str(&" expanded=true");
     }
     if layout.children_split_direction != SplitDirection::default() {
         let direction = match layout.children_split_direction {
@@ -244,7 +250,8 @@ fn kdl_string_from_tiled_pane(layout: &TiledPaneLayout) -> String {
     } else {
         kdl_string.push_str(" {\n");
         for pane in &layout.children {
-            let sub_kdl_string = kdl_string_from_tiled_pane(&pane);
+            let ignore_size = layout.children_are_stacked;
+            let sub_kdl_string = kdl_string_from_tiled_pane(&pane, ignore_size);
             kdl_string.push_str(&indent(&sub_kdl_string, INDENT));
         }
         kdl_string.push_str("}\n");
@@ -350,22 +357,22 @@ fn kdl_string_from_floating_pane(layout: &FloatingPaneLayout) -> String {
 
 /// Tab-level parsing
 fn get_tiled_panes_layout_from_panegeoms(
-    // geoms: &Vec<(PaneGeom, Option<Vec<String>>)>,
     geoms: &Vec<PaneLayoutManifest>,
     split_size: Option<SplitSize>,
 ) -> TiledPaneLayout {
     let (children_split_direction, splits) = match get_splits(&geoms) {
         Some(x) => x,
         None => {
-            let (run, borderless) = geoms
+            let (run, borderless, is_expanded_in_stack) = geoms
                 .iter()
                 .next()
-                .map(|g| (g.run.clone(), g.is_borderless))
-                .unwrap_or((None, false));
+                .map(|g| (g.run.clone(), g.is_borderless, g.geom.is_stacked && g.geom.rows.inner > 1))
+                .unwrap_or((None, false, false));
             return TiledPaneLayout {
                 split_size,
                 run,
                 borderless,
+                is_expanded_in_stack,
                 ..Default::default()
             };
         },
@@ -376,7 +383,6 @@ fn get_tiled_panes_layout_from_panegeoms(
     let mut new_constraints = Vec::new();
     for i in 1..splits.len() {
         let (v_min, v_max) = (splits[i - 1], splits[i]);
-        // let subgeoms: Vec<(PaneGeom, Option<Vec<String>>)>;
         let subgeoms: Vec<PaneLayoutManifest>;
         (subgeoms, remaining_geoms) = match children_split_direction {
             SplitDirection::Horizontal => remaining_geoms
@@ -400,10 +406,12 @@ fn get_tiled_panes_layout_from_panegeoms(
             subsplit_size,
         ));
     }
+    let children_are_stacked = children_split_direction == SplitDirection::Horizontal && new_geoms.iter().all(|c| c.iter().all(|c| c.geom.is_stacked));
     TiledPaneLayout {
         children_split_direction,
         split_size,
         children,
+        children_are_stacked,
         ..Default::default()
     }
 }
@@ -458,7 +466,6 @@ fn get_y_lims(geoms: &Vec<PaneLayoutManifest>) -> Option<(usize, usize)> {
 /// perpendicular the `SplitDirection`, for which there is a split spanning
 /// the max_cols or max_rows of the domain. The values are ordered
 /// increasingly and contains the boundaries of the domain.
-// fn get_splits(geoms: &Vec<(PaneGeom, Option<Vec<String>>)>) -> Option<(SplitDirection, Vec<usize>)> {
 fn get_splits(geoms: &Vec<PaneLayoutManifest>) -> Option<(SplitDirection, Vec<usize>)> {
     if geoms.len() == 1 {
         return None;
@@ -521,7 +528,6 @@ fn get_col_splits(
 /// Returns a vector containing the coordinate (y) of the rows that split the
 /// domain including the boundaries, ie the min and max coordinate values.
 fn get_row_splits(
-    // geoms: &Vec<(PaneGeom, Option<Vec<String>>)>,
     geoms: &Vec<PaneLayoutManifest>,
     (x_min, x_max): &(usize, usize),
     (_, y_max): &(usize, usize),

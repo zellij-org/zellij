@@ -5,6 +5,7 @@ use std::{
 };
 
 use crate::position::Position;
+use crate::input::layout::SplitDirection;
 
 /// Contains the position and size of a [`Pane`], or more generally of any terminal, measured
 /// in character rows and columns.
@@ -173,6 +174,12 @@ impl PaneGeom {
     }
     pub fn is_at_least_minimum_size(&self) -> bool {
         self.rows.as_usize() > 0 && self.cols.as_usize() > 0
+    }
+    pub fn is_flexible_in_direction(&self, split_direction: SplitDirection) -> bool {
+        match split_direction {
+            SplitDirection::Vertical => self.cols.is_percent(),
+            SplitDirection::Horizontal => self.rows.is_percent()
+        }
     }
 }
 
