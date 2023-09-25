@@ -21,6 +21,7 @@ use crate::{
 
 const INDENT: &str = "    ";
 const DOUBLE_INDENT: &str = "        ";
+const TRIPLE_INDENT: &str = "            ";
 
 /// Copied from textwrap::indent
 fn indent(s: &str, prefix: &str) -> String {
@@ -75,11 +76,59 @@ pub fn tabs_to_kdl(global_layout_manifest: GlobalLayoutManifest) -> String {
             &kdl_string_from_tab(
                 &tiled_panes,
                 &floating_panes,
-                String::new(),
+                vec![],
                 Some(String::from("new_tab_template")),
             ),
             INDENT,
         ));
+    }
+    for swap_tiled_layout in global_layout_manifest.default_layout.swap_tiled_layouts {
+        let swap_tiled_layout_name = swap_tiled_layout.1;
+        match &swap_tiled_layout_name {
+            Some(name) => kdl_string.push_str(&indent(&format!("swap_tiled_layout name=\"{}\" {{\n", name), INDENT)),
+            None => kdl_string.push_str(&indent("swap_tiled_layout {\n", INDENT))
+        };
+        for (layout_constraint, tiled_panes_layout) in swap_tiled_layout.0 {
+            let tiled_panes_layout = if &tiled_panes_layout.children_split_direction != &SplitDirection::default()
+            {
+                vec![tiled_panes_layout]
+            } else {
+                tiled_panes_layout.children
+            };
+            kdl_string.push_str(&indent(
+                &kdl_string_from_tab(
+                    &tiled_panes_layout,
+                    &vec![],
+                    vec![layout_constraint.to_string()],
+                    None,
+                ),
+                DOUBLE_INDENT,
+            ));
+        }
+        kdl_string.push_str(&indent("}", INDENT));
+    }
+    for swap_floating_layout in global_layout_manifest.default_layout.swap_floating_layouts {
+        let swap_floating_layout_name = swap_floating_layout.1;
+        match &swap_floating_layout_name {
+            Some(name) => kdl_string.push_str(&indent(&format!("swap_floating_layout name=\"{}\" {{\n", name), INDENT)),
+            None => kdl_string.push_str(&indent("swap_floating_layout {\n", INDENT))
+        };
+        for (layout_constraint, floating_panes_layout) in swap_floating_layout.0 {
+            let has_floating_panes = !floating_panes_layout.is_empty();
+            if has_floating_panes {
+                kdl_string.push_str(&indent(&format!("floating_panes {} {{\n", layout_constraint), DOUBLE_INDENT));
+            } else {
+                kdl_string.push_str(&indent(&format!("floating_panes {}\n", layout_constraint), DOUBLE_INDENT));
+            }
+            for floating_pane_layout in floating_panes_layout {
+                let sub_kdl_string = kdl_string_from_floating_pane(&floating_pane_layout);
+                kdl_string.push_str(&indent(&sub_kdl_string, TRIPLE_INDENT));
+            }
+            if has_floating_panes {
+                kdl_string.push_str(&indent("}\n", DOUBLE_INDENT));
+            }
+        }
+        kdl_string.push_str(&indent("}", INDENT));
     }
     kdl_string.push_str("}");
     kdl_string
@@ -102,7 +151,7 @@ pub fn stringify_tab(
     kdl_string.push_str(&kdl_string_from_tab(
         &tiled_panes,
         &floating_panes_layout,
-        tab_name,
+        vec![format!("name=\"{}\"", tab_name,)],
         None,
     ));
     kdl_string
@@ -119,7 +168,7 @@ pub fn kdl_string_from_panegeoms(geoms: &Vec<PaneLayoutManifest>) -> String {
         layout.children
     };
     kdl_string.push_str(&indent(
-        &kdl_string_from_tab(&tiled_panes, &vec![], String::new(), None),
+        &kdl_string_from_tab(&tiled_panes, &vec![], vec![], None),
         INDENT,
     ));
     kdl_string.push_str("}");
@@ -162,17 +211,13 @@ fn get_dim(dim_hm: &Value) -> Dimension {
 fn kdl_string_from_tab(
     tiled_panes: &Vec<TiledPaneLayout>,
     floating_panes: &Vec<FloatingPaneLayout>,
-    tab_name: String,
+    node_attributes: Vec<String>,
     node_name: Option<String>,
 ) -> String {
-    let mut kdl_string = if tab_name.is_empty() {
+    let mut kdl_string = if node_attributes.is_empty() {
         format!("{} {{\n", node_name.unwrap_or_else(|| "tab".to_owned()))
     } else {
-        format!(
-            "{} name=\"{}\" {{\n",
-            node_name.unwrap_or_else(|| "tab".to_owned()),
-            tab_name
-        )
+        format!("{} {} {{\n", node_name.unwrap_or_else(|| "tab".to_owned()), node_attributes.join(" "))
     };
     for tiled_pane_layout in tiled_panes {
         let ignore_size = false;
@@ -235,7 +280,7 @@ fn kdl_string_from_tiled_pane(layout: &TiledPaneLayout, ignore_size: bool) -> St
         };
         kdl_string.push_str(&format!(" split_direction=\"{direction}\""));
     }
-    if layout.children.is_empty() && args.is_empty() && plugin.is_none() {
+    if layout.children.is_empty() && layout.external_children_index.is_none() && args.is_empty() && plugin.is_none() {
         kdl_string.push_str("\n");
     } else if !args.is_empty() {
         kdl_string.push_str(" {\n");
@@ -272,6 +317,9 @@ fn kdl_string_from_tiled_pane(layout: &TiledPaneLayout, ignore_size: bool) -> St
         kdl_string.push_str("}\n");
     } else {
         kdl_string.push_str(" {\n");
+        if layout.children.is_empty() && layout.external_children_index.is_some() {
+            kdl_string.push_str(&indent(&"children\n", INDENT));
+        }
         for (i, pane) in layout.children.iter().enumerate() {
             if Some(i) == layout.external_children_index {
                 kdl_string.push_str(&indent(&"children\n", INDENT));

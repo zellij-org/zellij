@@ -20,6 +20,7 @@ use crate::{
 };
 
 use std::str::FromStr;
+use std::fmt::{Display, Formatter};
 
 use super::plugins::{PluginTag, PluginsConfigError};
 use serde::{Deserialize, Serialize};
@@ -367,6 +368,17 @@ pub enum LayoutConstraint {
     MinPanes(usize),
     ExactPanes(usize),
     NoConstraint,
+}
+
+impl Display for LayoutConstraint {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        match self {
+            LayoutConstraint::MaxPanes(max_panes) => write!(f, "max_panes={}", max_panes),
+            LayoutConstraint::MinPanes(min_panes) => write!(f, "min_panes={}", min_panes),
+            LayoutConstraint::ExactPanes(exact_panes) => write!(f, "exact_panes={}", exact_panes),
+            LayoutConstraint::NoConstraint => write!(f, "")
+        }
+    }
 }
 
 pub type SwapTiledLayout = (BTreeMap<LayoutConstraint, TiledPaneLayout>, Option<String>); // Option<String> is the swap layout name
