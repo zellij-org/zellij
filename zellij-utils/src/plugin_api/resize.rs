@@ -1,8 +1,11 @@
+use nix::sys::signal::SigevNotify;
+
 pub use super::generated_api::api::resize::{
     MoveDirection as ProtobufMoveDirection, Resize as ProtobufResize, ResizeAction,
-    ResizeDirection, ResizeDirection as ProtobufResizeDirection,
+    ResizeByPercent as ProtobufSizeByPercent, ResizeDirection,
+    ResizeDirection as ProtobufResizeDirection,
 };
-use crate::data::{Direction, Resize, ResizeStrategy};
+use crate::data::{Direction, Resize, ResizeByPercent, ResizeStrategy};
 
 use std::convert::TryFrom;
 
@@ -125,6 +128,27 @@ impl TryFrom<Direction> for ProtobufResizeDirection {
             Direction::Right => ProtobufResizeDirection::Right,
             Direction::Up => ProtobufResizeDirection::Up,
             Direction::Down => ProtobufResizeDirection::Down,
+        })
+    }
+}
+
+impl TryFrom<ProtobufSizeByPercent> for ResizeByPercent {
+    type Error = &'static str;
+    fn try_from(protobuf_size_by_percent: ProtobufSizeByPercent) -> Result<Self, &'static str> {
+        Ok(ResizeByPercent {
+            width: protobuf_size_by_percent.width as usize,
+            height: protobuf_size_by_percent.height as usize,
+        })
+    }
+}
+
+impl TryFrom<ResizeByPercent> for ProtobufSizeByPercent {
+    type Error = &'static str;
+    fn try_from(size_by_percent: ResizeByPercent) -> Result<Self, &'static str> {
+        Ok(ProtobufSizeByPercent {
+            // overflow is being checked in other place, ideally the expected value range is (0, 100)
+            width: size_by_percent.width as i32,
+            height: size_by_percent.height as i32,
         })
     }
 }

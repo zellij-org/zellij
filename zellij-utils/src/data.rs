@@ -250,6 +250,13 @@ impl FromStr for Direction {
     }
 }
 
+/// Resize by percent
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, Deserialize, Serialize)]
+pub struct ResizeByPercent {
+    pub width: usize,
+    pub height: usize,
+}
+
 /// Resize operation to perform.
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, Deserialize, Serialize)]
 pub enum Resize {
@@ -1064,4 +1071,5 @@ pub enum PluginCommand {
     OpenTerminalInPlace(FileToOpen), // only used for the path as cwd
     OpenFileInPlace(FileToOpen),
     OpenCommandPaneInPlace(CommandToRun),
+    ResizeFloatingPaneByPercent(ResizeByPercent),
 }

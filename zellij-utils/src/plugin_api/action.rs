@@ -626,6 +626,10 @@ impl TryFrom<ProtobufAction> for Action {
                 Some(_) => Err("BreakPaneLeft should not have a payload"),
                 None => Ok(Action::BreakPaneLeft),
             },
+            Some(ProtobufActionName::ResizeFloatingPaneByPercent) => match protobuf_action.optional_payload {
+                Some(OptionalPayload::) => Err("ResizeByPercent should not have a payload"),
+                None => Ok(Action::ResizeByPercent),
+            },
             _ => Err("Unknown Action"),
         }
     }
@@ -684,6 +688,14 @@ impl TryFrom<Action> for ProtobufAction {
                     optional_payload: Some(OptionalPayload::ResizePayload(resize)),
                 })
             },
+            // Action::ResizeFloatingPaneByPercent(resize) => {
+            //     let mut resize_precent: ProtobufResizePercent = resize.try_into()?;
+            //
+            //     Ok(ProtobufAction {
+            //     name: ProtobufActionName::ResizeByPercent as i32,
+            //     optional_payload: Some(OptionalPayload::ResizeFloatingPaneByPercentPayload(resize_precent)),
+            // })
+            // },
             Action::FocusNextPane => Ok(ProtobufAction {
                 name: ProtobufActionName::FocusNextPane as i32,
                 optional_payload: None,

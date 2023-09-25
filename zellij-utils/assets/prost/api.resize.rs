@@ -12,6 +12,14 @@ pub struct MoveDirection {
     #[prost(enumeration = "ResizeDirection", tag = "1")]
     pub direction: i32,
 }
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ResizeByPercent {
+    #[prost(int32, tag = "1")]
+    pub width: i32,
+    #[prost(int32, tag = "2")]
+    pub height: i32,
+}
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
 pub enum ResizeAction {

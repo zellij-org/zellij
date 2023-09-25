@@ -226,6 +226,9 @@ fn host_run_plugin_command(env: FunctionEnvMut<ForeignFunctionEnv>) {
                     PluginCommand::OpenCommandPaneInPlace(command_to_run) => {
                         open_command_pane_in_place(env, command_to_run)
                     },
+                    PluginCommand::ResizeFloatingPaneByPercent(resize_by_percent) => {
+                        todo!("ResizeFloatingPaneByPercent: {:?}", resize_by_percent);
+                    },
                 },
                 (PermissionStatus::Denied, permission) => {
                     log::error!(

@@ -6,8 +6,9 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::str;
 
+use log::info;
 use zellij_utils::data::{
-    Direction, PaneManifest, PluginPermission, Resize, ResizeStrategy, SessionInfo,
+    Direction, PaneManifest, PluginPermission, Resize, ResizeStrategy, SessionInfo, SizeByPercent,
 };
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
@@ -150,6 +151,7 @@ pub enum ScreenInstruction {
     VerticalSplit(PaneId, Option<InitialTitle>, HoldForCommand, ClientId),
     WriteCharacter(Vec<u8>, ClientId),
     Resize(ClientId, ResizeStrategy),
+    ResizeFloatingPaneByPercent(ClientId, SizeByPercent),
     SwitchFocus(ClientId),
     FocusNextPane(ClientId),
     FocusPreviousPane(ClientId),
@@ -344,6 +346,9 @@ impl From<&ScreenInstruction> for ScreenContext {
                     Some(Direction::Right) => ScreenContext::ResizeDecreaseRight,
                     None => ScreenContext::ResizeDecreaseAll,
                 },
+            },
+            ScreenInstruction::ResizeFloatingPaneByPercent(..) => {
+                ScreenContext::ResizeFloatingPaneByPercent
             },
             ScreenInstruction::SwitchFocus(..) => ScreenContext::SwitchFocus,
             ScreenInstruction::FocusNextPane(..) => ScreenContext::FocusNextPane,
@@ -2146,6 +2151,12 @@ pub(crate) fn screen_thread_main(
                     |tab: &mut Tab, client_id: ClientId| tab.resize(client_id, strategy),
                     ?
                 );
+                screen.unblock_input()?;
+                screen.render()?;
+                screen.log_and_report_session_state()?;
+            },
+            ScreenInstruction::ResizeFloatingPaneByPercent(client_id, size) => {
+                info!("Got - ResizeFloatingPaneByPercent: {:?}", size);
                 screen.unblock_input()?;
                 screen.render()?;
                 screen.log_and_report_session_state()?;

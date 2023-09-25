@@ -109,6 +109,13 @@ pub(crate) fn route_action(
                 .send_to_screen(screen_instr)
                 .with_context(err_context)?;
         },
+        Action::ResizeFloatingPaneByPercent(percentage) => {
+            senders
+                .send_to_screen(ScreenInstruction::ResizeFloatingPaneByPercent(
+                    client_id, percentage,
+                ))
+                .with_context(err_context)?;
+        },
         Action::SwitchFocus => {
             senders
                 .send_to_screen(ScreenInstruction::SwitchFocus(client_id))
