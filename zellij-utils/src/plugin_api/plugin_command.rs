@@ -5,8 +5,9 @@ pub use super::generated_api::api::{
     plugin_command::{
         plugin_command::Payload, CommandName, ExecCmdPayload, IdAndNewName, MovePayload,
         OpenCommandPanePayload, OpenFilePayload, PluginCommand as ProtobufPluginCommand,
-        PluginMessagePayload, RequestPluginPermissionPayload, ResizePayload, SetTimeoutPayload,
-        SubscribePayload, SwitchSessionPayload, SwitchTabToPayload, UnsubscribePayload,
+        PluginMessagePayload, RequestPluginPermissionPayload, ResizeFloatingPaneByPercentPayload,
+        ResizePayload, SetTimeoutPayload, SubscribePayload, SwitchSessionPayload,
+        SwitchTabToPayload, UnsubscribePayload,
     },
     plugin_permission::PermissionType as ProtobufPermissionType,
     resize::ResizeAction as ProtobufResizeAction,
@@ -942,11 +943,12 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                 )),
             }),
             PluginCommand::ResizeFloatingPaneByPercent(size_by_percent) => {
-                let size: ProtobufSizeByPercent = size_by_percent.try_into()?;
                 Ok(ProtobufPluginCommand {
                     name: CommandName::ResizeFloatingPaneByPercent as i32,
                     payload: Some(Payload::ResizeFloatingPaneByPercentPayload(
-                        ResizeFloatingPaneByPercentPayload { resize: Some(size) },
+                        ResizeFloatingPaneByPercentPayload {
+                            resize: Some(size_by_percent.try_into()?),
+                        },
                     )),
                 })
             },

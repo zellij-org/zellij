@@ -1,5 +1,3 @@
-use nix::sys::signal::SigevNotify;
-
 pub use super::generated_api::api::resize::{
     MoveDirection as ProtobufMoveDirection, Resize as ProtobufResize, ResizeAction,
     ResizeByPercent as ProtobufSizeByPercent, ResizeDirection,

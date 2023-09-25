@@ -176,6 +176,10 @@ message PluginMessagePayload {
   api.message.Message message = 1;
 }
 
+message ResizePayload {
+  resize.Resize resize = 1;
+}
+
 message ResizeFloatingPaneByPercentPayload {
   resize.ResizeByPercent resize = 1;
 }

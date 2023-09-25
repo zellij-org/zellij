@@ -8,7 +8,7 @@ use std::str;
 
 use log::info;
 use zellij_utils::data::{
-    Direction, PaneManifest, PluginPermission, Resize, ResizeStrategy, SessionInfo, SizeByPercent,
+    Direction, PaneManifest, PluginPermission, Resize, ResizeByPercent, ResizeStrategy, SessionInfo,
 };
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
@@ -151,7 +151,7 @@ pub enum ScreenInstruction {
     VerticalSplit(PaneId, Option<InitialTitle>, HoldForCommand, ClientId),
     WriteCharacter(Vec<u8>, ClientId),
     Resize(ClientId, ResizeStrategy),
-    ResizeFloatingPaneByPercent(ClientId, SizeByPercent),
+    ResizeFloatingPaneByPercent(ClientId, ResizeByPercent),
     SwitchFocus(ClientId),
     FocusNextPane(ClientId),
     FocusPreviousPane(ClientId),

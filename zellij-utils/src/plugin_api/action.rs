@@ -12,7 +12,7 @@ pub use super::generated_api::api::{
     input_mode::InputMode as ProtobufInputMode,
     resize::{Resize as ProtobufResize, ResizeDirection as ProtobufResizeDirection},
 };
-use crate::data::{Direction, InputMode, ResizeStrategy};
+use crate::data::{Direction, InputMode, ResizeByPercent, ResizeStrategy};
 use crate::errors::prelude::*;
 use crate::input::actions::Action;
 use crate::input::actions::{SearchDirection, SearchOption};
@@ -626,9 +626,15 @@ impl TryFrom<ProtobufAction> for Action {
                 Some(_) => Err("BreakPaneLeft should not have a payload"),
                 None => Ok(Action::BreakPaneLeft),
             },
-            Some(ProtobufActionName::ResizeFloatingPaneByPercent) => match protobuf_action.optional_payload {
-                Some(OptionalPayload::) => Err("ResizeByPercent should not have a payload"),
-                None => Ok(Action::ResizeByPercent),
+            Some(ProtobufActionName::ResizeByPercent) => match protobuf_action.optional_payload {
+                Some(OptionalPayload::ResizeByPercentPayload(size)) => {
+                    let size = ResizeByPercent {
+                        width: size.width as usize,
+                        height: size.height as usize,
+                    };
+                    Ok(Action::ResizeFloatingPaneByPercent(size))
+                },
+                _ => Err("Wrong payload for Action::ResizeByPercent"),
             },
             _ => Err("Unknown Action"),
         }
@@ -688,14 +694,10 @@ impl TryFrom<Action> for ProtobufAction {
                     optional_payload: Some(OptionalPayload::ResizePayload(resize)),
                 })
             },
-            // Action::ResizeFloatingPaneByPercent(resize) => {
-            //     let mut resize_precent: ProtobufResizePercent = resize.try_into()?;
-            //
-            //     Ok(ProtobufAction {
-            //     name: ProtobufActionName::ResizeByPercent as i32,
-            //     optional_payload: Some(OptionalPayload::ResizeFloatingPaneByPercentPayload(resize_precent)),
-            // })
-            // },
+            Action::ResizeFloatingPaneByPercent(resize) => Ok(ProtobufAction {
+                name: ProtobufActionName::ResizeByPercent as i32,
+                optional_payload: Some(OptionalPayload::ResizeByPercentPayload(resize.try_into()?)),
+            }),
             Action::FocusNextPane => Ok(ProtobufAction {
                 name: ProtobufActionName::FocusNextPane as i32,
                 optional_payload: None,
@@ -1176,6 +1178,7 @@ impl TryFrom<Action> for ProtobufAction {
                 name: ProtobufActionName::BreakPaneLeft as i32,
                 optional_payload: None,
             }),
+            Action::ResizeFloatingPaneByPercent(size) => Ok(todo!()),
             Action::NoOp
             | Action::Confirm
             | Action::NewInPlacePane(..)

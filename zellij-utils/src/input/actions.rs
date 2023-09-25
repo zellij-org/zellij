@@ -109,8 +109,6 @@ pub enum Action {
     SwitchModeForAllClients(InputMode),
     /// Shrink/enlarge focused pane at specified border
     Resize(Resize, Option<Direction>),
-    /// Resize floating pane by specified percent
-    ResizeFloatingPaneByPercent(ResizeByPercent),
     /// Switch focus to next pane in specified direction.
     FocusNextPane,
     FocusPreviousPane,
@@ -250,6 +248,8 @@ pub enum Action {
     BreakPane,
     BreakPaneRight,
     BreakPaneLeft,
+    /// Resize floating pane by specified percent
+    ResizeFloatingPaneByPercent(ResizeByPercent),
 }
 
 impl Action {

@@ -178,6 +178,12 @@ pub struct ResizePayload {
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ResizeFloatingPaneByPercentPayload {
+    #[prost(message, optional, tag = "1")]
+    pub resize: ::core::option::Option<super::resize::ResizeByPercent>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MovePayload {
     #[prost(message, optional, tag = "1")]
     pub direction: ::core::option::Option<super::resize::MoveDirection>,
@@ -190,12 +196,6 @@ pub struct IdAndNewName {
     pub id: u32,
     #[prost(string, tag = "2")]
     pub new_name: ::prost::alloc::string::String,
-}
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct ResizeFloatingPaneByPercentPayload {
-    #[prost(message, optional, tag = "1")]
-    pub resize: ::core::option::Option<super::resize::ResizeByPercent>,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
