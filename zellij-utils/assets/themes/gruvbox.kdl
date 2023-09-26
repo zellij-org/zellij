@@ -1,6 +1,6 @@
 themes {
     gruvbox-light {
-        fg 60 56 54
+        fg 124 111 100
         bg 251 82 75
         black 40 40 40
         red 205 75 69
