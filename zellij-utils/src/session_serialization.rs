@@ -39,6 +39,7 @@ fn indent(s: &str, prefix: &str) -> String {
 #[derive(Default, Debug, Clone)]
 pub struct GlobalLayoutManifest {
     pub global_cwd: Option<PathBuf>,
+    pub default_shell: Option<PathBuf>,
     pub default_layout: Box<Layout>,
     pub tabs: Vec<(String, TabLayoutManifest)>,
 }

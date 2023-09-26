@@ -133,6 +133,7 @@ macro_rules! active_tab_and_connected_client_id {
 pub struct SessionLayoutMetadata {
     default_layout: Box<Layout>,
     global_cwd: Option<PathBuf>,
+    pub default_shell: Option<PathBuf>,
     tabs: Vec<TabLayoutMetadata>,
 }
 
@@ -141,6 +142,24 @@ impl SessionLayoutMetadata {
         SessionLayoutMetadata {
             default_layout,
             ..Default::default()
+        }
+    }
+    pub fn update_default_shell(&mut self, default_shell: PathBuf) {
+        if self.default_shell.is_none() {
+            self.default_shell = Some(default_shell);
+        }
+        // TODO: consolidate this with identical function below
+        let is_default_shell = |command_name: &String, args: &Vec<String>| -> bool {
+            self.default_shell.as_ref().map(|c| c.display().to_string()).as_ref() == Some(command_name) && args.is_empty()
+        };
+        for tab in self.tabs.iter_mut() {
+            for tiled_pane in tab.tiled_panes.iter_mut() {
+                if let Some(Run::Command(run_command)) = tiled_pane.run.as_mut() {
+                    if is_default_shell(&run_command.command.display().to_string(), &run_command.args) {
+                        tiled_pane.run = None;
+                    }
+                }
+            }
         }
     }
 }
@@ -206,14 +225,22 @@ impl SessionLayoutMetadata {
         plugin_ids
     }
     pub fn update_terminal_commands(&mut self, mut terminal_ids_to_commands: HashMap<u32, Vec<String>>) {
+        let is_default_shell = |command_name: &String, args: &Vec<String>| -> bool {
+            self.default_shell.as_ref().map(|c| c.display().to_string()).as_ref() == Some(command_name) && args.is_empty()
+        };
         let mut update_cmd_in_pane_metadata = |pane_layout_metadata: &mut PaneLayoutMetadata| {
             if let PaneId::Terminal(id) = pane_layout_metadata.id {
                 if let Some(command) = terminal_ids_to_commands.remove(&id) {
                     let mut command_line = command.iter();
                     if let Some(command_name) = command_line.next() {
-                        let mut run_command = RunCommand::new(PathBuf::from(command_name));
-                        run_command.args = command_line.map(|c| c.to_owned()).collect();
-                        pane_layout_metadata.run = Some(Run::Command(run_command));
+                        let args: Vec<String> = command_line.map(|c| c.to_owned()).collect();
+                        if is_default_shell(&command_name, &args) {
+                            pane_layout_metadata.run = None;
+                        } else {
+                            let mut run_command = RunCommand::new(PathBuf::from(command_name));
+                            run_command.args = args;
+                            pane_layout_metadata.run = Some(Run::Command(run_command));
+                        }
                     }
                 }
             }
@@ -284,6 +311,7 @@ impl Into<GlobalLayoutManifest> for SessionLayoutMetadata {
     fn into(self) -> GlobalLayoutManifest {
         GlobalLayoutManifest {
             default_layout: self.default_layout,
+            default_shell: self.default_shell,
             global_cwd: self.global_cwd,
             tabs: self
                 .tabs
@@ -406,7 +434,8 @@ pub enum ScreenInstruction {
     Exit,
     ClearScreen(ClientId),
     DumpScreen(String, ClientId, bool),
-    DumpLayout(ClientId, Option<String>),
+    DumpLayout(ClientId, Option<String>, Option<PathBuf>), // PathBuf is the default configured
+                                                           // shell
     EditScrollback(ClientId),
     ScrollUp(ClientId),
     ScrollUpAt(Position, ClientId),
@@ -2508,10 +2537,13 @@ pub(crate) fn screen_thread_main(
                 screen.render()?;
                 screen.unblock_input()?;
             },
-            ScreenInstruction::DumpLayout(client_id, layout) => {
+            ScreenInstruction::DumpLayout(client_id, layout, default_shell) => {
                 let err_context = || format!("Failed to dump layout");
                 let mut session_layout_metadata =
                     SessionLayoutMetadata::new(screen.default_layout.clone());
+                if let Some(default_shell) = default_shell {
+                    session_layout_metadata.update_default_shell(default_shell);
+                }
                 for tab in screen.tabs.values() {
                     let tiled_panes: Vec<(PaneId, PaneGeom, bool, Option<Run>)> =
                         tab // bool => is_borderless

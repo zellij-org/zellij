@@ -174,8 +174,12 @@ pub(crate) fn route_action(
                 .with_context(err_context)?;
         },
         Action::DumpLayout(layout) => {
+            let default_shell = match default_shell {
+                Some(TerminalAction::RunCommand(run_command)) => Some(run_command.command),
+                _ => None
+            };
             senders
-                .send_to_screen(ScreenInstruction::DumpLayout(client_id, layout))
+                .send_to_screen(ScreenInstruction::DumpLayout(client_id, layout, default_shell))
                 .with_context(err_context)?;
         },
         Action::EditScrollback => {
