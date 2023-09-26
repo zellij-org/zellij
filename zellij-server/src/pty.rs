@@ -125,17 +125,26 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     ),
                     _ => (false, None, name),
                 };
-                let invoked_with = match &terminal_action {
-                    Some(TerminalAction::RunCommand(run_command)) => Some(Run::Command(run_command.clone())),
-                    Some(TerminalAction::OpenFile(file, line_number, cwd)) => Some(Run::EditFile(file.clone(), line_number.clone(), cwd.clone())),
-                    _ => None
-                };
+                let invoked_with =
+                    match &terminal_action {
+                        Some(TerminalAction::RunCommand(run_command)) => {
+                            Some(Run::Command(run_command.clone()))
+                        },
+                        Some(TerminalAction::OpenFile(file, line_number, cwd)) => Some(
+                            Run::EditFile(file.clone(), line_number.clone(), cwd.clone()),
+                        ),
+                        _ => None,
+                    };
                 match pty
                     .spawn_terminal(terminal_action, client_or_tab_index)
                     .with_context(err_context)
                 {
                     Ok((pid, starts_held)) => {
-                        let hold_for_command = if starts_held { run_command.clone() } else { None };
+                        let hold_for_command = if starts_held {
+                            run_command.clone()
+                        } else {
+                            None
+                        };
                         pty.bus
                             .senders
                             .send_to_screen(ScreenInstruction::NewPane(
@@ -203,11 +212,16 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     ),
                     _ => (false, None, name),
                 };
-                let invoked_with = match &terminal_action {
-                    Some(TerminalAction::RunCommand(run_command)) => Some(Run::Command(run_command.clone())),
-                    Some(TerminalAction::OpenFile(file, line_number, cwd)) => Some(Run::EditFile(file.clone(), line_number.clone(), cwd.clone())),
-                    _ => None
-                };
+                let invoked_with =
+                    match &terminal_action {
+                        Some(TerminalAction::RunCommand(run_command)) => {
+                            Some(Run::Command(run_command.clone()))
+                        },
+                        Some(TerminalAction::OpenFile(file, line_number, cwd)) => Some(
+                            Run::EditFile(file.clone(), line_number.clone(), cwd.clone()),
+                        ),
+                        _ => None,
+                    };
                 match pty
                     .spawn_terminal(terminal_action, client_id_tab_index_or_pane_id)
                     .with_context(err_context)

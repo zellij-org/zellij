@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::str;
 
+use zellij_utils::common_path::common_path_all;
 use zellij_utils::data::{
     Direction, PaneManifest, PluginPermission, Resize, ResizeStrategy, SessionInfo,
 };
@@ -22,7 +23,6 @@ use zellij_utils::{
     position::Position,
     session_serialization::{GlobalLayoutManifest, PaneLayoutManifest, TabLayoutManifest},
 };
-use zellij_utils::common_path::common_path_all;
 
 use crate::background_jobs::BackgroundJob;
 use crate::os_input_output::ResizeCache;
@@ -150,12 +150,20 @@ impl SessionLayoutMetadata {
         }
         // TODO: consolidate this with identical function below
         let is_default_shell = |command_name: &String, args: &Vec<String>| -> bool {
-            self.default_shell.as_ref().map(|c| c.display().to_string()).as_ref() == Some(command_name) && args.is_empty()
+            self.default_shell
+                .as_ref()
+                .map(|c| c.display().to_string())
+                .as_ref()
+                == Some(command_name)
+                && args.is_empty()
         };
         for tab in self.tabs.iter_mut() {
             for tiled_pane in tab.tiled_panes.iter_mut() {
                 if let Some(Run::Command(run_command)) = tiled_pane.run.as_mut() {
-                    if is_default_shell(&run_command.command.display().to_string(), &run_command.args) {
+                    if is_default_shell(
+                        &run_command.command.display().to_string(),
+                        &run_command.args,
+                    ) {
                         tiled_pane.run = None;
                     }
                 }
@@ -224,9 +232,17 @@ impl SessionLayoutMetadata {
         }
         plugin_ids
     }
-    pub fn update_terminal_commands(&mut self, mut terminal_ids_to_commands: HashMap<u32, Vec<String>>) {
+    pub fn update_terminal_commands(
+        &mut self,
+        mut terminal_ids_to_commands: HashMap<u32, Vec<String>>,
+    ) {
         let is_default_shell = |command_name: &String, args: &Vec<String>| -> bool {
-            self.default_shell.as_ref().map(|c| c.display().to_string()).as_ref() == Some(command_name) && args.is_empty()
+            self.default_shell
+                .as_ref()
+                .map(|c| c.display().to_string())
+                .as_ref()
+                == Some(command_name)
+                && args.is_empty()
         };
         let mut update_cmd_in_pane_metadata = |pane_layout_metadata: &mut PaneLayoutMetadata| {
             if let PaneId::Terminal(id) = pane_layout_metadata.id {
@@ -258,7 +274,9 @@ impl SessionLayoutMetadata {
         }
     }
     pub fn update_terminal_cwds(&mut self, mut terminal_ids_to_cwds: HashMap<u32, PathBuf>) {
-        if let Some(common_path_between_cwds) = common_path_all(terminal_ids_to_cwds.values().map(|p| p.as_path())) {
+        if let Some(common_path_between_cwds) =
+            common_path_all(terminal_ids_to_cwds.values().map(|p| p.as_path()))
+        {
             terminal_ids_to_cwds.values_mut().for_each(|p| {
                 if let Ok(stripped) = p.strip_prefix(&common_path_between_cwds) {
                     *p = PathBuf::from(stripped)
@@ -435,7 +453,7 @@ pub enum ScreenInstruction {
     ClearScreen(ClientId),
     DumpScreen(String, ClientId, bool),
     DumpLayout(ClientId, Option<String>, Option<PathBuf>), // PathBuf is the default configured
-                                                           // shell
+    // shell
     EditScrollback(ClientId),
     ScrollUp(ClientId),
     ScrollUpAt(Position, ClientId),
@@ -2548,17 +2566,29 @@ pub(crate) fn screen_thread_main(
                     let tiled_panes: Vec<(PaneId, PaneGeom, bool, Option<Run>)> =
                         tab // bool => is_borderless
                             .get_tiled_panes()
-                            .map(|(pane_id, p)| (*pane_id, p.position_and_size(), p.borderless(), p.invoked_with().clone()))
+                            .map(|(pane_id, p)| {
+                                (
+                                    *pane_id,
+                                    p.position_and_size(),
+                                    p.borderless(),
+                                    p.invoked_with().clone(),
+                                )
+                            })
                             .collect();
                     let floating_panes: Vec<(PaneId, PaneGeom, Option<Run>)> = tab
                         .get_floating_panes()
-                        .map(|(pane_id, p)| (*pane_id, p.position_and_size(), p.invoked_with().clone()))
+                        .map(|(pane_id, p)| {
+                            (*pane_id, p.position_and_size(), p.invoked_with().clone())
+                        })
                         .collect();
-                    let mut suppressed_panes: HashMap<PaneId, (PaneId, PaneGeom, Option<Run>)> = HashMap::new();
+                    let mut suppressed_panes: HashMap<PaneId, (PaneId, PaneGeom, Option<Run>)> =
+                        HashMap::new();
                     for (triggering_pane_id, p) in tab.get_suppressed_panes() {
                         let pane_id = p.pid();
-                        suppressed_panes
-                            .insert(*triggering_pane_id, (pane_id, p.position_and_size(), p.invoked_with().clone()));
+                        suppressed_panes.insert(
+                            *triggering_pane_id,
+                            (pane_id, p.position_and_size(), p.invoked_with().clone()),
+                        );
                     }
                     session_layout_metadata.add_tab(
                         tab.name.clone(),

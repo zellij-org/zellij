@@ -19,8 +19,8 @@ use crate::{
     setup::{self},
 };
 
-use std::str::FromStr;
 use std::fmt::{Display, Formatter};
+use std::str::FromStr;
 
 use super::plugins::{PluginTag, PluginsConfigError};
 use serde::{Deserialize, Serialize};
@@ -384,7 +384,7 @@ impl Display for LayoutConstraint {
             LayoutConstraint::MaxPanes(max_panes) => write!(f, "max_panes={}", max_panes),
             LayoutConstraint::MinPanes(min_panes) => write!(f, "min_panes={}", min_panes),
             LayoutConstraint::ExactPanes(exact_panes) => write!(f, "exact_panes={}", exact_panes),
-            LayoutConstraint::NoConstraint => write!(f, "")
+            LayoutConstraint::NoConstraint => write!(f, ""),
         }
     }
 }
