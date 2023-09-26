@@ -1797,15 +1797,11 @@ impl Themes {
         // String is the theme name
         let kdl_config = std::fs::read_to_string(&path_to_theme_file)
             .map_err(|e| ConfigError::IoPath(e, path_to_theme_file.clone()))?;
-        Themes::from_string(&kdl_config).map_err(|e| {
-            if let ConfigError::KdlError(error) = e {
-                return ConfigError::KdlError(error.add_src(
-                    path_to_theme_file.as_path().display().to_string(),
-                    kdl_config,
-                ));
-            } else {
-                return e;
-            }
+        Themes::from_string(&kdl_config).map_err(|e| match e {
+            ConfigError::KdlError(kdl_error) => ConfigError::KdlError(
+                kdl_error.add_src(path_to_theme_file.display().to_string(), kdl_config),
+            ),
+            e => e,
         })
     }
 
