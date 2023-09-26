@@ -207,6 +207,14 @@ impl Run {
             _ => false,
         }
     }
+    pub fn get_cwd(&self) -> Option<PathBuf> {
+        match self {
+            Run::Plugin(_) => None, // TBD
+            Run::Command(run_command) => run_command.cwd.clone(),
+            Run::EditFile(_file, _line_num, cwd) => cwd.clone(),
+            Run::Cwd(cwd) => Some(cwd.clone()),
+        }
+    }
 }
 
 #[allow(clippy::derive_hash_xor_eq)]

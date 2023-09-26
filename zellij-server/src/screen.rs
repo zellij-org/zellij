@@ -147,9 +147,9 @@ impl SessionLayoutMetadata {
     pub fn add_tab(
         &mut self,
         name: String,
-        tiled_panes: Vec<(PaneId, PaneGeom, bool)>, // bool => is_borderless
-        floating_panes: Vec<(PaneId, PaneGeom)>,
-        suppressed_panes: HashMap<PaneId, (PaneId, PaneGeom)>,
+        tiled_panes: Vec<(PaneId, PaneGeom, bool, Option<Run>)>, // bool => is_borderless
+        floating_panes: Vec<(PaneId, PaneGeom, Option<Run>)>,
+        suppressed_panes: HashMap<PaneId, (PaneId, PaneGeom, Option<Run>)>,
     ) {
         self.tabs.push(TabLayoutMetadata {
             name: Some(name), // TODO: tabs don't always have a name...
@@ -203,15 +203,15 @@ impl SessionLayoutMetadata {
         }
         plugin_ids
     }
-    pub fn update_terminal_cmds(&mut self, mut terminal_ids_to_cmds: HashMap<u32, Vec<String>>) {
+    pub fn update_terminal_commands(&mut self, mut terminal_ids_to_commands: HashMap<u32, Vec<String>>) {
         let mut update_cmd_in_pane_metadata = |pane_layout_metadata: &mut PaneLayoutMetadata| {
             if let PaneId::Terminal(id) = pane_layout_metadata.id {
-                if let Some(command) = terminal_ids_to_cmds.remove(&id) {
+                if let Some(command) = terminal_ids_to_commands.remove(&id) {
                     let mut command_line = command.iter();
                     if let Some(command_name) = command_line.next() {
                         let mut run_command = RunCommand::new(PathBuf::from(command_name));
                         run_command.args = command_line.map(|c| c.to_owned()).collect();
-                        pane_layout_metadata.run = Some(Run::Command(run_command))
+                        pane_layout_metadata.run = Some(Run::Command(run_command));
                     }
                 }
             }
@@ -225,6 +225,30 @@ impl SessionLayoutMetadata {
             }
             for pane_layout_metadata in tab.suppressed_panes.values_mut() {
                 update_cmd_in_pane_metadata(pane_layout_metadata);
+            }
+        }
+    }
+    pub fn update_terminal_cwds(&mut self, mut terminal_ids_to_commands: HashMap<u32, PathBuf>) {
+        let mut update_cwd_in_pane_metadata = |pane_layout_metadata: &mut PaneLayoutMetadata| {
+            if let PaneId::Terminal(id) = pane_layout_metadata.id {
+                if let Some(cwd) = terminal_ids_to_commands.remove(&id) {
+                    if pane_layout_metadata.cwd.is_none() {
+                        // do not override existing cwds because in cases where this is eg. an
+                        // Editor pane, we're not doing the right thing here
+                        pane_layout_metadata.cwd = Some(cwd);
+                    }
+                }
+            }
+        };
+        for tab in self.tabs.iter_mut() {
+            for pane_layout_metadata in tab.tiled_panes.iter_mut() {
+                update_cwd_in_pane_metadata(pane_layout_metadata);
+            }
+            for pane_layout_metadata in tab.floating_panes.iter_mut() {
+                update_cwd_in_pane_metadata(pane_layout_metadata);
+            }
+            for pane_layout_metadata in tab.suppressed_panes.values_mut() {
+                update_cwd_in_pane_metadata(pane_layout_metadata);
             }
         }
     }
@@ -282,6 +306,7 @@ impl Into<PaneLayoutManifest> for PaneLayoutMetadata {
         PaneLayoutManifest {
             geom: self.geom,
             run: self.run,
+            cwd: self.cwd,
             is_borderless: self.is_borderless,
         }
     }
@@ -302,28 +327,30 @@ pub struct PaneLayoutMetadata {
     id: PaneId,
     geom: PaneGeom,
     run: Option<Run>,
+    cwd: Option<PathBuf>,
     is_borderless: bool,
 }
 
-impl From<(PaneId, PaneGeom, bool)> for PaneLayoutMetadata {
+impl From<(PaneId, PaneGeom, bool, Option<Run>)> for PaneLayoutMetadata {
     // bool => is_borderless
-    fn from(pane_id_and_pane_geom: (PaneId, PaneGeom, bool)) -> Self {
+    fn from(pane_id_and_pane_geom: (PaneId, PaneGeom, bool, Option<Run>)) -> Self {
         PaneLayoutMetadata {
             id: pane_id_and_pane_geom.0,
             geom: pane_id_and_pane_geom.1,
-            run: None,
+            run: pane_id_and_pane_geom.3,
+            cwd: None,
             is_borderless: pane_id_and_pane_geom.2,
         }
     }
 }
 
-impl From<(PaneId, PaneGeom)> for PaneLayoutMetadata {
-    // bool => is_borderless
-    fn from(pane_id_and_pane_geom: (PaneId, PaneGeom)) -> Self {
+impl From<(PaneId, PaneGeom, Option<Run>)> for PaneLayoutMetadata {
+    fn from(pane_id_and_pane_geom: (PaneId, PaneGeom, Option<Run>)) -> Self {
         PaneLayoutMetadata {
             id: pane_id_and_pane_geom.0,
             geom: pane_id_and_pane_geom.1,
-            run: None,
+            run: pane_id_and_pane_geom.2,
+            cwd: None,
             is_borderless: false,
         }
     }
@@ -344,6 +371,7 @@ pub enum ScreenInstruction {
         Option<InitialTitle>,
         Option<ShouldFloat>,
         HoldForCommand,
+        Option<Run>, // invoked with
         ClientTabIndexOrPaneId,
     ),
     OpenInPlaceEditor(PaneId, ClientId),
@@ -506,6 +534,7 @@ pub enum ScreenInstruction {
         PaneId,
         HoldForCommand,
         Option<InitialTitle>,
+        Option<Run>,
         ClientTabIndexOrPaneId,
     ),
 }
@@ -2046,13 +2075,13 @@ impl Screen {
         &mut self,
         new_pane_id: PaneId,
         hold_for_command: HoldForCommand,
-        run_plugin: Option<Run>,
+        run: Option<Run>,
         pane_title: Option<InitialTitle>,
         client_id_tab_index_or_pane_id: ClientTabIndexOrPaneId,
     ) -> Result<()> {
         let err_context = || format!("failed to replace pane");
         let suppress_pane = |tab: &mut Tab, pane_id: PaneId, new_pane_id: PaneId| {
-            tab.suppress_pane_and_replace_with_pid(pane_id, new_pane_id, run_plugin);
+            tab.suppress_pane_and_replace_with_pid(pane_id, new_pane_id, run);
             if let Some(pane_title) = pane_title {
                 tab.rename_pane(pane_title.as_bytes().to_vec(), new_pane_id);
             }
@@ -2194,6 +2223,7 @@ pub(crate) fn screen_thread_main(
                 initial_pane_title,
                 should_float,
                 hold_for_command,
+                invoked_with,
                 client_or_tab_index,
             ) => {
                 match client_or_tab_index {
@@ -2202,7 +2232,7 @@ pub(crate) fn screen_thread_main(
                             tab.new_pane(pid,
                                initial_pane_title,
                                should_float,
-                               None,
+                               invoked_with,
                                Some(client_id)
                            )
                         }, ?);
@@ -2226,7 +2256,7 @@ pub(crate) fn screen_thread_main(
                                 pid,
                                 initial_pane_title,
                                 should_float,
-                                None,
+                                invoked_with,
                                 None,
                             )?;
                             if let Some(hold_for_command) = hold_for_command {
@@ -2476,20 +2506,20 @@ pub(crate) fn screen_thread_main(
                 let mut session_layout_metadata =
                     SessionLayoutMetadata::new(screen.default_layout.clone());
                 for tab in screen.tabs.values() {
-                    let tiled_panes: Vec<(PaneId, PaneGeom, bool)> =
+                    let tiled_panes: Vec<(PaneId, PaneGeom, bool, Option<Run>)> =
                         tab // bool => is_borderless
                             .get_tiled_panes()
-                            .map(|(pane_id, p)| (*pane_id, p.position_and_size(), p.borderless()))
+                            .map(|(pane_id, p)| (*pane_id, p.position_and_size(), p.borderless(), p.invoked_with().clone()))
                             .collect();
-                    let floating_panes: Vec<(PaneId, PaneGeom)> = tab
+                    let floating_panes: Vec<(PaneId, PaneGeom, Option<Run>)> = tab
                         .get_floating_panes()
-                        .map(|(pane_id, p)| (*pane_id, p.position_and_size()))
+                        .map(|(pane_id, p)| (*pane_id, p.position_and_size(), p.invoked_with().clone()))
                         .collect();
-                    let mut suppressed_panes: HashMap<PaneId, (PaneId, PaneGeom)> = HashMap::new();
+                    let mut suppressed_panes: HashMap<PaneId, (PaneId, PaneGeom, Option<Run>)> = HashMap::new();
                     for (triggering_pane_id, p) in tab.get_suppressed_panes() {
                         let pane_id = p.pid();
                         suppressed_panes
-                            .insert(*triggering_pane_id, (pane_id, p.position_and_size()));
+                            .insert(*triggering_pane_id, (pane_id, p.position_and_size(), p.invoked_with().clone()));
                     }
                     session_layout_metadata.add_tab(
                         tab.name.clone(),
@@ -2498,22 +2528,9 @@ pub(crate) fn screen_thread_main(
                         suppressed_panes,
                     );
                 }
-                //                 let tabs: Vec<(String, Vec<(PaneId, PaneGeom)>)> = screen
-                //                     .tabs
-                //                     .values()
-                //                     .into_iter()
-                //                     .map(|tab| {
-                //                         let panes: Vec<(PaneId, PaneGeom)> = tab
-                //                             .get_tiled_panes()
-                //                             .map(|(pane_id, p)| (*pane_id, p.position_and_size()))
-                //                             .collect();
-                //                         (tab.name.clone(), panes)
-                //                     })
-                //                     .collect();
                 screen
                     .bus
                     .senders
-                    // .send_to_pty(PtyInstruction::DumpLayout(session_layout_metadata))
                     .send_to_plugin(PluginInstruction::DumpLayout(session_layout_metadata))
                     .with_context(err_context)?;
                 screen.unblock_input()?;
@@ -3533,13 +3550,14 @@ pub(crate) fn screen_thread_main(
                 new_pane_id,
                 hold_for_command,
                 pane_title,
+                invoked_with,
                 client_id_tab_index_or_pane_id,
             ) => {
                 let err_context = || format!("Failed to replace pane");
                 screen.replace_pane(
                     new_pane_id,
                     hold_for_command,
-                    None,
+                    invoked_with,
                     pane_title,
                     client_id_tab_index_or_pane_id,
                 )?;

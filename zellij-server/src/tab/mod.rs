@@ -1015,7 +1015,7 @@ impl Tab {
         pid: PaneId,
         initial_pane_title: Option<String>,
         should_float: Option<bool>,
-        run_plugin: Option<Run>, // only relevant if this is a plugin pane
+        invoked_with: Option<Run>,
         client_id: Option<ClientId>,
     ) -> Result<()> {
         let err_context = || format!("failed to create new pane with id {pid:?}");
@@ -1041,7 +1041,7 @@ impl Tab {
                     self.terminal_emulator_colors.clone(),
                     self.terminal_emulator_color_codes.clone(),
                     initial_pane_title,
-                    None,
+                    invoked_with,
                     self.debug,
                 )) as Box<dyn Pane>
             },
@@ -1063,7 +1063,7 @@ impl Tab {
                     self.character_cell_size.clone(),
                     self.connected_clients.borrow().iter().copied().collect(),
                     self.style,
-                    run_plugin,
+                    invoked_with,
                     self.debug,
                 )) as Box<dyn Pane>
             },
@@ -1148,7 +1148,7 @@ impl Tab {
         &mut self,
         old_pane_id: PaneId,
         new_pane_id: PaneId,
-        run_plugin: Option<Run>,
+        run: Option<Run>,
     ) -> Result<()> {
         // this method creates a new pane from pid and replaces it with the active pane
         // the active pane is then suppressed (hidden and not rendered) until the current
@@ -1170,7 +1170,7 @@ impl Tab {
                     self.terminal_emulator_colors.clone(),
                     self.terminal_emulator_color_codes.clone(),
                     None,
-                    None,
+                    run,
                     self.debug,
                 );
                 let replaced_pane = if self.floating_panes.panes_contain(&old_pane_id) {
@@ -1220,7 +1220,7 @@ impl Tab {
                     self.character_cell_size.clone(),
                     self.connected_clients.borrow().iter().copied().collect(),
                     self.style,
-                    run_plugin,
+                    run,
                     self.debug,
                 );
                 let replaced_pane = if self.floating_panes.panes_contain(&old_pane_id) {

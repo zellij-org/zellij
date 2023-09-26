@@ -53,6 +53,7 @@ pub struct TabLayoutManifest {
 pub struct PaneLayoutManifest {
     pub geom: PaneGeom,
     pub run: Option<Run>,
+    pub cwd: Option<PathBuf>,
     pub is_borderless: bool,
 }
 
@@ -252,10 +253,22 @@ fn kdl_string_from_tiled_pane(layout: &TiledPaneLayout, ignore_size: bool) -> St
         ),
         _ => (None, None),
     };
-    let mut kdl_string = match command {
-        Some(command) => format!("pane command=\"{}\"", command),
-        None => format!("pane"),
+    let (edit, _line_number) = match &layout.run { // TODO: line number in layouts?
+        Some(Run::EditFile(path, line_number, cwd)) => (
+            Some(path.display().to_string()),
+            line_number.clone(),
+        ),
+        _ => (None, None),
     };
+    let cwd = layout.run.as_ref().and_then(|r| r.get_cwd());
+    let mut kdl_string = match (command, edit) {
+        (Some(command), _) => format!("pane command=\"{}\"", command),
+        (None, Some(edit)) => format!("pane edit=\"{}\"", edit),
+        (None, None) => format!("pane"),
+    };
+    if let Some(cwd) = cwd {
+        kdl_string.push_str(&format!(" cwd=\"{}\"", cwd.display()));
+    }
 
     if !ignore_size {
         match layout.split_size {
@@ -350,10 +363,22 @@ fn kdl_string_from_floating_pane(layout: &FloatingPaneLayout) -> String {
         ),
         _ => (None, None),
     };
-    let mut kdl_string = match command {
-        Some(command) => format!("pane command=\"{}\"", command),
-        None => format!("pane"),
+    let (edit, _line_number) = match &layout.run { // TODO: line number in layouts?
+        Some(Run::EditFile(path, line_number, cwd)) => (
+            Some(path.display().to_string()),
+            line_number.clone(),
+        ),
+        _ => (None, None),
     };
+    let mut kdl_string = match (command, edit) {
+        (Some(command), _) => format!("pane command=\"{}\"", command),
+        (None, Some(edit)) => format!("pane edit=\"{}\"", edit),
+        (None, None) => format!("pane"),
+    };
+    let cwd = layout.run.as_ref().and_then(|r| r.get_cwd());
+    if let Some(cwd) = cwd {
+        kdl_string.push_str(&format!(" cwd=\"{}\"", cwd.display()));
+    }
     kdl_string.push_str(" {\n");
 
     if let Some(name) = &layout.name {
@@ -442,8 +467,16 @@ fn get_tiled_panes_layout_from_panegeoms(
                 .iter()
                 .next()
                 .map(|g| {
+                    let mut run = g.run.clone();
+                    if let Some(cwd) = &g.cwd {
+                        if let Some(run) = run.as_mut() {
+                            run.add_cwd(cwd);
+                        } else {
+                            run = Some(Run::Cwd(cwd.clone()));
+                        }
+                    }
                     (
-                        g.run.clone(),
+                        run,
                         g.is_borderless,
                         g.geom.is_stacked && g.geom.rows.inner > 1,
                     )
@@ -505,15 +538,21 @@ fn get_floating_panes_layout_from_panegeoms(
 ) -> Vec<FloatingPaneLayout> {
     manifests
         .iter()
-        .map(|m| FloatingPaneLayout {
-            name: None, // TODO: TBD
-            height: Some(m.geom.rows.into()),
-            width: Some(m.geom.cols.into()),
-            x: Some(PercentOrFixed::Fixed(m.geom.x)),
-            y: Some(PercentOrFixed::Fixed(m.geom.y)),
-            run: m.run.clone(),
-            focus: None, // TODO: TBD
-            already_running: false,
+        .map(|m| {
+            let mut run = m.run.clone();
+            if let Some(cwd) = &m.cwd {
+                run.as_mut().map(|r| r.add_cwd(cwd));
+            }
+            FloatingPaneLayout {
+                name: None, // TODO: TBD
+                height: Some(m.geom.rows.into()),
+                width: Some(m.geom.cols.into()),
+                x: Some(PercentOrFixed::Fixed(m.geom.x)),
+                y: Some(PercentOrFixed::Fixed(m.geom.y)),
+                run,
+                focus: None, // TODO: TBD
+                already_running: false,
+            }
         })
         .collect()
 }

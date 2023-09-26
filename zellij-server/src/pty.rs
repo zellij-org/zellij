@@ -9,7 +9,6 @@ use crate::{
 use async_std::task::{self, JoinHandle};
 use std::{collections::HashMap, os::unix::io::RawFd, path::PathBuf};
 use zellij_utils::nix::unistd::Pid;
-use zellij_utils::pane_size::PaneGeom;
 use zellij_utils::{
     async_std,
     errors::prelude::*,
@@ -126,12 +125,17 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     ),
                     _ => (false, None, name),
                 };
+                let invoked_with = match &terminal_action {
+                    Some(TerminalAction::RunCommand(run_command)) => Some(Run::Command(run_command.clone())),
+                    Some(TerminalAction::OpenFile(file, line_number, cwd)) => Some(Run::EditFile(file.clone(), line_number.clone(), cwd.clone())),
+                    _ => None
+                };
                 match pty
                     .spawn_terminal(terminal_action, client_or_tab_index)
                     .with_context(err_context)
                 {
                     Ok((pid, starts_held)) => {
-                        let hold_for_command = if starts_held { run_command } else { None };
+                        let hold_for_command = if starts_held { run_command.clone() } else { None };
                         pty.bus
                             .senders
                             .send_to_screen(ScreenInstruction::NewPane(
@@ -139,6 +143,8 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                                 pane_title,
                                 should_float,
                                 hold_for_command,
+                                invoked_with,
+                                // run_command.map(|r| Run::Command(r.clone())),
                                 client_or_tab_index,
                             ))
                             .with_context(err_context)?;
@@ -154,6 +160,8 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                                         pane_title,
                                         should_float,
                                         hold_for_command,
+                                        invoked_with,
+                                        // run_command.as_ref().map(|r| Run::Command(r.clone())),
                                         client_or_tab_index,
                                     ))
                                     .with_context(err_context)?;
@@ -195,6 +203,11 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     ),
                     _ => (false, None, name),
                 };
+                let invoked_with = match &terminal_action {
+                    Some(TerminalAction::RunCommand(run_command)) => Some(Run::Command(run_command.clone())),
+                    Some(TerminalAction::OpenFile(file, line_number, cwd)) => Some(Run::EditFile(file.clone(), line_number.clone(), cwd.clone())),
+                    _ => None
+                };
                 match pty
                     .spawn_terminal(terminal_action, client_id_tab_index_or_pane_id)
                     .with_context(err_context)
@@ -207,6 +220,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                                 PaneId::Terminal(pid),
                                 hold_for_command,
                                 pane_title,
+                                invoked_with,
                                 client_id_tab_index_or_pane_id,
                             ))
                             .with_context(err_context)?;
@@ -221,6 +235,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                                         PaneId::Terminal(*terminal_id),
                                         hold_for_command,
                                         pane_title,
+                                        invoked_with,
                                         client_id_tab_index_or_pane_id,
                                     ))
                                     .with_context(err_context)?;
@@ -504,7 +519,8 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
             },
             PtyInstruction::DumpLayout(mut session_layout_metadata) => {
                 let terminal_ids = session_layout_metadata.all_terminal_ids();
-                let mut terminal_ids_to_cmds: HashMap<u32, Vec<String>> = HashMap::new();
+                let mut terminal_ids_to_commands: HashMap<u32, Vec<String>> = HashMap::new();
+                let mut terminal_ids_to_cwds: HashMap<u32, PathBuf> = HashMap::new();
                 for terminal_id in terminal_ids {
                     let process_id = pty.id_to_child_pid.get(&terminal_id);
                     let cmd = process_id.as_ref().and_then(|pid| {
@@ -513,11 +529,21 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                             .as_ref()
                             .and_then(|os_input| os_input.get_cmd(Pid::from_raw(**pid)))
                     });
+                    let cwd = process_id.as_ref().and_then(|pid| {
+                        pty.bus
+                            .os_input
+                            .as_ref()
+                            .and_then(|os_input| os_input.get_cwd(Pid::from_raw(**pid)))
+                    });
                     if let Some(cmd) = cmd {
-                        terminal_ids_to_cmds.insert(terminal_id, cmd);
+                        terminal_ids_to_commands.insert(terminal_id, cmd);
+                    }
+                    if let Some(cwd) = cwd {
+                        terminal_ids_to_cwds.insert(terminal_id, cwd);
                     }
                 }
-                session_layout_metadata.update_terminal_cmds(terminal_ids_to_cmds);
+                session_layout_metadata.update_terminal_commands(terminal_ids_to_commands);
+                session_layout_metadata.update_terminal_cwds(terminal_ids_to_cwds);
                 let kdl_config = session_serialization::tabs_to_kdl(session_layout_metadata.into());
                 log::info!("{kdl_config}");
             },
