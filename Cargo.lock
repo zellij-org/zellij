@@ -507,6 +507,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4dfdf9179d546b55ff3f88c9d93ecfaa3e9760163da5a1080af5243230dbbb70"
 
 [[package]]
+name = "common-path"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2382f75942f4b3be3690fe4f86365e9c853c1587d6ee58212cebf6e2a9ccd101"
+
+[[package]]
 name = "compact-bar"
 version = "0.1.0"
 dependencies = [
@@ -4626,6 +4632,7 @@ dependencies = [
  "clap_complete",
  "colored",
  "colorsys",
+ "common-path",
  "crossbeam",
  "directories-next",
  "expect-test",

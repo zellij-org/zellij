@@ -22,6 +22,7 @@ use zellij_utils::{
     position::Position,
     session_serialization::{GlobalLayoutManifest, PaneLayoutManifest, TabLayoutManifest},
 };
+use zellij_utils::common_path::common_path_all;
 
 use crate::background_jobs::BackgroundJob;
 use crate::os_input_output::ResizeCache;
@@ -131,6 +132,7 @@ macro_rules! active_tab_and_connected_client_id {
 #[derive(Default, Debug, Clone)]
 pub struct SessionLayoutMetadata {
     default_layout: Box<Layout>,
+    global_cwd: Option<PathBuf>,
     tabs: Vec<TabLayoutMetadata>,
 }
 
@@ -228,15 +230,19 @@ impl SessionLayoutMetadata {
             }
         }
     }
-    pub fn update_terminal_cwds(&mut self, mut terminal_ids_to_commands: HashMap<u32, PathBuf>) {
+    pub fn update_terminal_cwds(&mut self, mut terminal_ids_to_cwds: HashMap<u32, PathBuf>) {
+        if let Some(common_path_between_cwds) = common_path_all(terminal_ids_to_cwds.values().map(|p| p.as_path())) {
+            terminal_ids_to_cwds.values_mut().for_each(|p| {
+                if let Ok(stripped) = p.strip_prefix(&common_path_between_cwds) {
+                    *p = PathBuf::from(stripped)
+                }
+            });
+            self.global_cwd = Some(PathBuf::from(common_path_between_cwds));
+        }
         let mut update_cwd_in_pane_metadata = |pane_layout_metadata: &mut PaneLayoutMetadata| {
             if let PaneId::Terminal(id) = pane_layout_metadata.id {
-                if let Some(cwd) = terminal_ids_to_commands.remove(&id) {
-                    if pane_layout_metadata.cwd.is_none() {
-                        // do not override existing cwds because in cases where this is eg. an
-                        // Editor pane, we're not doing the right thing here
-                        pane_layout_metadata.cwd = Some(cwd);
-                    }
+                if let Some(cwd) = terminal_ids_to_cwds.remove(&id) {
+                    pane_layout_metadata.cwd = Some(cwd);
                 }
             }
         };
@@ -278,6 +284,7 @@ impl Into<GlobalLayoutManifest> for SessionLayoutMetadata {
     fn into(self) -> GlobalLayoutManifest {
         GlobalLayoutManifest {
             default_layout: self.default_layout,
+            global_cwd: self.global_cwd,
             tabs: self
                 .tabs
                 .into_iter()

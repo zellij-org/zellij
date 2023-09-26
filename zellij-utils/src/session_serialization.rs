@@ -38,6 +38,7 @@ fn indent(s: &str, prefix: &str) -> String {
 
 #[derive(Default, Debug, Clone)]
 pub struct GlobalLayoutManifest {
+    pub global_cwd: Option<PathBuf>,
     pub default_layout: Box<Layout>,
     pub tabs: Vec<(String, TabLayoutManifest)>,
 }
@@ -59,6 +60,9 @@ pub struct PaneLayoutManifest {
 
 pub fn tabs_to_kdl(global_layout_manifest: GlobalLayoutManifest) -> String {
     let mut kdl_string = String::from("layout {\n");
+    if let Some(global_cwd) = global_layout_manifest.global_cwd {
+        kdl_string.push_str(&indent(&format!("cwd \"{}\"\n", global_cwd.display()), INDENT));
+    }
     for (tab_name, tab_layout_manifest) in global_layout_manifest.tabs {
         let tiled_panes = tab_layout_manifest.tiled_panes;
         let floating_panes = tab_layout_manifest.floating_panes;
@@ -267,7 +271,10 @@ fn kdl_string_from_tiled_pane(layout: &TiledPaneLayout, ignore_size: bool) -> St
         (None, None) => format!("pane"),
     };
     if let Some(cwd) = cwd {
-        kdl_string.push_str(&format!(" cwd=\"{}\"", cwd.display()));
+        let path = cwd.display().to_string();
+        if !path.is_empty() {
+            kdl_string.push_str(&format!(" cwd=\"{}\"", path));
+        }
     }
 
     if !ignore_size {
