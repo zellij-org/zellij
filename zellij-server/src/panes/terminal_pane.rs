@@ -732,6 +732,13 @@ impl Pane for TerminalPane {
             self.pane_name.to_owned()
         }
     }
+    fn custom_title(&self) -> Option<String> {
+        if self.pane_name.is_empty() {
+            None
+        } else {
+            Some(self.pane_name.clone())
+        }
+    }
     fn exit_status(&self) -> Option<i32> {
         self.is_held
             .as_ref()

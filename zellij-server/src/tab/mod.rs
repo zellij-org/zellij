@@ -460,6 +460,7 @@ pub trait Pane {
     fn start_loading_indication(&mut self, _loading_indication: LoadingIndication) {} // only relevant for plugins
     fn progress_animation_offset(&mut self) {} // only relevant for plugins
     fn current_title(&self) -> String;
+    fn custom_title(&self) -> Option<String>;
     fn is_held(&self) -> bool {
         false
     }

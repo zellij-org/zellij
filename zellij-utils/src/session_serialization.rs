@@ -48,7 +48,6 @@ pub struct GlobalLayoutManifest {
 pub struct TabLayoutManifest {
     pub tiled_panes: Vec<PaneLayoutManifest>,
     pub floating_panes: Vec<PaneLayoutManifest>,
-    pub suppressed_panes: Vec<PaneLayoutManifest>,
 }
 
 #[derive(Default, Debug, Clone)]
@@ -57,6 +56,7 @@ pub struct PaneLayoutManifest {
     pub run: Option<Run>,
     pub cwd: Option<PathBuf>,
     pub is_borderless: bool,
+    pub title: Option<String>,
 }
 
 pub fn tabs_to_kdl(global_layout_manifest: GlobalLayoutManifest) -> String {
@@ -290,6 +290,9 @@ fn kdl_string_from_tiled_pane(layout: &TiledPaneLayout, ignore_size: bool) -> St
         (None, Some(edit)) => format!("pane edit=\"{}\"", edit),
         (None, None) => format!("pane"),
     };
+    if let Some(name) = &layout.name {
+        kdl_string.push_str(&format!(" name=\"{}\"", name));
+    }
     if let Some(cwd) = cwd {
         let path = cwd.display().to_string();
         if !path.is_empty() {
@@ -406,15 +409,14 @@ fn kdl_string_from_floating_pane(layout: &FloatingPaneLayout) -> String {
         (None, Some(edit)) => format!("pane edit=\"{}\"", edit),
         (None, None) => format!("pane"),
     };
+    if let Some(name) = &layout.name {
+        kdl_string.push_str(&format!(" name=\"{}\"", name));
+    }
     let cwd = layout.run.as_ref().and_then(|r| r.get_cwd());
     if let Some(cwd) = cwd {
         kdl_string.push_str(&format!(" cwd=\"{}\"", cwd.display()));
     }
     kdl_string.push_str(" {\n");
-
-    if let Some(name) = &layout.name {
-        kdl_string.push_str(&indent(&format!("name {}\n", name), INDENT));
-    }
 
     match layout.height {
         Some(PercentOrFixed::Fixed(fixed_height)) => {
@@ -494,7 +496,7 @@ fn get_tiled_panes_layout_from_panegeoms(
     let (children_split_direction, splits) = match get_splits(&geoms) {
         Some(x) => x,
         None => {
-            let (run, borderless, is_expanded_in_stack) = geoms
+            let (run, borderless, is_expanded_in_stack, name) = geoms
                 .iter()
                 .next()
                 .map(|g| {
@@ -510,14 +512,16 @@ fn get_tiled_panes_layout_from_panegeoms(
                         run,
                         g.is_borderless,
                         g.geom.is_stacked && g.geom.rows.inner > 1,
+                        g.title.clone(),
                     )
                 })
-                .unwrap_or((None, false, false));
+                .unwrap_or((None, false, false, None));
             return TiledPaneLayout {
                 split_size,
                 run,
                 borderless,
                 is_expanded_in_stack,
+                name,
                 ..Default::default()
             };
         },
@@ -575,7 +579,7 @@ fn get_floating_panes_layout_from_panegeoms(
                 run.as_mut().map(|r| r.add_cwd(cwd));
             }
             FloatingPaneLayout {
-                name: None, // TODO: TBD
+                name: m.title.clone(),
                 height: Some(m.geom.rows.into()),
                 width: Some(m.geom.cols.into()),
                 x: Some(PercentOrFixed::Fixed(m.geom.x)),

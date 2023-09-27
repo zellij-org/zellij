@@ -186,18 +186,14 @@ impl SessionLayoutMetadata {
     pub fn add_tab(
         &mut self,
         name: String,
-        tiled_panes: Vec<(PaneId, PaneGeom, bool, Option<Run>)>, // bool => is_borderless
-        floating_panes: Vec<(PaneId, PaneGeom, Option<Run>)>,
-        suppressed_panes: HashMap<PaneId, (PaneId, PaneGeom, Option<Run>)>,
+        tiled_panes: Vec<(PaneId, PaneGeom, bool, Option<Run>, Option<String>)>, // bool => is_borderless,
+                                                                         // Option<String> => title
+        floating_panes: Vec<(PaneId, PaneGeom, Option<Run>, Option<String>)>, // Option<String> => title
     ) {
         self.tabs.push(TabLayoutMetadata {
             name: Some(name), // TODO: tabs don't always have a name...
             tiled_panes: tiled_panes.into_iter().map(|t_p| t_p.into()).collect(),
             floating_panes: floating_panes.into_iter().map(|t_p| t_p.into()).collect(),
-            suppressed_panes: suppressed_panes
-                .into_iter()
-                .map(|(t_p_id, t_p)| (t_p_id, t_p.into()))
-                .collect(),
         })
     }
     pub fn all_terminal_ids(&self) -> Vec<u32> {
@@ -209,11 +205,6 @@ impl SessionLayoutMetadata {
                 }
             }
             for pane_layout_metadata in &tab.floating_panes {
-                if let PaneId::Terminal(id) = pane_layout_metadata.id {
-                    terminal_ids.push(id);
-                }
-            }
-            for pane_layout_metadata in tab.suppressed_panes.values() {
                 if let PaneId::Terminal(id) = pane_layout_metadata.id {
                     terminal_ids.push(id);
                 }
@@ -230,11 +221,6 @@ impl SessionLayoutMetadata {
                 }
             }
             for pane_layout_metadata in &tab.floating_panes {
-                if let PaneId::Plugin(id) = pane_layout_metadata.id {
-                    plugin_ids.push(id);
-                }
-            }
-            for pane_layout_metadata in tab.suppressed_panes.values() {
                 if let PaneId::Plugin(id) = pane_layout_metadata.id {
                     plugin_ids.push(id);
                 }
@@ -278,9 +264,6 @@ impl SessionLayoutMetadata {
             for pane_layout_metadata in tab.floating_panes.iter_mut() {
                 update_cmd_in_pane_metadata(pane_layout_metadata);
             }
-            for pane_layout_metadata in tab.suppressed_panes.values_mut() {
-                update_cmd_in_pane_metadata(pane_layout_metadata);
-            }
         }
     }
     pub fn update_terminal_cwds(&mut self, mut terminal_ids_to_cwds: HashMap<u32, PathBuf>) {
@@ -308,9 +291,6 @@ impl SessionLayoutMetadata {
             for pane_layout_metadata in tab.floating_panes.iter_mut() {
                 update_cwd_in_pane_metadata(pane_layout_metadata);
             }
-            for pane_layout_metadata in tab.suppressed_panes.values_mut() {
-                update_cwd_in_pane_metadata(pane_layout_metadata);
-            }
         }
     }
     pub fn update_plugin_cmds(&mut self, mut plugin_ids_to_run_plugins: HashMap<u32, RunPlugin>) {
@@ -326,9 +306,6 @@ impl SessionLayoutMetadata {
                 update_cmd_in_pane_metadata(pane_layout_metadata);
             }
             for pane_layout_metadata in tab.floating_panes.iter_mut() {
-                update_cmd_in_pane_metadata(pane_layout_metadata);
-            }
-            for pane_layout_metadata in tab.suppressed_panes.values_mut() {
                 update_cmd_in_pane_metadata(pane_layout_metadata);
             }
         }
@@ -355,11 +332,6 @@ impl Into<TabLayoutManifest> for TabLayoutMetadata {
         TabLayoutManifest {
             tiled_panes: self.tiled_panes.into_iter().map(|t| t.into()).collect(),
             floating_panes: self.floating_panes.into_iter().map(|t| t.into()).collect(),
-            suppressed_panes: self
-                .suppressed_panes
-                .values()
-                .map(|t| t.clone().into())
-                .collect(),
         }
     }
 }
@@ -371,6 +343,7 @@ impl Into<PaneLayoutManifest> for PaneLayoutMetadata {
             run: self.run,
             cwd: self.cwd,
             is_borderless: self.is_borderless,
+            title: self.title,
         }
     }
 }
@@ -381,7 +354,6 @@ pub struct TabLayoutMetadata {
     name: Option<String>,
     tiled_panes: Vec<PaneLayoutMetadata>,
     floating_panes: Vec<PaneLayoutMetadata>,
-    suppressed_panes: HashMap<PaneId, PaneLayoutMetadata>,
 }
 
 // TODO: move elsewhere
@@ -392,29 +364,33 @@ pub struct PaneLayoutMetadata {
     run: Option<Run>,
     cwd: Option<PathBuf>,
     is_borderless: bool,
+    title: Option<String>,
 }
 
-impl From<(PaneId, PaneGeom, bool, Option<Run>)> for PaneLayoutMetadata {
-    // bool => is_borderless
-    fn from(pane_id_and_pane_geom: (PaneId, PaneGeom, bool, Option<Run>)) -> Self {
+impl From<(PaneId, PaneGeom, bool, Option<Run>, Option<String>)> for PaneLayoutMetadata {
+    // bool => is_borderless, String => title
+    fn from(pane_id_and_pane_geom: (PaneId, PaneGeom, bool, Option<Run>, Option<String>)) -> Self {
         PaneLayoutMetadata {
             id: pane_id_and_pane_geom.0,
             geom: pane_id_and_pane_geom.1,
             run: pane_id_and_pane_geom.3,
             cwd: None,
             is_borderless: pane_id_and_pane_geom.2,
+            title: pane_id_and_pane_geom.4,
         }
     }
 }
 
-impl From<(PaneId, PaneGeom, Option<Run>)> for PaneLayoutMetadata {
-    fn from(pane_id_and_pane_geom: (PaneId, PaneGeom, Option<Run>)) -> Self {
+impl From<(PaneId, PaneGeom, Option<Run>, Option<String>)> for PaneLayoutMetadata {
+    // String => title
+    fn from(pane_id_and_pane_geom: (PaneId, PaneGeom, Option<Run>, Option<String>)) -> Self {
         PaneLayoutMetadata {
             id: pane_id_and_pane_geom.0,
             geom: pane_id_and_pane_geom.1,
             run: pane_id_and_pane_geom.2,
             cwd: None,
             is_borderless: false,
+            title: pane_id_and_pane_geom.3,
         }
     }
 }
@@ -2580,7 +2556,10 @@ pub(crate) fn screen_thread_main(
                             p
                         );
                     }
-                    let tiled_panes: Vec<(PaneId, PaneGeom, bool, Option<Run>)> =
+                    let tiled_panes: Vec<(PaneId, PaneGeom, bool, Option<Run>, Option<String>)> = // Option<String>
+                                                                                          // =>
+                                                                                          // pane
+                                                                                          // title
                         tab // bool => is_borderless
                             .get_tiled_panes()
                             .map(|(pane_id, p)| {
@@ -2605,10 +2584,14 @@ pub(crate) fn screen_thread_main(
                                     p.position_and_size(),
                                     p.borderless(),
                                     p.invoked_with().clone(),
+                                    p.custom_title()
                                 )
                             })
                             .collect();
-                    let floating_panes: Vec<(PaneId, PaneGeom, Option<Run>)> = tab
+                    let floating_panes: Vec<(PaneId, PaneGeom, Option<Run>, Option<String>)> = tab // Option<String>
+                                                                                           // =>
+                                                                                           // pane
+                                                                                           // title
                         .get_floating_panes()
                         .map(|(pane_id, p)| {
                             // here we look to see if this pane triggers any suppressed pane,
@@ -2627,14 +2610,13 @@ pub(crate) fn screen_thread_main(
                             }
                         })
                         .map(|(pane_id, p)| {
-                            (pane_id, p.position_and_size(), p.invoked_with().clone())
+                            (pane_id, p.position_and_size(), p.invoked_with().clone(), p.custom_title())
                         })
                         .collect();
                     session_layout_metadata.add_tab(
                         tab.name.clone(),
                         tiled_panes,
                         floating_panes,
-                        HashMap::new(), // for the moment we ignore the suppressed panes
                     );
                 }
                 screen
