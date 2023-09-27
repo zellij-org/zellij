@@ -911,11 +911,11 @@ fn init_session(
 #[cfg(not(feature = "singlepass"))]
 fn get_store() -> Store {
     log::info!("Compiling plugins using Cranelift");
-    Store::new(&wasmer::Universal::new(wasmer::Cranelift::default()).engine())
+    Store::new(wasmer::Cranelift::default())
 }
 
 #[cfg(feature = "singlepass")]
 fn get_store() -> Store {
     log::info!("Compiling plugins using Singlepass");
-    Store::new(&wasmer::Universal::new(wasmer::Singlepass::default()).engine())
+    Store::new(wasmer::Singlepass::default())
 }

@@ -9,6 +9,8 @@ use std::{
     collections::{HashMap, HashSet},
     fs,
     path::PathBuf,
+    sync::{Arc, Mutex},
+    time::Duration,
 };
 use wasmer::Store;
 
@@ -19,6 +21,7 @@ use crate::{pty::PtyInstruction, thread_bus::Bus, ClientId, ServerInstruction};
 use wasm_bridge::WasmBridge;
 
 use zellij_utils::{
+    async_std::{channel, future::timeout, task},
     data::{Event, EventType, PermissionStatus, PermissionType, PluginCapabilities},
     errors::{prelude::*, ContextType, PluginContext},
     input::{
@@ -142,6 +145,12 @@ pub(crate) fn plugin_thread_main(
     let plugin_dir = data_dir.join("plugins/");
     let plugin_global_data_dir = plugin_dir.join("data");
 
+    let store = Arc::new(Mutex::new(store));
+
+    // use this channel to ensure that tasks spawned from this thread terminate before exiting
+    // https://tokio.rs/tokio/topics/shutdown#waiting-for-things-to-finish-shutting-down
+    let (shutdown_send, shutdown_receive) = channel::bounded::<()>(1);
+
     let mut wasm_bridge = WasmBridge::new(
         plugins,
         bus.senders.clone(),
@@ -186,7 +195,7 @@ pub(crate) fn plugin_thread_main(
                 },
             },
             PluginInstruction::Update(updates) => {
-                wasm_bridge.update_plugins(updates)?;
+                wasm_bridge.update_plugins(updates, shutdown_send.clone())?;
             },
             PluginInstruction::Unload(pid) => {
                 wasm_bridge.unload_plugin(pid)?;
@@ -229,7 +238,7 @@ pub(crate) fn plugin_thread_main(
                 }
             },
             PluginInstruction::Resize(pid, new_columns, new_rows) => {
-                wasm_bridge.resize_plugin(pid, new_columns, new_rows)?;
+                wasm_bridge.resize_plugin(pid, new_columns, new_rows, shutdown_send.clone())?;
             },
             PluginInstruction::AddClient(client_id) => {
                 wasm_bridge.add_client(client_id)?;
@@ -286,7 +295,7 @@ pub(crate) fn plugin_thread_main(
                 )));
             },
             PluginInstruction::ApplyCachedEvents(plugin_id) => {
-                wasm_bridge.apply_cached_events(plugin_id)?;
+                wasm_bridge.apply_cached_events(plugin_id, shutdown_send.clone())?;
             },
             PluginInstruction::ApplyCachedWorkerMessages(plugin_id) => {
                 wasm_bridge.apply_cached_worker_messages(plugin_id)?;
@@ -310,7 +319,7 @@ pub(crate) fn plugin_thread_main(
                     Some(client_id),
                     Event::CustomMessage(message, payload),
                 )];
-                wasm_bridge.update_plugins(updates)?;
+                wasm_bridge.update_plugins(updates, shutdown_send.clone())?;
             },
             PluginInstruction::PluginSubscribedToEvents(_plugin_id, _client_id, events) => {
                 for event in events {
@@ -345,15 +354,27 @@ pub(crate) fn plugin_thread_main(
                     client_id,
                     Event::PermissionRequestResult(status),
                 )];
-                wasm_bridge.update_plugins(updates)?;
+                wasm_bridge.update_plugins(updates, shutdown_send.clone())?;
             },
             PluginInstruction::Exit => {
-                wasm_bridge.cleanup();
                 break;
             },
         }
     }
     info!("wasm main thread exits");
+
+    // first drop our sender, then call recv.
+    // once all senders are dropped or the timeout is reached, recv will return an error, that we ignore
+
+    drop(shutdown_send);
+    task::block_on(async {
+        let result = timeout(EXIT_TIMEOUT, shutdown_receive.recv()).await;
+        if let Err(err) = result {
+            log::error!("timeout waiting for plugin tasks to finish: {}", err);
+        }
+    });
+
+    wasm_bridge.cleanup();
 
     fs::remove_dir_all(&plugin_global_data_dir)
         .or_else(|err| {
@@ -366,6 +387,8 @@ pub(crate) fn plugin_thread_main(
         })
         .context("failed to cleanup plugin data directory")
 }
+
+const EXIT_TIMEOUT: Duration = Duration::from_secs(3);
 
 #[path = "./unit/plugin_tests.rs"]
 #[cfg(test)]
