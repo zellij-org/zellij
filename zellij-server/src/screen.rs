@@ -2589,8 +2589,12 @@ pub(crate) fn screen_thread_main(
                                 // is currently only the case the scrollback editing panes, and
                                 // when dumping the layout we want the "real" pane and not the
                                 // editor pane
-                                if let Some(suppressed_pane) = suppressed_panes.remove(pane_id) {
-                                    (suppressed_pane.pid(), suppressed_pane)
+                                if let Some((is_scrollback_editor, suppressed_pane)) = suppressed_panes.remove(pane_id) {
+                                    if *is_scrollback_editor {
+                                        (suppressed_pane.pid(), suppressed_pane)
+                                    } else {
+                                        (*pane_id, p)
+                                    }
                                 } else {
                                     (*pane_id, p)
                                 }
@@ -2612,8 +2616,12 @@ pub(crate) fn screen_thread_main(
                             // is currently only the case the scrollback editing panes, and
                             // when dumping the layout we want the "real" pane and not the
                             // editor pane
-                            if let Some(suppressed_pane) = suppressed_panes.remove(pane_id) {
-                                (suppressed_pane.pid(), suppressed_pane)
+                            if let Some((is_scrollback_editor, suppressed_pane)) = suppressed_panes.remove(pane_id) {
+                                if *is_scrollback_editor {
+                                    (suppressed_pane.pid(), suppressed_pane)
+                                } else {
+                                    (*pane_id, p)
+                                }
                             } else {
                                 (*pane_id, p)
                             }
