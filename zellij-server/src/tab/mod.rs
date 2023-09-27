@@ -1192,8 +1192,10 @@ impl Tab {
                             self.character_cell_size
                         );
                         let is_scrollback_editor = false;
-                        self.suppressed_panes
-                            .insert(PaneId::Terminal(new_pane_id), (is_scrollback_editor, replaced_pane));
+                        self.suppressed_panes.insert(
+                            PaneId::Terminal(new_pane_id),
+                            (is_scrollback_editor, replaced_pane),
+                        );
                     },
                     None => {
                         Err::<(), _>(anyhow!(
@@ -1243,8 +1245,10 @@ impl Tab {
                             self.character_cell_size
                         );
                         let is_scrollback_editor = false;
-                        self.suppressed_panes
-                            .insert(PaneId::Plugin(plugin_pid), (is_scrollback_editor, replaced_pane));
+                        self.suppressed_panes.insert(
+                            PaneId::Plugin(plugin_pid),
+                            (is_scrollback_editor, replaced_pane),
+                        );
                     },
                     None => {
                         Err::<(), _>(anyhow!(
@@ -1436,7 +1440,10 @@ impl Tab {
     pub fn has_pane_with_pid(&self, pid: &PaneId) -> bool {
         self.tiled_panes.panes_contain(pid)
             || self.floating_panes.panes_contain(pid)
-            || self.suppressed_panes.values().any(|s_p| s_p.1.pid() == *pid)
+            || self
+                .suppressed_panes
+                .values()
+                .any(|s_p| s_p.1.pid() == *pid)
     }
     pub fn has_non_suppressed_pane_with_pid(&self, pid: &PaneId) -> bool {
         self.tiled_panes.panes_contain(pid) || self.floating_panes.panes_contain(pid)
@@ -1926,7 +1933,10 @@ impl Tab {
     pub(crate) fn get_floating_panes(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn Pane>)> {
         self.floating_panes.get_panes()
     }
-    pub(crate) fn get_suppressed_panes(&self) -> impl Iterator<Item = (&PaneId, &(bool, Box<dyn Pane>))> { // bool => is_scrollback_editor
+    pub(crate) fn get_suppressed_panes(
+        &self,
+    ) -> impl Iterator<Item = (&PaneId, &(bool, Box<dyn Pane>))> {
+        // bool => is_scrollback_editor
         self.suppressed_panes.iter()
     }
     fn get_selectable_tiled_panes(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn Pane>)> {
@@ -3307,7 +3317,11 @@ impl Tab {
             .floating_panes
             .get_pane_mut(pane_id)
             .or_else(|| self.tiled_panes.get_pane_mut(pane_id))
-            .or_else(|| self.suppressed_panes.get_mut(&pane_id).map(|s_p| &mut s_p.1))
+            .or_else(|| {
+                self.suppressed_panes
+                    .get_mut(&pane_id)
+                    .map(|s_p| &mut s_p.1)
+            })
             .with_context(err_context)?;
         pane.rename(buf);
         Ok(())
@@ -3562,7 +3576,8 @@ impl Tab {
         // show_self() method)
         if let Some(pane) = self.close_pane(pane_id, true, Some(client_id)) {
             let is_scrollback_editor = false;
-            self.suppressed_panes.insert(pane_id, (is_scrollback_editor, pane));
+            self.suppressed_panes
+                .insert(pane_id, (is_scrollback_editor, pane));
         }
     }
     pub fn pane_infos(&self) -> Vec<PaneInfo> {

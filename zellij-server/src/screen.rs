@@ -187,7 +187,7 @@ impl SessionLayoutMetadata {
         &mut self,
         name: String,
         tiled_panes: Vec<(PaneId, PaneGeom, bool, Option<Run>, Option<String>)>, // bool => is_borderless,
-                                                                         // Option<String> => title
+        // Option<String> => title
         floating_panes: Vec<(PaneId, PaneGeom, Option<Run>, Option<String>)>, // Option<String> => title
     ) {
         self.tabs.push(TabLayoutMetadata {
@@ -2551,10 +2551,7 @@ pub(crate) fn screen_thread_main(
                 for tab in screen.tabs.values() {
                     let mut suppressed_panes = HashMap::new();
                     for (triggering_pane_id, p) in tab.get_suppressed_panes() {
-                        suppressed_panes.insert(
-                            *triggering_pane_id,
-                            p
-                        );
+                        suppressed_panes.insert(*triggering_pane_id, p);
                     }
                     let tiled_panes: Vec<(PaneId, PaneGeom, bool, Option<Run>, Option<String>)> = // Option<String>
                                                                                           // =>
@@ -2588,36 +2585,40 @@ pub(crate) fn screen_thread_main(
                                 )
                             })
                             .collect();
-                    let floating_panes: Vec<(PaneId, PaneGeom, Option<Run>, Option<String>)> = tab // Option<String>
-                                                                                           // =>
-                                                                                           // pane
-                                                                                           // title
-                        .get_floating_panes()
-                        .map(|(pane_id, p)| {
-                            // here we look to see if this pane triggers any suppressed pane,
-                            // and if so we take that suppressed pane - we do this because this
-                            // is currently only the case the scrollback editing panes, and
-                            // when dumping the layout we want the "real" pane and not the
-                            // editor pane
-                            if let Some((is_scrollback_editor, suppressed_pane)) = suppressed_panes.remove(pane_id) {
-                                if *is_scrollback_editor {
-                                    (suppressed_pane.pid(), suppressed_pane)
+                    let floating_panes: Vec<(PaneId, PaneGeom, Option<Run>, Option<String>)> =
+                        tab // Option<String>
+                            // =>
+                            // pane
+                            // title
+                            .get_floating_panes()
+                            .map(|(pane_id, p)| {
+                                // here we look to see if this pane triggers any suppressed pane,
+                                // and if so we take that suppressed pane - we do this because this
+                                // is currently only the case the scrollback editing panes, and
+                                // when dumping the layout we want the "real" pane and not the
+                                // editor pane
+                                if let Some((is_scrollback_editor, suppressed_pane)) =
+                                    suppressed_panes.remove(pane_id)
+                                {
+                                    if *is_scrollback_editor {
+                                        (suppressed_pane.pid(), suppressed_pane)
+                                    } else {
+                                        (*pane_id, p)
+                                    }
                                 } else {
                                     (*pane_id, p)
                                 }
-                            } else {
-                                (*pane_id, p)
-                            }
-                        })
-                        .map(|(pane_id, p)| {
-                            (pane_id, p.position_and_size(), p.invoked_with().clone(), p.custom_title())
-                        })
-                        .collect();
-                    session_layout_metadata.add_tab(
-                        tab.name.clone(),
-                        tiled_panes,
-                        floating_panes,
-                    );
+                            })
+                            .map(|(pane_id, p)| {
+                                (
+                                    pane_id,
+                                    p.position_and_size(),
+                                    p.invoked_with().clone(),
+                                    p.custom_title(),
+                                )
+                            })
+                            .collect();
+                    session_layout_metadata.add_tab(tab.name.clone(), tiled_panes, floating_panes);
                 }
                 screen
                     .bus
