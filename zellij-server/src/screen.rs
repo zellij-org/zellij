@@ -168,6 +168,16 @@ impl SessionLayoutMetadata {
                     }
                 }
             }
+            for floating_pane in tab.floating_panes.iter_mut() {
+                if let Some(Run::Command(run_command)) = floating_pane.run.as_mut() {
+                    if is_default_shell(
+                        &run_command.command.display().to_string(),
+                        &run_command.args,
+                    ) {
+                        floating_pane.run = None;
+                    }
+                }
+            }
         }
     }
 }
@@ -2563,12 +2573,31 @@ pub(crate) fn screen_thread_main(
                     session_layout_metadata.update_default_shell(default_shell);
                 }
                 for tab in screen.tabs.values() {
+                    let mut suppressed_panes = HashMap::new();
+                    for (triggering_pane_id, p) in tab.get_suppressed_panes() {
+                        suppressed_panes.insert(
+                            *triggering_pane_id,
+                            p
+                        );
+                    }
                     let tiled_panes: Vec<(PaneId, PaneGeom, bool, Option<Run>)> =
                         tab // bool => is_borderless
                             .get_tiled_panes()
                             .map(|(pane_id, p)| {
+                                // here we look to see if this pane triggers any suppressed pane,
+                                // and if so we take that suppressed pane - we do this because this
+                                // is currently only the case the scrollback editing panes, and
+                                // when dumping the layout we want the "real" pane and not the
+                                // editor pane
+                                if let Some(suppressed_pane) = suppressed_panes.remove(pane_id) {
+                                    (suppressed_pane.pid(), suppressed_pane)
+                                } else {
+                                    (*pane_id, p)
+                                }
+                            })
+                            .map(|(pane_id, p)| {
                                 (
-                                    *pane_id,
+                                    pane_id,
                                     p.position_and_size(),
                                     p.borderless(),
                                     p.invoked_with().clone(),
@@ -2578,23 +2607,26 @@ pub(crate) fn screen_thread_main(
                     let floating_panes: Vec<(PaneId, PaneGeom, Option<Run>)> = tab
                         .get_floating_panes()
                         .map(|(pane_id, p)| {
-                            (*pane_id, p.position_and_size(), p.invoked_with().clone())
+                            // here we look to see if this pane triggers any suppressed pane,
+                            // and if so we take that suppressed pane - we do this because this
+                            // is currently only the case the scrollback editing panes, and
+                            // when dumping the layout we want the "real" pane and not the
+                            // editor pane
+                            if let Some(suppressed_pane) = suppressed_panes.remove(pane_id) {
+                                (suppressed_pane.pid(), suppressed_pane)
+                            } else {
+                                (*pane_id, p)
+                            }
+                        })
+                        .map(|(pane_id, p)| {
+                            (pane_id, p.position_and_size(), p.invoked_with().clone())
                         })
                         .collect();
-                    let mut suppressed_panes: HashMap<PaneId, (PaneId, PaneGeom, Option<Run>)> =
-                        HashMap::new();
-                    for (triggering_pane_id, p) in tab.get_suppressed_panes() {
-                        let pane_id = p.pid();
-                        suppressed_panes.insert(
-                            *triggering_pane_id,
-                            (pane_id, p.position_and_size(), p.invoked_with().clone()),
-                        );
-                    }
                     session_layout_metadata.add_tab(
                         tab.name.clone(),
                         tiled_panes,
                         floating_panes,
-                        suppressed_panes,
+                        HashMap::new(), // for the moment we ignore the suppressed panes
                     );
                 }
                 screen
