@@ -20,7 +20,14 @@ use clap_complete::Shell;
 use directories_next::BaseDirs;
 use log::info;
 use serde::{Deserialize, Serialize};
-use std::{convert::TryFrom, fmt::Write as FmtWrite, fs, io::Write, path::{Path, PathBuf}, process};
+use std::{
+    convert::TryFrom,
+    fmt::Write as FmtWrite,
+    fs,
+    io::Write,
+    path::{Path, PathBuf},
+    process,
+};
 
 const CONFIG_NAME: &str = "config.kdl";
 static ARROW_SEPARATOR: &str = "";
