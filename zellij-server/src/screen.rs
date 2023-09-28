@@ -2541,7 +2541,8 @@ pub(crate) fn screen_thread_main(
                 screen.render()?;
                 screen.unblock_input()?;
             },
-            ScreenInstruction::DumpLayout(client_id, layout, default_shell) => {
+            ScreenInstruction::DumpLayout(client_id, layout, default_shell) => { // TODO: ordering
+                                                                                 // and args
                 let err_context = || format!("Failed to dump layout");
                 let mut session_layout_metadata =
                     SessionLayoutMetadata::new(screen.default_layout.clone());
@@ -2623,10 +2624,8 @@ pub(crate) fn screen_thread_main(
                 screen
                     .bus
                     .senders
-                    .send_to_plugin(PluginInstruction::DumpLayout(session_layout_metadata))
+                    .send_to_plugin(PluginInstruction::DumpLayout(session_layout_metadata, client_id))
                     .with_context(err_context)?;
-                screen.unblock_input()?;
-                screen.render()?;
             },
             ScreenInstruction::EditScrollback(client_id) => {
                 active_tab_and_connected_client_id!(

@@ -95,7 +95,7 @@ pub enum PluginInstruction {
         PermissionStatus,
         Option<PathBuf>,
     ),
-    DumpLayout(SessionLayoutMetadata),
+    DumpLayout(SessionLayoutMetadata, ClientId),
     Exit,
 }
 
@@ -358,7 +358,7 @@ pub(crate) fn plugin_thread_main(
                 )];
                 wasm_bridge.update_plugins(updates, shutdown_send.clone())?;
             },
-            PluginInstruction::DumpLayout(mut session_layout_metadata) => {
+            PluginInstruction::DumpLayout(mut session_layout_metadata, client_id) => {
                 let plugin_ids = session_layout_metadata.all_plugin_ids();
                 let mut plugin_ids_to_cmds: HashMap<u32, RunPlugin> = HashMap::new();
                 for plugin_id in plugin_ids {
@@ -373,7 +373,7 @@ pub(crate) fn plugin_thread_main(
                 session_layout_metadata.update_plugin_cmds(plugin_ids_to_cmds);
                 drop(
                     bus.senders
-                        .send_to_pty(PtyInstruction::DumpLayout(session_layout_metadata)),
+                        .send_to_pty(PtyInstruction::DumpLayout(session_layout_metadata, client_id)),
                 );
             },
             PluginInstruction::Exit => {

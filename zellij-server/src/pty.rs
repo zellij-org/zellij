@@ -25,7 +25,6 @@ use zellij_utils::{
 
 pub type VteBytes = Vec<u8>;
 pub type TabIndex = u32;
-// pub type SessionGeometry = Vec<(String, Vec<(PaneId, PaneGeom)>)>;
 
 #[derive(Clone, Copy, Debug)]
 pub enum ClientTabIndexOrPaneId {
@@ -70,7 +69,7 @@ pub enum PtyInstruction {
         Option<String>,
         ClientTabIndexOrPaneId,
     ), // String is an optional pane name
-    DumpLayout(SessionLayoutMetadata),
+    DumpLayout(SessionLayoutMetadata, ClientId),
     Exit,
 }
 
@@ -531,7 +530,8 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     },
                 }
             },
-            PtyInstruction::DumpLayout(mut session_layout_metadata) => {
+            PtyInstruction::DumpLayout(mut session_layout_metadata, client_id) => {
+                let err_context = || format!("Failed to dump layout");
                 let terminal_ids = session_layout_metadata.all_terminal_ids();
                 let mut terminal_ids_to_commands: HashMap<u32, Vec<String>> = HashMap::new();
                 let mut terminal_ids_to_cwds: HashMap<u32, PathBuf> = HashMap::new();
@@ -560,7 +560,12 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                 session_layout_metadata.update_terminal_commands(terminal_ids_to_commands);
                 session_layout_metadata.update_terminal_cwds(terminal_ids_to_cwds);
                 let kdl_config = session_serialization::tabs_to_kdl(session_layout_metadata.into());
-                log::info!("{kdl_config}");
+                pty
+                    .bus
+                    .senders
+                    .send_to_server(ServerInstruction::Log(vec![kdl_config], client_id))
+                    .with_context(err_context)
+                    .non_fatal();
             },
             PtyInstruction::Exit => break,
         }
