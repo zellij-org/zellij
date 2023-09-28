@@ -68,7 +68,7 @@ pub(crate) fn get_default_themes() -> Themes {
     let mut themes = Themes::default();
     for file in ZELLIJ_DEFAULT_THEMES.files() {
         if let Some(content) = file.contents_utf8() {
-            match Themes::from_string(content.to_string()) {
+            match Themes::from_string(&content.to_string()) {
                 Ok(theme) => themes = themes.merge(theme),
                 Err(_) => {},
             }

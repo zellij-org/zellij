@@ -11,7 +11,8 @@ use std::{
     str::FromStr,
     sync::{Arc, Mutex},
 };
-use wasmer::{Instance, Module, Store, Value};
+use wasmer::{Module, Store, Value};
+use zellij_utils::async_channel::Sender;
 use zellij_utils::async_std::task::{self, JoinHandle};
 use zellij_utils::data::{PermissionStatus, PermissionType};
 use zellij_utils::input::permission::PermissionCache;
@@ -40,7 +41,7 @@ pub struct WasmBridge {
     connected_clients: Arc<Mutex<Vec<ClientId>>>,
     plugins: PluginsConfig,
     senders: ThreadSenders,
-    store: Store,
+    store: Arc<Mutex<Store>>,
     plugin_dir: PathBuf,
     plugin_cache: Arc<Mutex<HashMap<PathBuf, Module>>>,
     plugin_map: Arc<Mutex<PluginMap>>,
@@ -66,7 +67,7 @@ impl WasmBridge {
     pub fn new(
         plugins: PluginsConfig,
         senders: ThreadSenders,
-        store: Store,
+        store: Arc<Mutex<Store>>,
         plugin_dir: PathBuf,
         path_to_default_shell: PathBuf,
         zellij_cwd: PathBuf,
@@ -342,6 +343,7 @@ impl WasmBridge {
         pid: PluginId,
         new_columns: usize,
         new_rows: usize,
+        shutdown_sender: Sender<()>,
     ) -> Result<()> {
         let err_context = move || format!("failed to resize plugin {pid}");
 
@@ -369,22 +371,29 @@ impl WasmBridge {
                     let running_plugin = running_plugin.clone();
                     let plugin_id = plugin_id;
                     let client_id = client_id;
+                    let _s = shutdown_sender.clone();
                     async move {
                         let mut running_plugin = running_plugin.lock().unwrap();
+                        let _s = _s; // guard to allow the task to complete before cleanup/shutdown
                         if running_plugin.apply_event_id(AtomicEvent::Resize, event_id) {
                             running_plugin.rows = new_rows;
                             running_plugin.columns = new_columns;
+
                             let rendered_bytes = running_plugin
                                 .instance
+                                .clone()
                                 .exports
                                 .get_function("render")
                                 .map_err(anyError::new)
                                 .and_then(|render| {
                                     render
-                                        .call(&[
-                                            Value::I32(running_plugin.rows as i32),
-                                            Value::I32(running_plugin.columns as i32),
-                                        ])
+                                        .call(
+                                            &mut running_plugin.store,
+                                            &[
+                                                Value::I32(new_rows as i32),
+                                                Value::I32(new_columns as i32),
+                                            ],
+                                        )
                                         .map_err(anyError::new)
                                 })
                                 .and_then(|_| wasi_read_string(&running_plugin.plugin_env.wasi_env))
@@ -420,6 +429,7 @@ impl WasmBridge {
     pub fn update_plugins(
         &mut self,
         mut updates: Vec<(Option<PluginId>, Option<ClientId>, Event)>,
+        shutdown_sender: Sender<()>,
     ) -> Result<()> {
         let err_context = || "failed to update plugin state".to_string();
 
@@ -459,17 +469,16 @@ impl WasmBridge {
                         let event = event.clone();
                         let plugin_id = *plugin_id;
                         let client_id = *client_id;
+                        let _s = shutdown_sender.clone();
                         async move {
-                            let running_plugin = running_plugin.lock().unwrap();
+                            let mut running_plugin = running_plugin.lock().unwrap();
                             let mut plugin_bytes = vec![];
+                            let _s = _s; // guard to allow the task to complete before cleanup/shutdown
                             match apply_event_to_plugin(
                                 plugin_id,
                                 client_id,
-                                &running_plugin.instance,
-                                &running_plugin.plugin_env,
+                                &mut running_plugin,
                                 &event,
-                                running_plugin.rows,
-                                running_plugin.columns,
                                 &mut plugin_bytes,
                             ) {
                                 Ok(()) => {
@@ -503,10 +512,14 @@ impl WasmBridge {
         }
         Ok(())
     }
-    pub fn apply_cached_events(&mut self, plugin_ids: Vec<PluginId>) -> Result<()> {
+    pub fn apply_cached_events(
+        &mut self,
+        plugin_ids: Vec<PluginId>,
+        shutdown_sender: Sender<()>,
+    ) -> Result<()> {
         let mut applied_plugin_paths = HashSet::new();
         for plugin_id in plugin_ids {
-            self.apply_cached_events_and_resizes_for_plugin(plugin_id)?;
+            self.apply_cached_events_and_resizes_for_plugin(plugin_id, shutdown_sender.clone())?;
             if let Some(run_plugin) = self.run_plugin_of_loading_plugin_id(plugin_id) {
                 applied_plugin_paths.insert(run_plugin.clone());
             }
@@ -550,7 +563,11 @@ impl WasmBridge {
             .unwrap()
             .run_plugin_of_plugin_id(plugin_id)
     }
-    fn apply_cached_events_and_resizes_for_plugin(&mut self, plugin_id: PluginId) -> Result<()> {
+    fn apply_cached_events_and_resizes_for_plugin(
+        &mut self,
+        plugin_id: PluginId,
+        shutdown_sender: Sender<()>,
+    ) -> Result<()> {
         let err_context = || format!("Failed to apply cached events to plugin");
         if let Some(events) = self.cached_events_for_pending_plugins.remove(&plugin_id) {
             let all_connected_clients: Vec<ClientId> = self
@@ -578,17 +595,16 @@ impl WasmBridge {
                             let senders = self.senders.clone();
                             let running_plugin = running_plugin.clone();
                             let client_id = *client_id;
+                            let _s = shutdown_sender.clone();
                             async move {
-                                let running_plugin = running_plugin.lock().unwrap();
+                                let mut running_plugin = running_plugin.lock().unwrap();
                                 let mut plugin_bytes = vec![];
+                                let _s = _s; // guard to allow the task to complete before cleanup/shutdown
                                 match apply_event_to_plugin(
                                     plugin_id,
                                     client_id,
-                                    &running_plugin.instance,
-                                    &running_plugin.plugin_env,
+                                    &mut running_plugin,
                                     &event,
-                                    running_plugin.rows,
-                                    running_plugin.columns,
                                     &mut plugin_bytes,
                                 ) {
                                     Ok(()) => {
@@ -607,7 +623,7 @@ impl WasmBridge {
             }
         }
         if let Some((rows, columns)) = self.cached_resizes_for_pending_plugins.remove(&plugin_id) {
-            self.resize_plugin(plugin_id, columns, rows)?;
+            self.resize_plugin(plugin_id, columns, rows, shutdown_sender.clone())?;
         }
         self.apply_cached_worker_messages(plugin_id)?;
         Ok(())
@@ -722,35 +738,34 @@ impl WasmBridge {
         status: PermissionStatus,
         cache_path: Option<PathBuf>,
     ) -> Result<()> {
-        if let Some(running_plugin) = self
+        let err_context = || format!("Failed to write plugin permission {plugin_id}");
+
+        let running_plugin = self
             .plugin_map
             .lock()
             .unwrap()
             .get_running_plugin(plugin_id, client_id)
-        {
-            let err_context = || format!("Failed to write plugin permission {plugin_id}");
+            .ok_or_else(|| anyhow!("Failed to get running plugin"))?;
 
-            let mut running_plugin = running_plugin.lock().unwrap();
-            let permissions = if status == PermissionStatus::Granted {
-                permissions
-            } else {
-                vec![]
-            };
+        let mut running_plugin = running_plugin.lock().unwrap();
 
-            running_plugin
-                .plugin_env
-                .set_permissions(HashSet::from_iter(permissions.clone()));
+        let permissions = if status == PermissionStatus::Granted {
+            permissions
+        } else {
+            vec![]
+        };
 
-            let mut permission_cache = PermissionCache::from_path_or_default(cache_path);
-            permission_cache.cache(
-                running_plugin.plugin_env.plugin.location.to_string(),
-                permissions,
-            );
+        running_plugin
+            .plugin_env
+            .set_permissions(HashSet::from_iter(permissions.clone()));
 
-            permission_cache.write_to_file().with_context(err_context)?;
-        }
+        let mut permission_cache = PermissionCache::from_path_or_default(cache_path);
+        permission_cache.cache(
+            running_plugin.plugin_env.plugin.location.to_string(),
+            permissions,
+        );
 
-        Ok(())
+        permission_cache.write_to_file().with_context(err_context)
     }
 }
 
@@ -807,13 +822,15 @@ fn check_event_permission(
 pub fn apply_event_to_plugin(
     plugin_id: PluginId,
     client_id: ClientId,
-    instance: &Instance,
-    plugin_env: &PluginEnv,
+    running_plugin: &mut RunningPlugin,
     event: &Event,
-    rows: usize,
-    columns: usize,
     plugin_bytes: &mut Vec<(PluginId, ClientId, Vec<u8>)>,
 ) -> Result<()> {
+    let instance = &running_plugin.instance;
+    let plugin_env = &running_plugin.plugin_env;
+    let rows = running_plugin.rows;
+    let columns = running_plugin.columns;
+
     let err_context = || format!("Failed to apply event to plugin {plugin_id}");
     match check_event_permission(plugin_env, event) {
         (PermissionStatus::Granted, _) => {
@@ -827,7 +844,9 @@ pub fn apply_event_to_plugin(
                 .with_context(err_context)?;
             wasi_write_object(&plugin_env.wasi_env, &protobuf_event.encode_to_vec())
                 .with_context(err_context)?;
-            let update_return = update.call(&[]).with_context(err_context)?;
+            let update_return = update
+                .call(&mut running_plugin.store, &[])
+                .with_context(err_context)?;
             let mut should_render = match update_return.get(0) {
                 Some(Value::I32(n)) => *n == 1,
                 _ => false,
@@ -844,7 +863,10 @@ pub fn apply_event_to_plugin(
                     .map_err(anyError::new)
                     .and_then(|render| {
                         render
-                            .call(&[Value::I32(rows as i32), Value::I32(columns as i32)])
+                            .call(
+                                &mut running_plugin.store,
+                                &[Value::I32(rows as i32), Value::I32(columns as i32)],
+                            )
                             .map_err(anyError::new)
                     })
                     .and_then(|_| wasi_read_string(&plugin_env.wasi_env))
