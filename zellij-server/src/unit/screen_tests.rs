@@ -235,6 +235,7 @@ fn create_new_screen(size: Size) -> Screen {
     let session_is_mirrored = true;
     let copy_options = CopyOptions::default();
     let default_layout = Box::new(Layout::default());
+    let default_shell = None;
 
     let debug = false;
     let screen = Screen::new(
@@ -248,6 +249,7 @@ fn create_new_screen(size: Size) -> Screen {
         copy_options,
         debug,
         default_layout,
+        default_shell,
     );
     screen
 }

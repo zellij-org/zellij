@@ -25,6 +25,7 @@ pub enum BackgroundJob {
     StopPluginLoadingAnimation(u32),        // u32 - plugin_id
     ReadAllSessionInfosOnMachine,           // u32 - plugin_id
     ReportSessionInfo(String, SessionInfo), // String - session name
+    ReportLayoutInfo(String),
     Exit,
 }
 
@@ -40,6 +41,7 @@ impl From<&BackgroundJob> for BackgroundJobContext {
                 BackgroundJobContext::ReadAllSessionInfosOnMachine
             },
             BackgroundJob::ReportSessionInfo(..) => BackgroundJobContext::ReportSessionInfo,
+            BackgroundJob::ReportLayoutInfo(..) => BackgroundJobContext::ReportLayoutInfo,
             BackgroundJob::Exit => BackgroundJobContext::Exit,
         }
     }
@@ -55,6 +57,7 @@ pub(crate) fn background_jobs_main(bus: Bus<BackgroundJob>) -> Result<()> {
     let mut loading_plugins: HashMap<u32, Arc<AtomicBool>> = HashMap::new(); // u32 - plugin_id
     let current_session_name = Arc::new(Mutex::new(String::default()));
     let current_session_info = Arc::new(Mutex::new(SessionInfo::default()));
+    let current_session_layout = Arc::new(Mutex::new(String::new()));
 
     loop {
         let (event, mut err_ctx) = bus.recv().with_context(err_context)?;
@@ -112,6 +115,9 @@ pub(crate) fn background_jobs_main(bus: Bus<BackgroundJob>) -> Result<()> {
                 *current_session_name.lock().unwrap() = session_name;
                 *current_session_info.lock().unwrap() = session_info;
             },
+            BackgroundJob::ReportLayoutInfo(session_layout) => {
+                *current_session_layout.lock().unwrap() = session_layout;
+            },
             BackgroundJob::ReadAllSessionInfosOnMachine => {
                 // this job should only be run once and it keeps track of other sessions (as well
                 // as this one's) infos (metadata mostly) and sends it to the screen which in turn
@@ -124,6 +130,7 @@ pub(crate) fn background_jobs_main(bus: Bus<BackgroundJob>) -> Result<()> {
                     let senders = bus.senders.clone();
                     let current_session_info = current_session_info.clone();
                     let current_session_name = current_session_name.clone();
+                    let current_session_layout = current_session_layout.clone();
                     async move {
                         loop {
                             // write state of current session
@@ -131,15 +138,28 @@ pub(crate) fn background_jobs_main(bus: Bus<BackgroundJob>) -> Result<()> {
                             // write it to disk
                             let current_session_name =
                                 current_session_name.lock().unwrap().to_string();
-                            let cache_file_name =
+                            let metadata_cache_file_name =
                                 session_info_cache_file_name(&current_session_name);
                             let current_session_info = current_session_info.lock().unwrap().clone();
-                            let _wrote_file =
-                                std::fs::create_dir_all(ZELLIJ_SESSION_INFO_CACHE_DIR.as_path())
-                                    .and_then(|_| std::fs::File::create(cache_file_name))
+                            let current_session_layout = current_session_layout.lock().unwrap().clone();
+                            let _wrote_metadata_file =
+                                std::fs::create_dir_all(session_info_folder_for_session(&current_session_name).as_path())
+                                    .and_then(|_| std::fs::File::create(metadata_cache_file_name))
                                     .and_then(|mut f| {
                                         write!(f, "{}", current_session_info.to_string())
                                     });
+
+                            if !current_session_layout.is_empty() {
+                                let layout_cache_file_name =
+                                    session_layout_cache_file_name(&current_session_name);
+                                let _wrote_layout_file =
+                                    // std::fs::create_dir_all(ZELLIJ_SESSION_INFO_CACHE_DIR.as_path())
+                                    std::fs::create_dir_all(session_info_folder_for_session(&current_session_name).as_path())
+                                        .and_then(|_| std::fs::File::create(layout_cache_file_name))
+                                        .and_then(|mut f| {
+                                            write!(f, "{}", current_session_layout)
+                                        });
+                            }
                             // start a background job (if not already running) that'll periodically read this and other
                             // sesion infos and report back
 
@@ -161,8 +181,7 @@ pub(crate) fn background_jobs_main(bus: Bus<BackgroundJob>) -> Result<()> {
                             }
 
                             for session_name in other_session_names {
-                                let session_cache_file_name = ZELLIJ_SESSION_INFO_CACHE_DIR
-                                    .join(format!("{}.kdl", session_name));
+                                let session_cache_file_name = session_info_cache_file_name(&session_name);
                                 if let Ok(raw_session_info) =
                                     fs::read_to_string(&session_cache_file_name)
                                 {
@@ -218,5 +237,13 @@ fn job_already_running(
 }
 
 fn session_info_cache_file_name(session_name: &str) -> PathBuf {
-    ZELLIJ_SESSION_INFO_CACHE_DIR.join(format!("{}.kdl", &session_name))
+    session_info_folder_for_session(session_name).join("session-metadata.kdl")
+}
+
+fn session_layout_cache_file_name(session_name: &str) -> PathBuf {
+    session_info_folder_for_session(session_name).join("session-layout.kdl")
+}
+
+fn session_info_folder_for_session(session_name: &str) -> PathBuf {
+    ZELLIJ_SESSION_INFO_CACHE_DIR.join(session_name)
 }

@@ -363,6 +363,7 @@ pub enum PtyContext {
     ReRunCommandInPane,
     SpawnInPlaceTerminal,
     DumpLayout,
+    LogLayoutToHd,
     Exit,
 }
 
@@ -386,6 +387,7 @@ pub enum PluginContext {
     PluginSubscribedToEvents,
     PermissionRequestResult,
     DumpLayout,
+    LogLayoutToHd,
 }
 
 /// Stack call representations corresponding to the different types of [`ClientInstruction`]s.
@@ -440,6 +442,7 @@ pub enum BackgroundJobContext {
     StopPluginLoadingAnimation,
     ReadAllSessionInfosOnMachine,
     ReportSessionInfo,
+    ReportLayoutInfo,
     Exit,
 }
 

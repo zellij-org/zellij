@@ -6,6 +6,7 @@ use crate::{
     thread_bus::{Bus, ThreadSenders},
     ClientId, ServerInstruction,
 };
+use crate::background_jobs::BackgroundJob;
 use async_std::task::{self, JoinHandle};
 use std::{collections::HashMap, os::unix::io::RawFd, path::PathBuf};
 use zellij_utils::nix::unistd::Pid;
@@ -70,6 +71,7 @@ pub enum PtyInstruction {
         ClientTabIndexOrPaneId,
     ), // String is an optional pane name
     DumpLayout(SessionLayoutMetadata, ClientId),
+    LogLayoutToHd(SessionLayoutMetadata),
     Exit,
 }
 
@@ -88,6 +90,7 @@ impl From<&PtyInstruction> for PtyContext {
             PtyInstruction::ReRunCommandInPane(..) => PtyContext::ReRunCommandInPane,
             PtyInstruction::SpawnInPlaceTerminal(..) => PtyContext::SpawnInPlaceTerminal,
             PtyInstruction::DumpLayout(..) => PtyContext::DumpLayout,
+            PtyInstruction::LogLayoutToHd(..) => PtyContext::LogLayoutToHd,
             PtyInstruction::Exit => PtyContext::Exit,
         }
     }
@@ -532,40 +535,23 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
             },
             PtyInstruction::DumpLayout(mut session_layout_metadata, client_id) => {
                 let err_context = || format!("Failed to dump layout");
-                let terminal_ids = session_layout_metadata.all_terminal_ids();
-                let mut terminal_ids_to_commands: HashMap<u32, Vec<String>> = HashMap::new();
-                let mut terminal_ids_to_cwds: HashMap<u32, PathBuf> = HashMap::new();
-                for terminal_id in terminal_ids {
-                    let process_id = pty.id_to_child_pid.get(&terminal_id);
-                    let cmd = process_id.as_ref().and_then(|pid| {
-                        pty.bus
-                            .os_input
-                            .as_ref()
-                            .and_then(|os_input| os_input.get_cmd(Pid::from_raw(**pid)))
-                    });
-                    let cwd = process_id.as_ref().and_then(|pid| {
-                        pty.bus
-                            .os_input
-                            .as_ref()
-                            .and_then(|os_input| os_input.get_cwd(Pid::from_raw(**pid)))
-                    });
-                    if let Some(cmd) = cmd {
-                        terminal_ids_to_commands.insert(terminal_id, cmd);
-                    }
-                    if let Some(cwd) = cwd {
-                        terminal_ids_to_cwds.insert(terminal_id, cwd);
-                    }
-                }
-                session_layout_metadata.update_default_shell(get_default_shell());
-                session_layout_metadata.update_terminal_commands(terminal_ids_to_commands);
-                session_layout_metadata.update_terminal_cwds(terminal_ids_to_cwds);
-                let kdl_config = session_serialization::tabs_to_kdl(session_layout_metadata.into());
+                pty.populate_session_layout_metadata(&mut session_layout_metadata);
+                let kdl_layout = session_serialization::tabs_to_kdl(session_layout_metadata.into());
                 pty
                     .bus
                     .senders
-                    .send_to_server(ServerInstruction::Log(vec![kdl_config], client_id))
+                    .send_to_server(ServerInstruction::Log(vec![kdl_layout], client_id))
                     .with_context(err_context)
                     .non_fatal();
+            },
+            PtyInstruction::LogLayoutToHd(mut session_layout_metadata) => {
+                let err_context = || format!("Failed to dump layout");
+                pty.populate_session_layout_metadata(&mut session_layout_metadata);
+                let kdl_layout = session_serialization::tabs_to_kdl(session_layout_metadata.into());
+                pty.bus
+                    .senders
+                    .send_to_background_jobs(BackgroundJob::ReportLayoutInfo(kdl_layout))
+                    .with_context(err_context)?;
             },
             PtyInstruction::Exit => break,
         }
@@ -1174,6 +1160,35 @@ impl Pty {
             },
             _ => Err(anyhow!("cannot respawn plugin panes")).with_context(err_context),
         }
+    }
+    pub fn populate_session_layout_metadata(&self, session_layout_metadata: &mut SessionLayoutMetadata) {
+        let terminal_ids = session_layout_metadata.all_terminal_ids();
+        let mut terminal_ids_to_commands: HashMap<u32, Vec<String>> = HashMap::new();
+        let mut terminal_ids_to_cwds: HashMap<u32, PathBuf> = HashMap::new();
+        for terminal_id in terminal_ids {
+            let process_id = self.id_to_child_pid.get(&terminal_id);
+            let cmd = process_id.as_ref().and_then(|pid| {
+                self.bus
+                    .os_input
+                    .as_ref()
+                    .and_then(|os_input| os_input.get_cmd(Pid::from_raw(**pid)))
+            });
+            let cwd = process_id.as_ref().and_then(|pid| {
+                self.bus
+                    .os_input
+                    .as_ref()
+                    .and_then(|os_input| os_input.get_cwd(Pid::from_raw(**pid)))
+            });
+            if let Some(cmd) = cmd {
+                terminal_ids_to_commands.insert(terminal_id, cmd);
+            }
+            if let Some(cwd) = cwd {
+                terminal_ids_to_cwds.insert(terminal_id, cwd);
+            }
+        }
+        session_layout_metadata.update_default_shell(get_default_shell());
+        session_layout_metadata.update_terminal_commands(terminal_ids_to_commands);
+        session_layout_metadata.update_terminal_cwds(terminal_ids_to_cwds);
     }
 }
 
