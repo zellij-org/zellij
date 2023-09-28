@@ -16,7 +16,7 @@ use crate::{
 };
 use clap::{Args, IntoApp};
 use clap_complete::Shell;
-use directories_next::BaseDirs;
+use directories::BaseDirs;
 use serde::{Deserialize, Serialize};
 use std::{
     convert::TryFrom, fmt::Write as FmtWrite, io::Write, path::Path, path::PathBuf, process,

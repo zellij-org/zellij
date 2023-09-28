@@ -1,6 +1,6 @@
 //! Zellij program-wide constants.
 
-use directories_next::ProjectDirs;
+use directories::ProjectDirs;
 use include_dir::{include_dir, Dir};
 use lazy_static::lazy_static;
 use once_cell::sync::OnceCell;
