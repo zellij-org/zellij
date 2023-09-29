@@ -181,7 +181,9 @@ message ResizePayload {
 }
 
 message ResizeFloatingPaneByPercentPayload {
-  resize.ResizeByPercent resize = 1;
+  optional uint32 tab_position = 1;
+  uint32 pane_id = 2;
+  resize.ResizePercent resize = 3;
 }
 
 message MovePayload {

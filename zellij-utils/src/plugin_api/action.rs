@@ -626,17 +626,7 @@ impl TryFrom<ProtobufAction> for Action {
                 Some(_) => Err("BreakPaneLeft should not have a payload"),
                 None => Ok(Action::BreakPaneLeft),
             },
-            Some(ProtobufActionName::ResizeByPercent) => match protobuf_action.optional_payload {
-                Some(OptionalPayload::ResizeByPercentPayload(size)) => {
-                    let size = ResizeByPercent {
-                        width: size.width as usize,
-                        height: size.height as usize,
-                    };
-                    Ok(Action::ResizeFloatingPaneByPercent(size))
-                },
-                _ => Err("Wrong payload for Action::ResizeByPercent"),
-            },
-            _ => Err("Unknown Action"),
+            _ => Err("Unknown action"),
         }
     }
 }
@@ -694,10 +684,6 @@ impl TryFrom<Action> for ProtobufAction {
                     optional_payload: Some(OptionalPayload::ResizePayload(resize)),
                 })
             },
-            Action::ResizeFloatingPaneByPercent(resize) => Ok(ProtobufAction {
-                name: ProtobufActionName::ResizeByPercent as i32,
-                optional_payload: Some(OptionalPayload::ResizeByPercentPayload(resize.try_into()?)),
-            }),
             Action::FocusNextPane => Ok(ProtobufAction {
                 name: ProtobufActionName::FocusNextPane as i32,
                 optional_payload: None,
@@ -1178,7 +1164,6 @@ impl TryFrom<Action> for ProtobufAction {
                 name: ProtobufActionName::BreakPaneLeft as i32,
                 optional_payload: None,
             }),
-            Action::ResizeFloatingPaneByPercent(size) => Ok(todo!()),
             Action::NoOp
             | Action::Confirm
             | Action::NewInPlacePane(..)

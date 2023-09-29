@@ -179,8 +179,12 @@ pub struct ResizePayload {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ResizeFloatingPaneByPercentPayload {
-    #[prost(message, optional, tag = "1")]
-    pub resize: ::core::option::Option<super::resize::ResizeByPercent>,
+    #[prost(uint32, optional, tag = "1")]
+    pub tab_position: ::core::option::Option<u32>,
+    #[prost(uint32, tag = "2")]
+    pub pane_id: u32,
+    #[prost(message, optional, tag = "3")]
+    pub resize: ::core::option::Option<super::resize::ResizePercent>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

@@ -109,13 +109,15 @@ pub(crate) fn route_action(
                 .send_to_screen(screen_instr)
                 .with_context(err_context)?;
         },
-        Action::ResizeFloatingPaneByPercent(percentage) => {
-            senders
-                .send_to_screen(ScreenInstruction::ResizeFloatingPaneByPercent(
-                    client_id, percentage,
-                ))
-                .with_context(err_context)?;
-        },
+        // Action::ResizeFloatingPaneByPercent(pane_to_resize) => {
+        //     info!("Resizing floating pane by percent");
+        //     senders
+        //         .send_to_screen(ScreenInstruction::ResizeFloatingPaneByPercent(
+        //             client_id,
+        //             pane_to_resize,
+        //         ))
+        //         .with_context(err_context)?;
+        // },
         Action::SwitchFocus => {
             senders
                 .send_to_screen(ScreenInstruction::SwitchFocus(client_id))

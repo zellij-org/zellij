@@ -3,7 +3,7 @@ use crate::plugins::plugin_map::{PluginEnv, Subscriptions};
 use crate::plugins::wasm_bridge::handle_plugin_crash;
 use crate::route::route_action;
 use crate::ServerInstruction;
-use log::{debug, warn};
+use log::{debug, info, warn};
 use serde::Serialize;
 use std::{
     collections::{BTreeMap, HashSet},
@@ -17,7 +17,8 @@ use std::{
 use wasmer::{imports, AsStoreMut, Function, FunctionEnv, FunctionEnvMut, Imports};
 use wasmer_wasi::WasiEnv;
 use zellij_utils::data::{
-    CommandType, ConnectToSession, PermissionStatus, PermissionType, PluginPermission,
+    CommandType, ConnectToSession, PaneToResizeByPercent, PermissionStatus, PermissionType,
+    PluginPermission, ResizeByPercent,
 };
 use zellij_utils::input::permission::PermissionCache;
 
@@ -227,7 +228,7 @@ fn host_run_plugin_command(env: FunctionEnvMut<ForeignFunctionEnv>) {
                         open_command_pane_in_place(env, command_to_run)
                     },
                     PluginCommand::ResizeFloatingPaneByPercent(resize_by_percent) => {
-                        todo!("ResizeFloatingPaneByPercent: {:?}", resize_by_percent);
+                        resize_given_floating_pane_by_percent(env, resize_by_percent)
                     },
                 },
                 (PermissionStatus::Denied, permission) => {
@@ -727,6 +728,21 @@ fn resize_with_direction(env: &ForeignFunctionEnv, resize: ResizeStrategy) {
     let error_msg = || format!("failed to resize in plugin {}", env.plugin_env.name());
     let action = Action::Resize(resize.resize, resize.direction);
     apply_action!(action, error_msg, env);
+}
+
+fn resize_given_floating_pane_by_percent(
+    env: &ForeignFunctionEnv,
+    resize_by_percent: PaneToResizeByPercent,
+) {
+    let error_msg = || format!("failed to resize in plugin {}", env.plugin_env.name());
+    env.plugin_env
+        .senders
+        .send_to_screen(ScreenInstruction::ResizeFloatingPaneByPercent(
+            env.plugin_env.client_id,
+            resize_by_percent,
+        ))
+        .with_context(error_msg)
+        .non_fatal();
 }
 
 fn focus_next_pane(env: &ForeignFunctionEnv) {

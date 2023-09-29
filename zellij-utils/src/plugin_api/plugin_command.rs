@@ -10,10 +10,12 @@ pub use super::generated_api::api::{
         SwitchTabToPayload, UnsubscribePayload,
     },
     plugin_permission::PermissionType as ProtobufPermissionType,
-    resize::ResizeAction as ProtobufResizeAction,
+    resize::{ResizeAction as ProtobufResizeAction, ResizePercent as ProtobufResizePercent},
 };
 
-use crate::data::{ConnectToSession, PermissionType, PluginCommand, ResizeByPercent};
+use crate::data::{
+    ConnectToSession, PaneToResizeByPercent, PermissionType, PluginCommand, ResizeByPercent,
+};
 
 use std::convert::TryFrom;
 
@@ -556,14 +558,23 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
             },
             Some(CommandName::ResizeFloatingPaneByPercent) => {
                 match protobuf_plugin_command.payload {
-                    Some(Payload::ResizeFloatingPaneByPercentPayload(resize_payload)) => {
-                        match resize_payload.resize {
-                            Some(resize) => Ok(PluginCommand::ResizeFloatingPaneByPercent(
-                                resize.try_into()?,
-                            )),
-                            None => Err("Malformed switch resize payload"),
-                        }
-                    },
+                    Some(Payload::ResizeFloatingPaneByPercentPayload(resize_payload)) => Ok(
+                        PluginCommand::ResizeFloatingPaneByPercent(PaneToResizeByPercent {
+                            tab_position: resize_payload.tab_position,
+                            pane_id: resize_payload.pane_id,
+                            resize: match resize_payload.resize {
+                                Some(size_by_percent) => ResizeByPercent {
+                                    width: size_by_percent.width,
+                                    height: size_by_percent.height,
+                                },
+                                // FIXME
+                                None => ResizeByPercent {
+                                    width: 0,
+                                    height: 0,
+                                },
+                            },
+                        }),
+                    ),
                     _ => Err("Mismatched payload for ResizeFloatingPaneByPercent"),
                 }
             },
@@ -942,12 +953,17 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     },
                 )),
             }),
-            PluginCommand::ResizeFloatingPaneByPercent(size_by_percent) => {
+            PluginCommand::ResizeFloatingPaneByPercent(pane_to_resize) => {
                 Ok(ProtobufPluginCommand {
                     name: CommandName::ResizeFloatingPaneByPercent as i32,
                     payload: Some(Payload::ResizeFloatingPaneByPercentPayload(
                         ResizeFloatingPaneByPercentPayload {
-                            resize: Some(size_by_percent.try_into()?),
+                            tab_position: pane_to_resize.tab_position,
+                            pane_id: pane_to_resize.pane_id,
+                            resize: Some(ProtobufResizePercent {
+                                width: pane_to_resize.resize.width,
+                                height: pane_to_resize.resize.height,
+                            }),
                         },
                     )),
                 })

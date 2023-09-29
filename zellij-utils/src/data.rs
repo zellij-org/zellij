@@ -250,11 +250,19 @@ impl FromStr for Direction {
     }
 }
 
+/// Resize a floating pane by given tab position, pane id and size
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, Deserialize, Serialize)]
+pub struct PaneToResizeByPercent {
+    pub tab_position: Option<u32>,
+    pub pane_id: u32,
+    pub resize: ResizeByPercent,
+}
+
 /// Resize by percent
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, Deserialize, Serialize)]
 pub struct ResizeByPercent {
-    pub width: usize,
-    pub height: usize,
+    pub width: u32,
+    pub height: u32,
 }
 
 /// Resize operation to perform.
@@ -1071,5 +1079,5 @@ pub enum PluginCommand {
     OpenTerminalInPlace(FileToOpen), // only used for the path as cwd
     OpenFileInPlace(FileToOpen),
     OpenCommandPaneInPlace(CommandToRun),
-    ResizeFloatingPaneByPercent(ResizeByPercent),
+    ResizeFloatingPaneByPercent(PaneToResizeByPercent),
 }
