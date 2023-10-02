@@ -912,13 +912,15 @@ fn init_session(
 fn get_store() -> Store {
     use wasmer::{BaseTunables, Cranelift, Engine, Pages, Target};
     log::info!("Compiling plugins using Cranelift");
+
+    // workaround for https://github.com/bytecodealliance/wasmtime/security/advisories/GHSA-ff4p-7xrq-q5r8
     let mut tunables = BaseTunables::for_target(&Target::default());
     tunables.static_memory_bound = Pages(0);
     let compiler = Cranelift::default();
     let mut engine: Engine = compiler.into();
     engine.set_tunables(tunables);
-    let store = Store::new(engine);
-    store
+
+    Store::new(engine)
 }
 
 #[cfg(feature = "singlepass")]
