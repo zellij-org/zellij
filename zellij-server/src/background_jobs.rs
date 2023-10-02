@@ -1,5 +1,5 @@
 use zellij_utils::async_std::task;
-use zellij_utils::consts::{ZELLIJ_SESSION_INFO_CACHE_DIR, ZELLIJ_SOCK_DIR};
+use zellij_utils::consts::{ZELLIJ_SESSION_INFO_CACHE_DIR, ZELLIJ_SOCK_DIR, session_info_cache_file_name, session_layout_cache_file_name, session_info_folder_for_session};
 use zellij_utils::data::SessionInfo;
 use zellij_utils::errors::{prelude::*, BackgroundJobContext, ContextType};
 
@@ -234,16 +234,4 @@ fn job_already_running(
             false
         },
     }
-}
-
-fn session_info_cache_file_name(session_name: &str) -> PathBuf {
-    session_info_folder_for_session(session_name).join("session-metadata.kdl")
-}
-
-fn session_layout_cache_file_name(session_name: &str) -> PathBuf {
-    session_info_folder_for_session(session_name).join("session-layout.kdl")
-}
-
-fn session_info_folder_for_session(session_name: &str) -> PathBuf {
-    ZELLIJ_SESSION_INFO_CACHE_DIR.join(session_name)
 }
