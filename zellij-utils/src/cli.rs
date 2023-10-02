@@ -120,12 +120,23 @@ pub enum Sessions {
         options: Option<Box<SessionCommand>>,
     },
 
-    /// Kill the specific session
+    /// Kill a specific session
     #[clap(visible_alias = "k")]
     KillSession {
         /// Name of target session
         #[clap(value_parser)]
         target_session: Option<String>,
+    },
+
+    /// Delete a specific session
+    #[clap(visible_alias = "d")]
+    DeleteSession {
+        /// Name of target session
+        #[clap(value_parser)]
+        target_session: Option<String>,
+        /// Kill the session if it's running before deleting it
+        #[clap(short, long, value_parser, takes_value(false), default_value("false"))]
+        force: bool,
     },
 
     /// Kill all sessions
@@ -135,6 +146,18 @@ pub enum Sessions {
         #[clap(short, long, value_parser)]
         yes: bool,
     },
+
+    /// Delete all sessions
+    #[clap(visible_alias = "da")]
+    DeleteAllSessions {
+        /// Automatic yes to prompts
+        #[clap(short, long, value_parser)]
+        yes: bool,
+        /// Kill the sessions if they're running before deleting them
+        #[clap(short, long, value_parser, takes_value(false), default_value("false"))]
+        force: bool,
+    },
+
     /// Send actions to a specific session
     #[clap(visible_alias = "ac")]
     #[clap(subcommand)]

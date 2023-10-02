@@ -151,15 +151,33 @@ pub(crate) fn kill_session(name: &str) {
     };
 }
 
+pub(crate) fn delete_session(name: &str, force: bool) {
+    log::info!("delete_session: {:?}, {:?}", name, force);
+    if force {
+        let path = &*ZELLIJ_SOCK_DIR.join(name);
+        let _ = LocalSocketStream::connect(path).map(|stream| {
+            IpcSenderWithContext::new(stream).send(ClientToServerMsg::KillSession).ok();
+        });
+    }
+    if let Err(e) = std::fs::remove_dir_all(session_info_folder_for_session(name)) {
+        if e.kind() == std::io::ErrorKind::NotFound {
+            eprintln!("Session: {:?} not found.", name);
+            process::exit(2);
+        } else {
+            log::error!("Failed to remove session {:?}: {:?}", name, e);
+        }
+    } else {
+        println!("Session: {:?} successfully deleted.", name);
+    }
+}
+
 pub(crate) fn list_sessions() {
     let exit_code = match get_sessions() {
         Ok(running_sessions) => {
             let resurrectable_sessions = get_resurrectable_sessions();
             let mut all_sessions: HashMap<String, bool> = resurrectable_sessions.iter().map(|(name, _layout)| (name.clone(), true)).collect();
             for session_name in running_sessions {
-                if !all_sessions.contains_key(&session_name) {
-                    all_sessions.insert(session_name.clone(), true);
-                }
+                all_sessions.insert(session_name.clone(), false);
             }
             if all_sessions.is_empty() {
                 eprintln!("No active zellij sessions found.");
@@ -229,6 +247,25 @@ pub(crate) fn assert_session(name: &str) {
                 if let Some(sugg) = get_sessions().unwrap().suggest(name) {
                     println!("  help: Did you mean `{}`?", sugg);
                 }
+            }
+        },
+        Err(e) => {
+            eprintln!("Error occurred: {:?}", e);
+        },
+    };
+    process::exit(1);
+}
+
+pub(crate) fn assert_dead_session(name: &str, force: bool) {
+    match session_exists(name) {
+        Ok(exists) => {
+            if exists && !force {
+                println!("A session by the name {:?} exists and is active, use --force to delete it.", name)
+            } else if exists && force {
+                println!("A session by the name {:?} exists and is active, but will be force killed and deleted.", name);
+                return;
+            } else {
+                return;
             }
         },
         Err(e) => {

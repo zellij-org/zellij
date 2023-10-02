@@ -95,6 +95,12 @@ fn main() {
         opts.command
     {
         commands::kill_session(target_session);
+    } else if let Some(Command::Sessions(Sessions::DeleteAllSessions { yes, force })) = opts.command {
+        commands::delete_all_sessions(yes, force);
+    } else if let Some(Command::Sessions(Sessions::DeleteSession { ref target_session, force })) =
+        opts.command
+    {
+        commands::delete_session(target_session, force);
     } else if let Some(path) = opts.server {
         commands::start_server(path, opts.debug);
     } else {

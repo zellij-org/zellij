@@ -2,9 +2,9 @@ use dialoguer::Confirm;
 use std::{fs::File, io::prelude::*, path::PathBuf, process};
 
 use crate::sessions::{
-    assert_session, assert_session_ne, get_active_session, get_name_generator, get_sessions,
+    assert_session, assert_dead_session, assert_session_ne, get_active_session, get_name_generator, get_sessions,
     get_resurrectable_sessions,
-    get_sessions_sorted_by_mtime, kill_session as kill_session_impl, match_session_name,
+    get_sessions_sorted_by_mtime, kill_session as kill_session_impl, delete_session as delete_session_impl, match_session_name,
     print_sessions, print_sessions_with_index, session_exists, resurrection_layout, ActiveSession, SessionNameMatch,
 };
 use zellij_client::{
@@ -61,6 +61,31 @@ pub(crate) fn kill_all_sessions(yes: bool) {
     }
 }
 
+pub(crate) fn delete_all_sessions(yes: bool, force: bool) {
+    let active_sessions = get_sessions().unwrap_or_default();
+    let resurrectable_sessions = get_resurrectable_sessions();
+    let dead_sessions: Vec<_> = if force {
+        resurrectable_sessions
+    } else {
+        resurrectable_sessions.iter().filter(|(name, _)| !active_sessions.contains(name)).cloned().collect()
+    };
+    if !yes {
+        println!("WARNING: this action will delete all resurrectable sessions.");
+        if !Confirm::new()
+            .with_prompt("Do you want to continue?")
+            .interact()
+            .unwrap()
+        {
+            println!("Abort.");
+            process::exit(1);
+        }
+    }
+    for session in &dead_sessions {
+        delete_session_impl(&session.0, force);
+    }
+    process::exit(0);
+}
+
 pub(crate) fn kill_session(target_session: &Option<String>) {
     match target_session {
         Some(target_session) => {
@@ -70,6 +95,20 @@ pub(crate) fn kill_session(target_session: &Option<String>) {
         },
         None => {
             println!("Please specify the session name to kill.");
+            process::exit(1);
+        },
+    }
+}
+
+pub(crate) fn delete_session(target_session: &Option<String>, force: bool) {
+    match target_session {
+        Some(target_session) => {
+            assert_dead_session(target_session, force);
+            delete_session_impl(target_session, force);
+            process::exit(0);
+        },
+        None => {
+            println!("Please specify the session name to delete.");
             process::exit(1);
         },
     }
@@ -394,11 +433,11 @@ pub(crate) fn start_client(opts: CliArgs) {
                 let resurrection_layout = session_name
                     .as_ref()
                     .and_then(|s| resurrection_layout(&s));
-                if create && !session_exists && resurrection_layout.is_none(){
+                if create && !session_exists && resurrection_layout.is_none() {
                     session_name.clone().map(start_client_plan);
                 }
                 match (session_name.as_ref(), resurrection_layout) {
-                    (Some(session_name), Some(resurrection_layout)) => {
+                    (Some(session_name), Some(resurrection_layout)) if !session_exists => {
                         ClientInfo::Resurrect(session_name.clone(), resurrection_layout)
                     },
                     _ => {
