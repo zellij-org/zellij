@@ -362,10 +362,10 @@ pub(crate) fn plugin_thread_main(
             },
             PluginInstruction::DumpLayout(mut session_layout_metadata, client_id) => {
                 populate_session_layout_metadata(&mut session_layout_metadata, &wasm_bridge);
-                drop(
-                    bus.senders
-                        .send_to_pty(PtyInstruction::DumpLayout(session_layout_metadata, client_id)),
-                );
+                drop(bus.senders.send_to_pty(PtyInstruction::DumpLayout(
+                    session_layout_metadata,
+                    client_id,
+                )));
             },
             PluginInstruction::LogLayoutToHd(mut session_layout_metadata) => {
                 populate_session_layout_metadata(&mut session_layout_metadata, &wasm_bridge);
@@ -406,7 +406,10 @@ pub(crate) fn plugin_thread_main(
         .context("failed to cleanup plugin data directory")
 }
 
-fn populate_session_layout_metadata(session_layout_metadata: &mut SessionLayoutMetadata, wasm_bridge: &WasmBridge) {
+fn populate_session_layout_metadata(
+    session_layout_metadata: &mut SessionLayoutMetadata,
+    wasm_bridge: &WasmBridge,
+) {
     let plugin_ids = session_layout_metadata.all_plugin_ids();
     let mut plugin_ids_to_cmds: HashMap<u32, RunPlugin> = HashMap::new();
     for plugin_id in plugin_ids {

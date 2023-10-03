@@ -1,3 +1,4 @@
+use crate::background_jobs::BackgroundJob;
 use crate::terminal_bytes::TerminalBytes;
 use crate::{
     panes::PaneId,
@@ -6,7 +7,6 @@ use crate::{
     thread_bus::{Bus, ThreadSenders},
     ClientId, ServerInstruction,
 };
-use crate::background_jobs::BackgroundJob;
 use async_std::task::{self, JoinHandle};
 use std::{collections::HashMap, os::unix::io::RawFd, path::PathBuf};
 use zellij_utils::nix::unistd::Pid;
@@ -537,8 +537,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                 let err_context = || format!("Failed to dump layout");
                 pty.populate_session_layout_metadata(&mut session_layout_metadata);
                 let kdl_layout = session_serialization::tabs_to_kdl(session_layout_metadata.into());
-                pty
-                    .bus
+                pty.bus
                     .senders
                     .send_to_server(ServerInstruction::Log(vec![kdl_layout], client_id))
                     .with_context(err_context)
@@ -1161,7 +1160,10 @@ impl Pty {
             _ => Err(anyhow!("cannot respawn plugin panes")).with_context(err_context),
         }
     }
-    pub fn populate_session_layout_metadata(&self, session_layout_metadata: &mut SessionLayoutMetadata) {
+    pub fn populate_session_layout_metadata(
+        &self,
+        session_layout_metadata: &mut SessionLayoutMetadata,
+    ) {
         let terminal_ids = session_layout_metadata.all_terminal_ids();
         let mut terminal_ids_to_commands: HashMap<u32, Vec<String>> = HashMap::new();
         let mut terminal_ids_to_cwds: HashMap<u32, PathBuf> = HashMap::new();

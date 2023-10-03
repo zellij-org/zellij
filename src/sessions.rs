@@ -1,13 +1,16 @@
+use std::collections::HashMap;
 use std::os::unix::fs::FileTypeExt;
 use std::time::SystemTime;
 use std::{fs, io, process};
-use std::collections::HashMap;
 use suggest::Suggest;
 use zellij_utils::{
-    input::layout::Layout,
     anyhow,
-    consts::{ZELLIJ_SOCK_DIR, ZELLIJ_SESSION_INFO_CACHE_DIR, session_info_cache_file_name, session_layout_cache_file_name, session_info_folder_for_session},
+    consts::{
+        session_info_cache_file_name, session_info_folder_for_session,
+        session_layout_cache_file_name, ZELLIJ_SESSION_INFO_CACHE_DIR, ZELLIJ_SOCK_DIR,
+    },
     envs,
+    input::layout::Layout,
     interprocess::local_socket::LocalSocketStream,
     ipc::{ClientToServerMsg, IpcReceiverWithContext, IpcSenderWithContext, ServerToClientMsg},
 };
@@ -36,19 +39,34 @@ pub(crate) fn get_resurrectable_sessions() -> Vec<(String, Layout)> {
             let files_that_are_folders = files_in_session_info_folder
                 .filter_map(|f| f.ok().map(|f| f.path()))
                 .filter(|f| f.is_dir());
-            files_that_are_folders.filter_map(|folder_name| {
-                let layout_file_name = session_layout_cache_file_name(&folder_name.display().to_string());
-                let raw_layout = std::fs::read_to_string(&layout_file_name).ok()?;
-                let layout = Layout::from_kdl(&raw_layout, layout_file_name.display().to_string(), None, None).ok()?; // TODO:
-                                                                                         // cwd
-                let session_name = folder_name.file_name().map(|f| std::path::PathBuf::from(f).display().to_string())?;
-                Some((session_name, layout))
-            }).collect()
+            files_that_are_folders
+                .filter_map(|folder_name| {
+                    let layout_file_name =
+                        session_layout_cache_file_name(&folder_name.display().to_string());
+                    let raw_layout = std::fs::read_to_string(&layout_file_name).ok()?;
+                    let layout = Layout::from_kdl(
+                        &raw_layout,
+                        layout_file_name.display().to_string(),
+                        None,
+                        None,
+                    )
+                    .ok()?; // TODO:
+                            // cwd
+                    let session_name = folder_name
+                        .file_name()
+                        .map(|f| std::path::PathBuf::from(f).display().to_string())?;
+                    Some((session_name, layout))
+                })
+                .collect()
         },
-        Err(e) =>  {
-            log::error!("Failed to read session_info cache folder: \"{:?}\": {:?}", &*ZELLIJ_SESSION_INFO_CACHE_DIR, e);
+        Err(e) => {
+            log::error!(
+                "Failed to read session_info cache folder: \"{:?}\": {:?}",
+                &*ZELLIJ_SESSION_INFO_CACHE_DIR,
+                e
+            );
             vec![]
-        }
+        },
     }
 }
 
@@ -94,7 +112,8 @@ fn assert_socket(name: &str) -> bool {
     }
 }
 
-pub(crate) fn print_sessions(sessions: Vec<(String, bool)>) { // (session_name, is_dead)
+pub(crate) fn print_sessions(sessions: Vec<(String, bool)>) {
+    // (session_name, is_dead)
     let curr_session = envs::get_session_name().unwrap_or_else(|_| "".into());
     sessions.iter().for_each(|(session, is_dead)| {
         let suffix = if curr_session == *session {
@@ -156,7 +175,9 @@ pub(crate) fn delete_session(name: &str, force: bool) {
     if force {
         let path = &*ZELLIJ_SOCK_DIR.join(name);
         let _ = LocalSocketStream::connect(path).map(|stream| {
-            IpcSenderWithContext::new(stream).send(ClientToServerMsg::KillSession).ok();
+            IpcSenderWithContext::new(stream)
+                .send(ClientToServerMsg::KillSession)
+                .ok();
         });
     }
     if let Err(e) = std::fs::remove_dir_all(session_info_folder_for_session(name)) {
@@ -175,7 +196,10 @@ pub(crate) fn list_sessions() {
     let exit_code = match get_sessions() {
         Ok(running_sessions) => {
             let resurrectable_sessions = get_resurrectable_sessions();
-            let mut all_sessions: HashMap<String, bool> = resurrectable_sessions.iter().map(|(name, _layout)| (name.clone(), true)).collect();
+            let mut all_sessions: HashMap<String, bool> = resurrectable_sessions
+                .iter()
+                .map(|(name, _layout)| (name.clone(), true))
+                .collect();
             for session_name in running_sessions {
                 all_sessions.insert(session_name.clone(), false);
             }
@@ -183,7 +207,12 @@ pub(crate) fn list_sessions() {
                 eprintln!("No active zellij sessions found.");
                 1
             } else {
-                print_sessions(all_sessions.iter().map(|(name, is_dead)| (name.clone(), *is_dead)).collect());
+                print_sessions(
+                    all_sessions
+                        .iter()
+                        .map(|(name, is_dead)| (name.clone(), *is_dead))
+                        .collect(),
+                );
                 0
             }
         },
@@ -234,7 +263,13 @@ pub(crate) fn session_exists(name: &str) -> Result<bool, io::ErrorKind> {
 // if the session is resurrecable, the returned layout is the one to be used to resurrect it
 pub(crate) fn resurrection_layout(session_name_to_resurrect: &str) -> Option<Layout> {
     let resurrectable_sessions = get_resurrectable_sessions();
-    resurrectable_sessions.iter().find_map(|(name, layout)| if name == session_name_to_resurrect { Some(layout.clone()) } else { None })
+    resurrectable_sessions.iter().find_map(|(name, layout)| {
+        if name == session_name_to_resurrect {
+            Some(layout.clone())
+        } else {
+            None
+        }
+    })
 }
 
 pub(crate) fn assert_session(name: &str) {
@@ -260,7 +295,10 @@ pub(crate) fn assert_dead_session(name: &str, force: bool) {
     match session_exists(name) {
         Ok(exists) => {
             if exists && !force {
-                println!("A session by the name {:?} exists and is active, use --force to delete it.", name)
+                println!(
+                    "A session by the name {:?} exists and is active, use --force to delete it.",
+                    name
+                )
             } else if exists && force {
                 println!("A session by the name {:?} exists and is active, but will be force killed and deleted.", name);
                 return;

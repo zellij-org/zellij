@@ -1,5 +1,8 @@
 use zellij_utils::async_std::task;
-use zellij_utils::consts::{ZELLIJ_SESSION_INFO_CACHE_DIR, ZELLIJ_SOCK_DIR, session_info_cache_file_name, session_layout_cache_file_name, session_info_folder_for_session};
+use zellij_utils::consts::{
+    session_info_cache_file_name, session_info_folder_for_session, session_layout_cache_file_name,
+    ZELLIJ_SESSION_INFO_CACHE_DIR, ZELLIJ_SOCK_DIR,
+};
 use zellij_utils::data::SessionInfo;
 use zellij_utils::errors::{prelude::*, BackgroundJobContext, ContextType};
 
@@ -141,13 +144,13 @@ pub(crate) fn background_jobs_main(bus: Bus<BackgroundJob>) -> Result<()> {
                             let metadata_cache_file_name =
                                 session_info_cache_file_name(&current_session_name);
                             let current_session_info = current_session_info.lock().unwrap().clone();
-                            let current_session_layout = current_session_layout.lock().unwrap().clone();
-                            let _wrote_metadata_file =
-                                std::fs::create_dir_all(session_info_folder_for_session(&current_session_name).as_path())
-                                    .and_then(|_| std::fs::File::create(metadata_cache_file_name))
-                                    .and_then(|mut f| {
-                                        write!(f, "{}", current_session_info.to_string())
-                                    });
+                            let current_session_layout =
+                                current_session_layout.lock().unwrap().clone();
+                            let _wrote_metadata_file = std::fs::create_dir_all(
+                                session_info_folder_for_session(&current_session_name).as_path(),
+                            )
+                            .and_then(|_| std::fs::File::create(metadata_cache_file_name))
+                            .and_then(|mut f| write!(f, "{}", current_session_info.to_string()));
 
                             if !current_session_layout.is_empty() {
                                 let layout_cache_file_name =
@@ -181,7 +184,8 @@ pub(crate) fn background_jobs_main(bus: Bus<BackgroundJob>) -> Result<()> {
                             }
 
                             for session_name in other_session_names {
-                                let session_cache_file_name = session_info_cache_file_name(&session_name);
+                                let session_cache_file_name =
+                                    session_info_cache_file_name(&session_name);
                                 if let Ok(raw_session_info) =
                                     fs::read_to_string(&session_cache_file_name)
                                 {

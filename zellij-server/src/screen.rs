@@ -1655,8 +1655,7 @@ impl Screen {
             .send_to_background_jobs(BackgroundJob::ReadAllSessionInfosOnMachine)
             .with_context(err_context)?;
         let session_layout_metadata = self.get_layout_metadata(self.default_shell.clone());
-        self
-            .bus
+        self.bus
             .senders
             .send_to_plugin(PluginInstruction::LogLayoutToHd(session_layout_metadata))
             .with_context(err_context)?;
@@ -2185,8 +2184,7 @@ impl Screen {
             .context("failed to unblock input")
     }
     fn get_layout_metadata(&self, default_shell: Option<PathBuf>) -> SessionLayoutMetadata {
-        let mut session_layout_metadata =
-            SessionLayoutMetadata::new(self.default_layout.clone());
+        let mut session_layout_metadata = SessionLayoutMetadata::new(self.default_layout.clone());
         if let Some(default_shell) = default_shell {
             session_layout_metadata.update_default_shell(default_shell);
         }
@@ -2633,13 +2631,17 @@ pub(crate) fn screen_thread_main(
                 screen.render()?;
                 screen.unblock_input()?;
             },
-            ScreenInstruction::DumpLayout(client_id, layout, default_shell) => { // TODO: ordering
+            ScreenInstruction::DumpLayout(client_id, layout, default_shell) => {
+                // TODO: ordering
                 let err_context = || format!("Failed to dump layout");
                 let session_layout_metadata = screen.get_layout_metadata(default_shell);
                 screen
                     .bus
                     .senders
-                    .send_to_plugin(PluginInstruction::DumpLayout(session_layout_metadata, client_id))
+                    .send_to_plugin(PluginInstruction::DumpLayout(
+                        session_layout_metadata,
+                        client_id,
+                    ))
                     .with_context(err_context)?;
             },
             ScreenInstruction::EditScrollback(client_id) => {
