@@ -504,9 +504,13 @@ pub trait ServerOsApi: Send + Sync {
     fn load_palette(&self) -> Palette;
     /// Returns the current working directory for a given pid
     fn get_cwd(&self, pid: Pid) -> Option<PathBuf>;
-    /// Returns the command to invoke this process
-    fn get_cmd(&self, _pid: Pid) -> Option<Vec<String>> {
-        None
+    /// Returns the current working directory for multiple pids
+    fn get_cwds(&self, _pids: Vec<Pid>) -> HashMap<Pid, PathBuf> {
+        HashMap::new()
+    }
+    /// Get a list of all running commands by their parent process id
+    fn get_all_cmds_by_ppid(&self) -> HashMap<String, Vec<String>> {
+        HashMap::new()
     }
     /// Writes the given buffer to a string
     fn write_to_file(&mut self, buf: String, file: Option<String>) -> Result<()>;
@@ -760,30 +764,50 @@ impl ServerOsApi for ServerOsInputOutput {
         None
     }
 
-    fn get_cmd(&self, pid: Pid) -> Option<Vec<String>> {
+    fn get_cwds(&self, pids: Vec<Pid>) -> HashMap<Pid, PathBuf> {
+        let mut system_info = System::new();
+        // Update by minimizing information.
+        // See https://docs.rs/sysinfo/0.22.5/sysinfo/struct.ProcessRefreshKind.html#
+        system_info.refresh_processes_specifics(ProcessRefreshKind::default());
+
+        let mut cwds = HashMap::new();
+        for pid in pids {
+            if let Some(process) = system_info.process(pid.into()) {
+                let cwd = process.cwd();
+                let cwd_is_empty = cwd.iter().next().is_none();
+                if !cwd_is_empty {
+                    cwds.insert(pid, process.cwd().to_path_buf());
+                }
+            }
+        }
+        cwds
+    }
+    fn get_all_cmds_by_ppid(&self) -> HashMap<String, Vec<String>> { // the key is the stringified ppid
         // TODO: change name to reflect that we're getting the cmd of the child process only... if
         // we end up going this way
         // TODO: does this work on mac?
-        if let Some(output) = Command::new("pgrep")
-            .args(vec!["-af", "-P", &format!("{}", pid)])
+        let mut cmds = HashMap::new();
+        if let Some(output) = Command::new("ps")
+            .args(vec!["-ao", "ppid,args"])
             .output()
             .ok()
         {
             // TODO: not lossy
             let output = String::from_utf8_lossy(&output.stdout).to_string();
-            let output: Vec<String> = output
-                .trim()
-                .split_ascii_whitespace()
-                .skip(1)
-                .map(|s| s.to_owned())
-                .collect();
-            if output.is_empty() {
-                return None;
-            } else {
-                return Some(output);
+            for line in output.lines() {
+                let line_parts: Vec<String> = line
+                    .trim()
+                    .split_ascii_whitespace()
+                    .map(|p| p.to_owned())
+                    .collect();
+                let mut line_parts = line_parts.into_iter();
+                let ppid = line_parts.next();
+                if let Some(ppid) = ppid {
+                    cmds.insert(ppid.into(), line_parts.collect());
+                }
             }
         }
-        None
+        cmds
     }
 
     fn write_to_file(&mut self, buf: String, name: Option<String>) -> Result<()> {

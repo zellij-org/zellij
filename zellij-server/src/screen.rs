@@ -587,7 +587,7 @@ pub enum ScreenInstruction {
         Option<Run>,
         ClientTabIndexOrPaneId,
     ),
-    LogAndReportSessionState,
+    DumpLayoutToHd,
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -765,7 +765,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::UpdateSessionInfos(..) => ScreenContext::UpdateSessionInfos,
             ScreenInstruction::ReplacePane(..) => ScreenContext::ReplacePane,
             ScreenInstruction::NewInPlacePluginPane(..) => ScreenContext::NewInPlacePluginPane,
-            ScreenInstruction::LogAndReportSessionState => ScreenContext::LogAndReportSessionState,
+            ScreenInstruction::DumpLayoutToHd => ScreenContext::DumpLayoutToHd,
         }
     }
 }
@@ -1666,6 +1666,10 @@ impl Screen {
             .senders
             .send_to_background_jobs(BackgroundJob::ReadAllSessionInfosOnMachine)
             .with_context(err_context)?;
+        Ok(())
+    }
+    fn dump_layout_to_hd(&mut self) -> Result<()> {
+        let err_context = || format!("Failed to log and report session state");
         let session_layout_metadata = self.get_layout_metadata(self.default_shell.clone());
         self.bus
             .senders
@@ -3701,8 +3705,8 @@ pub(crate) fn screen_thread_main(
 
                 screen.render()?;
             },
-            ScreenInstruction::LogAndReportSessionState => {
-                screen.log_and_report_session_state()?;
+            ScreenInstruction::DumpLayoutToHd => {
+                screen.dump_layout_to_hd()?;
             },
         }
     }

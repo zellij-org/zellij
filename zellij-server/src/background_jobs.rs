@@ -156,7 +156,6 @@ pub(crate) fn background_jobs_main(bus: Bus<BackgroundJob>) -> Result<()> {
                                 let layout_cache_file_name =
                                     session_layout_cache_file_name(&current_session_name);
                                 let _wrote_layout_file =
-                                    // std::fs::create_dir_all(ZELLIJ_SESSION_INFO_CACHE_DIR.as_path())
                                     std::fs::create_dir_all(session_info_folder_for_session(&current_session_name).as_path())
                                         .and_then(|_| std::fs::File::create(layout_cache_file_name))
                                         .and_then(|mut f| {
@@ -201,7 +200,7 @@ pub(crate) fn background_jobs_main(bus: Bus<BackgroundJob>) -> Result<()> {
                                 session_infos_on_machine,
                             ));
                             let _ =
-                                senders.send_to_screen(ScreenInstruction::LogAndReportSessionState);
+                                senders.send_to_screen(ScreenInstruction::DumpLayoutToHd);
                             task::sleep(std::time::Duration::from_millis(SESSION_READ_DURATION))
                                 .await;
                         }
