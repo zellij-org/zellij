@@ -346,6 +346,7 @@ pub enum ScreenContext {
     UpdateSessionInfos,
     ReplacePane,
     NewInPlacePluginPane,
+    LogAndReportSessionState,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.

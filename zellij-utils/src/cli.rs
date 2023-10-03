@@ -118,6 +118,10 @@ pub enum Sessions {
         /// Change the behaviour of zellij
         #[clap(subcommand, name = "options")]
         options: Option<Box<SessionCommand>>,
+
+        /// If resurrecting a dead session, immediately run all its commands on startup
+        #[clap(short, long, value_parser, takes_value(false), default_value("false"))]
+        force_run_commands: bool,
     },
 
     /// Kill a specific session

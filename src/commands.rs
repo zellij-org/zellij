@@ -399,6 +399,7 @@ pub(crate) fn start_client(opts: CliArgs) {
                 opts.command = Some(Command::Sessions(Sessions::Attach {
                     session_name: reconnect_to_session.name.clone(),
                     create: true,
+                    force_run_commands: false,
                     index: None,
                     options: None,
                 }));
@@ -417,6 +418,7 @@ pub(crate) fn start_client(opts: CliArgs) {
         if let Some(Command::Sessions(Sessions::Attach {
             session_name,
             create,
+            force_run_commands,
             index,
             options,
         })) = opts.command.clone()
@@ -441,7 +443,10 @@ pub(crate) fn start_client(opts: CliArgs) {
                     session_name.clone().map(start_client_plan);
                 }
                 match (session_name.as_ref(), resurrection_layout) {
-                    (Some(session_name), Some(resurrection_layout)) if !session_exists => {
+                    (Some(session_name), Some(mut resurrection_layout)) if !session_exists => {
+                        if force_run_commands {
+                            resurrection_layout.recursively_add_start_suspended(Some(false));
+                        }
                         ClientInfo::Resurrect(session_name.clone(), resurrection_layout)
                     },
                     _ => attach_with_session_name(session_name, config_options.clone(), create),

@@ -577,6 +577,7 @@ pub enum ScreenInstruction {
         Option<Run>,
         ClientTabIndexOrPaneId,
     ),
+    LogAndReportSessionState,
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -754,6 +755,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::UpdateSessionInfos(..) => ScreenContext::UpdateSessionInfos,
             ScreenInstruction::ReplacePane(..) => ScreenContext::ReplacePane,
             ScreenInstruction::NewInPlacePluginPane(..) => ScreenContext::NewInPlacePluginPane,
+            ScreenInstruction::LogAndReportSessionState => ScreenContext::LogAndReportSessionState,
         }
     }
 }
@@ -3675,6 +3677,9 @@ pub(crate) fn screen_thread_main(
 
                 screen.render()?;
             },
+            ScreenInstruction::LogAndReportSessionState => {
+                screen.log_and_report_session_state()?;
+            }
         }
     }
     Ok(())

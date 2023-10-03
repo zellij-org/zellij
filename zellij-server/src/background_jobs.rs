@@ -200,6 +200,7 @@ pub(crate) fn background_jobs_main(bus: Bus<BackgroundJob>) -> Result<()> {
                             let _ = senders.send_to_screen(ScreenInstruction::UpdateSessionInfos(
                                 session_infos_on_machine,
                             ));
+                            let _ = senders.send_to_screen(ScreenInstruction::LogAndReportSessionState);
                             task::sleep(std::time::Duration::from_millis(SESSION_READ_DURATION))
                                 .await;
                         }

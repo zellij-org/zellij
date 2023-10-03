@@ -485,6 +485,11 @@ impl FloatingPaneLayout {
             },
         }
     }
+    pub fn add_start_suspended(&mut self, start_suspended: Option<bool>) {
+        if let Some(run) = self.run.as_mut() {
+            run.add_start_suspended(start_suspended);
+        }
+    }
 }
 
 impl From<&TiledPaneLayout> for FloatingPaneLayout {
@@ -759,6 +764,14 @@ impl TiledPaneLayout {
         }
         false
     }
+    pub fn recursively_add_start_suspended(&mut self, start_suspended: Option<bool>) {
+        if let Some(run) = self.run.as_mut() {
+            run.add_start_suspended(start_suspended);
+        }
+        for child in self.children.iter_mut() {
+            child.recursively_add_start_suspended(start_suspended);
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
@@ -978,6 +991,15 @@ impl Layout {
 
     pub fn focused_tab_index(&self) -> Option<usize> {
         self.focused_tab_index
+    }
+
+    pub fn recursively_add_start_suspended(&mut self, start_suspended: Option<bool>) {
+        for (_tab_name, tiled_panes, floating_panes) in self.tabs.iter_mut() {
+            tiled_panes.recursively_add_start_suspended(start_suspended);
+            for floating_pane in floating_panes.iter_mut() {
+                floating_pane.add_start_suspended(start_suspended);
+            }
+        }
     }
 
     fn swap_layout_and_path(path: &Path) -> Option<(String, String)> {

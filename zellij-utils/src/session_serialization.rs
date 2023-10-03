@@ -285,7 +285,7 @@ fn kdl_string_from_tiled_pane(layout: &TiledPaneLayout, ignore_size: bool) -> St
         _ => (None, None),
     };
     let cwd = layout.run.as_ref().and_then(|r| r.get_cwd());
-    let mut kdl_string = match (command, edit) {
+    let mut kdl_string = match (&command, edit) {
         (Some(command), _) => format!("pane command=\"{}\"", command),
         (None, Some(edit)) => format!("pane edit=\"{}\"", edit),
         (None, None) => format!("pane"),
@@ -327,16 +327,22 @@ fn kdl_string_from_tiled_pane(layout: &TiledPaneLayout, ignore_size: bool) -> St
         && layout.external_children_index.is_none()
         && args.is_empty()
         && plugin.is_none()
+        && command.is_none()
     {
         kdl_string.push_str("\n");
-    } else if !args.is_empty() {
+    } else if !args.is_empty() || command.is_some() {
         kdl_string.push_str(" {\n");
-        let args = args
-            .iter()
-            .map(|a| format!("\"{}\"", a))
-            .collect::<Vec<_>>()
-            .join(" ");
-        kdl_string.push_str(&indent(&format!("args {}\n", args), INDENT));
+        if !args.is_empty() {
+            let args = args
+                .iter()
+                .map(|a| format!("\"{}\"", a))
+                .collect::<Vec<_>>()
+                .join(" ");
+            kdl_string.push_str(&indent(&format!("args {}\n", args), INDENT));
+        }
+        if command.is_some() {
+            kdl_string.push_str(&indent(&"start_suspended true\n", INDENT));
+        }
         kdl_string.push_str("}\n");
     } else if let Some(plugin) = plugin {
         kdl_string.push_str(" {\n");
@@ -404,7 +410,7 @@ fn kdl_string_from_floating_pane(layout: &FloatingPaneLayout) -> String {
         },
         _ => (None, None),
     };
-    let mut kdl_string = match (command, edit) {
+    let mut kdl_string = match (&command, edit) {
         (Some(command), _) => format!("pane command=\"{}\"", command),
         (None, Some(edit)) => format!("pane edit=\"{}\"", edit),
         (None, None) => format!("pane"),
@@ -414,9 +420,16 @@ fn kdl_string_from_floating_pane(layout: &FloatingPaneLayout) -> String {
     }
     let cwd = layout.run.as_ref().and_then(|r| r.get_cwd());
     if let Some(cwd) = cwd {
-        kdl_string.push_str(&format!(" cwd=\"{}\"", cwd.display()));
+        let path = cwd.display().to_string();
+        if !path.is_empty() {
+            kdl_string.push_str(&format!(" cwd=\"{}\"", path));
+        }
     }
     kdl_string.push_str(" {\n");
+
+    if command.is_some() {
+        kdl_string.push_str(&indent(&"start_suspended true\n", INDENT));
+    }
 
     match layout.height {
         Some(PercentOrFixed::Fixed(fixed_height)) => {
