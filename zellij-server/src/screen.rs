@@ -186,12 +186,14 @@ impl SessionLayoutMetadata {
     pub fn add_tab(
         &mut self,
         name: String,
-        tiled_panes: Vec<(PaneId, PaneGeom, bool, Option<Run>, Option<String>)>, // bool => is_borderless,
-        // Option<String> => title
-        floating_panes: Vec<(PaneId, PaneGeom, Option<Run>, Option<String>)>, // Option<String> => title
+        is_focused: bool,
+        tiled_panes: Vec<(PaneId, PaneGeom, bool, Option<Run>, Option<String>, bool)>, // bool => is_borderless,
+        // Option<String> => title, bool => is_focused
+        floating_panes: Vec<(PaneId, PaneGeom, Option<Run>, Option<String>, bool)>, // Option<String> => title, bool => is_focused
     ) {
         self.tabs.push(TabLayoutMetadata {
             name: Some(name), // TODO: tabs don't always have a name...
+            is_focused,
             tiled_panes: tiled_panes.into_iter().map(|t_p| t_p.into()).collect(),
             floating_panes: floating_panes.into_iter().map(|t_p| t_p.into()).collect(),
         })
@@ -332,6 +334,7 @@ impl Into<TabLayoutManifest> for TabLayoutMetadata {
         TabLayoutManifest {
             tiled_panes: self.tiled_panes.into_iter().map(|t| t.into()).collect(),
             floating_panes: self.floating_panes.into_iter().map(|t| t.into()).collect(),
+            is_focused: self.is_focused,
         }
     }
 }
@@ -344,6 +347,7 @@ impl Into<PaneLayoutManifest> for PaneLayoutMetadata {
             cwd: self.cwd,
             is_borderless: self.is_borderless,
             title: self.title,
+            is_focused: self.is_focused,
         }
     }
 }
@@ -354,6 +358,7 @@ pub struct TabLayoutMetadata {
     name: Option<String>,
     tiled_panes: Vec<PaneLayoutMetadata>,
     floating_panes: Vec<PaneLayoutMetadata>,
+    is_focused: bool,
 }
 
 // TODO: move elsewhere
@@ -365,11 +370,14 @@ pub struct PaneLayoutMetadata {
     cwd: Option<PathBuf>,
     is_borderless: bool,
     title: Option<String>,
+    is_focused: bool,
 }
 
-impl From<(PaneId, PaneGeom, bool, Option<Run>, Option<String>)> for PaneLayoutMetadata {
-    // bool => is_borderless, String => title
-    fn from(pane_id_and_pane_geom: (PaneId, PaneGeom, bool, Option<Run>, Option<String>)) -> Self {
+impl From<(PaneId, PaneGeom, bool, Option<Run>, Option<String>, bool)> for PaneLayoutMetadata {
+    // bool => is_borderless, String => title, bool => is_focused
+    fn from(
+        pane_id_and_pane_geom: (PaneId, PaneGeom, bool, Option<Run>, Option<String>, bool),
+    ) -> Self {
         PaneLayoutMetadata {
             id: pane_id_and_pane_geom.0,
             geom: pane_id_and_pane_geom.1,
@@ -377,13 +385,14 @@ impl From<(PaneId, PaneGeom, bool, Option<Run>, Option<String>)> for PaneLayoutM
             cwd: None,
             is_borderless: pane_id_and_pane_geom.2,
             title: pane_id_and_pane_geom.4,
+            is_focused: pane_id_and_pane_geom.5,
         }
     }
 }
 
-impl From<(PaneId, PaneGeom, Option<Run>, Option<String>)> for PaneLayoutMetadata {
-    // String => title
-    fn from(pane_id_and_pane_geom: (PaneId, PaneGeom, Option<Run>, Option<String>)) -> Self {
+impl From<(PaneId, PaneGeom, Option<Run>, Option<String>, bool)> for PaneLayoutMetadata {
+    // String => title, bool => is_focused
+    fn from(pane_id_and_pane_geom: (PaneId, PaneGeom, Option<Run>, Option<String>, bool)) -> Self {
         PaneLayoutMetadata {
             id: pane_id_and_pane_geom.0,
             geom: pane_id_and_pane_geom.1,
@@ -391,6 +400,7 @@ impl From<(PaneId, PaneGeom, Option<Run>, Option<String>)> for PaneLayoutMetadat
             cwd: None,
             is_borderless: false,
             title: pane_id_and_pane_geom.3,
+            is_focused: pane_id_and_pane_geom.4,
         }
     }
 }
@@ -2190,16 +2200,22 @@ impl Screen {
         if let Some(default_shell) = default_shell {
             session_layout_metadata.update_default_shell(default_shell);
         }
-        for tab in self.tabs.values() {
+        let first_client_id = self.get_first_client_id();
+        let active_tab_index =
+            first_client_id.and_then(|client_id| self.active_tab_indices.get(&client_id));
+        for (tab_index, tab) in self.tabs.values().enumerate() {
+            let tab_is_focused = active_tab_index == Some(&tab_index);
             let mut suppressed_panes = HashMap::new();
             for (triggering_pane_id, p) in tab.get_suppressed_panes() {
                 suppressed_panes.insert(*triggering_pane_id, p);
             }
-            let tiled_panes: Vec<(PaneId, PaneGeom, bool, Option<Run>, Option<String>)> = // Option<String>
+            let active_pane_id =
+                first_client_id.and_then(|client_id| tab.get_active_pane_id(client_id));
+            let tiled_panes: Vec<(PaneId, PaneGeom, bool, Option<Run>, Option<String>, bool)> = // Option<String>
                                                                                   // =>
                                                                                   // pane
                                                                                   // title
-                tab // bool => is_borderless
+                tab // bool => is_borderless, last bool => is_focused
                     .get_tiled_panes()
                     .map(|(pane_id, p)| {
                         // here we look to see if this pane triggers any suppressed pane,
@@ -2223,15 +2239,17 @@ impl Screen {
                             p.position_and_size(),
                             p.borderless(),
                             p.invoked_with().clone(),
-                            p.custom_title()
+                            p.custom_title(),
+                            active_pane_id == Some(pane_id),
                         )
                     })
                     .collect();
-            let floating_panes: Vec<(PaneId, PaneGeom, Option<Run>, Option<String>)> =
+            let floating_panes: Vec<(PaneId, PaneGeom, Option<Run>, Option<String>, bool)> =
                 tab // Option<String>
                     // =>
                     // pane
-                    // title
+                    // title,
+                    // bool => is_focused
                     .get_floating_panes()
                     .map(|(pane_id, p)| {
                         // here we look to see if this pane triggers any suppressed pane,
@@ -2257,10 +2275,16 @@ impl Screen {
                             p.position_and_size(),
                             p.invoked_with().clone(),
                             p.custom_title(),
+                            active_pane_id == Some(pane_id),
                         )
                     })
                     .collect();
-            session_layout_metadata.add_tab(tab.name.clone(), tiled_panes, floating_panes);
+            session_layout_metadata.add_tab(
+                tab.name.clone(),
+                tab_is_focused,
+                tiled_panes,
+                floating_panes,
+            );
         }
         session_layout_metadata
     }

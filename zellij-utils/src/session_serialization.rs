@@ -23,7 +23,6 @@ const INDENT: &str = "    ";
 const DOUBLE_INDENT: &str = "        ";
 const TRIPLE_INDENT: &str = "            ";
 
-/// Copied from textwrap::indent
 fn indent(s: &str, prefix: &str) -> String {
     let mut result = String::new();
     for line in s.lines() {
@@ -48,6 +47,7 @@ pub struct GlobalLayoutManifest {
 pub struct TabLayoutManifest {
     pub tiled_panes: Vec<PaneLayoutManifest>,
     pub floating_panes: Vec<PaneLayoutManifest>,
+    pub is_focused: bool,
 }
 
 #[derive(Default, Debug, Clone)]
@@ -57,6 +57,7 @@ pub struct PaneLayoutManifest {
     pub cwd: Option<PathBuf>,
     pub is_borderless: bool,
     pub title: Option<String>,
+    pub is_focused: bool,
 }
 
 pub fn tabs_to_kdl(global_layout_manifest: GlobalLayoutManifest) -> String {
@@ -71,7 +72,12 @@ pub fn tabs_to_kdl(global_layout_manifest: GlobalLayoutManifest) -> String {
         let tiled_panes = tab_layout_manifest.tiled_panes;
         let floating_panes = tab_layout_manifest.floating_panes;
         kdl_string.push_str(&indent(
-            &stringify_tab(tab_name.clone(), &tiled_panes, &floating_panes),
+            &stringify_tab(
+                tab_name.clone(),
+                tab_layout_manifest.is_focused,
+                &tiled_panes,
+                &floating_panes,
+            ),
             INDENT,
         ));
     }
@@ -157,6 +163,7 @@ pub fn tabs_to_kdl(global_layout_manifest: GlobalLayoutManifest) -> String {
 
 pub fn stringify_tab(
     tab_name: String,
+    is_focused: bool,
     tiled_panes: &Vec<PaneLayoutManifest>,
     floating_panes: &Vec<PaneLayoutManifest>,
 ) -> String {
@@ -169,10 +176,15 @@ pub fn stringify_tab(
     } else {
         tiled_panes_layout.children
     };
+    let mut tab_attributes = vec![format!("name=\"{}\"", tab_name,)];
+    if is_focused {
+        tab_attributes.push(format!("focus=true"));
+    }
     kdl_string.push_str(&kdl_string_from_tab(
         &tiled_panes,
         &floating_panes_layout,
-        vec![format!("name=\"{}\"", tab_name,)],
+        tab_attributes,
+        // vec![format!("name=\"{}\"", tab_name,)],
         None,
     ));
     kdl_string
@@ -316,6 +328,9 @@ fn kdl_string_from_tiled_pane(layout: &TiledPaneLayout, ignore_size: bool) -> St
     if layout.is_expanded_in_stack {
         kdl_string.push_str(&" expanded=true");
     }
+    if layout.focus.unwrap_or(false) {
+        kdl_string.push_str(&" focus=true");
+    }
     if layout.children_split_direction != SplitDirection::default() {
         let direction = match layout.children_split_direction {
             SplitDirection::Horizontal => "horizontal",
@@ -425,6 +440,9 @@ fn kdl_string_from_floating_pane(layout: &FloatingPaneLayout) -> String {
             kdl_string.push_str(&format!(" cwd=\"{}\"", path));
         }
     }
+    if layout.focus.unwrap_or(false) {
+        kdl_string.push_str(&" focus=true");
+    }
     kdl_string.push_str(" {\n");
 
     if command.is_some() {
@@ -509,7 +527,7 @@ fn get_tiled_panes_layout_from_panegeoms(
     let (children_split_direction, splits) = match get_splits(&geoms) {
         Some(x) => x,
         None => {
-            let (run, borderless, is_expanded_in_stack, name) = geoms
+            let (run, borderless, is_expanded_in_stack, name, focus) = geoms
                 .iter()
                 .next()
                 .map(|g| {
@@ -526,15 +544,17 @@ fn get_tiled_panes_layout_from_panegeoms(
                         g.is_borderless,
                         g.geom.is_stacked && g.geom.rows.inner > 1,
                         g.title.clone(),
+                        Some(g.is_focused),
                     )
                 })
-                .unwrap_or((None, false, false, None));
+                .unwrap_or((None, false, false, None, None));
             return TiledPaneLayout {
                 split_size,
                 run,
                 borderless,
                 is_expanded_in_stack,
                 name,
+                focus,
                 ..Default::default()
             };
         },
