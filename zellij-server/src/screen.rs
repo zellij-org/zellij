@@ -3679,7 +3679,7 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::LogAndReportSessionState => {
                 screen.log_and_report_session_state()?;
-            }
+            },
         }
     }
     Ok(())
