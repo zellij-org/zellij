@@ -14,6 +14,7 @@ use std::{
 use url::Url;
 use wasmer::{AsStoreRef, Instance, Module, Store};
 use wasmer_wasi::{Pipe, WasiState};
+use zellij_utils::consts::VERSION;
 use zellij_utils::prost::Message;
 
 use crate::{
@@ -747,8 +748,9 @@ impl<'a> PluginLoader<'a> {
                 }
                 // The plugins blob as stored on the filesystem
                 let wasm_bytes = self.plugin.resolve_wasm_bytes(&self.plugin_dir)?;
+                let to_hash: Vec<_> = VERSION.bytes().chain(wasm_bytes.iter().cloned()).collect();
                 let hash: String = PortableHash::default()
-                    .hash256(&wasm_bytes)
+                    .hash256(&to_hash)
                     .iter()
                     .map(ToString::to_string)
                     .collect();
