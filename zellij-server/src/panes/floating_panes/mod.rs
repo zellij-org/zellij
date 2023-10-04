@@ -1,6 +1,6 @@
 mod floating_pane_grid;
 use zellij_utils::{
-    data::{Direction, PaneInfo, ResizeStrategy},
+    data::{Direction, PaneInfo, ResizeByPercent, ResizeStrategy},
     position::Position,
 };
 
@@ -436,6 +436,34 @@ impl FloatingPanes {
             return Ok(true);
         }
         Ok(false)
+    }
+
+    pub fn resize_floating_pane(
+        &mut self,
+        pane_id: PaneId,
+        _os_api: &mut Box<dyn ServerOsApi>,
+        pane_with_size: ResizeByPercent,
+    ) -> Result<bool> {
+        let err_context =
+            || format!("failed to resize active floating pane for pane id {pane_id:?}");
+        let display_area = *self.display_area.borrow();
+        let viewport = *self.viewport.borrow();
+        let mut floating_pane_grid = FloatingPaneGrid::new(
+            &mut self.panes,
+            &mut self.desired_pane_positions,
+            display_area,
+            viewport,
+        );
+        floating_pane_grid
+            .change_pane_size_by_percent(pane_id, pane_with_size)
+            .with_context(err_context)?;
+
+        for pane in self.panes.values_mut() {
+            resize_pty!(pane, os_api, self.senders, self.character_cell_size)
+                .with_context(err_context)?;
+        }
+        self.set_force_render();
+        return Ok(true);
     }
 
     fn set_pane_active_at(&mut self, pane_id: PaneId) {

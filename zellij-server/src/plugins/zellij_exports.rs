@@ -18,7 +18,7 @@ use wasmer::{imports, AsStoreMut, Function, FunctionEnv, FunctionEnvMut, Imports
 use wasmer_wasi::WasiEnv;
 use zellij_utils::data::{
     CommandType, ConnectToSession, PaneToResizeByPercent, PermissionStatus, PermissionType,
-    PluginPermission, ResizeByPercent,
+    PluginPermission,
 };
 use zellij_utils::input::permission::PermissionCache;
 
@@ -732,14 +732,18 @@ fn resize_with_direction(env: &ForeignFunctionEnv, resize: ResizeStrategy) {
 
 fn resize_given_floating_pane_by_percent(
     env: &ForeignFunctionEnv,
-    resize_by_percent: PaneToResizeByPercent,
+    pane_to_resize: PaneToResizeByPercent,
 ) {
-    let error_msg = || format!("failed to resize in plugin {}", env.plugin_env.name());
+    let error_msg = || {
+        format!(
+            "failed to resize floating pane {:?} by given size {:?}",
+            pane_to_resize.pane_id, pane_to_resize.resize
+        )
+    };
     env.plugin_env
         .senders
         .send_to_screen(ScreenInstruction::ResizeFloatingPaneByPercent(
-            env.plugin_env.client_id,
-            resize_by_percent,
+            pane_to_resize,
         ))
         .with_context(error_msg)
         .non_fatal();

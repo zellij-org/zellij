@@ -12,7 +12,7 @@ pub use super::generated_api::api::{
     input_mode::InputMode as ProtobufInputMode,
     resize::{Resize as ProtobufResize, ResizeDirection as ProtobufResizeDirection},
 };
-use crate::data::{Direction, InputMode, ResizeByPercent, ResizeStrategy};
+use crate::data::{Direction, InputMode, ResizeStrategy};
 use crate::errors::prelude::*;
 use crate::input::actions::Action;
 use crate::input::actions::{SearchDirection, SearchOption};

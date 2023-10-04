@@ -2033,11 +2033,15 @@ impl Tab {
 
     pub fn resize_by_floating_pane_id(
         &mut self,
-        client_id: ClientId,
-        pane_id: Option<PaneId>,
+        pane_id: PaneId,
         new_size: ResizeByPercent,
-    ) {
-        todo!()
+    ) -> Result<()> {
+        let err_context = || format!("unable to resize float pane {pane_id:?} by given size");
+
+        self.floating_panes
+            .resize_floating_pane(pane_id, &mut self.os_api, new_size)
+            .with_context(err_context)?;
+        Ok(())
     }
 
     fn set_pane_active_at(&mut self, pane_id: PaneId) {

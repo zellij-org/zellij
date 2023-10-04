@@ -154,7 +154,7 @@ pub enum ScreenInstruction {
     VerticalSplit(PaneId, Option<InitialTitle>, HoldForCommand, ClientId),
     WriteCharacter(Vec<u8>, ClientId),
     Resize(ClientId, ResizeStrategy),
-    ResizeFloatingPaneByPercent(ClientId, PaneToResizeByPercent),
+    ResizeFloatingPaneByPercent(PaneToResizeByPercent),
     SwitchFocus(ClientId),
     FocusNextPane(ClientId),
     FocusPreviousPane(ClientId),
@@ -2158,18 +2158,17 @@ pub(crate) fn screen_thread_main(
                 screen.render()?;
                 screen.log_and_report_session_state()?;
             },
-            ScreenInstruction::ResizeFloatingPaneByPercent(client_id, pane_to_resize) => {
-                info!(
-                    "Got - client_id :{};ResizeFloatingPaneByPercent: {:?}",
-                    client_id, pane_to_resize
-                );
+            ScreenInstruction::ResizeFloatingPaneByPercent(pane_to_resize) => {
                 let PaneToResizeByPercent {
                     tab_position,
                     pane_id,
                     resize,
                 } = pane_to_resize;
-                if let Some(tab) = screen.get_indexed_tab_mut(tab_position.unwrap() as usize) {
-                    tab.resize_by_floating_pane_id(client_id, pane_id, resize);
+                let tab_id = tab_position.expect("Could not get tab id") as usize;
+                let pane_id = pane_id.expect("Could not get pane id");
+
+                if let Some(tab) = screen.get_indexed_tab_mut(tab_id) {
+                    let _ = tab.resize_by_floating_pane_id(pane_id, resize);
                 }
 
                 screen.unblock_input()?;
