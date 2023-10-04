@@ -627,7 +627,7 @@ impl Tab {
     ) -> Result<()> {
         self.swap_layouts
             .set_base_layout((layout.clone(), floating_panes_layout.clone()));
-        let layout_has_floating_panes = LayoutApplier::new(
+        let should_show_floating_panes = LayoutApplier::new(
             &self.viewport,
             &self.senders,
             &self.sixel_image_store,
@@ -653,10 +653,13 @@ impl Tab {
             new_plugin_ids,
             client_id,
         )?;
-        if layout_has_floating_panes {
-            if !self.floating_panes.panes_are_visible() {
-                self.toggle_floating_panes(Some(client_id), None)?;
-            }
+        log::info!("finished applying layout");
+        if should_show_floating_panes && !self.floating_panes.panes_are_visible() {
+            log::info!("showing floating panes");
+            self.toggle_floating_panes(Some(client_id), None)?;
+        } else if !should_show_floating_panes && self.floating_panes.panes_are_visible() {
+            log::info!("hiding floating panes");
+            self.toggle_floating_panes(Some(client_id), None)?;
         }
         self.tiled_panes.reapply_pane_frames();
         self.is_pending = false;

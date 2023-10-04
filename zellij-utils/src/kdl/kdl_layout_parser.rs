@@ -78,6 +78,7 @@ impl<'a> KdlLayoutParser<'a> {
             || word == "split_direction"
             || word == "swap_tiled_layout"
             || word == "swap_floating_layout"
+            || word == "hide_floating_panes"
     }
     fn is_a_valid_pane_property(&self, property_name: &str) -> bool {
         property_name == "borderless"
@@ -124,6 +125,7 @@ impl<'a> KdlLayoutParser<'a> {
             || property_name == "max_panes"
             || property_name == "min_panes"
             || property_name == "exact_panes"
+            || property_name == "hide_floating_panes"
     }
     pub fn is_a_reserved_plugin_property(property_name: &str) -> bool {
         property_name == "location"
@@ -1115,6 +1117,7 @@ impl<'a> KdlLayoutParser<'a> {
             kdl_get_string_property_or_child_value!(kdl_node, "name").map(|s| s.to_string());
         let tab_cwd = self.parse_path(kdl_node, "cwd")?;
         let is_focused = kdl_get_bool_property_or_child_value!(kdl_node, "focus").unwrap_or(false);
+        let hide_floating_panes = kdl_get_bool_property_or_child_value!(kdl_node, "hide_floating_panes").unwrap_or(false);
         let children_split_direction = self.parse_split_direction(kdl_node)?;
         let mut child_floating_panes = vec![];
         let children = match kdl_children_nodes!(kdl_node) {
@@ -1131,6 +1134,7 @@ impl<'a> KdlLayoutParser<'a> {
         let mut pane_layout = TiledPaneLayout {
             children_split_direction,
             children,
+            hide_floating_panes,
             ..Default::default()
         };
         if let Some(cwd_prefix) = &self.cwd_prefix(tab_cwd.as_ref())? {

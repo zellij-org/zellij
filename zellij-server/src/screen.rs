@@ -187,6 +187,7 @@ impl SessionLayoutMetadata {
         &mut self,
         name: String,
         is_focused: bool,
+        hide_floating_panes: bool,
         tiled_panes: Vec<(PaneId, PaneGeom, bool, Option<Run>, Option<String>, bool)>, // bool => is_borderless,
         // Option<String> => title, bool => is_focused
         floating_panes: Vec<(PaneId, PaneGeom, Option<Run>, Option<String>, bool)>, // Option<String> => title, bool => is_focused
@@ -194,6 +195,7 @@ impl SessionLayoutMetadata {
         self.tabs.push(TabLayoutMetadata {
             name: Some(name), // TODO: tabs don't always have a name...
             is_focused,
+            hide_floating_panes,
             tiled_panes: tiled_panes.into_iter().map(|t_p| t_p.into()).collect(),
             floating_panes: floating_panes.into_iter().map(|t_p| t_p.into()).collect(),
         })
@@ -335,6 +337,7 @@ impl Into<TabLayoutManifest> for TabLayoutMetadata {
             tiled_panes: self.tiled_panes.into_iter().map(|t| t.into()).collect(),
             floating_panes: self.floating_panes.into_iter().map(|t| t.into()).collect(),
             is_focused: self.is_focused,
+            hide_floating_panes: self.hide_floating_panes,
         }
     }
 }
@@ -359,6 +362,7 @@ pub struct TabLayoutMetadata {
     tiled_panes: Vec<PaneLayoutMetadata>,
     floating_panes: Vec<PaneLayoutMetadata>,
     is_focused: bool,
+    hide_floating_panes: bool,
 }
 
 // TODO: move elsewhere
@@ -2209,6 +2213,7 @@ impl Screen {
             first_client_id.and_then(|client_id| self.active_tab_indices.get(&client_id));
         for (tab_index, tab) in self.tabs.values().enumerate() {
             let tab_is_focused = active_tab_index == Some(&tab_index);
+            let hide_floating_panes = !tab.are_floating_panes_visible();
             let mut suppressed_panes = HashMap::new();
             for (triggering_pane_id, p) in tab.get_suppressed_panes() {
                 suppressed_panes.insert(*triggering_pane_id, p);
@@ -2286,6 +2291,7 @@ impl Screen {
             session_layout_metadata.add_tab(
                 tab.name.clone(),
                 tab_is_focused,
+                hide_floating_panes,
                 tiled_panes,
                 floating_panes,
             );

@@ -48,6 +48,7 @@ pub struct TabLayoutManifest {
     pub tiled_panes: Vec<PaneLayoutManifest>,
     pub floating_panes: Vec<PaneLayoutManifest>,
     pub is_focused: bool,
+    pub hide_floating_panes: bool,
 }
 
 #[derive(Default, Debug, Clone)]
@@ -71,10 +72,12 @@ pub fn tabs_to_kdl(global_layout_manifest: GlobalLayoutManifest) -> String {
     for (tab_name, tab_layout_manifest) in global_layout_manifest.tabs {
         let tiled_panes = tab_layout_manifest.tiled_panes;
         let floating_panes = tab_layout_manifest.floating_panes;
+        let hide_floating_panes = tab_layout_manifest.hide_floating_panes;
         kdl_string.push_str(&indent(
             &stringify_tab(
                 tab_name.clone(),
                 tab_layout_manifest.is_focused,
+                hide_floating_panes,
                 &tiled_panes,
                 &floating_panes,
             ),
@@ -164,6 +167,7 @@ pub fn tabs_to_kdl(global_layout_manifest: GlobalLayoutManifest) -> String {
 pub fn stringify_tab(
     tab_name: String,
     is_focused: bool,
+    hide_floating_panes: bool,
     tiled_panes: &Vec<PaneLayoutManifest>,
     floating_panes: &Vec<PaneLayoutManifest>,
 ) -> String {
@@ -180,11 +184,13 @@ pub fn stringify_tab(
     if is_focused {
         tab_attributes.push(format!("focus=true"));
     }
+    if hide_floating_panes {
+        tab_attributes.push(format!("hide_floating_panes=true"));
+    }
     kdl_string.push_str(&kdl_string_from_tab(
         &tiled_panes,
         &floating_panes_layout,
         tab_attributes,
-        // vec![format!("name=\"{}\"", tab_name,)],
         None,
     ));
     kdl_string

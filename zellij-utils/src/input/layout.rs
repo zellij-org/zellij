@@ -517,6 +517,7 @@ pub struct TiledPaneLayout {
     pub is_expanded_in_stack: bool,
     pub exclude_from_sync: Option<bool>,
     pub run_instructions_to_ignore: Vec<Option<Run>>,
+    pub hide_floating_panes: bool, // only relevant if this is the base layout
 }
 
 impl TiledPaneLayout {

@@ -101,8 +101,9 @@ impl<'a> LayoutApplier<'a> {
         mut new_plugin_ids: HashMap<(RunPluginLocation, PluginUserConfiguration), Vec<u32>>,
         client_id: ClientId,
     ) -> Result<bool> {
-        // true => layout has floating panes
+        // true => should_show_floating_panes
         let layout_name = layout.name.clone();
+        let hide_floating_panes = layout.hide_floating_panes;
         self.apply_tiled_panes_layout(layout, new_terminal_ids, &mut new_plugin_ids, client_id)?;
         let layout_has_floating_panes = self.apply_floating_panes_layout(
             floating_panes_layout,
@@ -110,7 +111,8 @@ impl<'a> LayoutApplier<'a> {
             &mut new_plugin_ids,
             layout_name,
         )?;
-        return Ok(layout_has_floating_panes);
+        let should_show_floating_panes = layout_has_floating_panes && !hide_floating_panes;
+        return Ok(should_show_floating_panes);
     }
     pub fn apply_tiled_panes_layout_to_existing_panes(
         &mut self,

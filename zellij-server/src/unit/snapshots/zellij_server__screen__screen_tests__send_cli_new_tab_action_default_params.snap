@@ -1,6 +1,6 @@
 ---
 source: zellij-server/src/./unit/screen_tests.rs
-assertion_line: 2217
+assertion_line: 2244
 expression: "format!(\"{:#?}\", new_tab_action)"
 ---
 Some(
@@ -25,6 +25,7 @@ Some(
                         is_expanded_in_stack: false,
                         exclude_from_sync: None,
                         run_instructions_to_ignore: [],
+                        hide_floating_panes: false,
                     },
                     TiledPaneLayout {
                         children_split_direction: Horizontal,
@@ -39,6 +40,7 @@ Some(
                         is_expanded_in_stack: false,
                         exclude_from_sync: None,
                         run_instructions_to_ignore: [],
+                        hide_floating_panes: false,
                     },
                 ],
                 split_size: None,
@@ -50,6 +52,7 @@ Some(
                 is_expanded_in_stack: false,
                 exclude_from_sync: None,
                 run_instructions_to_ignore: [],
+                hide_floating_panes: false,
             },
         ),
         [],
