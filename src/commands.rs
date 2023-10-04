@@ -1,5 +1,5 @@
 use dialoguer::Confirm;
-use std::{fs::File, io::prelude::*, path::PathBuf, process};
+use std::{fs::File, io::prelude::*, path::PathBuf, process, time::Duration};
 
 use crate::sessions::{
     assert_dead_session, assert_session, assert_session_ne, delete_session as delete_session_impl,
@@ -51,7 +51,7 @@ pub(crate) fn kill_all_sessions(yes: bool) {
                 }
             }
             for session in &sessions {
-                kill_session_impl(session);
+                kill_session_impl(&session.0);
             }
             process::exit(0);
         },
@@ -63,14 +63,14 @@ pub(crate) fn kill_all_sessions(yes: bool) {
 }
 
 pub(crate) fn delete_all_sessions(yes: bool, force: bool) {
-    let active_sessions = get_sessions().unwrap_or_default();
+    let active_sessions: Vec<String> = get_sessions().unwrap_or_default().iter().map(|s| s.0.clone()).collect();
     let resurrectable_sessions = get_resurrectable_sessions();
     let dead_sessions: Vec<_> = if force {
         resurrectable_sessions
     } else {
         resurrectable_sessions
             .iter()
-            .filter(|(name, _)| !active_sessions.contains(name))
+            .filter(|(name, _, _)| !active_sessions.contains(name))
             .cloned()
             .collect()
     };
@@ -189,7 +189,7 @@ pub(crate) fn send_action_to_session(
             attach_with_cli_client(cli_action, &session_name, config);
         },
         ActiveSession::Many => {
-            let existing_sessions = get_sessions().unwrap();
+            let existing_sessions: Vec<String> = get_sessions().unwrap_or_default().iter().map(|s| s.0.clone()).collect();
             if let Some(session_name) = requested_session_name {
                 if existing_sessions.contains(&session_name) {
                     attach_with_cli_client(cli_action, &session_name, config);
@@ -198,14 +198,14 @@ pub(crate) fn send_action_to_session(
                         "Session '{}' not found. The following sessions are active:",
                         session_name
                     );
-                    list_sessions();
+                    list_sessions(false);
                     std::process::exit(1);
                 }
             } else if let Ok(session_name) = envs::get_session_name() {
                 attach_with_cli_client(cli_action, &session_name, config);
             } else {
                 eprintln!("Please specify the session name to send actions to. The following sessions are active:");
-                list_sessions();
+                list_sessions(false);
                 std::process::exit(1);
             }
         },
@@ -341,7 +341,7 @@ fn attach_with_session_name(
                     "Ambiguous selection: multiple sessions names start with '{}':",
                     prefix
                 );
-                print_sessions(sessions.iter().map(|s| (s.clone(), false)).collect());
+                print_sessions(sessions.iter().map(|s| (s.clone(), Duration::default(), false)).collect(), false);
                 process::exit(1);
             },
             SessionNameMatch::None => {
@@ -358,7 +358,7 @@ fn attach_with_session_name(
             ActiveSession::One(session_name) => ClientInfo::Attach(session_name, config_options),
             ActiveSession::Many => {
                 println!("Please specify the session to attach to, either by using the full name or a unique prefix.\nThe following sessions are active:");
-                list_sessions();
+                list_sessions(false);
                 process::exit(1);
             },
         },
@@ -584,10 +584,10 @@ pub(crate) fn start_client(opts: CliArgs) {
 }
 
 fn generate_unique_session_name() -> String {
-    let sessions = get_sessions();
+    let sessions = get_sessions().map(|sessions| sessions.iter().map(|s| s.0.clone()).collect::<Vec<String>>());
     let dead_sessions: Vec<String> = get_resurrectable_sessions()
         .iter()
-        .map(|(s, _)| s.clone())
+        .map(|(s, _, _)| s.clone())
         .collect();
     let Ok(sessions) = sessions else {
         eprintln!("Failed to list existing sessions: {:?}", sessions);

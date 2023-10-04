@@ -98,7 +98,11 @@ pub enum SessionCommand {
 pub enum Sessions {
     /// List active sessions
     #[clap(visible_alias = "ls")]
-    ListSessions,
+    ListSessions {
+        /// Do not add colors and formatting to the list (useful for parsing)
+        #[clap(short, long, value_parser, takes_value(false), default_value("false"))]
+        no_formatting: bool,
+    },
 
     /// Attach to a session
     #[clap(visible_alias = "a")]

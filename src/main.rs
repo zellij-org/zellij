@@ -87,8 +87,8 @@ fn main() {
         }
     }
 
-    if let Some(Command::Sessions(Sessions::ListSessions)) = opts.command {
-        commands::list_sessions();
+    if let Some(Command::Sessions(Sessions::ListSessions { no_formatting })) = opts.command {
+        commands::list_sessions(no_formatting);
     } else if let Some(Command::Sessions(Sessions::KillAllSessions { yes })) = opts.command {
         commands::kill_all_sessions(yes);
     } else if let Some(Command::Sessions(Sessions::KillSession { ref target_session })) =

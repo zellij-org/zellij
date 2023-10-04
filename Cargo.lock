@@ -4658,6 +4658,7 @@ dependencies = [
  "crossbeam",
  "directories-next",
  "expect-test",
+ "humantime",
  "include_dir",
  "insta",
  "interprocess",
