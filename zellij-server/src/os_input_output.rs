@@ -782,7 +782,8 @@ impl ServerOsApi for ServerOsInputOutput {
         }
         cwds
     }
-    fn get_all_cmds_by_ppid(&self) -> HashMap<String, Vec<String>> { // the key is the stringified ppid
+    fn get_all_cmds_by_ppid(&self) -> HashMap<String, Vec<String>> {
+        // the key is the stringified ppid
         // TODO: change name to reflect that we're getting the cmd of the child process only... if
         // we end up going this way
         // TODO: does this work on mac?

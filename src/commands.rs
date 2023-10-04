@@ -63,7 +63,11 @@ pub(crate) fn kill_all_sessions(yes: bool) {
 }
 
 pub(crate) fn delete_all_sessions(yes: bool, force: bool) {
-    let active_sessions: Vec<String> = get_sessions().unwrap_or_default().iter().map(|s| s.0.clone()).collect();
+    let active_sessions: Vec<String> = get_sessions()
+        .unwrap_or_default()
+        .iter()
+        .map(|s| s.0.clone())
+        .collect();
     let resurrectable_sessions = get_resurrectable_sessions();
     let dead_sessions: Vec<_> = if force {
         resurrectable_sessions
@@ -189,7 +193,11 @@ pub(crate) fn send_action_to_session(
             attach_with_cli_client(cli_action, &session_name, config);
         },
         ActiveSession::Many => {
-            let existing_sessions: Vec<String> = get_sessions().unwrap_or_default().iter().map(|s| s.0.clone()).collect();
+            let existing_sessions: Vec<String> = get_sessions()
+                .unwrap_or_default()
+                .iter()
+                .map(|s| s.0.clone())
+                .collect();
             if let Some(session_name) = requested_session_name {
                 if existing_sessions.contains(&session_name) {
                     attach_with_cli_client(cli_action, &session_name, config);
@@ -341,7 +349,13 @@ fn attach_with_session_name(
                     "Ambiguous selection: multiple sessions names start with '{}':",
                     prefix
                 );
-                print_sessions(sessions.iter().map(|s| (s.clone(), Duration::default(), false)).collect(), false);
+                print_sessions(
+                    sessions
+                        .iter()
+                        .map(|s| (s.clone(), Duration::default(), false))
+                        .collect(),
+                    false,
+                );
                 process::exit(1);
             },
             SessionNameMatch::None => {
@@ -584,7 +598,12 @@ pub(crate) fn start_client(opts: CliArgs) {
 }
 
 fn generate_unique_session_name() -> String {
-    let sessions = get_sessions().map(|sessions| sessions.iter().map(|s| s.0.clone()).collect::<Vec<String>>());
+    let sessions = get_sessions().map(|sessions| {
+        sessions
+            .iter()
+            .map(|s| s.0.clone())
+            .collect::<Vec<String>>()
+    });
     let dead_sessions: Vec<String> = get_resurrectable_sessions()
         .iter()
         .map(|(s, _, _)| s.clone())

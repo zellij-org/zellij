@@ -5,12 +5,12 @@ use std::{fs, io, process};
 use suggest::Suggest;
 use zellij_utils::{
     anyhow,
-    humantime::format_duration,
     consts::{
         session_info_cache_file_name, session_info_folder_for_session,
         session_layout_cache_file_name, ZELLIJ_SESSION_INFO_CACHE_DIR, ZELLIJ_SOCK_DIR,
     },
     envs,
+    humantime::format_duration,
     input::layout::Layout,
     interprocess::local_socket::LocalSocketStream,
     ipc::{ClientToServerMsg, IpcReceiverWithContext, IpcSenderWithContext, ServerToClientMsg},
@@ -23,7 +23,11 @@ pub(crate) fn get_sessions() -> Result<Vec<(String, Duration)>, io::ErrorKind> {
             files.for_each(|file| {
                 let file = file.unwrap();
                 let file_name = file.file_name().into_string().unwrap();
-                let ctime = std::fs::metadata(&file.path()).ok().and_then(|f| f.created().ok()).and_then(|d| d.elapsed().ok()).unwrap_or_default();
+                let ctime = std::fs::metadata(&file.path())
+                    .ok()
+                    .and_then(|f| f.created().ok())
+                    .and_then(|d| d.elapsed().ok())
+                    .unwrap_or_default();
                 let duration = Duration::from_secs(ctime.as_secs());
                 if file.file_type().unwrap().is_socket() && assert_socket(&file_name) {
                     sessions.push((file_name, duration));
@@ -56,7 +60,8 @@ pub(crate) fn get_resurrectable_sessions() -> Vec<(String, Duration, Layout)> {
                     )
                     .ok()?; // TODO:
                             // cwd
-                    let elapsed_duration = Duration::from_secs(ctime.elapsed().ok().unwrap_or_default().as_secs());
+                    let elapsed_duration =
+                        Duration::from_secs(ctime.elapsed().ok().unwrap_or_default().as_secs());
                     let session_name = folder_name
                         .file_name()
                         .map(|f| std::path::PathBuf::from(f).display().to_string())?;
@@ -120,33 +125,36 @@ fn assert_socket(name: &str) -> bool {
 pub(crate) fn print_sessions(mut sessions: Vec<(String, Duration, bool)>, no_formatting: bool) {
     // (session_name, timestamp, is_dead)
     let curr_session = envs::get_session_name().unwrap_or_else(|_| "".into());
-    sessions.sort_by(|a, b| {
-        a.1.cmp(&b.1)
-    });
-    sessions.iter().for_each(|(session_name, timestamp, is_dead)| {
-        if no_formatting {
-            let suffix = if curr_session == *session_name {
-                format!("(current)")
-            } else if *is_dead {
-                format!("(EXITED - attach to resurrect)")
+    sessions.sort_by(|a, b| a.1.cmp(&b.1));
+    sessions
+        .iter()
+        .for_each(|(session_name, timestamp, is_dead)| {
+            if no_formatting {
+                let suffix = if curr_session == *session_name {
+                    format!("(current)")
+                } else if *is_dead {
+                    format!("(EXITED - attach to resurrect)")
+                } else {
+                    String::new()
+                };
+                let timestamp = format!("[Created {} ago]", format_duration(*timestamp));
+                println!("{} {} {}", session_name, timestamp, suffix);
             } else {
-                String::new()
-            };
-            let timestamp = format!("[Created {} ago]", format_duration(*timestamp));
-            println!("{} {} {}", session_name, timestamp, suffix);
-        } else {
-            let session_name = format!("\u{1b}[32;1m{}\u{1b}[m", session_name);
-            let suffix = if curr_session == *session_name {
-                format!("(current)")
-            } else if *is_dead {
-                format!("(\u{1b}[31;1mEXITED\u{1b}[m - attach to resurrect)")
-            } else {
-                String::new()
-            };
-            let timestamp = format!("[Created \u{1b}[35;1m{}\u{1b}[m ago]", format_duration(*timestamp));
-            println!("{} {} {}", session_name, timestamp, suffix);
-        }
-    })
+                let session_name = format!("\u{1b}[32;1m{}\u{1b}[m", session_name);
+                let suffix = if curr_session == *session_name {
+                    format!("(current)")
+                } else if *is_dead {
+                    format!("(\u{1b}[31;1mEXITED\u{1b}[m - attach to resurrect)")
+                } else {
+                    String::new()
+                };
+                let timestamp = format!(
+                    "[Created \u{1b}[35;1m{}\u{1b}[m ago]",
+                    format_duration(*timestamp)
+                );
+                println!("{} {} {}", session_name, timestamp, suffix);
+            }
+        })
 }
 
 pub(crate) fn print_sessions_with_index(sessions: Vec<String>) {
@@ -231,7 +239,9 @@ pub(crate) fn list_sessions(no_formatting: bool) {
                 print_sessions(
                     all_sessions
                         .iter()
-                        .map(|(name, (timestamp, is_dead))| (name.clone(), timestamp.clone(), *is_dead))
+                        .map(|(name, (timestamp, is_dead))| {
+                            (name.clone(), timestamp.clone(), *is_dead)
+                        })
                         .collect(),
                     no_formatting,
                 );
@@ -257,7 +267,10 @@ pub enum SessionNameMatch {
 pub(crate) fn match_session_name(prefix: &str) -> Result<SessionNameMatch, io::ErrorKind> {
     let sessions = get_sessions()?;
 
-    let filtered_sessions: Vec<_> = sessions.iter().filter(|s| s.0.starts_with(prefix)).collect();
+    let filtered_sessions: Vec<_> = sessions
+        .iter()
+        .filter(|s| s.0.starts_with(prefix))
+        .collect();
 
     if filtered_sessions.iter().any(|s| s.0 == prefix) {
         return Ok(SessionNameMatch::Exact(prefix.to_string()));
@@ -267,9 +280,9 @@ pub(crate) fn match_session_name(prefix: &str) -> Result<SessionNameMatch, io::E
         match &filtered_sessions[..] {
             [] => SessionNameMatch::None,
             [s] => SessionNameMatch::UniquePrefix(s.0.to_string()),
-            _ => {
-                SessionNameMatch::AmbiguousPrefix(filtered_sessions.into_iter().map(|s| s.0.clone()).collect())
-            },
+            _ => SessionNameMatch::AmbiguousPrefix(
+                filtered_sessions.into_iter().map(|s| s.0.clone()).collect(),
+            ),
         }
     })
 }
@@ -285,13 +298,15 @@ pub(crate) fn session_exists(name: &str) -> Result<bool, io::ErrorKind> {
 // if the session is resurrecable, the returned layout is the one to be used to resurrect it
 pub(crate) fn resurrection_layout(session_name_to_resurrect: &str) -> Option<Layout> {
     let resurrectable_sessions = get_resurrectable_sessions();
-    resurrectable_sessions.iter().find_map(|(name, timestamp, layout)| {
-        if name == session_name_to_resurrect {
-            Some(layout.clone())
-        } else {
-            None
-        }
-    })
+    resurrectable_sessions
+        .iter()
+        .find_map(|(name, timestamp, layout)| {
+            if name == session_name_to_resurrect {
+                Some(layout.clone())
+            } else {
+                None
+            }
+        })
 }
 
 pub(crate) fn assert_session(name: &str) {
@@ -301,7 +316,13 @@ pub(crate) fn assert_session(name: &str) {
                 return;
             } else {
                 println!("No session named {:?} found.", name);
-                if let Some(sugg) = get_sessions().unwrap().iter().map(|s| s.0.clone()).collect::<Vec<_>>().suggest(name) {
+                if let Some(sugg) = get_sessions()
+                    .unwrap()
+                    .iter()
+                    .map(|s| s.0.clone())
+                    .collect::<Vec<_>>()
+                    .suggest(name)
+                {
                     println!("  help: Did you mean `{}`?", sugg);
                 }
             }

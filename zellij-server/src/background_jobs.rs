@@ -155,12 +155,12 @@ pub(crate) fn background_jobs_main(bus: Bus<BackgroundJob>) -> Result<()> {
                             if !current_session_layout.is_empty() {
                                 let layout_cache_file_name =
                                     session_layout_cache_file_name(&current_session_name);
-                                let _wrote_layout_file =
-                                    std::fs::create_dir_all(session_info_folder_for_session(&current_session_name).as_path())
-                                        .and_then(|_| std::fs::File::create(layout_cache_file_name))
-                                        .and_then(|mut f| {
-                                            write!(f, "{}", current_session_layout)
-                                        });
+                                let _wrote_layout_file = std::fs::create_dir_all(
+                                    session_info_folder_for_session(&current_session_name)
+                                        .as_path(),
+                                )
+                                .and_then(|_| std::fs::File::create(layout_cache_file_name))
+                                .and_then(|mut f| write!(f, "{}", current_session_layout));
                             }
                             // start a background job (if not already running) that'll periodically read this and other
                             // sesion infos and report back
@@ -199,8 +199,7 @@ pub(crate) fn background_jobs_main(bus: Bus<BackgroundJob>) -> Result<()> {
                             let _ = senders.send_to_screen(ScreenInstruction::UpdateSessionInfos(
                                 session_infos_on_machine,
                             ));
-                            let _ =
-                                senders.send_to_screen(ScreenInstruction::DumpLayoutToHd);
+                            let _ = senders.send_to_screen(ScreenInstruction::DumpLayoutToHd);
                             task::sleep(std::time::Duration::from_millis(SESSION_READ_DURATION))
                                 .await;
                         }

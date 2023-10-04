@@ -1173,13 +1173,27 @@ impl Pty {
             .filter_map(|id| self.id_to_child_pid.get(&id))
             .map(|pid| Pid::from_raw(*pid))
             .collect();
-        let pids_to_cwds = self.bus.os_input.as_ref().map(|os_input| os_input.get_cwds(pids)).unwrap_or_default();
-        let ppids_to_cmds = self.bus.os_input.as_ref().map(|os_input| os_input.get_all_cmds_by_ppid()).unwrap_or_default();
+        let pids_to_cwds = self
+            .bus
+            .os_input
+            .as_ref()
+            .map(|os_input| os_input.get_cwds(pids))
+            .unwrap_or_default();
+        let ppids_to_cmds = self
+            .bus
+            .os_input
+            .as_ref()
+            .map(|os_input| os_input.get_all_cmds_by_ppid())
+            .unwrap_or_default();
 
         for terminal_id in terminal_ids {
             let process_id = self.id_to_child_pid.get(&terminal_id);
-            let cwd = process_id.as_ref().and_then(|pid| pids_to_cwds.get(&Pid::from_raw(**pid)));
-            let cmd = process_id.as_ref().and_then(|pid| ppids_to_cmds.get(&format!("{}", pid)));
+            let cwd = process_id
+                .as_ref()
+                .and_then(|pid| pids_to_cwds.get(&Pid::from_raw(**pid)));
+            let cmd = process_id
+                .as_ref()
+                .and_then(|pid| ppids_to_cmds.get(&format!("{}", pid)));
             if let Some(cmd) = cmd {
                 terminal_ids_to_commands.insert(terminal_id, cmd.clone());
             }

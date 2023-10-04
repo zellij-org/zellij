@@ -1117,7 +1117,8 @@ impl<'a> KdlLayoutParser<'a> {
             kdl_get_string_property_or_child_value!(kdl_node, "name").map(|s| s.to_string());
         let tab_cwd = self.parse_path(kdl_node, "cwd")?;
         let is_focused = kdl_get_bool_property_or_child_value!(kdl_node, "focus").unwrap_or(false);
-        let hide_floating_panes = kdl_get_bool_property_or_child_value!(kdl_node, "hide_floating_panes").unwrap_or(false);
+        let hide_floating_panes =
+            kdl_get_bool_property_or_child_value!(kdl_node, "hide_floating_panes").unwrap_or(false);
         let children_split_direction = self.parse_split_direction(kdl_node)?;
         let mut child_floating_panes = vec![];
         let children = match kdl_children_nodes!(kdl_node) {
