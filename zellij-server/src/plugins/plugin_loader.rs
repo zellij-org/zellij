@@ -748,13 +748,12 @@ impl<'a> PluginLoader<'a> {
                 }
                 // The plugins blob as stored on the filesystem
                 let wasm_bytes = self.plugin.resolve_wasm_bytes(&self.plugin_dir)?;
-                let to_hash: Vec<_> = VERSION.bytes().chain(wasm_bytes.iter().cloned()).collect();
                 let hash: String = PortableHash::default()
-                    .hash256(&to_hash)
+                    .hash256(&wasm_bytes)
                     .iter()
                     .map(ToString::to_string)
                     .collect();
-                let cached_path = ZELLIJ_CACHE_DIR.join(&hash);
+                let cached_path = ZELLIJ_CACHE_DIR.join(VERSION).join(&hash);
                 self.wasm_blob_on_hd = Some((wasm_bytes.clone(), cached_path.clone()));
                 Ok((wasm_bytes, cached_path))
             },
