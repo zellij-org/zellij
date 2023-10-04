@@ -522,7 +522,7 @@ impl<'a> PluginLoader<'a> {
         let (wasm_bytes, cached_path) = self.plugin_bytes_and_cache_path()?;
         let timer = std::time::Instant::now();
         let err_context = || "failed to recover cache dir";
-        let module = fs::create_dir_all(ZELLIJ_CACHE_DIR.to_owned())
+        let module = fs::create_dir_all(ZELLIJ_PLUGIN_ARTIFACT_DIR.as_path())
             .map_err(anyError::new)
             .and_then(|_| {
                 // compile module
