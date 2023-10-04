@@ -14,7 +14,7 @@ use std::{
 use url::Url;
 use wasmer::{AsStoreRef, Instance, Module, Store};
 use wasmer_wasi::{Pipe, WasiState};
-use zellij_utils::consts::VERSION;
+use zellij_utils::consts::ZELLIJ_PLUGIN_ARTIFACT_DIR;
 use zellij_utils::prost::Message;
 
 use crate::{
@@ -753,7 +753,7 @@ impl<'a> PluginLoader<'a> {
                     .iter()
                     .map(ToString::to_string)
                     .collect();
-                let cached_path = ZELLIJ_CACHE_DIR.join(VERSION).join(&hash);
+                let cached_path = ZELLIJ_PLUGIN_ARTIFACT_DIR.join(&hash);
                 self.wasm_blob_on_hd = Some((wasm_bytes.clone(), cached_path.clone()));
                 Ok((wasm_bytes, cached_path))
             },
