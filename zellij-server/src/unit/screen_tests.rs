@@ -236,6 +236,7 @@ fn create_new_screen(size: Size) -> Screen {
     let copy_options = CopyOptions::default();
     let default_layout = Box::new(Layout::default());
     let default_shell = None;
+    let disable_session_serialization = false;
 
     let debug = false;
     let screen = Screen::new(
@@ -250,6 +251,7 @@ fn create_new_screen(size: Size) -> Screen {
         debug,
         default_layout,
         default_shell,
+        disable_session_serialization,
     );
     screen
 }

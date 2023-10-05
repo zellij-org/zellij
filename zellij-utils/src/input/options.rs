@@ -124,6 +124,11 @@ pub struct Options {
     #[clap(long, value_parser)]
     #[serde(default)]
     pub auto_layout: Option<bool>,
+
+    /// Disable session resurrection for this session
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub disable_session_serialization: Option<bool>,
 }
 
 #[derive(ArgEnum, Deserialize, Serialize, Debug, Clone, Copy, PartialEq)]
@@ -187,6 +192,7 @@ impl Options {
         let attach_to_session = other
             .attach_to_session
             .or_else(|| self.attach_to_session.clone());
+        let disable_session_serialization = other.disable_session_serialization.or(self.disable_session_serialization);
 
         Options {
             simplified_ui,
@@ -209,6 +215,7 @@ impl Options {
             session_name,
             attach_to_session,
             auto_layout,
+            disable_session_serialization,
         }
     }
 
@@ -232,6 +239,7 @@ impl Options {
         let pane_frames = merge_bool(other.pane_frames, self.pane_frames);
         let auto_layout = merge_bool(other.auto_layout, self.auto_layout);
         let mirror_session = merge_bool(other.mirror_session, self.mirror_session);
+        let disable_session_serialization = merge_bool(other.disable_session_serialization, self.disable_session_serialization);
 
         let default_mode = other.default_mode.or(self.default_mode);
         let default_shell = other.default_shell.or_else(|| self.default_shell.clone());
@@ -274,6 +282,7 @@ impl Options {
             session_name,
             attach_to_session,
             auto_layout,
+            disable_session_serialization,
         }
     }
 
@@ -333,6 +342,7 @@ impl From<CliOptions> for Options {
             session_name: opts.session_name,
             attach_to_session: opts.attach_to_session,
             auto_layout: opts.auto_layout,
+            disable_session_serialization: opts.disable_session_serialization,
             ..Default::default()
         }
     }

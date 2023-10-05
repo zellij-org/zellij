@@ -831,6 +831,7 @@ pub(crate) struct Screen {
     style: Style,
     draw_pane_frames: bool,
     auto_layout: bool,
+    disable_session_serialization: bool,
     session_is_mirrored: bool,
     copy_options: CopyOptions,
     debug: bool,
@@ -855,6 +856,7 @@ impl Screen {
         debug: bool,
         default_layout: Box<Layout>,
         default_shell: Option<PathBuf>,
+        disable_session_serialization: bool,
     ) -> Self {
         let session_name = mode_info.session_name.clone().unwrap_or_default();
         let session_info = SessionInfo::new(session_name.clone());
@@ -886,6 +888,7 @@ impl Screen {
             session_infos_on_machine,
             default_layout,
             default_shell,
+            disable_session_serialization,
         }
     }
 
@@ -2314,6 +2317,7 @@ pub(crate) fn screen_thread_main(
     let capabilities = config_options.simplified_ui;
     let draw_pane_frames = config_options.pane_frames.unwrap_or(true);
     let auto_layout = config_options.auto_layout.unwrap_or(true);
+    let disable_session_serialization = config_options.disable_session_serialization.unwrap_or(false);
     let session_is_mirrored = config_options.mirror_session.unwrap_or(false);
     let default_shell = config_options.default_shell;
     let copy_options = CopyOptions::new(
@@ -2341,6 +2345,7 @@ pub(crate) fn screen_thread_main(
         debug,
         default_layout,
         default_shell,
+        disable_session_serialization,
     );
 
     let mut pending_tab_ids: HashSet<usize> = HashSet::new();
@@ -3712,7 +3717,9 @@ pub(crate) fn screen_thread_main(
                 screen.render()?;
             },
             ScreenInstruction::DumpLayoutToHd => {
-                screen.dump_layout_to_hd()?;
+                if !screen.disable_session_serialization {
+                    screen.dump_layout_to_hd()?;
+                }
             },
         }
     }
