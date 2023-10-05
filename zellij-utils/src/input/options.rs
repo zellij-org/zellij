@@ -192,7 +192,9 @@ impl Options {
         let attach_to_session = other
             .attach_to_session
             .or_else(|| self.attach_to_session.clone());
-        let disable_session_serialization = other.disable_session_serialization.or(self.disable_session_serialization);
+        let disable_session_serialization = other
+            .disable_session_serialization
+            .or(self.disable_session_serialization);
 
         Options {
             simplified_ui,
@@ -239,7 +241,10 @@ impl Options {
         let pane_frames = merge_bool(other.pane_frames, self.pane_frames);
         let auto_layout = merge_bool(other.auto_layout, self.auto_layout);
         let mirror_session = merge_bool(other.mirror_session, self.mirror_session);
-        let disable_session_serialization = merge_bool(other.disable_session_serialization, self.disable_session_serialization);
+        let disable_session_serialization = merge_bool(
+            other.disable_session_serialization,
+            self.disable_session_serialization,
+        );
 
         let default_mode = other.default_mode.or(self.default_mode);
         let default_shell = other.default_shell.or_else(|| self.default_shell.clone());

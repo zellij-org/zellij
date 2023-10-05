@@ -2317,7 +2317,9 @@ pub(crate) fn screen_thread_main(
     let capabilities = config_options.simplified_ui;
     let draw_pane_frames = config_options.pane_frames.unwrap_or(true);
     let auto_layout = config_options.auto_layout.unwrap_or(true);
-    let disable_session_serialization = config_options.disable_session_serialization.unwrap_or(false);
+    let disable_session_serialization = config_options
+        .disable_session_serialization
+        .unwrap_or(false);
     let session_is_mirrored = config_options.mirror_session.unwrap_or(false);
     let default_shell = config_options.default_shell;
     let copy_options = CopyOptions::new(
