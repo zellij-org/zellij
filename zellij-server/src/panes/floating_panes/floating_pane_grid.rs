@@ -1,8 +1,8 @@
+use crate::tab::Pane;
 use crate::tab::{MIN_TERMINAL_HEIGHT, MIN_TERMINAL_WIDTH};
-use crate::{panes::PaneId, tab::Pane};
 use std::cmp::Ordering;
 use std::collections::HashMap;
-use zellij_utils::data::{Direction, ResizeStrategy};
+use zellij_utils::data::{Direction, PaneId, ResizeStrategy};
 use zellij_utils::errors::prelude::*;
 use zellij_utils::pane_size::{Dimension, PaneGeom, Size, Viewport};
 

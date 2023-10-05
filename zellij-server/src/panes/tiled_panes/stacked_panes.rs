@@ -1,8 +1,9 @@
-use crate::{panes::PaneId, tab::Pane};
+use crate::tab::Pane;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use zellij_utils::{
+    data::PaneId,
     errors::prelude::*,
     pane_size::{Dimension, PaneGeom},
 };

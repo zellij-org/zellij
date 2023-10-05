@@ -8,7 +8,7 @@ use tiled_pane_grid::{split, TiledPaneGrid, RESIZE_PERCENT};
 use crate::{
     os_input_output::ServerOsApi,
     output::Output,
-    panes::{ActivePanes, PaneId},
+    panes::ActivePanes,
     plugins::PluginInstruction,
     tab::{pane_info_for_pane, Pane, MIN_TERMINAL_HEIGHT, MIN_TERMINAL_WIDTH},
     thread_bus::ThreadSenders,
@@ -18,7 +18,7 @@ use crate::{
 };
 use stacked_panes::StackedPanes;
 use zellij_utils::{
-    data::{Direction, ModeInfo, PaneInfo, ResizeStrategy, Style},
+    data::{Direction, ModeInfo, PaneId, PaneInfo, ResizeStrategy, Style},
     errors::prelude::*,
     input::{
         command::RunCommand,

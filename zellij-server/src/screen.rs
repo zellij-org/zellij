@@ -32,7 +32,6 @@ use crate::panes::terminal_character::AnsiCode;
 use crate::{
     output::Output,
     panes::sixel::SixelImageStore,
-    panes::PaneId,
     plugins::PluginInstruction,
     pty::{ClientTabIndexOrPaneId, PtyInstruction, VteBytes},
     tab::Tab,
@@ -44,7 +43,10 @@ use crate::{
     ClientId, ServerInstruction,
 };
 use zellij_utils::{
-    data::{Event, InputMode, ModeInfo, Palette, PaletteColor, PluginCapabilities, Style, TabInfo},
+    data::{
+        Event, InputMode, ModeInfo, Palette, PaletteColor, PaneId, PluginCapabilities, Style,
+        TabInfo,
+    },
     errors::{ContextType, ScreenContext},
     input::{get_mode_info, options::Options},
     ipc::{ClientAttributes, PixelDimensions, ServerToClientMsg},
@@ -2161,6 +2163,15 @@ pub(crate) fn screen_thread_main(
                     "Got - client_id :{};ResizeFloatingPaneByPercent: {:?}",
                     client_id, pane_to_resize
                 );
+                let PaneToResizeByPercent {
+                    tab_position,
+                    pane_id,
+                    resize,
+                } = pane_to_resize;
+                if let Some(tab) = screen.get_indexed_tab_mut(tab_position.unwrap() as usize) {
+                    tab.resize_by_floating_pane_id(client_id, pane_id, resize);
+                }
+
                 screen.unblock_input()?;
                 screen.render()?;
                 screen.log_and_report_session_state()?;

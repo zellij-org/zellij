@@ -24,13 +24,13 @@ use zellij_utils::input::permission::PermissionCache;
 
 use url::Url;
 
-use crate::{panes::PaneId, screen::ScreenInstruction};
+use crate::screen::ScreenInstruction;
 
 use zellij_utils::{
     consts::VERSION,
     data::{
-        CommandToRun, Direction, Event, EventType, FileToOpen, InputMode, PluginCommand, PluginIds,
-        PluginMessage, Resize, ResizeStrategy,
+        CommandToRun, Direction, Event, EventType, FileToOpen, InputMode, PaneId, PluginCommand,
+        PluginIds, PluginMessage, Resize, ResizeStrategy,
     },
     errors::prelude::*,
     input::{

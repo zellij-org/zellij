@@ -16,7 +16,7 @@ use std::time::{self, Instant};
 use zellij_utils::input::command::RunCommand;
 use zellij_utils::pane_size::Offset;
 use zellij_utils::{
-    data::{InputMode, Palette, PaletteColor, Style},
+    data::{InputMode, Palette, PaletteColor, PaneId, Style},
     errors::prelude::*,
     input::layout::Run,
     pane_size::PaneGeom,
@@ -76,12 +76,6 @@ impl AnsiEncoding {
     pub fn as_vec_bytes(&self) -> Vec<u8> {
         self.as_bytes().to_vec()
     }
-}
-
-#[derive(PartialEq, Eq, Ord, PartialOrd, Hash, Clone, Copy, Debug)]
-pub enum PaneId {
-    Terminal(u32),
-    Plugin(u32), // FIXME: Drop the trait object, make this a wrapper for the struct?
 }
 
 type IsFirstRun = bool;

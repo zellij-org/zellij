@@ -11,7 +11,7 @@ use floating_pane_grid::FloatingPaneGrid;
 use crate::{
     os_input_output::ServerOsApi,
     output::{FloatingPanesStack, Output},
-    panes::{ActivePanes, PaneId},
+    panes::ActivePanes,
     plugins::PluginInstruction,
     thread_bus::ThreadSenders,
     ui::pane_contents_and_ui::PaneContentsAndUi,
@@ -22,7 +22,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::rc::Rc;
 use std::time::Instant;
 use zellij_utils::{
-    data::{ModeInfo, Style},
+    data::{ModeInfo, PaneId, Style},
     errors::prelude::*,
     input::command::RunCommand,
     input::layout::{FloatingPaneLayout, Run, RunPlugin},

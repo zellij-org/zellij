@@ -1,12 +1,11 @@
 use crate::output::Output;
-use crate::panes::PaneId;
 use crate::tab::Pane;
 use crate::ui::boundaries::Boundaries;
 use crate::ui::pane_boundaries_frame::FrameParams;
 use crate::ClientId;
 use std::collections::HashMap;
 use zellij_utils::data::{
-    client_id_to_colors, single_client_color, InputMode, PaletteColor, Style,
+    client_id_to_colors, single_client_color, InputMode, PaletteColor, PaneId, Style,
 };
 use zellij_utils::errors::prelude::*;
 pub struct PaneContentsAndUi<'a> {

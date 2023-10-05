@@ -1,7 +1,8 @@
 use crate::tab::Pane;
 
-use crate::{os_input_output::ServerOsApi, panes::PaneId, ClientId};
+use crate::{os_input_output::ServerOsApi, ClientId};
 use std::collections::{BTreeMap, HashMap};
+use zellij_utils::data::PaneId;
 
 #[derive(Clone)]
 pub struct ActivePanes {

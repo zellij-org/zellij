@@ -265,7 +265,7 @@ pub fn resize_focused_pane_with_direction(resize: Resize, direction: Direction) 
 pub fn resize_floating_pane_by_percent(
     size: ResizeByPercent,
     tab_position: Option<u32>,
-    pane_id: u32,
+    pane_id: Option<PaneId>,
 ) {
     let plugin_command = PluginCommand::ResizeFloatingPaneByPercent(PaneToResizeByPercent {
         tab_position,

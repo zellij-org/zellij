@@ -9,6 +9,12 @@ use std::str::FromStr;
 use strum_macros::{Display, EnumDiscriminants, EnumIter, EnumString, ToString};
 
 pub type ClientId = u16; // TODO: merge with crate type?
+                         //
+#[derive(PartialEq, Eq, Ord, PartialOrd, Hash, Clone, Copy, Debug, Serialize, Deserialize)]
+pub enum PaneId {
+    Terminal(u32),
+    Plugin(u32), // FIXME: Drop the trait object, make this a wrapper for the struct?
+}
 
 pub fn client_id_to_colors(
     client_id: ClientId,
@@ -254,7 +260,7 @@ impl FromStr for Direction {
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, Deserialize, Serialize)]
 pub struct PaneToResizeByPercent {
     pub tab_position: Option<u32>,
-    pub pane_id: u32,
+    pub pane_id: Option<PaneId>,
     pub resize: ResizeByPercent,
 }
 

@@ -181,8 +181,8 @@ pub struct ResizePayload {
 pub struct ResizeFloatingPaneByPercentPayload {
     #[prost(uint32, optional, tag = "1")]
     pub tab_position: ::core::option::Option<u32>,
-    #[prost(uint32, tag = "2")]
-    pub pane_id: u32,
+    #[prost(message, optional, tag = "2")]
+    pub pane_id: ::core::option::Option<super::pane_id::PaneId>,
     #[prost(message, optional, tag = "3")]
     pub resize: ::core::option::Option<super::resize::ResizePercent>,
 }
