@@ -3,7 +3,7 @@ use crate::plugins::plugin_map::{PluginEnv, Subscriptions};
 use crate::plugins::wasm_bridge::handle_plugin_crash;
 use crate::route::route_action;
 use crate::ServerInstruction;
-use log::{debug, info, warn};
+use log::{debug, warn};
 use serde::Serialize;
 use std::{
     collections::{BTreeMap, HashSet},

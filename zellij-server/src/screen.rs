@@ -6,7 +6,6 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::str;
 
-use log::info;
 use zellij_utils::data::{
     Direction, PaneManifest, PaneToResizeByPercent, PluginPermission, Resize, ResizeByPercent,
     ResizeStrategy, SessionInfo,

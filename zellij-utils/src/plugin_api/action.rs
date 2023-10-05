@@ -626,7 +626,7 @@ impl TryFrom<ProtobufAction> for Action {
                 Some(_) => Err("BreakPaneLeft should not have a payload"),
                 None => Ok(Action::BreakPaneLeft),
             },
-            _ => Err("Unknown action"),
+            _ => Err("Unknown Action"),
         }
     }
 }

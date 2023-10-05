@@ -9,7 +9,6 @@ use std::str::FromStr;
 use strum_macros::{Display, EnumDiscriminants, EnumIter, EnumString, ToString};
 
 pub type ClientId = u16; // TODO: merge with crate type?
-                         //
 #[derive(PartialEq, Eq, Ord, PartialOrd, Hash, Clone, Copy, Debug, Serialize, Deserialize)]
 pub enum PaneId {
     Terminal(u32),
