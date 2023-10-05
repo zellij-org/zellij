@@ -21,7 +21,7 @@ use wasm_bridge::WasmBridge;
 
 use zellij_utils::{
     async_std::{channel, future::timeout, task},
-    data::{Event, EventType, PermissionStatus, PermissionType, PluginCapabilities},
+    data::{Event, EventType, PaneId, PermissionStatus, PermissionType, PluginCapabilities},
     errors::{prelude::*, ContextType, PluginContext},
     input::{
         command::TerminalAction,

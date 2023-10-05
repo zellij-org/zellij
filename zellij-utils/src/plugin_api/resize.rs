@@ -3,7 +3,7 @@ pub use super::generated_api::api::resize::{
     ResizeDirection, ResizeDirection as ProtobufResizeDirection,
     ResizePercent as ProtobufSizeByPercent,
 };
-use crate::data::{Direction, Resize, ResizeByPercent, ResizeStrategy};
+use crate::data::{Direction, Resize, ResizeStrategy};
 
 use std::convert::TryFrom;
 

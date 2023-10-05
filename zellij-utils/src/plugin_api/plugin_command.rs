@@ -963,7 +963,11 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     payload: Some(Payload::ResizeFloatingPaneByPercentPayload(
                         ResizeFloatingPaneByPercentPayload {
                             tab_position: pane_to_resize.tab_position,
-                            pane_id: pane_to_resize.pane_id.unwrap().try_into().ok(),
+                            pane_id: pane_to_resize
+                                .pane_id
+                                .expect("pane id does not exist")
+                                .try_into()
+                                .ok(),
                             resize: Some(ProtobufResizePercent {
                                 width: pane_to_resize.resize.width,
                                 height: pane_to_resize.resize.height,
