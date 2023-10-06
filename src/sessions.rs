@@ -55,23 +55,37 @@ pub(crate) fn get_resurrectable_sessions() -> Vec<(String, Duration, Layout)> {
                         Err(e) => {
                             log::error!("Failed to read resurrection layout file: {:?}", e);
                             return None;
-                        }
+                        },
                     };
-                    let ctime = match std::fs::metadata(&layout_file_name).and_then(|metadata| metadata.created()) {
+                    let ctime = match std::fs::metadata(&layout_file_name)
+                        .and_then(|metadata| metadata.created())
+                    {
                         Ok(created) => Some(created),
                         Err(e) => {
-                            log::error!("Failed to read created stamp of resurrection file: {:?}", e);
+                            log::error!(
+                                "Failed to read created stamp of resurrection file: {:?}",
+                                e
+                            );
                             None
-                        }
+                        },
                     };
-                    let layout = match Layout::from_kdl(&raw_layout, layout_file_name.display().to_string(), None, None) {
+                    let layout = match Layout::from_kdl(
+                        &raw_layout,
+                        layout_file_name.display().to_string(),
+                        None,
+                        None,
+                    ) {
                         Ok(layout) => layout,
                         Err(e) => {
                             log::error!("Failed to parse resurrection layout file: {}", e);
                             return None;
-                        }
+                        },
                     };
-                    let elapsed_duration = ctime.map(|ctime| Duration::from_secs(ctime.elapsed().ok().unwrap_or_default().as_secs())).unwrap_or_default();
+                    let elapsed_duration = ctime
+                        .map(|ctime| {
+                            Duration::from_secs(ctime.elapsed().ok().unwrap_or_default().as_secs())
+                        })
+                        .unwrap_or_default();
                     let session_name = folder_name
                         .file_name()
                         .map(|f| std::path::PathBuf::from(f).display().to_string())?;

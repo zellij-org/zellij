@@ -67,7 +67,9 @@ fn stop_zellij(channel: &mut ssh2::Channel) {
     channel.write_all(b"rm -rf /tmp/*\n").unwrap(); // remove temporary artifacts from previous
                                                     // tests
     channel.write_all(b"rm -rf /tmp/*\n").unwrap(); // remove temporary artifacts from previous
-    channel.write_all(b"rm -rf ~/.cache/zellij/*/session_info\n").unwrap();
+    channel
+        .write_all(b"rm -rf ~/.cache/zellij/*/session_info\n")
+        .unwrap();
 }
 
 fn start_zellij(channel: &mut ssh2::Channel) {
@@ -106,7 +108,11 @@ fn start_zellij_mirrored_session_with_layout(channel: &mut ssh2::Channel, layout
         .write_all(
             format!(
                 "{} {} --session {} --data-dir {} --layout {} options --mirror-session true\n",
-                SET_ENV_VARIABLES, ZELLIJ_EXECUTABLE_LOCATION, SESSION_NAME, ZELLIJ_DATA_DIR, format!("{}/{}", ZELLIJ_FIXTURE_PATH, layout_file_name)
+                SET_ENV_VARIABLES,
+                ZELLIJ_EXECUTABLE_LOCATION,
+                SESSION_NAME,
+                ZELLIJ_DATA_DIR,
+                format!("{}/{}", ZELLIJ_FIXTURE_PATH, layout_file_name)
             )
             .as_bytes(),
         )
