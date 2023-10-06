@@ -66,6 +66,8 @@ fn stop_zellij(channel: &mut ssh2::Channel) {
     channel.write_all(b"killall -KILL zellij\n").unwrap();
     channel.write_all(b"rm -rf /tmp/*\n").unwrap(); // remove temporary artifacts from previous
                                                     // tests
+    channel.write_all(b"rm -rf /tmp/*\n").unwrap(); // remove temporary artifacts from previous
+    channel.write_all(b"rm -rf ~/.cache/zellij/*/session_info\n").unwrap();
 }
 
 fn start_zellij(channel: &mut ssh2::Channel) {
@@ -90,6 +92,21 @@ fn start_zellij_mirrored_session(channel: &mut ssh2::Channel) {
             format!(
                 "{} {} --session {} --data-dir {} options --mirror-session true\n",
                 SET_ENV_VARIABLES, ZELLIJ_EXECUTABLE_LOCATION, SESSION_NAME, ZELLIJ_DATA_DIR
+            )
+            .as_bytes(),
+        )
+        .unwrap();
+    channel.flush().unwrap();
+    std::thread::sleep(std::time::Duration::from_secs(1)); // wait until Zellij stops parsing startup ANSI codes from the terminal STDIN
+}
+
+fn start_zellij_mirrored_session_with_layout(channel: &mut ssh2::Channel, layout_file_name: &str) {
+    stop_zellij(channel);
+    channel
+        .write_all(
+            format!(
+                "{} {} --session {} --data-dir {} --layout {} options --mirror-session true\n",
+                SET_ENV_VARIABLES, ZELLIJ_EXECUTABLE_LOCATION, SESSION_NAME, ZELLIJ_DATA_DIR, format!("{}/{}", ZELLIJ_FIXTURE_PATH, layout_file_name)
             )
             .as_bytes(),
         )
@@ -444,6 +461,42 @@ impl RemoteRunner {
         };
         setup_remote_environment(&mut channel, win_size);
         start_zellij_mirrored_session(&mut channel);
+        let channel = Arc::new(Mutex::new(channel));
+        let last_snapshot = Arc::new(Mutex::new(String::new()));
+        let cursor_coordinates = Arc::new(Mutex::new((0, 0)));
+        sess.set_blocking(false);
+        let reader_thread =
+            read_from_channel(&channel, &last_snapshot, &cursor_coordinates, &pane_geom);
+        RemoteRunner {
+            steps: vec![],
+            channel,
+            currently_running_step: None,
+            current_step_index: 0,
+            retries_left: RETRIES,
+            retry_pause_ms: 100,
+            test_timed_out: false,
+            panic_on_no_retries_left: true,
+            last_snapshot,
+            cursor_coordinates,
+            reader_thread,
+        }
+    }
+    pub fn new_mirrored_session_with_layout(win_size: Size, layout_file_name: &str) -> Self {
+        let sess = ssh_connect();
+        let mut channel = sess.channel_session().unwrap();
+        let mut rows = Dimension::fixed(win_size.rows);
+        let mut cols = Dimension::fixed(win_size.cols);
+        rows.set_inner(win_size.rows);
+        cols.set_inner(win_size.cols);
+        let pane_geom = PaneGeom {
+            x: 0,
+            y: 0,
+            rows,
+            cols,
+            is_stacked: false,
+        };
+        setup_remote_environment(&mut channel, win_size);
+        start_zellij_mirrored_session_with_layout(&mut channel, layout_file_name);
         let channel = Arc::new(Mutex::new(channel));
         let last_snapshot = Arc::new(Mutex::new(String::new()));
         let cursor_coordinates = Arc::new(Mutex::new((0, 0)));
