@@ -17,8 +17,8 @@ use crate::{
 };
 use clap::{Args, IntoApp};
 use clap_complete::Shell;
-use log::info;
 use directories::BaseDirs;
+use log::info;
 use serde::{Deserialize, Serialize};
 use std::{
     convert::TryFrom,
