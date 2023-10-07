@@ -188,9 +188,9 @@ impl SessionLayoutMetadata {
         name: String,
         is_focused: bool,
         hide_floating_panes: bool,
-        tiled_panes: Vec<(PaneId, PaneGeom, bool, Option<Run>, Option<String>, bool)>, // bool => is_borderless,
-        // Option<String> => title, bool => is_focused
-        floating_panes: Vec<(PaneId, PaneGeom, Option<Run>, Option<String>, bool)>, // Option<String> => title, bool => is_focused
+        tiled_panes: Vec<(PaneId, PaneGeom, bool, Option<Run>, Option<String>, bool, Option<String>)>, // bool => is_borderless,
+        // Option<String> => title, bool => is_focused, Option<String> => pane contents
+        floating_panes: Vec<(PaneId, PaneGeom, Option<Run>, Option<String>, bool, Option<String>)>, // Option<String> => title, bool => is_focused, Option<String> => pane contents
     ) {
         self.tabs.push(TabLayoutMetadata {
             name: Some(name), // TODO: tabs don't always have a name...
@@ -351,6 +351,7 @@ impl Into<PaneLayoutManifest> for PaneLayoutMetadata {
             is_borderless: self.is_borderless,
             title: self.title,
             is_focused: self.is_focused,
+            pane_contents: self.pane_contents,
         }
     }
 }
@@ -375,12 +376,13 @@ pub struct PaneLayoutMetadata {
     is_borderless: bool,
     title: Option<String>,
     is_focused: bool,
+    pane_contents: Option<String>,
 }
 
-impl From<(PaneId, PaneGeom, bool, Option<Run>, Option<String>, bool)> for PaneLayoutMetadata {
-    // bool => is_borderless, String => title, bool => is_focused
+impl From<(PaneId, PaneGeom, bool, Option<Run>, Option<String>, bool, Option<String>)> for PaneLayoutMetadata {
+    // bool => is_borderless, String => title, bool => is_focused, Option<StringL> => pane_contents
     fn from(
-        pane_id_and_pane_geom: (PaneId, PaneGeom, bool, Option<Run>, Option<String>, bool),
+        pane_id_and_pane_geom: (PaneId, PaneGeom, bool, Option<Run>, Option<String>, bool, Option<String>),
     ) -> Self {
         PaneLayoutMetadata {
             id: pane_id_and_pane_geom.0,
@@ -390,13 +392,14 @@ impl From<(PaneId, PaneGeom, bool, Option<Run>, Option<String>, bool)> for PaneL
             is_borderless: pane_id_and_pane_geom.2,
             title: pane_id_and_pane_geom.4,
             is_focused: pane_id_and_pane_geom.5,
+            pane_contents: pane_id_and_pane_geom.6,
         }
     }
 }
 
-impl From<(PaneId, PaneGeom, Option<Run>, Option<String>, bool)> for PaneLayoutMetadata {
-    // String => title, bool => is_focused
-    fn from(pane_id_and_pane_geom: (PaneId, PaneGeom, Option<Run>, Option<String>, bool)) -> Self {
+impl From<(PaneId, PaneGeom, Option<Run>, Option<String>, bool, Option<String>)> for PaneLayoutMetadata {
+    // String => title, bool => is_focused, Option<STring> => pane_contents,
+    fn from(pane_id_and_pane_geom: (PaneId, PaneGeom, Option<Run>, Option<String>, bool, Option<String>)) -> Self {
         PaneLayoutMetadata {
             id: pane_id_and_pane_geom.0,
             geom: pane_id_and_pane_geom.1,
@@ -405,6 +408,7 @@ impl From<(PaneId, PaneGeom, Option<Run>, Option<String>, bool)> for PaneLayoutM
             is_borderless: false,
             title: pane_id_and_pane_geom.3,
             is_focused: pane_id_and_pane_geom.4,
+            pane_contents: pane_id_and_pane_geom.5,
         }
     }
 }
@@ -2223,11 +2227,12 @@ impl Screen {
             }
             let active_pane_id =
                 first_client_id.and_then(|client_id| tab.get_active_pane_id(client_id));
-            let tiled_panes: Vec<(PaneId, PaneGeom, bool, Option<Run>, Option<String>, bool)> = // Option<String>
+            let tiled_panes: Vec<(PaneId, PaneGeom, bool, Option<Run>, Option<String>, bool, Option<String>)> = // Option<String>
                                                                                   // =>
-                                                                                  // pane
-                                                                                  // title
-                tab // bool => is_borderless, last bool => is_focused
+                                                                                  // pane title
+                                                                                  // bool => is_borderless, last bool => is_focused                                                              
+                                                                                  // Option<String> => serialized contents
+                tab
                     .get_tiled_panes()
                     .map(|(pane_id, p)| {
                         // here we look to see if this pane triggers any suppressed pane,
@@ -2253,15 +2258,17 @@ impl Screen {
                             p.invoked_with().clone(),
                             p.custom_title(),
                             active_pane_id == Some(pane_id),
+                            p.serialize(),
                         )
                     })
                     .collect();
-            let floating_panes: Vec<(PaneId, PaneGeom, Option<Run>, Option<String>, bool)> =
+            let floating_panes: Vec<(PaneId, PaneGeom, Option<Run>, Option<String>, bool, Option<String>,)> =
                 tab // Option<String>
                     // =>
                     // pane
                     // title,
                     // bool => is_focused
+                    // Option<String> => serialized contents
                     .get_floating_panes()
                     .map(|(pane_id, p)| {
                         // here we look to see if this pane triggers any suppressed pane,
@@ -2288,6 +2295,7 @@ impl Screen {
                             p.invoked_with().clone(),
                             p.custom_title(),
                             active_pane_id == Some(pane_id),
+                            p.serialize(),
                         )
                     })
                     .collect();

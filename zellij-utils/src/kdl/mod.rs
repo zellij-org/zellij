@@ -1465,7 +1465,7 @@ impl Layout {
         raw_swap_layouts: Option<(&str, &str)>, // raw_swap_layouts swap_layouts_file_name
         cwd: Option<PathBuf>,
     ) -> Result<Self, ConfigError> {
-        let mut kdl_layout_parser = KdlLayoutParser::new(raw_layout, cwd);
+        let mut kdl_layout_parser = KdlLayoutParser::new(raw_layout, cwd, file_name.clone());
         let layout = kdl_layout_parser.parse().map_err(|e| match e {
             ConfigError::KdlError(kdl_error) => {
                 ConfigError::KdlError(kdl_error.add_src(file_name, String::from(raw_layout)))

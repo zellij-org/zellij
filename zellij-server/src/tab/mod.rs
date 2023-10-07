@@ -471,6 +471,7 @@ pub trait Pane {
         None
     }
     fn rename(&mut self, _buf: Vec<u8>) {}
+    fn serialize(&self) -> Option<String> { None }
 }
 
 #[derive(Clone, Debug)]

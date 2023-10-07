@@ -28,7 +28,7 @@ pub enum BackgroundJob {
     StopPluginLoadingAnimation(u32),        // u32 - plugin_id
     ReadAllSessionInfosOnMachine,           // u32 - plugin_id
     ReportSessionInfo(String, SessionInfo), // String - session name
-    ReportLayoutInfo(String),
+    ReportLayoutInfo((String, BTreeMap<String, String>)), // HashMap<file_name, pane_contents>
     Exit,
 }
 
@@ -60,7 +60,7 @@ pub(crate) fn background_jobs_main(bus: Bus<BackgroundJob>) -> Result<()> {
     let mut loading_plugins: HashMap<u32, Arc<AtomicBool>> = HashMap::new(); // u32 - plugin_id
     let current_session_name = Arc::new(Mutex::new(String::default()));
     let current_session_info = Arc::new(Mutex::new(SessionInfo::default()));
-    let current_session_layout = Arc::new(Mutex::new(String::new()));
+    let current_session_layout = Arc::new(Mutex::new((String::new(), BTreeMap::new())));
 
     loop {
         let (event, mut err_ctx) = bus.recv().with_context(err_context)?;
@@ -144,7 +144,7 @@ pub(crate) fn background_jobs_main(bus: Bus<BackgroundJob>) -> Result<()> {
                             let metadata_cache_file_name =
                                 session_info_cache_file_name(&current_session_name);
                             let current_session_info = current_session_info.lock().unwrap().clone();
-                            let current_session_layout =
+                            let (current_session_layout, layout_files_to_write) =
                                 current_session_layout.lock().unwrap().clone();
                             let _wrote_metadata_file = std::fs::create_dir_all(
                                 session_info_folder_for_session(&current_session_name).as_path(),
@@ -160,7 +160,17 @@ pub(crate) fn background_jobs_main(bus: Bus<BackgroundJob>) -> Result<()> {
                                         .as_path(),
                                 )
                                 .and_then(|_| std::fs::File::create(layout_cache_file_name))
-                                .and_then(|mut f| write!(f, "{}", current_session_layout));
+                                .and_then(|mut f| write!(f, "{}", current_session_layout))
+                                .and_then(|_| {
+                                    let session_info_folder = session_info_folder_for_session(&current_session_name);
+                                    for (external_file_name, external_file_contents) in layout_files_to_write {
+                                        std::fs::File::create(session_info_folder.join(external_file_name))
+                                            .and_then(|mut f| write!(f, "{}", external_file_contents)).unwrap_or_else(|e| {
+                                                log::error!("Failed to write layout metadata file: {:?}", e);
+                                            });
+                                    }
+                                    Ok(())
+                                });
                             }
                             // start a background job (if not already running) that'll periodically read this and other
                             // sesion infos and report back

@@ -257,6 +257,11 @@ impl<'a> LayoutApplier<'a> {
                             layout.run.clone(),
                             self.debug,
                         );
+                        if let Some(pane_initial_contents) = &layout.pane_initial_contents {
+                            new_plugin.handle_pty_bytes(pane_initial_contents.as_bytes().into());
+                            new_plugin.handle_pty_bytes("\n\r".as_bytes().into());
+                        }
+
                         new_plugin.set_borderless(layout.borderless);
                         if let Some(exclude_from_sync) = layout.exclude_from_sync {
                             new_plugin.set_exclude_from_sync(exclude_from_sync);
@@ -288,6 +293,10 @@ impl<'a> LayoutApplier<'a> {
                                 layout.run.clone(),
                                 self.debug,
                             );
+                            if let Some(pane_initial_contents) = &layout.pane_initial_contents {
+                                new_pane.handle_pty_bytes(pane_initial_contents.as_bytes().into());
+                                new_pane.handle_pty_bytes("\n\r".as_bytes().into());
+                            }
                             new_pane.set_borderless(layout.borderless);
                             if let Some(exclude_from_sync) = layout.exclude_from_sync {
                                 new_pane.set_exclude_from_sync(exclude_from_sync);
@@ -373,6 +382,10 @@ impl<'a> LayoutApplier<'a> {
                     floating_pane_layout.run.clone(),
                     self.debug,
                 );
+                if let Some(pane_initial_contents) = &floating_pane_layout.pane_initial_contents {
+                    new_pane.handle_pty_bytes(pane_initial_contents.as_bytes().into());
+                    new_pane.handle_pty_bytes("\n\r".as_bytes().into());
+                }
                 new_pane.set_borderless(false);
                 new_pane.set_content_offset(Offset::frame(1));
                 resize_pty!(
@@ -408,6 +421,10 @@ impl<'a> LayoutApplier<'a> {
                     floating_pane_layout.run.clone(),
                     self.debug,
                 );
+                if let Some(pane_initial_contents) = &floating_pane_layout.pane_initial_contents {
+                    new_pane.handle_pty_bytes(pane_initial_contents.as_bytes().into());
+                    new_pane.handle_pty_bytes("\n\r".as_bytes().into());
+                }
                 new_pane.set_borderless(false);
                 new_pane.set_content_offset(Offset::frame(1));
                 if let Some(held_command) = hold_for_command {

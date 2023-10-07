@@ -40,10 +40,11 @@ pub struct KdlLayoutParser<'a> {
     pane_templates: HashMap<String, (PaneOrFloatingPane, KdlNode)>,
     default_tab_template: Option<(TiledPaneLayout, Vec<FloatingPaneLayout>, KdlNode)>,
     new_tab_template: Option<(TiledPaneLayout, Vec<FloatingPaneLayout>)>,
+    file_name: PathBuf,
 }
 
 impl<'a> KdlLayoutParser<'a> {
-    pub fn new(raw_layout: &'a str, global_cwd: Option<PathBuf>) -> Self {
+    pub fn new(raw_layout: &'a str, global_cwd: Option<PathBuf>, file_name: String) -> Self {
         KdlLayoutParser {
             raw_layout,
             tab_templates: HashMap::new(),
@@ -51,6 +52,7 @@ impl<'a> KdlLayoutParser<'a> {
             default_tab_template: None,
             new_tab_template: None,
             global_cwd,
+            file_name: PathBuf::from(file_name),
         }
     }
     fn is_a_reserved_word(&self, word: &str) -> bool {
@@ -79,6 +81,7 @@ impl<'a> KdlLayoutParser<'a> {
             || word == "swap_tiled_layout"
             || word == "swap_floating_layout"
             || word == "hide_floating_panes"
+            || word == "contents_file"
     }
     fn is_a_valid_pane_property(&self, property_name: &str) -> bool {
         property_name == "borderless"
@@ -98,6 +101,7 @@ impl<'a> KdlLayoutParser<'a> {
             || property_name == "stacked"
             || property_name == "expanded"
             || property_name == "exclude_from_sync"
+            || property_name == "contents_file"
     }
     fn is_a_valid_floating_pane_property(&self, property_name: &str) -> bool {
         property_name == "borderless"
@@ -114,6 +118,7 @@ impl<'a> KdlLayoutParser<'a> {
             || property_name == "y"
             || property_name == "width"
             || property_name == "height"
+            || property_name == "contents_file"
     }
     fn is_a_valid_tab_property(&self, property_name: &str) -> bool {
         property_name == "focus"
@@ -516,6 +521,8 @@ impl<'a> KdlLayoutParser<'a> {
             .map(|name| name.to_string());
         let exclude_from_sync =
             kdl_get_bool_property_or_child_value_with_error!(kdl_node, "exclude_from_sync");
+        let contents_file =
+            kdl_get_string_property_or_child_value_with_error!(kdl_node, "contents_file");
         let split_size = self.parse_split_size(kdl_node)?;
         let run = self.parse_command_plugin_or_edit_block(kdl_node)?;
         let children_split_direction = self.parse_split_direction(kdl_node)?;
@@ -546,6 +553,7 @@ impl<'a> KdlLayoutParser<'a> {
             ));
         }
         self.assert_no_mixed_children_and_properties(kdl_node)?;
+        let pane_initial_contents = contents_file.and_then(|contents_file| self.file_name.parent().and_then(|parent_folder| std::fs::read_to_string(parent_folder.join(contents_file)).ok()));
         Ok(TiledPaneLayout {
             borderless: borderless.unwrap_or_default(),
             focus,
@@ -558,6 +566,7 @@ impl<'a> KdlLayoutParser<'a> {
             children,
             children_are_stacked,
             is_expanded_in_stack,
+            pane_initial_contents,
             ..Default::default()
         })
     }
@@ -574,7 +583,10 @@ impl<'a> KdlLayoutParser<'a> {
         let focus = kdl_get_bool_property_or_child_value_with_error!(kdl_node, "focus");
         let name = kdl_get_string_property_or_child_value_with_error!(kdl_node, "name")
             .map(|name| name.to_string());
+        let contents_file =
+            kdl_get_string_property_or_child_value_with_error!(kdl_node, "contents_file");
         self.assert_no_mixed_children_and_properties(kdl_node)?;
+        let pane_initial_contents = contents_file.and_then(|contents_file| self.file_name.parent().and_then(|parent_folder| std::fs::read_to_string(parent_folder.join(contents_file)).ok()));
         Ok(FloatingPaneLayout {
             name,
             height,
@@ -583,6 +595,7 @@ impl<'a> KdlLayoutParser<'a> {
             y,
             run,
             focus,
+            pane_initial_contents,
             ..Default::default()
         })
     }

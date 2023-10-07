@@ -8,7 +8,7 @@
 //! ```
 //!
 use serde_json::Value;
-use std::collections::HashMap;
+use std::collections::{HashMap, BTreeMap};
 use std::path::PathBuf;
 
 use crate::{
@@ -59,10 +59,12 @@ pub struct PaneLayoutManifest {
     pub is_borderless: bool,
     pub title: Option<String>,
     pub is_focused: bool,
+    pub pane_contents: Option<String>,
 }
 
-pub fn tabs_to_kdl(global_layout_manifest: GlobalLayoutManifest) -> String {
+pub fn tabs_to_kdl(global_layout_manifest: GlobalLayoutManifest) -> (String, BTreeMap<String, String>) { // BTreeMap is the pane contents and their file names
     let mut kdl_string = String::from("layout {\n");
+    let mut pane_contents = BTreeMap::new();
     if let Some(global_cwd) = global_layout_manifest.global_cwd {
         kdl_string.push_str(&indent(
             &format!("cwd \"{}\"\n", global_cwd.display()),
@@ -80,6 +82,7 @@ pub fn tabs_to_kdl(global_layout_manifest: GlobalLayoutManifest) -> String {
                 hide_floating_panes,
                 &tiled_panes,
                 &floating_panes,
+                &mut pane_contents,
             ),
             INDENT,
         ));
@@ -96,6 +99,7 @@ pub fn tabs_to_kdl(global_layout_manifest: GlobalLayoutManifest) -> String {
                 &floating_panes,
                 vec![],
                 Some(String::from("new_tab_template")),
+                &mut pane_contents,
             ),
             INDENT,
         ));
@@ -122,6 +126,7 @@ pub fn tabs_to_kdl(global_layout_manifest: GlobalLayoutManifest) -> String {
                     &vec![],
                     vec![layout_constraint.to_string()],
                     None,
+                    &mut pane_contents,
                 ),
                 DOUBLE_INDENT,
             ));
@@ -151,7 +156,7 @@ pub fn tabs_to_kdl(global_layout_manifest: GlobalLayoutManifest) -> String {
                 ));
             }
             for floating_pane_layout in floating_panes_layout {
-                let sub_kdl_string = kdl_string_from_floating_pane(&floating_pane_layout);
+                let sub_kdl_string = kdl_string_from_floating_pane(&floating_pane_layout, &mut pane_contents);
                 kdl_string.push_str(&indent(&sub_kdl_string, TRIPLE_INDENT));
             }
             if has_floating_panes {
@@ -161,7 +166,7 @@ pub fn tabs_to_kdl(global_layout_manifest: GlobalLayoutManifest) -> String {
         kdl_string.push_str(&indent("}", INDENT));
     }
     kdl_string.push_str("}");
-    kdl_string
+    (kdl_string, pane_contents)
 }
 
 pub fn stringify_tab(
@@ -170,6 +175,7 @@ pub fn stringify_tab(
     hide_floating_panes: bool,
     tiled_panes: &Vec<PaneLayoutManifest>,
     floating_panes: &Vec<PaneLayoutManifest>,
+    pane_contents: &mut BTreeMap<String, String>,
 ) -> String {
     let mut kdl_string = String::new();
     let tiled_panes_layout = get_tiled_panes_layout_from_panegeoms(tiled_panes, None);
@@ -192,6 +198,7 @@ pub fn stringify_tab(
         &floating_panes_layout,
         tab_attributes,
         None,
+        pane_contents,
     ));
     kdl_string
 }
@@ -200,6 +207,7 @@ pub fn stringify_tab(
 pub fn kdl_string_from_panegeoms(geoms: &Vec<PaneLayoutManifest>) -> String {
     // Option<String> is an optional pane command
     let mut kdl_string = String::from("layout {\n");
+    let mut pane_contents = BTreeMap::new();
     let layout = get_tiled_panes_layout_from_panegeoms(&geoms, None);
     let tiled_panes = if &layout.children_split_direction != &SplitDirection::default() {
         vec![layout]
@@ -207,7 +215,7 @@ pub fn kdl_string_from_panegeoms(geoms: &Vec<PaneLayoutManifest>) -> String {
         layout.children
     };
     kdl_string.push_str(&indent(
-        &kdl_string_from_tab(&tiled_panes, &vec![], vec![], None),
+        &kdl_string_from_tab(&tiled_panes, &vec![], vec![], None, &mut pane_contents),
         INDENT,
     ));
     kdl_string.push_str("}");
@@ -252,6 +260,7 @@ fn kdl_string_from_tab(
     floating_panes: &Vec<FloatingPaneLayout>,
     node_attributes: Vec<String>,
     node_name: Option<String>,
+    pane_contents: &mut BTreeMap<String, String>,
 ) -> String {
     let mut kdl_string = if node_attributes.is_empty() {
         format!("{} {{\n", node_name.unwrap_or_else(|| "tab".to_owned()))
@@ -264,13 +273,13 @@ fn kdl_string_from_tab(
     };
     for tiled_pane_layout in tiled_panes {
         let ignore_size = false;
-        let sub_kdl_string = kdl_string_from_tiled_pane(&tiled_pane_layout, ignore_size);
+        let sub_kdl_string = kdl_string_from_tiled_pane(&tiled_pane_layout, ignore_size, pane_contents);
         kdl_string.push_str(&indent(&sub_kdl_string, INDENT));
     }
     if !floating_panes.is_empty() {
         kdl_string.push_str(&indent("floating_panes {\n", INDENT));
         for floating_pane_layout in floating_panes {
-            let sub_kdl_string = kdl_string_from_floating_pane(&floating_pane_layout);
+            let sub_kdl_string = kdl_string_from_floating_pane(&floating_pane_layout, pane_contents);
             kdl_string.push_str(&indent(&sub_kdl_string, DOUBLE_INDENT));
         }
         kdl_string.push_str(&indent("}\n", INDENT));
@@ -280,7 +289,7 @@ fn kdl_string_from_tab(
 }
 
 /// Pane declaration and recursion
-fn kdl_string_from_tiled_pane(layout: &TiledPaneLayout, ignore_size: bool) -> String {
+fn kdl_string_from_tiled_pane(layout: &TiledPaneLayout, ignore_size: bool, pane_contents: &mut BTreeMap<String, String>) -> String {
     let (command, args) = match &layout.run {
         Some(Run::Command(run_command)) => (
             Some(run_command.command.display()),
@@ -303,7 +312,7 @@ fn kdl_string_from_tiled_pane(layout: &TiledPaneLayout, ignore_size: bool) -> St
         _ => (None, None),
     };
     let cwd = layout.run.as_ref().and_then(|r| r.get_cwd());
-    let mut kdl_string = match (&command, edit) {
+    let mut kdl_string = match (&command, &edit) {
         (Some(command), _) => format!("pane command=\"{}\"", command),
         (None, Some(edit)) => format!("pane edit=\"{}\"", edit),
         (None, None) => format!("pane"),
@@ -336,6 +345,13 @@ fn kdl_string_from_tiled_pane(layout: &TiledPaneLayout, ignore_size: bool) -> St
     }
     if layout.focus.unwrap_or(false) {
         kdl_string.push_str(&" focus=true");
+    }
+    if let Some(initial_pane_contents) = layout.pane_initial_contents.as_ref() {
+        if command.is_none() && edit.is_none() {
+            let file_name = format!("initial_contents_{}", pane_contents.keys().len() + 1);
+            kdl_string.push_str(&format!(" contents_file=\"{}\"", file_name));
+            pane_contents.insert(file_name.to_string(), initial_pane_contents.clone());
+        }
     }
     if layout.children_split_direction != SplitDirection::default() {
         let direction = match layout.children_split_direction {
@@ -399,7 +415,7 @@ fn kdl_string_from_tiled_pane(layout: &TiledPaneLayout, ignore_size: bool) -> St
                 kdl_string.push_str(&indent(&"children\n", INDENT));
             } else {
                 let ignore_size = layout.children_are_stacked;
-                let sub_kdl_string = kdl_string_from_tiled_pane(&pane, ignore_size);
+                let sub_kdl_string = kdl_string_from_tiled_pane(&pane, ignore_size, pane_contents);
                 kdl_string.push_str(&indent(&sub_kdl_string, INDENT));
             }
         }
@@ -409,7 +425,7 @@ fn kdl_string_from_tiled_pane(layout: &TiledPaneLayout, ignore_size: bool) -> St
 }
 
 // TODO: combine shared logic here with kdl_string_from_tiled_pane
-fn kdl_string_from_floating_pane(layout: &FloatingPaneLayout) -> String {
+fn kdl_string_from_floating_pane(layout: &FloatingPaneLayout, pane_contents: &mut BTreeMap<String, String>) -> String {
     let (command, args) = match &layout.run {
         Some(Run::Command(run_command)) => (
             Some(run_command.command.display()),
@@ -431,7 +447,7 @@ fn kdl_string_from_floating_pane(layout: &FloatingPaneLayout) -> String {
         },
         _ => (None, None),
     };
-    let mut kdl_string = match (&command, edit) {
+    let mut kdl_string = match (&command, &edit) {
         (Some(command), _) => format!("pane command=\"{}\"", command),
         (None, Some(edit)) => format!("pane edit=\"{}\"", edit),
         (None, None) => format!("pane"),
@@ -448,6 +464,13 @@ fn kdl_string_from_floating_pane(layout: &FloatingPaneLayout) -> String {
     }
     if layout.focus.unwrap_or(false) {
         kdl_string.push_str(&" focus=true");
+    }
+    if let Some(initial_pane_contents) = layout.pane_initial_contents.as_ref() {
+        if command.is_none() && edit.is_none() {
+            let file_name = format!("initial_contents_{}", pane_contents.keys().len() + 1);
+            kdl_string.push_str(&format!(" contents_file=\"{}\"", file_name));
+            pane_contents.insert(file_name.to_string(), initial_pane_contents.clone());
+        }
     }
     kdl_string.push_str(" {\n");
 
@@ -533,7 +556,7 @@ fn get_tiled_panes_layout_from_panegeoms(
     let (children_split_direction, splits) = match get_splits(&geoms) {
         Some(x) => x,
         None => {
-            let (run, borderless, is_expanded_in_stack, name, focus) = geoms
+            let (run, borderless, is_expanded_in_stack, name, focus, pane_initial_contents) = geoms
                 .iter()
                 .next()
                 .map(|g| {
@@ -551,9 +574,10 @@ fn get_tiled_panes_layout_from_panegeoms(
                         g.geom.is_stacked && g.geom.rows.inner > 1,
                         g.title.clone(),
                         Some(g.is_focused),
+                        g.pane_contents.clone(),
                     )
                 })
-                .unwrap_or((None, false, false, None, None));
+                .unwrap_or((None, false, false, None, None, None));
             return TiledPaneLayout {
                 split_size,
                 run,
@@ -561,6 +585,7 @@ fn get_tiled_panes_layout_from_panegeoms(
                 is_expanded_in_stack,
                 name,
                 focus,
+                pane_initial_contents,
                 ..Default::default()
             };
         },
@@ -626,6 +651,7 @@ fn get_floating_panes_layout_from_panegeoms(
                 run,
                 focus: None, // TODO: TBD
                 already_running: false,
+                pane_initial_contents: m.pane_contents.clone(),
             }
         })
         .collect()

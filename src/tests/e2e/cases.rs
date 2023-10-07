@@ -993,11 +993,6 @@ pub fn detach_and_attach_session() {
 #[test]
 #[ignore]
 pub fn quit_and_resurrect_session() {
-    // TODO: CONTINUE HERE
-    // - duplicate this test, have it start with a non-trivial layout that includes all the things
-    // we want to test in resurrection (multiple panes/tabs, commands, plugins, hide_floating_panes
-    // in one tab, show in another, etc.), instead of detaching quit the session, then assert the
-    // layout, attach to it and assert the screenshot
     let fake_win_size = Size {
         cols: 120,
         rows: 24,

@@ -757,6 +757,9 @@ impl Pane for TerminalPane {
         self.pane_name = String::from_utf8_lossy(&buf).to_string();
         self.set_should_render(true);
     }
+    fn serialize(&self) -> Option<String> {
+        self.grid.serialize()
+    }
 }
 
 impl TerminalPane {

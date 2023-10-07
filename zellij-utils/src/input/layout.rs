@@ -474,6 +474,7 @@ pub struct FloatingPaneLayout {
     pub run: Option<Run>,
     pub focus: Option<bool>,
     pub already_running: bool,
+    pub pane_initial_contents: Option<String>,
 }
 
 impl FloatingPaneLayout {
@@ -518,6 +519,7 @@ pub struct TiledPaneLayout {
     pub exclude_from_sync: Option<bool>,
     pub run_instructions_to_ignore: Vec<Option<Run>>,
     pub hide_floating_panes: bool, // only relevant if this is the base layout
+    pub pane_initial_contents: Option<String>,
 }
 
 impl TiledPaneLayout {

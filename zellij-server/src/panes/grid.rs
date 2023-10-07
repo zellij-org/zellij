@@ -1034,6 +1034,13 @@ impl Grid {
 
         (changed_character_chunks, changed_sixel_image_chunks)
     }
+    pub fn serialize(&self) -> Option<String> {
+        self.output_buffer.serialize(
+            &self.viewport,
+            self.width,
+            self.height,
+        ).ok()
+    }
     pub fn render(
         &mut self,
         content_x: usize,
