@@ -250,6 +250,7 @@ pub trait Pane {
     fn pull_left(&mut self, count: usize);
     fn pull_up(&mut self, count: usize);
     fn clear_screen(&mut self);
+    fn clear_scrollback(&mut self, offset: i32);
     fn dump_screen(&mut self, _client_id: ClientId, _full: bool) -> String {
         "".to_owned()
     }
@@ -2500,6 +2501,16 @@ impl Tab {
     pub fn clear_active_terminal_screen(&mut self, client_id: ClientId) -> Result<()> {
         if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
             active_pane.clear_screen();
+        }
+        Ok(())
+    }
+    pub fn clear_scrollback_active_terminal_screen(
+        &mut self,
+        client_id: ClientId,
+        offset: i32,
+    ) -> Result<()> {
+        if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
+            active_pane.clear_scrollback(offset);
         }
         Ok(())
     }

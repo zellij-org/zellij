@@ -1115,6 +1115,32 @@ impl Grid {
         self.reset_terminal_state();
         self.mark_for_rerender();
     }
+    /// Clears the scrollback and positions the current active line on top of the pane.
+    pub fn clear_scrollback(&mut self, offset: i32) {
+        if self.alternate_screen_state.is_some() {
+            log::warn!("Tried to clear scrollback of pane with alternate_screen_state");
+            return;
+        }
+
+        let new_viewport = self
+            .viewport
+            .clone()
+            .into_iter()
+            .skip(self.viewport.len().saturating_sub(offset as usize + 1))
+            .collect::<Vec<_>>();
+
+        self.clear_viewport_before_rendering = true;
+        self.lines_above = VecDeque::new();
+        self.lines_below = vec![];
+        self.viewport = vec![Row::new().canonical()];
+        self.scroll_region = None;
+        self.scrollback_buffer_lines = 0;
+        self.viewport = new_viewport;
+        self.cursor.y = offset as usize;
+        self.output_buffer.update_all_lines();
+
+        self.mark_for_rerender();
+    }
     /// Dumps all lines above terminal vieport and the viewport itself to a string
     pub fn dump_screen(&mut self, full: bool) -> String {
         let viewport: String = dump_screen!(self.viewport);

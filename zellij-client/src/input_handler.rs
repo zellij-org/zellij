@@ -302,6 +302,7 @@ impl InputHandler {
             },
             Action::CloseFocus
             | Action::ClearScreen
+            | Action::ClearScrollback(_)
             | Action::NewPane(..)
             | Action::Run(_)
             | Action::NewTiledPane(..)

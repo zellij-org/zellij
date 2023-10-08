@@ -490,6 +490,9 @@ impl Pane for PluginPane {
     fn clear_scroll(&mut self) {
         // noop
     }
+    fn clear_scrollback(&mut self, _offset: i32) {
+        // noop
+    }
     fn start_selection(&mut self, start: &Position, client_id: ClientId) {
         self.send_plugin_instructions
             .send(PluginInstruction::Update(vec![(

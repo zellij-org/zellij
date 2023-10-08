@@ -263,6 +263,12 @@ pub enum CliAction {
     MovePaneBackwards,
     /// Clear all buffers for a focused pane
     Clear,
+    /// Clear the scrollback and positions the current active line on top of the pane.
+    ClearScrollback {
+        /// Offset of lines from the current viewport to keep
+        #[clap(short, long, value_parser, default_value("1"))]
+        offset: i8,
+    },
     /// Dump the focused pane to a file
     DumpScreen {
         path: PathBuf,

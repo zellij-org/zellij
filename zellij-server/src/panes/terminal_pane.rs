@@ -503,6 +503,9 @@ impl Pane for TerminalPane {
     fn clear_screen(&mut self) {
         self.grid.clear_screen()
     }
+    fn clear_scrollback(&mut self, offset: i32) {
+        self.grid.clear_scrollback(offset)
+    }
     fn scroll_up(&mut self, count: usize, _client_id: ClientId) {
         self.grid.move_viewport_up(count);
         self.set_should_render(true);

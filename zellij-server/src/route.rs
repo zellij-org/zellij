@@ -168,6 +168,11 @@ pub(crate) fn route_action(
                 .send_to_screen(ScreenInstruction::ClearScreen(client_id))
                 .with_context(err_context)?;
         },
+        Action::ClearScrollback(offset) => {
+            senders
+                .send_to_screen(ScreenInstruction::ClearScrollback(client_id, offset))
+                .with_context(err_context)?;
+        },
         Action::DumpScreen(val, full) => {
             senders
                 .send_to_screen(ScreenInstruction::DumpScreen(val, client_id, full))

@@ -732,6 +732,10 @@ impl TryFrom<Action> for ProtobufAction {
                 name: ProtobufActionName::ClearScreen as i32,
                 optional_payload: None,
             }),
+            Action::ClearScrollback(offset) => Ok(ProtobufAction {
+                name: ProtobufActionName::ClearScrollback as i32,
+                optional_payload: Some(OptionalPayload::ClearScrollbackPayload(offset)),
+            }),
             Action::DumpScreen(file_path, include_scrollback) => Ok(ProtobufAction {
                 name: ProtobufActionName::DumpScreen as i32,
                 optional_payload: Some(OptionalPayload::DumpScreenPayload(DumpScreenPayload {

@@ -822,6 +822,18 @@ fn clear_screen(env: &ForeignFunctionEnv) {
     let action = Action::ClearScreen;
     apply_action!(action, error_msg, env);
 }
+
+fn clear_scrollback(env: &ForeignFunctionEnv, offset: i32) {
+    let error_msg = || {
+        format!(
+            "failed to clear scrollback in plugin {}",
+            env.plugin_env.name()
+        )
+    };
+    let action = Action::ClearScrollback(offset);
+    apply_action!(action, error_msg, env);
+}
+
 fn scroll_up(env: &ForeignFunctionEnv) {
     let error_msg = || format!("failed to scroll up in plugin {}", env.plugin_env.name());
     let action = Action::ScrollUp;

@@ -256,6 +256,7 @@ pub enum ScreenContext {
     MovePaneLeft,
     Exit,
     ClearScreen,
+    ClearScrollback,
     DumpScreen,
     EditScrollback,
     ScrollUp,

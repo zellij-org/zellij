@@ -100,6 +100,8 @@ pub mod action {
         RenamePluginPanePayload(super::IdAndName),
         #[prost(message, tag = "44")]
         RenameTabPayload(super::IdAndName),
+        #[prost(message, tag = "45")]
+        ClearScrollbackPayload(i32),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -400,6 +402,7 @@ pub enum ActionName {
     BreakPane = 77,
     BreakPaneRight = 78,
     BreakPaneLeft = 79,
+    ClearScrollback = 80,
 }
 impl ActionName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -422,6 +425,7 @@ impl ActionName {
             ActionName::MovePane => "MovePane",
             ActionName::MovePaneBackwards => "MovePaneBackwards",
             ActionName::ClearScreen => "ClearScreen",
+            ActionName::ClearScrollback => "ClearScrollback",
             ActionName::DumpScreen => "DumpScreen",
             ActionName::EditScrollback => "EditScrollback",
             ActionName::ScrollUp => "ScrollUp",
@@ -507,6 +511,7 @@ impl ActionName {
             "MovePane" => Some(Self::MovePane),
             "MovePaneBackwards" => Some(Self::MovePaneBackwards),
             "ClearScreen" => Some(Self::ClearScreen),
+            "ClearScrollback" => Some(Self::ClearScrollback),
             "DumpScreen" => Some(Self::DumpScreen),
             "EditScrollback" => Some(Self::EditScrollback),
             "ScrollUp" => Some(Self::ScrollUp),

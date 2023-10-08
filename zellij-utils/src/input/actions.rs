@@ -122,6 +122,8 @@ pub enum Action {
     MovePaneBackwards,
     /// Clear all buffers of a current screen
     ClearScreen,
+    /// Clear the scrollback and positions the current active line on top of the pane.
+    ClearScrollback(i32),
     /// Dumps the screen to a file
     DumpScreen(String, bool),
     /// Scroll up in focus pane.
@@ -276,6 +278,9 @@ impl Action {
             CliAction::MovePane { direction } => Ok(vec![Action::MovePane(direction)]),
             CliAction::MovePaneBackwards => Ok(vec![Action::MovePaneBackwards]),
             CliAction::Clear => Ok(vec![Action::ClearScreen]),
+            CliAction::ClearScrollback { offset } => {
+                Ok(vec![Action::ClearScrollback(offset as i32)])
+            },
             CliAction::DumpScreen { path, full } => Ok(vec![Action::DumpScreen(
                 path.as_os_str().to_string_lossy().into(),
                 full,

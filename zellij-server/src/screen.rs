@@ -167,6 +167,7 @@ pub enum ScreenInstruction {
     MovePaneLeft(ClientId),
     Exit,
     ClearScreen(ClientId),
+    ClearScrollback(ClientId, i32),
     DumpScreen(String, ClientId, bool),
     EditScrollback(ClientId),
     ScrollUp(ClientId),
@@ -366,6 +367,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::MovePaneLeft(..) => ScreenContext::MovePaneLeft,
             ScreenInstruction::Exit => ScreenContext::Exit,
             ScreenInstruction::ClearScreen(..) => ScreenContext::ClearScreen,
+            ScreenInstruction::ClearScrollback(..) => ScreenContext::ClearScrollback,
             ScreenInstruction::DumpScreen(..) => ScreenContext::DumpScreen,
             ScreenInstruction::EditScrollback(..) => ScreenContext::EditScrollback,
             ScreenInstruction::ScrollUp(..) => ScreenContext::ScrollUp,
@@ -2241,6 +2243,19 @@ pub(crate) fn screen_thread_main(
                     client_id,
                     |tab: &mut Tab, client_id: ClientId| tab.clear_active_terminal_screen(
                         client_id,
+                    ),
+                    ?
+                );
+                screen.render()?;
+                screen.unblock_input()?;
+            },
+            ScreenInstruction::ClearScrollback(client_id, offset) => {
+                active_tab_and_connected_client_id!(
+                    screen,
+                    client_id,
+                    |tab: &mut Tab, client_id: ClientId| tab.clear_scrollback_active_terminal_screen(
+                        client_id,
+                        offset,
                     ),
                     ?
                 );
