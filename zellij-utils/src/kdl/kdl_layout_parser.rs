@@ -2133,11 +2133,7 @@ impl<'a> KdlLayoutParser<'a> {
                 .unwrap_or_else(|| TiledPaneLayout::default());
             Some((default_tab_tiled_panes_template, child_floating_panes))
         };
-        //         let template = self
-        //             .default_template()?
-        //             .unwrap_or_else(|| TiledPaneLayout::default());
         Ok(Layout {
-            // template: Some((template, child_floating_panes)),
             template,
             swap_tiled_layouts,
             swap_floating_layouts,
