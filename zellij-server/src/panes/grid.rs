@@ -1034,12 +1034,41 @@ impl Grid {
 
         (changed_character_chunks, changed_sixel_image_chunks)
     }
-    pub fn serialize(&self) -> Option<String> {
-        self.output_buffer.serialize(
-            &self.viewport,
-            self.width,
-            self.height,
-        ).ok()
+    pub fn serialize(&self, scrollback_lines_to_serialize: Option<usize>) -> Option<String> {
+        match scrollback_lines_to_serialize {
+            Some(scrollback_lines_to_serialize) => {
+                let first_index = if scrollback_lines_to_serialize == 0 {
+                    0
+                } else {
+                    self.lines_above.len().saturating_sub(scrollback_lines_to_serialize)
+                };
+                let mut to_serialize = vec![];
+                for line in self.lines_above.iter().skip(first_index) {
+                    to_serialize.push(line.clone());
+                }
+                for line in &self.viewport {
+                    to_serialize.push(line.clone())
+                };
+                let to_serialize_len = to_serialize.len();
+                log::info!("scrollback_lines_to_serialize: {:?}", scrollback_lines_to_serialize);
+                log::info!("to_serialize_len: {:?}", to_serialize_len);
+                // let scrollback_lines: Vec<_> = self.lines_above.iter().skip(first_index).collect();
+                // let to_serialize: Vec<_> = scrollback_lines.iter().chain(self.viewport.iter().cloned()).cloned().collect();
+                self.output_buffer.serialize(
+                    to_serialize.as_slice(),
+                    // &self.viewport,
+//                     self.width,
+//                     to_serialize_len,
+                ).ok()
+            }
+            None => {
+                self.output_buffer.serialize(
+                    &self.viewport,
+//                     self.width,
+//                     self.height,
+                ).ok()
+            }
+        }
     }
     pub fn render(
         &mut self,

@@ -82,7 +82,9 @@ Config {
         session_name: None,
         attach_to_session: None,
         auto_layout: None,
-        disable_session_serialization: None,
+        session_serialization: None,
+        serialize_pane_viewport: None,
+        scrollback_lines_to_serialize: None,
     },
     themes: {},
     plugins: {

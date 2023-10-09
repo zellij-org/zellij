@@ -471,7 +471,7 @@ pub trait Pane {
         None
     }
     fn rename(&mut self, _buf: Vec<u8>) {}
-    fn serialize(&self) -> Option<String> { None }
+    fn serialize(&self, scrollback_lines_to_serialize: Option<usize>) -> Option<String> { None }
 }
 
 #[derive(Clone, Debug)]

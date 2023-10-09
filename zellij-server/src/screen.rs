@@ -835,7 +835,9 @@ pub(crate) struct Screen {
     style: Style,
     draw_pane_frames: bool,
     auto_layout: bool,
-    disable_session_serialization: bool,
+    session_serialization: bool,
+    serialize_pane_viewport: bool,
+    scrollback_lines_to_serialize: Option<usize>,
     session_is_mirrored: bool,
     copy_options: CopyOptions,
     debug: bool,
@@ -860,7 +862,9 @@ impl Screen {
         debug: bool,
         default_layout: Box<Layout>,
         default_shell: Option<PathBuf>,
-        disable_session_serialization: bool,
+        session_serialization: bool,
+        serialize_pane_viewport: bool,
+        scrollback_lines_to_serialize: Option<usize>,
     ) -> Self {
         let session_name = mode_info.session_name.clone().unwrap_or_default();
         let session_info = SessionInfo::new(session_name.clone());
@@ -892,7 +896,9 @@ impl Screen {
             session_infos_on_machine,
             default_layout,
             default_shell,
-            disable_session_serialization,
+            session_serialization,
+            serialize_pane_viewport,
+            scrollback_lines_to_serialize,
         }
     }
 
@@ -2258,7 +2264,7 @@ impl Screen {
                             p.invoked_with().clone(),
                             p.custom_title(),
                             active_pane_id == Some(pane_id),
-                            p.serialize(),
+                            if self.serialize_pane_viewport { p.serialize(self.scrollback_lines_to_serialize) } else { None },
                         )
                     })
                     .collect();
@@ -2295,7 +2301,7 @@ impl Screen {
                             p.invoked_with().clone(),
                             p.custom_title(),
                             active_pane_id == Some(pane_id),
-                            p.serialize(),
+                            if self.serialize_pane_viewport { p.serialize(self.scrollback_lines_to_serialize) } else { None },
                         )
                     })
                     .collect();
@@ -2325,9 +2331,14 @@ pub(crate) fn screen_thread_main(
     let capabilities = config_options.simplified_ui;
     let draw_pane_frames = config_options.pane_frames.unwrap_or(true);
     let auto_layout = config_options.auto_layout.unwrap_or(true);
-    let disable_session_serialization = config_options
-        .disable_session_serialization
+    let session_serialization = config_options
+        .session_serialization
+        .unwrap_or(true);
+    let serialize_pane_viewport = config_options
+        .serialize_pane_viewport
         .unwrap_or(false);
+    let scrollback_lines_to_serialize = config_options
+        .scrollback_lines_to_serialize;
     let session_is_mirrored = config_options.mirror_session.unwrap_or(false);
     let default_shell = config_options.default_shell;
     let copy_options = CopyOptions::new(
@@ -2355,7 +2366,9 @@ pub(crate) fn screen_thread_main(
         debug,
         default_layout,
         default_shell,
-        disable_session_serialization,
+        session_serialization,
+        serialize_pane_viewport,
+        scrollback_lines_to_serialize,
     );
 
     let mut pending_tab_ids: HashSet<usize> = HashSet::new();
@@ -3727,7 +3740,7 @@ pub(crate) fn screen_thread_main(
                 screen.render()?;
             },
             ScreenInstruction::DumpLayoutToHd => {
-                if !screen.disable_session_serialization {
+                if screen.session_serialization {
                     screen.dump_layout_to_hd()?;
                 }
             },

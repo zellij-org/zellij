@@ -125,10 +125,23 @@ pub struct Options {
     #[serde(default)]
     pub auto_layout: Option<bool>,
 
-    /// Disable session resurrection for this session
+    /// Whether sessions should be serialized to the HD so that they can be later resurrected,
+    /// default is true
     #[clap(long, value_parser)]
     #[serde(default)]
-    pub disable_session_serialization: Option<bool>,
+    pub session_serialization: Option<bool>,
+
+    /// Whether pane viewports are serialized along with the session, default is false
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub serialize_pane_viewport: Option<bool>,
+
+    /// Scrollback lines to serialize along with the pane viewport when serializing sessions, 0
+    /// defaults to the scrollback size. If this number is higher than the scrollback size, it will
+    /// also default to the scrollback size
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub scrollback_lines_to_serialize: Option<usize>,
 }
 
 #[derive(ArgEnum, Deserialize, Serialize, Debug, Clone, Copy, PartialEq)]
@@ -192,9 +205,16 @@ impl Options {
         let attach_to_session = other
             .attach_to_session
             .or_else(|| self.attach_to_session.clone());
-        let disable_session_serialization = other
-            .disable_session_serialization
-            .or(self.disable_session_serialization);
+        // TODO: CONTINUE HERE: make this happen with the new attributes
+        let session_serialization = other
+            .session_serialization
+            .or(self.session_serialization);
+        let serialize_pane_viewport = other
+            .serialize_pane_viewport
+            .or(self.serialize_pane_viewport);
+        let scrollback_lines_to_serialize = other
+            .scrollback_lines_to_serialize
+            .or(self.scrollback_lines_to_serialize);
 
         Options {
             simplified_ui,
@@ -217,7 +237,9 @@ impl Options {
             session_name,
             attach_to_session,
             auto_layout,
-            disable_session_serialization,
+            session_serialization,
+            serialize_pane_viewport,
+            scrollback_lines_to_serialize,
         }
     }
 
@@ -241,9 +263,13 @@ impl Options {
         let pane_frames = merge_bool(other.pane_frames, self.pane_frames);
         let auto_layout = merge_bool(other.auto_layout, self.auto_layout);
         let mirror_session = merge_bool(other.mirror_session, self.mirror_session);
-        let disable_session_serialization = merge_bool(
-            other.disable_session_serialization,
-            self.disable_session_serialization,
+        let session_serialization = merge_bool(
+            other.session_serialization,
+            self.session_serialization,
+        );
+        let serialize_pane_viewport = merge_bool(
+            other.serialize_pane_viewport,
+            self.serialize_pane_viewport,
         );
 
         let default_mode = other.default_mode.or(self.default_mode);
@@ -265,6 +291,9 @@ impl Options {
         let attach_to_session = other
             .attach_to_session
             .or_else(|| self.attach_to_session.clone());
+        let scrollback_lines_to_serialize = other
+            .scrollback_lines_to_serialize
+            .or_else(|| self.scrollback_lines_to_serialize.clone());
 
         Options {
             simplified_ui,
@@ -287,7 +316,9 @@ impl Options {
             session_name,
             attach_to_session,
             auto_layout,
-            disable_session_serialization,
+            session_serialization,
+            serialize_pane_viewport,
+            scrollback_lines_to_serialize,
         }
     }
 
@@ -347,7 +378,9 @@ impl From<CliOptions> for Options {
             session_name: opts.session_name,
             attach_to_session: opts.attach_to_session,
             auto_layout: opts.auto_layout,
-            disable_session_serialization: opts.disable_session_serialization,
+            session_serialization: opts.session_serialization,
+            serialize_pane_viewport: opts.serialize_pane_viewport,
+            scrollback_lines_to_serialize: opts.scrollback_lines_to_serialize,
             ..Default::default()
         }
     }

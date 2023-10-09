@@ -757,8 +757,8 @@ impl Pane for TerminalPane {
         self.pane_name = String::from_utf8_lossy(&buf).to_string();
         self.set_should_render(true);
     }
-    fn serialize(&self) -> Option<String> {
-        self.grid.serialize()
+    fn serialize(&self, scrollback_lines_to_serialize: Option<usize>) -> Option<String> {
+        self.grid.serialize(scrollback_lines_to_serialize)
     }
 }
 

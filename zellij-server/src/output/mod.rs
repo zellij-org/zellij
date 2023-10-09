@@ -867,17 +867,18 @@ impl OutputBuffer {
         self.changed_lines.clear();
         self.should_update_all_lines = false;
     }
-    pub fn serialize(&self, viewport: &[Row], viewport_width: usize, viewport_height: usize) -> Result<String> {
+    pub fn serialize(&self, viewport: &[Row]) -> Result<String> {
         let mut chunks = Vec::new();
-        for line_index in 0..viewport_height {
+        for (line_index, line) in viewport.iter().enumerate() {
             let terminal_characters =
-                self.extract_line_from_viewport(line_index, viewport, viewport_width);
+                self.extract_line_from_viewport(line_index, viewport, line.width());
 
             let x = 0;
             let y = line_index;
             chunks.push(CharacterChunk::new(terminal_characters, x, y));
         }
-        serialize_chunks(chunks, None, None, None)
+        // serialize_chunks(chunks, None, None, None)
+        serialize_chunks_with_newlines(chunks, None, None)
     }
     pub fn changed_chunks_in_viewport(
         &self,

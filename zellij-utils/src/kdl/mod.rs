@@ -1429,9 +1429,15 @@ impl Options {
         let attach_to_session =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "attach_to_session")
                 .map(|(v, _)| v);
-        let disable_session_serialization =
-            kdl_property_first_arg_as_bool_or_error!(kdl_options, "disable_session_serialization")
+        let session_serialization =
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "session_serialization")
                 .map(|(v, _)| v);
+        let serialize_pane_viewport =
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "serialize_pane_viewport")
+                .map(|(v, _)| v);
+        let scrollback_lines_to_serialize =
+            kdl_property_first_arg_as_i64_or_error!(kdl_options, "scrollback_lines_to_serialize")
+                .map(|(v, _)| v as usize);
         Ok(Options {
             simplified_ui,
             theme,
@@ -1453,7 +1459,9 @@ impl Options {
             session_name,
             attach_to_session,
             auto_layout,
-            disable_session_serialization,
+            session_serialization,
+            serialize_pane_viewport,
+            scrollback_lines_to_serialize,
         })
     }
 }
