@@ -784,17 +784,13 @@ impl ServerOsApi for ServerOsInputOutput {
     }
     fn get_all_cmds_by_ppid(&self) -> HashMap<String, Vec<String>> {
         // the key is the stringified ppid
-        // TODO: change name to reflect that we're getting the cmd of the child process only... if
-        // we end up going this way
-        // TODO: does this work on mac?
         let mut cmds = HashMap::new();
         if let Some(output) = Command::new("ps")
             .args(vec!["-ao", "ppid,args"])
             .output()
             .ok()
         {
-            // TODO: not lossy
-            let output = String::from_utf8_lossy(&output.stdout).to_string();
+            let output = String::from_utf8(output.stdout.clone()).unwrap_or_else(|_| String::from_utf8_lossy(&output.stdout).to_string());
             for line in output.lines() {
                 let line_parts: Vec<String> = line
                     .trim()

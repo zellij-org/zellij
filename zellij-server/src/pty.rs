@@ -155,7 +155,6 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                                 should_float,
                                 hold_for_command,
                                 invoked_with,
-                                // run_command.map(|r| Run::Command(r.clone())),
                                 client_or_tab_index,
                             ))
                             .with_context(err_context)?;
@@ -172,7 +171,6 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                                         should_float,
                                         hold_for_command,
                                         invoked_with,
-                                        // run_command.as_ref().map(|r| Run::Command(r.clone())),
                                         client_or_tab_index,
                                     ))
                                     .with_context(err_context)?;
