@@ -121,7 +121,10 @@ fn start_zellij_mirrored_session_with_layout(channel: &mut ssh2::Channel, layout
     std::thread::sleep(std::time::Duration::from_secs(1)); // wait until Zellij stops parsing startup ANSI codes from the terminal STDIN
 }
 
-fn start_zellij_mirrored_session_with_layout_and_viewport_serialization(channel: &mut ssh2::Channel, layout_file_name: &str) {
+fn start_zellij_mirrored_session_with_layout_and_viewport_serialization(
+    channel: &mut ssh2::Channel,
+    layout_file_name: &str,
+) {
     stop_zellij(channel);
     channel
         .write_all(
@@ -542,7 +545,10 @@ impl RemoteRunner {
             reader_thread,
         }
     }
-    pub fn new_mirrored_session_with_layout_and_viewport_serialization(win_size: Size, layout_file_name: &str) -> Self {
+    pub fn new_mirrored_session_with_layout_and_viewport_serialization(
+        win_size: Size,
+        layout_file_name: &str,
+    ) -> Self {
         let sess = ssh_connect();
         let mut channel = sess.channel_session().unwrap();
         let mut rows = Dimension::fixed(win_size.rows);
@@ -557,7 +563,10 @@ impl RemoteRunner {
             is_stacked: false,
         };
         setup_remote_environment(&mut channel, win_size);
-        start_zellij_mirrored_session_with_layout_and_viewport_serialization(&mut channel, layout_file_name);
+        start_zellij_mirrored_session_with_layout_and_viewport_serialization(
+            &mut channel,
+            layout_file_name,
+        );
         let channel = Arc::new(Mutex::new(channel));
         let last_snapshot = Arc::new(Mutex::new(String::new()));
         let cursor_coordinates = Arc::new(Mutex::new((0, 0)));

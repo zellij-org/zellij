@@ -206,9 +206,7 @@ impl Options {
             .attach_to_session
             .or_else(|| self.attach_to_session.clone());
         // TODO: CONTINUE HERE: make this happen with the new attributes
-        let session_serialization = other
-            .session_serialization
-            .or(self.session_serialization);
+        let session_serialization = other.session_serialization.or(self.session_serialization);
         let serialize_pane_viewport = other
             .serialize_pane_viewport
             .or(self.serialize_pane_viewport);
@@ -263,14 +261,10 @@ impl Options {
         let pane_frames = merge_bool(other.pane_frames, self.pane_frames);
         let auto_layout = merge_bool(other.auto_layout, self.auto_layout);
         let mirror_session = merge_bool(other.mirror_session, self.mirror_session);
-        let session_serialization = merge_bool(
-            other.session_serialization,
-            self.session_serialization,
-        );
-        let serialize_pane_viewport = merge_bool(
-            other.serialize_pane_viewport,
-            self.serialize_pane_viewport,
-        );
+        let session_serialization =
+            merge_bool(other.session_serialization, self.session_serialization);
+        let serialize_pane_viewport =
+            merge_bool(other.serialize_pane_viewport, self.serialize_pane_viewport);
 
         let default_mode = other.default_mode.or(self.default_mode);
         let default_shell = other.default_shell.or_else(|| self.default_shell.clone());

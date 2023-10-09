@@ -8,7 +8,7 @@
 //! ```
 //!
 use serde_json::Value;
-use std::collections::{HashMap, BTreeMap};
+use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 
 use crate::{
@@ -62,7 +62,10 @@ pub struct PaneLayoutManifest {
     pub pane_contents: Option<String>,
 }
 
-pub fn tabs_to_kdl(global_layout_manifest: GlobalLayoutManifest) -> (String, BTreeMap<String, String>) { // BTreeMap is the pane contents and their file names
+pub fn tabs_to_kdl(
+    global_layout_manifest: GlobalLayoutManifest,
+) -> (String, BTreeMap<String, String>) {
+    // BTreeMap is the pane contents and their file names
     let mut kdl_string = String::from("layout {\n");
     let mut pane_contents = BTreeMap::new();
     if let Some(global_cwd) = global_layout_manifest.global_cwd {
@@ -156,7 +159,8 @@ pub fn tabs_to_kdl(global_layout_manifest: GlobalLayoutManifest) -> (String, BTr
                 ));
             }
             for floating_pane_layout in floating_panes_layout {
-                let sub_kdl_string = kdl_string_from_floating_pane(&floating_pane_layout, &mut pane_contents);
+                let sub_kdl_string =
+                    kdl_string_from_floating_pane(&floating_pane_layout, &mut pane_contents);
                 kdl_string.push_str(&indent(&sub_kdl_string, TRIPLE_INDENT));
             }
             if has_floating_panes {
@@ -273,13 +277,15 @@ fn kdl_string_from_tab(
     };
     for tiled_pane_layout in tiled_panes {
         let ignore_size = false;
-        let sub_kdl_string = kdl_string_from_tiled_pane(&tiled_pane_layout, ignore_size, pane_contents);
+        let sub_kdl_string =
+            kdl_string_from_tiled_pane(&tiled_pane_layout, ignore_size, pane_contents);
         kdl_string.push_str(&indent(&sub_kdl_string, INDENT));
     }
     if !floating_panes.is_empty() {
         kdl_string.push_str(&indent("floating_panes {\n", INDENT));
         for floating_pane_layout in floating_panes {
-            let sub_kdl_string = kdl_string_from_floating_pane(&floating_pane_layout, pane_contents);
+            let sub_kdl_string =
+                kdl_string_from_floating_pane(&floating_pane_layout, pane_contents);
             kdl_string.push_str(&indent(&sub_kdl_string, DOUBLE_INDENT));
         }
         kdl_string.push_str(&indent("}\n", INDENT));
@@ -289,7 +295,11 @@ fn kdl_string_from_tab(
 }
 
 /// Pane declaration and recursion
-fn kdl_string_from_tiled_pane(layout: &TiledPaneLayout, ignore_size: bool, pane_contents: &mut BTreeMap<String, String>) -> String {
+fn kdl_string_from_tiled_pane(
+    layout: &TiledPaneLayout,
+    ignore_size: bool,
+    pane_contents: &mut BTreeMap<String, String>,
+) -> String {
     let (command, args) = match &layout.run {
         Some(Run::Command(run_command)) => (
             Some(run_command.command.display()),
@@ -425,7 +435,10 @@ fn kdl_string_from_tiled_pane(layout: &TiledPaneLayout, ignore_size: bool, pane_
 }
 
 // TODO: combine shared logic here with kdl_string_from_tiled_pane
-fn kdl_string_from_floating_pane(layout: &FloatingPaneLayout, pane_contents: &mut BTreeMap<String, String>) -> String {
+fn kdl_string_from_floating_pane(
+    layout: &FloatingPaneLayout,
+    pane_contents: &mut BTreeMap<String, String>,
+) -> String {
     let (command, args) = match &layout.run {
         Some(Run::Command(run_command)) => (
             Some(run_command.command.display()),

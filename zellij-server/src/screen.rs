@@ -188,9 +188,24 @@ impl SessionLayoutMetadata {
         name: String,
         is_focused: bool,
         hide_floating_panes: bool,
-        tiled_panes: Vec<(PaneId, PaneGeom, bool, Option<Run>, Option<String>, bool, Option<String>)>, // bool => is_borderless,
+        tiled_panes: Vec<(
+            PaneId,
+            PaneGeom,
+            bool,
+            Option<Run>,
+            Option<String>,
+            bool,
+            Option<String>,
+        )>, // bool => is_borderless,
         // Option<String> => title, bool => is_focused, Option<String> => pane contents
-        floating_panes: Vec<(PaneId, PaneGeom, Option<Run>, Option<String>, bool, Option<String>)>, // Option<String> => title, bool => is_focused, Option<String> => pane contents
+        floating_panes: Vec<(
+            PaneId,
+            PaneGeom,
+            Option<Run>,
+            Option<String>,
+            bool,
+            Option<String>,
+        )>, // Option<String> => title, bool => is_focused, Option<String> => pane contents
     ) {
         self.tabs.push(TabLayoutMetadata {
             name: Some(name), // TODO: tabs don't always have a name...
@@ -379,10 +394,28 @@ pub struct PaneLayoutMetadata {
     pane_contents: Option<String>,
 }
 
-impl From<(PaneId, PaneGeom, bool, Option<Run>, Option<String>, bool, Option<String>)> for PaneLayoutMetadata {
+impl
+    From<(
+        PaneId,
+        PaneGeom,
+        bool,
+        Option<Run>,
+        Option<String>,
+        bool,
+        Option<String>,
+    )> for PaneLayoutMetadata
+{
     // bool => is_borderless, String => title, bool => is_focused, Option<StringL> => pane_contents
     fn from(
-        pane_id_and_pane_geom: (PaneId, PaneGeom, bool, Option<Run>, Option<String>, bool, Option<String>),
+        pane_id_and_pane_geom: (
+            PaneId,
+            PaneGeom,
+            bool,
+            Option<Run>,
+            Option<String>,
+            bool,
+            Option<String>,
+        ),
     ) -> Self {
         PaneLayoutMetadata {
             id: pane_id_and_pane_geom.0,
@@ -397,9 +430,27 @@ impl From<(PaneId, PaneGeom, bool, Option<Run>, Option<String>, bool, Option<Str
     }
 }
 
-impl From<(PaneId, PaneGeom, Option<Run>, Option<String>, bool, Option<String>)> for PaneLayoutMetadata {
+impl
+    From<(
+        PaneId,
+        PaneGeom,
+        Option<Run>,
+        Option<String>,
+        bool,
+        Option<String>,
+    )> for PaneLayoutMetadata
+{
     // String => title, bool => is_focused, Option<STring> => pane_contents,
-    fn from(pane_id_and_pane_geom: (PaneId, PaneGeom, Option<Run>, Option<String>, bool, Option<String>)) -> Self {
+    fn from(
+        pane_id_and_pane_geom: (
+            PaneId,
+            PaneGeom,
+            Option<Run>,
+            Option<String>,
+            bool,
+            Option<String>,
+        ),
+    ) -> Self {
         PaneLayoutMetadata {
             id: pane_id_and_pane_geom.0,
             geom: pane_id_and_pane_geom.1,
@@ -2268,43 +2319,53 @@ impl Screen {
                         )
                     })
                     .collect();
-            let floating_panes: Vec<(PaneId, PaneGeom, Option<Run>, Option<String>, bool, Option<String>,)> =
-                tab // Option<String>
-                    // =>
-                    // pane
-                    // title,
-                    // bool => is_focused
-                    // Option<String> => serialized contents
-                    .get_floating_panes()
-                    .map(|(pane_id, p)| {
-                        // here we look to see if this pane triggers any suppressed pane,
-                        // and if so we take that suppressed pane - we do this because this
-                        // is currently only the case the scrollback editing panes, and
-                        // when dumping the layout we want the "real" pane and not the
-                        // editor pane
-                        if let Some((is_scrollback_editor, suppressed_pane)) =
-                            suppressed_panes.remove(pane_id)
-                        {
-                            if *is_scrollback_editor {
-                                (suppressed_pane.pid(), suppressed_pane)
-                            } else {
-                                (*pane_id, p)
-                            }
+            let floating_panes: Vec<(
+                PaneId,
+                PaneGeom,
+                Option<Run>,
+                Option<String>,
+                bool,
+                Option<String>,
+            )> = tab // Option<String>
+                // =>
+                // pane
+                // title,
+                // bool => is_focused
+                // Option<String> => serialized contents
+                .get_floating_panes()
+                .map(|(pane_id, p)| {
+                    // here we look to see if this pane triggers any suppressed pane,
+                    // and if so we take that suppressed pane - we do this because this
+                    // is currently only the case the scrollback editing panes, and
+                    // when dumping the layout we want the "real" pane and not the
+                    // editor pane
+                    if let Some((is_scrollback_editor, suppressed_pane)) =
+                        suppressed_panes.remove(pane_id)
+                    {
+                        if *is_scrollback_editor {
+                            (suppressed_pane.pid(), suppressed_pane)
                         } else {
                             (*pane_id, p)
                         }
-                    })
-                    .map(|(pane_id, p)| {
-                        (
-                            pane_id,
-                            p.position_and_size(),
-                            p.invoked_with().clone(),
-                            p.custom_title(),
-                            active_pane_id == Some(pane_id),
-                            if self.serialize_pane_viewport { p.serialize(self.scrollback_lines_to_serialize) } else { None },
-                        )
-                    })
-                    .collect();
+                    } else {
+                        (*pane_id, p)
+                    }
+                })
+                .map(|(pane_id, p)| {
+                    (
+                        pane_id,
+                        p.position_and_size(),
+                        p.invoked_with().clone(),
+                        p.custom_title(),
+                        active_pane_id == Some(pane_id),
+                        if self.serialize_pane_viewport {
+                            p.serialize(self.scrollback_lines_to_serialize)
+                        } else {
+                            None
+                        },
+                    )
+                })
+                .collect();
             session_layout_metadata.add_tab(
                 tab.name.clone(),
                 tab_is_focused,
@@ -2331,14 +2392,9 @@ pub(crate) fn screen_thread_main(
     let capabilities = config_options.simplified_ui;
     let draw_pane_frames = config_options.pane_frames.unwrap_or(true);
     let auto_layout = config_options.auto_layout.unwrap_or(true);
-    let session_serialization = config_options
-        .session_serialization
-        .unwrap_or(true);
-    let serialize_pane_viewport = config_options
-        .serialize_pane_viewport
-        .unwrap_or(false);
-    let scrollback_lines_to_serialize = config_options
-        .scrollback_lines_to_serialize;
+    let session_serialization = config_options.session_serialization.unwrap_or(true);
+    let serialize_pane_viewport = config_options.serialize_pane_viewport.unwrap_or(false);
+    let scrollback_lines_to_serialize = config_options.scrollback_lines_to_serialize;
     let session_is_mirrored = config_options.mirror_session.unwrap_or(false);
     let default_shell = config_options.default_shell;
     let copy_options = CopyOptions::new(

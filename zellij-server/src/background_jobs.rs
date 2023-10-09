@@ -24,10 +24,10 @@ use crate::thread_bus::Bus;
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum BackgroundJob {
     DisplayPaneError(Vec<PaneId>, String),
-    AnimatePluginLoading(u32),              // u32 - plugin_id
-    StopPluginLoadingAnimation(u32),        // u32 - plugin_id
-    ReadAllSessionInfosOnMachine,           // u32 - plugin_id
-    ReportSessionInfo(String, SessionInfo), // String - session name
+    AnimatePluginLoading(u32),                            // u32 - plugin_id
+    StopPluginLoadingAnimation(u32),                      // u32 - plugin_id
+    ReadAllSessionInfosOnMachine,                         // u32 - plugin_id
+    ReportSessionInfo(String, SessionInfo),               // String - session name
     ReportLayoutInfo((String, BTreeMap<String, String>)), // HashMap<file_name, pane_contents>
     Exit,
 }
@@ -162,12 +162,23 @@ pub(crate) fn background_jobs_main(bus: Bus<BackgroundJob>) -> Result<()> {
                                 .and_then(|_| std::fs::File::create(layout_cache_file_name))
                                 .and_then(|mut f| write!(f, "{}", current_session_layout))
                                 .and_then(|_| {
-                                    let session_info_folder = session_info_folder_for_session(&current_session_name);
-                                    for (external_file_name, external_file_contents) in layout_files_to_write {
-                                        std::fs::File::create(session_info_folder.join(external_file_name))
-                                            .and_then(|mut f| write!(f, "{}", external_file_contents)).unwrap_or_else(|e| {
-                                                log::error!("Failed to write layout metadata file: {:?}", e);
-                                            });
+                                    let session_info_folder =
+                                        session_info_folder_for_session(&current_session_name);
+                                    for (external_file_name, external_file_contents) in
+                                        layout_files_to_write
+                                    {
+                                        std::fs::File::create(
+                                            session_info_folder.join(external_file_name),
+                                        )
+                                        .and_then(|mut f| write!(f, "{}", external_file_contents))
+                                        .unwrap_or_else(
+                                            |e| {
+                                                log::error!(
+                                                    "Failed to write layout metadata file: {:?}",
+                                                    e
+                                                );
+                                            },
+                                        );
                                     }
                                     Ok(())
                                 });

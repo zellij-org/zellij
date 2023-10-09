@@ -536,7 +536,8 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
             PtyInstruction::DumpLayout(mut session_layout_metadata, client_id) => {
                 let err_context = || format!("Failed to dump layout");
                 pty.populate_session_layout_metadata(&mut session_layout_metadata);
-                let (kdl_layout, _pane_contents) = session_serialization::tabs_to_kdl(session_layout_metadata.into());
+                let (kdl_layout, _pane_contents) =
+                    session_serialization::tabs_to_kdl(session_layout_metadata.into());
                 pty.bus
                     .senders
                     .send_to_server(ServerInstruction::Log(vec![kdl_layout], client_id))

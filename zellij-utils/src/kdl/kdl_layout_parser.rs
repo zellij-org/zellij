@@ -553,7 +553,11 @@ impl<'a> KdlLayoutParser<'a> {
             ));
         }
         self.assert_no_mixed_children_and_properties(kdl_node)?;
-        let pane_initial_contents = contents_file.and_then(|contents_file| self.file_name.parent().and_then(|parent_folder| std::fs::read_to_string(parent_folder.join(contents_file)).ok()));
+        let pane_initial_contents = contents_file.and_then(|contents_file| {
+            self.file_name.parent().and_then(|parent_folder| {
+                std::fs::read_to_string(parent_folder.join(contents_file)).ok()
+            })
+        });
         Ok(TiledPaneLayout {
             borderless: borderless.unwrap_or_default(),
             focus,
@@ -586,7 +590,11 @@ impl<'a> KdlLayoutParser<'a> {
         let contents_file =
             kdl_get_string_property_or_child_value_with_error!(kdl_node, "contents_file");
         self.assert_no_mixed_children_and_properties(kdl_node)?;
-        let pane_initial_contents = contents_file.and_then(|contents_file| self.file_name.parent().and_then(|parent_folder| std::fs::read_to_string(parent_folder.join(contents_file)).ok()));
+        let pane_initial_contents = contents_file.and_then(|contents_file| {
+            self.file_name.parent().and_then(|parent_folder| {
+                std::fs::read_to_string(parent_folder.join(contents_file)).ok()
+            })
+        });
         Ok(FloatingPaneLayout {
             name,
             height,
