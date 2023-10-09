@@ -1052,19 +1052,9 @@ impl Grid {
                     to_serialize.push(line.clone())
                 }
                 let to_serialize_len = to_serialize.len();
-                log::info!(
-                    "scrollback_lines_to_serialize: {:?}",
-                    scrollback_lines_to_serialize
-                );
-                log::info!("to_serialize_len: {:?}", to_serialize_len);
-                // let scrollback_lines: Vec<_> = self.lines_above.iter().skip(first_index).collect();
-                // let to_serialize: Vec<_> = scrollback_lines.iter().chain(self.viewport.iter().cloned()).cloned().collect();
                 self.output_buffer
                     .serialize(
                         to_serialize.as_slice(),
-                        // &self.viewport,
-                        //                     self.width,
-                        //                     to_serialize_len,
                     )
                     .ok()
             },
@@ -1072,8 +1062,6 @@ impl Grid {
                 self.output_buffer
                     .serialize(
                         &self.viewport,
-                        //                     self.width,
-                        //                     self.height,
                     )
                     .ok()
             },

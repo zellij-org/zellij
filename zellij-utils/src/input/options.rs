@@ -205,7 +205,6 @@ impl Options {
         let attach_to_session = other
             .attach_to_session
             .or_else(|| self.attach_to_session.clone());
-        // TODO: CONTINUE HERE: make this happen with the new attributes
         let session_serialization = other.session_serialization.or(self.session_serialization);
         let serialize_pane_viewport = other
             .serialize_pane_viewport
