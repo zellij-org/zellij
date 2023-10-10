@@ -13,6 +13,7 @@ mod screen;
 mod terminal_bytes;
 mod thread_bus;
 mod ui;
+mod session_layout_metadata;
 
 use background_jobs::{background_jobs_main, BackgroundJob};
 use log::info;

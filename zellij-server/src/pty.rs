@@ -3,9 +3,10 @@ use crate::terminal_bytes::TerminalBytes;
 use crate::{
     panes::PaneId,
     plugins::PluginInstruction,
-    screen::{ScreenInstruction, SessionLayoutMetadata},
+    screen::ScreenInstruction,
     thread_bus::{Bus, ThreadSenders},
     ClientId, ServerInstruction,
+    session_layout_metadata::SessionLayoutMetadata,
 };
 use async_std::task::{self, JoinHandle};
 use std::{collections::HashMap, os::unix::io::RawFd, path::PathBuf};
@@ -535,7 +536,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                 let err_context = || format!("Failed to dump layout");
                 pty.populate_session_layout_metadata(&mut session_layout_metadata);
                 let (kdl_layout, _pane_contents) =
-                    session_serialization::tabs_to_kdl(session_layout_metadata.into());
+                    session_serialization::serialize_session_layout(session_layout_metadata.into());
                 pty.bus
                     .senders
                     .send_to_server(ServerInstruction::Log(vec![kdl_layout], client_id))
@@ -545,7 +546,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
             PtyInstruction::LogLayoutToHd(mut session_layout_metadata) => {
                 let err_context = || format!("Failed to dump layout");
                 pty.populate_session_layout_metadata(&mut session_layout_metadata);
-                let kdl_layout = session_serialization::tabs_to_kdl(session_layout_metadata.into());
+                let kdl_layout = session_serialization::serialize_session_layout(session_layout_metadata.into());
                 pty.bus
                     .senders
                     .send_to_background_jobs(BackgroundJob::ReportLayoutInfo(kdl_layout))

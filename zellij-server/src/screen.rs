@@ -6,7 +6,6 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::str;
 
-use zellij_utils::common_path::common_path_all;
 use zellij_utils::data::{
     Direction, PaneManifest, PluginPermission, Resize, ResizeStrategy, SessionInfo,
 };
@@ -28,6 +27,7 @@ use crate::background_jobs::BackgroundJob;
 use crate::os_input_output::ResizeCache;
 use crate::panes::alacritty_functions::xparse_color;
 use crate::panes::terminal_character::AnsiCode;
+use crate::session_layout_metadata::{SessionLayoutMetadata, PaneLayoutMetadata};
 
 use crate::{
     output::Output,
@@ -35,7 +35,7 @@ use crate::{
     panes::PaneId,
     plugins::PluginInstruction,
     pty::{ClientTabIndexOrPaneId, PtyInstruction, VteBytes},
-    tab::Tab,
+    tab::{Tab, Pane},
     thread_bus::Bus,
     ui::{
         loading_indication::LoadingIndication,
@@ -126,342 +126,6 @@ macro_rules! active_tab_and_connected_client_id {
             },
         }
     };
-}
-
-// TODO: move elsewhere
-#[derive(Default, Debug, Clone)]
-pub struct SessionLayoutMetadata {
-    default_layout: Box<Layout>,
-    global_cwd: Option<PathBuf>,
-    pub default_shell: Option<PathBuf>,
-    tabs: Vec<TabLayoutMetadata>,
-}
-
-impl SessionLayoutMetadata {
-    pub fn new(default_layout: Box<Layout>) -> Self {
-        SessionLayoutMetadata {
-            default_layout,
-            ..Default::default()
-        }
-    }
-    pub fn update_default_shell(&mut self, default_shell: PathBuf) {
-        if self.default_shell.is_none() {
-            self.default_shell = Some(default_shell);
-        }
-        // TODO: consolidate this with identical function below
-        let is_default_shell = |command_name: &String, args: &Vec<String>| -> bool {
-            self.default_shell
-                .as_ref()
-                .map(|c| c.display().to_string())
-                .as_ref()
-                == Some(command_name)
-                && args.is_empty()
-        };
-        for tab in self.tabs.iter_mut() {
-            for tiled_pane in tab.tiled_panes.iter_mut() {
-                if let Some(Run::Command(run_command)) = tiled_pane.run.as_mut() {
-                    if is_default_shell(
-                        &run_command.command.display().to_string(),
-                        &run_command.args,
-                    ) {
-                        tiled_pane.run = None;
-                    }
-                }
-            }
-            for floating_pane in tab.floating_panes.iter_mut() {
-                if let Some(Run::Command(run_command)) = floating_pane.run.as_mut() {
-                    if is_default_shell(
-                        &run_command.command.display().to_string(),
-                        &run_command.args,
-                    ) {
-                        floating_pane.run = None;
-                    }
-                }
-            }
-        }
-    }
-}
-
-impl SessionLayoutMetadata {
-    pub fn add_tab(
-        &mut self,
-        name: String,
-        is_focused: bool,
-        hide_floating_panes: bool,
-        tiled_panes: Vec<(
-            PaneId,
-            PaneGeom,
-            bool,
-            Option<Run>,
-            Option<String>,
-            bool,
-            Option<String>,
-        )>, // bool => is_borderless,
-        // Option<String> => title, bool => is_focused, Option<String> => pane contents
-        floating_panes: Vec<(
-            PaneId,
-            PaneGeom,
-            Option<Run>,
-            Option<String>,
-            bool,
-            Option<String>,
-        )>, // Option<String> => title, bool => is_focused, Option<String> => pane contents
-    ) {
-        self.tabs.push(TabLayoutMetadata {
-            name: Some(name), // TODO: tabs don't always have a name...
-            is_focused,
-            hide_floating_panes,
-            tiled_panes: tiled_panes.into_iter().map(|t_p| t_p.into()).collect(),
-            floating_panes: floating_panes.into_iter().map(|t_p| t_p.into()).collect(),
-        })
-    }
-    pub fn all_terminal_ids(&self) -> Vec<u32> {
-        let mut terminal_ids = vec![];
-        for tab in &self.tabs {
-            for pane_layout_metadata in &tab.tiled_panes {
-                if let PaneId::Terminal(id) = pane_layout_metadata.id {
-                    terminal_ids.push(id);
-                }
-            }
-            for pane_layout_metadata in &tab.floating_panes {
-                if let PaneId::Terminal(id) = pane_layout_metadata.id {
-                    terminal_ids.push(id);
-                }
-            }
-        }
-        terminal_ids
-    }
-    pub fn all_plugin_ids(&self) -> Vec<u32> {
-        let mut plugin_ids = vec![];
-        for tab in &self.tabs {
-            for pane_layout_metadata in &tab.tiled_panes {
-                if let PaneId::Plugin(id) = pane_layout_metadata.id {
-                    plugin_ids.push(id);
-                }
-            }
-            for pane_layout_metadata in &tab.floating_panes {
-                if let PaneId::Plugin(id) = pane_layout_metadata.id {
-                    plugin_ids.push(id);
-                }
-            }
-        }
-        plugin_ids
-    }
-    pub fn update_terminal_commands(
-        &mut self,
-        mut terminal_ids_to_commands: HashMap<u32, Vec<String>>,
-    ) {
-        let is_default_shell = |command_name: &String, args: &Vec<String>| -> bool {
-            self.default_shell
-                .as_ref()
-                .map(|c| c.display().to_string())
-                .as_ref()
-                == Some(command_name)
-                && args.is_empty()
-        };
-        let mut update_cmd_in_pane_metadata = |pane_layout_metadata: &mut PaneLayoutMetadata| {
-            if let PaneId::Terminal(id) = pane_layout_metadata.id {
-                if let Some(command) = terminal_ids_to_commands.remove(&id) {
-                    let mut command_line = command.iter();
-                    if let Some(command_name) = command_line.next() {
-                        let args: Vec<String> = command_line.map(|c| c.to_owned()).collect();
-                        if is_default_shell(&command_name, &args) {
-                            pane_layout_metadata.run = None;
-                        } else {
-                            let mut run_command = RunCommand::new(PathBuf::from(command_name));
-                            run_command.args = args;
-                            pane_layout_metadata.run = Some(Run::Command(run_command));
-                        }
-                    }
-                }
-            }
-        };
-        for tab in self.tabs.iter_mut() {
-            for pane_layout_metadata in tab.tiled_panes.iter_mut() {
-                update_cmd_in_pane_metadata(pane_layout_metadata);
-            }
-            for pane_layout_metadata in tab.floating_panes.iter_mut() {
-                update_cmd_in_pane_metadata(pane_layout_metadata);
-            }
-        }
-    }
-    pub fn update_terminal_cwds(&mut self, mut terminal_ids_to_cwds: HashMap<u32, PathBuf>) {
-        if let Some(common_path_between_cwds) =
-            common_path_all(terminal_ids_to_cwds.values().map(|p| p.as_path()))
-        {
-            terminal_ids_to_cwds.values_mut().for_each(|p| {
-                if let Ok(stripped) = p.strip_prefix(&common_path_between_cwds) {
-                    *p = PathBuf::from(stripped)
-                }
-            });
-            self.global_cwd = Some(PathBuf::from(common_path_between_cwds));
-        }
-        let mut update_cwd_in_pane_metadata = |pane_layout_metadata: &mut PaneLayoutMetadata| {
-            if let PaneId::Terminal(id) = pane_layout_metadata.id {
-                if let Some(cwd) = terminal_ids_to_cwds.remove(&id) {
-                    pane_layout_metadata.cwd = Some(cwd);
-                }
-            }
-        };
-        for tab in self.tabs.iter_mut() {
-            for pane_layout_metadata in tab.tiled_panes.iter_mut() {
-                update_cwd_in_pane_metadata(pane_layout_metadata);
-            }
-            for pane_layout_metadata in tab.floating_panes.iter_mut() {
-                update_cwd_in_pane_metadata(pane_layout_metadata);
-            }
-        }
-    }
-    pub fn update_plugin_cmds(&mut self, mut plugin_ids_to_run_plugins: HashMap<u32, RunPlugin>) {
-        let mut update_cmd_in_pane_metadata = |pane_layout_metadata: &mut PaneLayoutMetadata| {
-            if let PaneId::Plugin(id) = pane_layout_metadata.id {
-                if let Some(run_plugin) = plugin_ids_to_run_plugins.remove(&id) {
-                    pane_layout_metadata.run = Some(Run::Plugin(run_plugin));
-                }
-            }
-        };
-        for tab in self.tabs.iter_mut() {
-            for pane_layout_metadata in tab.tiled_panes.iter_mut() {
-                update_cmd_in_pane_metadata(pane_layout_metadata);
-            }
-            for pane_layout_metadata in tab.floating_panes.iter_mut() {
-                update_cmd_in_pane_metadata(pane_layout_metadata);
-            }
-        }
-    }
-}
-
-impl Into<GlobalLayoutManifest> for SessionLayoutMetadata {
-    fn into(self) -> GlobalLayoutManifest {
-        GlobalLayoutManifest {
-            default_layout: self.default_layout,
-            default_shell: self.default_shell,
-            global_cwd: self.global_cwd,
-            tabs: self
-                .tabs
-                .into_iter()
-                .map(|t| (t.name.clone().unwrap_or_default(), t.into()))
-                .collect(),
-        }
-    }
-}
-
-impl Into<TabLayoutManifest> for TabLayoutMetadata {
-    fn into(self) -> TabLayoutManifest {
-        TabLayoutManifest {
-            tiled_panes: self.tiled_panes.into_iter().map(|t| t.into()).collect(),
-            floating_panes: self.floating_panes.into_iter().map(|t| t.into()).collect(),
-            is_focused: self.is_focused,
-            hide_floating_panes: self.hide_floating_panes,
-        }
-    }
-}
-
-impl Into<PaneLayoutManifest> for PaneLayoutMetadata {
-    fn into(self) -> PaneLayoutManifest {
-        PaneLayoutManifest {
-            geom: self.geom,
-            run: self.run,
-            cwd: self.cwd,
-            is_borderless: self.is_borderless,
-            title: self.title,
-            is_focused: self.is_focused,
-            pane_contents: self.pane_contents,
-        }
-    }
-}
-
-// TODO: move elsewhere
-#[derive(Default, Debug, Clone)]
-pub struct TabLayoutMetadata {
-    name: Option<String>,
-    tiled_panes: Vec<PaneLayoutMetadata>,
-    floating_panes: Vec<PaneLayoutMetadata>,
-    is_focused: bool,
-    hide_floating_panes: bool,
-}
-
-// TODO: move elsewhere
-#[derive(Debug, Clone)]
-pub struct PaneLayoutMetadata {
-    id: PaneId,
-    geom: PaneGeom,
-    run: Option<Run>,
-    cwd: Option<PathBuf>,
-    is_borderless: bool,
-    title: Option<String>,
-    is_focused: bool,
-    pane_contents: Option<String>,
-}
-
-impl
-    From<(
-        PaneId,
-        PaneGeom,
-        bool,
-        Option<Run>,
-        Option<String>,
-        bool,
-        Option<String>,
-    )> for PaneLayoutMetadata
-{
-    // bool => is_borderless, String => title, bool => is_focused, Option<StringL> => pane_contents
-    fn from(
-        pane_id_and_pane_geom: (
-            PaneId,
-            PaneGeom,
-            bool,
-            Option<Run>,
-            Option<String>,
-            bool,
-            Option<String>,
-        ),
-    ) -> Self {
-        PaneLayoutMetadata {
-            id: pane_id_and_pane_geom.0,
-            geom: pane_id_and_pane_geom.1,
-            run: pane_id_and_pane_geom.3,
-            cwd: None,
-            is_borderless: pane_id_and_pane_geom.2,
-            title: pane_id_and_pane_geom.4,
-            is_focused: pane_id_and_pane_geom.5,
-            pane_contents: pane_id_and_pane_geom.6,
-        }
-    }
-}
-
-impl
-    From<(
-        PaneId,
-        PaneGeom,
-        Option<Run>,
-        Option<String>,
-        bool,
-        Option<String>,
-    )> for PaneLayoutMetadata
-{
-    // String => title, bool => is_focused, Option<STring> => pane_contents,
-    fn from(
-        pane_id_and_pane_geom: (
-            PaneId,
-            PaneGeom,
-            Option<Run>,
-            Option<String>,
-            bool,
-            Option<String>,
-        ),
-    ) -> Self {
-        PaneLayoutMetadata {
-            id: pane_id_and_pane_geom.0,
-            geom: pane_id_and_pane_geom.1,
-            run: pane_id_and_pane_geom.2,
-            cwd: None,
-            is_borderless: false,
-            title: pane_id_and_pane_geom.3,
-            is_focused: pane_id_and_pane_geom.4,
-            pane_contents: pane_id_and_pane_geom.5,
-        }
-    }
 }
 
 type InitialTitle = String;
@@ -2275,6 +1939,7 @@ impl Screen {
         let first_client_id = self.get_first_client_id();
         let active_tab_index =
             first_client_id.and_then(|client_id| self.active_tab_indices.get(&client_id));
+
         for (tab_index, tab) in self.tabs.values().enumerate() {
             let tab_is_focused = active_tab_index == Some(&tab_index);
             let hide_floating_panes = !tab.are_floating_panes_visible();
@@ -2284,54 +1949,36 @@ impl Screen {
             }
             let active_pane_id =
                 first_client_id.and_then(|client_id| tab.get_active_pane_id(client_id));
-            let tiled_panes: Vec<(PaneId, PaneGeom, bool, Option<Run>, Option<String>, bool, Option<String>)> = // Option<String>
-                                                                                  // =>
-                                                                                  // pane title
-                                                                                  // bool => is_borderless, last bool => is_focused                                                              
-                                                                                  // Option<String> => serialized contents
-                tab
-                    .get_tiled_panes()
-                    .map(|(pane_id, p)| {
-                        // here we look to see if this pane triggers any suppressed pane,
-                        // and if so we take that suppressed pane - we do this because this
-                        // is currently only the case the scrollback editing panes, and
-                        // when dumping the layout we want the "real" pane and not the
-                        // editor pane
-                        if let Some((is_scrollback_editor, suppressed_pane)) = suppressed_panes.remove(pane_id) {
-                            if *is_scrollback_editor {
-                                (suppressed_pane.pid(), suppressed_pane)
-                            } else {
-                                (*pane_id, p)
-                            }
-                        } else {
-                            (*pane_id, p)
-                        }
-                    })
-                    .map(|(pane_id, p)| {
-                        (
-                            pane_id,
-                            p.position_and_size(),
-                            p.borderless(),
-                            p.invoked_with().clone(),
-                            p.custom_title(),
-                            active_pane_id == Some(pane_id),
-                            if self.serialize_pane_viewport { p.serialize(self.scrollback_lines_to_serialize) } else { None },
-                        )
-                    })
-                    .collect();
-            let floating_panes: Vec<(
-                PaneId,
-                PaneGeom,
-                Option<Run>,
-                Option<String>,
-                bool,
-                Option<String>,
-            )> = tab // Option<String>
-                // =>
-                // pane
-                // title,
-                // bool => is_focused
-                // Option<String> => serialized contents
+            let tiled_panes: Vec<PaneLayoutMetadata> = tab
+                .get_tiled_panes()
+                .map(|(pane_id, p)| {
+                    // here we look to see if this pane triggers any suppressed pane,
+                    // and if so we take that suppressed pane - we do this because this
+                    // is currently only the case the scrollback editing panes, and
+                    // when dumping the layout we want the "real" pane and not the
+                    // editor pane
+                    match suppressed_panes.remove(pane_id) {
+                        Some((is_scrollback_editor, suppressed_pane)) if *is_scrollback_editor => {
+                            (suppressed_pane.pid(), suppressed_pane)
+                        },
+                        _ => (*pane_id, p)
+                    }
+                })
+                .map(|(pane_id, p)| PaneLayoutMetadata::new(
+                    pane_id,
+                    p.position_and_size(),
+                    p.borderless(),
+                    p.invoked_with().clone(),
+                    p.custom_title(),
+                    active_pane_id == Some(pane_id),
+                    if self.serialize_pane_viewport {
+                        p.serialize(self.scrollback_lines_to_serialize)
+                    } else {
+                        None
+                    }
+                ))
+                .collect();
+            let floating_panes: Vec<PaneLayoutMetadata> = tab
                 .get_floating_panes()
                 .map(|(pane_id, p)| {
                     // here we look to see if this pane triggers any suppressed pane,
@@ -2339,32 +1986,26 @@ impl Screen {
                     // is currently only the case the scrollback editing panes, and
                     // when dumping the layout we want the "real" pane and not the
                     // editor pane
-                    if let Some((is_scrollback_editor, suppressed_pane)) =
-                        suppressed_panes.remove(pane_id)
-                    {
-                        if *is_scrollback_editor {
+                    match suppressed_panes.remove(pane_id) {
+                        Some((is_scrollback_editor, suppressed_pane)) if *is_scrollback_editor => {
                             (suppressed_pane.pid(), suppressed_pane)
-                        } else {
-                            (*pane_id, p)
-                        }
-                    } else {
-                        (*pane_id, p)
+                        },
+                        _ => (*pane_id, p)
                     }
                 })
-                .map(|(pane_id, p)| {
-                    (
-                        pane_id,
-                        p.position_and_size(),
-                        p.invoked_with().clone(),
-                        p.custom_title(),
-                        active_pane_id == Some(pane_id),
-                        if self.serialize_pane_viewport {
-                            p.serialize(self.scrollback_lines_to_serialize)
-                        } else {
-                            None
-                        },
-                    )
-                })
+                .map(|(pane_id, p)| PaneLayoutMetadata::new(
+                    pane_id,
+                    p.position_and_size(),
+                    false, // floating panes are never borderless
+                    p.invoked_with().clone(),
+                    p.custom_title(),
+                    active_pane_id == Some(pane_id),
+                    if self.serialize_pane_viewport {
+                        p.serialize(self.scrollback_lines_to_serialize)
+                    } else {
+                        None
+                    },
+                ))
                 .collect();
             session_layout_metadata.add_tab(
                 tab.name.clone(),

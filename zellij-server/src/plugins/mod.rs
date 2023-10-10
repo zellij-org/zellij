@@ -15,8 +15,9 @@ use std::{
 use wasmer::Store;
 
 use crate::panes::PaneId;
-use crate::screen::{ScreenInstruction, SessionLayoutMetadata};
+use crate::screen::ScreenInstruction;
 use crate::{pty::PtyInstruction, thread_bus::Bus, ClientId, ServerInstruction};
+use crate::session_layout_metadata::SessionLayoutMetadata;
 
 use wasm_bridge::WasmBridge;
 
