@@ -1,15 +1,13 @@
+use crate::panes::PaneId;
+use std::collections::HashMap;
+use std::path::PathBuf;
 use zellij_utils::common_path::common_path_all;
+use zellij_utils::pane_size::PaneGeom;
 use zellij_utils::{
     input::command::RunCommand,
-    input::layout::{
-        Layout, Run, RunPlugin,
-    },
+    input::layout::{Layout, Run, RunPlugin},
     session_serialization::{GlobalLayoutManifest, PaneLayoutManifest, TabLayoutManifest},
 };
-use zellij_utils::pane_size::PaneGeom;
-use crate::panes::PaneId;
-use std::path::PathBuf;
-use std::collections::HashMap;
 
 #[derive(Default, Debug, Clone)]
 pub struct SessionLayoutMetadata {
@@ -33,21 +31,33 @@ impl SessionLayoutMetadata {
         for tab in self.tabs.iter_mut() {
             for tiled_pane in tab.tiled_panes.iter_mut() {
                 if let Some(Run::Command(run_command)) = tiled_pane.run.as_mut() {
-                    if Self::is_default_shell(self.default_shell.as_ref(), &run_command.command.display().to_string(), &run_command.args) {
+                    if Self::is_default_shell(
+                        self.default_shell.as_ref(),
+                        &run_command.command.display().to_string(),
+                        &run_command.args,
+                    ) {
                         tiled_pane.run = None;
                     }
                 }
             }
             for floating_pane in tab.floating_panes.iter_mut() {
                 if let Some(Run::Command(run_command)) = floating_pane.run.as_mut() {
-                    if Self::is_default_shell(self.default_shell.as_ref(), &run_command.command.display().to_string(), &run_command.args) {
+                    if Self::is_default_shell(
+                        self.default_shell.as_ref(),
+                        &run_command.command.display().to_string(),
+                        &run_command.args,
+                    ) {
                         floating_pane.run = None;
                     }
                 }
             }
         }
     }
-    fn is_default_shell(default_shell: Option<&PathBuf>, command_name: &String, args: &Vec<String>) -> bool {
+    fn is_default_shell(
+        default_shell: Option<&PathBuf>,
+        command_name: &String,
+        args: &Vec<String>,
+    ) -> bool {
         default_shell
             .as_ref()
             .map(|c| c.display().to_string())
@@ -116,7 +126,8 @@ impl SessionLayoutMetadata {
                     let mut command_line = command.iter();
                     if let Some(command_name) = command_line.next() {
                         let args: Vec<String> = command_line.map(|c| c.to_owned()).collect();
-                        if Self::is_default_shell(self.default_shell.as_ref(), &command_name, &args) {
+                        if Self::is_default_shell(self.default_shell.as_ref(), &command_name, &args)
+                        {
                             pane_layout_metadata.run = None;
                         } else {
                             let mut run_command = RunCommand::new(PathBuf::from(command_name));
@@ -244,7 +255,15 @@ pub struct PaneLayoutMetadata {
 }
 
 impl PaneLayoutMetadata {
-    pub fn new(id: PaneId, geom: PaneGeom, is_borderless: bool, run: Option<Run>, title: Option<String>, is_focused: bool, pane_contents: Option<String>) -> Self {
+    pub fn new(
+        id: PaneId,
+        geom: PaneGeom,
+        is_borderless: bool,
+        run: Option<Run>,
+        title: Option<String>,
+        is_focused: bool,
+        pane_contents: Option<String>,
+    ) -> Self {
         PaneLayoutMetadata {
             id,
             geom,

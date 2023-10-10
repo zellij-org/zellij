@@ -10,10 +10,10 @@ mod pty;
 mod pty_writer;
 mod route;
 mod screen;
+mod session_layout_metadata;
 mod terminal_bytes;
 mod thread_bus;
 mod ui;
-mod session_layout_metadata;
 
 use background_jobs::{background_jobs_main, BackgroundJob};
 use log::info;

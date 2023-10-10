@@ -790,7 +790,8 @@ impl ServerOsApi for ServerOsInputOutput {
             .output()
             .ok()
         {
-            let output = String::from_utf8(output.stdout.clone()).unwrap_or_else(|_| String::from_utf8_lossy(&output.stdout).to_string());
+            let output = String::from_utf8(output.stdout.clone())
+                .unwrap_or_else(|_| String::from_utf8_lossy(&output.stdout).to_string());
             for line in output.lines() {
                 let line_parts: Vec<String> = line
                     .trim()

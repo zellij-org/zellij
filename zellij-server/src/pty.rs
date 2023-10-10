@@ -4,9 +4,9 @@ use crate::{
     panes::PaneId,
     plugins::PluginInstruction,
     screen::ScreenInstruction,
+    session_layout_metadata::SessionLayoutMetadata,
     thread_bus::{Bus, ThreadSenders},
     ClientId, ServerInstruction,
-    session_layout_metadata::SessionLayoutMetadata,
 };
 use async_std::task::{self, JoinHandle};
 use std::{collections::HashMap, os::unix::io::RawFd, path::PathBuf};
@@ -546,7 +546,8 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
             PtyInstruction::LogLayoutToHd(mut session_layout_metadata) => {
                 let err_context = || format!("Failed to dump layout");
                 pty.populate_session_layout_metadata(&mut session_layout_metadata);
-                let kdl_layout = session_serialization::serialize_session_layout(session_layout_metadata.into());
+                let kdl_layout =
+                    session_serialization::serialize_session_layout(session_layout_metadata.into());
                 pty.bus
                     .senders
                     .send_to_background_jobs(BackgroundJob::ReportLayoutInfo(kdl_layout))

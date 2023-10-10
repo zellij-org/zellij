@@ -27,7 +27,7 @@ use crate::background_jobs::BackgroundJob;
 use crate::os_input_output::ResizeCache;
 use crate::panes::alacritty_functions::xparse_color;
 use crate::panes::terminal_character::AnsiCode;
-use crate::session_layout_metadata::{SessionLayoutMetadata, PaneLayoutMetadata};
+use crate::session_layout_metadata::{PaneLayoutMetadata, SessionLayoutMetadata};
 
 use crate::{
     output::Output,
@@ -35,7 +35,7 @@ use crate::{
     panes::PaneId,
     plugins::PluginInstruction,
     pty::{ClientTabIndexOrPaneId, PtyInstruction, VteBytes},
-    tab::{Tab, Pane},
+    tab::{Pane, Tab},
     thread_bus::Bus,
     ui::{
         loading_indication::LoadingIndication,
@@ -1961,22 +1961,24 @@ impl Screen {
                         Some((is_scrollback_editor, suppressed_pane)) if *is_scrollback_editor => {
                             (suppressed_pane.pid(), suppressed_pane)
                         },
-                        _ => (*pane_id, p)
+                        _ => (*pane_id, p),
                     }
                 })
-                .map(|(pane_id, p)| PaneLayoutMetadata::new(
-                    pane_id,
-                    p.position_and_size(),
-                    p.borderless(),
-                    p.invoked_with().clone(),
-                    p.custom_title(),
-                    active_pane_id == Some(pane_id),
-                    if self.serialize_pane_viewport {
-                        p.serialize(self.scrollback_lines_to_serialize)
-                    } else {
-                        None
-                    }
-                ))
+                .map(|(pane_id, p)| {
+                    PaneLayoutMetadata::new(
+                        pane_id,
+                        p.position_and_size(),
+                        p.borderless(),
+                        p.invoked_with().clone(),
+                        p.custom_title(),
+                        active_pane_id == Some(pane_id),
+                        if self.serialize_pane_viewport {
+                            p.serialize(self.scrollback_lines_to_serialize)
+                        } else {
+                            None
+                        },
+                    )
+                })
                 .collect();
             let floating_panes: Vec<PaneLayoutMetadata> = tab
                 .get_floating_panes()
@@ -1990,22 +1992,24 @@ impl Screen {
                         Some((is_scrollback_editor, suppressed_pane)) if *is_scrollback_editor => {
                             (suppressed_pane.pid(), suppressed_pane)
                         },
-                        _ => (*pane_id, p)
+                        _ => (*pane_id, p),
                     }
                 })
-                .map(|(pane_id, p)| PaneLayoutMetadata::new(
-                    pane_id,
-                    p.position_and_size(),
-                    false, // floating panes are never borderless
-                    p.invoked_with().clone(),
-                    p.custom_title(),
-                    active_pane_id == Some(pane_id),
-                    if self.serialize_pane_viewport {
-                        p.serialize(self.scrollback_lines_to_serialize)
-                    } else {
-                        None
-                    },
-                ))
+                .map(|(pane_id, p)| {
+                    PaneLayoutMetadata::new(
+                        pane_id,
+                        p.position_and_size(),
+                        false, // floating panes are never borderless
+                        p.invoked_with().clone(),
+                        p.custom_title(),
+                        active_pane_id == Some(pane_id),
+                        if self.serialize_pane_viewport {
+                            p.serialize(self.scrollback_lines_to_serialize)
+                        } else {
+                            None
+                        },
+                    )
+                })
                 .collect();
             session_layout_metadata.add_tab(
                 tab.name.clone(),

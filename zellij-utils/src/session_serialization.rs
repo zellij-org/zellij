@@ -12,10 +12,11 @@ use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 
 use crate::{
-    input::layout::{
-        FloatingPaneLayout, Layout, PercentOrFixed, Run, SplitDirection, SplitSize, TiledPaneLayout, SwapTiledLayout, SwapFloatingLayout
-    },
     input::layout::PluginUserConfiguration,
+    input::layout::{
+        FloatingPaneLayout, Layout, PercentOrFixed, Run, SplitDirection, SplitSize,
+        SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,
+    },
     pane_size::{Constraint, Dimension, PaneGeom},
 };
 
@@ -69,10 +70,26 @@ pub fn serialize_session_layout(
     let mut kdl_string = String::from("layout {\n");
     let mut pane_contents = BTreeMap::new();
     stringify_global_cwd(&global_layout_manifest.global_cwd, &mut kdl_string);
-    stringify_multiple_tabs(global_layout_manifest.tabs, &mut pane_contents, &mut kdl_string);
-    stringify_new_tab_template(global_layout_manifest.default_layout.template, &mut pane_contents, &mut kdl_string);
-    stringify_swap_tiled_layouts(global_layout_manifest.default_layout.swap_tiled_layouts, &mut pane_contents, &mut kdl_string);
-    stringify_swap_floating_layouts(global_layout_manifest.default_layout.swap_floating_layouts, &mut pane_contents, &mut kdl_string);
+    stringify_multiple_tabs(
+        global_layout_manifest.tabs,
+        &mut pane_contents,
+        &mut kdl_string,
+    );
+    stringify_new_tab_template(
+        global_layout_manifest.default_layout.template,
+        &mut pane_contents,
+        &mut kdl_string,
+    );
+    stringify_swap_tiled_layouts(
+        global_layout_manifest.default_layout.swap_tiled_layouts,
+        &mut pane_contents,
+        &mut kdl_string,
+    );
+    stringify_swap_floating_layouts(
+        global_layout_manifest.default_layout.swap_floating_layouts,
+        &mut pane_contents,
+        &mut kdl_string,
+    );
     kdl_string.push_str("}");
     (kdl_string, pane_contents)
 }
@@ -189,7 +206,15 @@ fn kdl_string_from_tiled_pane(
     let (plugin, plugin_config) = extract_plugin_and_config(&layout.run);
     let (edit, _line_number) = extract_edit_and_line_number(&layout.run);
     let cwd = layout.run.as_ref().and_then(|r| r.get_cwd());
-    let mut kdl_string = stringify_pane_title_and_attributes(&command, &edit, &layout.name, cwd, layout.focus, &layout.pane_initial_contents, pane_contents);
+    let mut kdl_string = stringify_pane_title_and_attributes(
+        &command,
+        &edit,
+        &layout.name,
+        cwd,
+        layout.focus,
+        &layout.pane_initial_contents,
+        pane_contents,
+    );
 
     stringify_tiled_layout_attributes(&layout, ignore_size, &mut kdl_string);
     let has_child_attributes = !layout.children.is_empty()
@@ -230,7 +255,9 @@ fn extract_command_and_args(layout_run: &Option<Run>) -> (Option<String>, Vec<St
         _ => (None, vec![]),
     }
 }
-fn extract_plugin_and_config(layout_run: &Option<Run>) -> (Option<String>, Option<PluginUserConfiguration>) {
+fn extract_plugin_and_config(
+    layout_run: &Option<Run>,
+) -> (Option<String>, Option<PluginUserConfiguration>) {
     match &layout_run {
         Some(Run::Plugin(run_plugin)) => (
             Some(run_plugin.location.display()),
@@ -256,7 +283,7 @@ fn stringify_pane_title_and_attributes(
     cwd: Option<PathBuf>,
     focus: Option<bool>,
     initial_pane_contents: &Option<String>,
-    pane_contents: &mut BTreeMap<String, String>
+    pane_contents: &mut BTreeMap<String, String>,
 ) -> String {
     let mut kdl_string = match (&command, &edit) {
         (Some(command), _) => format!("pane command=\"{}\"", command),
@@ -296,12 +323,15 @@ fn stringify_args(args: Vec<String>, kdl_string: &mut String) {
     }
 }
 
-fn stringify_plugin(plugin: Option<String>, plugin_config: Option<PluginUserConfiguration>, kdl_string: &mut String) {
+fn stringify_plugin(
+    plugin: Option<String>,
+    plugin_config: Option<PluginUserConfiguration>,
+    kdl_string: &mut String,
+) {
     if let Some(plugin) = plugin {
         if let Some(plugin_config) =
             plugin_config.and_then(|p| if p.inner().is_empty() { None } else { Some(p) })
-            {
-
+        {
             kdl_string.push_str(&indent(
                 &format!("plugin location=\"{}\" {{\n", plugin),
                 INDENT,
@@ -322,7 +352,11 @@ fn stringify_plugin(plugin: Option<String>, plugin_config: Option<PluginUserConf
     }
 }
 
-fn stringify_tiled_layout_attributes(layout: &TiledPaneLayout, ignore_size: bool, kdl_string: &mut String) {
+fn stringify_tiled_layout_attributes(
+    layout: &TiledPaneLayout,
+    ignore_size: bool,
+    kdl_string: &mut String,
+) {
     if !ignore_size {
         match layout.split_size {
             Some(SplitSize::Fixed(size)) => kdl_string.push_str(&format!(" size={size}")),
@@ -402,7 +436,11 @@ fn stringify_global_cwd(global_cwd: &Option<PathBuf>, kdl_string: &mut String) {
     }
 }
 
-fn stringify_new_tab_template(new_tab_template: Option<(TiledPaneLayout, Vec<FloatingPaneLayout>)>, pane_contents: &mut BTreeMap<String, String>, kdl_string: &mut String) {
+fn stringify_new_tab_template(
+    new_tab_template: Option<(TiledPaneLayout, Vec<FloatingPaneLayout>)>,
+    pane_contents: &mut BTreeMap<String, String>,
+    kdl_string: &mut String,
+) {
     if let Some((tiled_panes, floating_panes)) = new_tab_template {
         let tiled_panes = if &tiled_panes.children_split_direction != &SplitDirection::default() {
             vec![tiled_panes]
@@ -422,7 +460,11 @@ fn stringify_new_tab_template(new_tab_template: Option<(TiledPaneLayout, Vec<Flo
     }
 }
 
-fn stringify_swap_tiled_layouts(swap_tiled_layouts: Vec<SwapTiledLayout>, pane_contents: &mut BTreeMap<String, String>, kdl_string: &mut String) {
+fn stringify_swap_tiled_layouts(
+    swap_tiled_layouts: Vec<SwapTiledLayout>,
+    pane_contents: &mut BTreeMap<String, String>,
+    kdl_string: &mut String,
+) {
     for swap_tiled_layout in swap_tiled_layouts {
         let swap_tiled_layout_name = swap_tiled_layout.1;
         match &swap_tiled_layout_name {
@@ -454,7 +496,11 @@ fn stringify_swap_tiled_layouts(swap_tiled_layouts: Vec<SwapTiledLayout>, pane_c
     }
 }
 
-fn stringify_swap_floating_layouts(swap_floating_layouts: Vec<SwapFloatingLayout>, pane_contents: &mut BTreeMap<String, String>, kdl_string: &mut String) {
+fn stringify_swap_floating_layouts(
+    swap_floating_layouts: Vec<SwapFloatingLayout>,
+    pane_contents: &mut BTreeMap<String, String>,
+    kdl_string: &mut String,
+) {
     for swap_floating_layout in swap_floating_layouts {
         let swap_floating_layout_name = swap_floating_layout.1;
         match &swap_floating_layout_name {
@@ -490,7 +536,11 @@ fn stringify_swap_floating_layouts(swap_floating_layouts: Vec<SwapFloatingLayout
     }
 }
 
-fn stringify_multiple_tabs(tabs: Vec<(String, TabLayoutManifest)>, pane_contents: &mut BTreeMap<String, String>, kdl_string: &mut String) {
+fn stringify_multiple_tabs(
+    tabs: Vec<(String, TabLayoutManifest)>,
+    pane_contents: &mut BTreeMap<String, String>,
+    kdl_string: &mut String,
+) {
     for (tab_name, tab_layout_manifest) in tabs {
         let tiled_panes = tab_layout_manifest.tiled_panes;
         let floating_panes = tab_layout_manifest.floating_panes;
@@ -517,7 +567,15 @@ fn kdl_string_from_floating_pane(
     let (plugin, plugin_config) = extract_plugin_and_config(&layout.run);
     let (edit, _line_number) = extract_edit_and_line_number(&layout.run);
     let cwd = layout.run.as_ref().and_then(|r| r.get_cwd());
-    let mut kdl_string = stringify_pane_title_and_attributes(&command, &edit, &layout.name, cwd, layout.focus, &layout.pane_initial_contents, pane_contents);
+    let mut kdl_string = stringify_pane_title_and_attributes(
+        &command,
+        &edit,
+        &layout.name,
+        cwd,
+        layout.focus,
+        &layout.pane_initial_contents,
+        pane_contents,
+    );
     kdl_string.push_str(" {\n");
     stringify_start_suspended(&command, &mut kdl_string);
     stringify_floating_layout_attributes(&layout, &mut kdl_string);
@@ -527,7 +585,10 @@ fn kdl_string_from_floating_pane(
     kdl_string
 }
 
-fn tiled_pane_layout_from_manifest(manifest: Option<&PaneLayoutManifest>, split_size: Option<SplitSize>) -> TiledPaneLayout {
+fn tiled_pane_layout_from_manifest(
+    manifest: Option<&PaneLayoutManifest>,
+    split_size: Option<SplitSize>,
+) -> TiledPaneLayout {
     let (run, borderless, is_expanded_in_stack, name, focus, pane_initial_contents) = manifest
         .map(|g| {
             let mut run = g.run.clone();
@@ -548,16 +609,16 @@ fn tiled_pane_layout_from_manifest(manifest: Option<&PaneLayoutManifest>, split_
             )
         })
         .unwrap_or((None, false, false, None, None, None));
-        TiledPaneLayout {
-            split_size,
-            run,
-            borderless,
-            is_expanded_in_stack,
-            name,
-            focus,
-            pane_initial_contents,
-            ..Default::default()
-        }
+    TiledPaneLayout {
+        split_size,
+        run,
+        borderless,
+        is_expanded_in_stack,
+        name,
+        focus,
+        pane_initial_contents,
+        ..Default::default()
+    }
 }
 
 /// Tab-level parsing
@@ -567,9 +628,7 @@ fn get_tiled_panes_layout_from_panegeoms(
 ) -> TiledPaneLayout {
     let (children_split_direction, splits) = match get_splits(&geoms) {
         Some(x) => x,
-        None => {
-            return tiled_pane_layout_from_manifest(geoms.iter().next(), split_size)
-        },
+        None => return tiled_pane_layout_from_manifest(geoms.iter().next(), split_size),
     };
     let mut children = Vec::new();
     let mut remaining_geoms = geoms.clone();
