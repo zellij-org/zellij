@@ -6,7 +6,7 @@ use suggest::Suggest;
 use zellij_utils::{
     anyhow,
     consts::{
-        session_info_cache_file_name, session_info_folder_for_session,
+        session_info_folder_for_session,
         session_layout_cache_file_name, ZELLIJ_SESSION_INFO_CACHE_DIR, ZELLIJ_SOCK_DIR,
     },
     envs,
@@ -324,7 +324,7 @@ pub(crate) fn resurrection_layout(session_name_to_resurrect: &str) -> Option<Lay
     let resurrectable_sessions = get_resurrectable_sessions();
     resurrectable_sessions
         .iter()
-        .find_map(|(name, timestamp, layout)| {
+        .find_map(|(name, _timestamp, layout)| {
             if name == session_name_to_resurrect {
                 Some(layout.clone())
             } else {

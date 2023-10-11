@@ -471,7 +471,7 @@ pub trait Pane {
         None
     }
     fn rename(&mut self, _buf: Vec<u8>) {}
-    fn serialize(&self, scrollback_lines_to_serialize: Option<usize>) -> Option<String> {
+    fn serialize(&self, _scrollback_lines_to_serialize: Option<usize>) -> Option<String> {
         None
     }
 }
@@ -1166,7 +1166,7 @@ impl Tab {
         match new_pane_id {
             PaneId::Terminal(new_pane_id) => {
                 let next_terminal_position = self.get_next_terminal_position(); // TODO: this is not accurate in this case
-                let mut new_pane = TerminalPane::new(
+                let new_pane = TerminalPane::new(
                     new_pane_id,
                     PaneGeom::default(), // the initial size will be set later
                     self.style,
@@ -1191,7 +1191,7 @@ impl Tab {
                 };
                 match replaced_pane {
                     Some(replaced_pane) => {
-                        resize_pty!(
+                        let _ = resize_pty!(
                             replaced_pane,
                             self.os_api,
                             self.senders,
@@ -1213,8 +1213,7 @@ impl Tab {
                 }
             },
             PaneId::Plugin(plugin_pid) => {
-                // TBD, currently unsupported
-                let mut new_pane = PluginPane::new(
+                let new_pane = PluginPane::new(
                     plugin_pid,
                     PaneGeom::default(), // this will be filled out later
                     self.senders
@@ -1244,7 +1243,7 @@ impl Tab {
                 };
                 match replaced_pane {
                     Some(replaced_pane) => {
-                        resize_pty!(
+                        let _ = resize_pty!(
                             replaced_pane,
                             self.os_api,
                             self.senders,
@@ -2465,7 +2464,7 @@ impl Tab {
                     pane_id
                 )
             })
-            .and_then(|(is_scrollback_editor, suppressed_pane)| {
+            .and_then(|(_is_scrollback_editor, suppressed_pane)| {
                 let suppressed_pane_id = suppressed_pane.pid();
                 let replaced_pane = if self.are_floating_panes_visible() {
                     Some(self.floating_panes.replace_pane(pane_id, suppressed_pane)).transpose()?
@@ -3592,7 +3591,7 @@ impl Tab {
         let mut floating_pane_info = self.floating_panes.pane_info();
         pane_info.append(&mut tiled_pane_info);
         pane_info.append(&mut floating_pane_info);
-        for (pane_id, (is_scrollback_editor, pane)) in self.suppressed_panes.iter() {
+        for (pane_id, (_is_scrollback_editor, pane)) in self.suppressed_panes.iter() {
             let mut pane_info_for_suppressed_pane = pane_info_for_pane(pane_id, pane);
             pane_info_for_suppressed_pane.is_floating = false;
             pane_info_for_suppressed_pane.is_suppressed = true;

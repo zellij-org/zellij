@@ -81,13 +81,12 @@ fn write_changed_styles(
 
 fn serialize_chunks_with_newlines(
     character_chunks: Vec<CharacterChunk>,
-    sixel_chunks: Option<&Vec<SixelImageChunk>>,
+    _sixel_chunks: Option<&Vec<SixelImageChunk>>, // TODO: fix this sometime
     link_handler: Option<&mut Rc<RefCell<LinkHandler>>>,
 ) -> Result<String> {
     let err_context = || "failed to serialize input chunks".to_string();
 
     let mut vte_output = String::new();
-    let mut sixel_vte: Option<String> = None;
     let link_handler = link_handler.map(|l_h| l_h.borrow());
     for character_chunk in character_chunks {
         let chunk_changed_colors = character_chunk.changed_colors();

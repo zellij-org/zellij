@@ -125,7 +125,7 @@ pub enum Action {
     /// Dumps the screen to a file
     DumpScreen(String, bool),
     /// Dumps
-    DumpLayout(Option<String>),
+    DumpLayout,
     /// Scroll up in focus pane.
     EditScrollback,
     ScrollUp,
@@ -282,9 +282,7 @@ impl Action {
                 path.as_os_str().to_string_lossy().into(),
                 full,
             )]),
-            CliAction::DumpLayout { path } => Ok(vec![Action::DumpLayout(
-                path.map(|p| p.as_os_str().to_string_lossy().into()),
-            )]),
+            CliAction::DumpLayout => Ok(vec![Action::DumpLayout]),
             CliAction::EditScrollback => Ok(vec![Action::EditScrollback]),
             CliAction::ScrollUp => Ok(vec![Action::ScrollUp]),
             CliAction::ScrollDown => Ok(vec![Action::ScrollDown]),

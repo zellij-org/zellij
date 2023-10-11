@@ -1,7 +1,7 @@
 use zellij_utils::async_std::task;
 use zellij_utils::consts::{
     session_info_cache_file_name, session_info_folder_for_session, session_layout_cache_file_name,
-    ZELLIJ_SESSION_INFO_CACHE_DIR, ZELLIJ_SOCK_DIR,
+    ZELLIJ_SOCK_DIR,
 };
 use zellij_utils::data::SessionInfo;
 use zellij_utils::errors::{prelude::*, BackgroundJobContext, ContextType};
@@ -10,7 +10,6 @@ use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::io::Write;
 use std::os::unix::fs::FileTypeExt;
-use std::path::PathBuf;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc, Mutex,

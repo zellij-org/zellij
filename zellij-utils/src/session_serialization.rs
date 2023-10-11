@@ -7,8 +7,7 @@
 //! }
 //! ```
 //!
-use serde_json::Value;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use crate::{
@@ -17,7 +16,7 @@ use crate::{
         FloatingPaneLayout, Layout, PercentOrFixed, Run, SplitDirection, SplitSize,
         SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,
     },
-    pane_size::{Constraint, Dimension, PaneGeom},
+    pane_size::{Constraint, PaneGeom},
 };
 
 const INDENT: &str = "    ";
@@ -126,38 +125,6 @@ fn stringify_tab(
         pane_contents,
     ));
     kdl_string
-}
-
-///
-/// Expects this input
-///
-///  r#"{ "x": 0, "y": 1, "rows": { "constraint": "Percent(100.0)", "inner": 43 }, "cols": { "constraint": "Percent(100.0)", "inner": 211 }, "is_stacked": false }"#,
-///
-fn parse_panegeom_from_json(data_str: &str) -> PaneGeom {
-    let data: HashMap<String, Value> = serde_json::from_str(data_str).unwrap();
-    PaneGeom {
-        x: data["x"].to_string().parse().unwrap(),
-        y: data["y"].to_string().parse().unwrap(),
-        rows: get_dim(&data["rows"]),
-        cols: get_dim(&data["cols"]),
-        is_stacked: data["is_stacked"].to_string().parse().unwrap(),
-    }
-}
-
-fn get_dim(dim_hm: &Value) -> Dimension {
-    let constr_str = dim_hm["constraint"].to_string();
-    let dim = if constr_str.contains("Fixed") {
-        let value = &constr_str[7..constr_str.len() - 2];
-        Dimension::fixed(value.parse().unwrap())
-    } else if constr_str.contains("Percent") {
-        let value = &constr_str[9..constr_str.len() - 2];
-        let mut dim = Dimension::percent(value.parse().unwrap());
-        dim.set_inner(dim_hm["inner"].to_string().parse().unwrap());
-        dim
-    } else {
-        panic!("Constraint is nor a percent nor fixed");
-    };
-    dim
 }
 
 /// Redundant with `geoms_to_kdl_tab`
@@ -902,8 +869,12 @@ fn get_split_sizes(constraints: &Vec<Constraint>) -> Vec<Option<SplitSize>> {
 
 #[cfg(test)]
 mod tests {
+
     use super::*;
     use expect_test::expect;
+    use serde_json::Value;
+    use std::collections::HashMap;
+    use crate::pane_size::Dimension;
     const PANEGEOMS_JSON: &[&[&str]] = &[
         &[
             r#"{ "x": 0, "y": 1, "rows": { "constraint": "Percent(100.0)", "inner": 43 }, "cols": { "constraint": "Percent(100.0)", "inner": 211 }, "is_stacked": false }"#,
@@ -1102,5 +1073,37 @@ mod tests {
     }
 }"#]]
         .assert_eq(&kdl.0);
+    }
+    // utility functions
+    fn parse_panegeom_from_json(data_str: &str) -> PaneGeom {
+        //
+        // Expects this input
+        //
+        //  r#"{ "x": 0, "y": 1, "rows": { "constraint": "Percent(100.0)", "inner": 43 }, "cols": { "constraint": "Percent(100.0)", "inner": 211 }, "is_stacked": false }"#,
+        //
+        let data: HashMap<String, Value> = serde_json::from_str(data_str).unwrap();
+        PaneGeom {
+            x: data["x"].to_string().parse().unwrap(),
+            y: data["y"].to_string().parse().unwrap(),
+            rows: get_dim(&data["rows"]),
+            cols: get_dim(&data["cols"]),
+            is_stacked: data["is_stacked"].to_string().parse().unwrap(),
+        }
+    }
+
+    fn get_dim(dim_hm: &Value) -> Dimension {
+        let constr_str = dim_hm["constraint"].to_string();
+        let dim = if constr_str.contains("Fixed") {
+            let value = &constr_str[7..constr_str.len() - 2];
+            Dimension::fixed(value.parse().unwrap())
+        } else if constr_str.contains("Percent") {
+            let value = &constr_str[9..constr_str.len() - 2];
+            let mut dim = Dimension::percent(value.parse().unwrap());
+            dim.set_inner(dim_hm["inner"].to_string().parse().unwrap());
+            dim
+        } else {
+            panic!("Constraint is nor a percent nor fixed");
+        };
+        dim
     }
 }

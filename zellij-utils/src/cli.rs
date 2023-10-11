@@ -302,11 +302,8 @@ pub enum CliAction {
         #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
         full: bool,
     },
-    /// Dump current layout to a specified or default layout directory,
-    /// and in case path is not provided - stdout
-    DumpLayout {
-        path: Option<PathBuf>,
-    },
+    /// Dump current layout to stdout
+    DumpLayout,
     /// Open the pane scrollback in your default editor
     EditScrollback,
     /// Scroll up in the focused pane

@@ -1051,7 +1051,6 @@ impl Grid {
                 for line in &self.viewport {
                     to_serialize.push(line.clone())
                 }
-                let to_serialize_len = to_serialize.len();
                 self.output_buffer.serialize(to_serialize.as_slice()).ok()
             },
             None => self.output_buffer.serialize(&self.viewport).ok(),

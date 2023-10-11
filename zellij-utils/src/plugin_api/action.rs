@@ -1170,7 +1170,7 @@ impl TryFrom<Action> for ProtobufAction {
             | Action::NewInPlacePluginPane(..)
             | Action::Deny
             | Action::Copy
-            | Action::DumpLayout(..) // TODO: implement this?
+            | Action::DumpLayout
             | Action::SkipConfirm(..) => Err("Unsupported action"),
         }
     }

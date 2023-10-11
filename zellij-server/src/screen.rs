@@ -12,7 +12,7 @@ use zellij_utils::data::{
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
 use zellij_utils::input::options::Clipboard;
-use zellij_utils::pane_size::{PaneGeom, Size, SizeInPixels};
+use zellij_utils::pane_size::{Size, SizeInPixels};
 use zellij_utils::{
     input::command::TerminalAction,
     input::layout::{
@@ -20,7 +20,6 @@ use zellij_utils::{
         SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,
     },
     position::Position,
-    session_serialization::{GlobalLayoutManifest, PaneLayoutManifest, TabLayoutManifest},
 };
 
 use crate::background_jobs::BackgroundJob;
@@ -35,7 +34,7 @@ use crate::{
     panes::PaneId,
     plugins::PluginInstruction,
     pty::{ClientTabIndexOrPaneId, PtyInstruction, VteBytes},
-    tab::{Pane, Tab},
+    tab::Tab,
     thread_bus::Bus,
     ui::{
         loading_indication::LoadingIndication,
@@ -171,7 +170,7 @@ pub enum ScreenInstruction {
     Exit,
     ClearScreen(ClientId),
     DumpScreen(String, ClientId, bool),
-    DumpLayout(ClientId, Option<String>, Option<PathBuf>), // PathBuf is the default configured
+    DumpLayout(Option<PathBuf>, ClientId), // PathBuf is the default configured
     // shell
     EditScrollback(ClientId),
     ScrollUp(ClientId),
@@ -1878,9 +1877,9 @@ impl Screen {
     ) -> Result<()> {
         let err_context = || format!("failed to replace pane");
         let suppress_pane = |tab: &mut Tab, pane_id: PaneId, new_pane_id: PaneId| {
-            tab.suppress_pane_and_replace_with_pid(pane_id, new_pane_id, run);
+            let _ = tab.suppress_pane_and_replace_with_pid(pane_id, new_pane_id, run);
             if let Some(pane_title) = pane_title {
-                tab.rename_pane(pane_title.as_bytes().to_vec(), new_pane_id);
+                let _ = tab.rename_pane(pane_title.as_bytes().to_vec(), new_pane_id);
             }
             if let Some(hold_for_command) = hold_for_command {
                 let is_first_run = true;
@@ -1901,7 +1900,7 @@ impl Screen {
                             );
                         },
                     }
-                })
+                });
             },
             ClientTabIndexOrPaneId::PaneId(pane_id) => {
                 let tab_index = self
@@ -1919,7 +1918,7 @@ impl Screen {
                     },
                 };
             },
-            ClientTabIndexOrPaneId::TabIndex(tab_index) => {
+            ClientTabIndexOrPaneId::TabIndex(_tab_index) => {
                 log::error!("Cannot replace pane with tab index");
             },
         }
@@ -2162,7 +2161,7 @@ pub(crate) fn screen_thread_main(
                             log::error!("Tab index not found: {:?}", tab_index);
                         }
                     },
-                    ClientTabIndexOrPaneId::PaneId(pane_id) => {
+                    ClientTabIndexOrPaneId::PaneId(_pane_id) => {
                         log::error!("cannot open a pane with a pane id??");
                     },
                 };
@@ -2396,8 +2395,7 @@ pub(crate) fn screen_thread_main(
                 screen.render()?;
                 screen.unblock_input()?;
             },
-            ScreenInstruction::DumpLayout(client_id, layout, default_shell) => {
-                // TODO: ordering
+            ScreenInstruction::DumpLayout(default_shell, client_id) => {
                 let err_context = || format!("Failed to dump layout");
                 let session_layout_metadata = screen.get_layout_metadata(default_shell);
                 screen
@@ -3426,7 +3424,6 @@ pub(crate) fn screen_thread_main(
                 invoked_with,
                 client_id_tab_index_or_pane_id,
             ) => {
-                let err_context = || format!("Failed to replace pane");
                 screen.replace_pane(
                     new_pane_id,
                     hold_for_command,

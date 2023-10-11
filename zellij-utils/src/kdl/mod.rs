@@ -469,7 +469,7 @@ impl Action {
             },
             "MovePaneBackwards" => Ok(Action::MovePaneBackwards),
             "DumpScreen" => Ok(Action::DumpScreen(string, false)),
-            "DumpLayout" => Ok(Action::DumpLayout(Some(string))),
+            "DumpLayout" => Ok(Action::DumpLayout),
             "NewPane" => {
                 if string.is_empty() {
                     return Ok(Action::NewPane(None, None));

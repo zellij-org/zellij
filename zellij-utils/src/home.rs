@@ -2,26 +2,14 @@
 //! # This module contain everything you'll need to access local system paths
 //! containing configuration and layouts
 
-use crate::input::theme::Themes;
-use crate::{
-    consts::{
-        SYSTEM_DEFAULT_CONFIG_DIR, SYSTEM_DEFAULT_DATA_DIR_PREFIX, ZELLIJ_DEFAULT_THEMES,
-        ZELLIJ_PROJ_DIR,
-    },
-    errors::prelude::*,
-    input::{
-        config::{Config, ConfigError},
-        layout::Layout,
-        options::Options,
-    },
-};
-use clap::{Args, IntoApp};
-use clap_complete::Shell;
+use crate::consts::{SYSTEM_DEFAULT_DATA_DIR_PREFIX, ZELLIJ_PROJ_DIR};
+
+#[cfg(not(test))]
+use crate::consts::SYSTEM_DEFAULT_CONFIG_DIR;
+
 use directories::BaseDirs;
-use log::info;
-use serde::{Deserialize, Serialize};
 use std::{
-    convert::TryFrom, fmt::Write as FmtWrite, io::Write, path::Path, path::PathBuf, process,
+    path::Path, path::PathBuf
 };
 
 pub(crate) const CONFIG_LOCATION: &str = ".config/zellij";
@@ -43,6 +31,7 @@ pub fn find_default_config_dir() -> Option<PathBuf> {
 }
 
 /// Order in which config directories are checked
+#[cfg(not(test))]
 pub(crate) fn default_config_dirs() -> Vec<Option<PathBuf>> {
     vec![
         home_config_dir(),
@@ -61,26 +50,6 @@ pub fn get_default_data_dir() -> PathBuf {
     .into_iter()
     .find(|p| p.exists())
     .unwrap_or_else(xdg_data_dir)
-}
-
-#[cfg(not(test))]
-pub(crate) fn get_default_themes() -> Themes {
-    let mut themes = Themes::default();
-    for file in ZELLIJ_DEFAULT_THEMES.files() {
-        if let Some(content) = file.contents_utf8() {
-            match Themes::from_string(&content.to_string()) {
-                Ok(theme) => themes = themes.merge(theme),
-                Err(_) => {},
-            }
-        }
-    }
-
-    themes
-}
-
-#[cfg(test)]
-pub(crate) fn get_default_themes() -> Themes {
-    Themes::default()
 }
 
 pub fn xdg_config_dir() -> PathBuf {
