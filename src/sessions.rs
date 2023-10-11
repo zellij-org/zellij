@@ -6,8 +6,8 @@ use suggest::Suggest;
 use zellij_utils::{
     anyhow,
     consts::{
-        session_info_folder_for_session,
-        session_layout_cache_file_name, ZELLIJ_SESSION_INFO_CACHE_DIR, ZELLIJ_SOCK_DIR,
+        session_info_folder_for_session, session_layout_cache_file_name,
+        ZELLIJ_SESSION_INFO_CACHE_DIR, ZELLIJ_SOCK_DIR,
     },
     envs,
     humantime::format_duration,

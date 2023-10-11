@@ -179,10 +179,7 @@ pub(crate) fn route_action(
                 _ => None,
             };
             senders
-                .send_to_screen(ScreenInstruction::DumpLayout(
-                    default_shell,
-                    client_id,
-                ))
+                .send_to_screen(ScreenInstruction::DumpLayout(default_shell, client_id))
                 .with_context(err_context)?;
         },
         Action::EditScrollback => {

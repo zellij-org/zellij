@@ -871,10 +871,10 @@ fn get_split_sizes(constraints: &Vec<Constraint>) -> Vec<Option<SplitSize>> {
 mod tests {
 
     use super::*;
+    use crate::pane_size::Dimension;
     use expect_test::expect;
     use serde_json::Value;
     use std::collections::HashMap;
-    use crate::pane_size::Dimension;
     const PANEGEOMS_JSON: &[&[&str]] = &[
         &[
             r#"{ "x": 0, "y": 1, "rows": { "constraint": "Percent(100.0)", "inner": 43 }, "cols": { "constraint": "Percent(100.0)", "inner": 211 }, "is_stacked": false }"#,

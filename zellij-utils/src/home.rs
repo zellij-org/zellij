@@ -8,9 +8,7 @@ use crate::consts::{SYSTEM_DEFAULT_DATA_DIR_PREFIX, ZELLIJ_PROJ_DIR};
 use crate::consts::SYSTEM_DEFAULT_CONFIG_DIR;
 
 use directories::BaseDirs;
-use std::{
-    path::Path, path::PathBuf
-};
+use std::{path::Path, path::PathBuf};
 
 pub(crate) const CONFIG_LOCATION: &str = ".config/zellij";
 

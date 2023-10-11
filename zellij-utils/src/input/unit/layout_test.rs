@@ -188,20 +188,15 @@ fn layout_with_hidden_floating_panes() {
     "#;
     let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into(), None, None).unwrap();
     let expected_layout = Layout {
-        tabs: vec![
-            (
-                None,
-                TiledPaneLayout {
-                    children: vec![
-                        TiledPaneLayout::default(),
-                        TiledPaneLayout::default()
-                    ],
-                    hide_floating_panes: true,
-                    ..Default::default()
-                },
-                vec![FloatingPaneLayout::default()],
-            ),
-        ],
+        tabs: vec![(
+            None,
+            TiledPaneLayout {
+                children: vec![TiledPaneLayout::default(), TiledPaneLayout::default()],
+                hide_floating_panes: true,
+                ..Default::default()
+            },
+            vec![FloatingPaneLayout::default()],
+        )],
         template: Some((TiledPaneLayout::default(), vec![])),
         ..Default::default()
     };
