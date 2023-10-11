@@ -164,7 +164,7 @@ pub(crate) fn print_sessions(mut sessions: Vec<(String, Duration, bool)>, no_for
                 let timestamp = format!("[Created {} ago]", format_duration(*timestamp));
                 println!("{} {} {}", session_name, timestamp, suffix);
             } else {
-                let session_name = format!("\u{1b}[32;1m{}\u{1b}[m", session_name);
+                let formatted_session_name = format!("\u{1b}[32;1m{}\u{1b}[m", session_name);
                 let suffix = if curr_session == *session_name {
                     format!("(current)")
                 } else if *is_dead {
@@ -176,7 +176,7 @@ pub(crate) fn print_sessions(mut sessions: Vec<(String, Duration, bool)>, no_for
                     "[Created \u{1b}[35;1m{}\u{1b}[m ago]",
                     format_duration(*timestamp)
                 );
-                println!("{} {} {}", session_name, timestamp, suffix);
+                println!("{} {} {}", formatted_session_name, timestamp, suffix);
             }
         })
 }
