@@ -5,14 +5,17 @@ pub use super::generated_api::api::{
     plugin_command::{
         plugin_command::Payload, CommandName, ExecCmdPayload, IdAndNewName, MovePayload,
         OpenCommandPanePayload, OpenFilePayload, PluginCommand as ProtobufPluginCommand,
-        PluginMessagePayload, RequestPluginPermissionPayload, ResizePayload, SetTimeoutPayload,
-        SubscribePayload, SwitchSessionPayload, SwitchTabToPayload, UnsubscribePayload,
+        PluginMessagePayload, RequestPluginPermissionPayload, ResizeFloatingPaneByPercentPayload,
+        ResizePayload, SetTimeoutPayload, SubscribePayload, SwitchSessionPayload,
+        SwitchTabToPayload, UnsubscribePayload,
     },
     plugin_permission::PermissionType as ProtobufPermissionType,
-    resize::ResizeAction as ProtobufResizeAction,
+    resize::{ResizeAction as ProtobufResizeAction, ResizePercent as ProtobufResizePercent},
 };
 
-use crate::data::{ConnectToSession, PermissionType, PluginCommand};
+use crate::data::{
+    ConnectToSession, PaneId, PaneToResizeByPercent, PermissionType, PluginCommand, ResizeByPercent,
+};
 
 use std::convert::TryFrom;
 
@@ -553,6 +556,32 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 },
                 _ => Err("Mismatched payload for OpenCommandPaneInPlace"),
             },
+            Some(CommandName::ResizeFloatingPaneByPercent) => {
+                match protobuf_plugin_command.payload {
+                    Some(Payload::ResizeFloatingPaneByPercentPayload(resize_payload)) => {
+                        let pane = resize_payload.pane_id.and_then(|pane| pane.try_into().ok());
+
+                        Ok(PluginCommand::ResizeFloatingPaneByPercent(
+                            PaneToResizeByPercent {
+                                tab_position: resize_payload.tab_position,
+                                pane_id: pane,
+                                resize: match resize_payload.resize {
+                                    Some(size_by_percent) => ResizeByPercent {
+                                        width: size_by_percent.width,
+                                        height: size_by_percent.height,
+                                    },
+                                    // FIXME
+                                    None => ResizeByPercent {
+                                        width: 0,
+                                        height: 0,
+                                    },
+                                },
+                            },
+                        ))
+                    },
+                    _ => Err("Mismatched payload for ResizeFloatingPaneByPercent"),
+                }
+            },
             None => Err("Unrecognized plugin command"),
         }
     }
@@ -633,7 +662,7 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
             PluginCommand::SwitchTabTo(tab_index) => Ok(ProtobufPluginCommand {
                 name: CommandName::SwitchTabTo as i32,
                 payload: Some(Payload::SwitchTabToPayload(SwitchTabToPayload {
-                    tab_index: tab_index,
+                    tab_index,
                 })),
             }),
             PluginCommand::SetTimeout(seconds) => Ok(ProtobufPluginCommand {
@@ -848,7 +877,7 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                 Ok(ProtobufPluginCommand {
                     name: CommandName::FocusTerminalPane as i32,
                     payload: Some(Payload::FocusTerminalPanePayload(PaneIdAndShouldFloat {
-                        pane_id: pane_id,
+                        pane_id,
                         should_float: should_float_if_hidden,
                     })),
                 })
@@ -857,7 +886,7 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                 Ok(ProtobufPluginCommand {
                     name: CommandName::FocusPluginPane as i32,
                     payload: Some(Payload::FocusPluginPanePayload(PaneIdAndShouldFloat {
-                        pane_id: pane_id,
+                        pane_id,
                         should_float: should_float_if_hidden,
                     })),
                 })
@@ -928,6 +957,25 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     },
                 )),
             }),
+            PluginCommand::ResizeFloatingPaneByPercent(pane_to_resize) => {
+                Ok(ProtobufPluginCommand {
+                    name: CommandName::ResizeFloatingPaneByPercent as i32,
+                    payload: Some(Payload::ResizeFloatingPaneByPercentPayload(
+                        ResizeFloatingPaneByPercentPayload {
+                            tab_position: pane_to_resize.tab_position,
+                            pane_id: pane_to_resize
+                                .pane_id
+                                .expect("pane id does not exist")
+                                .try_into()
+                                .ok(),
+                            resize: Some(ProtobufResizePercent {
+                                width: pane_to_resize.resize.width,
+                                height: pane_to_resize.resize.height,
+                            }),
+                        },
+                    )),
+                })
+            },
         }
     }
 }

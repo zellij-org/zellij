@@ -6,8 +6,7 @@ use super::layout::{
     TiledPaneLayout,
 };
 use crate::cli::CliAction;
-use crate::data::InputMode;
-use crate::data::{Direction, Resize};
+use crate::data::{Direction, InputMode, Resize};
 use crate::input::config::{Config, ConfigError, KdlError};
 use crate::input::options::OnForceClose;
 use crate::setup::{find_default_config_dir, get_layout_dir};

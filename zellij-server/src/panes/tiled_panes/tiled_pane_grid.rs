@@ -1,12 +1,13 @@
 use super::is_inside_viewport;
 use super::pane_resizer::PaneResizer;
 use super::stacked_panes::StackedPanes;
+use crate::tab::Pane;
 use crate::tab::{MIN_TERMINAL_HEIGHT, MIN_TERMINAL_WIDTH};
-use crate::{panes::PaneId, tab::Pane};
 use std::cmp::{Ordering, Reverse};
 use std::collections::{HashMap, HashSet};
 use zellij_utils::data::{Direction, Resize, ResizeStrategy};
 use zellij_utils::{
+    data::PaneId,
     errors::prelude::*,
     input::layout::SplitDirection,
     pane_size::{Dimension, PaneGeom, Size, Viewport},

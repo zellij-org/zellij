@@ -10,7 +10,8 @@ use copy_command::CopyCommand;
 use std::env::temp_dir;
 use uuid::Uuid;
 use zellij_utils::data::{
-    Direction, PaneInfo, PermissionStatus, PermissionType, PluginPermission, ResizeStrategy,
+    Direction, PaneInfo, PermissionStatus, PermissionType, PluginPermission, ResizeByPercent,
+    ResizeStrategy,
 };
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
@@ -30,7 +31,7 @@ use crate::{
     output::{CharacterChunk, Output, SixelImageChunk},
     panes::sixel::SixelImageStore,
     panes::{FloatingPanes, TiledPanes},
-    panes::{LinkHandler, PaneId, PluginPane, TerminalPane},
+    panes::{LinkHandler, PluginPane, TerminalPane},
     plugins::PluginInstruction,
     pty::{ClientTabIndexOrPaneId, PtyInstruction, VteBytes},
     thread_bus::ThreadSenders,
@@ -45,7 +46,7 @@ use std::{
     str,
 };
 use zellij_utils::{
-    data::{Event, InputMode, ModeInfo, Palette, PaletteColor, Style},
+    data::{Event, InputMode, ModeInfo, Palette, PaletteColor, PaneId, Style},
     input::{
         command::TerminalAction,
         layout::{
@@ -2029,6 +2030,20 @@ impl Tab {
         }
         Ok(())
     }
+
+    pub fn resize_by_floating_pane_id(
+        &mut self,
+        pane_id: PaneId,
+        new_size: ResizeByPercent,
+    ) -> Result<()> {
+        let err_context = || format!("unable to resize float pane {pane_id:?} by given size");
+
+        self.floating_panes
+            .resize_floating_pane(pane_id, &mut self.os_api, new_size)
+            .with_context(err_context)?;
+        Ok(())
+    }
+
     fn set_pane_active_at(&mut self, pane_id: PaneId) {
         if let Some(pane) = self.tiled_panes.get_pane_mut(pane_id) {
             pane.set_active_at(Instant::now());

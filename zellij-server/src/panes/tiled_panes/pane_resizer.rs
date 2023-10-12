@@ -1,5 +1,5 @@
 use super::stacked_panes::StackedPanes;
-use crate::{panes::PaneId, tab::Pane};
+use crate::tab::Pane;
 use cassowary::{
     strength::{REQUIRED, STRONG},
     Expression, Solver, Variable,
@@ -9,6 +9,7 @@ use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use zellij_utils::{
+    data::PaneId,
     errors::prelude::*,
     input::layout::SplitDirection,
     pane_size::{Constraint, Dimension, PaneGeom},

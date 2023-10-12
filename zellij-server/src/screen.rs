@@ -7,7 +7,8 @@ use std::rc::Rc;
 use std::str;
 
 use zellij_utils::data::{
-    Direction, PaneManifest, PluginPermission, Resize, ResizeStrategy, SessionInfo,
+    Direction, PaneManifest, PaneToResizeByPercent, PluginPermission, Resize, ResizeByPercent,
+    ResizeStrategy, SessionInfo,
 };
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
@@ -30,7 +31,6 @@ use crate::panes::terminal_character::AnsiCode;
 use crate::{
     output::Output,
     panes::sixel::SixelImageStore,
-    panes::PaneId,
     plugins::PluginInstruction,
     pty::{ClientTabIndexOrPaneId, PtyInstruction, VteBytes},
     tab::Tab,
@@ -42,7 +42,10 @@ use crate::{
     ClientId, ServerInstruction,
 };
 use zellij_utils::{
-    data::{Event, InputMode, ModeInfo, Palette, PaletteColor, PluginCapabilities, Style, TabInfo},
+    data::{
+        Event, InputMode, ModeInfo, Palette, PaletteColor, PaneId, PluginCapabilities, Style,
+        TabInfo,
+    },
     errors::{ContextType, ScreenContext},
     input::{get_mode_info, options::Options},
     ipc::{ClientAttributes, PixelDimensions, ServerToClientMsg},
@@ -150,6 +153,7 @@ pub enum ScreenInstruction {
     VerticalSplit(PaneId, Option<InitialTitle>, HoldForCommand, ClientId),
     WriteCharacter(Vec<u8>, ClientId),
     Resize(ClientId, ResizeStrategy),
+    ResizeFloatingPaneByPercent(PaneToResizeByPercent),
     SwitchFocus(ClientId),
     FocusNextPane(ClientId),
     FocusPreviousPane(ClientId),
@@ -344,6 +348,9 @@ impl From<&ScreenInstruction> for ScreenContext {
                     Some(Direction::Right) => ScreenContext::ResizeDecreaseRight,
                     None => ScreenContext::ResizeDecreaseAll,
                 },
+            },
+            ScreenInstruction::ResizeFloatingPaneByPercent(..) => {
+                ScreenContext::ResizeFloatingPaneByPercent
             },
             ScreenInstruction::SwitchFocus(..) => ScreenContext::SwitchFocus,
             ScreenInstruction::FocusNextPane(..) => ScreenContext::FocusNextPane,
@@ -2146,6 +2153,23 @@ pub(crate) fn screen_thread_main(
                     |tab: &mut Tab, client_id: ClientId| tab.resize(client_id, strategy),
                     ?
                 );
+                screen.unblock_input()?;
+                screen.render()?;
+                screen.log_and_report_session_state()?;
+            },
+            ScreenInstruction::ResizeFloatingPaneByPercent(pane_to_resize) => {
+                let PaneToResizeByPercent {
+                    tab_position,
+                    pane_id,
+                    resize,
+                } = pane_to_resize;
+                let tab_id = tab_position.expect("Could not get tab id") as usize;
+                let pane_id = pane_id.expect("Could not get pane id");
+
+                if let Some(tab) = screen.get_indexed_tab_mut(tab_id) {
+                    let _ = tab.resize_by_floating_pane_id(pane_id, resize);
+                }
+
                 screen.unblock_input()?;
                 screen.render()?;
                 screen.log_and_report_session_state()?;

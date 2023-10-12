@@ -3,7 +3,6 @@ use crate::panes::sixel::SixelImageStore;
 use crate::screen::CopyOptions;
 use crate::{
     os_input_output::{AsyncReader, Pid, ServerOsApi},
-    panes::PaneId,
     thread_bus::ThreadSenders,
     ClientId,
 };
@@ -20,7 +19,7 @@ use std::os::unix::io::RawFd;
 use std::rc::Rc;
 
 use zellij_utils::{
-    data::{ModeInfo, Palette, Style},
+    data::{ModeInfo, Palette, PaneId, Style},
     input::command::{RunCommand, TerminalAction},
     interprocess::local_socket::LocalSocketStream,
     ipc::{ClientToServerMsg, ServerToClientMsg},

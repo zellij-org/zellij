@@ -5,7 +5,7 @@ pub struct PluginCommand {
     pub name: i32,
     #[prost(
         oneof = "plugin_command::Payload",
-        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42"
+        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43"
     )]
     pub payload: ::core::option::Option<plugin_command::Payload>,
 }
@@ -96,6 +96,8 @@ pub mod plugin_command {
         OpenTerminalInPlacePayload(super::OpenFilePayload),
         #[prost(message, tag = "42")]
         OpenCommandPaneInPlacePayload(super::OpenCommandPanePayload),
+        #[prost(message, tag = "43")]
+        ResizeFloatingPaneByPercentPayload(super::ResizeFloatingPaneByPercentPayload),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -173,6 +175,16 @@ pub struct PluginMessagePayload {
 pub struct ResizePayload {
     #[prost(message, optional, tag = "1")]
     pub resize: ::core::option::Option<super::resize::Resize>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ResizeFloatingPaneByPercentPayload {
+    #[prost(uint32, optional, tag = "1")]
+    pub tab_position: ::core::option::Option<u32>,
+    #[prost(message, optional, tag = "2")]
+    pub pane_id: ::core::option::Option<super::pane_id::PaneId>,
+    #[prost(message, optional, tag = "3")]
+    pub resize: ::core::option::Option<super::resize::ResizePercent>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -263,6 +275,7 @@ pub enum CommandName {
     OpenTerminalInPlace = 68,
     OpenCommandInPlace = 69,
     OpenFileInPlace = 70,
+    ResizeFloatingPaneByPercent = 71,
 }
 impl CommandName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -342,6 +355,7 @@ impl CommandName {
             CommandName::OpenTerminalInPlace => "OpenTerminalInPlace",
             CommandName::OpenCommandInPlace => "OpenCommandInPlace",
             CommandName::OpenFileInPlace => "OpenFileInPlace",
+            CommandName::ResizeFloatingPaneByPercent => "ResizeFloatingPaneByPercent",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -418,6 +432,7 @@ impl CommandName {
             "OpenTerminalInPlace" => Some(Self::OpenTerminalInPlace),
             "OpenCommandInPlace" => Some(Self::OpenCommandInPlace),
             "OpenFileInPlace" => Some(Self::OpenFileInPlace),
+            "ResizeFloatingPaneByPercent" => Some(Self::ResizeFloatingPaneByPercent),
             _ => None,
         }
     }

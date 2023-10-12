@@ -261,6 +261,22 @@ pub fn resize_focused_pane_with_direction(resize: Resize, direction: Direction) 
     unsafe { host_run_plugin_command() };
 }
 
+/// Resize floating panes to the specified dimensions
+pub fn resize_floating_pane_by_percent(
+    size: ResizeByPercent,
+    tab_position: Option<u32>,
+    pane_id: Option<PaneId>,
+) {
+    let plugin_command = PluginCommand::ResizeFloatingPaneByPercent(PaneToResizeByPercent {
+        tab_position,
+        pane_id,
+        resize: size,
+    });
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 /// Change focus tot he next pane in chronological order
 pub fn focus_next_pane() {
     let plugin_command = PluginCommand::FocusNextPane;

@@ -22,3 +22,9 @@ message Resize {
 message MoveDirection {
   ResizeDirection direction = 1;
 }
+
+message ResizePercent {
+  uint32 width = 1;
+  uint32 height = 2;
+}
+

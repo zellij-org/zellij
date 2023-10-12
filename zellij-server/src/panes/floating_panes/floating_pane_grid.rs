@@ -1,8 +1,8 @@
+use crate::tab::Pane;
 use crate::tab::{MIN_TERMINAL_HEIGHT, MIN_TERMINAL_WIDTH};
-use crate::{panes::PaneId, tab::Pane};
 use std::cmp::Ordering;
 use std::collections::HashMap;
-use zellij_utils::data::{Direction, ResizeStrategy};
+use zellij_utils::data::{Direction, PaneId, ResizeByPercent, ResizeStrategy};
 use zellij_utils::errors::prelude::*;
 use zellij_utils::pane_size::{Dimension, PaneGeom, Size, Viewport};
 
@@ -597,6 +597,38 @@ impl<'a> FloatingPaneGrid<'a> {
 
         self.set_pane_geom(*pane_id, geometry)
             .with_context(err_context)
+    }
+
+    pub fn change_pane_size_by_percent(
+        &mut self,
+        pane_id: PaneId,
+        size_by_percent: ResizeByPercent,
+    ) -> Result<()> {
+        let err_content = || format!("failed to resize pane {pane_id:?} by percent");
+
+        let mut geom = self
+            .panes
+            .borrow()
+            .get(&pane_id)
+            .with_context(|| no_pane_id(&pane_id))
+            .with_context(err_content)?
+            .position_and_size();
+
+        // Calculate the new size for the rows and cols
+        let cal_new_dim = |viewport_dim, percent| viewport_dim * (percent as usize) / 100;
+        let new_row = cal_new_dim(self.viewport.rows, size_by_percent.height);
+        let new_col = cal_new_dim(self.viewport.cols, size_by_percent.width);
+
+        geom.rows.set_inner(new_row);
+        geom.cols.set_inner(new_col);
+
+        // Calculate new position
+        let screen_center_x = self.viewport.cols / 2;
+        let screen_center_y = self.viewport.rows / 2;
+        geom.x = screen_center_x - new_col / 2;
+        geom.y = screen_center_y - new_row / 2;
+
+        self.set_pane_geom(pane_id, geom).with_context(err_content)
     }
 
     pub fn next_selectable_pane_id_to_the_left(&self, current_pane_id: &PaneId) -> Option<PaneId> {

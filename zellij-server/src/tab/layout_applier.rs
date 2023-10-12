@@ -7,7 +7,7 @@ use crate::{
     os_input_output::ServerOsApi,
     panes::sixel::SixelImageStore,
     panes::{FloatingPanes, TiledPanes},
-    panes::{LinkHandler, PaneId, PluginPane, TerminalPane},
+    panes::{LinkHandler, PluginPane, TerminalPane},
     plugins::PluginInstruction,
     pty::PtyInstruction,
     thread_bus::ThreadSenders,
@@ -17,7 +17,7 @@ use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::rc::Rc;
 use zellij_utils::{
-    data::{Palette, Style},
+    data::{Palette, PaneId, Style},
     input::layout::{
         FloatingPaneLayout, PluginUserConfiguration, Run, RunPluginLocation, TiledPaneLayout,
     },

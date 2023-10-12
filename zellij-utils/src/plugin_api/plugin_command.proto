@@ -7,6 +7,7 @@ import "command.proto";
 import "message.proto";
 import "resize.proto";
 import "plugin_permission.proto";
+import "pane_id.proto";
 
 package api.plugin_command;
 
@@ -82,6 +83,7 @@ enum CommandName {
   OpenTerminalInPlace = 68;
   OpenCommandInPlace = 69;
   OpenFileInPlace = 70;
+  ResizeFloatingPaneByPercent = 71;
 }
 
 message PluginCommand {
@@ -128,6 +130,7 @@ message PluginCommand {
     OpenFilePayload open_file_in_place_payload = 40;
     OpenFilePayload open_terminal_in_place_payload = 41;
     OpenCommandPanePayload open_command_pane_in_place_payload = 42;
+    ResizeFloatingPaneByPercentPayload resize_floating_pane_by_percent_payload = 43;
   }
 }
 
@@ -176,6 +179,12 @@ message PluginMessagePayload {
 
 message ResizePayload {
   resize.Resize resize = 1;
+}
+
+message ResizeFloatingPaneByPercentPayload {
+  optional uint32 tab_position = 1;
+  pane_id.PaneId pane_id = 2;
+  resize.ResizePercent resize = 3;
 }
 
 message MovePayload {

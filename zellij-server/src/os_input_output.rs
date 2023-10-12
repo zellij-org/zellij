@@ -1,4 +1,4 @@
-use crate::{panes::PaneId, ClientId};
+use crate::ClientId;
 
 use async_std::{fs::File as AsyncFile, io::ReadExt, os::unix::io::FromRawFd};
 use interprocess::local_socket::LocalSocketStream;
@@ -16,7 +16,7 @@ use sysinfo::{ProcessExt, ProcessRefreshKind, System, SystemExt};
 use zellij_utils::{
     async_std, channels,
     channels::TrySendError,
-    data::Palette,
+    data::{Palette, PaneId},
     errors::prelude::*,
     input::command::{RunCommand, TerminalAction},
     interprocess,

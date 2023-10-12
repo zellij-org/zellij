@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package api.pane_id;
+
+message PaneId {
+    oneof id {
+        uint32 Terminal = 1;
+        uint32 Plugin = 2;
+    }
+}
+

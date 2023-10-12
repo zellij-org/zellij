@@ -1,5 +1,4 @@
 use super::{screen_thread_main, CopyOptions, Screen, ScreenInstruction};
-use crate::panes::PaneId;
 use crate::{
     channels::SenderWithContext,
     os_input_output::{AsyncReader, Pid, ServerOsApi},
@@ -10,7 +9,7 @@ use crate::{
 use insta::assert_snapshot;
 use std::path::PathBuf;
 use zellij_utils::cli::CliAction;
-use zellij_utils::data::{Event, Resize};
+use zellij_utils::data::{Event, PaneId, Resize};
 use zellij_utils::errors::{prelude::*, ErrorContext};
 use zellij_utils::input::actions::Action;
 use zellij_utils::input::command::{RunCommand, TerminalAction};

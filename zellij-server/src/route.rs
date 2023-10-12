@@ -4,7 +4,6 @@ use std::sync::{Arc, RwLock};
 use crate::thread_bus::ThreadSenders;
 use crate::{
     os_input_output::ServerOsApi,
-    panes::PaneId,
     plugins::PluginInstruction,
     pty::{ClientTabIndexOrPaneId, PtyInstruction},
     screen::ScreenInstruction,
@@ -12,7 +11,7 @@ use crate::{
 };
 use zellij_utils::{
     channels::SenderWithContext,
-    data::{Direction, Event, PluginCapabilities, ResizeStrategy},
+    data::{Direction, Event, PaneId, PluginCapabilities, ResizeStrategy},
     errors::prelude::*,
     input::{
         actions::{Action, SearchDirection, SearchOption},

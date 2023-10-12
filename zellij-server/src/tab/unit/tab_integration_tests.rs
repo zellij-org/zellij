@@ -5,7 +5,6 @@ use crate::Arc;
 
 use crate::{
     os_input_output::{AsyncReader, Pid, ServerOsApi},
-    panes::PaneId,
     plugins::PluginInstruction,
     thread_bus::ThreadSenders,
     ClientId,
@@ -14,9 +13,7 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 
 use zellij_utils::channels::Receiver;
-use zellij_utils::data::Direction;
-use zellij_utils::data::Resize;
-use zellij_utils::data::ResizeStrategy;
+use zellij_utils::data::{Direction, PaneId, Resize, ResizeStrategy};
 use zellij_utils::envs::set_session_name;
 use zellij_utils::errors::{prelude::*, ErrorContext};
 use zellij_utils::input::layout::{

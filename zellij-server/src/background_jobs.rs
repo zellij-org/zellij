@@ -1,6 +1,6 @@
 use zellij_utils::async_std::task;
 use zellij_utils::consts::{ZELLIJ_SESSION_INFO_CACHE_DIR, ZELLIJ_SOCK_DIR};
-use zellij_utils::data::SessionInfo;
+use zellij_utils::data::{PaneId, SessionInfo};
 use zellij_utils::errors::{prelude::*, BackgroundJobContext, ContextType};
 
 use std::collections::{BTreeMap, HashMap};
@@ -14,7 +14,6 @@ use std::sync::{
 };
 use std::time::{Duration, Instant};
 
-use crate::panes::PaneId;
 use crate::screen::ScreenInstruction;
 use crate::thread_bus::Bus;
 

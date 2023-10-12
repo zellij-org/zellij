@@ -2,7 +2,7 @@ use std::collections::{BTreeSet, HashMap};
 use std::time::Instant;
 
 use crate::output::{CharacterChunk, SixelImageChunk};
-use crate::panes::{grid::Grid, sixel::SixelImageStore, LinkHandler, PaneId};
+use crate::panes::{grid::Grid, sixel::SixelImageStore, LinkHandler};
 use crate::plugins::PluginInstruction;
 use crate::pty::VteBytes;
 use crate::tab::{AdjustedInput, Pane};
@@ -13,7 +13,7 @@ use crate::ui::{
 use crate::ClientId;
 use std::cell::RefCell;
 use std::rc::Rc;
-use zellij_utils::data::{PermissionStatus, PermissionType, PluginPermission};
+use zellij_utils::data::{PaneId, PermissionStatus, PermissionType, PluginPermission};
 use zellij_utils::pane_size::{Offset, SizeInPixels};
 use zellij_utils::position::Position;
 use zellij_utils::{

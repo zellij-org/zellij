@@ -17,19 +17,20 @@ use std::{
 use wasmer::{imports, AsStoreMut, Function, FunctionEnv, FunctionEnvMut, Imports};
 use wasmer_wasi::WasiEnv;
 use zellij_utils::data::{
-    CommandType, ConnectToSession, PermissionStatus, PermissionType, PluginPermission,
+    CommandType, ConnectToSession, PaneToResizeByPercent, PermissionStatus, PermissionType,
+    PluginPermission,
 };
 use zellij_utils::input::permission::PermissionCache;
 
 use url::Url;
 
-use crate::{panes::PaneId, screen::ScreenInstruction};
+use crate::screen::ScreenInstruction;
 
 use zellij_utils::{
     consts::VERSION,
     data::{
-        CommandToRun, Direction, Event, EventType, FileToOpen, InputMode, PluginCommand, PluginIds,
-        PluginMessage, Resize, ResizeStrategy,
+        CommandToRun, Direction, Event, EventType, FileToOpen, InputMode, PaneId, PluginCommand,
+        PluginIds, PluginMessage, Resize, ResizeStrategy,
     },
     errors::prelude::*,
     input::{
@@ -225,6 +226,9 @@ fn host_run_plugin_command(env: FunctionEnvMut<ForeignFunctionEnv>) {
                     },
                     PluginCommand::OpenCommandPaneInPlace(command_to_run) => {
                         open_command_pane_in_place(env, command_to_run)
+                    },
+                    PluginCommand::ResizeFloatingPaneByPercent(resize_by_percent) => {
+                        resize_given_floating_pane_by_percent(env, resize_by_percent)
                     },
                 },
                 (PermissionStatus::Denied, permission) => {
@@ -724,6 +728,25 @@ fn resize_with_direction(env: &ForeignFunctionEnv, resize: ResizeStrategy) {
     let error_msg = || format!("failed to resize in plugin {}", env.plugin_env.name());
     let action = Action::Resize(resize.resize, resize.direction);
     apply_action!(action, error_msg, env);
+}
+
+fn resize_given_floating_pane_by_percent(
+    env: &ForeignFunctionEnv,
+    pane_to_resize: PaneToResizeByPercent,
+) {
+    let error_msg = || {
+        format!(
+            "failed to resize floating pane {:?} by given size {:?}",
+            pane_to_resize.pane_id, pane_to_resize.resize
+        )
+    };
+    env.plugin_env
+        .senders
+        .send_to_screen(ScreenInstruction::ResizeFloatingPaneByPercent(
+            pane_to_resize,
+        ))
+        .with_context(error_msg)
+        .non_fatal();
 }
 
 fn focus_next_pane(env: &ForeignFunctionEnv) {
