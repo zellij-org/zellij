@@ -10,14 +10,16 @@
 //  then [`zellij-utils`] could be a proper place.
 use crate::{
     data::Direction,
+    home::find_default_config_dir,
     input::{
         command::RunCommand,
         config::{Config, ConfigError},
     },
-    pane_size::{Dimension, PaneGeom},
-    setup,
+    pane_size::{Constraint, Dimension, PaneGeom},
+    setup::{self},
 };
 
+use std::fmt::{Display, Formatter};
 use std::str::FromStr;
 
 use super::plugins::{PluginTag, PluginsConfigError};
@@ -205,6 +207,14 @@ impl Run {
             _ => false,
         }
     }
+    pub fn get_cwd(&self) -> Option<PathBuf> {
+        match self {
+            Run::Plugin(_) => None, // TBD
+            Run::Command(run_command) => run_command.cwd.clone(),
+            Run::EditFile(_file, _line_num, cwd) => cwd.clone(),
+            Run::Cwd(cwd) => Some(cwd.clone()),
+        }
+    }
 }
 
 #[allow(clippy::derive_hash_xor_eq)]
@@ -325,6 +335,12 @@ impl RunPluginLocation {
             _ => Err(PluginsConfigError::InvalidUrlScheme(url)),
         }
     }
+    pub fn display(&self) -> String {
+        match self {
+            RunPluginLocation::File(pathbuf) => format!("file:{}", pathbuf.display()),
+            RunPluginLocation::Zellij(plugin_tag) => format!("zellij:{}", plugin_tag),
+        }
+    }
 }
 
 impl From<&RunPluginLocation> for Url {
@@ -362,6 +378,17 @@ pub enum LayoutConstraint {
     NoConstraint,
 }
 
+impl Display for LayoutConstraint {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        match self {
+            LayoutConstraint::MaxPanes(max_panes) => write!(f, "max_panes={}", max_panes),
+            LayoutConstraint::MinPanes(min_panes) => write!(f, "min_panes={}", min_panes),
+            LayoutConstraint::ExactPanes(exact_panes) => write!(f, "exact_panes={}", exact_panes),
+            LayoutConstraint::NoConstraint => write!(f, ""),
+        }
+    }
+}
+
 pub type SwapTiledLayout = (BTreeMap<LayoutConstraint, TiledPaneLayout>, Option<String>); // Option<String> is the swap layout name
 pub type SwapFloatingLayout = (
     BTreeMap<LayoutConstraint, Vec<FloatingPaneLayout>>,
@@ -382,6 +409,15 @@ pub struct Layout {
 pub enum PercentOrFixed {
     Percent(usize), // 1 to 100
     Fixed(usize),   // An absolute number of columns or rows
+}
+
+impl From<Dimension> for PercentOrFixed {
+    fn from(dimension: Dimension) -> Self {
+        match dimension.constraint {
+            Constraint::Percent(percent) => PercentOrFixed::Percent(percent as usize),
+            Constraint::Fixed(fixed_size) => PercentOrFixed::Fixed(fixed_size),
+        }
+    }
 }
 
 impl PercentOrFixed {
@@ -438,6 +474,7 @@ pub struct FloatingPaneLayout {
     pub run: Option<Run>,
     pub focus: Option<bool>,
     pub already_running: bool,
+    pub pane_initial_contents: Option<String>,
 }
 
 impl FloatingPaneLayout {
@@ -447,6 +484,11 @@ impl FloatingPaneLayout {
             None => {
                 self.run = Some(Run::Cwd(cwd.clone()));
             },
+        }
+    }
+    pub fn add_start_suspended(&mut self, start_suspended: Option<bool>) {
+        if let Some(run) = self.run.as_mut() {
+            run.add_start_suspended(start_suspended);
         }
     }
 }
@@ -476,6 +518,8 @@ pub struct TiledPaneLayout {
     pub is_expanded_in_stack: bool,
     pub exclude_from_sync: Option<bool>,
     pub run_instructions_to_ignore: Vec<Option<Run>>,
+    pub hide_floating_panes: bool, // only relevant if this is the base layout
+    pub pane_initial_contents: Option<String>,
 }
 
 impl TiledPaneLayout {
@@ -723,6 +767,14 @@ impl TiledPaneLayout {
         }
         false
     }
+    pub fn recursively_add_start_suspended(&mut self, start_suspended: Option<bool>) {
+        if let Some(run) = self.run.as_mut() {
+            run.add_start_suspended(start_suspended);
+        }
+        for child in self.children.iter_mut() {
+            child.recursively_add_start_suspended(start_suspended);
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
@@ -824,7 +876,15 @@ impl Layout {
                     Layout::stringified_from_default_assets(layout)
                 }
             },
-            None => Layout::stringified_from_default_assets(layout),
+            None => {
+                let home = find_default_config_dir();
+                let Some(home) = home else {
+                    return Layout::stringified_from_default_assets(layout)
+                };
+
+                let layout_path = &home.join(layout);
+                Self::stringified_from_path(layout_path)
+            },
         }
     }
     pub fn stringified_from_path(
@@ -936,6 +996,15 @@ impl Layout {
         self.focused_tab_index
     }
 
+    pub fn recursively_add_start_suspended(&mut self, start_suspended: Option<bool>) {
+        for (_tab_name, tiled_panes, floating_panes) in self.tabs.iter_mut() {
+            tiled_panes.recursively_add_start_suspended(start_suspended);
+            for floating_pane in floating_panes.iter_mut() {
+                floating_pane.add_start_suspended(start_suspended);
+            }
+        }
+    }
+
     fn swap_layout_and_path(path: &Path) -> Option<(String, String)> {
         // Option<path, stringified_swap_layout>
         let mut swap_layout_path = PathBuf::from(path);
@@ -975,7 +1044,6 @@ fn split_space(
     layout: &TiledPaneLayout,
     total_space_to_split: &PaneGeom,
 ) -> Result<Vec<(TiledPaneLayout, PaneGeom)>, &'static str> {
-    let mut pane_positions = Vec::new();
     let sizes: Vec<Option<SplitSize>> = if layout.children_are_stacked {
         let index_of_expanded_pane = layout.children.iter().position(|p| p.is_expanded_in_stack);
         let mut sizes: Vec<Option<SplitSize>> = layout
@@ -1051,6 +1119,7 @@ fn split_space(
                 Dimension::percent(free_percent / flex_parts as f64)
             },
         };
+
         split_dimension.adjust_inner(
             total_split_dimension_space
                 .as_usize()
@@ -1077,26 +1146,13 @@ fn split_space(
         split_geom.push(geom);
         current_position += split_dimension.as_usize();
     }
-
-    if total_pane_size < split_dimension_space.as_usize() {
-        // add extra space from rounding errors to the last pane
-        let increase_by = split_dimension_space.as_usize() - total_pane_size;
-        if let Some(last_geom) = split_geom.last_mut() {
-            match layout.children_split_direction {
-                SplitDirection::Vertical => last_geom.cols.increase_inner(increase_by),
-                SplitDirection::Horizontal => last_geom.rows.increase_inner(increase_by),
-            }
-        }
-    } else if total_pane_size > split_dimension_space.as_usize() {
-        // remove extra space from rounding errors to the last pane
-        let decrease_by = total_pane_size - split_dimension_space.as_usize();
-        if let Some(last_geom) = split_geom.last_mut() {
-            match layout.children_split_direction {
-                SplitDirection::Vertical => last_geom.cols.decrease_inner(decrease_by),
-                SplitDirection::Horizontal => last_geom.rows.decrease_inner(decrease_by),
-            }
-        }
-    }
+    adjust_geoms_for_rounding_errors(
+        total_pane_size,
+        &mut split_geom,
+        split_dimension_space,
+        layout.children_split_direction,
+    );
+    let mut pane_positions = Vec::new();
     for (i, part) in layout.children.iter().enumerate() {
         let part_position_and_size = split_geom.get(i).unwrap();
         if !part.children.is_empty() {
@@ -1113,6 +1169,74 @@ fn split_space(
         pane_positions.push((layout, space_to_split.clone()));
     }
     Ok(pane_positions)
+}
+
+fn adjust_geoms_for_rounding_errors(
+    total_pane_size: usize,
+    split_geoms: &mut Vec<PaneGeom>,
+    split_dimension_space: Dimension,
+    children_split_direction: SplitDirection,
+) {
+    if total_pane_size < split_dimension_space.as_usize() {
+        // add extra space from rounding errors to the last pane
+
+        let increase_by = split_dimension_space
+            .as_usize()
+            .saturating_sub(total_pane_size);
+        let position_of_last_flexible_geom = split_geoms
+            .iter()
+            .rposition(|s_g| s_g.is_flexible_in_direction(children_split_direction));
+        position_of_last_flexible_geom
+            .map(|p| split_geoms.iter_mut().skip(p))
+            .map(|mut flexible_geom_and_following_geoms| {
+                if let Some(flexible_geom) = flexible_geom_and_following_geoms.next() {
+                    match children_split_direction {
+                        SplitDirection::Vertical => flexible_geom.cols.increase_inner(increase_by),
+                        SplitDirection::Horizontal => {
+                            flexible_geom.rows.increase_inner(increase_by)
+                        },
+                    }
+                }
+                for following_geom in flexible_geom_and_following_geoms {
+                    match children_split_direction {
+                        SplitDirection::Vertical => {
+                            following_geom.x += increase_by;
+                        },
+                        SplitDirection::Horizontal => {
+                            following_geom.y += increase_by;
+                        },
+                    }
+                }
+            });
+    } else if total_pane_size > split_dimension_space.as_usize() {
+        // remove extra space from rounding errors to the last pane
+        let decrease_by = total_pane_size - split_dimension_space.as_usize();
+        let position_of_last_flexible_geom = split_geoms
+            .iter()
+            .rposition(|s_g| s_g.is_flexible_in_direction(children_split_direction));
+        position_of_last_flexible_geom
+            .map(|p| split_geoms.iter_mut().skip(p))
+            .map(|mut flexible_geom_and_following_geoms| {
+                if let Some(flexible_geom) = flexible_geom_and_following_geoms.next() {
+                    match children_split_direction {
+                        SplitDirection::Vertical => flexible_geom.cols.decrease_inner(decrease_by),
+                        SplitDirection::Horizontal => {
+                            flexible_geom.rows.decrease_inner(decrease_by)
+                        },
+                    }
+                }
+                for following_geom in flexible_geom_and_following_geoms {
+                    match children_split_direction {
+                        SplitDirection::Vertical => {
+                            following_geom.x = following_geom.x.saturating_sub(decrease_by)
+                        },
+                        SplitDirection::Horizontal => {
+                            following_geom.y = following_geom.y.saturating_sub(decrease_by)
+                        },
+                    }
+                }
+            });
+    }
 }
 
 impl Default for SplitDirection {

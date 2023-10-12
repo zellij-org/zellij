@@ -174,6 +174,36 @@ fn layout_with_mixed_panes_and_floating_panes() {
 }
 
 #[test]
+fn layout_with_hidden_floating_panes() {
+    let kdl_layout = r#"
+        layout {
+            tab hide_floating_panes=true {
+                pane
+                pane
+                floating_panes {
+                    pane
+                }
+            }
+        }
+    "#;
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into(), None, None).unwrap();
+    let expected_layout = Layout {
+        tabs: vec![(
+            None,
+            TiledPaneLayout {
+                children: vec![TiledPaneLayout::default(), TiledPaneLayout::default()],
+                hide_floating_panes: true,
+                ..Default::default()
+            },
+            vec![FloatingPaneLayout::default()],
+        )],
+        template: Some((TiledPaneLayout::default(), vec![])),
+        ..Default::default()
+    };
+    assert_eq!(layout, expected_layout);
+}
+
+#[test]
 fn layout_with_floating_panes_template() {
     let kdl_layout = r#"
         layout {
@@ -770,6 +800,31 @@ fn layout_with_default_tab_template() {
                 pane
                 children
                 pane
+            }
+            tab name="my first tab" split_direction="Vertical" {
+                pane
+                pane
+            }
+            tab name="my second tab" {
+                pane
+                pane
+            }
+            tab
+        }
+    "#;
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into(), None, None).unwrap();
+    assert_snapshot!(format!("{:#?}", layout));
+}
+
+#[test]
+fn layout_with_new_tab_template() {
+    let kdl_layout = r#"
+        layout {
+            new_tab_template {
+                pane split_direction="vertical" {
+                    pane
+                    pane
+                }
             }
             tab name="my first tab" split_direction="Vertical" {
                 pane

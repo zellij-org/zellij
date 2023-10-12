@@ -234,6 +234,11 @@ fn create_new_screen(size: Size) -> Screen {
     let auto_layout = true;
     let session_is_mirrored = true;
     let copy_options = CopyOptions::default();
+    let default_layout = Box::new(Layout::default());
+    let default_shell = None;
+    let session_serialization = true;
+    let serialize_pane_viewport = false;
+    let scrollback_lines_to_serialize = None;
 
     let debug = false;
     let screen = Screen::new(
@@ -246,6 +251,11 @@ fn create_new_screen(size: Size) -> Screen {
         session_is_mirrored,
         copy_options,
         debug,
+        default_layout,
+        default_shell,
+        session_serialization,
+        serialize_pane_viewport,
+        scrollback_lines_to_serialize,
     );
     screen
 }
@@ -301,6 +311,7 @@ impl MockScreen {
                     client_attributes,
                     Box::new(config_options),
                     debug,
+                    Box::new(Layout::default()),
                 )
                 .expect("TEST")
             })

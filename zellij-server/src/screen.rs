@@ -26,6 +26,7 @@ use crate::background_jobs::BackgroundJob;
 use crate::os_input_output::ResizeCache;
 use crate::panes::alacritty_functions::xparse_color;
 use crate::panes::terminal_character::AnsiCode;
+use crate::session_layout_metadata::{PaneLayoutMetadata, SessionLayoutMetadata};
 
 use crate::{
     output::Output,
@@ -141,6 +142,7 @@ pub enum ScreenInstruction {
         Option<InitialTitle>,
         Option<ShouldFloat>,
         HoldForCommand,
+        Option<Run>, // invoked with
         ClientTabIndexOrPaneId,
     ),
     OpenInPlaceEditor(PaneId, ClientId),
@@ -168,6 +170,8 @@ pub enum ScreenInstruction {
     Exit,
     ClearScreen(ClientId),
     DumpScreen(String, ClientId, bool),
+    DumpLayout(Option<PathBuf>, ClientId), // PathBuf is the default configured
+    // shell
     EditScrollback(ClientId),
     ScrollUp(ClientId),
     ScrollUpAt(Position, ClientId),
@@ -302,8 +306,10 @@ pub enum ScreenInstruction {
         PaneId,
         HoldForCommand,
         Option<InitialTitle>,
+        Option<Run>,
         ClientTabIndexOrPaneId,
     ),
+    DumpLayoutToHd,
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -367,6 +373,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::Exit => ScreenContext::Exit,
             ScreenInstruction::ClearScreen(..) => ScreenContext::ClearScreen,
             ScreenInstruction::DumpScreen(..) => ScreenContext::DumpScreen,
+            ScreenInstruction::DumpLayout(..) => ScreenContext::DumpLayout,
             ScreenInstruction::EditScrollback(..) => ScreenContext::EditScrollback,
             ScreenInstruction::ScrollUp(..) => ScreenContext::ScrollUp,
             ScreenInstruction::ScrollDown(..) => ScreenContext::ScrollDown,
@@ -480,6 +487,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::UpdateSessionInfos(..) => ScreenContext::UpdateSessionInfos,
             ScreenInstruction::ReplacePane(..) => ScreenContext::ReplacePane,
             ScreenInstruction::NewInPlacePluginPane(..) => ScreenContext::NewInPlacePluginPane,
+            ScreenInstruction::DumpLayoutToHd => ScreenContext::DumpLayoutToHd,
         }
     }
 }
@@ -541,12 +549,17 @@ pub(crate) struct Screen {
     style: Style,
     draw_pane_frames: bool,
     auto_layout: bool,
+    session_serialization: bool,
+    serialize_pane_viewport: bool,
+    scrollback_lines_to_serialize: Option<usize>,
     session_is_mirrored: bool,
     copy_options: CopyOptions,
     debug: bool,
     session_name: String,
     session_infos_on_machine: BTreeMap<String, SessionInfo>, // String is the session name, can
-                                                             // also be this session
+    // also be this session
+    default_layout: Box<Layout>,
+    default_shell: Option<PathBuf>,
 }
 
 impl Screen {
@@ -561,6 +574,11 @@ impl Screen {
         session_is_mirrored: bool,
         copy_options: CopyOptions,
         debug: bool,
+        default_layout: Box<Layout>,
+        default_shell: Option<PathBuf>,
+        session_serialization: bool,
+        serialize_pane_viewport: bool,
+        scrollback_lines_to_serialize: Option<usize>,
     ) -> Self {
         let session_name = mode_info.session_name.clone().unwrap_or_default();
         let session_info = SessionInfo::new(session_name.clone());
@@ -590,6 +608,11 @@ impl Screen {
             debug,
             session_name,
             session_infos_on_machine,
+            default_layout,
+            default_shell,
+            session_serialization,
+            serialize_pane_viewport,
+            scrollback_lines_to_serialize,
         }
     }
 
@@ -1369,9 +1392,19 @@ impl Screen {
                 session_info,
             ))
             .with_context(err_context)?;
+
         self.bus
             .senders
             .send_to_background_jobs(BackgroundJob::ReadAllSessionInfosOnMachine)
+            .with_context(err_context)?;
+        Ok(())
+    }
+    fn dump_layout_to_hd(&mut self) -> Result<()> {
+        let err_context = || format!("Failed to log and report session state");
+        let session_layout_metadata = self.get_layout_metadata(self.default_shell.clone());
+        self.bus
+            .senders
+            .send_to_plugin(PluginInstruction::LogLayoutToHd(session_layout_metadata))
             .with_context(err_context)?;
 
         Ok(())
@@ -1838,15 +1871,15 @@ impl Screen {
         &mut self,
         new_pane_id: PaneId,
         hold_for_command: HoldForCommand,
-        run_plugin: Option<Run>,
+        run: Option<Run>,
         pane_title: Option<InitialTitle>,
         client_id_tab_index_or_pane_id: ClientTabIndexOrPaneId,
     ) -> Result<()> {
         let err_context = || format!("failed to replace pane");
         let suppress_pane = |tab: &mut Tab, pane_id: PaneId, new_pane_id: PaneId| {
-            tab.suppress_pane_and_replace_with_pid(pane_id, new_pane_id, run_plugin);
+            let _ = tab.suppress_pane_and_replace_with_pid(pane_id, new_pane_id, run);
             if let Some(pane_title) = pane_title {
-                tab.rename_pane(pane_title.as_bytes().to_vec(), new_pane_id);
+                let _ = tab.rename_pane(pane_title.as_bytes().to_vec(), new_pane_id);
             }
             if let Some(hold_for_command) = hold_for_command {
                 let is_first_run = true;
@@ -1867,7 +1900,7 @@ impl Screen {
                             );
                         },
                     }
-                })
+                });
             },
             ClientTabIndexOrPaneId::PaneId(pane_id) => {
                 let tab_index = self
@@ -1885,7 +1918,7 @@ impl Screen {
                     },
                 };
             },
-            ClientTabIndexOrPaneId::TabIndex(tab_index) => {
+            ClientTabIndexOrPaneId::TabIndex(_tab_index) => {
                 log::error!("Cannot replace pane with tab index");
             },
         }
@@ -1896,6 +1929,96 @@ impl Screen {
             .senders
             .send_to_server(ServerInstruction::UnblockInputThread)
             .context("failed to unblock input")
+    }
+    fn get_layout_metadata(&self, default_shell: Option<PathBuf>) -> SessionLayoutMetadata {
+        let mut session_layout_metadata = SessionLayoutMetadata::new(self.default_layout.clone());
+        if let Some(default_shell) = default_shell {
+            session_layout_metadata.update_default_shell(default_shell);
+        }
+        let first_client_id = self.get_first_client_id();
+        let active_tab_index =
+            first_client_id.and_then(|client_id| self.active_tab_indices.get(&client_id));
+
+        for (tab_index, tab) in self.tabs.values().enumerate() {
+            let tab_is_focused = active_tab_index == Some(&tab_index);
+            let hide_floating_panes = !tab.are_floating_panes_visible();
+            let mut suppressed_panes = HashMap::new();
+            for (triggering_pane_id, p) in tab.get_suppressed_panes() {
+                suppressed_panes.insert(*triggering_pane_id, p);
+            }
+            let active_pane_id =
+                first_client_id.and_then(|client_id| tab.get_active_pane_id(client_id));
+            let tiled_panes: Vec<PaneLayoutMetadata> = tab
+                .get_tiled_panes()
+                .map(|(pane_id, p)| {
+                    // here we look to see if this pane triggers any suppressed pane,
+                    // and if so we take that suppressed pane - we do this because this
+                    // is currently only the case the scrollback editing panes, and
+                    // when dumping the layout we want the "real" pane and not the
+                    // editor pane
+                    match suppressed_panes.remove(pane_id) {
+                        Some((is_scrollback_editor, suppressed_pane)) if *is_scrollback_editor => {
+                            (suppressed_pane.pid(), suppressed_pane)
+                        },
+                        _ => (*pane_id, p),
+                    }
+                })
+                .map(|(pane_id, p)| {
+                    PaneLayoutMetadata::new(
+                        pane_id,
+                        p.position_and_size(),
+                        p.borderless(),
+                        p.invoked_with().clone(),
+                        p.custom_title(),
+                        active_pane_id == Some(pane_id),
+                        if self.serialize_pane_viewport {
+                            p.serialize(self.scrollback_lines_to_serialize)
+                        } else {
+                            None
+                        },
+                    )
+                })
+                .collect();
+            let floating_panes: Vec<PaneLayoutMetadata> = tab
+                .get_floating_panes()
+                .map(|(pane_id, p)| {
+                    // here we look to see if this pane triggers any suppressed pane,
+                    // and if so we take that suppressed pane - we do this because this
+                    // is currently only the case the scrollback editing panes, and
+                    // when dumping the layout we want the "real" pane and not the
+                    // editor pane
+                    match suppressed_panes.remove(pane_id) {
+                        Some((is_scrollback_editor, suppressed_pane)) if *is_scrollback_editor => {
+                            (suppressed_pane.pid(), suppressed_pane)
+                        },
+                        _ => (*pane_id, p),
+                    }
+                })
+                .map(|(pane_id, p)| {
+                    PaneLayoutMetadata::new(
+                        pane_id,
+                        p.position_and_size(),
+                        false, // floating panes are never borderless
+                        p.invoked_with().clone(),
+                        p.custom_title(),
+                        active_pane_id == Some(pane_id),
+                        if self.serialize_pane_viewport {
+                            p.serialize(self.scrollback_lines_to_serialize)
+                        } else {
+                            None
+                        },
+                    )
+                })
+                .collect();
+            session_layout_metadata.add_tab(
+                tab.name.clone(),
+                tab_is_focused,
+                hide_floating_panes,
+                tiled_panes,
+                floating_panes,
+            );
+        }
+        session_layout_metadata
     }
 }
 
@@ -1908,11 +2031,16 @@ pub(crate) fn screen_thread_main(
     client_attributes: ClientAttributes,
     config_options: Box<Options>,
     debug: bool,
+    default_layout: Box<Layout>,
 ) -> Result<()> {
     let capabilities = config_options.simplified_ui;
     let draw_pane_frames = config_options.pane_frames.unwrap_or(true);
     let auto_layout = config_options.auto_layout.unwrap_or(true);
+    let session_serialization = config_options.session_serialization.unwrap_or(true);
+    let serialize_pane_viewport = config_options.serialize_pane_viewport.unwrap_or(false);
+    let scrollback_lines_to_serialize = config_options.scrollback_lines_to_serialize;
     let session_is_mirrored = config_options.mirror_session.unwrap_or(false);
+    let default_shell = config_options.default_shell;
     let copy_options = CopyOptions::new(
         config_options.copy_command,
         config_options.copy_clipboard.unwrap_or_default(),
@@ -1936,6 +2064,11 @@ pub(crate) fn screen_thread_main(
         session_is_mirrored,
         copy_options,
         debug,
+        default_layout,
+        default_shell,
+        session_serialization,
+        serialize_pane_viewport,
+        scrollback_lines_to_serialize,
     );
 
     let mut pending_tab_ids: HashSet<usize> = HashSet::new();
@@ -1984,6 +2117,7 @@ pub(crate) fn screen_thread_main(
                 initial_pane_title,
                 should_float,
                 hold_for_command,
+                invoked_with,
                 client_or_tab_index,
             ) => {
                 match client_or_tab_index {
@@ -1992,7 +2126,7 @@ pub(crate) fn screen_thread_main(
                             tab.new_pane(pid,
                                initial_pane_title,
                                should_float,
-                               None,
+                               invoked_with,
                                Some(client_id)
                            )
                         }, ?);
@@ -2016,7 +2150,7 @@ pub(crate) fn screen_thread_main(
                                 pid,
                                 initial_pane_title,
                                 should_float,
-                                None,
+                                invoked_with,
                                 None,
                             )?;
                             if let Some(hold_for_command) = hold_for_command {
@@ -2027,7 +2161,7 @@ pub(crate) fn screen_thread_main(
                             log::error!("Tab index not found: {:?}", tab_index);
                         }
                     },
-                    ClientTabIndexOrPaneId::PaneId(pane_id) => {
+                    ClientTabIndexOrPaneId::PaneId(_pane_id) => {
                         log::error!("cannot open a pane with a pane id??");
                     },
                 };
@@ -2260,6 +2394,18 @@ pub(crate) fn screen_thread_main(
                 );
                 screen.render()?;
                 screen.unblock_input()?;
+            },
+            ScreenInstruction::DumpLayout(default_shell, client_id) => {
+                let err_context = || format!("Failed to dump layout");
+                let session_layout_metadata = screen.get_layout_metadata(default_shell);
+                screen
+                    .bus
+                    .senders
+                    .send_to_plugin(PluginInstruction::DumpLayout(
+                        session_layout_metadata,
+                        client_id,
+                    ))
+                    .with_context(err_context)?;
             },
             ScreenInstruction::EditScrollback(client_id) => {
                 active_tab_and_connected_client_id!(
@@ -3275,13 +3421,13 @@ pub(crate) fn screen_thread_main(
                 new_pane_id,
                 hold_for_command,
                 pane_title,
+                invoked_with,
                 client_id_tab_index_or_pane_id,
             ) => {
-                let err_context = || format!("Failed to replace pane");
                 screen.replace_pane(
                     new_pane_id,
                     hold_for_command,
-                    None,
+                    invoked_with,
                     pane_title,
                     client_id_tab_index_or_pane_id,
                 )?;
@@ -3290,6 +3436,11 @@ pub(crate) fn screen_thread_main(
                 screen.log_and_report_session_state()?;
 
                 screen.render()?;
+            },
+            ScreenInstruction::DumpLayoutToHd => {
+                if screen.session_serialization {
+                    screen.dump_layout_to_hd()?;
+                }
             },
         }
     }

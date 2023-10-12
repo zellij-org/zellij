@@ -4,6 +4,7 @@ use crate::data::{
     Resize, SessionInfo, TabInfo,
 };
 use crate::envs::EnvironmentVariables;
+use crate::home::{find_default_config_dir, get_layout_dir};
 use crate::input::config::{Config, ConfigError, KdlError};
 use crate::input::keybinds::Keybinds;
 use crate::input::layout::{Layout, PluginUserConfiguration, RunPlugin, RunPluginLocation};
@@ -11,7 +12,6 @@ use crate::input::options::{Clipboard, OnForceClose, Options};
 use crate::input::permission::{GrantedPermission, PermissionCache};
 use crate::input::plugins::{PluginConfig, PluginTag, PluginType, PluginsConfig};
 use crate::input::theme::{FrameConfig, Theme, Themes, UiConfig};
-use crate::setup::{find_default_config_dir, get_layout_dir};
 use kdl_layout_parser::KdlLayoutParser;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use strum::IntoEnumIterator;
@@ -469,6 +469,7 @@ impl Action {
             },
             "MovePaneBackwards" => Ok(Action::MovePaneBackwards),
             "DumpScreen" => Ok(Action::DumpScreen(string, false)),
+            "DumpLayout" => Ok(Action::DumpLayout),
             "NewPane" => {
                 if string.is_empty() {
                     return Ok(Action::NewPane(None, None));
@@ -752,6 +753,11 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                 kdl_action
             ),
             "DumpScreen" => parse_kdl_action_char_or_string_arguments!(
+                action_name,
+                action_arguments,
+                kdl_action
+            ),
+            "DumpLayout" => parse_kdl_action_char_or_string_arguments!(
                 action_name,
                 action_arguments,
                 kdl_action
@@ -1423,6 +1429,15 @@ impl Options {
         let attach_to_session =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "attach_to_session")
                 .map(|(v, _)| v);
+        let session_serialization =
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "session_serialization")
+                .map(|(v, _)| v);
+        let serialize_pane_viewport =
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "serialize_pane_viewport")
+                .map(|(v, _)| v);
+        let scrollback_lines_to_serialize =
+            kdl_property_first_arg_as_i64_or_error!(kdl_options, "scrollback_lines_to_serialize")
+                .map(|(v, _)| v as usize);
         Ok(Options {
             simplified_ui,
             theme,
@@ -1444,6 +1459,9 @@ impl Options {
             session_name,
             attach_to_session,
             auto_layout,
+            session_serialization,
+            serialize_pane_viewport,
+            scrollback_lines_to_serialize,
         })
     }
 }
@@ -1455,7 +1473,7 @@ impl Layout {
         raw_swap_layouts: Option<(&str, &str)>, // raw_swap_layouts swap_layouts_file_name
         cwd: Option<PathBuf>,
     ) -> Result<Self, ConfigError> {
-        let mut kdl_layout_parser = KdlLayoutParser::new(raw_layout, cwd);
+        let mut kdl_layout_parser = KdlLayoutParser::new(raw_layout, cwd, file_name.clone());
         let layout = kdl_layout_parser.parse().map_err(|e| match e {
             ConfigError::KdlError(kdl_error) => {
                 ConfigError::KdlError(kdl_error.add_src(file_name, String::from(raw_layout)))

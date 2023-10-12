@@ -8,6 +8,7 @@ use crate::{
         ZELLIJ_DEFAULT_THEMES, ZELLIJ_PROJ_DIR,
     },
     errors::prelude::*,
+    home::*,
     input::{
         config::{Config, ConfigError},
         layout::Layout,
@@ -17,12 +18,17 @@ use crate::{
 use clap::{Args, IntoApp};
 use clap_complete::Shell;
 use directories::BaseDirs;
+use log::info;
 use serde::{Deserialize, Serialize};
 use std::{
-    convert::TryFrom, fmt::Write as FmtWrite, io::Write, path::Path, path::PathBuf, process,
+    convert::TryFrom,
+    fmt::Write as FmtWrite,
+    fs,
+    io::Write,
+    path::{Path, PathBuf},
+    process,
 };
 
-const CONFIG_LOCATION: &str = ".config/zellij";
 const CONFIG_NAME: &str = "config.kdl";
 static ARROW_SEPARATOR: &str = "";
 
@@ -107,6 +113,7 @@ pub fn get_layout_dir(config_dir: Option<PathBuf>) -> Option<PathBuf> {
 pub fn get_theme_dir(config_dir: Option<PathBuf>) -> Option<PathBuf> {
     config_dir.map(|dir| dir.join("themes"))
 }
+
 pub fn dump_asset(asset: &[u8]) -> std::io::Result<()> {
     std::io::stdout().write_all(asset)?;
     Ok(())
@@ -196,6 +203,17 @@ pub const ZSH_AUTO_START_SCRIPT: &[u8] = include_bytes!(concat!(
     "assets/shell/auto-start.zsh"
 ));
 
+pub fn add_layout_ext(s: &str) -> String {
+    match s {
+        c if s.ends_with(".kdl") => c.to_owned(),
+        _ => {
+            let mut s = s.to_owned();
+            s.push_str(".kdl");
+            s
+        },
+    }
+}
+
 pub fn dump_default_config() -> std::io::Result<()> {
     dump_asset(DEFAULT_CONFIG)
 }
@@ -206,10 +224,24 @@ pub fn dump_specified_layout(layout: &str) -> std::io::Result<()> {
         "default" => dump_asset(DEFAULT_LAYOUT),
         "compact" => dump_asset(COMPACT_BAR_LAYOUT),
         "disable-status" => dump_asset(NO_STATUS_LAYOUT),
-        not_found => Err(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            format!("Layout: {} not found", not_found),
-        )),
+        custom => {
+            info!("Dump {custom} layout");
+            let custom = add_layout_ext(custom);
+            let home = default_layout_dir();
+            let path = home.map(|h| h.join(&custom));
+            let layout_exists = path.as_ref().map(|p| p.exists()).unwrap_or_default();
+
+            match (path, layout_exists) {
+                (Some(path), true) => {
+                    let content = fs::read_to_string(path)?;
+                    std::io::stdout().write_all(content.as_bytes())
+                },
+                _ => {
+                    log::error!("No layout named {custom} found");
+                    return Ok(());
+                },
+            }
+        },
     }
 }
 
@@ -276,7 +308,7 @@ pub struct Setup {
     #[clap(long, value_parser)]
     pub check: bool,
 
-    /// Dump the specified layout file to stdout
+    /// Dump specified layout to stdout
     #[clap(long, value_parser)]
     pub dump_layout: Option<String>,
 
@@ -376,7 +408,7 @@ impl Setup {
         }
 
         if let Some(layout) = &self.dump_layout {
-            dump_specified_layout(layout)?;
+            dump_specified_layout(&layout)?;
             std::process::exit(0);
         }
 

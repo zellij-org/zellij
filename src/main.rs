@@ -87,14 +87,23 @@ fn main() {
         }
     }
 
-    if let Some(Command::Sessions(Sessions::ListSessions)) = opts.command {
-        commands::list_sessions();
+    if let Some(Command::Sessions(Sessions::ListSessions { no_formatting })) = opts.command {
+        commands::list_sessions(no_formatting);
     } else if let Some(Command::Sessions(Sessions::KillAllSessions { yes })) = opts.command {
         commands::kill_all_sessions(yes);
     } else if let Some(Command::Sessions(Sessions::KillSession { ref target_session })) =
         opts.command
     {
         commands::kill_session(target_session);
+    } else if let Some(Command::Sessions(Sessions::DeleteAllSessions { yes, force })) = opts.command
+    {
+        commands::delete_all_sessions(yes, force);
+    } else if let Some(Command::Sessions(Sessions::DeleteSession {
+        ref target_session,
+        force,
+    })) = opts.command
+    {
+        commands::delete_session(target_session, force);
     } else if let Some(path) = opts.server {
         commands::start_server(path, opts.debug);
     } else {

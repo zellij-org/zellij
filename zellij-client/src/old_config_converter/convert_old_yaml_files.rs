@@ -2,7 +2,7 @@ use super::{config_yaml_to_config_kdl, layout_yaml_to_layout_kdl};
 use std::path::PathBuf;
 use zellij_utils::{
     cli::CliArgs,
-    setup::{find_default_config_dir, get_layout_dir, get_theme_dir},
+    home::{find_default_config_dir, get_layout_dir, get_theme_dir},
 };
 
 const OLD_CONFIG_NAME: &str = "config.yaml";

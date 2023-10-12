@@ -77,10 +77,10 @@ pkg-fmt = "tgz"
 
 [features]
 # See remarks in zellij_utils/Cargo.toml
-default = [ "zellij-utils/plugins_from_target" ]
-disable_automatic_asset_installation = [ "zellij-utils/disable_automatic_asset_installation" ]
-unstable = [ "zellij-client/unstable", "zellij-utils/unstable" ]
-singlepass = [ "zellij-server/singlepass" ]
+default = ["zellij-utils/plugins_from_target"]
+disable_automatic_asset_installation = ["zellij-utils/disable_automatic_asset_installation"]
+unstable = ["zellij-client/unstable", "zellij-utils/unstable"]
+singlepass = ["zellij-server/singlepass"]
 
 # uncomment this when developing plugins in the Zellij UI to make plugin compilation faster
 # [profile.dev.package."*"]

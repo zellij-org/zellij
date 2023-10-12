@@ -1,6 +1,6 @@
 ---
 source: zellij-utils/src/setup.rs
-assertion_line: 725
+assertion_line: 757
 expression: "format!(\"{:#?}\", config)"
 ---
 Config {
@@ -3589,6 +3589,9 @@ Config {
         session_name: None,
         attach_to_session: None,
         auto_layout: None,
+        session_serialization: None,
+        serialize_pane_viewport: None,
+        scrollback_lines_to_serialize: None,
     },
     themes: {},
     plugins: {

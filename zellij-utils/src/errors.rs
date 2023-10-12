@@ -257,6 +257,7 @@ pub enum ScreenContext {
     Exit,
     ClearScreen,
     DumpScreen,
+    DumpLayout,
     EditScrollback,
     ScrollUp,
     ScrollUpAt,
@@ -345,6 +346,7 @@ pub enum ScreenContext {
     UpdateSessionInfos,
     ReplacePane,
     NewInPlacePluginPane,
+    DumpLayoutToHd,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.
@@ -361,6 +363,8 @@ pub enum PtyContext {
     CloseTab,
     ReRunCommandInPane,
     SpawnInPlaceTerminal,
+    DumpLayout,
+    LogLayoutToHd,
     Exit,
 }
 
@@ -383,6 +387,8 @@ pub enum PluginContext {
     PostMessageToPlugin,
     PluginSubscribedToEvents,
     PermissionRequestResult,
+    DumpLayout,
+    LogLayoutToHd,
 }
 
 /// Stack call representations corresponding to the different types of [`ClientInstruction`]s.
@@ -437,6 +443,7 @@ pub enum BackgroundJobContext {
     StopPluginLoadingAnimation,
     ReadAllSessionInfosOnMachine,
     ReportSessionInfo,
+    ReportLayoutInfo,
     Exit,
 }
 

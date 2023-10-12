@@ -1,6 +1,6 @@
 ---
 source: zellij-utils/src/setup.rs
-assertion_line: 607
+assertion_line: 696
 expression: "format!(\"{:#?}\", options)"
 ---
 Options {
@@ -26,4 +26,7 @@ Options {
     session_name: None,
     attach_to_session: None,
     auto_layout: None,
+    session_serialization: None,
+    serialize_pane_viewport: None,
+    scrollback_lines_to_serialize: None,
 }

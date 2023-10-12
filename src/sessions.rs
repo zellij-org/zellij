@@ -1,30 +1,106 @@
+use std::collections::HashMap;
 use std::os::unix::fs::FileTypeExt;
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 use std::{fs, io, process};
 use suggest::Suggest;
 use zellij_utils::{
     anyhow,
-    consts::ZELLIJ_SOCK_DIR,
+    consts::{
+        session_info_folder_for_session, session_layout_cache_file_name,
+        ZELLIJ_SESSION_INFO_CACHE_DIR, ZELLIJ_SOCK_DIR,
+    },
     envs,
+    humantime::format_duration,
+    input::layout::Layout,
     interprocess::local_socket::LocalSocketStream,
     ipc::{ClientToServerMsg, IpcReceiverWithContext, IpcSenderWithContext, ServerToClientMsg},
 };
 
-pub(crate) fn get_sessions() -> Result<Vec<String>, io::ErrorKind> {
+pub(crate) fn get_sessions() -> Result<Vec<(String, Duration)>, io::ErrorKind> {
     match fs::read_dir(&*ZELLIJ_SOCK_DIR) {
         Ok(files) => {
             let mut sessions = Vec::new();
             files.for_each(|file| {
                 let file = file.unwrap();
                 let file_name = file.file_name().into_string().unwrap();
+                let ctime = std::fs::metadata(&file.path())
+                    .ok()
+                    .and_then(|f| f.created().ok())
+                    .and_then(|d| d.elapsed().ok())
+                    .unwrap_or_default();
+                let duration = Duration::from_secs(ctime.as_secs());
                 if file.file_type().unwrap().is_socket() && assert_socket(&file_name) {
-                    sessions.push(file_name);
+                    sessions.push((file_name, duration));
                 }
             });
             Ok(sessions)
         },
         Err(err) if io::ErrorKind::NotFound != err.kind() => Err(err.kind()),
         Err(_) => Ok(Vec::with_capacity(0)),
+    }
+}
+
+pub(crate) fn get_resurrectable_sessions() -> Vec<(String, Duration, Layout)> {
+    match fs::read_dir(&*ZELLIJ_SESSION_INFO_CACHE_DIR) {
+        Ok(files_in_session_info_folder) => {
+            let files_that_are_folders = files_in_session_info_folder
+                .filter_map(|f| f.ok().map(|f| f.path()))
+                .filter(|f| f.is_dir());
+            files_that_are_folders
+                .filter_map(|folder_name| {
+                    let layout_file_name =
+                        session_layout_cache_file_name(&folder_name.display().to_string());
+                    let raw_layout = match std::fs::read_to_string(&layout_file_name) {
+                        Ok(raw_layout) => raw_layout,
+                        Err(e) => {
+                            log::error!("Failed to read resurrection layout file: {:?}", e);
+                            return None;
+                        },
+                    };
+                    let ctime = match std::fs::metadata(&layout_file_name)
+                        .and_then(|metadata| metadata.created())
+                    {
+                        Ok(created) => Some(created),
+                        Err(e) => {
+                            log::error!(
+                                "Failed to read created stamp of resurrection file: {:?}",
+                                e
+                            );
+                            None
+                        },
+                    };
+                    let layout = match Layout::from_kdl(
+                        &raw_layout,
+                        layout_file_name.display().to_string(),
+                        None,
+                        None,
+                    ) {
+                        Ok(layout) => layout,
+                        Err(e) => {
+                            log::error!("Failed to parse resurrection layout file: {}", e);
+                            return None;
+                        },
+                    };
+                    let elapsed_duration = ctime
+                        .map(|ctime| {
+                            Duration::from_secs(ctime.elapsed().ok().unwrap_or_default().as_secs())
+                        })
+                        .unwrap_or_default();
+                    let session_name = folder_name
+                        .file_name()
+                        .map(|f| std::path::PathBuf::from(f).display().to_string())?;
+                    Some((session_name, elapsed_duration, layout))
+                })
+                .collect()
+        },
+        Err(e) => {
+            log::error!(
+                "Failed to read session_info cache folder: \"{:?}\": {:?}",
+                &*ZELLIJ_SESSION_INFO_CACHE_DIR,
+                e
+            );
+            vec![]
+        },
     }
 }
 
@@ -70,16 +146,39 @@ fn assert_socket(name: &str) -> bool {
     }
 }
 
-pub(crate) fn print_sessions(sessions: Vec<String>) {
+pub(crate) fn print_sessions(mut sessions: Vec<(String, Duration, bool)>, no_formatting: bool) {
+    // (session_name, timestamp, is_dead)
     let curr_session = envs::get_session_name().unwrap_or_else(|_| "".into());
-    sessions.iter().for_each(|session| {
-        let suffix = if curr_session == *session {
-            " (current)"
-        } else {
-            ""
-        };
-        println!("{}{}", session, suffix);
-    })
+    sessions.sort_by(|a, b| a.1.cmp(&b.1));
+    sessions
+        .iter()
+        .for_each(|(session_name, timestamp, is_dead)| {
+            if no_formatting {
+                let suffix = if curr_session == *session_name {
+                    format!("(current)")
+                } else if *is_dead {
+                    format!("(EXITED - attach to resurrect)")
+                } else {
+                    String::new()
+                };
+                let timestamp = format!("[Created {} ago]", format_duration(*timestamp));
+                println!("{} {} {}", session_name, timestamp, suffix);
+            } else {
+                let formatted_session_name = format!("\u{1b}[32;1m{}\u{1b}[m", session_name);
+                let suffix = if curr_session == *session_name {
+                    format!("(current)")
+                } else if *is_dead {
+                    format!("(\u{1b}[31;1mEXITED\u{1b}[m - attach to resurrect)")
+                } else {
+                    String::new()
+                };
+                let timestamp = format!(
+                    "[Created \u{1b}[35;1m{}\u{1b}[m ago]",
+                    format_duration(*timestamp)
+                );
+                println!("{} {} {}", formatted_session_name, timestamp, suffix);
+            }
+        })
 }
 
 pub(crate) fn print_sessions_with_index(sessions: Vec<String>) {
@@ -103,7 +202,7 @@ pub(crate) enum ActiveSession {
 pub(crate) fn get_active_session() -> ActiveSession {
     match get_sessions() {
         Ok(sessions) if sessions.is_empty() => ActiveSession::None,
-        Ok(mut sessions) if sessions.len() == 1 => ActiveSession::One(sessions.pop().unwrap()),
+        Ok(mut sessions) if sessions.len() == 1 => ActiveSession::One(sessions.pop().unwrap().0),
         Ok(_) => ActiveSession::Many,
         Err(e) => {
             eprintln!("Error occurred: {:?}", e);
@@ -125,15 +224,53 @@ pub(crate) fn kill_session(name: &str) {
     };
 }
 
-pub(crate) fn list_sessions() {
+pub(crate) fn delete_session(name: &str, force: bool) {
+    if force {
+        let path = &*ZELLIJ_SOCK_DIR.join(name);
+        let _ = LocalSocketStream::connect(path).map(|stream| {
+            IpcSenderWithContext::new(stream)
+                .send(ClientToServerMsg::KillSession)
+                .ok();
+        });
+    }
+    if let Err(e) = std::fs::remove_dir_all(session_info_folder_for_session(name)) {
+        if e.kind() == std::io::ErrorKind::NotFound {
+            eprintln!("Session: {:?} not found.", name);
+            process::exit(2);
+        } else {
+            log::error!("Failed to remove session {:?}: {:?}", name, e);
+        }
+    } else {
+        println!("Session: {:?} successfully deleted.", name);
+    }
+}
+
+pub(crate) fn list_sessions(no_formatting: bool) {
     let exit_code = match get_sessions() {
-        Ok(sessions) if !sessions.is_empty() => {
-            print_sessions(sessions);
-            0
-        },
-        Ok(_) => {
-            eprintln!("No active zellij sessions found.");
-            1
+        Ok(running_sessions) => {
+            let resurrectable_sessions = get_resurrectable_sessions();
+            let mut all_sessions: HashMap<String, (Duration, bool)> = resurrectable_sessions
+                .iter()
+                .map(|(name, timestamp, _layout)| (name.clone(), (timestamp.clone(), true)))
+                .collect();
+            for (session_name, duration) in running_sessions {
+                all_sessions.insert(session_name.clone(), (duration, false));
+            }
+            if all_sessions.is_empty() {
+                eprintln!("No active zellij sessions found.");
+                1
+            } else {
+                print_sessions(
+                    all_sessions
+                        .iter()
+                        .map(|(name, (timestamp, is_dead))| {
+                            (name.clone(), timestamp.clone(), *is_dead)
+                        })
+                        .collect(),
+                    no_formatting,
+                );
+                0
+            }
         },
         Err(e) => {
             eprintln!("Error occurred: {:?}", e);
@@ -154,19 +291,22 @@ pub enum SessionNameMatch {
 pub(crate) fn match_session_name(prefix: &str) -> Result<SessionNameMatch, io::ErrorKind> {
     let sessions = get_sessions()?;
 
-    let filtered_sessions: Vec<_> = sessions.iter().filter(|s| s.starts_with(prefix)).collect();
+    let filtered_sessions: Vec<_> = sessions
+        .iter()
+        .filter(|s| s.0.starts_with(prefix))
+        .collect();
 
-    if filtered_sessions.iter().any(|s| *s == prefix) {
+    if filtered_sessions.iter().any(|s| s.0 == prefix) {
         return Ok(SessionNameMatch::Exact(prefix.to_string()));
     }
 
     Ok({
         match &filtered_sessions[..] {
             [] => SessionNameMatch::None,
-            [s] => SessionNameMatch::UniquePrefix(s.to_string()),
-            _ => {
-                SessionNameMatch::AmbiguousPrefix(filtered_sessions.into_iter().cloned().collect())
-            },
+            [s] => SessionNameMatch::UniquePrefix(s.0.to_string()),
+            _ => SessionNameMatch::AmbiguousPrefix(
+                filtered_sessions.into_iter().map(|s| s.0.clone()).collect(),
+            ),
         }
     })
 }
@@ -179,6 +319,20 @@ pub(crate) fn session_exists(name: &str) -> Result<bool, io::ErrorKind> {
     }
 }
 
+// if the session is resurrecable, the returned layout is the one to be used to resurrect it
+pub(crate) fn resurrection_layout(session_name_to_resurrect: &str) -> Option<Layout> {
+    let resurrectable_sessions = get_resurrectable_sessions();
+    resurrectable_sessions
+        .iter()
+        .find_map(|(name, _timestamp, layout)| {
+            if name == session_name_to_resurrect {
+                Some(layout.clone())
+            } else {
+                None
+            }
+        })
+}
+
 pub(crate) fn assert_session(name: &str) {
     match session_exists(name) {
         Ok(result) => {
@@ -186,9 +340,37 @@ pub(crate) fn assert_session(name: &str) {
                 return;
             } else {
                 println!("No session named {:?} found.", name);
-                if let Some(sugg) = get_sessions().unwrap().suggest(name) {
+                if let Some(sugg) = get_sessions()
+                    .unwrap()
+                    .iter()
+                    .map(|s| s.0.clone())
+                    .collect::<Vec<_>>()
+                    .suggest(name)
+                {
                     println!("  help: Did you mean `{}`?", sugg);
                 }
+            }
+        },
+        Err(e) => {
+            eprintln!("Error occurred: {:?}", e);
+        },
+    };
+    process::exit(1);
+}
+
+pub(crate) fn assert_dead_session(name: &str, force: bool) {
+    match session_exists(name) {
+        Ok(exists) => {
+            if exists && !force {
+                println!(
+                    "A session by the name {:?} exists and is active, use --force to delete it.",
+                    name
+                )
+            } else if exists && force {
+                println!("A session by the name {:?} exists and is active, but will be force killed and deleted.", name);
+                return;
+            } else {
+                return;
             }
         },
         Err(e) => {
@@ -213,7 +395,14 @@ pub(crate) fn assert_session_ne(name: &str) {
     }
 
     match session_exists(name) {
-        Ok(result) if !result => return,
+        Ok(result) if !result => {
+            let resurrectable_sessions = get_resurrectable_sessions();
+            if resurrectable_sessions.iter().find(|(s, _, _)| s == name).is_some() {
+                println!("Session with name {:?} already exists, but is dead. Use the attach command to resurrect it or, the delete-session command to kill it or specify a different name.", name);
+            } else {
+                return
+            }
+        }
         Ok(_) => println!("Session with name {:?} already exists. Use attach command to connect to it or specify a different name.", name),
         Err(e) => eprintln!("Error occurred: {:?}", e),
     };

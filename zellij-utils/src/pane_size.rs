@@ -1,6 +1,10 @@
 use serde::{Deserialize, Serialize};
-use std::hash::{Hash, Hasher};
+use std::{
+    fmt::Display,
+    hash::{Hash, Hasher},
+};
 
+use crate::input::layout::SplitDirection;
 use crate::position::Position;
 
 /// Contains the position and size of a [`Pane`], or more generally of any terminal, measured
@@ -51,7 +55,7 @@ pub struct SizeInPixels {
 #[derive(Eq, Clone, Copy, PartialEq, Debug, Serialize, Deserialize, Hash)]
 pub struct Dimension {
     pub constraint: Constraint,
-    inner: usize,
+    pub(crate) inner: usize,
 }
 
 impl Default for Dimension {
@@ -106,7 +110,6 @@ impl Dimension {
                 let leftover = rounded - new_inner;
                 self.set_inner(rounded as usize);
                 leftover
-                // self.set_inner(((percent / 100.0) * full_size as f64).round() as usize);
             },
             Constraint::Fixed(fixed_size) => {
                 self.set_inner(fixed_size);
@@ -137,6 +140,17 @@ pub enum Constraint {
     Percent(f64),
 }
 
+impl Display for Constraint {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let actual = match self {
+            Constraint::Fixed(v) => *v as f64,
+            Constraint::Percent(v) => *v,
+        };
+        write!(f, "{}", actual)?;
+        Ok(())
+    }
+}
+
 #[allow(clippy::derive_hash_xor_eq)]
 impl Hash for Constraint {
     fn hash<H: Hasher>(&self, state: &mut H) {
@@ -160,6 +174,26 @@ impl PaneGeom {
     }
     pub fn is_at_least_minimum_size(&self) -> bool {
         self.rows.as_usize() > 0 && self.cols.as_usize() > 0
+    }
+    pub fn is_flexible_in_direction(&self, split_direction: SplitDirection) -> bool {
+        match split_direction {
+            SplitDirection::Vertical => self.cols.is_percent(),
+            SplitDirection::Horizontal => self.rows.is_percent(),
+        }
+    }
+}
+
+impl Display for PaneGeom {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{{ ")?;
+        write!(f, r#""x": {},"#, self.x)?;
+        write!(f, r#""y": {},"#, self.y)?;
+        write!(f, r#""cols": {},"#, self.cols.constraint)?;
+        write!(f, r#""rows": {},"#, self.rows.constraint)?;
+        write!(f, r#""stacked": {}"#, self.is_stacked)?;
+        write!(f, " }}")?;
+
+        Ok(())
     }
 }
 

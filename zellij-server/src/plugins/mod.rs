@@ -16,6 +16,7 @@ use wasmer::Store;
 
 use crate::panes::PaneId;
 use crate::screen::ScreenInstruction;
+use crate::session_layout_metadata::SessionLayoutMetadata;
 use crate::{pty::PtyInstruction, thread_bus::Bus, ClientId, ServerInstruction};
 
 use wasm_bridge::WasmBridge;
@@ -95,6 +96,8 @@ pub enum PluginInstruction {
         PermissionStatus,
         Option<PathBuf>,
     ),
+    DumpLayout(SessionLayoutMetadata, ClientId),
+    LogLayoutToHd(SessionLayoutMetadata),
     Exit,
 }
 
@@ -124,6 +127,8 @@ impl From<&PluginInstruction> for PluginContext {
             PluginInstruction::PermissionRequestResult(..) => {
                 PluginContext::PermissionRequestResult
             },
+            PluginInstruction::DumpLayout(..) => PluginContext::DumpLayout,
+            PluginInstruction::LogLayoutToHd(..) => PluginContext::LogLayoutToHd,
         }
     }
 }
@@ -356,6 +361,20 @@ pub(crate) fn plugin_thread_main(
                 )];
                 wasm_bridge.update_plugins(updates, shutdown_send.clone())?;
             },
+            PluginInstruction::DumpLayout(mut session_layout_metadata, client_id) => {
+                populate_session_layout_metadata(&mut session_layout_metadata, &wasm_bridge);
+                drop(bus.senders.send_to_pty(PtyInstruction::DumpLayout(
+                    session_layout_metadata,
+                    client_id,
+                )));
+            },
+            PluginInstruction::LogLayoutToHd(mut session_layout_metadata) => {
+                populate_session_layout_metadata(&mut session_layout_metadata, &wasm_bridge);
+                drop(
+                    bus.senders
+                        .send_to_pty(PtyInstruction::LogLayoutToHd(session_layout_metadata)),
+                );
+            },
             PluginInstruction::Exit => {
                 break;
             },
@@ -386,6 +405,24 @@ pub(crate) fn plugin_thread_main(
             }
         })
         .context("failed to cleanup plugin data directory")
+}
+
+fn populate_session_layout_metadata(
+    session_layout_metadata: &mut SessionLayoutMetadata,
+    wasm_bridge: &WasmBridge,
+) {
+    let plugin_ids = session_layout_metadata.all_plugin_ids();
+    let mut plugin_ids_to_cmds: HashMap<u32, RunPlugin> = HashMap::new();
+    for plugin_id in plugin_ids {
+        let plugin_cmd = wasm_bridge.run_plugin_of_plugin_id(plugin_id);
+        match plugin_cmd {
+            Some(plugin_cmd) => {
+                plugin_ids_to_cmds.insert(plugin_id, plugin_cmd.clone());
+            },
+            None => log::error!("Plugin with id: {plugin_id} not found"),
+        }
+    }
+    session_layout_metadata.update_plugin_cmds(plugin_ids_to_cmds);
 }
 
 const EXIT_TIMEOUT: Duration = Duration::from_secs(3);

@@ -15,7 +15,7 @@ use zellij_utils::{
     data::EventType,
     data::PluginCapabilities,
     input::command::TerminalAction,
-    input::layout::{Layout, RunPluginLocation},
+    input::layout::{Layout, RunPlugin, RunPluginLocation},
     input::plugins::PluginConfig,
     ipc::ClientAttributes,
 };
@@ -184,6 +184,28 @@ impl PluginMap {
             (plugin_id, client_id),
             (running_plugin, subscriptions, running_workers),
         );
+    }
+    pub fn run_plugin_of_plugin_id(&self, plugin_id: PluginId) -> Option<RunPlugin> {
+        self.plugin_assets
+            .iter()
+            .find_map(|((p_id, _), (running_plugin, _, _))| {
+                if *p_id == plugin_id {
+                    let running_plugin = running_plugin.lock().unwrap();
+                    let run_plugin_location = running_plugin.plugin_env.plugin.location.clone();
+                    let run_plugin_configuration = running_plugin
+                        .plugin_env
+                        .plugin
+                        .userspace_configuration
+                        .clone();
+                    Some(RunPlugin {
+                        _allow_exec_host_cmd: false,
+                        location: run_plugin_location,
+                        configuration: run_plugin_configuration,
+                    })
+                } else {
+                    None
+                }
+            })
     }
 }
 

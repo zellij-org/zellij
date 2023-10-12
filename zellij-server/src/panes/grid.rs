@@ -1034,6 +1034,28 @@ impl Grid {
 
         (changed_character_chunks, changed_sixel_image_chunks)
     }
+    pub fn serialize(&self, scrollback_lines_to_serialize: Option<usize>) -> Option<String> {
+        match scrollback_lines_to_serialize {
+            Some(scrollback_lines_to_serialize) => {
+                let first_index = if scrollback_lines_to_serialize == 0 {
+                    0
+                } else {
+                    self.lines_above
+                        .len()
+                        .saturating_sub(scrollback_lines_to_serialize)
+                };
+                let mut to_serialize = vec![];
+                for line in self.lines_above.iter().skip(first_index) {
+                    to_serialize.push(line.clone());
+                }
+                for line in &self.viewport {
+                    to_serialize.push(line.clone())
+                }
+                self.output_buffer.serialize(to_serialize.as_slice()).ok()
+            },
+            None => self.output_buffer.serialize(&self.viewport).ok(),
+        }
+    }
     pub fn render(
         &mut self,
         content_x: usize,

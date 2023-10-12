@@ -992,6 +992,125 @@ pub fn detach_and_attach_session() {
 
 #[test]
 #[ignore]
+pub fn quit_and_resurrect_session() {
+    let fake_win_size = Size {
+        cols: 120,
+        rows: 24,
+    };
+    let mut test_attempts = 10;
+    let layout_name = "layout_for_resurrection.kdl";
+    let last_snapshot = loop {
+        RemoteRunner::kill_running_sessions(fake_win_size);
+        let mut runner = RemoteRunner::new_mirrored_session_with_layout(fake_win_size, layout_name)
+            .add_step(Step {
+                name: "Wait for session to be serialized",
+                instruction: |mut remote_terminal: RemoteTerminal| -> bool {
+                    let mut step_is_complete = false;
+                    if remote_terminal.snapshot_contains("Waiting to run: top") {
+                        std::thread::sleep(std::time::Duration::from_millis(5000)); // wait for
+                                                                                    // serialization
+                        remote_terminal.send_key(&QUIT);
+                        step_is_complete = true;
+                    }
+                    step_is_complete
+                },
+            })
+            .add_step(Step {
+                name: "Resurrect session by attaching",
+                instruction: |mut remote_terminal: RemoteTerminal| -> bool {
+                    let mut step_is_complete = false;
+                    if remote_terminal.snapshot_contains("Bye from Zellij!") {
+                        remote_terminal.attach_to_original_session();
+                        step_is_complete = true;
+                    }
+                    step_is_complete
+                },
+            });
+        runner.run_all_steps();
+        let last_snapshot = runner.take_snapshot_after(Step {
+            name: "Wait for session to be resurrected",
+            instruction: |remote_terminal: RemoteTerminal| -> bool {
+                let mut step_is_complete = false;
+                if remote_terminal.snapshot_contains("(FLOATING PANES VISIBLE)") {
+                    step_is_complete = true;
+                }
+                step_is_complete
+            },
+        });
+        if runner.test_timed_out && test_attempts > 0 {
+            test_attempts -= 1;
+            continue;
+        } else {
+            break last_snapshot;
+        }
+    };
+    let last_snapshot = account_for_races_in_snapshot(last_snapshot);
+    assert_snapshot!(last_snapshot);
+}
+
+#[test]
+#[ignore]
+pub fn quit_and_resurrect_session_with_viewport_serialization() {
+    let fake_win_size = Size {
+        cols: 120,
+        rows: 24,
+    };
+    let mut test_attempts = 10;
+    let layout_name = "layout_for_resurrection.kdl";
+    let last_snapshot = loop {
+        RemoteRunner::kill_running_sessions(fake_win_size);
+        let mut runner = RemoteRunner::new_mirrored_session_with_layout_and_viewport_serialization(
+            fake_win_size,
+            layout_name,
+        )
+        .add_step(Step {
+            name: "Wait for session to be serialized",
+            instruction: |mut remote_terminal: RemoteTerminal| -> bool {
+                let mut step_is_complete = false;
+                if remote_terminal.snapshot_contains("Waiting to run: top") {
+                    std::thread::sleep(std::time::Duration::from_millis(5000)); // wait for
+                                                                                // serialization
+                    remote_terminal.send_key(&QUIT);
+                    step_is_complete = true;
+                }
+                step_is_complete
+            },
+        })
+        .add_step(Step {
+            name: "Resurrect session by attaching",
+            instruction: |mut remote_terminal: RemoteTerminal| -> bool {
+                let mut step_is_complete = false;
+                if remote_terminal.snapshot_contains("Bye from Zellij!") {
+                    remote_terminal.attach_to_original_session();
+                    step_is_complete = true;
+                }
+                step_is_complete
+            },
+        });
+        runner.run_all_steps();
+        let last_snapshot = runner.take_snapshot_after(Step {
+            name: "Wait for session to be resurrected",
+            instruction: |remote_terminal: RemoteTerminal| -> bool {
+                let mut step_is_complete = false;
+                if remote_terminal.snapshot_contains("(FLOATING PANES VISIBLE)") {
+                    step_is_complete = true;
+                }
+                step_is_complete
+            },
+        });
+        if runner.test_timed_out && test_attempts > 0 {
+            test_attempts -= 1;
+            continue;
+        } else {
+            break last_snapshot;
+        }
+    };
+    let last_snapshot = account_for_races_in_snapshot(last_snapshot);
+    assert_snapshot!(last_snapshot);
+}
+
+#[test]
+#[ignore]
 pub fn status_bar_loads_custom_keybindings() {
     let fake_win_size = Size {
         cols: 120,

@@ -173,6 +173,15 @@ pub(crate) fn route_action(
                 .send_to_screen(ScreenInstruction::DumpScreen(val, client_id, full))
                 .with_context(err_context)?;
         },
+        Action::DumpLayout => {
+            let default_shell = match default_shell {
+                Some(TerminalAction::RunCommand(run_command)) => Some(run_command.command),
+                _ => None,
+            };
+            senders
+                .send_to_screen(ScreenInstruction::DumpLayout(default_shell, client_id))
+                .with_context(err_context)?;
+        },
         Action::EditScrollback => {
             senders
                 .send_to_screen(ScreenInstruction::EditScrollback(client_id))

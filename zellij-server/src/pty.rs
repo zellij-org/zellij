@@ -1,8 +1,10 @@
+use crate::background_jobs::BackgroundJob;
 use crate::terminal_bytes::TerminalBytes;
 use crate::{
     panes::PaneId,
     plugins::PluginInstruction,
     screen::ScreenInstruction,
+    session_layout_metadata::SessionLayoutMetadata,
     thread_bus::{Bus, ThreadSenders},
     ClientId, ServerInstruction,
 };
@@ -20,6 +22,7 @@ use zellij_utils::{
             TiledPaneLayout,
         },
     },
+    session_serialization,
 };
 
 pub type VteBytes = Vec<u8>;
@@ -68,6 +71,8 @@ pub enum PtyInstruction {
         Option<String>,
         ClientTabIndexOrPaneId,
     ), // String is an optional pane name
+    DumpLayout(SessionLayoutMetadata, ClientId),
+    LogLayoutToHd(SessionLayoutMetadata),
     Exit,
 }
 
@@ -85,6 +90,8 @@ impl From<&PtyInstruction> for PtyContext {
             PtyInstruction::NewTab(..) => PtyContext::NewTab,
             PtyInstruction::ReRunCommandInPane(..) => PtyContext::ReRunCommandInPane,
             PtyInstruction::SpawnInPlaceTerminal(..) => PtyContext::SpawnInPlaceTerminal,
+            PtyInstruction::DumpLayout(..) => PtyContext::DumpLayout,
+            PtyInstruction::LogLayoutToHd(..) => PtyContext::LogLayoutToHd,
             PtyInstruction::Exit => PtyContext::Exit,
         }
     }
@@ -121,12 +128,26 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     ),
                     _ => (false, None, name),
                 };
+                let invoked_with =
+                    match &terminal_action {
+                        Some(TerminalAction::RunCommand(run_command)) => {
+                            Some(Run::Command(run_command.clone()))
+                        },
+                        Some(TerminalAction::OpenFile(file, line_number, cwd)) => Some(
+                            Run::EditFile(file.clone(), line_number.clone(), cwd.clone()),
+                        ),
+                        _ => None,
+                    };
                 match pty
                     .spawn_terminal(terminal_action, client_or_tab_index)
                     .with_context(err_context)
                 {
                     Ok((pid, starts_held)) => {
-                        let hold_for_command = if starts_held { run_command } else { None };
+                        let hold_for_command = if starts_held {
+                            run_command.clone()
+                        } else {
+                            None
+                        };
                         pty.bus
                             .senders
                             .send_to_screen(ScreenInstruction::NewPane(
@@ -134,6 +155,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                                 pane_title,
                                 should_float,
                                 hold_for_command,
+                                invoked_with,
                                 client_or_tab_index,
                             ))
                             .with_context(err_context)?;
@@ -149,6 +171,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                                         pane_title,
                                         should_float,
                                         hold_for_command,
+                                        invoked_with,
                                         client_or_tab_index,
                                     ))
                                     .with_context(err_context)?;
@@ -190,6 +213,16 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     ),
                     _ => (false, None, name),
                 };
+                let invoked_with =
+                    match &terminal_action {
+                        Some(TerminalAction::RunCommand(run_command)) => {
+                            Some(Run::Command(run_command.clone()))
+                        },
+                        Some(TerminalAction::OpenFile(file, line_number, cwd)) => Some(
+                            Run::EditFile(file.clone(), line_number.clone(), cwd.clone()),
+                        ),
+                        _ => None,
+                    };
                 match pty
                     .spawn_terminal(terminal_action, client_id_tab_index_or_pane_id)
                     .with_context(err_context)
@@ -202,6 +235,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                                 PaneId::Terminal(pid),
                                 hold_for_command,
                                 pane_title,
+                                invoked_with,
                                 client_id_tab_index_or_pane_id,
                             ))
                             .with_context(err_context)?;
@@ -216,6 +250,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                                         PaneId::Terminal(*terminal_id),
                                         hold_for_command,
                                         pane_title,
+                                        invoked_with,
                                         client_id_tab_index_or_pane_id,
                                     ))
                                     .with_context(err_context)?;
@@ -496,6 +531,27 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                         _ => Err::<(), _>(err).non_fatal(),
                     },
                 }
+            },
+            PtyInstruction::DumpLayout(mut session_layout_metadata, client_id) => {
+                let err_context = || format!("Failed to dump layout");
+                pty.populate_session_layout_metadata(&mut session_layout_metadata);
+                let (kdl_layout, _pane_contents) =
+                    session_serialization::serialize_session_layout(session_layout_metadata.into());
+                pty.bus
+                    .senders
+                    .send_to_server(ServerInstruction::Log(vec![kdl_layout], client_id))
+                    .with_context(err_context)
+                    .non_fatal();
+            },
+            PtyInstruction::LogLayoutToHd(mut session_layout_metadata) => {
+                let err_context = || format!("Failed to dump layout");
+                pty.populate_session_layout_metadata(&mut session_layout_metadata);
+                let kdl_layout =
+                    session_serialization::serialize_session_layout(session_layout_metadata.into());
+                pty.bus
+                    .senders
+                    .send_to_background_jobs(BackgroundJob::ReportLayoutInfo(kdl_layout))
+                    .with_context(err_context)?;
             },
             PtyInstruction::Exit => break,
         }
@@ -1104,6 +1160,51 @@ impl Pty {
             },
             _ => Err(anyhow!("cannot respawn plugin panes")).with_context(err_context),
         }
+    }
+    pub fn populate_session_layout_metadata(
+        &self,
+        session_layout_metadata: &mut SessionLayoutMetadata,
+    ) {
+        let terminal_ids = session_layout_metadata.all_terminal_ids();
+        let mut terminal_ids_to_commands: HashMap<u32, Vec<String>> = HashMap::new();
+        let mut terminal_ids_to_cwds: HashMap<u32, PathBuf> = HashMap::new();
+
+        let pids: Vec<_> = terminal_ids
+            .iter()
+            .filter_map(|id| self.id_to_child_pid.get(&id))
+            .map(|pid| Pid::from_raw(*pid))
+            .collect();
+        let pids_to_cwds = self
+            .bus
+            .os_input
+            .as_ref()
+            .map(|os_input| os_input.get_cwds(pids))
+            .unwrap_or_default();
+        let ppids_to_cmds = self
+            .bus
+            .os_input
+            .as_ref()
+            .map(|os_input| os_input.get_all_cmds_by_ppid())
+            .unwrap_or_default();
+
+        for terminal_id in terminal_ids {
+            let process_id = self.id_to_child_pid.get(&terminal_id);
+            let cwd = process_id
+                .as_ref()
+                .and_then(|pid| pids_to_cwds.get(&Pid::from_raw(**pid)));
+            let cmd = process_id
+                .as_ref()
+                .and_then(|pid| ppids_to_cmds.get(&format!("{}", pid)));
+            if let Some(cmd) = cmd {
+                terminal_ids_to_commands.insert(terminal_id, cmd.clone());
+            }
+            if let Some(cwd) = cwd {
+                terminal_ids_to_cwds.insert(terminal_id, cwd.clone());
+            }
+        }
+        session_layout_metadata.update_default_shell(get_default_shell());
+        session_layout_metadata.update_terminal_commands(terminal_ids_to_commands);
+        session_layout_metadata.update_terminal_cwds(terminal_ids_to_cwds);
     }
 }
 

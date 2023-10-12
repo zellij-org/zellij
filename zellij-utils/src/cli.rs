@@ -98,7 +98,11 @@ pub enum SessionCommand {
 pub enum Sessions {
     /// List active sessions
     #[clap(visible_alias = "ls")]
-    ListSessions,
+    ListSessions {
+        /// Do not add colors and formatting to the list (useful for parsing)
+        #[clap(short, long, value_parser, takes_value(false), default_value("false"))]
+        no_formatting: bool,
+    },
 
     /// Attach to a session
     #[clap(visible_alias = "a")]
@@ -118,14 +122,29 @@ pub enum Sessions {
         /// Change the behaviour of zellij
         #[clap(subcommand, name = "options")]
         options: Option<Box<SessionCommand>>,
+
+        /// If resurrecting a dead session, immediately run all its commands on startup
+        #[clap(short, long, value_parser, takes_value(false), default_value("false"))]
+        force_run_commands: bool,
     },
 
-    /// Kill the specific session
+    /// Kill a specific session
     #[clap(visible_alias = "k")]
     KillSession {
         /// Name of target session
         #[clap(value_parser)]
         target_session: Option<String>,
+    },
+
+    /// Delete a specific session
+    #[clap(visible_alias = "d")]
+    DeleteSession {
+        /// Name of target session
+        #[clap(value_parser)]
+        target_session: Option<String>,
+        /// Kill the session if it's running before deleting it
+        #[clap(short, long, value_parser, takes_value(false), default_value("false"))]
+        force: bool,
     },
 
     /// Kill all sessions
@@ -135,6 +154,18 @@ pub enum Sessions {
         #[clap(short, long, value_parser)]
         yes: bool,
     },
+
+    /// Delete all sessions
+    #[clap(visible_alias = "da")]
+    DeleteAllSessions {
+        /// Automatic yes to prompts
+        #[clap(short, long, value_parser)]
+        yes: bool,
+        /// Kill the sessions if they're running before deleting them
+        #[clap(short, long, value_parser, takes_value(false), default_value("false"))]
+        force: bool,
+    },
+
     /// Send actions to a specific session
     #[clap(visible_alias = "ac")]
     #[clap(subcommand)]
@@ -271,6 +302,8 @@ pub enum CliAction {
         #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
         full: bool,
     },
+    /// Dump current layout to stdout
+    DumpLayout,
     /// Open the pane scrollback in your default editor
     EditScrollback,
     /// Scroll up in the focused pane

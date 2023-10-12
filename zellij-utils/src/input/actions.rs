@@ -8,9 +8,9 @@ use super::layout::{
 use crate::cli::CliAction;
 use crate::data::InputMode;
 use crate::data::{Direction, Resize};
+use crate::home::{find_default_config_dir, get_layout_dir};
 use crate::input::config::{Config, ConfigError, KdlError};
 use crate::input::options::OnForceClose;
-use crate::setup::{find_default_config_dir, get_layout_dir};
 use miette::{NamedSource, Report};
 use serde::{Deserialize, Serialize};
 
@@ -124,6 +124,8 @@ pub enum Action {
     ClearScreen,
     /// Dumps the screen to a file
     DumpScreen(String, bool),
+    /// Dumps
+    DumpLayout,
     /// Scroll up in focus pane.
     EditScrollback,
     ScrollUp,
@@ -280,6 +282,7 @@ impl Action {
                 path.as_os_str().to_string_lossy().into(),
                 full,
             )]),
+            CliAction::DumpLayout => Ok(vec![Action::DumpLayout]),
             CliAction::EditScrollback => Ok(vec![Action::EditScrollback]),
             CliAction::ScrollUp => Ok(vec![Action::ScrollUp]),
             CliAction::ScrollDown => Ok(vec![Action::ScrollDown]),

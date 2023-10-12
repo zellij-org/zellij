@@ -117,6 +117,7 @@ fn spawn_server(socket_path: &Path, debug: bool) -> io::Result<()> {
 pub enum ClientInfo {
     Attach(String, Options),
     New(String),
+    Resurrect(String, Layout),
 }
 
 impl ClientInfo {
@@ -124,6 +125,7 @@ impl ClientInfo {
         match self {
             Self::Attach(ref name, _) => name,
             Self::New(ref name) => name,
+            Self::Resurrect(ref name, _) => name,
         }
     }
 }
@@ -212,7 +214,7 @@ pub fn start_client(
                 ipc_pipe,
             )
         },
-        ClientInfo::New(name) => {
+        ClientInfo::New(name) | ClientInfo::Resurrect(name, _) => {
             envs::set_session_name(name.clone());
             os_input.update_session_name(name);
             let ipc_pipe = create_ipc_pipe();

@@ -1,10 +1,12 @@
 use dialoguer::Confirm;
-use std::{fs::File, io::prelude::*, path::PathBuf, process};
+use std::{fs::File, io::prelude::*, path::PathBuf, process, time::Duration};
 
 use crate::sessions::{
-    assert_session, assert_session_ne, get_active_session, get_name_generator, get_sessions,
+    assert_dead_session, assert_session, assert_session_ne, delete_session as delete_session_impl,
+    get_active_session, get_name_generator, get_resurrectable_sessions, get_sessions,
     get_sessions_sorted_by_mtime, kill_session as kill_session_impl, match_session_name,
-    print_sessions, print_sessions_with_index, session_exists, ActiveSession, SessionNameMatch,
+    print_sessions, print_sessions_with_index, resurrection_layout, session_exists, ActiveSession,
+    SessionNameMatch,
 };
 use zellij_client::{
     old_config_converter::{
@@ -49,7 +51,7 @@ pub(crate) fn kill_all_sessions(yes: bool) {
                 }
             }
             for session in &sessions {
-                kill_session_impl(session);
+                kill_session_impl(&session.0);
             }
             process::exit(0);
         },
@@ -58,6 +60,39 @@ pub(crate) fn kill_all_sessions(yes: bool) {
             process::exit(1);
         },
     }
+}
+
+pub(crate) fn delete_all_sessions(yes: bool, force: bool) {
+    let active_sessions: Vec<String> = get_sessions()
+        .unwrap_or_default()
+        .iter()
+        .map(|s| s.0.clone())
+        .collect();
+    let resurrectable_sessions = get_resurrectable_sessions();
+    let dead_sessions: Vec<_> = if force {
+        resurrectable_sessions
+    } else {
+        resurrectable_sessions
+            .iter()
+            .filter(|(name, _, _)| !active_sessions.contains(name))
+            .cloned()
+            .collect()
+    };
+    if !yes {
+        println!("WARNING: this action will delete all resurrectable sessions.");
+        if !Confirm::new()
+            .with_prompt("Do you want to continue?")
+            .interact()
+            .unwrap()
+        {
+            println!("Abort.");
+            process::exit(1);
+        }
+    }
+    for session in &dead_sessions {
+        delete_session_impl(&session.0, force);
+    }
+    process::exit(0);
 }
 
 pub(crate) fn kill_session(target_session: &Option<String>) {
@@ -69,6 +104,20 @@ pub(crate) fn kill_session(target_session: &Option<String>) {
         },
         None => {
             println!("Please specify the session name to kill.");
+            process::exit(1);
+        },
+    }
+}
+
+pub(crate) fn delete_session(target_session: &Option<String>, force: bool) {
+    match target_session {
+        Some(target_session) => {
+            assert_dead_session(target_session, force);
+            delete_session_impl(target_session, force);
+            process::exit(0);
+        },
+        None => {
+            println!("Please specify the session name to delete.");
             process::exit(1);
         },
     }
@@ -117,6 +166,9 @@ fn find_indexed_session(
     }
 }
 
+/// Client entrypoint for all [`zellij_utils::cli::CliAction`]
+///
+/// Checks session to send the action to and attaches with client
 pub(crate) fn send_action_to_session(
     cli_action: zellij_utils::cli::CliAction,
     requested_session_name: Option<String>,
@@ -141,7 +193,11 @@ pub(crate) fn send_action_to_session(
             attach_with_cli_client(cli_action, &session_name, config);
         },
         ActiveSession::Many => {
-            let existing_sessions = get_sessions().unwrap();
+            let existing_sessions: Vec<String> = get_sessions()
+                .unwrap_or_default()
+                .iter()
+                .map(|s| s.0.clone())
+                .collect();
             if let Some(session_name) = requested_session_name {
                 if existing_sessions.contains(&session_name) {
                     attach_with_cli_client(cli_action, &session_name, config);
@@ -150,14 +206,14 @@ pub(crate) fn send_action_to_session(
                         "Session '{}' not found. The following sessions are active:",
                         session_name
                     );
-                    print_sessions(existing_sessions);
+                    list_sessions(false);
                     std::process::exit(1);
                 }
             } else if let Ok(session_name) = envs::get_session_name() {
                 attach_with_cli_client(cli_action, &session_name, config);
             } else {
                 eprintln!("Please specify the session name to send actions to. The following sessions are active:");
-                print_sessions(existing_sessions);
+                list_sessions(false);
                 std::process::exit(1);
             }
         },
@@ -293,7 +349,13 @@ fn attach_with_session_name(
                     "Ambiguous selection: multiple sessions names start with '{}':",
                     prefix
                 );
-                print_sessions(sessions);
+                print_sessions(
+                    sessions
+                        .iter()
+                        .map(|s| (s.clone(), Duration::default(), false))
+                        .collect(),
+                    false,
+                );
                 process::exit(1);
             },
             SessionNameMatch::None => {
@@ -310,7 +372,7 @@ fn attach_with_session_name(
             ActiveSession::One(session_name) => ClientInfo::Attach(session_name, config_options),
             ActiveSession::Many => {
                 println!("Please specify the session to attach to, either by using the full name or a unique prefix.\nThe following sessions are active:");
-                print_sessions(get_sessions().unwrap());
+                list_sessions(false);
                 process::exit(1);
             },
         },
@@ -351,6 +413,7 @@ pub(crate) fn start_client(opts: CliArgs) {
                 opts.command = Some(Command::Sessions(Sessions::Attach {
                     session_name: reconnect_to_session.name.clone(),
                     create: true,
+                    force_run_commands: false,
                     index: None,
                     options: None,
                 }));
@@ -369,6 +432,7 @@ pub(crate) fn start_client(opts: CliArgs) {
         if let Some(Command::Sessions(Sessions::Attach {
             session_name,
             create,
+            force_run_commands,
             index,
             options,
         })) = opts.command.clone()
@@ -387,10 +451,20 @@ pub(crate) fn start_client(opts: CliArgs) {
                     .as_ref()
                     .and_then(|s| session_exists(&s).ok())
                     .unwrap_or(false);
-                if create && !session_exists {
+                let resurrection_layout =
+                    session_name.as_ref().and_then(|s| resurrection_layout(&s));
+                if create && !session_exists && resurrection_layout.is_none() {
                     session_name.clone().map(start_client_plan);
                 }
-                attach_with_session_name(session_name, config_options.clone(), create)
+                match (session_name.as_ref(), resurrection_layout) {
+                    (Some(session_name), Some(mut resurrection_layout)) if !session_exists => {
+                        if force_run_commands {
+                            resurrection_layout.recursively_add_start_suspended(Some(false));
+                        }
+                        ClientInfo::Resurrect(session_name.clone(), resurrection_layout)
+                    },
+                    _ => attach_with_session_name(session_name, config_options.clone(), create),
+                }
             };
 
             if let Ok(val) = std::env::var(envs::SESSION_NAME_ENV_KEY) {
@@ -399,9 +473,12 @@ pub(crate) fn start_client(opts: CliArgs) {
                 }
             }
 
-            let attach_layout = match client {
+            let attach_layout = match &client {
                 ClientInfo::Attach(_, _) => None,
                 ClientInfo::New(_) => Some(layout),
+                ClientInfo::Resurrect(_session_name, layout_to_resurrect) => {
+                    Some(layout_to_resurrect.clone())
+                },
             };
 
             let tab_position_to_focus = reconnect_to_session
@@ -457,9 +534,12 @@ pub(crate) fn start_client(opts: CliArgs) {
                                 config_options.clone(),
                                 true,
                             );
-                            let attach_layout = match client {
+                            let attach_layout = match &client {
                                 ClientInfo::Attach(_, _) => None,
                                 ClientInfo::New(_) => Some(layout),
+                                ClientInfo::Resurrect(_, resurrection_layout) => {
+                                    Some(resurrection_layout.clone())
+                                },
                             };
                             reconnect_to_session = start_client_impl(
                                 Box::new(os_input),
@@ -518,7 +598,16 @@ pub(crate) fn start_client(opts: CliArgs) {
 }
 
 fn generate_unique_session_name() -> String {
-    let sessions = get_sessions();
+    let sessions = get_sessions().map(|sessions| {
+        sessions
+            .iter()
+            .map(|s| s.0.clone())
+            .collect::<Vec<String>>()
+    });
+    let dead_sessions: Vec<String> = get_resurrectable_sessions()
+        .iter()
+        .map(|(s, _, _)| s.clone())
+        .collect();
     let Ok(sessions) = sessions else {
         eprintln!("Failed to list existing sessions: {:?}", sessions);
         process::exit(1);
@@ -526,7 +615,7 @@ fn generate_unique_session_name() -> String {
 
     let name = get_name_generator()
         .take(1000)
-        .find(|name| !sessions.contains(name));
+        .find(|name| !sessions.contains(name) && !dead_sessions.contains(name));
 
     if let Some(name) = name {
         return name;

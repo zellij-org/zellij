@@ -101,8 +101,9 @@ impl<'a> LayoutApplier<'a> {
         mut new_plugin_ids: HashMap<(RunPluginLocation, PluginUserConfiguration), Vec<u32>>,
         client_id: ClientId,
     ) -> Result<bool> {
-        // true => layout has floating panes
+        // true => should_show_floating_panes
         let layout_name = layout.name.clone();
+        let hide_floating_panes = layout.hide_floating_panes;
         self.apply_tiled_panes_layout(layout, new_terminal_ids, &mut new_plugin_ids, client_id)?;
         let layout_has_floating_panes = self.apply_floating_panes_layout(
             floating_panes_layout,
@@ -110,7 +111,8 @@ impl<'a> LayoutApplier<'a> {
             &mut new_plugin_ids,
             layout_name,
         )?;
-        return Ok(layout_has_floating_panes);
+        let should_show_floating_panes = layout_has_floating_panes && !hide_floating_panes;
+        return Ok(should_show_floating_panes);
     }
     pub fn apply_tiled_panes_layout_to_existing_panes(
         &mut self,
@@ -255,6 +257,11 @@ impl<'a> LayoutApplier<'a> {
                             layout.run.clone(),
                             self.debug,
                         );
+                        if let Some(pane_initial_contents) = &layout.pane_initial_contents {
+                            new_plugin.handle_pty_bytes(pane_initial_contents.as_bytes().into());
+                            new_plugin.handle_pty_bytes("\n\r".as_bytes().into());
+                        }
+
                         new_plugin.set_borderless(layout.borderless);
                         if let Some(exclude_from_sync) = layout.exclude_from_sync {
                             new_plugin.set_exclude_from_sync(exclude_from_sync);
@@ -286,6 +293,10 @@ impl<'a> LayoutApplier<'a> {
                                 layout.run.clone(),
                                 self.debug,
                             );
+                            if let Some(pane_initial_contents) = &layout.pane_initial_contents {
+                                new_pane.handle_pty_bytes(pane_initial_contents.as_bytes().into());
+                                new_pane.handle_pty_bytes("\n\r".as_bytes().into());
+                            }
                             new_pane.set_borderless(layout.borderless);
                             if let Some(exclude_from_sync) = layout.exclude_from_sync {
                                 new_pane.set_exclude_from_sync(exclude_from_sync);
@@ -371,6 +382,10 @@ impl<'a> LayoutApplier<'a> {
                     floating_pane_layout.run.clone(),
                     self.debug,
                 );
+                if let Some(pane_initial_contents) = &floating_pane_layout.pane_initial_contents {
+                    new_pane.handle_pty_bytes(pane_initial_contents.as_bytes().into());
+                    new_pane.handle_pty_bytes("\n\r".as_bytes().into());
+                }
                 new_pane.set_borderless(false);
                 new_pane.set_content_offset(Offset::frame(1));
                 resize_pty!(
@@ -406,6 +421,10 @@ impl<'a> LayoutApplier<'a> {
                     floating_pane_layout.run.clone(),
                     self.debug,
                 );
+                if let Some(pane_initial_contents) = &floating_pane_layout.pane_initial_contents {
+                    new_pane.handle_pty_bytes(pane_initial_contents.as_bytes().into());
+                    new_pane.handle_pty_bytes("\n\r".as_bytes().into());
+                }
                 new_pane.set_borderless(false);
                 new_pane.set_content_offset(Offset::frame(1));
                 if let Some(held_command) = hold_for_command {

@@ -20,6 +20,18 @@ pub const SYSTEM_DEFAULT_DATA_DIR_PREFIX: &str = system_default_data_dir();
 
 pub static ZELLIJ_DEFAULT_THEMES: Dir = include_dir!("$CARGO_MANIFEST_DIR/assets/themes");
 
+pub fn session_info_cache_file_name(session_name: &str) -> PathBuf {
+    session_info_folder_for_session(session_name).join("session-metadata.kdl")
+}
+
+pub fn session_layout_cache_file_name(session_name: &str) -> PathBuf {
+    session_info_folder_for_session(session_name).join("session-layout.kdl")
+}
+
+pub fn session_info_folder_for_session(session_name: &str) -> PathBuf {
+    ZELLIJ_SESSION_INFO_CACHE_DIR.join(session_name)
+}
+
 const fn system_default_data_dir() -> &'static str {
     if let Some(data_dir) = std::option_env!("PREFIX") {
         data_dir

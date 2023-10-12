@@ -157,7 +157,7 @@ impl FloatingPanes {
 
         // move clients from the previously active pane to the new pane we just inserted
         self.move_clients_between_panes(pane_id, with_pane_id);
-        self.set_pane_frames();
+        let _ = self.set_pane_frames();
         removed_pane
     }
     pub fn remove_pane(&mut self, pane_id: PaneId) -> Option<Box<dyn Pane>> {
@@ -603,7 +603,7 @@ impl FloatingPanes {
     pub fn move_active_pane(
         &mut self,
         search_backwards: bool,
-        os_api: &mut Box<dyn ServerOsApi>,
+        _os_api: &mut Box<dyn ServerOsApi>,
         client_id: ClientId,
     ) {
         let active_pane_id = self.get_active_pane_id(client_id).unwrap();

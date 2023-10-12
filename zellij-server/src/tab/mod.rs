@@ -147,7 +147,7 @@ pub(crate) struct Tab {
     pub prev_name: String,
     tiled_panes: TiledPanes,
     floating_panes: FloatingPanes,
-    suppressed_panes: HashMap<PaneId, Box<dyn Pane>>,
+    suppressed_panes: HashMap<PaneId, (bool, Box<dyn Pane>)>, // bool => is scrollback editor
     max_panes: Option<usize>,
     viewport: Rc<RefCell<Viewport>>, // includes all non-UI panes
     display_area: Rc<RefCell<Size>>, // includes all panes (including eg. the status bar and tab bar in the default layout)
@@ -460,6 +460,7 @@ pub trait Pane {
     fn start_loading_indication(&mut self, _loading_indication: LoadingIndication) {} // only relevant for plugins
     fn progress_animation_offset(&mut self) {} // only relevant for plugins
     fn current_title(&self) -> String;
+    fn custom_title(&self) -> Option<String>;
     fn is_held(&self) -> bool {
         false
     }
@@ -470,6 +471,9 @@ pub trait Pane {
         None
     }
     fn rename(&mut self, _buf: Vec<u8>) {}
+    fn serialize(&self, _scrollback_lines_to_serialize: Option<usize>) -> Option<String> {
+        None
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -626,7 +630,7 @@ impl Tab {
     ) -> Result<()> {
         self.swap_layouts
             .set_base_layout((layout.clone(), floating_panes_layout.clone()));
-        let layout_has_floating_panes = LayoutApplier::new(
+        let should_show_floating_panes = LayoutApplier::new(
             &self.viewport,
             &self.senders,
             &self.sixel_image_store,
@@ -652,10 +656,11 @@ impl Tab {
             new_plugin_ids,
             client_id,
         )?;
-        if layout_has_floating_panes {
-            if !self.floating_panes.panes_are_visible() {
-                self.toggle_floating_panes(Some(client_id), None)?;
-            }
+        #[allow(clippy::if_same_then_else)]
+        if should_show_floating_panes && !self.floating_panes.panes_are_visible() {
+            self.toggle_floating_panes(Some(client_id), None)?;
+        } else if !should_show_floating_panes && self.floating_panes.panes_are_visible() {
+            self.toggle_floating_panes(Some(client_id), None)?;
         }
         self.tiled_panes.reapply_pane_frames();
         self.is_pending = false;
@@ -1015,7 +1020,7 @@ impl Tab {
         pid: PaneId,
         initial_pane_title: Option<String>,
         should_float: Option<bool>,
-        run_plugin: Option<Run>, // only relevant if this is a plugin pane
+        invoked_with: Option<Run>,
         client_id: Option<ClientId>,
     ) -> Result<()> {
         let err_context = || format!("failed to create new pane with id {pid:?}");
@@ -1041,7 +1046,7 @@ impl Tab {
                     self.terminal_emulator_colors.clone(),
                     self.terminal_emulator_color_codes.clone(),
                     initial_pane_title,
-                    None,
+                    invoked_with,
                     self.debug,
                 )) as Box<dyn Pane>
             },
@@ -1063,7 +1068,7 @@ impl Tab {
                     self.character_cell_size.clone(),
                     self.connected_clients.borrow().iter().copied().collect(),
                     self.style,
-                    run_plugin,
+                    invoked_with,
                     self.debug,
                 )) as Box<dyn Pane>
             },
@@ -1115,8 +1120,9 @@ impl Tab {
                 };
                 match replaced_pane {
                     Some(replaced_pane) => {
+                        let is_scrollback_editor = true;
                         self.suppressed_panes
-                            .insert(PaneId::Terminal(pid), replaced_pane);
+                            .insert(PaneId::Terminal(pid), (is_scrollback_editor, replaced_pane));
                         self.get_active_pane(client_id)
                             .with_context(|| format!("no active pane found for client {client_id}"))
                             .and_then(|current_active_pane| {
@@ -1148,7 +1154,7 @@ impl Tab {
         &mut self,
         old_pane_id: PaneId,
         new_pane_id: PaneId,
-        run_plugin: Option<Run>,
+        run: Option<Run>,
     ) -> Result<()> {
         // this method creates a new pane from pid and replaces it with the active pane
         // the active pane is then suppressed (hidden and not rendered) until the current
@@ -1158,7 +1164,7 @@ impl Tab {
         match new_pane_id {
             PaneId::Terminal(new_pane_id) => {
                 let next_terminal_position = self.get_next_terminal_position(); // TODO: this is not accurate in this case
-                let mut new_pane = TerminalPane::new(
+                let new_pane = TerminalPane::new(
                     new_pane_id,
                     PaneGeom::default(), // the initial size will be set later
                     self.style,
@@ -1170,7 +1176,7 @@ impl Tab {
                     self.terminal_emulator_colors.clone(),
                     self.terminal_emulator_color_codes.clone(),
                     None,
-                    None,
+                    run,
                     self.debug,
                 );
                 let replaced_pane = if self.floating_panes.panes_contain(&old_pane_id) {
@@ -1183,14 +1189,17 @@ impl Tab {
                 };
                 match replaced_pane {
                     Some(replaced_pane) => {
-                        resize_pty!(
+                        let _ = resize_pty!(
                             replaced_pane,
                             self.os_api,
                             self.senders,
                             self.character_cell_size
                         );
-                        self.suppressed_panes
-                            .insert(PaneId::Terminal(new_pane_id), replaced_pane);
+                        let is_scrollback_editor = false;
+                        self.suppressed_panes.insert(
+                            PaneId::Terminal(new_pane_id),
+                            (is_scrollback_editor, replaced_pane),
+                        );
                     },
                     None => {
                         Err::<(), _>(anyhow!(
@@ -1202,8 +1211,7 @@ impl Tab {
                 }
             },
             PaneId::Plugin(plugin_pid) => {
-                // TBD, currently unsupported
-                let mut new_pane = PluginPane::new(
+                let new_pane = PluginPane::new(
                     plugin_pid,
                     PaneGeom::default(), // this will be filled out later
                     self.senders
@@ -1220,7 +1228,7 @@ impl Tab {
                     self.character_cell_size.clone(),
                     self.connected_clients.borrow().iter().copied().collect(),
                     self.style,
-                    run_plugin,
+                    run,
                     self.debug,
                 );
                 let replaced_pane = if self.floating_panes.panes_contain(&old_pane_id) {
@@ -1233,14 +1241,17 @@ impl Tab {
                 };
                 match replaced_pane {
                     Some(replaced_pane) => {
-                        resize_pty!(
+                        let _ = resize_pty!(
                             replaced_pane,
                             self.os_api,
                             self.senders,
                             self.character_cell_size
                         );
-                        self.suppressed_panes
-                            .insert(PaneId::Plugin(plugin_pid), replaced_pane);
+                        let is_scrollback_editor = false;
+                        self.suppressed_panes.insert(
+                            PaneId::Plugin(plugin_pid),
+                            (is_scrollback_editor, replaced_pane),
+                        );
                     },
                     None => {
                         Err::<(), _>(anyhow!(
@@ -1417,7 +1428,7 @@ impl Tab {
             || self
                 .suppressed_panes
                 .values()
-                .any(|s_p| s_p.pid() == PaneId::Terminal(pid))
+                .any(|s_p| s_p.1.pid() == PaneId::Terminal(pid))
     }
     pub fn has_plugin(&self, plugin_id: u32) -> bool {
         self.tiled_panes.panes_contain(&PaneId::Plugin(plugin_id))
@@ -1427,12 +1438,15 @@ impl Tab {
             || self
                 .suppressed_panes
                 .values()
-                .any(|s_p| s_p.pid() == PaneId::Plugin(plugin_id))
+                .any(|s_p| s_p.1.pid() == PaneId::Plugin(plugin_id))
     }
     pub fn has_pane_with_pid(&self, pid: &PaneId) -> bool {
         self.tiled_panes.panes_contain(pid)
             || self.floating_panes.panes_contain(pid)
-            || self.suppressed_panes.values().any(|s_p| s_p.pid() == *pid)
+            || self
+                .suppressed_panes
+                .values()
+                .any(|s_p| s_p.1.pid() == *pid)
     }
     pub fn has_non_suppressed_pane_with_pid(&self, pid: &PaneId) -> bool {
         self.tiled_panes.panes_contain(pid) || self.floating_panes.panes_contain(pid)
@@ -1451,7 +1465,8 @@ impl Tab {
             .or_else(|| {
                 self.suppressed_panes
                     .values_mut()
-                    .find(|s_p| s_p.pid() == PaneId::Terminal(pid))
+                    .find(|s_p| s_p.1.pid() == PaneId::Terminal(pid))
+                    .map(|s_p| &mut s_p.1)
             })
         {
             // If the pane is scrolled buffer the vte events
@@ -1483,7 +1498,8 @@ impl Tab {
             .or_else(|| {
                 self.suppressed_panes
                     .values_mut()
-                    .find(|s_p| s_p.pid() == PaneId::Plugin(pid))
+                    .find(|s_p| s_p.1.pid() == PaneId::Plugin(pid))
+                    .map(|s_p| &mut s_p.1)
             })
         {
             plugin_pane.handle_plugin_bytes(client_id, bytes);
@@ -1510,7 +1526,8 @@ impl Tab {
             .or_else(|| {
                 self.suppressed_panes
                     .values_mut()
-                    .find(|s_p| s_p.pid() == PaneId::Terminal(pid))
+                    .find(|s_p| s_p.1.pid() == PaneId::Terminal(pid))
+                    .map(|s_p| &mut s_p.1)
             })
         {
             if self.pids_waiting_resize.remove(&pid) {
@@ -1638,7 +1655,7 @@ impl Tab {
             .floating_panes
             .get_mut(&pane_id)
             .or_else(|| self.tiled_panes.get_pane_mut(pane_id))
-            .or_else(|| self.suppressed_panes.get_mut(&pane_id))
+            .or_else(|| self.suppressed_panes.get_mut(&pane_id).map(|p| &mut p.1))
             .ok_or_else(|| anyhow!(format!("failed to find pane with id {pane_id:?}")))
             .with_context(err_context)?;
 
@@ -1913,11 +1930,17 @@ impl Tab {
             }
         }
     }
-    fn get_tiled_panes(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn Pane>)> {
+    pub(crate) fn get_tiled_panes(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn Pane>)> {
         self.tiled_panes.get_panes()
     }
-    fn get_floating_panes(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn Pane>)> {
+    pub(crate) fn get_floating_panes(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn Pane>)> {
         self.floating_panes.get_panes()
+    }
+    pub(crate) fn get_suppressed_panes(
+        &self,
+    ) -> impl Iterator<Item = (&PaneId, &(bool, Box<dyn Pane>))> {
+        // bool => is_scrollback_editor
+        self.suppressed_panes.iter()
     }
     fn get_selectable_tiled_panes(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn Pane>)> {
         self.get_tiled_panes().filter(|(_, p)| p.selectable())
@@ -2397,7 +2420,7 @@ impl Tab {
             }
             closed_pane
         } else if self.suppressed_panes.contains_key(&id) {
-            self.suppressed_panes.remove(&id)
+            self.suppressed_panes.remove(&id).map(|s_p| s_p.1)
         } else {
             None
         }
@@ -2439,7 +2462,7 @@ impl Tab {
                     pane_id
                 )
             })
-            .and_then(|suppressed_pane| {
+            .and_then(|(_is_scrollback_editor, suppressed_pane)| {
                 let suppressed_pane_id = suppressed_pane.pid();
                 let replaced_pane = if self.are_floating_panes_visible() {
                     Some(self.floating_panes.replace_pane(pane_id, suppressed_pane)).transpose()?
@@ -3297,7 +3320,11 @@ impl Tab {
             .floating_panes
             .get_pane_mut(pane_id)
             .or_else(|| self.tiled_panes.get_pane_mut(pane_id))
-            .or_else(|| self.suppressed_panes.get_mut(&pane_id))
+            .or_else(|| {
+                self.suppressed_panes
+                    .get_mut(&pane_id)
+                    .map(|s_p| &mut s_p.1)
+            })
             .with_context(err_context)?;
         pane.rename(buf);
         Ok(())
@@ -3415,7 +3442,8 @@ impl Tab {
             .or_else(|| {
                 self.suppressed_panes
                     .values_mut()
-                    .find(|s_p| s_p.pid() == pane_id)
+                    .find(|s_p| s_p.1.pid() == pane_id)
+                    .map(|s_p| &mut s_p.1)
             })
         {
             pane.add_red_pane_frame_color_override(error_text);
@@ -3429,7 +3457,8 @@ impl Tab {
             .or_else(|| {
                 self.suppressed_panes
                     .values_mut()
-                    .find(|s_p| s_p.pid() == pane_id)
+                    .find(|s_p| s_p.1.pid() == pane_id)
+                    .map(|s_p| &mut s_p.1)
             })
         {
             pane.clear_pane_frame_color_override();
@@ -3443,7 +3472,8 @@ impl Tab {
             .or_else(|| {
                 self.suppressed_panes
                     .values_mut()
-                    .find(|s_p| s_p.pid() == PaneId::Plugin(pid))
+                    .find(|s_p| s_p.1.pid() == PaneId::Plugin(pid))
+                    .map(|s_p| &mut s_p.1)
             })
         {
             plugin_pane.update_loading_indication(loading_indication);
@@ -3461,7 +3491,8 @@ impl Tab {
             .or_else(|| {
                 self.suppressed_panes
                     .values_mut()
-                    .find(|s_p| s_p.pid() == PaneId::Plugin(pid))
+                    .find(|s_p| s_p.1.pid() == PaneId::Plugin(pid))
+                    .map(|s_p| &mut s_p.1)
             })
         {
             plugin_pane.start_loading_indication(loading_indication);
@@ -3475,7 +3506,8 @@ impl Tab {
             .or_else(|| {
                 self.suppressed_panes
                     .values_mut()
-                    .find(|s_p| s_p.pid() == PaneId::Plugin(pid))
+                    .find(|s_p| s_p.1.pid() == PaneId::Plugin(pid))
+                    .map(|s_p| &mut s_p.1)
             })
         {
             plugin_pane.progress_animation_offset();
@@ -3504,7 +3536,7 @@ impl Tab {
                 let run = Some(Run::Plugin(run_plugin.clone()));
                 self.suppressed_panes
                     .iter()
-                    .find(|(_id, s_p)| s_p.invoked_with() == &run)
+                    .find(|(_id, s_p)| s_p.1.invoked_with() == &run)
                     .map(|(id, _)| *id)
             })
     }
@@ -3531,10 +3563,10 @@ impl Tab {
                 Some(pane) => {
                     if should_float {
                         self.show_floating_panes();
-                        self.add_floating_pane(pane, pane_id, Some(client_id))
+                        self.add_floating_pane(pane.1, pane_id, Some(client_id))
                     } else {
                         self.hide_floating_panes();
-                        self.add_tiled_pane(pane, pane_id, Some(client_id))
+                        self.add_tiled_pane(pane.1, pane_id, Some(client_id))
                     }
                 },
                 None => Ok(()),
@@ -3546,7 +3578,9 @@ impl Tab {
         // scrollback editor), but it has to take itself out on its own (eg. a plugin using the
         // show_self() method)
         if let Some(pane) = self.close_pane(pane_id, true, Some(client_id)) {
-            self.suppressed_panes.insert(pane_id, pane);
+            let is_scrollback_editor = false;
+            self.suppressed_panes
+                .insert(pane_id, (is_scrollback_editor, pane));
         }
     }
     pub fn pane_infos(&self) -> Vec<PaneInfo> {
@@ -3555,7 +3589,7 @@ impl Tab {
         let mut floating_pane_info = self.floating_panes.pane_info();
         pane_info.append(&mut tiled_pane_info);
         pane_info.append(&mut floating_pane_info);
-        for (pane_id, pane) in self.suppressed_panes.iter() {
+        for (pane_id, (_is_scrollback_editor, pane)) in self.suppressed_panes.iter() {
             let mut pane_info_for_suppressed_pane = pane_info_for_pane(pane_id, pane);
             pane_info_for_suppressed_pane.is_floating = false;
             pane_info_for_suppressed_pane.is_suppressed = true;
@@ -3631,7 +3665,8 @@ impl Tab {
             .or_else(|| {
                 self.suppressed_panes
                     .values_mut()
-                    .find(|s_p| s_p.pid() == PaneId::Plugin(pid))
+                    .find(|s_p| s_p.1.pid() == PaneId::Plugin(pid))
+                    .map(|s_p| &mut s_p.1)
             })
         {
             plugin_pane.request_permissions_from_user(permissions);

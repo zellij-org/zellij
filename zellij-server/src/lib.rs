@@ -10,6 +10,7 @@ mod pty;
 mod pty_writer;
 mod route;
 mod screen;
+mod session_layout_metadata;
 mod terminal_bytes;
 mod thread_bus;
 mod ui;
@@ -43,6 +44,7 @@ use zellij_utils::{
     consts::{DEFAULT_SCROLL_BUFFER_SIZE, SCROLL_BUFFER_SIZE},
     data::{ConnectToSession, Event, PluginCapabilities},
     errors::{prelude::*, ContextType, ErrorInstruction, FatalError, ServerContext},
+    home::get_default_data_dir,
     input::{
         command::{RunCommand, TerminalAction},
         get_mode_info,
@@ -51,7 +53,6 @@ use zellij_utils::{
         plugins::PluginsConfig,
     },
     ipc::{ClientAttributes, ExitReason, ServerToClientMsg},
-    setup::get_default_data_dir,
 };
 
 pub type ClientId = u16;
@@ -780,7 +781,7 @@ fn init_session(
                 config_options.scrollback_editor.clone(),
             );
 
-            move || pty_thread_main(pty, layout).fatal()
+            move || pty_thread_main(pty, layout.clone()).fatal()
         })
         .unwrap();
 
@@ -801,6 +802,7 @@ fn init_session(
 
             let client_attributes_clone = client_attributes.clone();
             let debug = opts.debug;
+            let layout = layout.clone();
             move || {
                 screen_thread_main(
                     screen_bus,
@@ -808,6 +810,7 @@ fn init_session(
                     client_attributes_clone,
                     config_options,
                     debug,
+                    layout,
                 )
                 .fatal();
             }

@@ -79,11 +79,47 @@ fn write_changed_styles(
     Ok(())
 }
 
+fn serialize_chunks_with_newlines(
+    character_chunks: Vec<CharacterChunk>,
+    _sixel_chunks: Option<&Vec<SixelImageChunk>>, // TODO: fix this sometime
+    link_handler: Option<&mut Rc<RefCell<LinkHandler>>>,
+) -> Result<String> {
+    let err_context = || "failed to serialize input chunks".to_string();
+
+    let mut vte_output = String::new();
+    let link_handler = link_handler.map(|l_h| l_h.borrow());
+    for character_chunk in character_chunks {
+        let chunk_changed_colors = character_chunk.changed_colors();
+        let mut character_styles = CharacterStyles::new();
+        vte_output.push_str("\n\r");
+        let mut chunk_width = character_chunk.x;
+        for t_character in character_chunk.terminal_characters.iter() {
+            let current_character_styles = adjust_styles_for_possible_selection(
+                character_chunk.selection_and_colors(),
+                t_character.styles,
+                character_chunk.y,
+                chunk_width,
+            );
+            write_changed_styles(
+                &mut character_styles,
+                current_character_styles,
+                chunk_changed_colors,
+                link_handler.as_ref(),
+                &mut vte_output,
+            )
+            .with_context(err_context)?;
+            chunk_width += t_character.width;
+            vte_output.push(t_character.character);
+        }
+        character_styles.clear();
+    }
+    Ok(vte_output)
+}
 fn serialize_chunks(
     character_chunks: Vec<CharacterChunk>,
     sixel_chunks: Option<&Vec<SixelImageChunk>>,
     link_handler: Option<&mut Rc<RefCell<LinkHandler>>>,
-    sixel_image_store: &mut SixelImageStore,
+    sixel_image_store: Option<&mut SixelImageStore>,
 ) -> Result<String> {
     let err_context = || "failed to serialize input chunks".to_string();
 
@@ -116,20 +152,22 @@ fn serialize_chunks(
         }
         character_styles.clear();
     }
-    if let Some(sixel_chunks) = sixel_chunks {
-        for sixel_chunk in sixel_chunks {
-            let serialized_sixel_image = sixel_image_store.serialize_image(
-                sixel_chunk.sixel_image_id,
-                sixel_chunk.sixel_image_pixel_x,
-                sixel_chunk.sixel_image_pixel_y,
-                sixel_chunk.sixel_image_pixel_width,
-                sixel_chunk.sixel_image_pixel_height,
-            );
-            if let Some(serialized_sixel_image) = serialized_sixel_image {
-                let sixel_vte = sixel_vte.get_or_insert_with(String::new);
-                vte_goto_instruction(sixel_chunk.cell_x, sixel_chunk.cell_y, sixel_vte)
-                    .with_context(err_context)?;
-                sixel_vte.push_str(&serialized_sixel_image);
+    if let Some(sixel_image_store) = sixel_image_store {
+        if let Some(sixel_chunks) = sixel_chunks {
+            for sixel_chunk in sixel_chunks {
+                let serialized_sixel_image = sixel_image_store.serialize_image(
+                    sixel_chunk.sixel_image_id,
+                    sixel_chunk.sixel_image_pixel_x,
+                    sixel_chunk.sixel_image_pixel_y,
+                    sixel_chunk.sixel_image_pixel_width,
+                    sixel_chunk.sixel_image_pixel_height,
+                );
+                if let Some(serialized_sixel_image) = serialized_sixel_image {
+                    let sixel_vte = sixel_vte.get_or_insert_with(String::new);
+                    vte_goto_instruction(sixel_chunk.cell_x, sixel_chunk.cell_y, sixel_vte)
+                        .with_context(err_context)?;
+                    sixel_vte.push_str(&serialized_sixel_image);
+                }
             }
         }
     }
@@ -378,7 +416,7 @@ impl Output {
                     client_character_chunks,
                     self.sixel_chunks.get(&client_id),
                     self.link_handler.as_mut(),
-                    &mut self.sixel_image_store.borrow_mut(),
+                    Some(&mut self.sixel_image_store.borrow_mut()),
                 )
                 .with_context(err_context)?,
             ); // TODO: less allocations?
@@ -864,6 +902,18 @@ impl OutputBuffer {
     pub fn clear(&mut self) {
         self.changed_lines.clear();
         self.should_update_all_lines = false;
+    }
+    pub fn serialize(&self, viewport: &[Row]) -> Result<String> {
+        let mut chunks = Vec::new();
+        for (line_index, line) in viewport.iter().enumerate() {
+            let terminal_characters =
+                self.extract_line_from_viewport(line_index, viewport, line.width());
+
+            let x = 0;
+            let y = line_index;
+            chunks.push(CharacterChunk::new(terminal_characters, x, y));
+        }
+        serialize_chunks_with_newlines(chunks, None, None)
     }
     pub fn changed_chunks_in_viewport(
         &self,

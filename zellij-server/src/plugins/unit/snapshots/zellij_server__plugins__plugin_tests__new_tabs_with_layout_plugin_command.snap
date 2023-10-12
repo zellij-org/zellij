@@ -1,6 +1,6 @@
 ---
 source: zellij-server/src/plugins/./unit/plugin_tests.rs
-assertion_line: 734
+assertion_line: 1001
 expression: "format!(\"{:#?}\", first_new_tab_event)"
 ---
 Some(
@@ -25,6 +25,8 @@ Some(
                         is_expanded_in_stack: false,
                         exclude_from_sync: None,
                         run_instructions_to_ignore: [],
+                        hide_floating_panes: false,
+                        pane_initial_contents: None,
                     },
                     TiledPaneLayout {
                         children_split_direction: Horizontal,
@@ -39,6 +41,8 @@ Some(
                         is_expanded_in_stack: false,
                         exclude_from_sync: None,
                         run_instructions_to_ignore: [],
+                        hide_floating_panes: false,
+                        pane_initial_contents: None,
                     },
                 ],
                 split_size: None,
@@ -50,6 +54,8 @@ Some(
                 is_expanded_in_stack: false,
                 exclude_from_sync: None,
                 run_instructions_to_ignore: [],
+                hide_floating_panes: false,
+                pane_initial_contents: None,
             },
         ),
         [],

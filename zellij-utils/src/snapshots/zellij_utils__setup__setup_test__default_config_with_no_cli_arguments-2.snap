@@ -1,6 +1,6 @@
 ---
 source: zellij-utils/src/setup.rs
-assertion_line: 640
+assertion_line: 672
 expression: "format!(\"{:#?}\", layout)"
 ---
 Layout {
@@ -43,6 +43,8 @@ Layout {
                         is_expanded_in_stack: false,
                         exclude_from_sync: None,
                         run_instructions_to_ignore: [],
+                        hide_floating_panes: false,
+                        pane_initial_contents: None,
                     },
                     TiledPaneLayout {
                         children_split_direction: Horizontal,
@@ -57,6 +59,8 @@ Layout {
                         is_expanded_in_stack: false,
                         exclude_from_sync: None,
                         run_instructions_to_ignore: [],
+                        hide_floating_panes: false,
+                        pane_initial_contents: None,
                     },
                     TiledPaneLayout {
                         children_split_direction: Horizontal,
@@ -89,6 +93,8 @@ Layout {
                         is_expanded_in_stack: false,
                         exclude_from_sync: None,
                         run_instructions_to_ignore: [],
+                        hide_floating_panes: false,
+                        pane_initial_contents: None,
                     },
                 ],
                 split_size: None,
@@ -100,6 +106,8 @@ Layout {
                 is_expanded_in_stack: false,
                 exclude_from_sync: None,
                 run_instructions_to_ignore: [],
+                hide_floating_panes: false,
+                pane_initial_contents: None,
             },
             [],
         ),
@@ -145,6 +153,8 @@ Layout {
                             is_expanded_in_stack: false,
                             exclude_from_sync: None,
                             run_instructions_to_ignore: [],
+                            hide_floating_panes: false,
+                            pane_initial_contents: None,
                         },
                         TiledPaneLayout {
                             children_split_direction: Horizontal,
@@ -167,6 +177,8 @@ Layout {
                                             is_expanded_in_stack: false,
                                             exclude_from_sync: None,
                                             run_instructions_to_ignore: [],
+                                            hide_floating_panes: false,
+                                            pane_initial_contents: None,
                                         },
                                         TiledPaneLayout {
                                             children_split_direction: Horizontal,
@@ -183,6 +195,8 @@ Layout {
                                             is_expanded_in_stack: false,
                                             exclude_from_sync: None,
                                             run_instructions_to_ignore: [],
+                                            hide_floating_panes: false,
+                                            pane_initial_contents: None,
                                         },
                                     ],
                                     split_size: None,
@@ -194,6 +208,8 @@ Layout {
                                     is_expanded_in_stack: false,
                                     exclude_from_sync: None,
                                     run_instructions_to_ignore: [],
+                                    hide_floating_panes: false,
+                                    pane_initial_contents: None,
                                 },
                             ],
                             split_size: None,
@@ -205,6 +221,8 @@ Layout {
                             is_expanded_in_stack: false,
                             exclude_from_sync: None,
                             run_instructions_to_ignore: [],
+                            hide_floating_panes: false,
+                            pane_initial_contents: None,
                         },
                         TiledPaneLayout {
                             children_split_direction: Horizontal,
@@ -237,6 +255,8 @@ Layout {
                             is_expanded_in_stack: false,
                             exclude_from_sync: None,
                             run_instructions_to_ignore: [],
+                            hide_floating_panes: false,
+                            pane_initial_contents: None,
                         },
                     ],
                     split_size: None,
@@ -248,6 +268,8 @@ Layout {
                     is_expanded_in_stack: false,
                     exclude_from_sync: None,
                     run_instructions_to_ignore: [],
+                    hide_floating_panes: false,
+                    pane_initial_contents: None,
                 },
                 MaxPanes(
                     8,
@@ -286,6 +308,8 @@ Layout {
                             is_expanded_in_stack: false,
                             exclude_from_sync: None,
                             run_instructions_to_ignore: [],
+                            hide_floating_panes: false,
+                            pane_initial_contents: None,
                         },
                         TiledPaneLayout {
                             children_split_direction: Horizontal,
@@ -310,6 +334,8 @@ Layout {
                                             is_expanded_in_stack: false,
                                             exclude_from_sync: None,
                                             run_instructions_to_ignore: [],
+                                            hide_floating_panes: false,
+                                            pane_initial_contents: None,
                                         },
                                         TiledPaneLayout {
                                             children_split_direction: Horizontal,
@@ -328,6 +354,8 @@ Layout {
                                                     is_expanded_in_stack: false,
                                                     exclude_from_sync: None,
                                                     run_instructions_to_ignore: [],
+                                                    hide_floating_panes: false,
+                                                    pane_initial_contents: None,
                                                 },
                                                 TiledPaneLayout {
                                                     children_split_direction: Horizontal,
@@ -342,6 +370,8 @@ Layout {
                                                     is_expanded_in_stack: false,
                                                     exclude_from_sync: None,
                                                     run_instructions_to_ignore: [],
+                                                    hide_floating_panes: false,
+                                                    pane_initial_contents: None,
                                                 },
                                                 TiledPaneLayout {
                                                     children_split_direction: Horizontal,
@@ -356,6 +386,8 @@ Layout {
                                                     is_expanded_in_stack: false,
                                                     exclude_from_sync: None,
                                                     run_instructions_to_ignore: [],
+                                                    hide_floating_panes: false,
+                                                    pane_initial_contents: None,
                                                 },
                                                 TiledPaneLayout {
                                                     children_split_direction: Horizontal,
@@ -370,6 +402,8 @@ Layout {
                                                     is_expanded_in_stack: false,
                                                     exclude_from_sync: None,
                                                     run_instructions_to_ignore: [],
+                                                    hide_floating_panes: false,
+                                                    pane_initial_contents: None,
                                                 },
                                             ],
                                             split_size: None,
@@ -381,6 +415,8 @@ Layout {
                                             is_expanded_in_stack: false,
                                             exclude_from_sync: None,
                                             run_instructions_to_ignore: [],
+                                            hide_floating_panes: false,
+                                            pane_initial_contents: None,
                                         },
                                     ],
                                     split_size: None,
@@ -392,6 +428,8 @@ Layout {
                                     is_expanded_in_stack: false,
                                     exclude_from_sync: None,
                                     run_instructions_to_ignore: [],
+                                    hide_floating_panes: false,
+                                    pane_initial_contents: None,
                                 },
                             ],
                             split_size: None,
@@ -403,6 +441,8 @@ Layout {
                             is_expanded_in_stack: false,
                             exclude_from_sync: None,
                             run_instructions_to_ignore: [],
+                            hide_floating_panes: false,
+                            pane_initial_contents: None,
                         },
                         TiledPaneLayout {
                             children_split_direction: Horizontal,
@@ -435,6 +475,8 @@ Layout {
                             is_expanded_in_stack: false,
                             exclude_from_sync: None,
                             run_instructions_to_ignore: [],
+                            hide_floating_panes: false,
+                            pane_initial_contents: None,
                         },
                     ],
                     split_size: None,
@@ -446,6 +488,8 @@ Layout {
                     is_expanded_in_stack: false,
                     exclude_from_sync: None,
                     run_instructions_to_ignore: [],
+                    hide_floating_panes: false,
+                    pane_initial_contents: None,
                 },
                 MaxPanes(
                     12,
@@ -484,6 +528,8 @@ Layout {
                             is_expanded_in_stack: false,
                             exclude_from_sync: None,
                             run_instructions_to_ignore: [],
+                            hide_floating_panes: false,
+                            pane_initial_contents: None,
                         },
                         TiledPaneLayout {
                             children_split_direction: Horizontal,
@@ -508,6 +554,8 @@ Layout {
                                             is_expanded_in_stack: false,
                                             exclude_from_sync: None,
                                             run_instructions_to_ignore: [],
+                                            hide_floating_panes: false,
+                                            pane_initial_contents: None,
                                         },
                                         TiledPaneLayout {
                                             children_split_direction: Horizontal,
@@ -526,6 +574,8 @@ Layout {
                                                     is_expanded_in_stack: false,
                                                     exclude_from_sync: None,
                                                     run_instructions_to_ignore: [],
+                                                    hide_floating_panes: false,
+                                                    pane_initial_contents: None,
                                                 },
                                                 TiledPaneLayout {
                                                     children_split_direction: Horizontal,
@@ -540,6 +590,8 @@ Layout {
                                                     is_expanded_in_stack: false,
                                                     exclude_from_sync: None,
                                                     run_instructions_to_ignore: [],
+                                                    hide_floating_panes: false,
+                                                    pane_initial_contents: None,
                                                 },
                                                 TiledPaneLayout {
                                                     children_split_direction: Horizontal,
@@ -554,6 +606,8 @@ Layout {
                                                     is_expanded_in_stack: false,
                                                     exclude_from_sync: None,
                                                     run_instructions_to_ignore: [],
+                                                    hide_floating_panes: false,
+                                                    pane_initial_contents: None,
                                                 },
                                                 TiledPaneLayout {
                                                     children_split_direction: Horizontal,
@@ -568,6 +622,8 @@ Layout {
                                                     is_expanded_in_stack: false,
                                                     exclude_from_sync: None,
                                                     run_instructions_to_ignore: [],
+                                                    hide_floating_panes: false,
+                                                    pane_initial_contents: None,
                                                 },
                                             ],
                                             split_size: None,
@@ -579,6 +635,8 @@ Layout {
                                             is_expanded_in_stack: false,
                                             exclude_from_sync: None,
                                             run_instructions_to_ignore: [],
+                                            hide_floating_panes: false,
+                                            pane_initial_contents: None,
                                         },
                                         TiledPaneLayout {
                                             children_split_direction: Horizontal,
@@ -597,6 +655,8 @@ Layout {
                                                     is_expanded_in_stack: false,
                                                     exclude_from_sync: None,
                                                     run_instructions_to_ignore: [],
+                                                    hide_floating_panes: false,
+                                                    pane_initial_contents: None,
                                                 },
                                                 TiledPaneLayout {
                                                     children_split_direction: Horizontal,
@@ -611,6 +671,8 @@ Layout {
                                                     is_expanded_in_stack: false,
                                                     exclude_from_sync: None,
                                                     run_instructions_to_ignore: [],
+                                                    hide_floating_panes: false,
+                                                    pane_initial_contents: None,
                                                 },
                                                 TiledPaneLayout {
                                                     children_split_direction: Horizontal,
@@ -625,6 +687,8 @@ Layout {
                                                     is_expanded_in_stack: false,
                                                     exclude_from_sync: None,
                                                     run_instructions_to_ignore: [],
+                                                    hide_floating_panes: false,
+                                                    pane_initial_contents: None,
                                                 },
                                                 TiledPaneLayout {
                                                     children_split_direction: Horizontal,
@@ -639,6 +703,8 @@ Layout {
                                                     is_expanded_in_stack: false,
                                                     exclude_from_sync: None,
                                                     run_instructions_to_ignore: [],
+                                                    hide_floating_panes: false,
+                                                    pane_initial_contents: None,
                                                 },
                                             ],
                                             split_size: None,
@@ -650,6 +716,8 @@ Layout {
                                             is_expanded_in_stack: false,
                                             exclude_from_sync: None,
                                             run_instructions_to_ignore: [],
+                                            hide_floating_panes: false,
+                                            pane_initial_contents: None,
                                         },
                                     ],
                                     split_size: None,
@@ -661,6 +729,8 @@ Layout {
                                     is_expanded_in_stack: false,
                                     exclude_from_sync: None,
                                     run_instructions_to_ignore: [],
+                                    hide_floating_panes: false,
+                                    pane_initial_contents: None,
                                 },
                             ],
                             split_size: None,
@@ -672,6 +742,8 @@ Layout {
                             is_expanded_in_stack: false,
                             exclude_from_sync: None,
                             run_instructions_to_ignore: [],
+                            hide_floating_panes: false,
+                            pane_initial_contents: None,
                         },
                         TiledPaneLayout {
                             children_split_direction: Horizontal,
@@ -704,6 +776,8 @@ Layout {
                             is_expanded_in_stack: false,
                             exclude_from_sync: None,
                             run_instructions_to_ignore: [],
+                            hide_floating_panes: false,
+                            pane_initial_contents: None,
                         },
                     ],
                     split_size: None,
@@ -715,6 +789,8 @@ Layout {
                     is_expanded_in_stack: false,
                     exclude_from_sync: None,
                     run_instructions_to_ignore: [],
+                    hide_floating_panes: false,
+                    pane_initial_contents: None,
                 },
             },
             Some(
@@ -760,6 +836,8 @@ Layout {
                             is_expanded_in_stack: false,
                             exclude_from_sync: None,
                             run_instructions_to_ignore: [],
+                            hide_floating_panes: false,
+                            pane_initial_contents: None,
                         },
                         TiledPaneLayout {
                             children_split_direction: Horizontal,
@@ -778,6 +856,8 @@ Layout {
                                     is_expanded_in_stack: false,
                                     exclude_from_sync: None,
                                     run_instructions_to_ignore: [],
+                                    hide_floating_panes: false,
+                                    pane_initial_contents: None,
                                 },
                                 TiledPaneLayout {
                                     children_split_direction: Horizontal,
@@ -792,6 +872,8 @@ Layout {
                                     is_expanded_in_stack: false,
                                     exclude_from_sync: None,
                                     run_instructions_to_ignore: [],
+                                    hide_floating_panes: false,
+                                    pane_initial_contents: None,
                                 },
                             ],
                             split_size: None,
@@ -803,6 +885,8 @@ Layout {
                             is_expanded_in_stack: false,
                             exclude_from_sync: None,
                             run_instructions_to_ignore: [],
+                            hide_floating_panes: false,
+                            pane_initial_contents: None,
                         },
                         TiledPaneLayout {
                             children_split_direction: Horizontal,
@@ -835,6 +919,8 @@ Layout {
                             is_expanded_in_stack: false,
                             exclude_from_sync: None,
                             run_instructions_to_ignore: [],
+                            hide_floating_panes: false,
+                            pane_initial_contents: None,
                         },
                     ],
                     split_size: None,
@@ -846,6 +932,8 @@ Layout {
                     is_expanded_in_stack: false,
                     exclude_from_sync: None,
                     run_instructions_to_ignore: [],
+                    hide_floating_panes: false,
+                    pane_initial_contents: None,
                 },
                 MaxPanes(
                     8,
@@ -884,6 +972,8 @@ Layout {
                             is_expanded_in_stack: false,
                             exclude_from_sync: None,
                             run_instructions_to_ignore: [],
+                            hide_floating_panes: false,
+                            pane_initial_contents: None,
                         },
                         TiledPaneLayout {
                             children_split_direction: Horizontal,
@@ -908,6 +998,8 @@ Layout {
                                             is_expanded_in_stack: false,
                                             exclude_from_sync: None,
                                             run_instructions_to_ignore: [],
+                                            hide_floating_panes: false,
+                                            pane_initial_contents: None,
                                         },
                                         TiledPaneLayout {
                                             children_split_direction: Vertical,
@@ -926,6 +1018,8 @@ Layout {
                                                     is_expanded_in_stack: false,
                                                     exclude_from_sync: None,
                                                     run_instructions_to_ignore: [],
+                                                    hide_floating_panes: false,
+                                                    pane_initial_contents: None,
                                                 },
                                                 TiledPaneLayout {
                                                     children_split_direction: Horizontal,
@@ -940,6 +1034,8 @@ Layout {
                                                     is_expanded_in_stack: false,
                                                     exclude_from_sync: None,
                                                     run_instructions_to_ignore: [],
+                                                    hide_floating_panes: false,
+                                                    pane_initial_contents: None,
                                                 },
                                                 TiledPaneLayout {
                                                     children_split_direction: Horizontal,
@@ -954,6 +1050,8 @@ Layout {
                                                     is_expanded_in_stack: false,
                                                     exclude_from_sync: None,
                                                     run_instructions_to_ignore: [],
+                                                    hide_floating_panes: false,
+                                                    pane_initial_contents: None,
                                                 },
                                                 TiledPaneLayout {
                                                     children_split_direction: Horizontal,
@@ -968,6 +1066,8 @@ Layout {
                                                     is_expanded_in_stack: false,
                                                     exclude_from_sync: None,
                                                     run_instructions_to_ignore: [],
+                                                    hide_floating_panes: false,
+                                                    pane_initial_contents: None,
                                                 },
                                             ],
                                             split_size: None,
@@ -979,6 +1079,8 @@ Layout {
                                             is_expanded_in_stack: false,
                                             exclude_from_sync: None,
                                             run_instructions_to_ignore: [],
+                                            hide_floating_panes: false,
+                                            pane_initial_contents: None,
                                         },
                                     ],
                                     split_size: None,
@@ -990,6 +1092,8 @@ Layout {
                                     is_expanded_in_stack: false,
                                     exclude_from_sync: None,
                                     run_instructions_to_ignore: [],
+                                    hide_floating_panes: false,
+                                    pane_initial_contents: None,
                                 },
                             ],
                             split_size: None,
@@ -1001,6 +1105,8 @@ Layout {
                             is_expanded_in_stack: false,
                             exclude_from_sync: None,
                             run_instructions_to_ignore: [],
+                            hide_floating_panes: false,
+                            pane_initial_contents: None,
                         },
                         TiledPaneLayout {
                             children_split_direction: Horizontal,
@@ -1033,6 +1139,8 @@ Layout {
                             is_expanded_in_stack: false,
                             exclude_from_sync: None,
                             run_instructions_to_ignore: [],
+                            hide_floating_panes: false,
+                            pane_initial_contents: None,
                         },
                     ],
                     split_size: None,
@@ -1044,6 +1152,8 @@ Layout {
                     is_expanded_in_stack: false,
                     exclude_from_sync: None,
                     run_instructions_to_ignore: [],
+                    hide_floating_panes: false,
+                    pane_initial_contents: None,
                 },
                 MaxPanes(
                     12,
@@ -1082,6 +1192,8 @@ Layout {
                             is_expanded_in_stack: false,
                             exclude_from_sync: None,
                             run_instructions_to_ignore: [],
+                            hide_floating_panes: false,
+                            pane_initial_contents: None,
                         },
                         TiledPaneLayout {
                             children_split_direction: Horizontal,
@@ -1106,6 +1218,8 @@ Layout {
                                             is_expanded_in_stack: false,
                                             exclude_from_sync: None,
                                             run_instructions_to_ignore: [],
+                                            hide_floating_panes: false,
+                                            pane_initial_contents: None,
                                         },
                                         TiledPaneLayout {
                                             children_split_direction: Vertical,
@@ -1124,6 +1238,8 @@ Layout {
                                                     is_expanded_in_stack: false,
                                                     exclude_from_sync: None,
                                                     run_instructions_to_ignore: [],
+                                                    hide_floating_panes: false,
+                                                    pane_initial_contents: None,
                                                 },
                                                 TiledPaneLayout {
                                                     children_split_direction: Horizontal,
@@ -1138,6 +1254,8 @@ Layout {
                                                     is_expanded_in_stack: false,
                                                     exclude_from_sync: None,
                                                     run_instructions_to_ignore: [],
+                                                    hide_floating_panes: false,
+                                                    pane_initial_contents: None,
                                                 },
                                                 TiledPaneLayout {
                                                     children_split_direction: Horizontal,
@@ -1152,6 +1270,8 @@ Layout {
                                                     is_expanded_in_stack: false,
                                                     exclude_from_sync: None,
                                                     run_instructions_to_ignore: [],
+                                                    hide_floating_panes: false,
+                                                    pane_initial_contents: None,
                                                 },
                                                 TiledPaneLayout {
                                                     children_split_direction: Horizontal,
@@ -1166,6 +1286,8 @@ Layout {
                                                     is_expanded_in_stack: false,
                                                     exclude_from_sync: None,
                                                     run_instructions_to_ignore: [],
+                                                    hide_floating_panes: false,
+                                                    pane_initial_contents: None,
                                                 },
                                             ],
                                             split_size: None,
@@ -1177,6 +1299,8 @@ Layout {
                                             is_expanded_in_stack: false,
                                             exclude_from_sync: None,
                                             run_instructions_to_ignore: [],
+                                            hide_floating_panes: false,
+                                            pane_initial_contents: None,
                                         },
                                         TiledPaneLayout {
                                             children_split_direction: Vertical,
@@ -1195,6 +1319,8 @@ Layout {
                                                     is_expanded_in_stack: false,
                                                     exclude_from_sync: None,
                                                     run_instructions_to_ignore: [],
+                                                    hide_floating_panes: false,
+                                                    pane_initial_contents: None,
                                                 },
                                                 TiledPaneLayout {
                                                     children_split_direction: Horizontal,
@@ -1209,6 +1335,8 @@ Layout {
                                                     is_expanded_in_stack: false,
                                                     exclude_from_sync: None,
                                                     run_instructions_to_ignore: [],
+                                                    hide_floating_panes: false,
+                                                    pane_initial_contents: None,
                                                 },
                                                 TiledPaneLayout {
                                                     children_split_direction: Horizontal,
@@ -1223,6 +1351,8 @@ Layout {
                                                     is_expanded_in_stack: false,
                                                     exclude_from_sync: None,
                                                     run_instructions_to_ignore: [],
+                                                    hide_floating_panes: false,
+                                                    pane_initial_contents: None,
                                                 },
                                                 TiledPaneLayout {
                                                     children_split_direction: Horizontal,
@@ -1237,6 +1367,8 @@ Layout {
                                                     is_expanded_in_stack: false,
                                                     exclude_from_sync: None,
                                                     run_instructions_to_ignore: [],
+                                                    hide_floating_panes: false,
+                                                    pane_initial_contents: None,
                                                 },
                                             ],
                                             split_size: None,
@@ -1248,6 +1380,8 @@ Layout {
                                             is_expanded_in_stack: false,
                                             exclude_from_sync: None,
                                             run_instructions_to_ignore: [],
+                                            hide_floating_panes: false,
+                                            pane_initial_contents: None,
                                         },
                                     ],
                                     split_size: None,
@@ -1259,6 +1393,8 @@ Layout {
                                     is_expanded_in_stack: false,
                                     exclude_from_sync: None,
                                     run_instructions_to_ignore: [],
+                                    hide_floating_panes: false,
+                                    pane_initial_contents: None,
                                 },
                             ],
                             split_size: None,
@@ -1270,6 +1406,8 @@ Layout {
                             is_expanded_in_stack: false,
                             exclude_from_sync: None,
                             run_instructions_to_ignore: [],
+                            hide_floating_panes: false,
+                            pane_initial_contents: None,
                         },
                         TiledPaneLayout {
                             children_split_direction: Horizontal,
@@ -1302,6 +1440,8 @@ Layout {
                             is_expanded_in_stack: false,
                             exclude_from_sync: None,
                             run_instructions_to_ignore: [],
+                            hide_floating_panes: false,
+                            pane_initial_contents: None,
                         },
                     ],
                     split_size: None,
@@ -1313,6 +1453,8 @@ Layout {
                     is_expanded_in_stack: false,
                     exclude_from_sync: None,
                     run_instructions_to_ignore: [],
+                    hide_floating_panes: false,
+                    pane_initial_contents: None,
                 },
             },
             Some(
@@ -1358,6 +1500,8 @@ Layout {
                             is_expanded_in_stack: false,
                             exclude_from_sync: None,
                             run_instructions_to_ignore: [],
+                            hide_floating_panes: false,
+                            pane_initial_contents: None,
                         },
                         TiledPaneLayout {
                             children_split_direction: Horizontal,
@@ -1380,6 +1524,8 @@ Layout {
                                             is_expanded_in_stack: false,
                                             exclude_from_sync: None,
                                             run_instructions_to_ignore: [],
+                                            hide_floating_panes: false,
+                                            pane_initial_contents: None,
                                         },
                                         TiledPaneLayout {
                                             children_split_direction: Horizontal,
@@ -1396,6 +1542,8 @@ Layout {
                                             is_expanded_in_stack: false,
                                             exclude_from_sync: None,
                                             run_instructions_to_ignore: [],
+                                            hide_floating_panes: false,
+                                            pane_initial_contents: None,
                                         },
                                     ],
                                     split_size: None,
@@ -1407,6 +1555,8 @@ Layout {
                                     is_expanded_in_stack: false,
                                     exclude_from_sync: None,
                                     run_instructions_to_ignore: [],
+                                    hide_floating_panes: false,
+                                    pane_initial_contents: None,
                                 },
                             ],
                             split_size: None,
@@ -1418,6 +1568,8 @@ Layout {
                             is_expanded_in_stack: false,
                             exclude_from_sync: None,
                             run_instructions_to_ignore: [],
+                            hide_floating_panes: false,
+                            pane_initial_contents: None,
                         },
                         TiledPaneLayout {
                             children_split_direction: Horizontal,
@@ -1450,6 +1602,8 @@ Layout {
                             is_expanded_in_stack: false,
                             exclude_from_sync: None,
                             run_instructions_to_ignore: [],
+                            hide_floating_panes: false,
+                            pane_initial_contents: None,
                         },
                     ],
                     split_size: None,
@@ -1461,6 +1615,8 @@ Layout {
                     is_expanded_in_stack: false,
                     exclude_from_sync: None,
                     run_instructions_to_ignore: [],
+                    hide_floating_panes: false,
+                    pane_initial_contents: None,
                 },
             },
             Some(
@@ -1507,6 +1663,7 @@ Layout {
                         run: None,
                         focus: None,
                         already_running: false,
+                        pane_initial_contents: None,
                     },
                     FloatingPaneLayout {
                         name: None,
@@ -1533,6 +1690,7 @@ Layout {
                         run: None,
                         focus: None,
                         already_running: false,
+                        pane_initial_contents: None,
                     },
                     FloatingPaneLayout {
                         name: None,
@@ -1559,6 +1717,7 @@ Layout {
                         run: None,
                         focus: None,
                         already_running: false,
+                        pane_initial_contents: None,
                     },
                     FloatingPaneLayout {
                         name: None,
@@ -1585,6 +1744,7 @@ Layout {
                         run: None,
                         focus: None,
                         already_running: false,
+                        pane_initial_contents: None,
                     },
                     FloatingPaneLayout {
                         name: None,
@@ -1611,6 +1771,7 @@ Layout {
                         run: None,
                         focus: None,
                         already_running: false,
+                        pane_initial_contents: None,
                     },
                     FloatingPaneLayout {
                         name: None,
@@ -1637,6 +1798,7 @@ Layout {
                         run: None,
                         focus: None,
                         already_running: false,
+                        pane_initial_contents: None,
                     },
                     FloatingPaneLayout {
                         name: None,
@@ -1663,6 +1825,7 @@ Layout {
                         run: None,
                         focus: None,
                         already_running: false,
+                        pane_initial_contents: None,
                     },
                     FloatingPaneLayout {
                         name: None,
@@ -1689,6 +1852,7 @@ Layout {
                         run: None,
                         focus: None,
                         already_running: false,
+                        pane_initial_contents: None,
                     },
                     FloatingPaneLayout {
                         name: None,
@@ -1715,6 +1879,7 @@ Layout {
                         run: None,
                         focus: None,
                         already_running: false,
+                        pane_initial_contents: None,
                     },
                     FloatingPaneLayout {
                         name: None,
@@ -1743,6 +1908,7 @@ Layout {
                             true,
                         ),
                         already_running: false,
+                        pane_initial_contents: None,
                     },
                 ],
             },
@@ -1772,6 +1938,7 @@ Layout {
                         run: None,
                         focus: None,
                         already_running: false,
+                        pane_initial_contents: None,
                     },
                 ],
                 MaxPanes(
@@ -1798,6 +1965,7 @@ Layout {
                         run: None,
                         focus: None,
                         already_running: false,
+                        pane_initial_contents: None,
                     },
                     FloatingPaneLayout {
                         name: None,
@@ -1820,6 +1988,7 @@ Layout {
                         run: None,
                         focus: None,
                         already_running: false,
+                        pane_initial_contents: None,
                     },
                 ],
                 MaxPanes(
@@ -1848,6 +2017,7 @@ Layout {
                             true,
                         ),
                         already_running: false,
+                        pane_initial_contents: None,
                     },
                     FloatingPaneLayout {
                         name: None,
@@ -1870,6 +2040,7 @@ Layout {
                         run: None,
                         focus: None,
                         already_running: false,
+                        pane_initial_contents: None,
                     },
                     FloatingPaneLayout {
                         name: None,
@@ -1892,6 +2063,7 @@ Layout {
                         run: None,
                         focus: None,
                         already_running: false,
+                        pane_initial_contents: None,
                     },
                 ],
                 MaxPanes(
@@ -1922,6 +2094,7 @@ Layout {
                         run: None,
                         focus: None,
                         already_running: false,
+                        pane_initial_contents: None,
                     },
                     FloatingPaneLayout {
                         name: None,
@@ -1950,6 +2123,7 @@ Layout {
                             true,
                         ),
                         already_running: false,
+                        pane_initial_contents: None,
                     },
                     FloatingPaneLayout {
                         name: None,
@@ -1976,6 +2150,7 @@ Layout {
                         run: None,
                         focus: None,
                         already_running: false,
+                        pane_initial_contents: None,
                     },
                     FloatingPaneLayout {
                         name: None,
@@ -2002,6 +2177,7 @@ Layout {
                         run: None,
                         focus: None,
                         already_running: false,
+                        pane_initial_contents: None,
                     },
                 ],
             },
