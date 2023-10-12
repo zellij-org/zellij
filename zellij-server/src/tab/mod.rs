@@ -2260,6 +2260,9 @@ impl Tab {
     pub fn get_tiled_pane_ids(&self) -> Vec<PaneId> {
         self.get_tiled_panes().map(|(&pid, _)| pid).collect()
     }
+    pub fn get_floating_pane_ids(&self) -> Vec<PaneId> {
+        self.get_floating_panes().map(|(&pid, _)| pid).collect()
+    }
     pub fn get_all_pane_ids(&self) -> Vec<PaneId> {
         // this is here just as a naming thing to make things more explicit
         self.get_static_and_floating_pane_ids()
@@ -2518,6 +2521,52 @@ impl Tab {
                 .write_to_file(dump, file)
                 .with_context(err_context)?;
         }
+        Ok(())
+    }
+    pub fn dump_current_terminal_tab(
+        &mut self,
+        file: Option<String>,
+        client_id: ClientId,
+        full: bool,
+    ) -> Result<()> {
+        let err_context = || format!("failed to dump active terminal tab for client {client_id}");
+
+        let mut merged_dump: String = "".to_owned();
+        for pane_id in self.get_tiled_pane_ids() {
+            if let PaneId::Terminal(id) = pane_id {
+                let tmp_panel = self.tiled_panes.get_pane_mut(pane_id).unwrap();
+                let dump = tmp_panel.dump_screen(client_id, full);
+                let header = match merged_dump.chars().last() {
+                    Some(c) => match c {
+                        '\n' => format!("[Tiled pane: {}]\n", id),
+                        _ => format!("\n[Tiled pane: {}]\n", id),
+                    },
+                    None => format!("[Tiled pane: {}]\n", id),
+                };
+                merged_dump.push_str(&header);
+                merged_dump.push_str(&dump);
+            }
+        }
+
+        for pane_id in self.get_floating_pane_ids() {
+            if let PaneId::Terminal(id) = pane_id {
+                let tmp_panel = self.floating_panes.get_pane_mut(pane_id).unwrap();
+                let dump = tmp_panel.dump_screen(client_id, full);
+                let header = match merged_dump.chars().last() {
+                    Some(c) => match c {
+                        '\n' => format!("[Floating pane: {}]\n", id),
+                        _ => format!("\n[Floating pane: {}]\n", id),
+                    },
+                    None => format!("[Floating pane: {}]\n", id),
+                };
+                merged_dump.push_str(&header);
+                merged_dump.push_str(&dump);
+            }
+        }
+
+        self.os_api
+            .write_to_file(merged_dump, file)
+            .with_context(err_context)?;
         Ok(())
     }
     pub fn edit_scrollback(&mut self, client_id: ClientId) -> Result<()> {

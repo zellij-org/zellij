@@ -257,6 +257,7 @@ pub enum ScreenContext {
     Exit,
     ClearScreen,
     DumpScreen,
+    DumpTab,
     EditScrollback,
     ScrollUp,
     ScrollUpAt,

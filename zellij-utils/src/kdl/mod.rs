@@ -469,6 +469,7 @@ impl Action {
             },
             "MovePaneBackwards" => Ok(Action::MovePaneBackwards),
             "DumpScreen" => Ok(Action::DumpScreen(string, false)),
+            "DumpTab" => Ok(Action::DumpTab(string, false)),
             "NewPane" => {
                 if string.is_empty() {
                     return Ok(Action::NewPane(None, None));
