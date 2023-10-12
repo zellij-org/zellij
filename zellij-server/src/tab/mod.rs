@@ -656,6 +656,7 @@ impl Tab {
             new_plugin_ids,
             client_id,
         )?;
+        #[allow(clippy::if_same_then_else)]
         if should_show_floating_panes && !self.floating_panes.panes_are_visible() {
             self.toggle_floating_panes(Some(client_id), None)?;
         } else if !should_show_floating_panes && self.floating_panes.panes_are_visible() {
