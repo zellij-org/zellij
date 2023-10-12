@@ -1,15 +1,14 @@
 use std::time::{Duration, Instant};
-use zellij_utils::consts::{VERSION, ZELLIJ_CACHE_DIR};
 
 const STARTUP_PARSE_DEADLINE_MS: u64 = 500;
 use zellij_utils::{
-    ipc::PixelDimensions, lazy_static::lazy_static, pane_size::SizeInPixels, regex::Regex,
+    consts::ZELLIJ_STDIN_CACHE_FILE, ipc::PixelDimensions, lazy_static::lazy_static,
+    pane_size::SizeInPixels, regex::Regex,
 };
 
 use serde::{Deserialize, Serialize};
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
-use std::path::PathBuf;
 use zellij_utils::anyhow::Result;
 
 #[derive(Debug)]
@@ -77,8 +76,10 @@ impl StdinAnsiParser {
         self.drain_pending_events()
     }
     pub fn read_cache(&self) -> Option<Vec<AnsiStdinInstruction>> {
-        let path = self.cache_dir_path();
-        match OpenOptions::new().read(true).open(path.as_path()) {
+        match OpenOptions::new()
+            .read(true)
+            .open(ZELLIJ_STDIN_CACHE_FILE.as_path())
+        {
             Ok(mut file) => {
                 let mut json_cache = String::new();
                 file.read_to_string(&mut json_cache).ok()?;
@@ -97,9 +98,8 @@ impl StdinAnsiParser {
         }
     }
     pub fn write_cache(&self, events: Vec<AnsiStdinInstruction>) {
-        let path = self.cache_dir_path();
         if let Ok(serialized_events) = serde_json::to_string(&events) {
-            if let Ok(mut file) = File::create(path.as_path()) {
+            if let Ok(mut file) = File::create(ZELLIJ_STDIN_CACHE_FILE.as_path()) {
                 let _ = file.write_all(serialized_events.as_bytes());
             }
         };
@@ -133,9 +133,6 @@ impl StdinAnsiParser {
         } else {
             self.raw_buffer.push(byte);
         }
-    }
-    fn cache_dir_path(&self) -> PathBuf {
-        ZELLIJ_CACHE_DIR.join(&format!("zellij-stdin-cache-v{}", VERSION))
     }
 }
 
