@@ -2079,7 +2079,6 @@ impl<'a> KdlLayoutParser<'a> {
 
         Ok(Layout {
             tabs,
-            // template: Some((default_tab_tiled_panes_template, vec![])),
             template,
             focused_tab_index,
             swap_tiled_layouts,

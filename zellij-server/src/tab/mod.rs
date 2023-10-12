@@ -656,12 +656,9 @@ impl Tab {
             new_plugin_ids,
             client_id,
         )?;
-        log::info!("finished applying layout");
         if should_show_floating_panes && !self.floating_panes.panes_are_visible() {
-            log::info!("showing floating panes");
             self.toggle_floating_panes(Some(client_id), None)?;
         } else if !should_show_floating_panes && self.floating_panes.panes_are_visible() {
-            log::info!("hiding floating panes");
             self.toggle_floating_panes(Some(client_id), None)?;
         }
         self.tiled_panes.reapply_pane_frames();
