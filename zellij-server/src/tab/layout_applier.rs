@@ -134,7 +134,7 @@ impl<'a> LayoutApplier<'a> {
                 for (layout, position_and_size) in positions_in_layout {
                     // first try to find panes with contents matching the layout exactly
                     match existing_tab_state.find_and_extract_exact_match_pane(
-                        &layout.run,
+                        layout.run.as_ref(),
                         &position_and_size,
                         true,
                     ) {
@@ -159,7 +159,7 @@ impl<'a> LayoutApplier<'a> {
                 for (layout, position_and_size) in positions_left {
                     // now let's try to find panes on a best-effort basis
                     if let Some(mut pane) = existing_tab_state.find_and_extract_pane(
-                        &layout.run,
+                        layout.run.as_ref(),
                         &position_and_size,
                         layout.focus.unwrap_or(false),
                         true,
@@ -478,7 +478,7 @@ impl<'a> LayoutApplier<'a> {
                 .position_floating_pane_layout(&floating_pane_layout);
             let is_focused = floating_pane_layout.focus.unwrap_or(false);
             if let Some(mut pane) = existing_tab_state.find_and_extract_pane(
-                &floating_pane_layout.run,
+                floating_pane_layout.run.as_ref(),
                 &position_and_size,
                 is_focused,
                 false,
@@ -676,7 +676,7 @@ impl ExistingTabState {
     }
     pub fn find_and_extract_exact_match_pane(
         &mut self,
-        run: &Option<Run>,
+        run: Option<&Run>,
         position_and_size: &PaneGeom,
         default_to_closest_position: bool,
     ) -> Option<Box<dyn Pane>> {
@@ -692,7 +692,7 @@ impl ExistingTabState {
     }
     pub fn find_and_extract_pane(
         &mut self,
-        run: &Option<Run>,
+        run: Option<&Run>,
         position_and_size: &PaneGeom,
         is_focused: bool,
         default_to_closest_position: bool,
@@ -730,7 +730,7 @@ impl ExistingTabState {
     }
     fn pane_candidates(
         &self,
-        run: &Option<Run>,
+        run: Option<&Run>,
         position_and_size: &PaneGeom,
         default_to_closest_position: bool,
     ) -> Vec<(&PaneId, &Box<dyn Pane>)> {
@@ -787,7 +787,7 @@ impl ExistingTabState {
     fn find_pane_id_with_same_contents(
         &self,
         candidates: &Vec<(&PaneId, &Box<dyn Pane>)>,
-        run: &Option<Run>,
+        run: Option<&Run>,
     ) -> Option<PaneId> {
         candidates
             .iter()
@@ -798,7 +798,7 @@ impl ExistingTabState {
     fn find_pane_id_with_same_contents_and_location(
         &self,
         candidates: &Vec<(&PaneId, &Box<dyn Pane>)>,
-        run: &Option<Run>,
+        run: Option<&Run>,
         position: &PaneGeom,
     ) -> Option<PaneId> {
         candidates

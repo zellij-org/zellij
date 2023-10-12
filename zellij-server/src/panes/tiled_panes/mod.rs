@@ -763,7 +763,7 @@ impl TiledPanes {
         match self
             .panes
             .iter_mut()
-            .find(|(_, p)| p.invoked_with() == &run)
+            .find(|(_, p)| p.invoked_with() == run.as_ref())
         {
             Some((_, pane)) => {
                 pane.set_geom(geom);
@@ -1748,7 +1748,7 @@ impl TiledPanes {
         let run = Some(Run::Plugin(run_plugin.clone()));
         self.panes
             .iter()
-            .find(|(_id, s_p)| s_p.invoked_with() == &run)
+            .find(|(_id, s_p)| s_p.invoked_with() == run.as_ref())
             .map(|(id, _)| *id)
     }
     pub fn pane_info(&self) -> Vec<PaneInfo> {

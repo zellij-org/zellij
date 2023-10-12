@@ -1765,7 +1765,7 @@ impl Screen {
             let active_pane = active_tab
                 .close_pane(active_pane_id, false, Some(client_id))
                 .with_context(err_context)?;
-            let active_pane_run_instruction = active_pane.invoked_with().clone();
+            let active_pane_run_instruction = active_pane.invoked_with().cloned();
             let tab_index = self.get_new_tab_index();
             let swap_layouts = (
                 default_layout.swap_tiled_layouts.clone(),
@@ -1785,7 +1785,7 @@ impl Screen {
                 }
             } else {
                 tab.add_tiled_pane(active_pane, active_pane_id, Some(client_id))?;
-                tiled_panes_layout.ignore_run_instruction(active_pane_run_instruction.clone());
+                tiled_panes_layout.ignore_run_instruction(active_pane_run_instruction);
             }
             self.bus.senders.send_to_plugin(PluginInstruction::NewTab(
                 None,
@@ -1968,7 +1968,7 @@ impl Screen {
                         pane_id,
                         p.position_and_size(),
                         p.borderless(),
-                        p.invoked_with().clone(),
+                        p.invoked_with().cloned(),
                         p.custom_title(),
                         active_pane_id == Some(pane_id),
                         if self.serialize_pane_viewport {
@@ -1999,7 +1999,7 @@ impl Screen {
                         pane_id,
                         p.position_and_size(),
                         false, // floating panes are never borderless
-                        p.invoked_with().clone(),
+                        p.invoked_with().cloned(),
                         p.custom_title(),
                         active_pane_id == Some(pane_id),
                         if self.serialize_pane_viewport {

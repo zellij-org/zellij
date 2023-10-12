@@ -454,7 +454,7 @@ pub trait Pane {
     fn add_red_pane_frame_color_override(&mut self, _error_text: Option<String>);
     fn clear_pane_frame_color_override(&mut self);
     fn frame_color_override(&self) -> Option<PaletteColor>;
-    fn invoked_with(&self) -> &Option<Run>;
+    fn invoked_with(&self) -> Option<&Run>;
     fn set_title(&mut self, title: String);
     fn update_loading_indication(&mut self, _loading_indication: LoadingIndication) {} // only relevant for plugins
     fn start_loading_indication(&mut self, _loading_indication: LoadingIndication) {} // only relevant for plugins
@@ -3536,7 +3536,7 @@ impl Tab {
                 let run = Some(Run::Plugin(run_plugin.clone()));
                 self.suppressed_panes
                     .iter()
-                    .find(|(_id, s_p)| s_p.1.invoked_with() == &run)
+                    .find(|(_id, s_p)| s_p.1.invoked_with() == run.as_ref())
                     .map(|(id, _)| *id)
             })
     }

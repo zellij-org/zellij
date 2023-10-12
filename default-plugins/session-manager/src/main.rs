@@ -68,7 +68,7 @@ impl ZellijPlugin for State {
             println!("{}", line.render());
         }
         render_new_session_line(
-            &self.new_session_name,
+            self.new_session_name.as_ref().map(|s| s.as_str()),
             self.sessions.is_searching,
             self.colors,
         );

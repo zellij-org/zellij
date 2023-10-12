@@ -715,8 +715,8 @@ impl Pane for TerminalPane {
             .as_ref()
             .map(|(color, _text)| *color)
     }
-    fn invoked_with(&self) -> &Option<Run> {
-        &self.invoked_with
+    fn invoked_with(&self) -> Option<&Run> {
+        self.invoked_with.as_ref()
     }
     fn set_title(&mut self, title: String) {
         self.pane_title = title;

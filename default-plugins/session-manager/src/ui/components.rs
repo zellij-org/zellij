@@ -484,7 +484,7 @@ pub fn render_prompt(typing_session_name: bool, search_term: &str, colors: Color
     }
 }
 
-pub fn render_new_session_line(session_name: &Option<String>, is_searching: bool, colors: Colors) {
+pub fn render_new_session_line(session_name: Option<&str>, is_searching: bool, colors: Colors) {
     if is_searching {
         return;
     }

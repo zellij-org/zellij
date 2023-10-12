@@ -124,7 +124,7 @@ impl ZellijPlugin for State {
             self.mode_info.capabilities,
             self.mode_info.style.hide_session_name,
             self.mode_info.mode,
-            &active_swap_layout_name,
+            active_swap_layout_name.as_deref(),
             is_swap_layout_dirty,
         );
         let output = self

@@ -192,7 +192,7 @@ impl Run {
             }
         }
     }
-    pub fn is_same_category(first: &Option<Run>, second: &Option<Run>) -> bool {
+    pub fn is_same_category(first: Option<&Run>, second: Option<&Run>) -> bool {
         match (first, second) {
             (Some(Run::Plugin(..)), Some(Run::Plugin(..))) => true,
             (Some(Run::Command(..)), Some(Run::Command(..))) => true,
@@ -201,7 +201,7 @@ impl Run {
             _ => false,
         }
     }
-    pub fn is_terminal(run: &Option<Run>) -> bool {
+    pub fn is_terminal(run: Option<&Run>) -> bool {
         match run {
             Some(Run::Command(..)) | Some(Run::EditFile(..)) | Some(Run::Cwd(..)) | None => true,
             _ => false,

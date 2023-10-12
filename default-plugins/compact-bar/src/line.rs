@@ -257,7 +257,7 @@ pub fn tab_line(
     capabilities: PluginCapabilities,
     hide_session_name: bool,
     mode: InputMode,
-    active_swap_layout_name: &Option<String>,
+    active_swap_layout_name: Option<&str>,
     is_swap_layout_dirty: bool,
 ) -> Vec<LinePart> {
     let mut tabs_after_active = all_tabs.split_off(active_tab_index);
@@ -320,7 +320,7 @@ pub fn tab_line(
 
 fn swap_layout_status(
     max_len: usize,
-    swap_layout_name: &Option<String>,
+    swap_layout_name: Option<&str>,
     is_swap_layout_damaged: bool,
     input_mode: InputMode,
     palette: &Palette,

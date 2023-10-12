@@ -876,7 +876,7 @@ impl FloatingPanes {
         let run = Some(Run::Plugin(run_plugin.clone()));
         self.panes
             .iter()
-            .find(|(_id, s_p)| s_p.invoked_with() == &run)
+            .find(|(_id, s_p)| s_p.invoked_with() == run.as_ref())
             .map(|(id, _)| *id)
     }
     pub fn focus_pane_if_exists(&mut self, pane_id: PaneId, client_id: ClientId) -> Result<()> {
@@ -904,7 +904,7 @@ impl FloatingPanes {
         match self
             .panes
             .iter_mut()
-            .find(|(_, p)| p.invoked_with() == &run)
+            .find(|(_, p)| p.invoked_with() == run.as_ref())
         {
             Some((_, pane)) => {
                 pane.set_geom(geom);
