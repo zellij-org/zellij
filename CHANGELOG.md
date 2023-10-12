@@ -12,6 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * refactor(config): dependency updates (https://github.com/zellij-org/zellij/pull/2820 and https://github.com/zellij-org/zellij/pull/2821)
 * fix(plugins): address cranelift-codegen vulnerability (https://github.com/zellij-org/zellij/pull/2830)
 * fix(plugins): use versioned path for plugin artifact cache (https://github.com/zellij-org/zellij/pull/2836)
+* feat(sessions): session resurrection (https://github.com/zellij-org/zellij/pull/2801)
 
 ## [0.38.2] - 2023-09-15
 * fix(terminal): wrap lines in alternate screen mode when adding characters (https://github.com/zellij-org/zellij/pull/2789)
