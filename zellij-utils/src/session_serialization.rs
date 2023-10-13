@@ -64,16 +64,18 @@ pub struct PaneLayoutManifest {
 
 pub fn serialize_session_layout(
     global_layout_manifest: GlobalLayoutManifest,
-) -> (String, BTreeMap<String, String>) {
+) -> Result<(String, BTreeMap<String, String>), &'static str> {
     // BTreeMap is the pane contents and their file names
     let mut kdl_string = String::from("layout {\n");
     let mut pane_contents = BTreeMap::new();
     stringify_global_cwd(&global_layout_manifest.global_cwd, &mut kdl_string);
-    stringify_multiple_tabs(
+    if let Err(e) = stringify_multiple_tabs(
         global_layout_manifest.tabs,
         &mut pane_contents,
         &mut kdl_string,
-    );
+    ) {
+        return Err(e);
+    }
     stringify_new_tab_template(
         global_layout_manifest.default_layout.template,
         &mut pane_contents,
@@ -90,7 +92,7 @@ pub fn serialize_session_layout(
         &mut kdl_string,
     );
     kdl_string.push_str("}");
-    (kdl_string, pane_contents)
+    Ok((kdl_string, pane_contents))
 }
 
 fn stringify_tab(
@@ -100,31 +102,38 @@ fn stringify_tab(
     tiled_panes: &Vec<PaneLayoutManifest>,
     floating_panes: &Vec<PaneLayoutManifest>,
     pane_contents: &mut BTreeMap<String, String>,
-) -> String {
+) -> Option<String> {
     let mut kdl_string = String::new();
-    let tiled_panes_layout = get_tiled_panes_layout_from_panegeoms(tiled_panes, None);
-    let floating_panes_layout = get_floating_panes_layout_from_panegeoms(floating_panes);
-    let tiled_panes = if &tiled_panes_layout.children_split_direction != &SplitDirection::default()
-    {
-        vec![tiled_panes_layout]
-    } else {
-        tiled_panes_layout.children
-    };
-    let mut tab_attributes = vec![format!("name=\"{}\"", tab_name,)];
-    if is_focused {
-        tab_attributes.push(format!("focus=true"));
+    // let tiled_panes_layout = get_tiled_panes_layout_from_panegeoms(tiled_panes, None);
+    match get_tiled_panes_layout_from_panegeoms(tiled_panes, None) {
+        Some(tiled_panes_layout) => {
+            let floating_panes_layout = get_floating_panes_layout_from_panegeoms(floating_panes);
+            let tiled_panes = if &tiled_panes_layout.children_split_direction != &SplitDirection::default()
+            {
+                vec![tiled_panes_layout]
+            } else {
+                tiled_panes_layout.children
+            };
+            let mut tab_attributes = vec![format!("name=\"{}\"", tab_name,)];
+            if is_focused {
+                tab_attributes.push(format!("focus=true"));
+            }
+            if hide_floating_panes {
+                tab_attributes.push(format!("hide_floating_panes=true"));
+            }
+            kdl_string.push_str(&kdl_string_from_tab(
+                &tiled_panes,
+                &floating_panes_layout,
+                tab_attributes,
+                None,
+                pane_contents,
+            ));
+            Some(kdl_string)
+        },
+        None => {
+            return None;
+        }
     }
-    if hide_floating_panes {
-        tab_attributes.push(format!("hide_floating_panes=true"));
-    }
-    kdl_string.push_str(&kdl_string_from_tab(
-        &tiled_panes,
-        &floating_panes_layout,
-        tab_attributes,
-        None,
-        pane_contents,
-    ));
-    kdl_string
 }
 
 /// Redundant with `geoms_to_kdl_tab`
@@ -507,23 +516,29 @@ fn stringify_multiple_tabs(
     tabs: Vec<(String, TabLayoutManifest)>,
     pane_contents: &mut BTreeMap<String, String>,
     kdl_string: &mut String,
-) {
+) -> Result<(), &'static str> {
     for (tab_name, tab_layout_manifest) in tabs {
         let tiled_panes = tab_layout_manifest.tiled_panes;
         let floating_panes = tab_layout_manifest.floating_panes;
         let hide_floating_panes = tab_layout_manifest.hide_floating_panes;
-        kdl_string.push_str(&indent(
-            &stringify_tab(
-                tab_name.clone(),
-                tab_layout_manifest.is_focused,
-                hide_floating_panes,
-                &tiled_panes,
-                &floating_panes,
-                pane_contents,
-            ),
-            INDENT,
-        ));
+        let stringified = stringify_tab(
+            tab_name.clone(),
+            tab_layout_manifest.is_focused,
+            hide_floating_panes,
+            &tiled_panes,
+            &floating_panes,
+            pane_contents,
+        );
+        match stringified {
+            Some(stringified) => {
+                kdl_string.push_str(&indent(&stringified, INDENT));
+            },
+            None => {
+                return Err("Failed to stringify tab");
+            }
+        }
     }
+    Ok(())
 }
 
 fn kdl_string_from_floating_pane(
@@ -592,10 +607,10 @@ fn tiled_pane_layout_from_manifest(
 fn get_tiled_panes_layout_from_panegeoms(
     geoms: &Vec<PaneLayoutManifest>,
     split_size: Option<SplitSize>,
-) -> TiledPaneLayout {
+) -> Option<TiledPaneLayout> {
     let (children_split_direction, splits) = match get_splits(&geoms) {
         Some(x) => x,
-        None => return tiled_pane_layout_from_manifest(geoms.iter().next(), split_size),
+        None => return Some(tiled_pane_layout_from_manifest(geoms.iter().next(), split_size))
     };
     let mut children = Vec::new();
     let mut remaining_geoms = geoms.clone();
@@ -614,29 +629,38 @@ fn get_tiled_panes_layout_from_panegeoms(
                 .into_iter()
                 .partition(|g| g.geom.x + g.geom.cols.as_usize() <= v_max),
         };
-        let constraint =
-            get_domain_constraint(&subgeoms, &children_split_direction, (v_min, v_max));
-        new_geoms.push(subgeoms);
-        new_constraints.push(constraint);
+        match get_domain_constraint(&subgeoms, &children_split_direction, (v_min, v_max)) {
+            Some(constraint) => {
+                new_geoms.push(subgeoms);
+                new_constraints.push(constraint);
+            },
+            None => {
+                return None;
+            }
+        }
     }
     let new_split_sizes = get_split_sizes(&new_constraints);
     for (subgeoms, subsplit_size) in new_geoms.iter().zip(new_split_sizes) {
-        children.push(get_tiled_panes_layout_from_panegeoms(
-            &subgeoms,
-            subsplit_size,
-        ));
+        match get_tiled_panes_layout_from_panegeoms(&subgeoms, subsplit_size) {
+            Some(child) => {
+                children.push(child);
+            },
+            None => {
+                return None;
+            }
+        }
     }
     let children_are_stacked = children_split_direction == SplitDirection::Horizontal
         && new_geoms
             .iter()
             .all(|c| c.iter().all(|c| c.geom.is_stacked));
-    TiledPaneLayout {
+    Some(TiledPaneLayout {
         children_split_direction,
         split_size,
         children,
         children_are_stacked,
         ..Default::default()
-    }
+    })
 }
 
 fn get_floating_panes_layout_from_panegeoms(
@@ -789,7 +813,7 @@ fn get_domain_constraint(
     geoms: &Vec<PaneLayoutManifest>,
     split_direction: &SplitDirection,
     (v_min, v_max): (usize, usize),
-) -> Constraint {
+) -> Option<Constraint> {
     match split_direction {
         SplitDirection::Horizontal => get_domain_row_constraint(&geoms, (v_min, v_max)),
         SplitDirection::Vertical => get_domain_col_constraint(&geoms, (v_min, v_max)),
@@ -800,21 +824,28 @@ fn get_domain_constraint(
 fn get_domain_col_constraint(
     geoms: &Vec<PaneLayoutManifest>,
     (x_min, x_max): (usize, usize),
-) -> Constraint {
+) -> Option<Constraint> {
     let mut percent = 0.0;
     let mut x = x_min;
     while x != x_max {
         // we only look at one (ie the last) geom that has value `x` for `g.x`
-        let geom = geoms.iter().filter(|g| g.geom.x == x).last().unwrap();
-        if let Some(size) = geom.geom.cols.as_percent() {
-            percent += size;
+        let geom = geoms.iter().filter(|g| g.geom.x == x).last();
+        match geom {
+            Some(geom) => {
+                if let Some(size) = geom.geom.cols.as_percent() {
+                    percent += size;
+                }
+                x += geom.geom.cols.as_usize();
+            },
+            None => {
+                return None;
+            }
         }
-        x += geom.geom.cols.as_usize();
     }
     if percent == 0.0 {
-        Constraint::Fixed(x_max - x_min)
+        Some(Constraint::Fixed(x_max - x_min))
     } else {
-        Constraint::Percent(percent)
+        Some(Constraint::Percent(percent))
     }
 }
 
@@ -822,21 +853,28 @@ fn get_domain_col_constraint(
 fn get_domain_row_constraint(
     geoms: &Vec<PaneLayoutManifest>,
     (y_min, y_max): (usize, usize),
-) -> Constraint {
+) -> Option<Constraint> {
     let mut percent = 0.0;
     let mut y = y_min;
     while y != y_max {
         // we only look at one (ie the last) geom that has value `y` for `g.y`
-        let geom = geoms.iter().filter(|g| g.geom.y == y).last().unwrap();
-        if let Some(size) = geom.geom.rows.as_percent() {
-            percent += size;
+        let geom = geoms.iter().filter(|g| g.geom.y == y).last();
+        match geom {
+            Some(geom) => {
+                if let Some(size) = geom.geom.rows.as_percent() {
+                    percent += size;
+                }
+                y += geom.geom.rows.as_usize();
+            },
+            None => {
+                return None;
+            }
         }
-        y += geom.geom.rows.as_usize();
     }
     if percent == 0.0 {
-        Constraint::Fixed(y_max - y_min)
+        Some(Constraint::Fixed(y_max - y_min))
     } else {
-        Constraint::Percent(percent)
+        Some(Constraint::Percent(percent))
     }
 }
 
@@ -932,7 +970,7 @@ mod tests {
             ..Default::default()
         };
         // let kdl = kdl_string_from_panegeoms(&geoms);
-        let kdl = serialize_session_layout(global_layout_manifest);
+        let kdl = serialize_session_layout(global_layout_manifest).unwrap();
         expect![[r#"layout {
     tab name="Tab #1" {
         pane size=1
@@ -958,7 +996,7 @@ mod tests {
             tabs: vec![("Tab #1".to_owned(), tab_layout_manifest)],
             ..Default::default()
         };
-        let kdl = serialize_session_layout(global_layout_manifest);
+        let kdl = serialize_session_layout(global_layout_manifest).unwrap();
         expect![[r#"layout {
     tab name="Tab #1" {
         pane
@@ -986,7 +1024,7 @@ mod tests {
             tabs: vec![("Tab #1".to_owned(), tab_layout_manifest)],
             ..Default::default()
         };
-        let kdl = serialize_session_layout(global_layout_manifest);
+        let kdl = serialize_session_layout(global_layout_manifest).unwrap();
         expect![[r#"layout {
     tab name="Tab #1" {
         pane size=10 split_direction="vertical" {
@@ -1022,7 +1060,7 @@ mod tests {
             tabs: vec![("Tab #1".to_owned(), tab_layout_manifest)],
             ..Default::default()
         };
-        let kdl = serialize_session_layout(global_layout_manifest);
+        let kdl = serialize_session_layout(global_layout_manifest).unwrap();
         expect![[r#"layout {
     tab name="Tab #1" {
         pane split_direction="vertical" {
@@ -1059,7 +1097,7 @@ mod tests {
             tabs: vec![("Tab #1".to_owned(), tab_layout_manifest)],
             ..Default::default()
         };
-        let kdl = serialize_session_layout(global_layout_manifest);
+        let kdl = serialize_session_layout(global_layout_manifest).unwrap();
         expect![[r#"layout {
     tab name="Tab #1" {
         pane size=5
