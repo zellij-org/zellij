@@ -535,7 +535,9 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
             PtyInstruction::DumpLayout(mut session_layout_metadata, client_id) => {
                 let err_context = || format!("Failed to dump layout");
                 pty.populate_session_layout_metadata(&mut session_layout_metadata);
-                match session_serialization::serialize_session_layout(session_layout_metadata.into()) {
+                match session_serialization::serialize_session_layout(
+                    session_layout_metadata.into(),
+                ) {
                     Ok((kdl_layout, _pane_contents)) => {
                         pty.bus
                             .senders
@@ -549,22 +551,26 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                             .send_to_server(ServerInstruction::Log(vec![e.to_owned()], client_id))
                             .with_context(err_context)
                             .non_fatal();
-                    }
+                    },
                 }
             },
             PtyInstruction::LogLayoutToHd(mut session_layout_metadata) => {
                 let err_context = || format!("Failed to dump layout");
                 pty.populate_session_layout_metadata(&mut session_layout_metadata);
-                match session_serialization::serialize_session_layout(session_layout_metadata.into()) {
+                match session_serialization::serialize_session_layout(
+                    session_layout_metadata.into(),
+                ) {
                     Ok(kdl_layout_and_pane_contents) => {
                         pty.bus
                             .senders
-                            .send_to_background_jobs(BackgroundJob::ReportLayoutInfo(kdl_layout_and_pane_contents))
+                            .send_to_background_jobs(BackgroundJob::ReportLayoutInfo(
+                                kdl_layout_and_pane_contents,
+                            ))
                             .with_context(err_context)?;
                     },
                     Err(e) => {
                         log::error!("Failed to log layout to HD: {}", e);
-                    }
+                    },
                 }
             },
             PtyInstruction::Exit => break,

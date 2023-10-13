@@ -108,12 +108,12 @@ fn stringify_tab(
     match get_tiled_panes_layout_from_panegeoms(tiled_panes, None) {
         Some(tiled_panes_layout) => {
             let floating_panes_layout = get_floating_panes_layout_from_panegeoms(floating_panes);
-            let tiled_panes = if &tiled_panes_layout.children_split_direction != &SplitDirection::default()
-            {
-                vec![tiled_panes_layout]
-            } else {
-                tiled_panes_layout.children
-            };
+            let tiled_panes =
+                if &tiled_panes_layout.children_split_direction != &SplitDirection::default() {
+                    vec![tiled_panes_layout]
+                } else {
+                    tiled_panes_layout.children
+                };
             let mut tab_attributes = vec![format!("name=\"{}\"", tab_name,)];
             if is_focused {
                 tab_attributes.push(format!("focus=true"));
@@ -132,7 +132,7 @@ fn stringify_tab(
         },
         None => {
             return None;
-        }
+        },
     }
 }
 
@@ -535,7 +535,7 @@ fn stringify_multiple_tabs(
             },
             None => {
                 return Err("Failed to stringify tab");
-            }
+            },
         }
     }
     Ok(())
@@ -610,7 +610,12 @@ fn get_tiled_panes_layout_from_panegeoms(
 ) -> Option<TiledPaneLayout> {
     let (children_split_direction, splits) = match get_splits(&geoms) {
         Some(x) => x,
-        None => return Some(tiled_pane_layout_from_manifest(geoms.iter().next(), split_size))
+        None => {
+            return Some(tiled_pane_layout_from_manifest(
+                geoms.iter().next(),
+                split_size,
+            ))
+        },
     };
     let mut children = Vec::new();
     let mut remaining_geoms = geoms.clone();
@@ -636,7 +641,7 @@ fn get_tiled_panes_layout_from_panegeoms(
             },
             None => {
                 return None;
-            }
+            },
         }
     }
     let new_split_sizes = get_split_sizes(&new_constraints);
@@ -647,7 +652,7 @@ fn get_tiled_panes_layout_from_panegeoms(
             },
             None => {
                 return None;
-            }
+            },
         }
     }
     let children_are_stacked = children_split_direction == SplitDirection::Horizontal
@@ -839,7 +844,7 @@ fn get_domain_col_constraint(
             },
             None => {
                 return None;
-            }
+            },
         }
     }
     if percent == 0.0 {
@@ -868,7 +873,7 @@ fn get_domain_row_constraint(
             },
             None => {
                 return None;
-            }
+            },
         }
     }
     if percent == 0.0 {
