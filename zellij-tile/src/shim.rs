@@ -618,7 +618,7 @@ pub fn switch_session_with_focus(
 
 #[allow(unused)]
 /// Returns the `TabInfo` corresponding to the currently active tab
-fn get_focused_tab(tab_infos: &Vec<TabInfo>) -> Option<TabInfo> {
+pub fn get_focused_tab(tab_infos: &Vec<TabInfo>) -> Option<TabInfo> {
     for tab_info in tab_infos {
         if tab_info.active {
             return Some(tab_info.clone());
@@ -629,7 +629,7 @@ fn get_focused_tab(tab_infos: &Vec<TabInfo>) -> Option<TabInfo> {
 
 #[allow(unused)]
 /// Returns the `PaneInfo` corresponding to the currently active pane (ignoring plugins)
-fn get_focused_pane(tab_position: usize, pane_manifest: &PaneManifest) -> Option<PaneInfo> {
+pub fn get_focused_pane(tab_position: usize, pane_manifest: &PaneManifest) -> Option<PaneInfo> {
     let panes = pane_manifest.panes.get(&tab_position);
     if let Some(panes) = panes {
         for pane in panes {
