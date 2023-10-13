@@ -5,7 +5,7 @@ use interprocess::local_socket::LocalSocketStream;
 use nix::{
     pty::{openpty, OpenptyResult, Winsize},
     sys::{
-        signal::{kill, Signal},
+        signal::{kill, killpg, Signal},
         termios,
     },
     unistd,
@@ -694,11 +694,11 @@ impl ServerOsApi for ServerOsInputOutput {
         Box::new((*self).clone())
     }
     fn kill(&self, pid: Pid) -> Result<()> {
-        let _ = kill(pid, Some(Signal::SIGHUP));
+        let _ = killpg(pid, Some(Signal::SIGINT));
         Ok(())
     }
     fn force_kill(&self, pid: Pid) -> Result<()> {
-        let _ = kill(pid, Some(Signal::SIGKILL));
+        let _ = killpg(pid, Some(Signal::SIGKILL));
         Ok(())
     }
     fn send_to_client(&self, client_id: ClientId, msg: ServerToClientMsg) -> Result<()> {
