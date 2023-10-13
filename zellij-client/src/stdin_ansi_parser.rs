@@ -11,6 +11,33 @@ use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
 use zellij_utils::anyhow::Result;
 
+/// Describe the terminal implementation of synchronised output
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub enum SyncOutput {
+    DCS,
+    CSI,
+}
+
+impl SyncOutput {
+    pub fn start_seq(&self) -> &'static [u8] {
+        static CSI_BSU_SEQ: &'static [u8] = "\u{1b}[?2026h".as_bytes();
+        static DCS_BSU_SEQ: &'static [u8] = "\u{1b}P=1s\u{1b}".as_bytes();
+        match self {
+            SyncOutput::DCS => DCS_BSU_SEQ,
+            SyncOutput::CSI => CSI_BSU_SEQ,
+        }
+    }
+
+    pub fn end_seq(&self) -> &'static [u8] {
+        static CSI_ESU_SEQ: &'static [u8] = "\u{1b}[?2026l".as_bytes();
+        static DCS_ESU_SEQ: &'static [u8] = "\u{1b}P=2s\u{1b}".as_bytes();
+        match self {
+            SyncOutput::DCS => DCS_ESU_SEQ,
+            SyncOutput::CSI => CSI_ESU_SEQ,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct StdinAnsiParser {
     raw_buffer: Vec<u8>,
@@ -36,8 +63,10 @@ impl StdinAnsiParser {
         // <ESC>[16t => get character cell size in pixels
         // <ESC>]11;?<ESC>\ => get background color
         // <ESC>]10;?<ESC>\ => get foreground color
-        let mut query_string =
-            String::from("\u{1b}[14t\u{1b}[16t\u{1b}]11;?\u{1b}\u{5c}\u{1b}]10;?\u{1b}\u{5c}");
+        // <ESC>[?2026$p => get synchronised output mode
+        let mut query_string = String::from(
+            "\u{1b}[14t\u{1b}[16t\u{1b}]11;?\u{1b}\u{5c}\u{1b}]10;?\u{1b}\u{5c}\u{1b}[?2026$p",
+        );
 
         // query colors
         // eg. <ESC>]4;5;?<ESC>\ => query color register number 5
@@ -130,6 +159,14 @@ impl StdinAnsiParser {
             } else {
                 self.raw_buffer.clear();
             }
+        } else if byte == b'y' {
+            self.raw_buffer.push(byte);
+            if let Some(ansi_sequence) =
+                AnsiStdinInstruction::synchronized_output_from_bytes(&self.raw_buffer)
+            {
+                self.pending_events.push(ansi_sequence);
+                self.raw_buffer.clear();
+            }
         } else {
             self.raw_buffer.push(byte);
         }
@@ -142,6 +179,7 @@ pub enum AnsiStdinInstruction {
     BackgroundColor(String),
     ForegroundColor(String),
     ColorRegisters(Vec<(usize, String)>),
+    SynchronizedOutput(Option<SyncOutput>),
 }
 
 impl AnsiStdinInstruction {
@@ -224,6 +262,24 @@ impl AnsiStdinInstruction {
             registers.push((color_register, color_sequence));
         }
         Some(AnsiStdinInstruction::ColorRegisters(registers))
+    }
+
+    pub fn synchronized_output_from_bytes(bytes: &[u8]) -> Option<Self> {
+        lazy_static! {
+            static ref RE: Regex = Regex::new(r"^\u{1b}\[\?2026;([0|1|2|3|4])\$y$").unwrap();
+        }
+        let key_string = String::from_utf8_lossy(bytes);
+        if let Some(captures) = RE.captures_iter(&key_string).next() {
+            match captures[1].parse::<usize>().ok()? {
+                1 | 2 => Some(AnsiStdinInstruction::SynchronizedOutput(Some(
+                    SyncOutput::CSI,
+                ))),
+                0 | 4 => Some(AnsiStdinInstruction::SynchronizedOutput(None)),
+                _ => None,
+            }
+        } else {
+            None
+        }
     }
 }
 

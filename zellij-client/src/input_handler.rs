@@ -197,6 +197,11 @@ impl InputHandler {
                 self.os_input
                     .send_to_server(ClientToServerMsg::ColorRegisters(color_registers));
             },
+            AnsiStdinInstruction::SynchronizedOutput(enabled) => {
+                self.send_client_instructions
+                    .send(ClientInstruction::SetSynchronizedOutput(enabled))
+                    .unwrap();
+            },
         }
     }
     fn handle_mouse_event(&mut self, mouse_event: &MouseEvent) {
