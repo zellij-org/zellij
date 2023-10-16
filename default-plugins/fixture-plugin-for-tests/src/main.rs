@@ -240,6 +240,18 @@ impl ZellijPlugin for State {
                 Key::Ctrl('1') => {
                     request_permission(&[PermissionType::ReadApplicationState]);
                 },
+                Key::Ctrl('2') => {
+                    let mut context = BTreeMap::new();
+                    context.insert("user_key_1".to_owned(), "user_value_1".to_owned());
+                    run_command(&["ls", "-l"], context);
+                },
+                Key::Ctrl('3') => {
+                    let mut context = BTreeMap::new();
+                    context.insert("user_key_2".to_owned(), "user_value_2".to_owned());
+                    let mut env_vars = BTreeMap::new();
+                    env_vars.insert("VAR1".to_owned(), "some_value".to_owned());
+                    run_command_with_env_variables_and_cwd(&["ls", "-l"], env_vars, std::path::PathBuf::from("/some/custom/folder"), context);
+                },
                 _ => {},
             },
             Event::CustomMessage(message, payload) => {

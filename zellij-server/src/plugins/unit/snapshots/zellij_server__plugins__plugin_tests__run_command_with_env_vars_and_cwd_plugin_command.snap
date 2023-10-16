@@ -1,0 +1,22 @@
+---
+source: zellij-server/src/plugins/./unit/plugin_tests.rs
+assertion_line: 5414
+expression: "format!(\"{:#?}\", new_tab_event)"
+---
+Some(
+    RunCommand(
+        0,
+        1,
+        "ls",
+        [
+            "-l",
+        ],
+        {
+            "VAR1": "some_value",
+        },
+        "/some/custom/folder",
+        {
+            "user_key_2": "user_value_2",
+        },
+    ),
+)
