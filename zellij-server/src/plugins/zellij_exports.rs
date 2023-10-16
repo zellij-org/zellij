@@ -576,6 +576,7 @@ fn set_timeout(env: &ForeignFunctionEnv, secs: f64) {
 }
 
 fn exec_cmd(env: &ForeignFunctionEnv, mut command_line: Vec<String>) {
+    log::warn!("The ExecCmd plugin command is deprecated and will be removed in a future version. Please use RunCmd instead (it has all the things and can even show you STDOUT/STDERR and an exit code!)");
     let err_context = || {
         format!(
             "failed to execute command on host for plugin '{}'",
