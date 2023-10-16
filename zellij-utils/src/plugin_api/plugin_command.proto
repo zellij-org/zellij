@@ -82,6 +82,7 @@ enum CommandName {
   OpenTerminalInPlace = 68;
   OpenCommandInPlace = 69;
   OpenFileInPlace = 70;
+  RunCommand = 71;
 }
 
 message PluginCommand {
@@ -128,6 +129,7 @@ message PluginCommand {
     OpenFilePayload open_file_in_place_payload = 40;
     OpenFilePayload open_terminal_in_place_payload = 41;
     OpenCommandPanePayload open_command_pane_in_place_payload = 42;
+    RunCommandPayload run_command_payload = 43;
   }
 }
 
@@ -168,6 +170,23 @@ message SetTimeoutPayload {
 
 message ExecCmdPayload {
   repeated string command_line = 1;
+}
+
+message RunCommandPayload {
+  repeated string command_line = 1;
+  repeated EnvVariable env_variables = 2;
+  string cwd = 3;
+  repeated ContextItem context = 4;
+}
+
+message EnvVariable {
+  string name = 1;
+  string value = 2;
+}
+
+message ContextItem {
+  string name = 1;
+  string value = 2;
 }
 
 message PluginMessagePayload {

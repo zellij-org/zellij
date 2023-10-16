@@ -1,6 +1,9 @@
 use serde::{de::DeserializeOwned, Serialize};
-use std::collections::HashSet;
-use std::{io, path::Path};
+use std::collections::{BTreeMap, HashSet};
+use std::{
+    io,
+    path::{Path, PathBuf},
+};
 use zellij_utils::data::*;
 use zellij_utils::errors::prelude::*;
 pub use zellij_utils::plugin_api;
@@ -166,6 +169,39 @@ pub fn set_timeout(secs: f64) {
 pub fn exec_cmd(cmd: &[&str]) {
     let plugin_command =
         PluginCommand::ExecCmd(cmd.iter().cloned().map(|s| s.to_owned()).collect());
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+/// Run this command in the background on the host machine, optionally being notified of its output
+/// if subscribed to the `RunCommandResult` Event
+pub fn run_command(cmd: &[&str], context: BTreeMap<String, String>) {
+    let plugin_command = PluginCommand::RunCommand(
+        cmd.iter().cloned().map(|s| s.to_owned()).collect(),
+        BTreeMap::new(),
+        PathBuf::from("."),
+        context,
+    );
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+/// Run this command in the background on the host machine, providing environment variables and a
+/// cwd. Optionally being notified of its output if subscribed to the `RunCommandResult` Event
+pub fn run_command_with_env_variables_and_cwd(
+    cmd: &[&str],
+    env_variables: BTreeMap<String, String>,
+    cwd: PathBuf,
+    context: BTreeMap<String, String>,
+) {
+    let plugin_command = PluginCommand::RunCommand(
+        cmd.iter().cloned().map(|s| s.to_owned()).collect(),
+        env_variables,
+        cwd,
+        context,
+    );
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };

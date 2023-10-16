@@ -473,6 +473,90 @@ fn create_plugin_thread_with_pty_receiver(
     (to_plugin, pty_receiver, screen_receiver, Box::new(teardown))
 }
 
+fn create_plugin_thread_with_background_jobs_receiver(
+    zellij_cwd: Option<PathBuf>,
+) -> (
+    SenderWithContext<PluginInstruction>,
+    Receiver<(BackgroundJob, ErrorContext)>,
+    Receiver<(ScreenInstruction, ErrorContext)>,
+    Box<dyn FnOnce()>,
+) {
+    let zellij_cwd = zellij_cwd.unwrap_or_else(|| PathBuf::from("."));
+    let (to_server, _server_receiver): ChannelWithContext<ServerInstruction> =
+        channels::bounded(50);
+    let to_server = SenderWithContext::new(to_server);
+
+    let (to_screen, screen_receiver): ChannelWithContext<ScreenInstruction> = channels::unbounded();
+    let to_screen = SenderWithContext::new(to_screen);
+
+    let (to_plugin, plugin_receiver): ChannelWithContext<PluginInstruction> = channels::unbounded();
+    let to_plugin = SenderWithContext::new(to_plugin);
+    let (to_pty, _pty_receiver): ChannelWithContext<PtyInstruction> = channels::unbounded();
+    let to_pty = SenderWithContext::new(to_pty);
+
+    let (to_pty_writer, _pty_writer_receiver): ChannelWithContext<PtyWriteInstruction> =
+        channels::unbounded();
+    let to_pty_writer = SenderWithContext::new(to_pty_writer);
+
+    let (to_background_jobs, background_jobs_receiver): ChannelWithContext<BackgroundJob> =
+        channels::unbounded();
+    let to_background_jobs = SenderWithContext::new(to_background_jobs);
+
+    let plugin_bus = Bus::new(
+        vec![plugin_receiver],
+        Some(&to_screen),
+        Some(&to_pty),
+        Some(&to_plugin),
+        Some(&to_server),
+        Some(&to_pty_writer),
+        Some(&to_background_jobs),
+        None,
+    )
+    .should_silently_fail();
+    let store = Store::new(wasmer::Singlepass::default());
+    let data_dir = PathBuf::from(tempdir().unwrap().path());
+    let default_shell = PathBuf::from(".");
+    let plugin_capabilities = PluginCapabilities::default();
+    let client_attributes = ClientAttributes::default();
+    let default_shell_action = None; // TODO: change me
+    let plugin_thread = std::thread::Builder::new()
+        .name("plugin_thread".to_string())
+        .spawn(move || {
+            set_var("ZELLIJ_SESSION_NAME", "zellij-test");
+            plugin_thread_main(
+                plugin_bus,
+                store,
+                data_dir,
+                PluginsConfig::default(),
+                Box::new(Layout::default()),
+                default_shell,
+                zellij_cwd,
+                plugin_capabilities,
+                client_attributes,
+                default_shell_action,
+            )
+            .expect("TEST")
+        })
+        .unwrap();
+    let teardown = {
+        let to_plugin = to_plugin.clone();
+        move || {
+            let _ = to_pty.send(PtyInstruction::Exit);
+            let _ = to_pty_writer.send(PtyWriteInstruction::Exit);
+            let _ = to_screen.send(ScreenInstruction::Exit);
+            let _ = to_server.send(ServerInstruction::KillSession);
+            let _ = to_plugin.send(PluginInstruction::Exit);
+            let _ = plugin_thread.join();
+        }
+    };
+    (
+        to_plugin,
+        background_jobs_receiver,
+        screen_receiver,
+        Box::new(teardown),
+    )
+}
+
 lazy_static! {
     static ref PLUGIN_FIXTURE: String = format!(
         // to populate this file, make sure to run the build-e2e CI job
@@ -5183,4 +5267,154 @@ pub fn denied_permission_request_result() {
     let permissions = permission_cache.get_permissions(run_plugin.location.to_string());
 
     assert_snapshot!(format!("{:#?}", permissions));
+}
+
+#[test]
+#[ignore]
+pub fn run_command_plugin_command() {
+    let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
+                                          // destructor removes the directory
+    let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
+    let (plugin_thread_sender, background_jobs_receiver, screen_receiver, teardown) =
+        create_plugin_thread_with_background_jobs_receiver(Some(plugin_host_folder));
+    let plugin_should_float = Some(false);
+    let plugin_title = Some("test_plugin".to_owned());
+    let run_plugin = RunPlugin {
+        _allow_exec_host_cmd: false,
+        location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
+    };
+    let tab_index = 1;
+    let client_id = 1;
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let received_background_jobs_instructions = Arc::new(Mutex::new(vec![]));
+    let background_jobs_thread = log_actions_in_thread!(
+        received_background_jobs_instructions,
+        BackgroundJob::RunCommand,
+        background_jobs_receiver,
+        1
+    );
+    let received_screen_instructions = Arc::new(Mutex::new(vec![]));
+    let _screen_thread = grant_permissions_and_log_actions_in_thread_naked_variant!(
+        received_screen_instructions,
+        ScreenInstruction::Exit,
+        screen_receiver,
+        1,
+        &PermissionType::ChangeApplicationState,
+        cache_path,
+        plugin_thread_sender,
+        client_id
+    );
+
+    let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
+    let _ = plugin_thread_sender.send(PluginInstruction::Load(
+        plugin_should_float,
+        false,
+        plugin_title,
+        run_plugin,
+        tab_index,
+        None,
+        client_id,
+        size,
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
+        None,
+        Some(client_id),
+        Event::Key(Key::Ctrl('2')), // this triggers the enent in the fixture plugin
+    )]));
+    background_jobs_thread.join().unwrap(); // this might take a while if the cache is cold
+    teardown();
+    let new_tab_event = received_background_jobs_instructions
+        .lock()
+        .unwrap()
+        .iter()
+        .find_map(|i| {
+            if let BackgroundJob::RunCommand(..) = i {
+                Some(i.clone())
+            } else {
+                None
+            }
+        })
+        .clone();
+    assert_snapshot!(format!("{:#?}", new_tab_event));
+}
+
+#[test]
+#[ignore]
+pub fn run_command_with_env_vars_and_cwd_plugin_command() {
+    let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
+                                          // destructor removes the directory
+    let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
+    let (plugin_thread_sender, background_jobs_receiver, screen_receiver, teardown) =
+        create_plugin_thread_with_background_jobs_receiver(Some(plugin_host_folder));
+    let plugin_should_float = Some(false);
+    let plugin_title = Some("test_plugin".to_owned());
+    let run_plugin = RunPlugin {
+        _allow_exec_host_cmd: false,
+        location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
+    };
+    let tab_index = 1;
+    let client_id = 1;
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let received_background_jobs_instructions = Arc::new(Mutex::new(vec![]));
+    let background_jobs_thread = log_actions_in_thread!(
+        received_background_jobs_instructions,
+        BackgroundJob::RunCommand,
+        background_jobs_receiver,
+        1
+    );
+    let received_screen_instructions = Arc::new(Mutex::new(vec![]));
+    let _screen_thread = grant_permissions_and_log_actions_in_thread_naked_variant!(
+        received_screen_instructions,
+        ScreenInstruction::Exit,
+        screen_receiver,
+        1,
+        &PermissionType::ChangeApplicationState,
+        cache_path,
+        plugin_thread_sender,
+        client_id
+    );
+
+    let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
+    let _ = plugin_thread_sender.send(PluginInstruction::Load(
+        plugin_should_float,
+        false,
+        plugin_title,
+        run_plugin,
+        tab_index,
+        None,
+        client_id,
+        size,
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
+        None,
+        Some(client_id),
+        Event::Key(Key::Ctrl('3')), // this triggers the enent in the fixture plugin
+    )]));
+    background_jobs_thread.join().unwrap(); // this might take a while if the cache is cold
+    teardown();
+    let new_tab_event = received_background_jobs_instructions
+        .lock()
+        .unwrap()
+        .iter()
+        .find_map(|i| {
+            if let BackgroundJob::RunCommand(..) = i {
+                Some(i.clone())
+            } else {
+                None
+            }
+        })
+        .clone();
+    assert_snapshot!(format!("{:#?}", new_tab_event));
 }
