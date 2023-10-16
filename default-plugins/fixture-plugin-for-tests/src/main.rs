@@ -250,7 +250,12 @@ impl ZellijPlugin for State {
                     context.insert("user_key_2".to_owned(), "user_value_2".to_owned());
                     let mut env_vars = BTreeMap::new();
                     env_vars.insert("VAR1".to_owned(), "some_value".to_owned());
-                    run_command_with_env_variables_and_cwd(&["ls", "-l"], env_vars, std::path::PathBuf::from("/some/custom/folder"), context);
+                    run_command_with_env_variables_and_cwd(
+                        &["ls", "-l"],
+                        env_vars,
+                        std::path::PathBuf::from("/some/custom/folder"),
+                        context,
+                    );
                 },
                 _ => {},
             },

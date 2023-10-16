@@ -1,8 +1,8 @@
 use super::PluginInstruction;
+use crate::background_jobs::BackgroundJob;
 use crate::plugins::plugin_map::{PluginEnv, Subscriptions};
 use crate::plugins::wasm_bridge::handle_plugin_crash;
 use crate::route::route_action;
-use crate::background_jobs::BackgroundJob;
 use crate::ServerInstruction;
 use log::{debug, warn};
 use serde::Serialize;
@@ -127,7 +127,9 @@ fn host_run_plugin_command(env: FunctionEnvMut<ForeignFunctionEnv>) {
                     PluginCommand::SwitchTabTo(tab_index) => switch_tab_to(env, tab_index),
                     PluginCommand::SetTimeout(seconds) => set_timeout(env, seconds),
                     PluginCommand::ExecCmd(command_line) => exec_cmd(env, command_line),
-                    PluginCommand::RunCommand(command_line, env_variables, cwd, context) => run_command(env, command_line, env_variables, cwd, context),
+                    PluginCommand::RunCommand(command_line, env_variables, cwd, context) => {
+                        run_command(env, command_line, env_variables, cwd, context)
+                    },
                     PluginCommand::PostMessageTo(plugin_message) => {
                         post_message_to(env, plugin_message)?
                     },
@@ -597,7 +599,13 @@ fn exec_cmd(env: &ForeignFunctionEnv, mut command_line: Vec<String>) {
         .non_fatal();
 }
 
-fn run_command(env: &ForeignFunctionEnv, mut command_line: Vec<String>, env_variables: BTreeMap<String, String>, cwd: PathBuf, context: BTreeMap<String, String>) {
+fn run_command(
+    env: &ForeignFunctionEnv,
+    mut command_line: Vec<String>,
+    env_variables: BTreeMap<String, String>,
+    cwd: PathBuf,
+    context: BTreeMap<String, String>,
+) {
     let err_context = || {
         format!(
             "failed to execute command on host for plugin '{}'",
@@ -608,7 +616,8 @@ fn run_command(env: &ForeignFunctionEnv, mut command_line: Vec<String>, env_vari
         log::error!("Command cannot be empty");
     } else {
         let command = command_line.remove(0);
-        let _ = env.plugin_env
+        let _ = env
+            .plugin_env
             .senders
             .send_to_background_jobs(BackgroundJob::RunCommand(
                 env.plugin_env.plugin_id,

@@ -2,7 +2,7 @@ use crate::input::actions::Action;
 use crate::input::config::ConversionError;
 use clap::ArgEnum;
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet, BTreeMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
@@ -497,7 +497,7 @@ pub enum Event {
     PermissionRequestResult(PermissionStatus),
     SessionUpdate(Vec<SessionInfo>),
     RunCommandResult(Option<i32>, Vec<u8>, Vec<u8>, BTreeMap<String, String>), // exit_code, STDOUT, STDERR,
-                                                                     // context
+                                                                               // context
 }
 
 #[derive(
@@ -1066,8 +1066,13 @@ pub enum PluginCommand {
     OpenTerminalInPlace(FileToOpen), // only used for the path as cwd
     OpenFileInPlace(FileToOpen),
     OpenCommandPaneInPlace(CommandToRun),
-    RunCommand(Vec<String>, BTreeMap<String, String>, PathBuf, BTreeMap<String, String>), // command,
-                                                                                          // env_Variables,
-                                                                                          // cwd,
-                                                                                          // context
+    RunCommand(
+        Vec<String>,
+        BTreeMap<String, String>,
+        PathBuf,
+        BTreeMap<String, String>,
+    ), // command,
+       // env_Variables,
+       // cwd,
+       // context
 }

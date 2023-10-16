@@ -189,7 +189,11 @@ impl TryFrom<ProtobufEvent> for Event {
                         run_command_result_payload.exit_code,
                         run_command_result_payload.stdout,
                         run_command_result_payload.stderr,
-                        run_command_result_payload.context.into_iter().map(|c_i| (c_i.name, c_i.value)).collect(),
+                        run_command_result_payload
+                            .context
+                            .into_iter()
+                            .map(|c_i| (c_i.name, c_i.value))
+                            .collect(),
                     ))
                 },
                 _ => Err("Malformed payload for the RunCommandResult Event"),
@@ -354,11 +358,16 @@ impl TryFrom<Event> for ProtobufEvent {
                     exit_code,
                     stdout,
                     stderr,
-                    context: context.into_iter().map(|(name, value)| ContextItem { name, value }).collect()
+                    context: context
+                        .into_iter()
+                        .map(|(name, value)| ContextItem { name, value })
+                        .collect(),
                 };
                 Ok(ProtobufEvent {
                     name: ProtobufEventType::RunCommandResult as i32,
-                    payload: Some(event::Payload::RunCommandResultPayload(run_command_result_payload)),
+                    payload: Some(event::Payload::RunCommandResultPayload(
+                        run_command_result_payload,
+                    )),
                 })
             },
         }

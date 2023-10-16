@@ -549,7 +549,12 @@ fn create_plugin_thread_with_background_jobs_receiver(
             let _ = plugin_thread.join();
         }
     };
-    (to_plugin, background_jobs_receiver, screen_receiver, Box::new(teardown))
+    (
+        to_plugin,
+        background_jobs_receiver,
+        screen_receiver,
+        Box::new(teardown),
+    )
 }
 
 lazy_static! {
