@@ -1,6 +1,7 @@
 use reqwest::Url;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]
 pub struct Download {
     pub url: String,
     pub file_name: String,
