@@ -17,9 +17,11 @@ pub mod shared;
 #[cfg(not(target_family = "wasm"))]
 pub mod channels; // Requires async_std
 #[cfg(not(target_family = "wasm"))]
+pub mod downloader;
+#[cfg(not(target_family = "wasm"))]
 pub mod ipc; // Requires interprocess
 #[cfg(not(target_family = "wasm"))]
-pub mod logging; // Requires log4rs
+pub mod logging; // Requires log4rs // Requires tokio
 
 #[cfg(not(target_family = "wasm"))]
 pub use ::{
