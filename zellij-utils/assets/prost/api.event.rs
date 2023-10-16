@@ -9,7 +9,10 @@ pub struct EventNameList {
 pub struct Event {
     #[prost(enumeration = "EventType", tag = "1")]
     pub name: i32,
-    #[prost(oneof = "event::Payload", tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13")]
+    #[prost(
+        oneof = "event::Payload",
+        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14"
+    )]
     pub payload: ::core::option::Option<event::Payload>,
 }
 /// Nested message and enum types in `Event`.
@@ -41,6 +44,8 @@ pub mod event {
         PermissionRequestResultPayload(super::PermissionRequestResultPayload),
         #[prost(message, tag = "13")]
         SessionUpdatePayload(super::SessionUpdatePayload),
+        #[prost(message, tag = "14")]
+        RunCommandResultPayload(super::RunCommandResultPayload),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -48,6 +53,26 @@ pub mod event {
 pub struct SessionUpdatePayload {
     #[prost(message, repeated, tag = "1")]
     pub session_manifests: ::prost::alloc::vec::Vec<SessionManifest>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RunCommandResultPayload {
+    #[prost(int32, optional, tag = "1")]
+    pub exit_code: ::core::option::Option<i32>,
+    #[prost(bytes = "vec", tag = "2")]
+    pub stdout: ::prost::alloc::vec::Vec<u8>,
+    #[prost(bytes = "vec", tag = "3")]
+    pub stderr: ::prost::alloc::vec::Vec<u8>,
+    #[prost(message, repeated, tag = "4")]
+    pub context: ::prost::alloc::vec::Vec<ContextItem>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ContextItem {
+    #[prost(string, tag = "1")]
+    pub name: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub value: ::prost::alloc::string::String,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -261,6 +286,7 @@ pub enum EventType {
     FileSystemDelete = 14,
     PermissionRequestResult = 15,
     SessionUpdate = 16,
+    RunCommandResult = 17,
 }
 impl EventType {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -286,6 +312,7 @@ impl EventType {
             EventType::FileSystemDelete => "FileSystemDelete",
             EventType::PermissionRequestResult => "PermissionRequestResult",
             EventType::SessionUpdate => "SessionUpdate",
+            EventType::RunCommandResult => "RunCommandResult",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -308,6 +335,7 @@ impl EventType {
             "FileSystemDelete" => Some(Self::FileSystemDelete),
             "PermissionRequestResult" => Some(Self::PermissionRequestResult),
             "SessionUpdate" => Some(Self::SessionUpdate),
+            "RunCommandResult" => Some(Self::RunCommandResult),
             _ => None,
         }
     }

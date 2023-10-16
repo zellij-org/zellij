@@ -3,13 +3,14 @@ use zellij_utils::consts::{
     session_info_cache_file_name, session_info_folder_for_session, session_layout_cache_file_name,
     ZELLIJ_SOCK_DIR,
 };
-use zellij_utils::data::SessionInfo;
+use zellij_utils::data::{Event, SessionInfo};
 use zellij_utils::errors::{prelude::*, BackgroundJobContext, ContextType};
 
 use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::io::Write;
 use std::os::unix::fs::FileTypeExt;
+use std::path::PathBuf;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc, Mutex,
@@ -17,8 +18,10 @@ use std::sync::{
 use std::time::{Duration, Instant};
 
 use crate::panes::PaneId;
+use crate::plugins::{PluginId, PluginInstruction};
 use crate::screen::ScreenInstruction;
 use crate::thread_bus::Bus;
+use crate::ClientId;
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum BackgroundJob {
@@ -28,6 +31,15 @@ pub enum BackgroundJob {
     ReadAllSessionInfosOnMachine,                         // u32 - plugin_id
     ReportSessionInfo(String, SessionInfo),               // String - session name
     ReportLayoutInfo((String, BTreeMap<String, String>)), // HashMap<file_name, pane_contents>
+    RunCommand(
+        PluginId,
+        ClientId,
+        String,
+        Vec<String>,
+        BTreeMap<String, String>,
+        PathBuf,
+        BTreeMap<String, String>,
+    ), // command, args, env_variables, cwd, context
     Exit,
 }
 
@@ -44,6 +56,7 @@ impl From<&BackgroundJob> for BackgroundJobContext {
             },
             BackgroundJob::ReportSessionInfo(..) => BackgroundJobContext::ReportSessionInfo,
             BackgroundJob::ReportLayoutInfo(..) => BackgroundJobContext::ReportLayoutInfo,
+            BackgroundJob::RunCommand(..) => BackgroundJobContext::RunCommand,
             BackgroundJob::Exit => BackgroundJobContext::Exit,
         }
     }
@@ -222,6 +235,52 @@ pub(crate) fn background_jobs_main(bus: Bus<BackgroundJob>) -> Result<()> {
                             let _ = senders.send_to_screen(ScreenInstruction::DumpLayoutToHd);
                             task::sleep(std::time::Duration::from_millis(SESSION_READ_DURATION))
                                 .await;
+                        }
+                    }
+                });
+            },
+            BackgroundJob::RunCommand(
+                plugin_id,
+                client_id,
+                command,
+                args,
+                env_variables,
+                cwd,
+                context,
+            ) => {
+                // when async_std::process stabilizes, we should change this to be async
+                std::thread::spawn({
+                    let senders = bus.senders.clone();
+                    move || {
+                        let output = std::process::Command::new(&command)
+                            .args(&args)
+                            .envs(env_variables)
+                            .current_dir(cwd)
+                            .stdout(std::process::Stdio::piped())
+                            .stderr(std::process::Stdio::piped())
+                            .output();
+                        match output {
+                            Ok(output) => {
+                                let stdout = output.stdout.to_vec();
+                                let stderr = output.stderr.to_vec();
+                                let exit_code = output.status.code();
+                                let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
+                                    Some(plugin_id),
+                                    Some(client_id),
+                                    Event::RunCommandResult(exit_code, stdout, stderr, context),
+                                )]));
+                            },
+                            Err(e) => {
+                                log::error!("Failed to run command: {}", e);
+                                let stdout = vec![];
+                                let stderr = format!("{}", e).as_bytes().to_vec();
+                                let exit_code = Some(2);
+                                let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
+                                    Some(plugin_id),
+                                    Some(client_id),
+                                    Event::RunCommandResult(exit_code, stdout, stderr, context),
+                                )]));
+                            },
                         }
                     }
                 });

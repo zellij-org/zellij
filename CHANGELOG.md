@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix(plugins): use versioned path for plugin artifact cache (https://github.com/zellij-org/zellij/pull/2836)
 * feat(sessions): session resurrection (https://github.com/zellij-org/zellij/pull/2801 and https://github.com/zellij-org/zellij/pull/2851)
 * feat(rendering): terminal synchronized output (https://github.com/zellij-org/zellij/pull/2798)
+* feat(plugins): plugin command API for executing commands in the background (https://github.com/zellij-org/zellij/pull/2862)
 
 ## [0.38.2] - 2023-09-15
 * fix(terminal): wrap lines in alternate screen mode when adding characters (https://github.com/zellij-org/zellij/pull/2789)

@@ -1,0 +1,20 @@
+---
+source: zellij-server/src/plugins/./unit/plugin_tests.rs
+assertion_line: 5339
+expression: "format!(\"{:#?}\", new_tab_event)"
+---
+Some(
+    RunCommand(
+        0,
+        1,
+        "ls",
+        [
+            "-l",
+        ],
+        {},
+        ".",
+        {
+            "user_key_1": "user_value_1",
+        },
+    ),
+)

@@ -183,6 +183,21 @@ impl TryFrom<ProtobufEvent> for Event {
                 },
                 _ => Err("Malformed payload for the SessionUpdate Event"),
             },
+            Some(ProtobufEventType::RunCommandResult) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::RunCommandResultPayload(run_command_result_payload)) => {
+                    Ok(Event::RunCommandResult(
+                        run_command_result_payload.exit_code,
+                        run_command_result_payload.stdout,
+                        run_command_result_payload.stderr,
+                        run_command_result_payload
+                            .context
+                            .into_iter()
+                            .map(|c_i| (c_i.name, c_i.value))
+                            .collect(),
+                    ))
+                },
+                _ => Err("Malformed payload for the RunCommandResult Event"),
+            },
             None => Err("Unknown Protobuf Event"),
         }
     }
@@ -336,6 +351,23 @@ impl TryFrom<Event> for ProtobufEvent {
                 Ok(ProtobufEvent {
                     name: ProtobufEventType::SessionUpdate as i32,
                     payload: Some(event::Payload::SessionUpdatePayload(session_update_payload)),
+                })
+            },
+            Event::RunCommandResult(exit_code, stdout, stderr, context) => {
+                let run_command_result_payload = RunCommandResultPayload {
+                    exit_code,
+                    stdout,
+                    stderr,
+                    context: context
+                        .into_iter()
+                        .map(|(name, value)| ContextItem { name, value })
+                        .collect(),
+                };
+                Ok(ProtobufEvent {
+                    name: ProtobufEventType::RunCommandResult as i32,
+                    payload: Some(event::Payload::RunCommandResultPayload(
+                        run_command_result_payload,
+                    )),
                 })
             },
         }
@@ -783,6 +815,7 @@ impl TryFrom<ProtobufEventType> for EventType {
             ProtobufEventType::FileSystemDelete => EventType::FileSystemDelete,
             ProtobufEventType::PermissionRequestResult => EventType::PermissionRequestResult,
             ProtobufEventType::SessionUpdate => EventType::SessionUpdate,
+            ProtobufEventType::RunCommandResult => EventType::RunCommandResult,
         })
     }
 }
@@ -808,6 +841,7 @@ impl TryFrom<EventType> for ProtobufEventType {
             EventType::FileSystemDelete => ProtobufEventType::FileSystemDelete,
             EventType::PermissionRequestResult => ProtobufEventType::PermissionRequestResult,
             EventType::SessionUpdate => ProtobufEventType::SessionUpdate,
+            EventType::RunCommandResult => ProtobufEventType::RunCommandResult,
         })
     }
 }
