@@ -445,6 +445,7 @@ pub enum BackgroundJobContext {
     ReadAllSessionInfosOnMachine,
     ReportSessionInfo,
     ReportLayoutInfo,
+    RunCommand,
     Exit,
 }
 

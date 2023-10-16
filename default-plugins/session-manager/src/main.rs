@@ -28,6 +28,7 @@ impl ZellijPlugin for State {
             EventType::ModeUpdate,
             EventType::SessionUpdate,
             EventType::Key,
+            EventType::RunCommandResult,
         ]);
     }
 

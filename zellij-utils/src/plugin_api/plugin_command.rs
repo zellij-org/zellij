@@ -6,7 +6,7 @@ pub use super::generated_api::api::{
         plugin_command::Payload, CommandName, ExecCmdPayload, IdAndNewName, MovePayload,
         OpenCommandPanePayload, OpenFilePayload, PluginCommand as ProtobufPluginCommand,
         PluginMessagePayload, RequestPluginPermissionPayload, ResizePayload, SetTimeoutPayload,
-        SubscribePayload, SwitchSessionPayload, SwitchTabToPayload, UnsubscribePayload,
+        SubscribePayload, SwitchSessionPayload, SwitchTabToPayload, UnsubscribePayload, RunCommandPayload, EnvVariable, ContextItem
     },
     plugin_permission::PermissionType as ProtobufPermissionType,
     resize::ResizeAction as ProtobufResizeAction,
@@ -15,6 +15,8 @@ pub use super::generated_api::api::{
 use crate::data::{ConnectToSession, PermissionType, PluginCommand};
 
 use std::convert::TryFrom;
+use std::collections::BTreeMap;
+use std::path::PathBuf;
 
 impl TryFrom<ProtobufPluginCommand> for PluginCommand {
     type Error = &'static str;
@@ -553,6 +555,14 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 },
                 _ => Err("Mismatched payload for OpenCommandPaneInPlace"),
             },
+            Some(CommandName::RunCommand) => match protobuf_plugin_command.payload {
+                Some(Payload::RunCommandPayload(run_command_payload)) => {
+                    let env_variables: BTreeMap<String, String> = run_command_payload.env_variables.into_iter().map(|e| (e.name, e.value)).collect();
+                    let context: BTreeMap<String, String> = run_command_payload.context.into_iter().map(|e| (e.name, e.value)).collect();
+                    Ok(PluginCommand::RunCommand(run_command_payload.command_line, env_variables, PathBuf::from(run_command_payload.cwd), context))
+                },
+                _ => Err("Mismatched payload for RunCommand"),
+            },
             None => Err("Unrecognized plugin command"),
         }
     }
@@ -928,6 +938,15 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     },
                 )),
             }),
+            PluginCommand::RunCommand(command_line, env_variables, cwd, context) => {
+                let env_variables: Vec<_> = env_variables.into_iter().map(|(name, value)| EnvVariable {name, value}).collect();
+                let context: Vec<_> = context.into_iter().map(|(name, value)| ContextItem {name, value}).collect();
+                let cwd = cwd.display().to_string();
+                Ok(ProtobufPluginCommand {
+                    name: CommandName::RunCommand as i32,
+                    payload: Some(Payload::RunCommandPayload(RunCommandPayload { command_line, env_variables, cwd, context })),
+                })
+            }
         }
     }
 }

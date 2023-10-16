@@ -5,7 +5,7 @@ pub struct PluginCommand {
     pub name: i32,
     #[prost(
         oneof = "plugin_command::Payload",
-        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42"
+        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43"
     )]
     pub payload: ::core::option::Option<plugin_command::Payload>,
 }
@@ -96,6 +96,8 @@ pub mod plugin_command {
         OpenTerminalInPlacePayload(super::OpenFilePayload),
         #[prost(message, tag = "42")]
         OpenCommandPaneInPlacePayload(super::OpenCommandPanePayload),
+        #[prost(message, tag = "43")]
+        RunCommandPayload(super::RunCommandPayload),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -161,6 +163,34 @@ pub struct SetTimeoutPayload {
 pub struct ExecCmdPayload {
     #[prost(string, repeated, tag = "1")]
     pub command_line: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RunCommandPayload {
+    #[prost(string, repeated, tag = "1")]
+    pub command_line: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(message, repeated, tag = "2")]
+    pub env_variables: ::prost::alloc::vec::Vec<EnvVariable>,
+    #[prost(string, tag = "3")]
+    pub cwd: ::prost::alloc::string::String,
+    #[prost(message, repeated, tag = "4")]
+    pub context: ::prost::alloc::vec::Vec<ContextItem>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EnvVariable {
+    #[prost(string, tag = "1")]
+    pub name: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub value: ::prost::alloc::string::String,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ContextItem {
+    #[prost(string, tag = "1")]
+    pub name: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub value: ::prost::alloc::string::String,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -263,6 +293,7 @@ pub enum CommandName {
     OpenTerminalInPlace = 68,
     OpenCommandInPlace = 69,
     OpenFileInPlace = 70,
+    RunCommand = 71,
 }
 impl CommandName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -342,6 +373,7 @@ impl CommandName {
             CommandName::OpenTerminalInPlace => "OpenTerminalInPlace",
             CommandName::OpenCommandInPlace => "OpenCommandInPlace",
             CommandName::OpenFileInPlace => "OpenFileInPlace",
+            CommandName::RunCommand => "RunCommand",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -418,6 +450,7 @@ impl CommandName {
             "OpenTerminalInPlace" => Some(Self::OpenTerminalInPlace),
             "OpenCommandInPlace" => Some(Self::OpenCommandInPlace),
             "OpenFileInPlace" => Some(Self::OpenFileInPlace),
+            "RunCommand" => Some(Self::RunCommand),
             _ => None,
         }
     }
