@@ -1,6 +1,7 @@
 mod download;
 
 use futures::{stream, StreamExt, TryStreamExt};
+use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use reqwest::Client;
 use std::path::PathBuf;
 use thiserror::Error;
@@ -28,6 +29,11 @@ pub struct Downloader {
 
 impl Downloader {
     const DEFAULT_CONCURRENT: usize = 4;
+    const DEFAULT_PROGRESS_STYLE: ProgressStyle = ProgressStyle::with_template(
+        "[{elapsed_precise}] {bar:40.cyan/blue} {pos:>7}/{len:7} {msg}",
+    )
+    .unwrap()
+    .progress_chars("##-");
 
     pub fn new() -> Self {
         Self {
@@ -44,15 +50,21 @@ impl Downloader {
     pub fn download(&self, downloads: &[Download]) -> Vec<Result<(), DownloaderError>> {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
+            let progress = MultiProgress::new();
+
             stream::iter(downloads)
-                .map(|d| self.fetch(d))
+                .map(|d| self.fetch(d, &progress))
                 .buffer_unordered(4)
                 .collect::<Vec<_>>()
                 .await
         })
     }
 
-    async fn fetch(&self, download: &Download) -> Result<(), DownloaderError> {
+    async fn fetch(
+        &self,
+        download: &Download,
+        progress: &MultiProgress,
+    ) -> Result<(), DownloaderError> {
         let mut output_file_size: u64 = 0;
         // TODO: A unique path using url-based hash is required.
         let output_path = self.directory.join(&download.file_name);
@@ -87,6 +99,11 @@ impl Downloader {
             .await
             .map_err(|e| DownloaderError::Io(e, output_path.clone()))?;
 
+        let pb = progress.add(ProgressBar::new(length));
+        pb.set_style(Downloader::DEFAULT_PROGRESS_STYLE);
+
+        pb.set_message(format!("'{}' downloading...", download.file_name));
+
         let mut stream = response.bytes_stream();
         while let Some(chunk) = stream
             .try_next()
@@ -100,6 +117,8 @@ impl Downloader {
                 .await
                 .map_err(|e| DownloaderError::Io(e, output_path.clone()))?;
         }
+
+        pb.finish_and_clear();
 
         Ok(())
     }
