@@ -1,10 +1,13 @@
-use crate::input::{
-    command::RunCommand,
-    config::ConfigError,
-    layout::{
-        FloatingPaneLayout, Layout, LayoutConstraint, PercentOrFixed, PluginUserConfiguration, Run,
-        RunPlugin, RunPluginLocation, SplitDirection, SplitSize, SwapFloatingLayout,
-        SwapTiledLayout, TiledPaneLayout,
+use crate::{
+    downloader::download::Download,
+    input::{
+        command::RunCommand,
+        config::ConfigError,
+        layout::{
+            FloatingPaneLayout, Layout, LayoutConstraint, PercentOrFixed, PluginUserConfiguration,
+            Run, RunPlugin, RunPluginLocation, SplitDirection, SplitSize, SwapFloatingLayout,
+            SwapTiledLayout, TiledPaneLayout,
+        },
     },
 };
 
@@ -41,6 +44,7 @@ pub struct KdlLayoutParser<'a> {
     default_tab_template: Option<(TiledPaneLayout, Vec<FloatingPaneLayout>, KdlNode)>,
     new_tab_template: Option<(TiledPaneLayout, Vec<FloatingPaneLayout>)>,
     file_name: PathBuf,
+    downloads: HashSet<Download>,
 }
 
 impl<'a> KdlLayoutParser<'a> {
@@ -53,6 +57,7 @@ impl<'a> KdlLayoutParser<'a> {
             new_tab_template: None,
             global_cwd,
             file_name: PathBuf::from(file_name),
+            downloads: HashSet::new(),
         }
     }
     fn is_a_reserved_word(&self, word: &str) -> bool {
@@ -294,7 +299,7 @@ impl<'a> KdlLayoutParser<'a> {
             Ok(None)
         }
     }
-    fn parse_plugin_block(&self, plugin_block: &KdlNode) -> Result<Option<Run>, ConfigError> {
+    fn parse_plugin_block(&mut self, plugin_block: &KdlNode) -> Result<Option<Run>, ConfigError> {
         let _allow_exec_host_cmd =
             kdl_get_bool_property_or_child_value_with_error!(plugin_block, "_allow_exec_host_cmd")
                 .unwrap_or(false);
@@ -321,6 +326,10 @@ impl<'a> KdlLayoutParser<'a> {
                     url_node.span().len(),
                 )
             })?;
+        if let RunPluginLocation::Remote(download) = &location {
+            self.downloads.insert(download.clone());
+        }
+
         let configuration = KdlLayoutParser::parse_plugin_user_configuration(&plugin_block)?;
         Ok(Some(Run::Plugin(RunPlugin {
             _allow_exec_host_cmd,
@@ -460,7 +469,7 @@ impl<'a> KdlLayoutParser<'a> {
         }
     }
     fn parse_command_plugin_or_edit_block(
-        &self,
+        &mut self,
         kdl_node: &KdlNode,
     ) -> Result<Option<Run>, ConfigError> {
         let mut run = self.parse_pane_command(kdl_node, false)?;
@@ -483,7 +492,7 @@ impl<'a> KdlLayoutParser<'a> {
         Ok(run)
     }
     fn parse_command_plugin_or_edit_block_for_template(
-        &self,
+        &mut self,
         kdl_node: &KdlNode,
     ) -> Result<Option<Run>, ConfigError> {
         let mut run = self.parse_pane_command(kdl_node, true)?;
@@ -506,7 +515,7 @@ impl<'a> KdlLayoutParser<'a> {
         Ok(run)
     }
     fn parse_pane_node(
-        &self,
+        &mut self,
         kdl_node: &KdlNode,
         is_part_of_stack: bool,
     ) -> Result<TiledPaneLayout, ConfigError> {
@@ -575,7 +584,7 @@ impl<'a> KdlLayoutParser<'a> {
         })
     }
     fn parse_floating_pane_node(
-        &self,
+        &mut self,
         kdl_node: &KdlNode,
     ) -> Result<FloatingPaneLayout, ConfigError> {
         self.assert_valid_floating_pane_properties(kdl_node)?;
@@ -608,7 +617,7 @@ impl<'a> KdlLayoutParser<'a> {
         })
     }
     fn insert_children_to_pane_template(
-        &self,
+        &mut self,
         kdl_node: &KdlNode,
         pane_template: &mut TiledPaneLayout,
         pane_template_kdl_node: &KdlNode,
@@ -673,7 +682,7 @@ impl<'a> KdlLayoutParser<'a> {
         return Ok(None);
     }
     fn parse_pane_node_with_template(
-        &self,
+        &mut self,
         kdl_node: &KdlNode,
         pane_template: PaneOrFloatingPane,
         should_mark_external_children_index: bool,
@@ -775,7 +784,7 @@ impl<'a> KdlLayoutParser<'a> {
         }
     }
     fn parse_floating_pane_node_with_template(
-        &self,
+        &mut self,
         kdl_node: &KdlNode,
         pane_template: PaneOrFloatingPane,
         pane_template_kdl_node: &KdlNode,
@@ -1165,7 +1174,7 @@ impl<'a> KdlLayoutParser<'a> {
         Ok((is_focused, tab_name, pane_layout, child_floating_panes))
     }
     fn parse_child_pane_nodes_for_tab(
-        &self,
+        &mut self,
         children: &[KdlNode],
         should_mark_external_children_index: bool,
         child_floating_panes: &mut Vec<FloatingPaneLayout>,
@@ -1206,7 +1215,7 @@ impl<'a> KdlLayoutParser<'a> {
         Ok(nodes)
     }
     fn parse_child_pane_nodes_for_pane(
-        &self,
+        &mut self,
         children: &[KdlNode],
         is_part_of_stack: bool,
     ) -> Result<(Option<usize>, Vec<TiledPaneLayout>), ConfigError> {
@@ -1460,7 +1469,7 @@ impl<'a> KdlLayoutParser<'a> {
         Ok(())
     }
     fn assert_no_mixed_children_and_properties(
-        &self,
+        &mut self,
         kdl_node: &KdlNode,
     ) -> Result<(), ConfigError> {
         let has_borderless_prop =
@@ -1517,7 +1526,7 @@ impl<'a> KdlLayoutParser<'a> {
         }
     }
     fn parse_tab_node_with_template(
-        &self,
+        &mut self,
         kdl_node: &KdlNode,
         mut tab_layout: TiledPaneLayout,
         mut tab_template_floating_panes: Vec<FloatingPaneLayout>,
@@ -1623,7 +1632,7 @@ impl<'a> KdlLayoutParser<'a> {
         Ok(())
     }
     fn parse_tab_template_node(
-        &self,
+        &mut self,
         kdl_node: &KdlNode,
     ) -> Result<(TiledPaneLayout, Vec<FloatingPaneLayout>), ConfigError> {
         self.assert_valid_tab_properties(kdl_node)?;
@@ -1995,7 +2004,7 @@ impl<'a> KdlLayoutParser<'a> {
         Ok(constraint.unwrap_or(LayoutConstraint::NoConstraint))
     }
     fn populate_one_swap_tiled_layout(
-        &self,
+        &mut self,
         layout_node: &KdlNode,
     ) -> Result<TiledPaneLayout, ConfigError> {
         self.assert_valid_tab_properties(layout_node)?;
@@ -2020,7 +2029,7 @@ impl<'a> KdlLayoutParser<'a> {
         Ok(pane_layout)
     }
     fn populate_one_swap_tiled_layout_with_template(
-        &self,
+        &mut self,
         layout_node: &KdlNode,
         tab_template: TiledPaneLayout,
         tab_template_kdl_node: KdlNode,
@@ -2036,7 +2045,7 @@ impl<'a> KdlLayoutParser<'a> {
         Ok(layout.2)
     }
     fn populate_one_swap_floating_layout(
-        &self,
+        &mut self,
         layout_node: &KdlNode,
     ) -> Result<Vec<FloatingPaneLayout>, ConfigError> {
         let mut floating_panes = vec![];
@@ -2045,7 +2054,7 @@ impl<'a> KdlLayoutParser<'a> {
         Ok(floating_panes)
     }
     fn populate_one_swap_floating_layout_with_template(
-        &self,
+        &mut self,
         layout_node: &KdlNode,
         tab_template: TiledPaneLayout,
         tab_template_floating_panes: Vec<FloatingPaneLayout>,
@@ -2183,13 +2192,14 @@ impl<'a> KdlLayoutParser<'a> {
                     default_tab_template_kdl_node,
                 )) => {
                     let default_tab_template = default_tab_template.clone();
+                    let default_tab_template_kdl_node = default_tab_template_kdl_node.clone();
                     let should_mark_external_children_index = false;
                     child_tabs.push(self.parse_tab_node_with_template(
                         child,
                         default_tab_template,
                         default_tab_template_floating_panes.clone(),
                         should_mark_external_children_index,
-                        default_tab_template_kdl_node,
+                        &default_tab_template_kdl_node,
                     )?);
                 },
                 None => {
@@ -2245,7 +2255,7 @@ impl<'a> KdlLayoutParser<'a> {
         Ok(())
     }
     fn populate_floating_pane_children(
-        &self,
+        &mut self,
         child: &KdlNode,
         child_floating_panes: &mut Vec<FloatingPaneLayout>,
     ) -> Result<(), ConfigError> {
@@ -2383,6 +2393,22 @@ impl<'a> KdlLayoutParser<'a> {
                 )?;
             }
         }
+
+        #[cfg(not(target_family = "wasm"))]
+        {
+            let downloader = crate::downloader::downloader::Downloader::new();
+
+            let downloads = self.downloads.clone().into_iter().collect::<Vec<_>>();
+            let result = downloader.download(&downloads);
+
+            for r in result {
+                match r {
+                    Ok(_) => {},
+                    Err(e) => return Err(ConfigError::Std(Box::new(e))),
+                }
+            }
+        };
+
         if !child_tabs.is_empty() {
             let has_more_than_one_focused_tab = child_tabs
                 .iter()

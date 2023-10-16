@@ -11,6 +11,7 @@ use url::Url;
 use super::layout::{PluginUserConfiguration, RunPlugin, RunPluginLocation};
 #[cfg(not(target_family = "wasm"))]
 use crate::consts::ASSET_MAP;
+use crate::consts::ZELLIJ_CACHE_DIR;
 pub use crate::data::PluginTag;
 use crate::errors::prelude::*;
 
@@ -55,6 +56,17 @@ impl PluginsConfig {
                 userspace_configuration: run.configuration.clone(),
                 ..plugin
             }),
+            RunPluginLocation::Remote(download) => {
+                let path = ZELLIJ_CACHE_DIR.join(&download.file_name);
+
+                Some(PluginConfig {
+                    path,
+                    run: PluginType::Pane(None),
+                    _allow_exec_host_cmd: run._allow_exec_host_cmd,
+                    location: run.location.clone(),
+                    userspace_configuration: run.configuration.clone(),
+                })
+            },
         }
     }
 

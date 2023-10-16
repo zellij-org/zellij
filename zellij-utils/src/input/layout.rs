@@ -10,6 +10,7 @@
 //  then [`zellij-utils`] could be a proper place.
 use crate::{
     data::Direction,
+    downloader::download::Download,
     home::find_default_config_dir,
     input::{
         command::RunCommand,
@@ -287,6 +288,7 @@ impl FromStr for PluginUserConfiguration {
 pub enum RunPluginLocation {
     File(PathBuf),
     Zellij(PluginTag),
+    Remote(Download),
 }
 
 impl Default for RunPluginLocation {
@@ -332,6 +334,10 @@ impl RunPluginLocation {
                 };
                 Ok(Self::File(path))
             },
+            "http" | "https" => {
+                let download = Download::from(location);
+                Ok(RunPluginLocation::Remote(download))
+            },
             _ => Err(PluginsConfigError::InvalidUrlScheme(url)),
         }
     }
@@ -339,6 +345,7 @@ impl RunPluginLocation {
         match self {
             RunPluginLocation::File(pathbuf) => format!("file:{}", pathbuf.display()),
             RunPluginLocation::Zellij(plugin_tag) => format!("zellij:{}", plugin_tag),
+            RunPluginLocation::Remote(download) => format!("{}", download.url),
         }
     }
 }
@@ -351,6 +358,7 @@ impl From<&RunPluginLocation> for Url {
                 path.clone().into_os_string().into_string().unwrap()
             ),
             RunPluginLocation::Zellij(tag) => format!("zellij:{}", tag),
+            RunPluginLocation::Remote(download) => format!("{}", download.url),
         };
         Self::parse(&url).unwrap()
     }
@@ -364,8 +372,8 @@ impl fmt::Display for RunPluginLocation {
                 "{}",
                 path.clone().into_os_string().into_string().unwrap()
             ),
-
             Self::Zellij(tag) => write!(f, "{}", tag),
+            Self::Remote(download) => write!(f, "{}", download.url),
         }
     }
 }
