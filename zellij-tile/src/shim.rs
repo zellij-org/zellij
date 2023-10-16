@@ -175,7 +175,7 @@ pub fn exec_cmd(cmd: &[&str]) {
 }
 
 /// Run this command in the background on the host machine, optionally being notified of its output
-/// when subscribing to <TODO>
+/// if subscribed to the `RunCommandResult` Event
 pub fn run_command(cmd: &[&str], context: BTreeMap<String, String>) {
     let plugin_command = PluginCommand::RunCommand(
         cmd.iter().cloned().map(|s| s.to_owned()).collect(),
@@ -188,6 +188,8 @@ pub fn run_command(cmd: &[&str], context: BTreeMap<String, String>) {
     unsafe { host_run_plugin_command() };
 }
 
+/// Run this command in the background on the host machine, providing environment variables and a
+/// cwd. Optionally being notified of its output if subscribed to the `RunCommandResult` Event
 pub fn run_command_with_env_variables_and_cwd(
     cmd: &[&str],
     env_variables: BTreeMap<String, String>,
