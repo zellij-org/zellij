@@ -1149,6 +1149,7 @@ impl Screen {
             self.terminal_emulator_colors.clone(),
             self.terminal_emulator_color_codes.clone(),
             swap_layouts,
+            self.default_shell.clone(),
             self.debug,
         );
         self.tabs.insert(tab_index, tab);

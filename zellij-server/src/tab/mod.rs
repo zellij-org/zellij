@@ -8,6 +8,7 @@ mod swap_layouts;
 
 use copy_command::CopyCommand;
 use std::env::temp_dir;
+use std::path::PathBuf;
 use uuid::Uuid;
 use zellij_utils::data::{
     Direction, PaneInfo, PermissionStatus, PermissionType, PluginPermission, ResizeStrategy,
@@ -182,6 +183,7 @@ pub(crate) struct Tab {
     pending_instructions: Vec<BufferedTabInstruction>, // instructions that came while the tab was
     // pending and need to be re-applied
     swap_layouts: SwapLayouts,
+    default_shell: Option<PathBuf>,
     debug: bool,
 }
 
@@ -482,6 +484,7 @@ pub enum AdjustedInput {
     ReRunCommandInThisPane(RunCommand),
     PermissionRequestResult(Vec<PermissionType>, PermissionStatus),
     CloseThisPane,
+    DropToShellInThisPane,
 }
 pub fn get_next_terminal_position(
     tiled_panes: &TiledPanes,
@@ -528,6 +531,7 @@ impl Tab {
         terminal_emulator_colors: Rc<RefCell<Palette>>,
         terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
         swap_layouts: (Vec<SwapTiledLayout>, Vec<SwapFloatingLayout>),
+        default_shell: Option<PathBuf>,
         debug: bool,
     ) -> Self {
         let name = if name.is_empty() {
@@ -615,6 +619,7 @@ impl Tab {
             is_pending: true, // will be switched to false once the layout is applied
             pending_instructions: vec![],
             swap_layouts,
+            default_shell,
             debug,
         }
     }
@@ -1693,6 +1698,16 @@ impl Tab {
                     },
                     Some(AdjustedInput::CloseThisPane) => {
                         self.close_pane(PaneId::Terminal(active_terminal_id), false, None);
+                        should_update_ui = true;
+                    },
+                    Some(AdjustedInput::DropToShellInThisPane) => {
+                        self.pids_waiting_resize.insert(active_terminal_id);
+                        self.senders
+                            .send_to_pty(PtyInstruction::DropToShellInPane(
+                                PaneId::Terminal(active_terminal_id),
+                                self.default_shell.clone(),
+                            ))
+                            .with_context(err_context)?;
                         should_update_ui = true;
                     },
                     Some(_) => {},

@@ -17,10 +17,10 @@ expression: last_snapshot
 │                            │ │                                                        │ │────────────────────────────┘
 │                            │ │                  Waiting to run: top                   │ │────────────────────────────┐
 │                            │ │                                                        │ │                            │
-│                            │ │           <ENTER> to run, <Ctrl-c> to exit             │ │                            │
+│                            │ │    <ENTER> run, <ESC> drop to shell, <Ctrl-c> exit     │ │                            │
 │                            └─│                                                        │ │                            │
 │                              │                                                        │ │                            │
-│                              └─ <ENTER> to run, <Ctrl-c> to exit ─────────────────────┘ │                            │
+│                              └─ <ENTER> run, <ESC> drop to shell, <Ctrl-c> exit ──────┘ │                            │
 │                                │                                                        │                            │
 │                                └────────────────────────────────────────────────────────┘                            │
 │                                                          ││                                                          │

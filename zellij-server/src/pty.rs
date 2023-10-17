@@ -66,6 +66,7 @@ pub enum PtyInstruction {
     ClosePane(PaneId),
     CloseTab(Vec<PaneId>),
     ReRunCommandInPane(PaneId, RunCommand),
+    DropToShellInPane(PaneId, Option<PathBuf>), // Option<PathBuf> - default shell
     SpawnInPlaceTerminal(
         Option<TerminalAction>,
         Option<String>,
@@ -89,6 +90,7 @@ impl From<&PtyInstruction> for PtyContext {
             PtyInstruction::CloseTab(_) => PtyContext::CloseTab,
             PtyInstruction::NewTab(..) => PtyContext::NewTab,
             PtyInstruction::ReRunCommandInPane(..) => PtyContext::ReRunCommandInPane,
+            PtyInstruction::DropToShellInPane(..) => PtyContext::DropToShellInPane,
             PtyInstruction::SpawnInPlaceTerminal(..) => PtyContext::SpawnInPlaceTerminal,
             PtyInstruction::DumpLayout(..) => PtyContext::DumpLayout,
             PtyInstruction::LogLayoutToHd(..) => PtyContext::LogLayoutToHd,
@@ -496,6 +498,55 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
             PtyInstruction::ReRunCommandInPane(pane_id, run_command) => {
                 let err_context = || format!("failed to rerun command in pane {:?}", pane_id);
 
+                match pty
+                    .rerun_command_in_pane(pane_id, run_command.clone())
+                    .with_context(err_context)
+                {
+                    Ok(..) => {},
+                    Err(err) => match err.downcast_ref::<ZellijError>() {
+                        Some(ZellijError::CommandNotFound { terminal_id, .. }) => {
+                            if run_command.hold_on_close {
+                                pty.bus
+                                    .senders
+                                    .send_to_screen(ScreenInstruction::PtyBytes(
+                                        *terminal_id,
+                                        format!(
+                                            "Command not found: {}",
+                                            run_command.command.display()
+                                        )
+                                        .as_bytes()
+                                        .to_vec(),
+                                    ))
+                                    .with_context(err_context)?;
+                                pty.bus
+                                    .senders
+                                    .send_to_screen(ScreenInstruction::HoldPane(
+                                        PaneId::Terminal(*terminal_id),
+                                        Some(2), // exit status
+                                        run_command,
+                                        None,
+                                        None,
+                                    ))
+                                    .with_context(err_context)?;
+                            }
+                        },
+                        _ => Err::<(), _>(err).non_fatal(),
+                    },
+                }
+            },
+            PtyInstruction::DropToShellInPane(pane_id, default_shell) => {
+                let err_context = || format!("failed to rerun command in pane {:?}", pane_id);
+
+                // TODO: get configured default_shell from screen/tab as an option and default to
+                // this otherwise (also look for a place that turns get_default_shell into a
+                // RunCommand, we might have done this before)
+                let run_command = RunCommand {
+                    command: default_shell.unwrap_or_else(|| get_default_shell()),
+                    hold_on_close: false,
+                    hold_on_start: false,
+                    // TODO: cwd
+                    ..Default::default()
+                };
                 match pty
                     .rerun_command_in_pane(pane_id, run_command.clone())
                     .with_context(err_context)

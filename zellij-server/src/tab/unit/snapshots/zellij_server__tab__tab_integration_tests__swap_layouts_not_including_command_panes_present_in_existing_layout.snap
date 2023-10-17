@@ -1,5 +1,6 @@
 ---
 source: zellij-server/src/tab/./unit/tab_integration_tests.rs
+assertion_line: 5307
 expression: snapshot
 ---
 00 (C): I am a                                                                                                                   
@@ -14,12 +15,12 @@ expression: snapshot
 09 (C): │                                                                                                                       │
 10 (C): │                                              Waiting to run: command1                                                 │
 11 (C): │                                                                                                                       │
-12 (C): │                                          <ENTER> to run, <Ctrl-c> to exit                                             │
-13 (C): └─ <ENTER> to run, <Ctrl-c> to exit ────────────────────────────────────────────────────────────────────────────────────┘
+12 (C): │                                   <ENTER> run, <ESC> drop to shell, <Ctrl-c> exit                                     │
+13 (C): └─ <ENTER> run, <ESC> drop to shell, <Ctrl-c> exit ─────────────────────────────────────────────────────────────────────┘
 14 (C): ┌ command2 ─────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 15 (C): │                                              Waiting to run: command2                                                 │
 16 (C): │                                                                                                                       │
-17 (C): │                                          <ENTER> to run, <Ctrl-c> to exit                                             │
+17 (C): │                                   <ENTER> run, <ESC> drop to shell, <Ctrl-c> exit                                     │
 18 (C): └───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 19 (C): I am a tab bar                                                                                                           
 

@@ -186,6 +186,7 @@ fn create_new_tab(size: Size) -> Tab {
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         (vec![], vec![]), // swap layouts
+        None,
         debug,
     );
     tab.apply_layout(
@@ -243,6 +244,7 @@ fn create_new_tab_with_layout(size: Size, layout: TiledPaneLayout) -> Tab {
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         (vec![], vec![]), // swap layouts
+        None,
         debug,
     );
     let mut new_terminal_ids = vec![];
@@ -306,6 +308,7 @@ fn create_new_tab_with_cell_size(
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         (vec![], vec![]), // swap layouts
+        None,
         debug,
     );
     tab.apply_layout(
