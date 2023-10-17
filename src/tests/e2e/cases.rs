@@ -2070,7 +2070,7 @@ pub fn send_command_through_the_cli() {
     // so when we press "Enter", it will run again and we'll see two "foo"s one after the other,
     // that's how we know the whole flow is working
     let fake_win_size = Size {
-        cols: 120,
+        cols: 150,
         rows: 24,
     };
     let mut test_attempts = 10;
@@ -2118,7 +2118,7 @@ pub fn send_command_through_the_cli() {
                 instruction: |mut remote_terminal: RemoteTerminal| -> bool {
                     let mut step_is_complete = false;
                     if remote_terminal.snapshot_contains("<Ctrl-c>")
-                        && remote_terminal.cursor_position_is(61, 3)
+                        && remote_terminal.cursor_position_is(76, 3)
                     {
                         remote_terminal.send_key(&SPACE); // re-run script - here we use SPACE
                                                           // instead of the default ENTER because
@@ -2135,7 +2135,7 @@ pub fn send_command_through_the_cli() {
                 instruction: |mut remote_terminal: RemoteTerminal| -> bool {
                     let mut step_is_complete = false;
                     if remote_terminal.snapshot_contains("<Ctrl-c>")
-                        && remote_terminal.cursor_position_is(61, 4)
+                        && remote_terminal.cursor_position_is(76, 4)
                     {
                         step_is_complete = true
                     }
@@ -2149,7 +2149,7 @@ pub fn send_command_through_the_cli() {
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
                 if remote_terminal.snapshot_contains("foo")
-                    && remote_terminal.cursor_position_is(61, 4)
+                    && remote_terminal.cursor_position_is(76, 4)
                 {
                     step_is_complete = true
                 }

@@ -31,7 +31,7 @@ use zellij_utils::{
 };
 
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashMap},
     env,
     fs::File,
     io::Write,
@@ -581,7 +581,7 @@ impl ServerOsApi for ServerOsInputOutput {
             .with_context(err_context)?;
         let mut terminal_id = None;
         {
-            let current_ids: HashSet<u32> = self
+            let current_ids: BTreeSet<u32> = self
                 .terminal_id_to_raw_fd
                 .lock()
                 .to_anyhow()
@@ -589,13 +589,7 @@ impl ServerOsApi for ServerOsInputOutput {
                 .keys()
                 .copied()
                 .collect();
-            for i in 0..u32::MAX {
-                let i = i as u32;
-                if !current_ids.contains(&i) {
-                    terminal_id = Some(i);
-                    break;
-                }
-            }
+            terminal_id = current_ids.last().map(|l| l + 1).or(Some(0));
         }
         match terminal_id {
             Some(terminal_id) => {
@@ -628,7 +622,7 @@ impl ServerOsApi for ServerOsInputOutput {
 
         let mut terminal_id = None;
         {
-            let current_ids: HashSet<u32> = self
+            let current_ids: BTreeSet<u32> = self
                 .terminal_id_to_raw_fd
                 .lock()
                 .to_anyhow()
@@ -636,13 +630,7 @@ impl ServerOsApi for ServerOsInputOutput {
                 .keys()
                 .copied()
                 .collect();
-            for i in 0..u32::MAX {
-                let i = i as u32;
-                if !current_ids.contains(&i) {
-                    terminal_id = Some(i);
-                    break;
-                }
-            }
+            terminal_id = current_ids.last().map(|l| l + 1).or(Some(0));
         }
         match terminal_id {
             Some(terminal_id) => {

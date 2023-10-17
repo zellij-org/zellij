@@ -40,6 +40,7 @@ const END_KEY: &[u8] = &[27, 91, 70];
 const BRACKETED_PASTE_BEGIN: &[u8] = &[27, 91, 50, 48, 48, 126];
 const BRACKETED_PASTE_END: &[u8] = &[27, 91, 50, 48, 49, 126];
 const ENTER_NEWLINE: &[u8] = &[10];
+const ESC: &[u8] = &[27];
 const ENTER_CARRIAGE_RETURN: &[u8] = &[13];
 const SPACE: &[u8] = &[32];
 const CTRL_C: &[u8] = &[3]; // TODO: check this to be sure it fits all types of CTRL_C (with mac, etc)
@@ -192,6 +193,13 @@ impl Pane for TerminalPane {
                     self.remove_banner();
                     Some(AdjustedInput::ReRunCommandInThisPane(run_command))
                 },
+                ESC => {
+                    self.is_held = None;
+                    self.grid.reset_terminal_state();
+                    self.set_should_render(true);
+                    self.remove_banner();
+                    Some(AdjustedInput::DropToShellInThisPane)
+                }
                 CTRL_C => Some(AdjustedInput::CloseThisPane),
                 _ => None,
             }

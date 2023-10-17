@@ -245,6 +245,7 @@ fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         (vec![], vec![]),
+        None,
         debug,
     );
     tab.apply_layout(
@@ -317,6 +318,7 @@ fn create_new_tab_with_swap_layouts(
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         swap_layouts,
+        None,
         debug,
     );
     let (
@@ -391,6 +393,7 @@ fn create_new_tab_with_os_api(
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         (vec![], vec![]), // swap layouts
+        None,
         debug,
     );
     tab.apply_layout(
@@ -451,6 +454,7 @@ fn create_new_tab_with_layout(size: Size, default_mode: ModeInfo, layout: &str) 
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         (vec![], vec![]), // swap layouts
+        None,
         debug,
     );
     let pane_ids = tab_layout
@@ -525,6 +529,7 @@ fn create_new_tab_with_mock_pty_writer(
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         (vec![], vec![]), // swap layouts
+        None,
         debug,
     );
     tab.apply_layout(
@@ -590,6 +595,7 @@ fn create_new_tab_with_sixel_support(
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         (vec![], vec![]), // swap layouts
+        None,
         debug,
     );
     tab.apply_layout(
