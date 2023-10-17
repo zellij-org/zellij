@@ -199,7 +199,7 @@ impl Pane for TerminalPane {
                     self.set_should_render(true);
                     self.remove_banner();
                     Some(AdjustedInput::DropToShellInThisPane)
-                }
+                },
                 CTRL_C => Some(AdjustedInput::CloseThisPane),
                 _ => None,
             }
