@@ -607,12 +607,6 @@ fn run_command(
     cwd: PathBuf,
     context: BTreeMap<String, String>,
 ) {
-    let err_context = || {
-        format!(
-            "failed to execute command on host for plugin '{}'",
-            env.plugin_env.name()
-        )
-    };
     if command_line.is_empty() {
         log::error!("Command cannot be empty");
     } else {
