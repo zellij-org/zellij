@@ -447,6 +447,7 @@ pub enum BackgroundJobContext {
     ReportSessionInfo,
     ReportLayoutInfo,
     RunCommand,
+    WebRequest,
     Exit,
 }
 

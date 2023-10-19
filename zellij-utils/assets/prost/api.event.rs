@@ -11,7 +11,7 @@ pub struct Event {
     pub name: i32,
     #[prost(
         oneof = "event::Payload",
-        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14"
+        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15"
     )]
     pub payload: ::core::option::Option<event::Payload>,
 }
@@ -46,6 +46,8 @@ pub mod event {
         SessionUpdatePayload(super::SessionUpdatePayload),
         #[prost(message, tag = "14")]
         RunCommandResultPayload(super::RunCommandResultPayload),
+        #[prost(message, tag = "15")]
+        WebRequestResultPayload(super::WebRequestResultPayload),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -68,7 +70,27 @@ pub struct RunCommandResultPayload {
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
+pub struct WebRequestResultPayload {
+    #[prost(int32, tag = "1")]
+    pub status: i32,
+    #[prost(message, repeated, tag = "2")]
+    pub headers: ::prost::alloc::vec::Vec<Header>,
+    #[prost(bytes = "vec", tag = "3")]
+    pub body: ::prost::alloc::vec::Vec<u8>,
+    #[prost(message, repeated, tag = "4")]
+    pub context: ::prost::alloc::vec::Vec<ContextItem>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ContextItem {
+    #[prost(string, tag = "1")]
+    pub name: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub value: ::prost::alloc::string::String,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Header {
     #[prost(string, tag = "1")]
     pub name: ::prost::alloc::string::String,
     #[prost(string, tag = "2")]
@@ -287,6 +309,7 @@ pub enum EventType {
     PermissionRequestResult = 15,
     SessionUpdate = 16,
     RunCommandResult = 17,
+    WebRequestResult = 18,
 }
 impl EventType {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -313,6 +336,7 @@ impl EventType {
             EventType::PermissionRequestResult => "PermissionRequestResult",
             EventType::SessionUpdate => "SessionUpdate",
             EventType::RunCommandResult => "RunCommandResult",
+            EventType::WebRequestResult => "WebRequestResult",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -336,6 +360,7 @@ impl EventType {
             "PermissionRequestResult" => Some(Self::PermissionRequestResult),
             "SessionUpdate" => Some(Self::SessionUpdate),
             "RunCommandResult" => Some(Self::RunCommandResult),
+            "WebRequestResult" => Some(Self::WebRequestResult),
             _ => None,
         }
     }

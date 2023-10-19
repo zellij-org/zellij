@@ -18,7 +18,7 @@ use std::{
 use wasmer::{imports, AsStoreMut, Function, FunctionEnv, FunctionEnvMut, Imports};
 use wasmer_wasi::WasiEnv;
 use zellij_utils::data::{
-    CommandType, ConnectToSession, PermissionStatus, PermissionType, PluginPermission,
+    CommandType, ConnectToSession, HttpVerb, PermissionStatus, PermissionType, PluginPermission,
 };
 use zellij_utils::input::permission::PermissionCache;
 
@@ -129,6 +129,9 @@ fn host_run_plugin_command(env: FunctionEnvMut<ForeignFunctionEnv>) {
                     PluginCommand::ExecCmd(command_line) => exec_cmd(env, command_line),
                     PluginCommand::RunCommand(command_line, env_variables, cwd, context) => {
                         run_command(env, command_line, env_variables, cwd, context)
+                    },
+                    PluginCommand::WebRequest(url, verb, headers, body, context) => {
+                        web_request(env, url, verb, headers, body, context)
                     },
                     PluginCommand::PostMessageTo(plugin_message) => {
                         post_message_to(env, plugin_message)?
@@ -607,12 +610,6 @@ fn run_command(
     cwd: PathBuf,
     context: BTreeMap<String, String>,
 ) {
-    let err_context = || {
-        format!(
-            "failed to execute command on host for plugin '{}'",
-            env.plugin_env.name()
-        )
-    };
     if command_line.is_empty() {
         log::error!("Command cannot be empty");
     } else {
@@ -630,6 +627,28 @@ fn run_command(
                 context,
             ));
     }
+}
+
+fn web_request(
+    env: &ForeignFunctionEnv,
+    url: String,
+    verb: HttpVerb,
+    headers: BTreeMap<String, String>,
+    body: Vec<u8>,
+    context: BTreeMap<String, String>,
+) {
+    let _ = env
+        .plugin_env
+        .senders
+        .send_to_background_jobs(BackgroundJob::WebRequest(
+            env.plugin_env.plugin_id,
+            env.plugin_env.client_id,
+            url,
+            verb,
+            headers,
+            body,
+            context,
+        ));
 }
 
 fn post_message_to(env: &ForeignFunctionEnv, plugin_message: PluginMessage) -> Result<()> {
@@ -1198,6 +1217,7 @@ fn check_command_permission(
         | PluginCommand::OpenCommandPaneInPlace(..)
         | PluginCommand::RunCommand(..)
         | PluginCommand::ExecCmd(..) => PermissionType::RunCommands,
+        PluginCommand::WebRequest(..) => PermissionType::WebAccess,
         PluginCommand::Write(..) | PluginCommand::WriteChars(..) => PermissionType::WriteToStdin,
         PluginCommand::SwitchTabTo(..)
         | PluginCommand::SwitchToMode(..)

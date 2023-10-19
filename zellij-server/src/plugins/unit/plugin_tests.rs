@@ -5418,3 +5418,78 @@ pub fn run_command_with_env_vars_and_cwd_plugin_command() {
         .clone();
     assert_snapshot!(format!("{:#?}", new_tab_event));
 }
+
+#[test]
+#[ignore]
+pub fn web_request_plugin_command() {
+    let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
+                                          // destructor removes the directory
+    let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
+    let (plugin_thread_sender, background_jobs_receiver, screen_receiver, teardown) =
+        create_plugin_thread_with_background_jobs_receiver(Some(plugin_host_folder));
+    let plugin_should_float = Some(false);
+    let plugin_title = Some("test_plugin".to_owned());
+    let run_plugin = RunPlugin {
+        _allow_exec_host_cmd: false,
+        location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
+    };
+    let tab_index = 1;
+    let client_id = 1;
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let received_background_jobs_instructions = Arc::new(Mutex::new(vec![]));
+    let background_jobs_thread = log_actions_in_thread!(
+        received_background_jobs_instructions,
+        BackgroundJob::WebRequest,
+        background_jobs_receiver,
+        1
+    );
+    let received_screen_instructions = Arc::new(Mutex::new(vec![]));
+    let _screen_thread = grant_permissions_and_log_actions_in_thread_naked_variant!(
+        received_screen_instructions,
+        ScreenInstruction::Exit,
+        screen_receiver,
+        1,
+        &PermissionType::ChangeApplicationState,
+        cache_path,
+        plugin_thread_sender,
+        client_id
+    );
+
+    let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
+    let _ = plugin_thread_sender.send(PluginInstruction::Load(
+        plugin_should_float,
+        false,
+        plugin_title,
+        run_plugin,
+        tab_index,
+        None,
+        client_id,
+        size,
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
+        None,
+        Some(client_id),
+        Event::Key(Key::Ctrl('4')), // this triggers the enent in the fixture plugin
+    )]));
+    background_jobs_thread.join().unwrap(); // this might take a while if the cache is cold
+    teardown();
+    let new_tab_event = received_background_jobs_instructions
+        .lock()
+        .unwrap()
+        .iter()
+        .find_map(|i| {
+            if let BackgroundJob::WebRequest(..) = i {
+                Some(i.clone())
+            } else {
+                None
+            }
+        })
+        .clone();
+    assert_snapshot!(format!("{:#?}", new_tab_event));
+}

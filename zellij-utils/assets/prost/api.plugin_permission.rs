@@ -7,6 +7,7 @@ pub enum PermissionType {
     RunCommands = 3,
     OpenTerminalsOrPlugins = 4,
     WriteToStdin = 5,
+    WebAccess = 6,
 }
 impl PermissionType {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -21,6 +22,7 @@ impl PermissionType {
             PermissionType::RunCommands => "RunCommands",
             PermissionType::OpenTerminalsOrPlugins => "OpenTerminalsOrPlugins",
             PermissionType::WriteToStdin => "WriteToStdin",
+            PermissionType::WebAccess => "WebAccess",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -32,6 +34,7 @@ impl PermissionType {
             "RunCommands" => Some(Self::RunCommands),
             "OpenTerminalsOrPlugins" => Some(Self::OpenTerminalsOrPlugins),
             "WriteToStdin" => Some(Self::WriteToStdin),
+            "WebAccess" => Some(Self::WebAccess),
             _ => None,
         }
     }

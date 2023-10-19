@@ -198,6 +198,25 @@ impl TryFrom<ProtobufEvent> for Event {
                 },
                 _ => Err("Malformed payload for the RunCommandResult Event"),
             },
+            Some(ProtobufEventType::WebRequestResult) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::WebRequestResultPayload(web_request_result_payload)) => {
+                    Ok(Event::WebRequestResult(
+                        web_request_result_payload.status as u16,
+                        web_request_result_payload
+                            .headers
+                            .into_iter()
+                            .map(|h| (h.name, h.value))
+                            .collect(),
+                        web_request_result_payload.body,
+                        web_request_result_payload
+                            .context
+                            .into_iter()
+                            .map(|c_i| (c_i.name, c_i.value))
+                            .collect(),
+                    ))
+                },
+                _ => Err("Malformed payload for the WebRequestResult Event"),
+            },
             None => Err("Unknown Protobuf Event"),
         }
     }
@@ -367,6 +386,26 @@ impl TryFrom<Event> for ProtobufEvent {
                     name: ProtobufEventType::RunCommandResult as i32,
                     payload: Some(event::Payload::RunCommandResultPayload(
                         run_command_result_payload,
+                    )),
+                })
+            },
+            Event::WebRequestResult(status, headers, body, context) => {
+                let web_request_result_payload = WebRequestResultPayload {
+                    status: status as i32,
+                    headers: headers
+                        .into_iter()
+                        .map(|(name, value)| Header { name, value })
+                        .collect(),
+                    body,
+                    context: context
+                        .into_iter()
+                        .map(|(name, value)| ContextItem { name, value })
+                        .collect(),
+                };
+                Ok(ProtobufEvent {
+                    name: ProtobufEventType::WebRequestResult as i32,
+                    payload: Some(event::Payload::WebRequestResultPayload(
+                        web_request_result_payload,
                     )),
                 })
             },
@@ -816,6 +855,7 @@ impl TryFrom<ProtobufEventType> for EventType {
             ProtobufEventType::PermissionRequestResult => EventType::PermissionRequestResult,
             ProtobufEventType::SessionUpdate => EventType::SessionUpdate,
             ProtobufEventType::RunCommandResult => EventType::RunCommandResult,
+            ProtobufEventType::WebRequestResult => EventType::WebRequestResult,
         })
     }
 }
@@ -842,6 +882,7 @@ impl TryFrom<EventType> for ProtobufEventType {
             EventType::PermissionRequestResult => ProtobufEventType::PermissionRequestResult,
             EventType::SessionUpdate => ProtobufEventType::SessionUpdate,
             EventType::RunCommandResult => ProtobufEventType::RunCommandResult,
+            EventType::WebRequestResult => ProtobufEventType::WebRequestResult,
         })
     }
 }
