@@ -546,6 +546,7 @@ fn create_plugin_thread_with_background_jobs_receiver(
             let _ = to_screen.send(ScreenInstruction::Exit);
             let _ = to_server.send(ServerInstruction::KillSession);
             let _ = to_plugin.send(PluginInstruction::Exit);
+            let _ = to_background_jobs.send(BackgroundJob::Exit);
             let _ = plugin_thread.join();
         }
     };
@@ -5454,7 +5455,7 @@ pub fn web_request_plugin_command() {
         ScreenInstruction::Exit,
         screen_receiver,
         1,
-        &PermissionType::ChangeApplicationState,
+        &PermissionType::WebAccess,
         cache_path,
         plugin_thread_sender,
         client_id

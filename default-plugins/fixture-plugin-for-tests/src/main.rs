@@ -48,6 +48,7 @@ impl ZellijPlugin for State {
             PermissionType::RunCommands,
             PermissionType::OpenTerminalsOrPlugins,
             PermissionType::WriteToStdin,
+            PermissionType::WebAccess,
         ]);
         self.configuration = configuration;
         subscribe(&[
