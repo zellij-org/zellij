@@ -102,6 +102,10 @@ pub enum Sessions {
         /// Do not add colors and formatting to the list (useful for parsing)
         #[clap(short, long, value_parser, takes_value(false), default_value("false"))]
         no_formatting: bool,
+
+        /// Print just the session name
+        #[clap(short, long, value_parser, takes_value(false), default_value("false"))]
+        short: bool,
     },
 
     /// Attach to a session

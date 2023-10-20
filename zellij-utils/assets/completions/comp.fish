@@ -1,5 +1,5 @@
 function __fish_complete_sessions
-    zellij list-sessions 2>/dev/null
+    zellij list-sessions --short --no-formatting 2>/dev/null
 end
 complete -c zellij -n "__fish_seen_subcommand_from attach" -f -a "(__fish_complete_sessions)" -d "Session"
 complete -c zellij -n "__fish_seen_subcommand_from a" -f -a "(__fish_complete_sessions)" -d "Session"
