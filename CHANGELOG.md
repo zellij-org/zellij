@@ -17,6 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat(plugins): plugin command API for executing commands in the background (https://github.com/zellij-org/zellij/pull/2862)
 * feat(ui): cyberpunk themes (https://github.com/zellij-org/zellij/pull/2868)
 * feat(ux): add ESC option to drop to shell in command panes (https://github.com/zellij-org/zellij/pull/2872)
+* feat(plugins): allow plugins to make web requests behind a permission (https://github.com/zellij-org/zellij/pull/2879)
 
 ## [0.38.2] - 2023-09-15
 * fix(terminal): wrap lines in alternate screen mode when adding characters (https://github.com/zellij-org/zellij/pull/2789)
