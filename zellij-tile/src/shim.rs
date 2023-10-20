@@ -207,6 +207,21 @@ pub fn run_command_with_env_variables_and_cwd(
     unsafe { host_run_plugin_command() };
 }
 
+pub fn web_request<S: AsRef<str>>(
+    url: S,
+    verb: HttpVerb,
+    headers: BTreeMap<String, String>,
+    body: Vec<u8>,
+    context: BTreeMap<String, String>,
+) where
+    S: ToString,
+{
+    let plugin_command = PluginCommand::WebRequest(url.to_string(), verb, headers, body, context);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 /// Hide the plugin pane (suppress it) from the UI
 pub fn hide_self() {
     let plugin_command = PluginCommand::HideSelf;

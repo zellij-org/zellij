@@ -41,6 +41,7 @@ enum EventType {
     PermissionRequestResult = 15;
     SessionUpdate = 16;
     RunCommandResult = 17;
+    WebRequestResult = 18;
 }
 
 message EventNameList {
@@ -63,6 +64,7 @@ message Event {
     PermissionRequestResultPayload permission_request_result_payload = 12;
     SessionUpdatePayload session_update_payload = 13;
     RunCommandResultPayload run_command_result_payload = 14;
+    WebRequestResultPayload web_request_result_payload = 15;
   }
 }
 
@@ -77,7 +79,19 @@ message RunCommandResultPayload {
   repeated ContextItem context = 4;
 }
 
+message WebRequestResultPayload {
+  int32 status = 1;
+  repeated Header headers = 2;
+  bytes body = 3;
+  repeated ContextItem context = 4;
+}
+
 message ContextItem {
+  string name = 1;
+  string value = 2;
+}
+
+message Header {
   string name = 1;
   string value = 2;
 }
