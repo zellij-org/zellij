@@ -1,6 +1,6 @@
 ---
 source: zellij-server/src/plugins/./unit/plugin_tests.rs
-assertion_line: 4864
+assertion_line: 5189
 expression: "format!(\"{:#?}\", permissions)"
 ---
 Some(
@@ -11,5 +11,6 @@ Some(
         RunCommands,
         OpenTerminalsOrPlugins,
         WriteToStdin,
+        WebAccess,
     ],
 )
