@@ -148,3 +148,68 @@ mod unix_only {
         };
     }
 }
+
+#[cfg(windows)]
+pub use windows_only::*;
+
+#[cfg(windows)]
+mod windows_only {
+    use super::*;
+    use std::{path::PathBuf, fs, env::temp_dir};
+
+    use lazy_static::lazy_static;
+
+    use crate::{shared::set_permissions, envs};
+
+    fn get_username() -> String {
+        use std::ptr;
+
+        use winapi::um::winbase::GetUserNameW;
+
+        unsafe {
+            let mut size = 0;
+            GetUserNameW(ptr::null_mut(), &mut size);
+
+            if size == 0 {
+                return "".to_owned();
+            }
+
+            let mut username = Vec::with_capacity(size as usize);
+
+            if GetUserNameW(username.as_mut_ptr(), &mut size) == 0 {
+                return "".to_owned();
+            }
+
+            // Remove null terminator.
+            username.set_len((size - 1) as usize);
+
+            String::from_utf16_lossy(&username)
+        }
+    }
+
+    lazy_static! {
+        static ref USERNAME: String = get_username();
+        pub static ref ZELLIJ_IPC_PIPE: PathBuf = {
+            let mut sock_dir = ZELLIJ_SOCK_DIR.clone();
+            fs::create_dir_all(&sock_dir).unwrap();
+            set_permissions(&sock_dir, 0o700).unwrap();
+            sock_dir.push(envs::get_session_name().unwrap());
+            sock_dir
+        };
+        pub static ref ZELLIJ_TMP_DIR: PathBuf = temp_dir().join(format!("zellij-{}", USERNAME.as_str()));
+        pub static ref ZELLIJ_TMP_LOG_DIR: PathBuf = ZELLIJ_TMP_DIR.join("zellij-log");
+        pub static ref ZELLIJ_TMP_LOG_FILE: PathBuf = ZELLIJ_TMP_LOG_DIR.join("zellij.log");
+        pub static ref ZELLIJ_SOCK_DIR: PathBuf = {
+            let mut ipc_dir = envs::get_socket_dir().map_or_else(
+                |_| {
+                    ZELLIJ_PROJ_DIR
+                        .runtime_dir()
+                        .map_or_else(|| ZELLIJ_TMP_DIR.clone(), |p| p.to_owned())
+                },
+                PathBuf::from,
+            );
+            ipc_dir.push(VERSION);
+            ipc_dir
+        };
+    }
+}

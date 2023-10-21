@@ -15,7 +15,7 @@ use crate::{
         options::Options,
     },
 };
-use clap::{Args, IntoApp};
+use clap::{Args, CommandFactory};
 use clap_complete::Shell;
 use directories::BaseDirs;
 use log::info;
@@ -322,8 +322,7 @@ pub struct Setup {
         value_name = "DIR",
         value_parser,
         exclusive = true,
-        min_values = 0,
-        max_values = 1
+        num_args(0..=1)
     )]
     pub dump_plugins: Option<Option<PathBuf>>,
 
@@ -492,7 +491,7 @@ impl Setup {
                 Ok(_) => message.push_str("[CONFIG FILE]: Well defined.\n"),
                 Err(e) => writeln!(
                     &mut message,
-                    "[CONFIG ERROR]: {}. \n By default, zellij loads default configuration",
+                    "[CONFIG ERROR]: {:?}. \n By default, zellij loads default configuration",
                     e
                 )
                 .unwrap(),

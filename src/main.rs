@@ -13,7 +13,6 @@ use zellij_utils::{
 fn main() {
     configure_logger();
     let opts = CliArgs::parse();
-
     {
         let config = Config::try_from(&opts).ok();
         if let Some(Command::Sessions(Sessions::Action(cli_action))) = opts.command {

@@ -1,7 +1,11 @@
 use crate::{panes::PaneId, ClientId};
 
-use async_std::{fs::File as AsyncFile, io::ReadExt, os::unix::io::FromRawFd};
+use async_std::{fs::File as AsyncFile, io::ReadExt};
+#[cfg(unix)]
+use async_std::os::unix::io::FromRawFd;
+
 use interprocess::local_socket::LocalSocketStream;
+#[cfg(unix)]
 use nix::{
     pty::{openpty, OpenptyResult, Winsize},
     sys::{
@@ -24,26 +28,33 @@ use zellij_utils::{
         ClientToServerMsg, ExitReason, IpcReceiverWithContext, IpcSenderWithContext,
         ServerToClientMsg,
     },
-    libc, nix,
     shared::default_palette,
     signal_hook,
     tempfile::tempfile,
 };
+
+#[cfg(unix)]
+use zellij_utils::{libc, nix};
 
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
     env,
     fs::File,
     io::Write,
-    os::unix::{io::RawFd, process::CommandExt},
+
     path::PathBuf,
     process::{Child, Command},
     sync::{Arc, Mutex},
 };
 
+#[cfg(unix)]
+use std::os::unix::{io::RawFd, process::CommandExt};
+
 pub use async_trait::async_trait;
+#[cfg(unix)]
 pub use nix::unistd::Pid;
 
+#[cfg(unix)]
 fn set_terminal_size_using_fd(
     fd: RawFd,
     columns: u16,
@@ -86,7 +97,8 @@ fn handle_command_exit(mut child: Child) -> Result<Option<i32>> {
     // returns the exit status, if any
     let mut should_exit = false;
     let mut attempts = 3;
-    let mut signals =
+    #[cfg(unix)]
+        let mut signals =
         signal_hook::iterator::Signals::new(&[SIGINT, SIGTERM]).with_context(err_context)?;
     'handle_exit: loop {
         // test whether the child process has exited
@@ -104,16 +116,21 @@ fn handle_command_exit(mut child: Child) -> Result<Option<i32>> {
         }
 
         if !should_exit {
+            #[cfg(unix)]
             for signal in signals.pending() {
                 if signal == SIGINT || signal == SIGTERM {
                     should_exit = true;
                 }
             }
+            // TODO Windows implementation
         } else if attempts > 0 {
             // let's try nicely first...
             attempts -= 1;
+            #[cfg(unix)]
             kill(Pid::from_raw(child.id() as i32), Some(Signal::SIGTERM))
                 .with_context(err_context)?;
+            #[cfg(windows)]
+            todo!();
             continue;
         } else {
             // when I say whoa, I mean WHOA!
@@ -150,6 +167,7 @@ fn command_exists(cmd: &RunCommand) -> bool {
     false
 }
 
+#[cfg(unix)]
 fn handle_openpty(
     open_pty_res: OpenptyResult,
     cmd: RunCommand,
@@ -218,6 +236,7 @@ fn handle_openpty(
 /// Spawns a new terminal from the parent terminal with [`termios`](termios::Termios)
 /// `orig_termios`.
 ///
+#[cfg(unix)]
 fn handle_terminal(
     cmd: RunCommand,
     failover_cmd: Option<RunCommand>,
@@ -277,6 +296,7 @@ fn separate_command_arguments(command: &mut PathBuf, args: &mut Vec<String>) {
 ///
 /// This function will panic if both the `EDITOR` and `VISUAL` environment variables are not
 /// set.
+#[cfg(unix)]
 fn spawn_terminal(
     terminal_action: TerminalAction,
     orig_termios: termios::Termios,
@@ -418,8 +438,10 @@ impl ClientSender {
 
 #[derive(Clone)]
 pub struct ServerOsInputOutput {
+    #[cfg(unix)]
     orig_termios: Arc<Mutex<termios::Termios>>,
     client_senders: Arc<Mutex<HashMap<ClientId, ClientSender>>>,
+    #[cfg(unix)]
     terminal_id_to_raw_fd: Arc<Mutex<BTreeMap<u32, Option<RawFd>>>>, // A value of None means the
     // terminal_id exists but is
     // not connected to an fd (eg.
@@ -440,6 +462,7 @@ struct RawFdAsyncReader {
     fd: async_std::fs::File,
 }
 
+#[cfg(unix)]
 impl RawFdAsyncReader {
     fn new(fd: RawFd) -> RawFdAsyncReader {
         RawFdAsyncReader {
@@ -470,6 +493,7 @@ pub trait ServerOsApi: Send + Sync {
     /// Spawn a new terminal, with a terminal action. The returned tuple contains the master file
     /// descriptor of the forked pseudo terminal and a [ChildId] struct containing process id's for
     /// the forked child process.
+    #[cfg(unix)]
     fn spawn_terminal(
         &self,
         terminal_action: TerminalAction,
@@ -481,16 +505,23 @@ pub trait ServerOsApi: Send + Sync {
         unimplemented!()
     }
     /// Read bytes from the standard output of the virtual terminal referred to by `fd`.
+    #[cfg(unix)]
     fn read_from_tty_stdout(&self, fd: RawFd, buf: &mut [u8]) -> Result<usize>;
     /// Creates an `AsyncReader` that can be used to read from `fd` in an async context
+    #[cfg(unix)]
     fn async_file_reader(&self, fd: RawFd) -> Box<dyn AsyncReader>;
+    #[cfg(windows)]
+    fn async_file_reader(&self) -> Box<dyn AsyncReader>;
+
     /// Write bytes to the standard input of the virtual terminal referred to by `fd`.
     fn write_to_tty_stdin(&self, terminal_id: u32, buf: &[u8]) -> Result<usize>;
     /// Wait until all output written to the object referred to by `fd` has been transmitted.
     fn tcdrain(&self, terminal_id: u32) -> Result<()>;
     /// Terminate the process with process ID `pid`. (SIGTERM)
+    #[cfg(unix)]
     fn kill(&self, pid: Pid) -> Result<()>;
     /// Terminate the process with process ID `pid`. (SIGKILL)
+    #[cfg(unix)]
     fn force_kill(&self, pid: Pid) -> Result<()>;
     /// Returns a [`Box`] pointer to this [`ServerOsApi`] struct.
     fn box_clone(&self) -> Box<dyn ServerOsApi>;
@@ -503,8 +534,10 @@ pub trait ServerOsApi: Send + Sync {
     fn remove_client(&mut self, client_id: ClientId) -> Result<()>;
     fn load_palette(&self) -> Palette;
     /// Returns the current working directory for a given pid
+    #[cfg(unix)]
     fn get_cwd(&self, pid: Pid) -> Option<PathBuf>;
     /// Returns the current working directory for multiple pids
+    #[cfg(unix)]
     fn get_cwds(&self, _pids: Vec<Pid>) -> HashMap<Pid, PathBuf> {
         HashMap::new()
     }
@@ -515,6 +548,7 @@ pub trait ServerOsApi: Send + Sync {
     /// Writes the given buffer to a string
     fn write_to_file(&mut self, buf: String, file: Option<String>) -> Result<()>;
 
+    #[cfg(unix)]
     fn re_run_command_in_terminal(
         &self,
         terminal_id: u32,
@@ -546,6 +580,7 @@ impl ServerOsApi for ServerOsInputOutput {
             return Ok(());
         }
 
+        #[cfg(unix)]
         match self
             .terminal_id_to_raw_fd
             .lock()
@@ -564,8 +599,14 @@ impl ServerOsApi for ServerOsInputOutput {
                     .non_fatal();
             },
         }
+        #[cfg(windows)]
+        {
+            // TODO Windows implementation
+        }
+
         Ok(())
     }
+    #[cfg(unix)]
     fn spawn_terminal(
         &self,
         terminal_action: TerminalAction,
@@ -617,6 +658,7 @@ impl ServerOsApi for ServerOsInputOutput {
             None => Err(anyhow!("no more terminal IDs left to allocate")),
         }
     }
+    #[cfg(unix)]
     fn reserve_terminal_id(&self) -> Result<u32> {
         let err_context = || "failed to reserve a terminal ID".to_string();
 
@@ -644,12 +686,20 @@ impl ServerOsApi for ServerOsInputOutput {
             None => Err(anyhow!("no more terminal IDs available")),
         }
     }
+    #[cfg(unix)]
     fn read_from_tty_stdout(&self, fd: RawFd, buf: &mut [u8]) -> Result<usize> {
         unistd::read(fd, buf).with_context(|| format!("failed to read stdout of raw FD {}", fd))
     }
+    #[cfg(unix)]
     fn async_file_reader(&self, fd: RawFd) -> Box<dyn AsyncReader> {
         Box::new(RawFdAsyncReader::new(fd))
     }
+    #[cfg(windows)]
+    fn async_file_reader(&self) -> Box<dyn AsyncReader> {
+        todo!()
+    }
+
+    #[cfg(unix)]
     fn write_to_tty_stdin(&self, terminal_id: u32, buf: &[u8]) -> Result<usize> {
         let err_context = || format!("failed to write to stdin of TTY ID {}", terminal_id);
 
@@ -664,6 +714,12 @@ impl ServerOsApi for ServerOsInputOutput {
             _ => Err(anyhow!("could not find raw file descriptor")).with_context(err_context),
         }
     }
+    #[cfg(windows)]
+    fn write_to_tty_stdin(&self, terminal_id: u32, buf: &[u8]) -> Result<usize> {
+        todo!()
+    }
+
+    #[cfg(unix)]
     fn tcdrain(&self, terminal_id: u32) -> Result<()> {
         let err_context = || format!("failed to tcdrain to TTY ID {}", terminal_id);
 
@@ -678,13 +734,21 @@ impl ServerOsApi for ServerOsInputOutput {
             _ => Err(anyhow!("could not find raw file descriptor")).with_context(err_context),
         }
     }
+
+    #[cfg(windows)]
+    fn tcdrain(&self, terminal_id: u32) -> Result<()> {
+        todo!()
+    }
+
     fn box_clone(&self) -> Box<dyn ServerOsApi> {
         Box::new((*self).clone())
     }
+    #[cfg(unix)]
     fn kill(&self, pid: Pid) -> Result<()> {
         let _ = kill(pid, Some(Signal::SIGHUP));
         Ok(())
     }
+    #[cfg(unix)]
     fn force_kill(&self, pid: Pid) -> Result<()> {
         let _ = kill(pid, Some(Signal::SIGKILL));
         Ok(())
@@ -736,6 +800,7 @@ impl ServerOsApi for ServerOsInputOutput {
         default_palette()
     }
 
+    #[cfg(unix)]
     fn get_cwd(&self, pid: Pid) -> Option<PathBuf> {
         let mut system_info = System::new();
         // Update by minimizing information.
@@ -752,6 +817,7 @@ impl ServerOsApi for ServerOsInputOutput {
         None
     }
 
+    #[cfg(unix)]
     fn get_cwds(&self, pids: Vec<Pid>) -> HashMap<Pid, PathBuf> {
         let mut system_info = System::new();
         // Update by minimizing information.
@@ -806,6 +872,7 @@ impl ServerOsApi for ServerOsInputOutput {
         write!(f, "{}", buf).with_context(err_context)
     }
 
+    #[cfg(unix)]
     fn re_run_command_in_terminal(
         &self,
         terminal_id: u32,
@@ -835,6 +902,7 @@ impl ServerOsApi for ServerOsInputOutput {
             .with_context(|| format!("failed to rerun command in terminal id {}", terminal_id))
     }
     fn clear_terminal_id(&self, terminal_id: u32) -> Result<()> {
+        #[cfg(unix)]
         self.terminal_id_to_raw_fd
             .lock()
             .to_anyhow()
@@ -871,6 +939,7 @@ impl Clone for Box<dyn ServerOsApi> {
     }
 }
 
+#[cfg(unix)]
 pub fn get_server_os_input() -> Result<ServerOsInputOutput, nix::Error> {
     let current_termios = termios::tcgetattr(0)?;
     let orig_termios = Arc::new(Mutex::new(current_termios));
@@ -878,6 +947,13 @@ pub fn get_server_os_input() -> Result<ServerOsInputOutput, nix::Error> {
         orig_termios,
         client_senders: Arc::new(Mutex::new(HashMap::new())),
         terminal_id_to_raw_fd: Arc::new(Mutex::new(BTreeMap::new())),
+        cached_resizes: Arc::new(Mutex::new(None)),
+    })
+}
+#[cfg(windows)]
+pub fn get_server_os_input() -> Result<ServerOsInputOutput, ()> {
+    Ok(ServerOsInputOutput {
+        client_senders: Arc::new(Mutex::new(HashMap::new())),
         cached_resizes: Arc::new(Mutex::new(None)),
     })
 }
@@ -912,6 +988,7 @@ impl Drop for ResizeCache {
 
 /// Process id's for forked terminals
 #[derive(Debug)]
+#[cfg(unix)]
 pub struct ChildId {
     /// Primary process id of a forked terminal
     pub primary: Pid,

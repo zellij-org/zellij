@@ -14,6 +14,7 @@ use zellij_utils::surf::{
 use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::io::Write;
+#[cfg(unix)]
 use std::os::unix::fs::FileTypeExt;
 use std::path::PathBuf;
 use std::sync::{
@@ -213,43 +214,48 @@ pub(crate) fn background_jobs_main(bus: Bus<BackgroundJob>) -> Result<()> {
                             // start a background job (if not already running) that'll periodically read this and other
                             // sesion infos and report back
 
-                            // read state of all sessions
-                            let mut other_session_names = vec![];
-                            let mut session_infos_on_machine = BTreeMap::new();
-                            // we do this so that the session infos will be actual and we're
-                            // reasonably sure their session is running
-                            if let Ok(files) = fs::read_dir(&*ZELLIJ_SOCK_DIR) {
-                                files.for_each(|file| {
-                                    if let Ok(file) = file {
-                                        if let Ok(file_name) = file.file_name().into_string() {
-                                            if file.file_type().unwrap().is_socket() {
-                                                other_session_names.push(file_name);
+                            #[cfg(unix)] {
+                                // read state of all sessions
+                                let mut other_session_names = vec![];
+                                let mut session_infos_on_machine = BTreeMap::new();
+                                // we do this so that the session infos will be actual and we're
+                                // reasonably sure their session is running
+                                if let Ok(files) = fs::read_dir(&*ZELLIJ_SOCK_DIR) {
+                                    files.for_each(|file| {
+                                        if let Ok(file) = file {
+                                            if let Ok(file_name) = file.file_name().into_string() {
+                                                if file.file_type().unwrap().is_socket() {
+                                                    other_session_names.push(file_name);
+                                                }
                                             }
                                         }
-                                    }
-                                });
-                            }
+                                    });
+                                }
 
-                            for session_name in other_session_names {
-                                let session_cache_file_name =
-                                    session_info_cache_file_name(&session_name);
-                                if let Ok(raw_session_info) =
-                                    fs::read_to_string(&session_cache_file_name)
-                                {
-                                    if let Ok(session_info) = SessionInfo::from_string(
-                                        &raw_session_info,
-                                        &current_session_name,
-                                    ) {
-                                        session_infos_on_machine.insert(session_name, session_info);
+                                for session_name in other_session_names {
+                                    let session_cache_file_name =
+                                        session_info_cache_file_name(&session_name);
+                                    if let Ok(raw_session_info) =
+                                        fs::read_to_string(&session_cache_file_name)
+                                    {
+                                        if let Ok(session_info) = SessionInfo::from_string(
+                                            &raw_session_info,
+                                            &current_session_name,
+                                        ) {
+                                            session_infos_on_machine
+                                                .insert(session_name, session_info);
+                                        }
                                     }
                                 }
-                            }
-                            let _ = senders.send_to_screen(ScreenInstruction::UpdateSessionInfos(
-                                session_infos_on_machine,
-                            ));
-                            let _ = senders.send_to_screen(ScreenInstruction::DumpLayoutToHd);
-                            task::sleep(std::time::Duration::from_millis(SESSION_READ_DURATION))
+                                let _ = senders.send_to_screen(
+                                    ScreenInstruction::UpdateSessionInfos(session_infos_on_machine),
+                                );
+                                let _ = senders.send_to_screen(ScreenInstruction::DumpLayoutToHd);
+                                task::sleep(std::time::Duration::from_millis(
+                                    SESSION_READ_DURATION,
+                                ))
                                 .await;
+                            }
                         }
                     }
                 });

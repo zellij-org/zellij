@@ -23,7 +23,7 @@ use crate::{
 };
 use zellij_utils::{
     channels::{self, ChannelWithContext, SenderWithContext},
-    consts::{set_permissions, ZELLIJ_SOCK_DIR},
+    consts::ZELLIJ_SOCK_DIR,
     data::{ClientId, ConnectToSession, InputMode, Style},
     envs,
     errors::{ClientContext, ContextType, ErrorInstruction},
@@ -31,7 +31,10 @@ use zellij_utils::{
     ipc::{ClientAttributes, ClientToServerMsg, ExitReason, ServerToClientMsg},
     termwiz::input::InputEvent,
 };
+#[cfg(unix)]
+use zellij_utils::consts::set_permissions;
 use zellij_utils::{cli::CliArgs, input::layout::Layout};
+use zellij_utils::pane_size::Size;
 
 /// Instructions related to the client-side application
 #[derive(Debug, Clone)]
@@ -159,6 +162,7 @@ pub fn start_client(
     let clear_client_terminal_attributes = "\u{1b}[?1l\u{1b}=\u{1b}[r\u{1b}[?1000l\u{1b}[?1002l\u{1b}[?1003l\u{1b}[?1005l\u{1b}[?1006l\u{1b}[?12l";
     let take_snapshot = "\u{1b}[?1049h";
     let bracketed_paste = "\u{1b}[?2004h";
+    #[cfg(unix)]
     os_input.unset_raw_mode(0).unwrap();
 
     if !is_a_reconnect {
@@ -181,7 +185,12 @@ pub fn start_client(
         .theme_config(&config_options)
         .unwrap_or_else(|| os_input.load_palette());
 
+    #[cfg(unix)]
     let full_screen_ws = os_input.get_terminal_size_using_fd(0);
+    #[cfg(windows)]
+    let full_screen_ws = {
+        Size { rows: 30, cols: 80 } // TODO Windows implementation
+    };
     let client_attributes = ClientAttributes {
         size: full_screen_ws,
         style: Style {
@@ -195,6 +204,7 @@ pub fn start_client(
     let create_ipc_pipe = || -> std::path::PathBuf {
         let mut sock_dir = ZELLIJ_SOCK_DIR.clone();
         std::fs::create_dir_all(&sock_dir).unwrap();
+        #[cfg(unix)]
         set_permissions(&sock_dir, 0o700).unwrap();
         sock_dir.push(envs::get_session_name().unwrap());
         sock_dir
@@ -241,6 +251,7 @@ pub fn start_client(
 
     let mut command_is_executing = CommandIsExecuting::new();
 
+    #[cfg(unix)]
     os_input.set_raw_mode(0);
     let _ = os_input
         .get_stdout_writer()
@@ -262,10 +273,11 @@ pub fn start_client(
         let send_client_instructions = send_client_instructions.clone();
         let os_input = os_input.clone();
         Box::new(move |info| {
-            if let Ok(()) = os_input.unset_raw_mode(0) {
-                handle_panic(info, &send_client_instructions);
-            }
-        })
+                #[cfg(unix)]
+                if let Ok(()) = os_input.unset_raw_mode(0) {
+                    handle_panic(info, &send_client_instructions);
+                }
+            })
     });
 
     let on_force_close = config_options.on_force_close.unwrap_or_default();
@@ -309,9 +321,11 @@ pub fn start_client(
                     Box::new({
                         let os_api = os_input.clone();
                         move || {
+                            #[cfg(unix)]
                             os_api.send_to_server(ClientToServerMsg::TerminalResize(
                                 os_api.get_terminal_size_using_fd(0),
                             ));
+                            // TODO Windows
                         }
                     }),
                     Box::new({
@@ -364,6 +378,7 @@ pub fn start_client(
         .unwrap();
 
     let handle_error = |backtrace: String| {
+        #[cfg(unix)]
         os_input.unset_raw_mode(0).unwrap();
         let goto_start_of_last_line = format!("\u{1b}[{};{}H", full_screen_ws.rows, 1);
         let restore_snapshot = "\u{1b}[?1049l";
@@ -499,6 +514,7 @@ pub fn start_client(
 
         os_input.disable_mouse().non_fatal();
         info!("{}", exit_msg);
+        #[cfg(unix)]
         os_input.unset_raw_mode(0).unwrap();
         let mut stdout = os_input.get_stdout_writer();
         let _ = stdout.write(goodbye_message.as_bytes()).unwrap();

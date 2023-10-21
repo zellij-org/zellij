@@ -1,12 +1,12 @@
 //! Handles cli and configuration options
 use crate::cli::Command;
 use crate::data::InputMode;
-use clap::{ArgEnum, Args};
+use clap::{ValueEnum, Args};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::str::FromStr;
 
-#[derive(Copy, Clone, Debug, PartialEq, Deserialize, Serialize, ArgEnum)]
+#[derive(Copy, Clone, Debug, PartialEq, Deserialize, Serialize, ValueEnum)]
 pub enum OnForceClose {
     #[serde(alias = "quit")]
     Quit,
@@ -47,7 +47,7 @@ pub struct Options {
     #[clap(long, value_parser)]
     pub theme: Option<String>,
     /// Set the default mode
-    #[clap(long, arg_enum, hide_possible_values = true, value_parser)]
+    #[clap(long, value_enum, hide_possible_values = true, value_parser)]
     pub default_mode: Option<InputMode>,
     /// Set the default shell
     #[clap(long, value_parser)]
@@ -80,7 +80,7 @@ pub struct Options {
     /// Mirror session when multiple users are connected (true or false)
     pub mirror_session: Option<bool>,
     /// Set behaviour on force close (quit or detach)
-    #[clap(long, arg_enum, hide_possible_values = true, value_parser)]
+    #[clap(long, value_enum, hide_possible_values = true, value_parser)]
     pub on_force_close: Option<OnForceClose>,
     #[clap(long, value_parser)]
     pub scroll_buffer_size: Option<usize>,
@@ -93,7 +93,7 @@ pub struct Options {
     /// OSC52 destination clipboard
     #[clap(
         long,
-        arg_enum,
+        value_enum,
         ignore_case = true,
         conflicts_with = "copy-command",
         value_parser
@@ -144,7 +144,7 @@ pub struct Options {
     pub scrollback_lines_to_serialize: Option<usize>,
 }
 
-#[derive(ArgEnum, Deserialize, Serialize, Debug, Clone, Copy, PartialEq)]
+#[derive(ValueEnum, Deserialize, Serialize, Debug, Clone, Copy, PartialEq)]
 pub enum Clipboard {
     #[serde(alias = "system")]
     System,

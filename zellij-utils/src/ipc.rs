@@ -9,14 +9,19 @@ use crate::{
 };
 use interprocess::local_socket::LocalSocketStream;
 use log::warn;
+
+#[cfg(unix)]
 use nix::unistd::dup;
+
 use serde::{Deserialize, Serialize};
 use std::{
     fmt::{Display, Error, Formatter},
     io::{self, Write},
     marker::PhantomData,
-    os::unix::io::{AsRawFd, FromRawFd},
 };
+
+#[cfg(unix)]
+use std::os::unix::io::{AsRawFd, FromRawFd};
 
 type SessionId = u64;
 
@@ -183,7 +188,8 @@ impl<T: Serialize> IpcSenderWithContext<T> {
             Ok(())
         }
     }
-
+    
+    #[cfg(unix)]
     /// Returns an [`IpcReceiverWithContext`] with the same socket as this sender.
     pub fn get_receiver<F>(&self) -> IpcReceiverWithContext<F>
     where
@@ -193,6 +199,15 @@ impl<T: Serialize> IpcSenderWithContext<T> {
         let dup_sock = dup(sock_fd).unwrap();
         let socket = unsafe { LocalSocketStream::from_raw_fd(dup_sock) };
         IpcReceiverWithContext::new(socket)
+    }
+
+    #[cfg(windows)]
+    ///Returns an [`IpcReceiverWithContext`] with the same socket as this sender.
+    pub fn get_receiver<F>(&self) -> IpcReceiverWithContext<F>
+    where
+        F: for<'de> Deserialize<'de> + Serialize,
+    {
+        todo!()
     }
 }
 
@@ -225,11 +240,23 @@ where
         }
     }
 
+    #[cfg(unix)]
     /// Returns an [`IpcSenderWithContext`] with the same socket as this receiver.
     pub fn get_sender<F: Serialize>(&self) -> IpcSenderWithContext<F> {
         let sock_fd = self.receiver.get_ref().as_raw_fd();
         let dup_sock = dup(sock_fd).unwrap();
         let socket = unsafe { LocalSocketStream::from_raw_fd(dup_sock) };
         IpcSenderWithContext::new(socket)
+    }
+
+    #[cfg(windows)]
+    /// Returns an [`IpcSenderWithContext`] with the same socket as this receiver.
+    pub fn get_sender<F: Serialize>(&self) -> IpcSenderWithContext<F> {
+        // use std::io::Read;
+
+        // let socket_ref = self.receiver.get_ref();
+        // let socket: LocalSocketStream = socket_ref.clone();
+        // IpcSenderWithContext::new(socket)
+        todo!()
     }
 }

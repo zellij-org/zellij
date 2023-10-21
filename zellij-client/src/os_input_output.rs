@@ -1,13 +1,24 @@
 use zellij_utils::anyhow::{Context, Result};
 use zellij_utils::pane_size::Size;
-use zellij_utils::{interprocess, libc, nix, signal_hook};
+use zellij_utils::{interprocess, signal_hook};
+
+#[cfg(not(windows))]
+use zellij_utils::{libc, nix};
 
 use interprocess::local_socket::LocalSocketStream;
-use mio::{unix::SourceFd, Events, Interest, Poll, Token};
+#[cfg(not(windows))]
+use mio::unix::SourceFd;
+use mio::{ Events, Interest, Poll, Token};
+#[cfg(not(windows))]
 use nix::pty::Winsize;
+#[cfg(not(windows))]
 use nix::sys::termios;
-use signal_hook::{consts::signal::*, iterator::Signals};
+
+use signal_hook::consts::signal::*;
+#[cfg(unix)]
+use signal_hook::iterator::Signals;
 use std::io::prelude::*;
+#[cfg(not(windows))]
 use std::os::unix::io::RawFd;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -24,6 +35,7 @@ const SIGWINCH_CB_THROTTLE_DURATION: time::Duration = time::Duration::from_milli
 const ENABLE_MOUSE_SUPPORT: &str = "\u{1b}[?1000h\u{1b}[?1002h\u{1b}[?1015h\u{1b}[?1006h";
 const DISABLE_MOUSE_SUPPORT: &str = "\u{1b}[?1006l\u{1b}[?1015l\u{1b}[?1002l\u{1b}[?1000l";
 
+#[cfg(unix)]
 fn into_raw_mode(pid: RawFd) {
     let mut tio = termios::tcgetattr(pid).expect("could not get terminal attribute");
     termios::cfmakeraw(&mut tio);
@@ -33,10 +45,12 @@ fn into_raw_mode(pid: RawFd) {
     };
 }
 
+#[cfg(unix)]
 fn unset_raw_mode(pid: RawFd, orig_termios: termios::Termios) -> Result<(), nix::Error> {
     termios::tcsetattr(pid, termios::SetArg::TCSANOW, &orig_termios)
 }
 
+#[cfg(unix)]
 pub(crate) fn get_terminal_size_using_fd(fd: RawFd) -> Size {
     // TODO: do this with the nix ioctl
     use libc::ioctl;
@@ -75,6 +89,7 @@ pub(crate) fn get_terminal_size_using_fd(fd: RawFd) -> Size {
 
 #[derive(Clone)]
 pub struct ClientOsInputOutput {
+    #[cfg(unix)]
     orig_termios: Option<Arc<Mutex<termios::Termios>>>,
     send_instructions_to_server: Arc<Mutex<Option<IpcSenderWithContext<ClientToServerMsg>>>>,
     receive_instructions_from_server: Arc<Mutex<Option<IpcReceiverWithContext<ServerToClientMsg>>>>,
@@ -86,12 +101,15 @@ pub struct ClientOsInputOutput {
 /// Zellij client requires.
 pub trait ClientOsApi: Send + Sync {
     /// Returns the size of the terminal associated to file descriptor `fd`.
+    #[cfg(unix)]
     fn get_terminal_size_using_fd(&self, fd: RawFd) -> Size;
     /// Set the terminal associated to file descriptor `fd` to
     /// [raw mode](https://en.wikipedia.org/wiki/Terminal_mode).
+    #[cfg(unix)]
     fn set_raw_mode(&mut self, fd: RawFd);
     /// Set the terminal associated to file descriptor `fd` to
     /// [cooked mode](https://en.wikipedia.org/wiki/Terminal_mode).
+    #[cfg(unix)]
     fn unset_raw_mode(&self, fd: RawFd) -> Result<(), nix::Error>;
     /// Returns the writer that allows writing to standard output.
     fn get_stdout_writer(&self) -> Box<dyn io::Write>;
@@ -120,12 +138,15 @@ pub trait ClientOsApi: Send + Sync {
 }
 
 impl ClientOsApi for ClientOsInputOutput {
+    #[cfg(unix)]
     fn get_terminal_size_using_fd(&self, fd: RawFd) -> Size {
         get_terminal_size_using_fd(fd)
     }
+    #[cfg(unix)]
     fn set_raw_mode(&mut self, fd: RawFd) {
         into_raw_mode(fd);
     }
+    #[cfg(unix)]
     fn unset_raw_mode(&self, fd: RawFd) -> Result<(), nix::Error> {
         match &self.orig_termios {
             Some(orig_termios) => {
@@ -211,22 +232,25 @@ impl ClientOsApi for ClientOsInputOutput {
     }
     fn handle_signals(&self, sigwinch_cb: Box<dyn Fn()>, quit_cb: Box<dyn Fn()>) {
         let mut sigwinch_cb_timestamp = time::Instant::now();
-        let mut signals = Signals::new(&[SIGWINCH, SIGTERM, SIGINT, SIGQUIT, SIGHUP]).unwrap();
-        for signal in signals.forever() {
-            match signal {
-                SIGWINCH => {
-                    // throttle sigwinch_cb calls, reduce excessive renders while resizing
-                    if sigwinch_cb_timestamp.elapsed() < SIGWINCH_CB_THROTTLE_DURATION {
-                        thread::sleep(SIGWINCH_CB_THROTTLE_DURATION);
+        #[cfg(unix)]
+        {
+            let mut signals = Signals::new(&[SIGWINCH, SIGTERM, SIGINT, SIGQUIT, SIGHUP]).unwrap();
+            for signal in signals.forever() {
+                match signal {
+                    SIGWINCH => {
+                        // throttle sigwinch_cb calls, reduce excessive renders while resizing
+                        if sigwinch_cb_timestamp.elapsed() < SIGWINCH_CB_THROTTLE_DURATION {
+                            thread::sleep(SIGWINCH_CB_THROTTLE_DURATION);
+                        }
+                        sigwinch_cb_timestamp = time::Instant::now();
+                        sigwinch_cb();
                     }
-                    sigwinch_cb_timestamp = time::Instant::now();
-                    sigwinch_cb();
-                },
-                SIGTERM | SIGINT | SIGQUIT | SIGHUP => {
-                    quit_cb();
-                    break;
-                },
-                _ => unreachable!(),
+                    SIGTERM | SIGINT | SIGQUIT | SIGHUP => {
+                        quit_cb();
+                        break;
+                    }
+                    _ => unreachable!(),
+                }
             }
         }
     }
@@ -296,7 +320,7 @@ impl Clone for Box<dyn ClientOsApi> {
         self.box_clone()
     }
 }
-
+#[cfg(unix)]
 pub fn get_client_os_input() -> Result<ClientOsInputOutput, nix::Error> {
     let current_termios = termios::tcgetattr(0)?;
     let orig_termios = Some(Arc::new(Mutex::new(current_termios)));
@@ -310,6 +334,17 @@ pub fn get_client_os_input() -> Result<ClientOsInputOutput, nix::Error> {
     })
 }
 
+#[cfg(windows)]
+pub fn get_client_os_input() -> Result<ClientOsInputOutput, ()> {
+    Ok(ClientOsInputOutput {
+        send_instructions_to_server: Arc::new(Mutex::new(None)),
+        receive_instructions_from_server: Arc::new(Mutex::new(None)),
+        reading_from_stdin: Arc::new(Mutex::new(None)),
+        session_name: Arc::new(Mutex::new(None)),
+    })
+}
+
+#[cfg(unix)]
 pub fn get_cli_client_os_input() -> Result<ClientOsInputOutput, nix::Error> {
     let orig_termios = None; // not a terminal
     let reading_from_stdin = Arc::new(Mutex::new(None));
@@ -320,6 +355,11 @@ pub fn get_cli_client_os_input() -> Result<ClientOsInputOutput, nix::Error> {
         reading_from_stdin,
         session_name: Arc::new(Mutex::new(None)),
     })
+}
+
+#[cfg(windows)]
+pub fn get_cli_client_os_input() -> Result<ClientOsInputOutput, ()> {
+    todo!()
 }
 
 pub const DEFAULT_STDIN_POLL_TIMEOUT_MS: u64 = 10;
@@ -346,6 +386,7 @@ impl StdinPoller {
 }
 
 impl Default for StdinPoller {
+    #[cfg(unix)]
     fn default() -> Self {
         let stdin = 0;
         let mut stdin_fd = SourceFd(&stdin);
@@ -362,5 +403,10 @@ impl Default for StdinPoller {
             events,
             timeout,
         }
+    }
+
+    #[cfg(windows)]
+    fn default() -> Self {
+        todo!()
     }
 }
