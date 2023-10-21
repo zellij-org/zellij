@@ -1,9 +1,9 @@
 use super::sixel::{PixelRect, SixelGrid, SixelImageStore};
 use std::borrow::Cow;
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
-use unicode_width::UnicodeWidthChar;
+use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 use zellij_utils::data::Style;
 use zellij_utils::errors::prelude::*;
 use zellij_utils::regex::Regex;
@@ -2125,10 +2125,48 @@ impl Grid {
     pub fn reset_cursor_position(&mut self) {
         self.cursor = Cursor::new(0, 0);
     }
+    fn parse_ui_component(&mut self, params: &[&[u8]]) -> Result<()> {
+        let mut params_iter = params.iter();
+        let _ = params_iter.next(); // remove OSC code
+        let component_name = params_iter
+            .next()
+            .and_then(|s| str::from_utf8(s).ok())
+            .with_context(|| format!("ui component must have a name"))?;
+
+        if component_name == "table" {
+            let columns = params_iter.next()
+                .and_then(|stringified_columns| String::from_utf8_lossy(stringified_columns).parse::<usize>().ok())
+                .with_context(|| format!("table must have columns"))?;
+            let rows = params_iter.next()
+                .and_then(|stringified_rows| String::from_utf8_lossy(stringified_rows).parse::<usize>().ok())
+                .with_context(|| format!("table must have rows"))?;
+            let stringified_params = params_iter
+                .flat_map(|x| str::from_utf8(x))
+                .flat_map(|stringified| {
+                    let mut utf8 = vec![];
+                    for stringified_character in stringified.split(',') {
+                        utf8.push(stringified_character.parse::<u8>().map_err(|e| format!("Failed to parse utf8: {:?}", e))?);
+                    }
+                    Ok::<String, String>(String::from_utf8_lossy(&utf8).to_string())
+                })
+                .collect::<Vec<String>>().into_iter();
+
+
+            let mut vte_parser = vte::Parser::new();
+            let encoded_table = table(columns, rows, stringified_params);
+            for &byte in &encoded_table {
+                vte_parser.advance(self, byte);
+            }
+            Ok(())
+        } else {
+            Err(anyhow!("Unknown component: {}", component_name))
+        }
+    }
 }
 
 impl Perform for Grid {
     fn print(&mut self, c: char) {
+        log::info!("print: {:?}", c);
         let c = self.cursor.charsets[self.active_charset].map(c);
 
         // apparently, building TerminalCharacter like this without a "new" method
@@ -2400,6 +2438,11 @@ impl Perform for Grid {
             // Reset text cursor color.
             b"112" => {
                 // TBD - reset text cursor color - currently unimplemented
+            },
+
+            // Zellij UI elements
+            b"113" => { // TODO: find private osc range?
+                self.parse_ui_component(params).non_fatal();
             },
 
             _ => {
@@ -3387,6 +3430,48 @@ impl Row {
         parts
     }
 }
+
+// UI COMPONENTS - TODO: move elsewhere
+fn table(columns: usize, rows: usize, contents: impl Iterator<Item=String>) -> Vec<u8> {
+    log::info!("columns: {:?}, rows: {:?}", columns, rows);
+    let mut stringified = String::new();
+    let mut stringified_columns: BTreeMap<usize, Vec<String>> = BTreeMap::new();
+    // for (i, cell) in contents.iter().enumerate() {
+    for (i, cell) in contents.enumerate() {
+        let column_index = i % columns;
+        stringified_columns.entry(column_index).or_insert_with(Vec::new).push(cell.to_owned());
+    }
+    let mut stringified_rows: BTreeMap<usize, Vec<String>> = BTreeMap::new();
+    for (column_index, stringified_column) in stringified_columns.values().into_iter().enumerate() {
+        let mut max_column_width = 0;
+        for cell in stringified_column {
+            let cell_width = cell.width();
+            if cell_width > max_column_width {
+                max_column_width = cell_width;
+            }
+        }
+        for (row_index, cell) in stringified_column.into_iter().enumerate() {
+            let padded_string = format!("{:width$}", cell, width=max_column_width);
+            stringified_rows.entry(row_index).or_insert_with(Vec::new).push(padded_string);
+        }
+
+    }
+    for (row_index, row) in stringified_rows.values().into_iter().enumerate() {
+        let is_title_row = row_index == 0;
+        for cell in row {
+            if is_title_row {
+                stringified.push_str(&format!("\u{1b}[36;1m{}\u{1b}[0m ", cell));
+            } else {
+                stringified.push_str(&format!("\u{1b}[1m{}\u{1b}[0m ", cell));
+            }
+        }
+        stringified.push_str("\n\r");
+    }
+    log::info!("stringified: {:?}", stringified);
+    stringified.as_bytes().to_vec()
+}
+
+
 
 #[cfg(test)]
 #[path = "./unit/grid_tests.rs"]
