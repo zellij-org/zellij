@@ -1,7 +1,6 @@
 pub mod cli;
 pub mod consts;
 pub mod data;
-pub mod downloader;
 pub mod envs;
 pub mod errors;
 pub mod home;
@@ -17,6 +16,8 @@ pub mod shared;
 // The following modules can't be used when targeting wasm
 #[cfg(not(target_family = "wasm"))]
 pub mod channels; // Requires async_std
+#[cfg(not(target_family = "wasm"))]
+pub mod downloader; // Requires async_std
 #[cfg(not(target_family = "wasm"))]
 pub mod ipc; // Requires interprocess
 #[cfg(not(target_family = "wasm"))]
