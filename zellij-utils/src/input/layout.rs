@@ -287,6 +287,7 @@ impl FromStr for PluginUserConfiguration {
 pub enum RunPluginLocation {
     File(PathBuf),
     Zellij(PluginTag),
+    Remote(String),
 }
 
 impl Default for RunPluginLocation {
@@ -332,6 +333,7 @@ impl RunPluginLocation {
                 };
                 Ok(Self::File(path))
             },
+            "remote" => Ok(Self::Remote(decoded_path.to_string())),
             _ => Err(PluginsConfigError::InvalidUrlScheme(url)),
         }
     }
@@ -339,6 +341,7 @@ impl RunPluginLocation {
         match self {
             RunPluginLocation::File(pathbuf) => format!("file:{}", pathbuf.display()),
             RunPluginLocation::Zellij(plugin_tag) => format!("zellij:{}", plugin_tag),
+            RunPluginLocation::Remote(url) => format!("remote:{}", url),
         }
     }
 }
@@ -351,6 +354,7 @@ impl From<&RunPluginLocation> for Url {
                 path.clone().into_os_string().into_string().unwrap()
             ),
             RunPluginLocation::Zellij(tag) => format!("zellij:{}", tag),
+            RunPluginLocation::Remote(url) => format!("remote:{}", url),
         };
         Self::parse(&url).unwrap()
     }
@@ -364,8 +368,8 @@ impl fmt::Display for RunPluginLocation {
                 "{}",
                 path.clone().into_os_string().into_string().unwrap()
             ),
-
             Self::Zellij(tag) => write!(f, "{}", tag),
+            Self::Remote(url) => write!(f, "{}", url),
         }
     }
 }

@@ -14,7 +14,10 @@ use std::{
 use wasmer::{Module, Store, Value};
 use zellij_utils::async_channel::Sender;
 use zellij_utils::async_std::task::{self, JoinHandle};
+use zellij_utils::consts::ZELLIJ_CACHE_DIR;
 use zellij_utils::data::{PermissionStatus, PermissionType};
+use zellij_utils::downloader::download::Download;
+use zellij_utils::downloader::Downloader;
 use zellij_utils::input::permission::PermissionCache;
 use zellij_utils::notify_debouncer_full::{notify::RecommendedWatcher, Debouncer, FileIdMap};
 use zellij_utils::plugin_api::event::ProtobufEvent;
@@ -129,7 +132,7 @@ impl WasmBridge {
 
         let plugin_id = self.next_plugin_id;
 
-        let plugin = self
+        let mut plugin = self
             .plugins
             .get(run)
             .with_context(|| format!("failed to resolve plugin {run:?}"))
@@ -155,6 +158,19 @@ impl WasmBridge {
             let default_shell = self.default_shell.clone();
             let default_layout = self.default_layout.clone();
             async move {
+                if let RunPluginLocation::Remote(url) = &plugin.location {
+                    let download = Download::from(url);
+
+                    // In the case of remote, the plugin path is determined at this point.
+                    plugin.path = ZELLIJ_CACHE_DIR.join(download.get_path());
+
+                    let downloader = Downloader::new(ZELLIJ_CACHE_DIR.to_path_buf());
+                    match downloader.fetch(&download).await {
+                        Ok(_) => {},
+                        Err(e) => {},
+                    }
+                }
+
                 let _ =
                     senders.send_to_background_jobs(BackgroundJob::AnimatePluginLoading(plugin_id));
                 let mut loading_indication = LoadingIndication::new(plugin_name.clone());
