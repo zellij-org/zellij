@@ -756,20 +756,23 @@ impl ServerOsApi for ServerOsInputOutput {
 
     fn get_cwds(&self, pids: Vec<Pid>) -> HashMap<Pid, PathBuf> {
         let mut system_info = System::new();
-        // Update by minimizing information.
-        // See https://docs.rs/sysinfo/0.22.5/sysinfo/struct.ProcessRefreshKind.html#
-        system_info.refresh_processes_specifics(ProcessRefreshKind::default());
-
         let mut cwds = HashMap::new();
+
         for pid in pids {
-            if let Some(process) = system_info.process(pid.into()) {
-                let cwd = process.cwd();
-                let cwd_is_empty = cwd.iter().next().is_none();
-                if !cwd_is_empty {
-                    cwds.insert(pid, process.cwd().to_path_buf());
+            // Update by minimizing information.
+            // See https://docs.rs/sysinfo/0.22.5/sysinfo/struct.ProcessRefreshKind.html#
+            let is_found = system_info.refresh_process_specifics(pid.into(), ProcessRefreshKind::default());
+            if is_found {
+                if let Some(process) = system_info.process(pid.into()) {
+                    let cwd = process.cwd();
+                    let cwd_is_empty = cwd.iter().next().is_none();
+                    if !cwd_is_empty {
+                        cwds.insert(pid, process.cwd().to_path_buf());
+                    }
                 }
             }
         }
+
         cwds
     }
     fn get_all_cmds_by_ppid(&self) -> HashMap<String, Vec<String>> {
