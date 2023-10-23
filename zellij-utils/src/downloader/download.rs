@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use data_encoding::HEXLOWER;
 use ring::digest::{self, Digest, SHA256};
 use serde::{Deserialize, Serialize};
@@ -29,6 +31,12 @@ impl Download {
         }
     }
 
+    pub fn get_path(&self) -> PathBuf {
+        let mut path = PathBuf::from(self.url_hash.as_str());
+        path.push(self.file_name.as_str());
+        path
+    }
+
     fn sha256_digest(data: String) -> String {
         let bytes = data.into_bytes();
         let digest: Digest = digest::digest(&SHA256, &bytes);
@@ -49,6 +57,12 @@ mod tests {
             "4db716d595a13b42ad1ac6230945cf401b9ad996db3756efc05a2d85b110a81d"
         );
         assert_eq!(download.file_name, "plugin.wasm");
+        assert_eq!(
+            download.get_path(),
+            PathBuf::from(
+                "4db716d595a13b42ad1ac6230945cf401b9ad996db3756efc05a2d85b110a81d/plugin.wasm"
+            )
+        )
     }
 
     #[test]

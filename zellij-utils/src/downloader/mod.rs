@@ -22,10 +22,10 @@ pub struct Downloader {
 }
 
 impl Downloader {
-    pub fn new() -> Self {
+    pub fn new(directory: PathBuf) -> Self {
         Self {
             client: surf::client().with(surf::middleware::Redirect::default()),
-            directory: PathBuf::new(),
+            directory,
         }
     }
 
@@ -94,8 +94,7 @@ mod tests {
     fn test_fetch_plugin() {
         let dir = tempdir().expect("could not get temp dir");
 
-        let mut dl = Downloader::new();
-        dl.set_directory(dir.into_path());
+        let dl = Downloader::new(dir.into_path());
 
         let download = Download::from(
             "https://github.com/imsnif/monocle/releases/download/0.37.2/monocle.wasm",
@@ -109,8 +108,7 @@ mod tests {
     fn test_download_plugins() {
         let dir = tempdir().expect("could not get temp dir");
 
-        let mut dl = Downloader::new();
-        dl.set_directory(dir.into_path());
+        let dl = Downloader::new(dir.into_path());
 
         let downloads = vec![
             Download::from(
