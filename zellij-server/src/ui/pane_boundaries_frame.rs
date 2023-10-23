@@ -837,14 +837,20 @@ impl PaneFrame {
         let enter_text = "ENTER";
         let right_enter_bracket = ">";
         let enter_tip = if self.is_first_run {
-            " to run, "
+            " run, "
         } else {
-            " to re-run, "
+            " re-run, "
         };
+
+        let left_esc_bracket = "<";
+        let esc_text = "ESC";
+        let right_esc_bracket = ">";
+        let esc_tip = " drop to shell, ";
+
         let left_break_bracket = "<";
         let break_text = "Ctrl-c";
         let right_break_bracket = ">";
-        let break_tip = " to exit ";
+        let break_tip = " exit ";
         second_part.append(&mut foreground_color(left_enter_bracket, self.color));
         second_part.append(&mut foreground_color(
             enter_text,
@@ -852,6 +858,15 @@ impl PaneFrame {
         ));
         second_part.append(&mut foreground_color(right_enter_bracket, self.color));
         second_part.append(&mut foreground_color(enter_tip, self.color));
+
+        second_part.append(&mut foreground_color(left_esc_bracket, self.color));
+        second_part.append(&mut foreground_color(
+            esc_text,
+            Some(self.style.colors.orange),
+        ));
+        second_part.append(&mut foreground_color(right_esc_bracket, self.color));
+        second_part.append(&mut foreground_color(esc_tip, self.color));
+
         second_part.append(&mut foreground_color(left_break_bracket, self.color));
         second_part.append(&mut foreground_color(
             break_text,
@@ -865,6 +880,10 @@ impl PaneFrame {
                 + enter_text.len()
                 + right_enter_bracket.len()
                 + enter_tip.len()
+                + left_esc_bracket.len()
+                + esc_text.len()
+                + right_esc_bracket.len()
+                + esc_tip.len()
                 + left_break_bracket.len()
                 + break_text.len()
                 + right_break_bracket.len()

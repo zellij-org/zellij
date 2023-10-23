@@ -1,0 +1,26 @@
+---
+source: zellij-server/src/plugins/./unit/plugin_tests.rs
+assertion_line: 5494
+expression: "format!(\"{:#?}\", new_tab_event)"
+---
+Some(
+    WebRequest(
+        0,
+        1,
+        "https://example.com/foo?arg1=val1&arg2=val2",
+        Post,
+        {
+            "header1": "value1",
+            "header2": "value2",
+        },
+        [
+            1,
+            2,
+            3,
+        ],
+        {
+            "user_key_1": "user_value1",
+            "user_key_2": "user_value2",
+        },
+    ),
+)

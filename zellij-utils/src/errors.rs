@@ -362,6 +362,7 @@ pub enum PtyContext {
     ClosePane,
     CloseTab,
     ReRunCommandInPane,
+    DropToShellInPane,
     SpawnInPlaceTerminal,
     DumpLayout,
     LogLayoutToHd,
@@ -446,6 +447,7 @@ pub enum BackgroundJobContext {
     ReportSessionInfo,
     ReportLayoutInfo,
     RunCommand,
+    WebRequest,
     Exit,
 }
 

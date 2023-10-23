@@ -1,23 +1,46 @@
 pub use super::generated_api::api::{
     action::{PaneIdAndShouldFloat, SwitchToModePayload},
-    event::EventNameList as ProtobufEventNameList,
+    event::{EventNameList as ProtobufEventNameList, Header},
     input_mode::InputMode as ProtobufInputMode,
     plugin_command::{
         plugin_command::Payload, CommandName, ContextItem, EnvVariable, ExecCmdPayload,
-        IdAndNewName, MovePayload, OpenCommandPanePayload, OpenFilePayload,
-        PluginCommand as ProtobufPluginCommand, PluginMessagePayload,
+        HttpVerb as ProtobufHttpVerb, IdAndNewName, MovePayload, OpenCommandPanePayload,
+        OpenFilePayload, PluginCommand as ProtobufPluginCommand, PluginMessagePayload,
         RequestPluginPermissionPayload, ResizePayload, RunCommandPayload, SetTimeoutPayload,
         SubscribePayload, SwitchSessionPayload, SwitchTabToPayload, UnsubscribePayload,
+        WebRequestPayload,
     },
     plugin_permission::PermissionType as ProtobufPermissionType,
     resize::ResizeAction as ProtobufResizeAction,
 };
 
-use crate::data::{ConnectToSession, PermissionType, PluginCommand};
+use crate::data::{ConnectToSession, HttpVerb, PermissionType, PluginCommand};
 
 use std::collections::BTreeMap;
 use std::convert::TryFrom;
 use std::path::PathBuf;
+
+impl Into<HttpVerb> for ProtobufHttpVerb {
+    fn into(self) -> HttpVerb {
+        match self {
+            ProtobufHttpVerb::Get => HttpVerb::Get,
+            ProtobufHttpVerb::Post => HttpVerb::Post,
+            ProtobufHttpVerb::Put => HttpVerb::Put,
+            ProtobufHttpVerb::Delete => HttpVerb::Delete,
+        }
+    }
+}
+
+impl Into<ProtobufHttpVerb> for HttpVerb {
+    fn into(self) -> ProtobufHttpVerb {
+        match self {
+            HttpVerb::Get => ProtobufHttpVerb::Get,
+            HttpVerb::Post => ProtobufHttpVerb::Post,
+            HttpVerb::Put => ProtobufHttpVerb::Put,
+            HttpVerb::Delete => ProtobufHttpVerb::Delete,
+        }
+    }
+}
 
 impl TryFrom<ProtobufPluginCommand> for PluginCommand {
     type Error = &'static str;
@@ -577,6 +600,34 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 },
                 _ => Err("Mismatched payload for RunCommand"),
             },
+            Some(CommandName::WebRequest) => match protobuf_plugin_command.payload {
+                Some(Payload::WebRequestPayload(web_request_payload)) => {
+                    let context: BTreeMap<String, String> = web_request_payload
+                        .context
+                        .into_iter()
+                        .map(|e| (e.name, e.value))
+                        .collect();
+                    let headers: BTreeMap<String, String> = web_request_payload
+                        .headers
+                        .into_iter()
+                        .map(|e| (e.name, e.value))
+                        .collect();
+                    let verb = match ProtobufHttpVerb::from_i32(web_request_payload.verb) {
+                        Some(verb) => verb.into(),
+                        None => {
+                            return Err("Unrecognized http verb");
+                        },
+                    };
+                    Ok(PluginCommand::WebRequest(
+                        web_request_payload.url,
+                        verb,
+                        headers,
+                        web_request_payload.body,
+                        context,
+                    ))
+                },
+                _ => Err("Mismatched payload for WebRequest"),
+            },
             None => Err("Unrecognized plugin command"),
         }
     }
@@ -968,6 +1019,27 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                         command_line,
                         env_variables,
                         cwd,
+                        context,
+                    })),
+                })
+            },
+            PluginCommand::WebRequest(url, verb, headers, body, context) => {
+                let context: Vec<_> = context
+                    .into_iter()
+                    .map(|(name, value)| ContextItem { name, value })
+                    .collect();
+                let headers: Vec<_> = headers
+                    .into_iter()
+                    .map(|(name, value)| Header { name, value })
+                    .collect();
+                let verb: ProtobufHttpVerb = verb.into();
+                Ok(ProtobufPluginCommand {
+                    name: CommandName::WebRequest as i32,
+                    payload: Some(Payload::WebRequestPayload(WebRequestPayload {
+                        url,
+                        verb: verb as i32,
+                        body,
+                        headers,
                         context,
                     })),
                 })

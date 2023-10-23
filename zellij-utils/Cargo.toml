@@ -57,7 +57,7 @@ async-std = { version = "1.3.0", features = ["unstable"] }
 notify-debouncer-full = "0.1.0"
 humantime = "2.1.0"
 futures = "0.3.28"
-surf = "2.3.2"
+surf = { version = "2.3.2", default-features = false, features = ["h1-client-rustls"] }
 
 [dev-dependencies]
 insta = { version = "1.6.0", features = ["backtrace"] }

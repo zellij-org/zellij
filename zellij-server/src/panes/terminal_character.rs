@@ -773,26 +773,34 @@ pub fn render_first_run_banner(
 
             let controls_bare_text_first_part = "<";
             let enter_bare_text = "ENTER";
-            let controls_bare_text_second_part = "> to run, <";
+            let controls_bare_text_second_part = "> run, <";
+            let esc_bare_text = "ESC";
+            let controls_bare_text_third_part = "> drop to shell, <";
             let ctrl_c_bare_text = "Ctrl-c";
-            let controls_bare_text_third_part = "> to exit";
+            let controls_bare_text_fourth_part = "> exit";
             let controls_color = RESET_STYLES
                 .foreground(Some(AnsiCode::from(style.colors.orange)))
                 .bold(Some(AnsiCode::On));
             let controls_line_length = controls_bare_text_first_part.len()
                 + enter_bare_text.len()
                 + controls_bare_text_second_part.len()
+                + esc_bare_text.len()
+                + controls_bare_text_third_part.len()
                 + ctrl_c_bare_text.len()
-                + controls_bare_text_third_part.len();
+                + controls_bare_text_fourth_part.len();
             let controls_column_start_position =
                 middle_column.saturating_sub(controls_line_length / 2);
             let controls_line = format!(
-                "\u{1b}[{};{}H{}<{}{}{}{}> to run, <{}{}{}{}> to exit",
+                "\u{1b}[{};{}H{}<{}{}{}{}> run, <{}{}{}{}> drop to shell, <{}{}{}{}> exit",
                 middle_row + 2,
                 controls_column_start_position,
                 bold_text,
                 controls_color,
                 enter_bare_text,
+                RESET_STYLES,
+                bold_text,
+                controls_color,
+                esc_bare_text,
                 RESET_STYLES,
                 bold_text,
                 controls_color,
@@ -817,26 +825,34 @@ pub fn render_first_run_banner(
 
             let controls_bare_text_first_part = "<";
             let enter_bare_text = "ENTER";
-            let controls_bare_text_second_part = "> to run, <";
+            let controls_bare_text_second_part = "> run, <";
+            let esc_bare_text = "ESC";
+            let controls_bare_text_third_part = "> drop to shell, <";
             let ctrl_c_bare_text = "Ctrl-c";
-            let controls_bare_text_third_part = "> to exit";
+            let controls_bare_text_fourth_part = "> exit";
             let controls_color = RESET_STYLES
                 .foreground(Some(AnsiCode::from(style.colors.orange)))
                 .bold(Some(AnsiCode::On));
             let controls_line_length = controls_bare_text_first_part.len()
                 + enter_bare_text.len()
                 + controls_bare_text_second_part.len()
+                + esc_bare_text.len()
+                + controls_bare_text_third_part.len()
                 + ctrl_c_bare_text.len()
-                + controls_bare_text_third_part.len();
+                + controls_bare_text_fourth_part.len();
             let controls_column_start_position =
                 middle_column.saturating_sub(controls_line_length / 2);
             let controls_line = format!(
-                "\u{1b}[{};{}H{}<{}{}{}{}> to run, <{}{}{}{}> to exit",
+                "\u{1b}[{};{}H{}<{}{}{}{}> run, <{}{}{}{}> drop to shell, <{}{}{}{}> exit",
                 middle_row + 2,
                 controls_column_start_position,
                 bold_text,
                 controls_color,
                 enter_bare_text,
+                RESET_STYLES,
+                bold_text,
+                controls_color,
+                esc_bare_text,
                 RESET_STYLES,
                 bold_text,
                 controls_color,
