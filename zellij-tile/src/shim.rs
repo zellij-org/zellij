@@ -696,7 +696,6 @@ pub fn get_focused_pane(tab_position: usize, pane_manifest: &PaneManifest) -> Op
 
 #[allow(unused)]
 /// render a table with arbitrary data
-// pub fn table<S: AsRef<str>>(columns: usize, rows: usize, contents: Vec<Vec<S>>)
 pub fn table<S: AsRef<str>>(contents: Vec<Vec<S>>)
 where
     S: ToString,
