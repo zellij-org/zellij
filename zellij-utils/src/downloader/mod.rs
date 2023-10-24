@@ -112,23 +112,25 @@ mod tests {
     #[ignore]
     fn test_fetch_plugin() {
         let dir = tempdir().expect("could not get temp dir");
+        let dir_path = dir.path();
 
-        let dl = Downloader::new(dir.into_path());
-
-        let download = Download::from(
+        let downloader = Downloader::new(dir_path.to_path_buf());
+        let dl = Download::from(
             "https://github.com/imsnif/monocle/releases/download/0.37.2/monocle.wasm",
         );
 
-        let _ = task::block_on(dl.fetch(&download));
+        let result = task::block_on(downloader.fetch(&dl));
+
+        assert!(result.is_ok());
     }
 
     #[test]
     #[ignore]
     fn test_download_plugins() {
         let dir = tempdir().expect("could not get temp dir");
+        let dir_path = dir.path();
 
-        let dl = Downloader::new(dir.into_path());
-
+        let downloader = Downloader::new(dir_path.to_path_buf());
         let downloads = vec![
             Download::from(
                 "https://github.com/imsnif/monocle/releases/download/0.37.2/monocle.wasm",
@@ -138,6 +140,9 @@ mod tests {
             ),
         ];
 
-        dl.download(&downloads);
+        let results = downloader.download(&downloads);
+        for result in results {
+            assert!(result.is_ok())
+        }
     }
 }
