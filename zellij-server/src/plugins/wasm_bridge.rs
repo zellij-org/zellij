@@ -158,6 +158,10 @@ impl WasmBridge {
             let default_shell = self.default_shell.clone();
             let default_layout = self.default_layout.clone();
             async move {
+                let _ =
+                    senders.send_to_background_jobs(BackgroundJob::AnimatePluginLoading(plugin_id));
+                let mut loading_indication = LoadingIndication::new(plugin_name.clone());
+
                 if let RunPluginLocation::Remote(url) = &plugin.location {
                     let download = Download::from(url);
 
@@ -167,13 +171,15 @@ impl WasmBridge {
                     let downloader = Downloader::new(ZELLIJ_CACHE_DIR.to_path_buf());
                     match downloader.fetch(&download).await {
                         Ok(_) => {},
-                        Err(e) => {},
+                        Err(e) => handle_plugin_loading_failure(
+                            &senders,
+                            plugin_id,
+                            &mut loading_indication,
+                            e,
+                        ),
                     }
                 }
 
-                let _ =
-                    senders.send_to_background_jobs(BackgroundJob::AnimatePluginLoading(plugin_id));
-                let mut loading_indication = LoadingIndication::new(plugin_name.clone());
                 match PluginLoader::start_plugin(
                     plugin_id,
                     client_id,

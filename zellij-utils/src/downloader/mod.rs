@@ -1,7 +1,7 @@
 pub mod download;
 
 use async_std::{
-    fs::File,
+    fs::{create_dir_all, File},
     io::{ReadExt, WriteExt},
     stream, task,
 };
@@ -13,7 +13,16 @@ use thiserror::Error;
 use self::download::Download;
 
 #[derive(Error, Debug)]
-pub enum DownloaderError {}
+pub enum DownloaderError {
+    #[error("RequestError: {0}")]
+    Request(surf::Error),
+    #[error("StatusError: {0}, StatusCode: {1}")]
+    Status(String, surf::StatusCode),
+    #[error("IoError: {0}")]
+    Io(#[source] std::io::Error),
+    #[error("IoPathError: {0}, File: {1}")]
+    IoPath(std::io::Error, PathBuf),
+}
 
 #[derive(Default, Debug)]
 pub struct Downloader {
@@ -33,14 +42,14 @@ impl Downloader {
         self.directory = directory;
     }
 
-    pub fn download(&self, downloads: &[Download]) {
-        let _ = task::block_on(async {
+    pub fn download(&self, downloads: &[Download]) -> Vec<Result<(), DownloaderError>> {
+        task::block_on(async {
             stream::from_iter(downloads)
                 .map(|download| self.fetch(download))
                 .buffer_unordered(4)
                 .collect::<Vec<_>>()
                 .await
-        });
+        })
     }
 
     pub async fn fetch(&self, download: &Download) -> Result<(), DownloaderError> {
@@ -52,15 +61,22 @@ impl Downloader {
         if file_path.exists() {
             file_size = match file_path.metadata() {
                 Ok(metadata) => metadata.len() as usize,
-                Err(_) => todo!("Error"),
+                Err(e) => return Err(DownloaderError::IoPath(e, file_path)),
             }
         }
 
-        let response = self.client.get(&download.url).await.unwrap();
+        let response = self
+            .client
+            .get(&download.url)
+            .await
+            .map_err(|e| DownloaderError::Request(e))?;
         let status = response.status();
 
         if status.is_client_error() || status.is_server_error() {
-            todo!("Error")
+            return Err(DownloaderError::Status(
+                status.canonical_reason().to_string(),
+                status,
+            ));
         }
 
         let length = response.len().unwrap_or(0);
@@ -69,14 +85,17 @@ impl Downloader {
         }
 
         let mut dest = {
-            std::fs::create_dir_all(directory_path).unwrap();
-
-            File::create(file_path).await.unwrap()
+            create_dir_all(&directory_path)
+                .await
+                .map_err(|e| DownloaderError::IoPath(e, directory_path))?;
+            File::create(&file_path)
+                .await
+                .map_err(|e| DownloaderError::IoPath(e, file_path))?
         };
 
         let mut bytes = response.bytes();
-        while let Some(byte) = bytes.try_next().await.unwrap() {
-            dest.write_all(&[byte]).await.unwrap();
+        while let Some(byte) = bytes.try_next().await.map_err(DownloaderError::Io)? {
+            dest.write_all(&[byte]).await.map_err(DownloaderError::Io)?;
         }
 
         Ok(())
