@@ -692,6 +692,34 @@ pub fn get_focused_pane(tab_position: usize, pane_manifest: &PaneManifest) -> Op
     None
 }
 
+// Ui components (to be used inside the `render` function)
+
+#[allow(unused)]
+/// render a table with arbitrary data
+// pub fn table<S: AsRef<str>>(columns: usize, rows: usize, contents: Vec<Vec<S>>)
+pub fn table<S: AsRef<str>>(contents: Vec<Vec<S>>)
+where
+    S: ToString,
+{
+    let columns = contents.get(0).map(|first_row| first_row.len()).unwrap_or(0);
+    let rows = contents.len();
+    let contents = contents
+        .into_iter()
+        .flatten()
+        .map(|s| s.to_string())
+        .map(|c| {
+            c
+            .as_bytes()
+            .iter()
+            .map(|b| b.to_string())
+            .collect::<Vec<_>>()
+            .join(",")
+        })
+        .collect::<Vec<_>>()
+        .join(";");
+    print!("\u{1b}Pztable;{};{};{}\u{1b}\\", columns, rows, contents)
+}
+
 // Internal Functions
 
 #[doc(hidden)]

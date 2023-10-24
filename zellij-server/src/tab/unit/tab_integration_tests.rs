@@ -641,6 +641,7 @@ fn take_snapshot(ansi_instructions: &str, rows: usize, columns: usize, palette: 
         Rc::new(RefCell::new(LinkHandler::new())),
         character_cell_size,
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let mut vte_parser = vte::Parser::new();
@@ -671,6 +672,7 @@ fn take_snapshot_with_sixel(
         Rc::new(RefCell::new(LinkHandler::new())),
         character_cell_size,
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let mut vte_parser = vte::Parser::new();
@@ -698,6 +700,7 @@ fn take_snapshot_and_cursor_position(
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let mut vte_parser = vte::Parser::new();

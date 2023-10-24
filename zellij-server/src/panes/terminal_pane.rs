@@ -797,6 +797,7 @@ impl TerminalPane {
             link_handler,
             character_cell_size,
             sixel_image_store,
+            style.clone(),
             debug,
         );
         TerminalPane {

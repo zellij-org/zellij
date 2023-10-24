@@ -10,7 +10,7 @@ use crate::{
 use insta::assert_snapshot;
 use std::path::PathBuf;
 use zellij_utils::cli::CliAction;
-use zellij_utils::data::{Event, Resize};
+use zellij_utils::data::{Event, Resize, Style};
 use zellij_utils::errors::{prelude::*, ErrorContext};
 use zellij_utils::input::actions::Action;
 use zellij_utils::input::command::{RunCommand, TerminalAction};
@@ -75,6 +75,7 @@ fn take_snapshots_and_cursor_coordinates_from_render_events<'a>(
         Rc::new(RefCell::new(LinkHandler::new())),
         character_cell_size,
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let snapshots: Vec<(Option<(usize, usize)>, String)> = all_events

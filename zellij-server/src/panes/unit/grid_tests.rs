@@ -5,7 +5,7 @@ use ::insta::assert_snapshot;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
-use zellij_utils::{data::Palette, pane_size::SizeInPixels, position::Position, vte};
+use zellij_utils::{data::{Palette, Style}, pane_size::SizeInPixels, position::Position, vte};
 
 use std::fmt::Write;
 
@@ -33,6 +33,7 @@ fn vttest1_0() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "vttest1-0";
@@ -57,6 +58,7 @@ fn vttest1_1() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "vttest1-1";
@@ -81,6 +83,7 @@ fn vttest1_2() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "vttest1-2";
@@ -105,6 +108,7 @@ fn vttest1_3() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "vttest1-3";
@@ -129,6 +133,7 @@ fn vttest1_4() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "vttest1-4";
@@ -153,6 +158,7 @@ fn vttest1_5() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "vttest1-5";
@@ -177,6 +183,7 @@ fn vttest2_0() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "vttest2-0";
@@ -201,6 +208,7 @@ fn vttest2_1() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "vttest2-1";
@@ -225,6 +233,7 @@ fn vttest2_2() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "vttest2-2";
@@ -249,6 +258,7 @@ fn vttest2_3() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "vttest2-3";
@@ -273,6 +283,7 @@ fn vttest2_4() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "vttest2-4";
@@ -297,6 +308,7 @@ fn vttest2_5() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "vttest2-5";
@@ -321,6 +333,7 @@ fn vttest2_6() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "vttest2-6";
@@ -345,6 +358,7 @@ fn vttest2_7() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "vttest2-7";
@@ -369,6 +383,7 @@ fn vttest2_8() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "vttest2-8";
@@ -393,6 +408,7 @@ fn vttest2_9() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "vttest2-9";
@@ -417,6 +433,7 @@ fn vttest2_10() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "vttest2-10";
@@ -441,6 +458,7 @@ fn vttest2_11() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "vttest2-11";
@@ -465,6 +483,7 @@ fn vttest2_12() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "vttest2-12";
@@ -489,6 +508,7 @@ fn vttest2_13() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "vttest2-13";
@@ -513,6 +533,7 @@ fn vttest2_14() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "vttest2-14";
@@ -537,6 +558,7 @@ fn vttest3_0() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "vttest3-0";
@@ -561,6 +583,7 @@ fn vttest8_0() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "vttest8-0";
@@ -585,6 +608,7 @@ fn vttest8_1() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "vttest8-1";
@@ -609,6 +633,7 @@ fn vttest8_2() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "vttest8-2";
@@ -633,6 +658,7 @@ fn vttest8_3() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "vttest8-3";
@@ -657,6 +683,7 @@ fn vttest8_4() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "vttest8-4";
@@ -681,6 +708,7 @@ fn vttest8_5() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "vttest8-5";
@@ -705,6 +733,7 @@ fn csi_b() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "csi-b";
@@ -729,6 +758,7 @@ fn csi_capital_i() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "csi-capital-i";
@@ -753,6 +783,7 @@ fn csi_capital_z() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "csi-capital-z";
@@ -777,6 +808,7 @@ fn terminal_reports() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "terminal_reports";
@@ -801,6 +833,7 @@ fn wide_characters() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "wide_characters";
@@ -825,6 +858,7 @@ fn wide_characters_line_wrap() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "wide_characters_line_wrap";
@@ -849,6 +883,7 @@ fn insert_character_in_line_with_wide_character() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "wide_characters_middle_line_insert";
@@ -873,6 +908,7 @@ fn delete_char_in_middle_of_line_with_widechar() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "wide-chars-delete-middle";
@@ -897,6 +933,7 @@ fn delete_char_in_middle_of_line_with_multiple_widechars() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "wide-chars-delete-middle-after-multi";
@@ -921,6 +958,7 @@ fn fish_wide_characters_override_clock() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "fish_wide_characters_override_clock";
@@ -945,6 +983,7 @@ fn bash_delete_wide_characters() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "bash_delete_wide_characters";
@@ -969,6 +1008,7 @@ fn delete_wide_characters_before_cursor() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "delete_wide_characters_before_cursor";
@@ -993,6 +1033,7 @@ fn delete_wide_characters_before_cursor_when_cursor_is_on_wide_character() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "delete_wide_characters_before_cursor_when_cursor_is_on_wide_character";
@@ -1017,6 +1058,7 @@ fn delete_wide_character_under_cursor() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "delete_wide_character_under_cursor";
@@ -1041,6 +1083,7 @@ fn replace_wide_character_under_cursor() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "replace_wide_character_under_cursor";
@@ -1065,6 +1108,7 @@ fn wrap_wide_characters() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "wide_characters_full";
@@ -1089,6 +1133,7 @@ fn wrap_wide_characters_on_size_change() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "wide_characters_full";
@@ -1114,6 +1159,7 @@ fn unwrap_wide_characters_on_size_change() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "wide_characters_full";
@@ -1140,6 +1186,7 @@ fn wrap_wide_characters_in_the_middle_of_the_line() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "wide_characters_line_middle";
@@ -1164,6 +1211,7 @@ fn wrap_wide_characters_at_the_end_of_the_line() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "wide_characters_line_end";
@@ -1188,6 +1236,7 @@ fn copy_selected_text_from_viewport() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "grid_copy";
@@ -1220,6 +1269,7 @@ fn copy_wrapped_selected_text_from_viewport() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "grid_copy_wrapped";
@@ -1251,6 +1301,7 @@ fn copy_selected_text_from_lines_above() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "grid_copy";
@@ -1283,6 +1334,7 @@ fn copy_selected_text_from_lines_below() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "grid_copy";
@@ -1323,6 +1375,7 @@ fn run_bandwhich_from_fish_shell() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "fish_and_bandwhich";
@@ -1347,6 +1400,7 @@ fn fish_tab_completion_options() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "fish_tab_completion_options";
@@ -1377,6 +1431,7 @@ pub fn fish_select_tab_completion_options() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "fish_select_tab_completion_options";
@@ -1411,6 +1466,7 @@ pub fn vim_scroll_region_down() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "vim_scroll_region_down";
@@ -1442,6 +1498,7 @@ pub fn vim_ctrl_d() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "vim_ctrl_d";
@@ -1472,6 +1529,7 @@ pub fn vim_ctrl_u() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "vim_ctrl_u";
@@ -1496,6 +1554,7 @@ pub fn htop() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "htop";
@@ -1520,6 +1579,7 @@ pub fn htop_scrolling() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "htop_scrolling";
@@ -1544,6 +1604,7 @@ pub fn htop_right_scrolling() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "htop_right_scrolling";
@@ -1578,6 +1639,7 @@ pub fn vim_overwrite() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "vim_overwrite";
@@ -1604,6 +1666,7 @@ pub fn clear_scroll_region() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "clear_scroll_region";
@@ -1628,6 +1691,7 @@ pub fn display_tab_characters_properly() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "tab_characters";
@@ -1652,6 +1716,7 @@ pub fn neovim_insert_mode() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "nvim_insert";
@@ -1676,6 +1741,7 @@ pub fn bash_cursor_linewrap() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "bash_cursor_linewrap";
@@ -1702,6 +1768,7 @@ pub fn fish_paste_multiline() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "fish_paste_multiline";
@@ -1726,6 +1793,7 @@ pub fn git_log() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "git_log";
@@ -1752,6 +1820,7 @@ pub fn git_diff_scrollup() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "git_diff_scrollup";
@@ -1776,6 +1845,7 @@ pub fn emacs_longbuf() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "emacs_longbuf_tutorial";
@@ -1800,6 +1870,7 @@ pub fn top_and_quit() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "top_and_quit";
@@ -1831,6 +1902,7 @@ pub fn exa_plus_omf_theme() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "exa_plus_omf_theme";
@@ -1855,6 +1927,7 @@ pub fn scroll_up() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "scrolling";
@@ -1880,6 +1953,7 @@ pub fn scroll_down() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "scrolling";
@@ -1906,6 +1980,7 @@ pub fn scroll_up_with_line_wraps() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "scrolling";
@@ -1931,6 +2006,7 @@ pub fn scroll_down_with_line_wraps() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "scrolling";
@@ -1957,6 +2033,7 @@ pub fn scroll_up_decrease_width_and_scroll_down() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "scrolling";
@@ -1988,6 +2065,7 @@ pub fn scroll_up_increase_width_and_scroll_down() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "scrolling";
@@ -2019,6 +2097,7 @@ pub fn move_cursor_below_scroll_region() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "move_cursor_below_scroll_region";
@@ -2043,6 +2122,7 @@ pub fn insert_wide_characters_in_existing_line() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "chinese_characters_line_middle";
@@ -2073,6 +2153,7 @@ pub fn full_screen_scroll_region_and_scroll_up() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "scroll_region_full_screen";
@@ -2100,6 +2181,7 @@ pub fn ring_bell() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "ring_bell";
@@ -2124,6 +2206,7 @@ pub fn alternate_screen_change_size() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "alternate_screen_change_size";
@@ -2152,6 +2235,7 @@ pub fn fzf_fullscreen() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "fzf_fullscreen";
@@ -2180,6 +2264,7 @@ pub fn replace_multiple_wide_characters_under_cursor() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "replace_multiple_wide_characters";
@@ -2208,6 +2293,7 @@ pub fn replace_non_wide_characters_with_wide_characters() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "replace_non_wide_characters_with_wide_characters";
@@ -2232,6 +2318,7 @@ pub fn scroll_down_ansi() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "scroll_down";
@@ -2256,6 +2343,7 @@ pub fn ansi_capital_t() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let content = "foo\u{1b}[14Tbar".as_bytes();
@@ -2279,6 +2367,7 @@ pub fn ansi_capital_s() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let content = "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nfoo\u{1b}[14Sbar".as_bytes();
@@ -2305,6 +2394,7 @@ fn terminal_pixel_size_reports() {
             width: 8,
         }))),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "terminal_pixel_size_reports";
@@ -2335,6 +2425,7 @@ fn terminal_pixel_size_reports_in_unsupported_terminals() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)), // in an unsupported terminal, we don't have this info
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let fixture_name = "terminal_pixel_size_reports";
@@ -2366,6 +2457,7 @@ pub fn ansi_csi_at_sign() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let content = "foo\u{1b}[2D\u{1b}[2@".as_bytes();
@@ -2393,6 +2485,7 @@ pub fn sixel_images_are_reaped_when_scrolled_off() {
         Rc::new(RefCell::new(LinkHandler::new())),
         character_cell_size,
         sixel_image_store.clone(),
+        Style::default(),
         debug,
     );
     let pane_content = read_fixture("sixel-image-500px.six");
@@ -2429,6 +2522,7 @@ pub fn sixel_images_are_reaped_when_resetting() {
         Rc::new(RefCell::new(LinkHandler::new())),
         character_cell_size,
         sixel_image_store.clone(),
+        Style::default(),
         debug,
     );
     let pane_content = read_fixture("sixel-image-500px.six");
@@ -2462,6 +2556,7 @@ pub fn sixel_image_in_alternate_buffer() {
         Rc::new(RefCell::new(LinkHandler::new())),
         character_cell_size,
         sixel_image_store.clone(),
+        Style::default(),
         debug,
     );
 
@@ -2506,6 +2601,7 @@ pub fn sixel_with_image_scrolling_decsdm() {
         Rc::new(RefCell::new(LinkHandler::new())),
         character_cell_size,
         sixel_image_store,
+        Style::default(),
         debug,
     );
 
@@ -2569,6 +2665,7 @@ pub fn osc_4_background_query() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let content = "\u{1b}]10;?\u{1b}\\";
@@ -2600,6 +2697,7 @@ pub fn osc_4_foreground_query() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let content = "\u{1b}]11;?\u{1b}\\";
@@ -2633,6 +2731,7 @@ pub fn osc_4_color_query() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let content = "\u{1b}]4;222;?\u{1b}\\";
@@ -2664,6 +2763,7 @@ pub fn xtsmgraphics_color_register_count() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let content = "\u{1b}[?1;1;S\u{1b}\\";
@@ -2699,6 +2799,7 @@ pub fn xtsmgraphics_pixel_graphics_geometry() {
         Rc::new(RefCell::new(LinkHandler::new())),
         character_cell_size,
         sixel_image_store,
+        Style::default(),
         debug,
     );
     let content = "\u{1b}[?2;1;S\u{1b}\\";
@@ -2734,6 +2835,7 @@ pub fn cursor_hide_persists_through_alternate_screen() {
         Rc::new(RefCell::new(LinkHandler::new())),
         character_cell_size,
         sixel_image_store,
+        Style::default(),
         debug,
     );
 
@@ -2767,4 +2869,29 @@ pub fn cursor_hide_persists_through_alternate_screen() {
         grid.cursor_coordinates().is_some(),
         "Cursor still shown away from alternate screen"
     );
+}
+
+#[test]
+fn table_ui_component() {
+    let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
+    let mut grid = Grid::new(
+        41,
+        110,
+        Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
+        sixel_image_store,
+        Style::default(),
+        debug,
+    );
+    let fixture_name = "table-ui-component";
+    let content = read_fixture(fixture_name);
+    for byte in content {
+        vte_parser.advance(&mut grid, byte);
+    }
+    assert_snapshot!(format!("{:?}", grid));
 }

@@ -49,6 +49,7 @@ macro_rules! get_or_create_grid {
                 $self.link_handler.clone(),
                 $self.character_cell_size.clone(),
                 $self.sixel_image_store.clone(),
+                $self.style.clone(),
                 $self.debug,
             );
             grid.hide_cursor();
