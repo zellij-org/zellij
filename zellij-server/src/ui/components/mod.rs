@@ -2,25 +2,31 @@ use zellij_utils::errors::prelude::*;
 use std::collections::BTreeMap;
 use crate::panes::{
     grid::Grid,
-    terminal_character::{render_first_run_banner, TerminalCharacter, EMPTY_TERMINAL_CHARACTER, AnsiCode, CharacterStyles, RESET_STYLES},
+    terminal_character::{AnsiCode, CharacterStyles, RESET_STYLES},
 };
 use zellij_utils::{
-    data::{InputMode, Palette, PaletteColor, Style},
+    data::{PaletteColor, Style},
     vte,
-    shared::{version_number, ansi_len},
+    shared::ansi_len,
 };
+
 use crate::ui::boundaries::boundary_type;
+
+static ARROW_SEPARATOR: &str = "";
+
 #[derive(Debug)]
 pub struct UiComponentParser <'a>{
     grid: &'a mut Grid,
     style: Style,
+    arrow_fonts: bool,
 }
 
 impl <'a> UiComponentParser <'a> {
-    pub fn new(grid: &'a mut Grid, style: Style) -> Self {
+    pub fn new(grid: &'a mut Grid, style: Style, arrow_fonts: bool) -> Self {
         UiComponentParser {
             grid,
-            style
+            style,
+            arrow_fonts,
         }
     }
     pub fn parse(&mut self, bytes: Vec<u8>) -> Result<()> {
@@ -47,32 +53,58 @@ impl <'a> UiComponentParser <'a> {
             .next()
             .with_context(|| format!("ui component must have a name"))?;
 
+        macro_rules! stringify_rest_of_params {
+            ($params_iter:expr) => {{
+                    $params_iter
+                        .flat_map(|stringified| {
+                            let mut utf8 = vec![];
+                            for stringified_character in stringified.split(',') {
+                                utf8.push(
+                                    stringified_character
+                                        .to_string()
+                                        .parse::<u8>()
+                                        .map_err(|e| format!("Failed to parse utf8: {:?}", e))?
+                                );
+                            }
+                            Ok::<String, String>(String::from_utf8_lossy(&utf8).to_string())
+                        })
+                        .collect::<Vec<String>>().into_iter()
+            }}
+        }
+        macro_rules! parse_next_param {
+            ($next_param:expr, $type:ident, $component_name:expr, $item_name:expr) => {{
+                $next_param
+                    .and_then(|stringified_param| stringified_param.parse::<$type>().ok())
+                    .with_context(|| format!("{} must have {}", $component_name, $item_name))?
+            }}
+        }
+        macro_rules! parse_vte_bytes{
+            ($self:expr, $encoded_component:expr) => {{
+                let mut vte_parser = vte::Parser::new();
+                for &byte in &$encoded_component {
+                    vte_parser.advance($self.grid, byte);
+                }
+            }}
+        }
         if component_name == &"table" {
-            let columns = params_iter.next()
-                .and_then(|stringified_columns| stringified_columns.parse::<usize>().ok())
-                .with_context(|| format!("table must have columns"))?;
-            let rows = params_iter.next()
-                .and_then(|stringified_rows| stringified_rows.parse::<usize>().ok())
-                .with_context(|| format!("table must have rows"))?;
-            let stringified_params = params_iter
-                .flat_map(|stringified| {
-                    let mut utf8 = vec![];
-                    for stringified_character in stringified.split(',') {
-                        utf8.push(
-                            stringified_character
-                                .to_string()
-                                .parse::<u8>()
-                                .map_err(|e| format!("Failed to parse utf8: {:?}", e))?
-                        );
-                    }
-                    Ok::<String, String>(String::from_utf8_lossy(&utf8).to_string())
-                })
-                .collect::<Vec<String>>().into_iter();
-            let mut vte_parser = vte::Parser::new();
+            let columns = parse_next_param!(params_iter.next(), usize, "table", "columns");
+            let rows = parse_next_param!(params_iter.next(), usize, "table", "rows");
+            let stringified_params = stringify_rest_of_params!(params_iter);
             let encoded_table = table(columns, rows, stringified_params, Some(self.style.colors.green));
-            for &byte in &encoded_table {
-                vte_parser.advance(self.grid, byte);
-            }
+
+            parse_vte_bytes!(self, encoded_table);
+            Ok(())
+        } else if component_name == &"ribbon" {
+            let mut stringified_params = stringify_rest_of_params!(params_iter);
+            let text = stringified_params.next().with_context(|| format!("ribbon must have text"))?;
+            let encoded_ribbon = ribbon(&text, &self.style, self.arrow_fonts);
+            parse_vte_bytes!(self, encoded_ribbon);
+            Ok(())
+        } else if component_name == &"ribbon_selected" {
+            let mut stringified_params = stringify_rest_of_params!(params_iter);
+            let text = stringified_params.next().with_context(|| format!("ribbon_selected must have text"))?;
+            let encoded_ribbon = ribbon_selected(&text, &self.style, self.arrow_fonts);
+            parse_vte_bytes!(self, encoded_ribbon);
             Ok(())
         } else {
             Err(anyhow!("Unknown component: {}", component_name))
@@ -142,5 +174,41 @@ fn table(columns: usize, rows: usize, contents: impl Iterator<Item=String>, titl
             stringified.push_str(&format!("{}\n\r", title_underline));
         }
     }
+    stringified.as_bytes().to_vec()
+}
+
+fn ribbon(text: &str, style: &Style, arrow_fonts: bool) -> Vec<u8> {
+    let first_arrow_styles = RESET_STYLES
+        .foreground(Some(style.colors.black.into()))
+        .background(Some(style.colors.fg.into()));
+    let text_style = RESET_STYLES
+        .foreground(Some(style.colors.black.into()))
+        .background(Some(style.colors.fg.into()));
+    let last_arrow_styles = RESET_STYLES
+        .foreground(Some(style.colors.fg.into()))
+        .background(Some(style.colors.black.into()));
+    let stringified = if arrow_fonts {
+        format!("{}{}{}{} {} {}{}{}", RESET_STYLES, first_arrow_styles, ARROW_SEPARATOR, text_style, text, last_arrow_styles, ARROW_SEPARATOR, RESET_STYLES)
+    } else {
+        format!("{}{} {} {}", RESET_STYLES, text_style, text, RESET_STYLES)
+    };
+    stringified.as_bytes().to_vec()
+}
+
+fn ribbon_selected(text: &str, style: &Style, arrow_fonts: bool) -> Vec<u8> {
+    let first_arrow_styles = RESET_STYLES
+        .foreground(Some(style.colors.black.into()))
+        .background(Some(style.colors.green.into()));
+    let text_style = RESET_STYLES
+        .foreground(Some(style.colors.black.into()))
+        .background(Some(style.colors.green.into()));
+    let last_arrow_styles = RESET_STYLES
+        .foreground(Some(style.colors.green.into()))
+        .background(Some(style.colors.black.into()));
+    let stringified = if arrow_fonts {
+        format!("{}{}{}{} {} {}{}{}", RESET_STYLES, first_arrow_styles, ARROW_SEPARATOR, text_style, text, last_arrow_styles, ARROW_SEPARATOR, RESET_STYLES)
+    } else {
+        format!("{}{} {} {}", RESET_STYLES, text_style, text, RESET_STYLES)
+    };
     stringified.as_bytes().to_vec()
 }

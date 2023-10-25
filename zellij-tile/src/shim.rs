@@ -719,6 +719,28 @@ where
     print!("\u{1b}Pztable;{};{};{}\u{1b}\\", columns, rows, contents)
 }
 
+#[allow(unused)]
+/// render a ribbon with text
+pub fn ribbon<S: AsRef<str>>(text: S)
+where
+    S: ToString,
+{
+    let text = text.to_string().as_bytes().iter().map(|b| b.to_string()).collect::<Vec<_>>().join(",");
+    eprintln!("***Pzribbon;{}***", text);
+    print!("\u{1b}Pzribbon;{}\u{1b}\\", text);
+}
+
+#[allow(unused)]
+/// render a ribbon with text
+pub fn ribbon_selected<S: AsRef<str>>(text: S)
+where
+    S: ToString,
+{
+    let text = text.to_string().as_bytes().iter().map(|b| b.to_string()).collect::<Vec<_>>().join(",");
+    eprintln!("***Pzribbon_selected;{}***", text);
+    print!("\u{1b}Pzribbon_selected;{}\u{1b}\\", text);
+}
+
 // Internal Functions
 
 #[doc(hidden)]

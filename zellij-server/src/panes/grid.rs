@@ -373,6 +373,7 @@ pub struct Grid {
     ui_component_bytes: Option<Vec<u8>>,
     style: Style,
     debug: bool,
+    arrow_fonts: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -462,6 +463,7 @@ impl Grid {
         sixel_image_store: Rc<RefCell<SixelImageStore>>,
         style: Style, // TODO: consolidate this with terminal_emulator_colors
         debug: bool,
+        arrow_fonts: bool,
     ) -> Self {
         let sixel_grid = SixelGrid::new(character_cell_size.clone(), sixel_image_store);
         // make sure this is initialized as it is used internally
@@ -514,6 +516,7 @@ impl Grid {
             ui_component_bytes: None,
             style,
             debug,
+            arrow_fonts,
         }
     }
     pub fn render_full_viewport(&mut self) {
@@ -2224,7 +2227,8 @@ impl Perform for Grid {
         } else if let Some(mut ui_component_bytes) = self.ui_component_bytes.take() {
             let component_bytes = ui_component_bytes.drain(..);
             let style = self.style.clone();
-            UiComponentParser::new(self, style)
+            let arrow_fonts = self.arrow_fonts;
+            UiComponentParser::new(self, style, arrow_fonts)
                 .parse(component_bytes.collect())
                 .non_fatal();
         }

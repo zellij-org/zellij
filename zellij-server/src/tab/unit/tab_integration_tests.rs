@@ -224,6 +224,7 @@ fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let debug = false;
+    let arrow_fonts = true;
     let mut tab = Tab::new(
         index,
         position,
@@ -247,6 +248,7 @@ fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
         (vec![], vec![]),
         None,
         debug,
+        arrow_fonts,
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -297,6 +299,7 @@ fn create_new_tab_with_swap_layouts(
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let debug = false;
+    let arrow_fonts = true;
     let mut tab = Tab::new(
         index,
         position,
@@ -320,6 +323,7 @@ fn create_new_tab_with_swap_layouts(
         swap_layouts,
         None,
         debug,
+        arrow_fonts,
     );
     let (
         base_layout,
@@ -372,6 +376,7 @@ fn create_new_tab_with_os_api(
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let debug = false;
+    let arrow_fonts = true;
     let mut tab = Tab::new(
         index,
         position,
@@ -395,6 +400,7 @@ fn create_new_tab_with_os_api(
         (vec![], vec![]), // swap layouts
         None,
         debug,
+        arrow_fonts,
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -433,6 +439,7 @@ fn create_new_tab_with_layout(size: Size, default_mode: ModeInfo, layout: &str) 
     let layout = Layout::from_str(layout, "layout_file_name".into(), None, None).unwrap();
     let (tab_layout, floating_panes_layout) = layout.new_tab();
     let debug = false;
+    let arrow_fonts = true;
     let mut tab = Tab::new(
         index,
         position,
@@ -456,6 +463,7 @@ fn create_new_tab_with_layout(size: Size, default_mode: ModeInfo, layout: &str) 
         (vec![], vec![]), // swap layouts
         None,
         debug,
+        arrow_fonts,
     );
     let pane_ids = tab_layout
         .extract_run_instructions()
@@ -508,6 +516,7 @@ fn create_new_tab_with_mock_pty_writer(
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let debug = false;
+    let arrow_fonts = true;
     let mut tab = Tab::new(
         index,
         position,
@@ -531,6 +540,7 @@ fn create_new_tab_with_mock_pty_writer(
         (vec![], vec![]), // swap layouts
         None,
         debug,
+        arrow_fonts,
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -574,6 +584,7 @@ fn create_new_tab_with_sixel_support(
     let copy_options = CopyOptions::default();
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
+    let arrow_fonts = true;
     let mut tab = Tab::new(
         index,
         position,
@@ -597,6 +608,7 @@ fn create_new_tab_with_sixel_support(
         (vec![], vec![]), // swap layouts
         None,
         debug,
+        arrow_fonts,
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -633,6 +645,7 @@ fn take_snapshot(ansi_instructions: &str, rows: usize, columns: usize, palette: 
         height: 21,
     })));
     let debug = false;
+    let arrow_fonts = true;
     let mut grid = Grid::new(
         rows,
         columns,
@@ -643,6 +656,7 @@ fn take_snapshot(ansi_instructions: &str, rows: usize, columns: usize, palette: 
         sixel_image_store,
         Style::default(),
         debug,
+        arrow_fonts,
     );
     let mut vte_parser = vte::Parser::new();
     for &byte in ansi_instructions.as_bytes() {
@@ -664,6 +678,7 @@ fn take_snapshot_with_sixel(
         height: 21,
     })));
     let debug = false;
+    let arrow_fonts = true;
     let mut grid = Grid::new(
         rows,
         columns,
@@ -674,6 +689,7 @@ fn take_snapshot_with_sixel(
         sixel_image_store,
         Style::default(),
         debug,
+        arrow_fonts,
     );
     let mut vte_parser = vte::Parser::new();
     for &byte in ansi_instructions.as_bytes() {
@@ -692,6 +708,7 @@ fn take_snapshot_and_cursor_position(
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
+    let arrow_fonts = true;
     let mut grid = Grid::new(
         rows,
         columns,
@@ -702,6 +719,7 @@ fn take_snapshot_and_cursor_position(
         sixel_image_store,
         Style::default(),
         debug,
+        arrow_fonts,
     );
     let mut vte_parser = vte::Parser::new();
     for &byte in ansi_instructions.as_bytes() {
