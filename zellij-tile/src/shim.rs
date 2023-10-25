@@ -726,7 +726,6 @@ where
     S: ToString,
 {
     let text = text.to_string().as_bytes().iter().map(|b| b.to_string()).collect::<Vec<_>>().join(",");
-    eprintln!("***Pzribbon;{}***", text);
     print!("\u{1b}Pzribbon;{}\u{1b}\\", text);
 }
 
@@ -737,7 +736,6 @@ where
     S: ToString,
 {
     let text = text.to_string().as_bytes().iter().map(|b| b.to_string()).collect::<Vec<_>>().join(",");
-    eprintln!("***Pzribbon_selected;{}***", text);
     print!("\u{1b}Pzribbon_selected;{}\u{1b}\\", text);
 }
 
@@ -750,6 +748,52 @@ pub fn object_from_stdin<T: DeserializeOwned>() -> Result<T> {
     let mut json = String::new();
     io::stdin().read_line(&mut json).with_context(err_context)?;
     serde_json::from_str(&json).with_context(err_context)
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct NestedListItem {
+    text: String,
+    indentation_level: usize
+}
+
+impl NestedListItem {
+    pub fn new<S: AsRef<str>>(text: S) -> Self
+    where S: ToString
+    {
+        NestedListItem {
+            text: text.to_string(),
+            ..Default::default()
+        }
+    }
+    pub fn indent(mut self, indentation_level: usize) -> Self {
+        self.indentation_level = indentation_level;
+        self
+    }
+    pub fn serialize(&self) -> String {
+        let mut serialized = String::new();
+        for _ in 0..self.indentation_level {
+            serialized.push('|');
+        }
+        serialized.push_str(&self.text
+            .as_bytes()
+            .iter()
+            .map(|b| b.to_string())
+            .collect::<Vec<_>>()
+            .join(",")
+        );
+        serialized
+    }
+}
+
+#[allow(unused)]
+/// render a nested list with arbitrary data
+pub fn nested_list(items: Vec<NestedListItem>) {
+    let items = items
+        .into_iter()
+        .map(|i| i.serialize())
+        .collect::<Vec<_>>()
+        .join(";");
+    print!("\u{1b}Pznested_list;{}\u{1b}\\", items)
 }
 
 #[doc(hidden)]

@@ -3158,3 +3158,33 @@ fn ribbon_selected_ui_component() {
     }
     assert_snapshot!(format!("{:?}", grid));
 }
+
+#[test]
+fn nested_list_ui_component() {
+    // this test doesn't actually test the "selected" part unfortunately since we remove styling
+    // when we take snapshots, but it's good to keep it to make sure the API is still alive at
+    // least
+    let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
+    let arrow_fonts = true;
+    let mut grid = Grid::new(
+        41,
+        110,
+        Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
+        sixel_image_store,
+        Style::default(),
+        debug,
+        arrow_fonts,
+    );
+    let fixture_name = "nested-list-ui-component";
+    let content = read_fixture(fixture_name);
+    for byte in content {
+        vte_parser.advance(&mut grid, byte);
+    }
+    assert_snapshot!(format!("{:?}", grid));
+}

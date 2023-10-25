@@ -14,6 +14,12 @@ use crate::ui::boundaries::boundary_type;
 
 static ARROW_SEPARATOR: &str = "";
 
+#[derive(Debug, Clone)]
+struct NestedListItem {
+    text: String,
+    indentation_level: usize,
+}
+
 #[derive(Debug)]
 pub struct UiComponentParser <'a>{
     grid: &'a mut Grid,
@@ -43,12 +49,12 @@ impl <'a> UiComponentParser <'a> {
         //    own representing instructions to create the component
         // 6. Finally, we take this string, encode it back into bytes and pass it back through the ANSI
         //    parser (our `Grid`) in order to create a representation of it on screen
-        let params: Vec<String> = String::from_utf8_lossy(&bytes)
+        let mut params: Vec<String> = String::from_utf8_lossy(&bytes)
             .to_string()
             .split(';')
             .map(|c| c.to_owned())
             .collect();
-        let mut params_iter = params.iter();
+        let mut params_iter = params.iter_mut();
         let component_name = params_iter
             .next()
             .with_context(|| format!("ui component must have a name"))?;
@@ -71,6 +77,37 @@ impl <'a> UiComponentParser <'a> {
                         .collect::<Vec<String>>().into_iter()
             }}
         }
+        macro_rules! stringify_nested_list_items {
+            ($params_iter:expr) => {{
+                    $params_iter
+                        .flat_map(|stringified| {
+                            let mut utf8 = vec![];
+                            let mut indentation_level = 0;
+                            loop {
+                                if stringified.is_empty() {
+                                    break;
+                                }
+                                if stringified.chars().next() == Some('|') {
+                                    stringified.remove(0);
+                                    indentation_level += 1;
+                                } else {
+                                    break;
+                                }
+                            }
+                            for stringified_character in stringified.split(',') {
+                                utf8.push(
+                                    stringified_character
+                                        .to_string()
+                                        .parse::<u8>()
+                                        .map_err(|e| format!("Failed to parse utf8: {:?}", e))?
+                                );
+                            }
+                            let text = String::from_utf8_lossy(&utf8).to_string();
+                            Ok::<NestedListItem, String>(NestedListItem { text, indentation_level })
+                        })
+                        .collect::<Vec<NestedListItem>>().into_iter()
+            }}
+        }
         macro_rules! parse_next_param {
             ($next_param:expr, $type:ident, $component_name:expr, $item_name:expr) => {{
                 $next_param
@@ -91,7 +128,6 @@ impl <'a> UiComponentParser <'a> {
             let rows = parse_next_param!(params_iter.next(), usize, "table", "rows");
             let stringified_params = stringify_rest_of_params!(params_iter);
             let encoded_table = table(columns, rows, stringified_params, Some(self.style.colors.green));
-
             parse_vte_bytes!(self, encoded_table);
             Ok(())
         } else if component_name == &"ribbon" {
@@ -105,6 +141,11 @@ impl <'a> UiComponentParser <'a> {
             let text = stringified_params.next().with_context(|| format!("ribbon_selected must have text"))?;
             let encoded_ribbon = ribbon_selected(&text, &self.style, self.arrow_fonts);
             parse_vte_bytes!(self, encoded_ribbon);
+            Ok(())
+        } else if component_name == &"nested_list" {
+            let nested_list_items = stringify_nested_list_items!(params_iter);
+            let encoded_nested_list = nested_list(nested_list_items.collect(), &self.style);
+            parse_vte_bytes!(self, encoded_nested_list);
             Ok(())
         } else {
             Err(anyhow!("Unknown component: {}", component_name))
@@ -210,5 +251,24 @@ fn ribbon_selected(text: &str, style: &Style, arrow_fonts: bool) -> Vec<u8> {
     } else {
         format!("{}{} {} {}", RESET_STYLES, text_style, text, RESET_STYLES)
     };
+    stringified.as_bytes().to_vec()
+}
+
+fn nested_list(mut contents: Vec<NestedListItem>, style: &Style) -> Vec<u8> {
+    let mut stringified = String::new();
+    for line_item in contents.drain(..) {
+        let padding = line_item.indentation_level * 2 + 1;
+        let bulletin = if line_item.indentation_level % 2 == 0 { "> " } else { "- " };
+        let text_style = if line_item.indentation_level % 3 == 0 {
+            Some(style.colors.orange)
+        } else if line_item.indentation_level % 3 == 1 {
+            Some(style.colors.cyan)
+        } else {
+            None
+        };
+        let text_style = RESET_STYLES.foreground(text_style.map(|s| s.into())).bold(Some(AnsiCode::On));
+        let text = line_item.text;
+        stringified.push_str(&format!("{}{:padding$}{bulletin}{}{text}{}\n\r", RESET_STYLES, " ", text_style, RESET_STYLES));
+    }
     stringified.as_bytes().to_vec()
 }
