@@ -753,7 +753,9 @@ pub fn object_from_stdin<T: DeserializeOwned>() -> Result<T> {
 #[derive(Debug, Default, Clone)]
 pub struct NestedListItem {
     text: String,
-    indentation_level: usize
+    indentation_level: usize,
+    selected: bool,
+    indices: Vec<Vec<usize>>,
 }
 
 impl NestedListItem {
@@ -769,10 +771,24 @@ impl NestedListItem {
         self.indentation_level = indentation_level;
         self
     }
+    pub fn selected(mut self) -> Self {
+        self.selected = true;
+        self
+    }
+    pub fn indices(mut self, indices: Vec<Vec<usize>>) -> Self {
+        self.indices = indices;
+        self
+    }
     pub fn serialize(&self) -> String {
         let mut serialized = String::new();
         for _ in 0..self.indentation_level {
             serialized.push('|');
+        }
+        if self.selected {
+            serialized.push('x');
+        }
+        for index_variants in &self.indices {
+            serialized.push_str(&format!("{}$", index_variants.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(",")));
         }
         serialized.push_str(&self.text
             .as_bytes()

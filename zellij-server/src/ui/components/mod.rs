@@ -18,6 +18,32 @@ static ARROW_SEPARATOR: &str = "";
 struct NestedListItem {
     text: String,
     indentation_level: usize,
+    selected: bool,
+    indices: Vec<Vec<usize>>,
+}
+
+impl NestedListItem {
+    pub fn style_of_index(&self, index: usize, style: &Style) -> Option<PaletteColor> {
+        let index_variant_styles = self.style_variants(style);
+        for i in (0..=3).rev() { // we do this in reverse to give precedence to the last applied
+                                 // style
+            if let Some(indices) = self.indices.get(i) {
+                if indices.contains(&index) {
+                    return Some(index_variant_styles[i])
+                }
+            }
+        }
+        None
+    }
+    pub fn style_variants(&self, style: &Style) -> [PaletteColor;4] {
+        if self.indentation_level % 3 == 0 {
+            [style.colors.orange, style.colors.cyan, style.colors.green, style.colors.magenta]
+        } else if self.indentation_level % 3 == 1 {
+            [style.colors.cyan, style.colors.green, style.colors.orange, style.colors.magenta]
+        } else {
+            [style.colors.green, style.colors.orange, style.colors.cyan, style.colors.magenta]
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -82,6 +108,8 @@ impl <'a> UiComponentParser <'a> {
                     $params_iter
                         .flat_map(|stringified| {
                             let mut utf8 = vec![];
+
+                            // parse indentation level
                             let mut indentation_level = 0;
                             loop {
                                 if stringified.is_empty() {
@@ -94,6 +122,33 @@ impl <'a> UiComponentParser <'a> {
                                     break;
                                 }
                             }
+
+                            // parse selected
+                            let mut selected = false;
+                            if stringified.chars().next() == Some('x') {
+                                selected = true;
+                                stringified.remove(0);
+                            }
+
+                            // parse indices
+                            let indices: Vec<Vec<usize>> = stringified
+                                .chars()
+                                .collect::<Vec<_>>()
+                                .iter()
+                                .rposition(|c| c == &'$')
+                                .map(|last_position| {
+                                    stringified.drain(0..=last_position).collect::<String>()
+                                })
+                                .map(|indices_string| {
+                                    let mut all_indices = vec![];
+                                    let raw_indices_for_each_variant = indices_string.split('$');
+                                    for index_string in raw_indices_for_each_variant {
+                                        let indices_for_variant = index_string.split(',').filter_map(|s| s.parse::<usize>().ok()).collect();
+                                        all_indices.push(indices_for_variant)
+                                    }
+                                    all_indices
+                                })
+                                .unwrap_or_default();
                             for stringified_character in stringified.split(',') {
                                 utf8.push(
                                     stringified_character
@@ -103,7 +158,7 @@ impl <'a> UiComponentParser <'a> {
                                 );
                             }
                             let text = String::from_utf8_lossy(&utf8).to_string();
-                            Ok::<NestedListItem, String>(NestedListItem { text, indentation_level })
+                            Ok::<NestedListItem, String>(NestedListItem { text, indentation_level, selected, indices })
                         })
                         .collect::<Vec<NestedListItem>>().into_iter()
             }}
@@ -257,18 +312,31 @@ fn ribbon_selected(text: &str, style: &Style, arrow_fonts: bool) -> Vec<u8> {
 fn nested_list(mut contents: Vec<NestedListItem>, style: &Style) -> Vec<u8> {
     let mut stringified = String::new();
     for line_item in contents.drain(..) {
+        let mut reset_styles_for_item = RESET_STYLES;
+        if line_item.selected {
+            reset_styles_for_item.background = None;
+        };
         let padding = line_item.indentation_level * 2 + 1;
         let bulletin = if line_item.indentation_level % 2 == 0 { "> " } else { "- " };
-        let text_style = if line_item.indentation_level % 3 == 0 {
-            Some(style.colors.orange)
-        } else if line_item.indentation_level % 3 == 1 {
-            Some(style.colors.cyan)
+        let text_style = reset_styles_for_item.bold(Some(AnsiCode::On));
+        if line_item.selected {
+            let background_style = RESET_STYLES.background(Some(style.colors.bg.into()));
+            stringified.push_str(&format!("{}\u{1b}[K", background_style)); // color until end of
+                                                                            // line
+        }
+        let text = if !line_item.indices.is_empty() {
+            let mut text = String::new();
+            for (i, character) in line_item.text.chars().enumerate() {
+                let character_style = line_item.style_of_index(i, style)
+                    .map(|foreground_style| text_style.foreground(Some(foreground_style.into())))
+                    .unwrap_or(text_style);
+                text.push_str(&format!("{}{}{}", character_style, character, text_style));
+            }
+            text
         } else {
-            None
+            line_item.text
         };
-        let text_style = RESET_STYLES.foreground(text_style.map(|s| s.into())).bold(Some(AnsiCode::On));
-        let text = line_item.text;
-        stringified.push_str(&format!("{}{:padding$}{bulletin}{}{text}{}\n\r", RESET_STYLES, " ", text_style, RESET_STYLES));
+        stringified.push_str(&format!("{}{:padding$}{bulletin}{}{text}{}\n\r", reset_styles_for_item, " ", text_style, RESET_STYLES));
     }
     stringified.as_bytes().to_vec()
 }
