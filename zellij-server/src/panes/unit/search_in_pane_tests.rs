@@ -29,6 +29,7 @@ fn create_pane() -> TerminalPane {
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
+    let ansi_underlines = true;
     let mut terminal_pane = TerminalPane::new(
         pid,
         fake_win_size,
@@ -43,6 +44,7 @@ fn create_pane() -> TerminalPane {
         None,
         None,
         debug,
+        ansi_underlines,
     ); // 0 is the pane index
     let content = read_fixture();
     terminal_pane.handle_pty_bytes(content);

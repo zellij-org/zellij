@@ -165,6 +165,7 @@ fn create_new_tab(size: Size) -> Tab {
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
+    let ansi_underlines = true;
     let mut tab = Tab::new(
         index,
         position,
@@ -188,6 +189,7 @@ fn create_new_tab(size: Size) -> Tab {
         (vec![], vec![]), // swap layouts
         None,
         debug,
+        ansi_underlines,
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -223,6 +225,7 @@ fn create_new_tab_with_layout(size: Size, layout: TiledPaneLayout) -> Tab {
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
+    let ansi_underlines = true;
     let mut tab = Tab::new(
         index,
         position,
@@ -246,6 +249,7 @@ fn create_new_tab_with_layout(size: Size, layout: TiledPaneLayout) -> Tab {
         (vec![], vec![]), // swap layouts
         None,
         debug,
+        ansi_underlines,
     );
     let mut new_terminal_ids = vec![];
     for i in 0..layout.extract_run_instructions().len() {
@@ -287,6 +291,7 @@ fn create_new_tab_with_cell_size(
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
+    let ansi_underlines = true;
     let mut tab = Tab::new(
         index,
         position,
@@ -310,6 +315,7 @@ fn create_new_tab_with_cell_size(
         (vec![], vec![]), // swap layouts
         None,
         debug,
+        ansi_underlines,
     );
     tab.apply_layout(
         TiledPaneLayout::default(),

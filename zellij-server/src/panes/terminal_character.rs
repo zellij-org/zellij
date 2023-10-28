@@ -32,6 +32,7 @@ pub const RESET_STYLES: CharacterStyles = CharacterStyles {
     dim: Some(AnsiCode::Reset),
     italic: Some(AnsiCode::Reset),
     link_anchor: Some(LinkAnchor::End),
+    ansi_underlines: false,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -141,11 +142,12 @@ pub struct CharacterStyles {
     pub dim: Option<AnsiCode>,
     pub italic: Option<AnsiCode>,
     pub link_anchor: Option<LinkAnchor>,
+    pub ansi_underlines: bool,
 }
 
 impl CharacterStyles {
     pub fn new() -> Self {
-        Self::default()
+        Default::default()
     }
     pub fn foreground(mut self, foreground_code: Option<AnsiCode>) -> Self {
         self.foreground = foreground_code;
@@ -175,7 +177,6 @@ impl CharacterStyles {
         self.underline = underline_code;
         self
     }
-
     pub fn blink_slow(mut self, slow_blink_code: Option<AnsiCode>) -> Self {
         self.slow_blink = slow_blink_code;
         self
@@ -497,20 +498,22 @@ impl Display for CharacterStyles {
                 _ => {},
             }
         }
-        if let Some(ansi_code) = self.underline_color {
-            match ansi_code {
-                AnsiCode::RgbCode((r, g, b)) => {
-                    write!(f, "\u{1b}[58;2;{};{};{}m", r, g, b)?;
-                },
-                AnsiCode::ColorIndex(color_index) => {
-                    write!(f, "\u{1b}[58;5;{}m", color_index)?;
-                },
-                AnsiCode::Reset => {
-                    write!(f, "\u{1b}[59m")?;
-                },
-                _ => {},
-            }
-        };
+        if self.ansi_underlines {
+            if let Some(ansi_code) = self.underline_color {
+                match ansi_code {
+                    AnsiCode::RgbCode((r, g, b)) => {
+                        write!(f, "\u{1b}[58;2;{};{};{}m", r, g, b)?;
+                    },
+                    AnsiCode::ColorIndex(color_index) => {
+                        write!(f, "\u{1b}[58;5;{}m", color_index)?;
+                    },
+                    AnsiCode::Reset => {
+                        write!(f, "\u{1b}[59m")?;
+                    },
+                    _ => {},
+                }
+            };
+        }
         if let Some(ansi_code) = self.strike {
             match ansi_code {
                 AnsiCode::On => {
@@ -583,23 +586,23 @@ impl Display for CharacterStyles {
         // because the bold reset also resets underline, and would override it
         // otherwise
         if let Some(ansi_code) = self.underline {
-            match ansi_code {
-                AnsiCode::Underline => {
+            match (ansi_code, self.ansi_underlines) {
+                (AnsiCode::Underline, _) => {
                     write!(f, "\u{1b}[4m")?;
                 },
-                AnsiCode::Double => {
+                (AnsiCode::Double, true) => {
                     write!(f, "\u{1b}[4:2m")?;
                 },
-                AnsiCode::Undercurl => {
+                (AnsiCode::Undercurl, true) => {
                     write!(f, "\u{1b}[4:3m")?;
                 },
-                AnsiCode::Underdotted => {
+                (AnsiCode::Underdotted, true) => {
                     write!(f, "\u{1b}[4:4m")?;
                 },
-                AnsiCode::Underdashed => {
+                (AnsiCode::Underdashed, true) => {
                     write!(f, "\u{1b}[4:5m")?;
                 },
-                AnsiCode::Reset => {
+                (AnsiCode::Reset, _) => {
                     write!(f, "\u{1b}[24m")?;
                 },
                 _ => {},

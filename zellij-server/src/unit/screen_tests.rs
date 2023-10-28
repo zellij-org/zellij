@@ -67,6 +67,7 @@ fn take_snapshots_and_cursor_coordinates_from_render_events<'a>(
         height: 21,
     })));
     let debug = false;
+    let ansi_underlines = true;
     let mut grid = Grid::new(
         screen_size.rows,
         screen_size.cols,
@@ -76,6 +77,7 @@ fn take_snapshots_and_cursor_coordinates_from_render_events<'a>(
         character_cell_size,
         sixel_image_store,
         debug,
+        ansi_underlines,
     );
     let snapshots: Vec<(Option<(usize, usize)>, String)> = all_events
         .filter_map(|server_instruction| {
@@ -241,6 +243,7 @@ fn create_new_screen(size: Size) -> Screen {
     let scrollback_lines_to_serialize = None;
 
     let debug = false;
+    let ansi_underlines = true;
     let screen = Screen::new(
         bus,
         &client_attributes,
@@ -256,6 +259,7 @@ fn create_new_screen(size: Size) -> Screen {
         session_serialization,
         serialize_pane_viewport,
         scrollback_lines_to_serialize,
+        ansi_underlines,
     );
     screen
 }

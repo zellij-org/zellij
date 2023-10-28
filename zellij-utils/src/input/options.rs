@@ -142,6 +142,11 @@ pub struct Options {
     #[clap(long, value_parser)]
     #[serde(default)]
     pub scrollback_lines_to_serialize: Option<usize>,
+
+    /// Whether to use ANSI styled underlines
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub ansi_underlines: Option<bool>,
 }
 
 #[derive(ArgEnum, Deserialize, Serialize, Debug, Clone, Copy, PartialEq)]
@@ -212,6 +217,7 @@ impl Options {
         let scrollback_lines_to_serialize = other
             .scrollback_lines_to_serialize
             .or(self.scrollback_lines_to_serialize);
+        let ansi_underlines = other.ansi_underlines.or(self.ansi_underlines);
 
         Options {
             simplified_ui,
@@ -237,6 +243,7 @@ impl Options {
             session_serialization,
             serialize_pane_viewport,
             scrollback_lines_to_serialize,
+            ansi_underlines,
         }
     }
 
@@ -287,6 +294,7 @@ impl Options {
         let scrollback_lines_to_serialize = other
             .scrollback_lines_to_serialize
             .or_else(|| self.scrollback_lines_to_serialize.clone());
+        let ansi_underlines = other.ansi_underlines.or(self.ansi_underlines);
 
         Options {
             simplified_ui,
@@ -312,6 +320,7 @@ impl Options {
             session_serialization,
             serialize_pane_viewport,
             scrollback_lines_to_serialize,
+            ansi_underlines,
         }
     }
 
