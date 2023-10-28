@@ -4,6 +4,7 @@ use crate::plugins::plugin_map::{AtomicEvent, PluginEnv, PluginMap, RunningPlugi
 use crate::plugins::plugin_worker::MessageToWorker;
 use crate::plugins::watch_filesystem::watch_filesystem;
 use crate::plugins::zellij_exports::{wasi_read_string, wasi_write_object};
+use highway::{HighwayHash, PortableHash};
 use log::info;
 use std::{
     collections::{HashMap, HashSet},
@@ -165,10 +166,18 @@ impl WasmBridge {
                 if let RunPluginLocation::Remote(url) = &plugin.location {
                     let download = Download::from(url);
 
-                    // In the case of remote, the plugin path is determined at this point.
-                    plugin.path = ZELLIJ_CACHE_DIR.join(download.get_path());
+                    let hash: String = PortableHash::default()
+                        .hash128(download.url.as_bytes())
+                        .iter()
+                        .map(ToString::to_string)
+                        .collect();
 
-                    let downloader = Downloader::new(ZELLIJ_CACHE_DIR.to_path_buf());
+                    let plugin_directory = ZELLIJ_CACHE_DIR.join(hash);
+
+                    // The plugin path is determined by the hash of the plugin URL in the cache directory.
+                    plugin.path = plugin_directory.join(&download.file_name);
+
+                    let downloader = Downloader::new(plugin_directory);
                     match downloader.fetch(&download).await {
                         Ok(_) => {},
                         Err(e) => handle_plugin_loading_failure(

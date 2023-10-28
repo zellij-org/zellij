@@ -55,8 +55,7 @@ impl Downloader {
     pub async fn fetch(&self, download: &Download) -> Result<(), DownloaderError> {
         let mut file_size: usize = 0;
 
-        let directory_path = self.directory.join(&download.url_hash);
-        let file_path = directory_path.join(&download.file_name);
+        let file_path = self.directory.join(&download.file_name);
 
         if file_path.exists() {
             file_size = match file_path.metadata() {
@@ -85,9 +84,9 @@ impl Downloader {
         }
 
         let mut dest = {
-            create_dir_all(&directory_path)
+            create_dir_all(&self.directory)
                 .await
-                .map_err(|e| DownloaderError::IoPath(e, directory_path))?;
+                .map_err(|e| DownloaderError::IoPath(e, self.directory.clone()))?;
             File::create(&file_path)
                 .await
                 .map_err(|e| DownloaderError::IoPath(e, file_path))?
