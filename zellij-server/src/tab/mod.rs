@@ -1192,6 +1192,7 @@ impl Tab {
                     None,
                     run,
                     self.debug,
+                    self.ansi_underlines,
                 );
                 let replaced_pane = if self.floating_panes.panes_contain(&old_pane_id) {
                     self.floating_panes
@@ -1244,6 +1245,7 @@ impl Tab {
                     self.style,
                     run,
                     self.debug,
+                    self.ansi_underlines,
                 );
                 let replaced_pane = if self.floating_panes.panes_contain(&old_pane_id) {
                     self.floating_panes
