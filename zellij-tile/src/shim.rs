@@ -892,42 +892,14 @@ pub fn print_nested_list_with_coordinates(items: Vec<NestedListItem>, x: usize, 
 
 #[allow(unused)]
 /// render a ribbon with text
-pub fn print_ribbon<S: AsRef<str>>(text: S)
-where
-    S: ToString,
-{
-    let text = text.to_string().as_bytes().iter().map(|b| b.to_string()).collect::<Vec<_>>().join(",");
-    print!("\u{1b}Pzribbon;{}\u{1b}\\", text);
+pub fn print_ribbon(text: Text) {
+    print!("\u{1b}Pzribbon;{}\u{1b}\\", text.serialize());
 }
 
-pub fn print_ribbon_with_coordinates<S: AsRef<str>>(text: S, x: usize, y: usize, width: Option<usize>, height: Option<usize>)
-where
-    S: ToString,
-{
+pub fn print_ribbon_with_coordinates(text: Text, x: usize, y: usize, width: Option<usize>, height: Option<usize>) {
     let width = width.map(|w| w.to_string()).unwrap_or_default();
     let height = height.map(|h| h.to_string()).unwrap_or_default();
-    let text = text.to_string().as_bytes().iter().map(|b| b.to_string()).collect::<Vec<_>>().join(",");
-    print!("\u{1b}Pzribbon;{}/{}/{}/{};{}\u{1b}\\", x, y, width, height, text);
-}
-
-#[allow(unused)]
-/// render a ribbon with text
-pub fn print_ribbon_selected<S: AsRef<str>>(text: S)
-where
-    S: ToString,
-{
-    let text = text.to_string().as_bytes().iter().map(|b| b.to_string()).collect::<Vec<_>>().join(",");
-    print!("\u{1b}Pzribbon_selected;{}\u{1b}\\", text);
-}
-
-pub fn print_ribbon_selected_with_coordinates<S: AsRef<str>>(text: S, x: usize, y: usize, width: Option<usize>, height: Option<usize>)
-where
-    S: ToString,
-{
-    let width = width.map(|w| w.to_string()).unwrap_or_default();
-    let height = height.map(|h| h.to_string()).unwrap_or_default();
-    let text = text.to_string().as_bytes().iter().map(|b| b.to_string()).collect::<Vec<_>>().join(",");
-    print!("\u{1b}Pzribbon_selected;{}/{}/{}/{};{}\u{1b}\\", x, y, width, height, text);
+    print!("\u{1b}Pzribbon;{}/{}/{}/{};{}\u{1b}\\", x, y, width, height, text.serialize());
 }
 
 // Internal Functions

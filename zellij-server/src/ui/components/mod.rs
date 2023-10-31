@@ -22,6 +22,14 @@ pub fn emphasis_variants(style: &Style) -> [PaletteColor;4] {
     [style.colors.orange, style.colors.cyan, style.colors.green, style.colors.magenta]
 }
 
+pub fn emphasis_variants_for_ribbon(style: &Style) -> [PaletteColor;4] {
+    [style.colors.red, style.colors.white, style.colors.blue, style.colors.magenta]
+}
+
+pub fn emphasis_variants_for_selected_ribbon(style: &Style) -> [PaletteColor;4] {
+    [style.colors.red, style.colors.orange, style.colors.magenta, style.colors.blue]
+}
+
 #[derive(Debug, Clone)]
 struct NestedListItem {
     text: String,
@@ -61,6 +69,30 @@ impl Text {
     }
     pub fn style_of_index(&self, index: usize, style: &Style) -> Option<PaletteColor> {
         let index_variant_styles = emphasis_variants(style);
+        for i in (0..=3).rev() { // we do this in reverse to give precedence to the last applied
+                                 // style
+            if let Some(indices) = self.indices.get(i) {
+                if indices.contains(&index) {
+                    return Some(index_variant_styles[i])
+                }
+            }
+        }
+        None
+    }
+    pub fn style_of_index_for_ribbon(&self, index: usize, style: &Style) -> Option<PaletteColor> {
+        let index_variant_styles = emphasis_variants_for_ribbon(style);
+        for i in (0..=3).rev() { // we do this in reverse to give precedence to the last applied
+                                 // style
+            if let Some(indices) = self.indices.get(i) {
+                if indices.contains(&index) {
+                    return Some(index_variant_styles[i])
+                }
+            }
+        }
+        None
+    }
+    pub fn style_of_index_for_selected_ribbon(&self, index: usize, style: &Style) -> Option<PaletteColor> {
+        let index_variant_styles = emphasis_variants_for_selected_ribbon(style);
         for i in (0..=3).rev() { // we do this in reverse to give precedence to the last applied
                                  // style
             if let Some(indices) = self.indices.get(i) {
@@ -144,24 +176,6 @@ impl <'a> UiComponentParser <'a> {
             }
         }
 
-        macro_rules! stringify_rest_of_params {
-            ($params_iter:expr) => {{
-                    $params_iter
-                        .flat_map(|stringified| {
-                            let mut utf8 = vec![];
-                            for stringified_character in stringified.split(',') {
-                                utf8.push(
-                                    stringified_character
-                                        .to_string()
-                                        .parse::<u8>()
-                                        .map_err(|e| format!("Failed to parse utf8: {:?}", e))?
-                                );
-                            }
-                            Ok::<String, String>(String::from_utf8_lossy(&utf8).to_string())
-                        })
-                        .collect::<Vec<String>>().into_iter()
-            }}
-        }
         macro_rules! stringify_nested_list_items {
             ($params_iter:expr) => {{
                     $params_iter
@@ -283,10 +297,6 @@ impl <'a> UiComponentParser <'a> {
                 }
             }}
         }
-        // TODO:
-        // * if the first parameter is a coordinate string, remove it and extract the coordinates
-
-
         if component_name == &"table" {
             let columns = parse_next_param!(params_iter.next(), usize, "table", "columns");
             let rows = parse_next_param!(params_iter.next(), usize, "table", "rows");
@@ -295,16 +305,9 @@ impl <'a> UiComponentParser <'a> {
             parse_vte_bytes!(self, encoded_table);
             Ok(())
         } else if component_name == &"ribbon" {
-            let mut stringified_params = stringify_rest_of_params!(params_iter);
-            let text = stringified_params.next().with_context(|| format!("ribbon must have text"))?;
-            let encoded_ribbon = ribbon(&text, &self.style, self.arrow_fonts, component_coordinates);
-            parse_vte_bytes!(self, encoded_ribbon);
-            Ok(())
-        } else if component_name == &"ribbon_selected" {
-            let mut stringified_params = stringify_rest_of_params!(params_iter);
-            let text = stringified_params.next().with_context(|| format!("ribbon_selected must have text"))?;
-            let encoded_ribbon = ribbon_selected(&text, &self.style, self.arrow_fonts, component_coordinates);
-            parse_vte_bytes!(self, encoded_ribbon);
+            let stringified_params = stringify_text_params!(params_iter).next().with_context(|| format!("a ribbon must have text"))?;
+            let encoded_text = ribbon(stringified_params, &self.style, self.arrow_fonts, component_coordinates);
+            parse_vte_bytes!(self, encoded_text);
             Ok(())
         } else if component_name == &"nested_list" {
             let nested_list_items = stringify_nested_list_items!(params_iter);
@@ -448,56 +451,66 @@ fn text(content: Text, style: &Style, component_coordinates: Option<Coordinates>
     }
 }
 
-fn ribbon(text: &str, style: &Style, arrow_fonts: bool, coordinates: Option<Coordinates>) -> Vec<u8> {
-    let first_arrow_styles = RESET_STYLES
-        .foreground(Some(style.colors.black.into()))
-        .background(Some(style.colors.fg.into()));
-    let text_style = RESET_STYLES
-        .foreground(Some(style.colors.black.into()))
-        .background(Some(style.colors.fg.into()));
-    let last_arrow_styles = RESET_STYLES
-        .foreground(Some(style.colors.fg.into()))
-        .background(Some(style.colors.black.into()));
-    let text = if let Some(max_width) = coordinates.as_ref().and_then(|c| c.width) {
-        let mut text = String::from(text);
-        let max_text_width = if arrow_fonts { max_width.saturating_sub(4) } else { max_width.saturating_sub(2) };
-        text.truncate(max_text_width);
-        text
+fn ribbon(content: Text, style: &Style, arrow_fonts: bool, component_coordinates: Option<Coordinates>) -> Vec<u8> {
+    let (first_arrow_styles, text_style, last_arrow_styles) = if content.selected {
+        (
+            RESET_STYLES
+                .foreground(Some(style.colors.black.into()))
+                .background(Some(style.colors.green.into()))
+                .bold(Some(AnsiCode::On)),
+            RESET_STYLES
+                .foreground(Some(style.colors.black.into()))
+                .background(Some(style.colors.green.into()))
+                .bold(Some(AnsiCode::On)),
+            RESET_STYLES
+                .foreground(Some(style.colors.green.into()))
+                .background(Some(style.colors.black.into()))
+                .bold(Some(AnsiCode::On)),
+        )
     } else {
-        String::from(text)
+        (
+            RESET_STYLES
+                .foreground(Some(style.colors.black.into()))
+                .background(Some(style.colors.fg.into()))
+                .bold(Some(AnsiCode::On)),
+            RESET_STYLES
+                .foreground(Some(style.colors.black.into()))
+                .background(Some(style.colors.fg.into()))
+                .bold(Some(AnsiCode::On)),
+            RESET_STYLES
+                .foreground(Some(style.colors.fg.into()))
+                .background(Some(style.colors.black.into()))
+                .bold(Some(AnsiCode::On)),
+        )
     };
-    let mut go_to_location = String::new();
-    if let Some(coordinates) = coordinates.as_ref() {
-        go_to_location = format!("\u{1b}[{};{}H", coordinates.y + 1, coordinates.x + 1);
+    let mut text = String::new();
+    let mut text_width = 0;
+    for (i, character) in content.text.chars().enumerate() {
+        let character_width = character.width().unwrap_or(0);
+        if let Some(max_width) = component_coordinates.as_ref().and_then(|p| p.width) {
+            let total_width = if arrow_fonts { text_width + 4 } else { text_width + 2 };
+            if total_width + character_width > max_width {
+                break;
+            }
+        }
+        if !content.indices.is_empty() {
+            let character_style = if content.selected {
+                content.style_of_index_for_selected_ribbon(i, style)
+                    .map(|foreground_style| text_style.foreground(Some(foreground_style.into())))
+                    .unwrap_or(text_style)
+            } else {
+                content.style_of_index_for_ribbon(i, style)
+                    .map(|foreground_style| text_style.foreground(Some(foreground_style.into())))
+                    .unwrap_or(text_style)
+            };
+            text.push_str(&format!("{}{}{}", character_style, character, text_style));
+        } else {
+            text.push(character);
+        }
+        text_width += character_width;
     }
-    let stringified = if arrow_fonts {
-        format!("{}{}{}{}{} {} {}{}{}", RESET_STYLES, go_to_location, first_arrow_styles, ARROW_SEPARATOR, text_style, text, last_arrow_styles, ARROW_SEPARATOR, RESET_STYLES)
-    } else {
-        format!("{}{}{} {} {}", RESET_STYLES, go_to_location, text_style, text, RESET_STYLES)
-    };
-    stringified.as_bytes().to_vec()
-}
-
-fn ribbon_selected(text: &str, style: &Style, arrow_fonts: bool, coordinates: Option<Coordinates>) -> Vec<u8> {
-    let first_arrow_styles = RESET_STYLES
-        .foreground(Some(style.colors.black.into()))
-        .background(Some(style.colors.green.into()));
-    let text_style = RESET_STYLES
-        .foreground(Some(style.colors.black.into()))
-        .background(Some(style.colors.green.into()));
-    let last_arrow_styles = RESET_STYLES
-        .foreground(Some(style.colors.green.into()))
-        .background(Some(style.colors.black.into()));
-    let text = if let Some(max_width) = coordinates.as_ref().and_then(|c| c.width) {
-        let mut text = String::from(text);
-        let max_text_width = if arrow_fonts { max_width.saturating_sub(4) } else { max_width.saturating_sub(2) };
-        text.truncate(max_text_width);
-        text
-    } else {
-        String::from(text)
-    };
     let mut go_to_location = String::new();
-    if let Some(coordinates) = coordinates.as_ref() {
+    if let Some(coordinates) = component_coordinates.as_ref() {
         go_to_location = format!("\u{1b}[{};{}H", coordinates.y + 1, coordinates.x + 1);
     }
     let stringified = if arrow_fonts {
