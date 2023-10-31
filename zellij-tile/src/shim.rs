@@ -694,34 +694,205 @@ pub fn get_focused_pane(tab_position: usize, pane_manifest: &PaneManifest) -> Op
 
 // Ui components (to be used inside the `render` function)
 
-#[allow(unused)]
-/// render a table with arbitrary data
-pub fn table<S: AsRef<str>>(contents: Vec<Vec<S>>)
-where
-    S: ToString,
-{
-    let columns = contents.get(0).map(|first_row| first_row.len()).unwrap_or(0);
-    let rows = contents.len();
-    let contents = contents
-        .into_iter()
-        .flatten()
-        .map(|s| s.to_string())
-        .map(|c| {
-            c
+use std::ops::RangeBounds;
+use std::ops::Bound;
+
+#[derive(Debug, Default, Clone)]
+pub struct Text {
+    text: String,
+    selected: bool,
+    indices: Vec<Vec<usize>>,
+}
+
+impl Text {
+    pub fn new<S: AsRef<str>>(content: S) -> Self
+    where S: ToString
+    {
+        Text {
+            text: content.to_string(),
+            selected: false,
+            indices: vec![]
+        }
+    }
+    pub fn selected(mut self) -> Self {
+        self.selected = true;
+        self
+    }
+    pub fn color_indices(mut self, index_level: usize, mut indices: Vec<usize>) -> Self {
+        self.pad_indices(index_level);
+        self.indices.get_mut(index_level).map(|i| i.append(&mut indices));
+        self
+    }
+    pub fn color_range<R: RangeBounds<usize>>(mut self, index_level: usize, indices: R) -> Self {
+        self.pad_indices(index_level);
+        let start = match indices.start_bound() {
+            Bound::Unbounded => 0,
+            Bound::Included(s) => *s,
+            Bound::Excluded(s) => *s,
+        };
+        let end = match indices.end_bound() {
+            Bound::Unbounded => self.text.chars().count(),
+            Bound::Included(s) => *s + 1,
+            Bound::Excluded(s) => *s,
+        };
+        let indices = (start..end).into_iter();
+        self.indices.get_mut(index_level).map(|i| i.append(&mut indices.into_iter().collect()));
+        self
+    }
+    fn pad_indices(&mut self, index_level: usize) {
+        if self.indices.get(index_level).is_none() {
+            for _ in self.indices.len()..=index_level {
+                self.indices.push(vec![]);
+            }
+        }
+    }
+    fn serialize(&self) -> String {
+        let text = self.text.to_string()
             .as_bytes()
             .iter()
             .map(|b| b.to_string())
             .collect::<Vec<_>>()
-            .join(",")
-        })
+            .join(",");
+        let mut indices = String::new();
+        for index_variants in &self.indices {
+            indices.push_str(&format!(
+                "{}$",
+                index_variants
+                .iter()
+                .map(|i| i.to_string())
+                .collect::<Vec<_>>().join(",")
+            ));
+        }
+        if self.selected {
+            format!("x{}{}", indices, text)
+        } else {
+            format!("{}{}", indices, text)
+        }
+    }
+}
+
+pub fn print_text(text: Text) {
+    print!("\u{1b}Pztext;{}\u{1b}\\", text.serialize())
+}
+
+pub fn print_text_with_coordinates(text: Text, x: usize, y: usize, width: Option<usize>, height: Option<usize>) {
+    let width = width.map(|w| w.to_string()).unwrap_or_default();
+    let height = height.map(|h| h.to_string()).unwrap_or_default();
+    print!("\u{1b}Pztext;{}/{}/{}/{};{}\u{1b}\\", x, y, width, height, text.serialize())
+}
+
+#[allow(unused)]
+/// render a table with arbitrary data
+#[derive(Debug, Clone)]
+pub struct Table {
+    contents: Vec<Vec<Text>>,
+}
+
+impl Table {
+    pub fn new() -> Self {
+        Table {
+            contents: vec![]
+        }
+    }
+    pub fn add_row(mut self, row: Vec<impl ToString>) -> Self {
+        self.contents.push(row.iter().map(|c| Text::new(c.to_string())).collect());
+        self
+    }
+    pub fn add_styled_row(mut self, row: Vec<Text>) -> Self {
+        self.contents.push(row);
+        self
+    }
+    pub fn serialize(&self) -> String {
+        let columns = self.contents.get(0).map(|first_row| first_row.len()).unwrap_or(0);
+        let rows = self.contents.len();
+        let contents = self.contents
+            .iter()
+            .flatten()
+            .map(|t| t.serialize())
+            .collect::<Vec<_>>()
+            .join(";");
+        format!("{};{};{}\u{1b}\\", columns, rows, contents)
+    }
+//     pub fn print_to_stdout(&self) {
+//         print!("{}", self.serialize())
+//     }
+}
+
+pub fn print_table(table: Table) {
+    print!("\u{1b}Pztable;{}", table.serialize())
+}
+
+pub fn print_table_with_coordinates(table: Table, x: usize, y: usize, width: Option<usize>, height: Option<usize>) {
+    let width = width.map(|w| w.to_string()).unwrap_or_default();
+    let height = height.map(|h| h.to_string()).unwrap_or_default();
+    print!("\u{1b}Pztable;{}/{}/{}/{};{}\u{1b}\\", x, y, width, height, table.serialize())
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct NestedListItem {
+    indentation_level: usize,
+    content: Text,
+}
+
+impl NestedListItem {
+    pub fn new<S: AsRef<str>>(text: S) -> Self
+    where S: ToString
+    {
+        NestedListItem {
+            content: Text::new(text),
+            ..Default::default()
+        }
+    }
+    pub fn indent(mut self, indentation_level: usize) -> Self {
+        self.indentation_level = indentation_level;
+        self
+    }
+    pub fn selected(mut self) -> Self {
+        self.content = self.content.selected();
+        self
+    }
+    pub fn color_indices(mut self, index_level: usize, indices: Vec<usize>) -> Self {
+        self.content = self.content.color_indices(index_level, indices);
+        self
+    }
+    pub fn color_range<R: RangeBounds<usize>>(mut self, index_level: usize, indices: R) -> Self {
+        self.content = self.content.color_range(index_level, indices);
+        self
+    }
+    pub fn serialize(&self) -> String {
+        let mut serialized = String::new();
+        for _ in 0..self.indentation_level {
+            serialized.push('|');
+        }
+        format!("{}{}", serialized, self.content.serialize())
+    }
+}
+
+#[allow(unused)]
+/// render a nested list with arbitrary data
+pub fn print_nested_list(items: Vec<NestedListItem>) {
+    let items = items
+        .into_iter()
+        .map(|i| i.serialize())
         .collect::<Vec<_>>()
         .join(";");
-    print!("\u{1b}Pztable;{};{};{}\u{1b}\\", columns, rows, contents)
+    print!("\u{1b}Pznested_list;{}\u{1b}\\", items)
+}
+
+pub fn print_nested_list_with_coordinates(items: Vec<NestedListItem>, x: usize, y: usize, width: Option<usize>, height: Option<usize>) {
+    let width = width.map(|w| w.to_string()).unwrap_or_default();
+    let height = height.map(|h| h.to_string()).unwrap_or_default();
+    let items = items
+        .into_iter()
+        .map(|i| i.serialize())
+        .collect::<Vec<_>>()
+        .join(";");
+    print!("\u{1b}Pznested_list;{}/{}/{}/{};{}\u{1b}\\", x, y, width, height, items)
 }
 
 #[allow(unused)]
 /// render a ribbon with text
-pub fn ribbon<S: AsRef<str>>(text: S)
+pub fn print_ribbon<S: AsRef<str>>(text: S)
 where
     S: ToString,
 {
@@ -729,14 +900,34 @@ where
     print!("\u{1b}Pzribbon;{}\u{1b}\\", text);
 }
 
+pub fn print_ribbon_with_coordinates<S: AsRef<str>>(text: S, x: usize, y: usize, width: Option<usize>, height: Option<usize>)
+where
+    S: ToString,
+{
+    let width = width.map(|w| w.to_string()).unwrap_or_default();
+    let height = height.map(|h| h.to_string()).unwrap_or_default();
+    let text = text.to_string().as_bytes().iter().map(|b| b.to_string()).collect::<Vec<_>>().join(",");
+    print!("\u{1b}Pzribbon;{}/{}/{}/{};{}\u{1b}\\", x, y, width, height, text);
+}
+
 #[allow(unused)]
 /// render a ribbon with text
-pub fn ribbon_selected<S: AsRef<str>>(text: S)
+pub fn print_ribbon_selected<S: AsRef<str>>(text: S)
 where
     S: ToString,
 {
     let text = text.to_string().as_bytes().iter().map(|b| b.to_string()).collect::<Vec<_>>().join(",");
     print!("\u{1b}Pzribbon_selected;{}\u{1b}\\", text);
+}
+
+pub fn print_ribbon_selected_with_coordinates<S: AsRef<str>>(text: S, x: usize, y: usize, width: Option<usize>, height: Option<usize>)
+where
+    S: ToString,
+{
+    let width = width.map(|w| w.to_string()).unwrap_or_default();
+    let height = height.map(|h| h.to_string()).unwrap_or_default();
+    let text = text.to_string().as_bytes().iter().map(|b| b.to_string()).collect::<Vec<_>>().join(",");
+    print!("\u{1b}Pzribbon_selected;{}/{}/{}/{};{}\u{1b}\\", x, y, width, height, text);
 }
 
 // Internal Functions
@@ -748,68 +939,6 @@ pub fn object_from_stdin<T: DeserializeOwned>() -> Result<T> {
     let mut json = String::new();
     io::stdin().read_line(&mut json).with_context(err_context)?;
     serde_json::from_str(&json).with_context(err_context)
-}
-
-#[derive(Debug, Default, Clone)]
-pub struct NestedListItem {
-    text: String,
-    indentation_level: usize,
-    selected: bool,
-    indices: Vec<Vec<usize>>,
-}
-
-impl NestedListItem {
-    pub fn new<S: AsRef<str>>(text: S) -> Self
-    where S: ToString
-    {
-        NestedListItem {
-            text: text.to_string(),
-            ..Default::default()
-        }
-    }
-    pub fn indent(mut self, indentation_level: usize) -> Self {
-        self.indentation_level = indentation_level;
-        self
-    }
-    pub fn selected(mut self) -> Self {
-        self.selected = true;
-        self
-    }
-    pub fn indices(mut self, indices: Vec<Vec<usize>>) -> Self {
-        self.indices = indices;
-        self
-    }
-    pub fn serialize(&self) -> String {
-        let mut serialized = String::new();
-        for _ in 0..self.indentation_level {
-            serialized.push('|');
-        }
-        if self.selected {
-            serialized.push('x');
-        }
-        for index_variants in &self.indices {
-            serialized.push_str(&format!("{}$", index_variants.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(",")));
-        }
-        serialized.push_str(&self.text
-            .as_bytes()
-            .iter()
-            .map(|b| b.to_string())
-            .collect::<Vec<_>>()
-            .join(",")
-        );
-        serialized
-    }
-}
-
-#[allow(unused)]
-/// render a nested list with arbitrary data
-pub fn nested_list(items: Vec<NestedListItem>) {
-    let items = items
-        .into_iter()
-        .map(|i| i.serialize())
-        .collect::<Vec<_>>()
-        .join(";");
-    print!("\u{1b}Pznested_list;{}\u{1b}\\", items)
 }
 
 #[doc(hidden)]
