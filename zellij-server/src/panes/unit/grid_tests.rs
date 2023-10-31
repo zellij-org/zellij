@@ -3103,6 +3103,33 @@ fn table_ui_component() {
 }
 
 #[test]
+fn table_ui_component_with_coordinates() {
+    let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
+    let arrow_fonts = true;
+    let mut grid = Grid::new(
+        41,
+        110,
+        Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
+        sixel_image_store,
+        Style::default(),
+        debug,
+        arrow_fonts,
+    );
+    let fixture_name = "table-ui-component-with-coordinates";
+    let content = read_fixture(fixture_name);
+    for byte in content {
+        vte_parser.advance(&mut grid, byte);
+    }
+    assert_snapshot!(format!("{:?}", grid));
+}
+
+#[test]
 fn ribbon_ui_component() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
@@ -3130,10 +3157,7 @@ fn ribbon_ui_component() {
 }
 
 #[test]
-fn ribbon_selected_ui_component() {
-    // this test doesn't actually test the "selected" part unfortunately since we remove styling
-    // when we take snapshots, but it's good to keep it to make sure the API is still alive at
-    // least
+fn ribbon_ui_component_with_coordinates() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
@@ -3151,7 +3175,7 @@ fn ribbon_selected_ui_component() {
         debug,
         arrow_fonts,
     );
-    let fixture_name = "ribbon-selected-ui-component";
+    let fixture_name = "ribbon-ui-component-with-coordinates";
     let content = read_fixture(fixture_name);
     for byte in content {
         vte_parser.advance(&mut grid, byte);
@@ -3161,9 +3185,6 @@ fn ribbon_selected_ui_component() {
 
 #[test]
 fn nested_list_ui_component() {
-    // this test doesn't actually test the "selected" part unfortunately since we remove styling
-    // when we take snapshots, but it's good to keep it to make sure the API is still alive at
-    // least
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
@@ -3171,7 +3192,7 @@ fn nested_list_ui_component() {
     let arrow_fonts = true;
     let mut grid = Grid::new(
         41,
-        110,
+        120,
         Rc::new(RefCell::new(Palette::default())),
         terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
@@ -3182,6 +3203,87 @@ fn nested_list_ui_component() {
         arrow_fonts,
     );
     let fixture_name = "nested-list-ui-component";
+    let content = read_fixture(fixture_name);
+    for byte in content {
+        vte_parser.advance(&mut grid, byte);
+    }
+    assert_snapshot!(format!("{:?}", grid));
+}
+
+#[test]
+fn nested_list_ui_component_with_coordinates() {
+    let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
+    let arrow_fonts = true;
+    let mut grid = Grid::new(
+        41,
+        120,
+        Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
+        sixel_image_store,
+        Style::default(),
+        debug,
+        arrow_fonts,
+    );
+    let fixture_name = "nested-list-ui-component-with-coordinates";
+    let content = read_fixture(fixture_name);
+    for byte in content {
+        vte_parser.advance(&mut grid, byte);
+    }
+    assert_snapshot!(format!("{:?}", grid));
+}
+
+#[test]
+fn text_ui_component() {
+    let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
+    let arrow_fonts = true;
+    let mut grid = Grid::new(
+        41,
+        120,
+        Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
+        sixel_image_store,
+        Style::default(),
+        debug,
+        arrow_fonts,
+    );
+    let fixture_name = "text-ui-component";
+    let content = read_fixture(fixture_name);
+    for byte in content {
+        vte_parser.advance(&mut grid, byte);
+    }
+    assert_snapshot!(format!("{:?}", grid));
+}
+
+#[test]
+fn text_ui_component_with_coordinates() {
+    let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
+    let arrow_fonts = true;
+    let mut grid = Grid::new(
+        41,
+        120,
+        Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
+        sixel_image_store,
+        Style::default(),
+        debug,
+        arrow_fonts,
+    );
+    let fixture_name = "text-ui-component-with-coordinates";
     let content = read_fixture(fixture_name);
     for byte in content {
         vte_parser.advance(&mut grid, byte);

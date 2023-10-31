@@ -1,16 +1,16 @@
 ---
 source: zellij-server/src/panes/./unit/grid_tests.rs
-assertion_line: 2896
+assertion_line: 3102
 expression: "format!(\"{:?}\", grid)"
 ---
 00 (C): title1           title2            title3           title4                 title5          
-01 (C): ──────────────────────────────────────────────────────────────────────────────────────────
-02 (C): 1lksdjflksdjf    lkjdsflksjdf      lkjsdlkfjsfd     lkjsdlkjfd             lkjdslkjsdf     
-03 (C): 2lksdjflksdjf    lkjdsflksjdf      lkj😳😳sdlkfjsfd lkjsdlkjfd             lkjdslkjsdf     
-04 (C): 3lksdjflksdjf    lkjdsflksjdf      lkjsd😳lkfjsfd   lkjsdlkjfd             lkjdslkjsdf     
-05 (C): 4lksdjflks222djf lk😳222jdsflksjdf lk222jsdlkfjsfd  lkwwwjsdlkjfd          lkjdslkjsdf     
-06 (C): 5lksdjflksdjf    lkjdsflksjdf      lkjsdlkfjsfd     lksdjflksjfdlkjsdlkjfd lkjdrrrrslkjsdf 
-07 (C): 6lksdjflk😳sdjf  l😳kjdsflksjdf    lkjsdlkfjsfd     lkjsdlkjfd             lwwkwkjdslkjsdf 
+01 (C): 1lksdjflksdjf    lkjdsflksjdf      lkjsdlkfjsfd     lkjsdlkjfd             lkjdslkjsdf     
+02 (C): 2lksdjflksdjf    lkjdsflksjdf      lkj😳😳sdlkfjsfd lkjsdlkjfd             lkjdslkjsdf     
+03 (C): 3lksdjflksdjf    lkjdsflksjdf      lkjsd😳lkfjsfd   lkjsdlkjfd             lkjdslkjsdf     
+04 (C): 4lksdjflks222djf lk😳222jdsflksjdf lk222jsdlkfjsfd  lkwwwjsdlkjfd          lkjdslkjsdf     
+05 (C): 5lksdjflksdjf    lkjdsflksjdf      lkjsdlkfjsfd     lksdjflksjfdlkjsdlkjfd lkjdrrrrslkjsdf 
+06 (C): 6lksdjflk😳sdjf  l😳kjdsflksjdf    lkjsdlkfjsfd     lkjsdlkjfd             lwwkwkjdslkjsdf 
+07 (C): 
 08 (C): 
 09 (C): 
 10 (C): 

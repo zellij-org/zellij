@@ -586,8 +586,10 @@ fn nested_list(mut contents: Vec<NestedListItem>, style: &Style, coordinates: Op
         }
         let go_to_row_instruction = if let Some(coordinates) = coordinates.as_ref() {
             format!("\u{1b}[{};{}H", coordinates.y + line_index + 1, coordinates.x)
-        } else {
+        } else if line_index != 0 {
             format!("\n\r")
+        } else {
+            "".to_owned()
         };
         if line_item.selected {
             stringified.push_str(&format!("{}{}{}{:padding$}{bulletin}{}{text}{}", go_to_row_instruction, selected_background, reset_styles_for_item, " ", text_style, RESET_STYLES));
