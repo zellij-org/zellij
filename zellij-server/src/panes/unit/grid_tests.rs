@@ -5,7 +5,12 @@ use ::insta::assert_snapshot;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
-use zellij_utils::{data::{Palette, Style}, pane_size::SizeInPixels, position::Position, vte};
+use zellij_utils::{
+    data::{Palette, Style},
+    pane_size::SizeInPixels,
+    position::Position,
+    vte,
+};
 
 use std::fmt::Write;
 

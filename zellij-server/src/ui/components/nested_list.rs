@@ -1,8 +1,8 @@
-use super::{Coordinates, Text, is_too_high, stringify_text, parse_selected, parse_indices, parse_text};
-use zellij_utils::data::Style;
-use crate::panes::{
-    terminal_character::{AnsiCode, RESET_STYLES},
+use super::{
+    is_too_high, parse_indices, parse_selected, parse_text, stringify_text, Coordinates, Text,
 };
+use crate::panes::terminal_character::{AnsiCode, RESET_STYLES};
+use zellij_utils::data::Style;
 
 use unicode_width::UnicodeWidthChar;
 
@@ -12,7 +12,11 @@ pub struct NestedListItem {
     pub indentation_level: usize,
 }
 
-pub fn nested_list(mut contents: Vec<NestedListItem>, style: &Style, coordinates: Option<Coordinates>) -> Vec<u8> {
+pub fn nested_list(
+    mut contents: Vec<NestedListItem>,
+    style: &Style,
+    coordinates: Option<Coordinates>,
+) -> Vec<u8> {
     let mut stringified = String::new();
     let max_width = coordinates
         .as_ref()
@@ -27,9 +31,19 @@ pub fn nested_list(mut contents: Vec<NestedListItem>, style: &Style, coordinates
             reset_styles_for_item.background = None;
         };
         let padding = line_item.indentation_level * 2 + 1;
-        let bulletin = if line_item.indentation_level % 2 == 0 { "> " } else { "- " };
+        let bulletin = if line_item.indentation_level % 2 == 0 {
+            "> "
+        } else {
+            "- "
+        };
         let text_style = reset_styles_for_item.bold(Some(AnsiCode::On));
-        let (mut text, text_width) = stringify_text(&line_item.text, Some(padding + bulletin.len()), &coordinates, style, text_style);
+        let (mut text, text_width) = stringify_text(
+            &line_item.text,
+            Some(padding + bulletin.len()),
+            &coordinates,
+            style,
+            text_style,
+        );
         text = pad_line(text, max_width, padding, text_width);
         let go_to_row_instruction = coordinates
             .as_ref()
@@ -43,23 +57,43 @@ pub fn nested_list(mut contents: Vec<NestedListItem>, style: &Style, coordinates
             });
         if line_item.text.selected {
             let selected_background = RESET_STYLES.background(Some(style.colors.bg.into()));
-            stringified.push_str(&format!("{}{}{}{:padding$}{bulletin}{}{text}{}", go_to_row_instruction, selected_background, reset_styles_for_item, " ", text_style, RESET_STYLES));
+            stringified.push_str(&format!(
+                "{}{}{}{:padding$}{bulletin}{}{text}{}",
+                go_to_row_instruction,
+                selected_background,
+                reset_styles_for_item,
+                " ",
+                text_style,
+                RESET_STYLES
+            ));
         } else {
-            stringified.push_str(&format!("{}{}{:padding$}{bulletin}{}{text}{}", go_to_row_instruction, reset_styles_for_item, " ", text_style, RESET_STYLES));
+            stringified.push_str(&format!(
+                "{}{}{:padding$}{bulletin}{}{text}{}",
+                go_to_row_instruction, reset_styles_for_item, " ", text_style, RESET_STYLES
+            ));
         }
     }
     stringified.as_bytes().to_vec()
 }
 
-pub fn parse_nested_list_items<'a>(params_iter: impl Iterator<Item=&'a mut String>) -> Vec<NestedListItem> {
+pub fn parse_nested_list_items<'a>(
+    params_iter: impl Iterator<Item = &'a mut String>,
+) -> Vec<NestedListItem> {
     params_iter
         .flat_map(|mut stringified| {
             let indentation_level = parse_indentation_level(&mut stringified);
             let selected = parse_selected(&mut stringified);
             let indices = parse_indices(&mut stringified);
             let text = parse_text(&mut stringified).map_err(|e| e.to_string())?;
-            let text = Text { text, selected, indices };
-            Ok::<NestedListItem, String>(NestedListItem { text, indentation_level })
+            let text = Text {
+                text,
+                selected,
+                indices,
+            };
+            Ok::<NestedListItem, String>(NestedListItem {
+                text,
+                indentation_level,
+            })
         })
         .collect::<Vec<NestedListItem>>()
 }
@@ -80,7 +114,6 @@ fn parse_indentation_level(stringified: &mut String) -> usize {
     indentation_level
 }
 
-
 fn max_nested_item_width(contents: &Vec<NestedListItem>) -> usize {
     let mut width_of_longest_line = 0;
     for line_item in contents.iter() {
@@ -100,10 +133,10 @@ fn max_nested_item_width(contents: &Vec<NestedListItem>) -> usize {
 }
 
 fn pad_line(text: String, max_width: usize, padding: usize, text_width: usize) -> String {
-    if max_width > text_width + padding + 2 { // 2 is the bulletin
+    if max_width > text_width + padding + 2 {
+        // 2 is the bulletin
         let end_padding = max_width.saturating_sub(text_width + padding + 2);
         return format!("{}{:end_padding$}", text, " ");
     }
     text
 }
-

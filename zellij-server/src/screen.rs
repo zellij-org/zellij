@@ -2061,7 +2061,7 @@ pub(crate) fn screen_thread_main(
             config_options.default_mode.unwrap_or_default(),
             &client_attributes,
             PluginCapabilities {
-                //  ¯\_(ツ)_/¯ 
+                //  ¯\_(ツ)_/¯
                 arrow_fonts: !arrow_fonts,
             },
         ),

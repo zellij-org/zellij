@@ -14,14 +14,17 @@ impl Coordinates {
     }
 }
 
-
 impl Display for Coordinates {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "\u{1b}[{};{}H", self.y + 1, self.x + 1)
     }
 }
 
-pub fn is_too_wide(character_width: usize, current_width: usize, component_coordinates: &Option<Coordinates>) -> bool {
+pub fn is_too_wide(
+    character_width: usize,
+    current_width: usize,
+    component_coordinates: &Option<Coordinates>,
+) -> bool {
     if let Some(max_width) = component_coordinates.as_ref().and_then(|p| p.width) {
         if current_width + character_width > max_width {
             return true;

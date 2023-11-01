@@ -1,5 +1,5 @@
-use std::ops::RangeBounds;
 use std::ops::Bound;
+use std::ops::RangeBounds;
 
 #[derive(Debug, Default, Clone)]
 pub struct Text {
@@ -10,12 +10,13 @@ pub struct Text {
 
 impl Text {
     pub fn new<S: AsRef<str>>(content: S) -> Self
-    where S: ToString
+    where
+        S: ToString,
     {
         Text {
             text: content.to_string(),
             selected: false,
-            indices: vec![]
+            indices: vec![],
         }
     }
     pub fn selected(mut self) -> Self {
@@ -24,7 +25,9 @@ impl Text {
     }
     pub fn color_indices(mut self, index_level: usize, mut indices: Vec<usize>) -> Self {
         self.pad_indices(index_level);
-        self.indices.get_mut(index_level).map(|i| i.append(&mut indices));
+        self.indices
+            .get_mut(index_level)
+            .map(|i| i.append(&mut indices));
         self
     }
     pub fn color_range<R: RangeBounds<usize>>(mut self, index_level: usize, indices: R) -> Self {
@@ -40,7 +43,9 @@ impl Text {
             Bound::Excluded(s) => *s,
         };
         let indices = (start..end).into_iter();
-        self.indices.get_mut(index_level).map(|i| i.append(&mut indices.into_iter().collect()));
+        self.indices
+            .get_mut(index_level)
+            .map(|i| i.append(&mut indices.into_iter().collect()));
         self
     }
     fn pad_indices(&mut self, index_level: usize) {
@@ -51,7 +56,9 @@ impl Text {
         }
     }
     pub fn serialize(&self) -> String {
-        let text = self.text.to_string()
+        let text = self
+            .text
+            .to_string()
             .as_bytes()
             .iter()
             .map(|b| b.to_string())
@@ -62,9 +69,10 @@ impl Text {
             indices.push_str(&format!(
                 "{}$",
                 index_variants
-                .iter()
-                .map(|i| i.to_string())
-                .collect::<Vec<_>>().join(",")
+                    .iter()
+                    .map(|i| i.to_string())
+                    .collect::<Vec<_>>()
+                    .join(",")
             ));
         }
         if self.selected {
@@ -79,8 +87,21 @@ pub fn print_text(text: Text) {
     print!("\u{1b}Pztext;{}\u{1b}\\", text.serialize())
 }
 
-pub fn print_text_with_coordinates(text: Text, x: usize, y: usize, width: Option<usize>, height: Option<usize>) {
+pub fn print_text_with_coordinates(
+    text: Text,
+    x: usize,
+    y: usize,
+    width: Option<usize>,
+    height: Option<usize>,
+) {
     let width = width.map(|w| w.to_string()).unwrap_or_default();
     let height = height.map(|h| h.to_string()).unwrap_or_default();
-    print!("\u{1b}Pztext;{}/{}/{}/{};{}\u{1b}\\", x, y, width, height, text.serialize())
+    print!(
+        "\u{1b}Pztext;{}/{}/{}/{};{}\u{1b}\\",
+        x,
+        y,
+        width,
+        height,
+        text.serialize()
+    )
 }

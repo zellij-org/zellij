@@ -10,8 +10,8 @@ pub use zellij_utils::plugin_api;
 use zellij_utils::plugin_api::plugin_command::ProtobufPluginCommand;
 use zellij_utils::plugin_api::plugin_ids::{ProtobufPluginIds, ProtobufZellijVersion};
 
-pub use zellij_utils::prost::{self, *};
 pub use super::ui_components::*;
+pub use zellij_utils::prost::{self, *};
 
 // Subscription Handling
 

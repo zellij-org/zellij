@@ -36,7 +36,7 @@ use crate::panes::search::SearchResult;
 use crate::panes::selection::Selection;
 use crate::panes::terminal_character::{
     AnsiCode, CharacterStyles, CharsetIndex, Cursor, CursorShape, StandardCharset,
-    TerminalCharacter, EMPTY_TERMINAL_CHARACTER
+    TerminalCharacter, EMPTY_TERMINAL_CHARACTER,
 };
 use crate::ui::components::UiComponentParser;
 
@@ -2205,7 +2205,8 @@ impl Perform for Grid {
                     params.iter().collect(),
                 );
             }
-        } else if c == 'z' { // UI-component (Zellij internal)
+        } else if c == 'z' {
+            // UI-component (Zellij internal)
             self.ui_component_bytes = Some(vec![]);
         }
     }

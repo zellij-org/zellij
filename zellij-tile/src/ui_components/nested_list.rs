@@ -9,7 +9,8 @@ pub struct NestedListItem {
 
 impl NestedListItem {
     pub fn new<S: AsRef<str>>(text: S) -> Self
-    where S: ToString
+    where
+        S: ToString,
     {
         NestedListItem {
             content: Text::new(text),
@@ -51,7 +52,13 @@ pub fn print_nested_list(items: Vec<NestedListItem>) {
     print!("\u{1b}Pznested_list;{}\u{1b}\\", items)
 }
 
-pub fn print_nested_list_with_coordinates(items: Vec<NestedListItem>, x: usize, y: usize, width: Option<usize>, height: Option<usize>) {
+pub fn print_nested_list_with_coordinates(
+    items: Vec<NestedListItem>,
+    x: usize,
+    y: usize,
+    width: Option<usize>,
+    height: Option<usize>,
+) {
     let width = width.map(|w| w.to_string()).unwrap_or_default();
     let height = height.map(|h| h.to_string()).unwrap_or_default();
     let items = items
@@ -59,5 +66,8 @@ pub fn print_nested_list_with_coordinates(items: Vec<NestedListItem>, x: usize, 
         .map(|i| i.serialize())
         .collect::<Vec<_>>()
         .join(";");
-    print!("\u{1b}Pznested_list;{}/{}/{}/{};{}\u{1b}\\", x, y, width, height, items)
+    print!(
+        "\u{1b}Pznested_list;{}/{}/{}/{};{}\u{1b}\\",
+        x, y, width, height, items
+    )
 }
