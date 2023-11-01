@@ -5,7 +5,7 @@ expression: "format!(\"{:?}\", grid)"
 ---
 00 (C): 
 01 (C):                                                                                                               
-02 (C):    ribbon                                                                                                   
+02 (C):    ribbon 1                                                                                                 
 03 (C): 
 04 (C): 
 05 (C): 

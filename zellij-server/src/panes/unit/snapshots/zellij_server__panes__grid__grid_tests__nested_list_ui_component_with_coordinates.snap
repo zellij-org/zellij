@@ -4,9 +4,9 @@ assertion_line: 3237
 expression: "format!(\"{:?}\", grid)"
 ---
 00 (C): 
-01 (C):  > item 1 with some                                                                                                     
-02 (C):    - item 2 with som                                                                                                    
-03 (C):  > item 3 is a real                                                                                                     
+01 (C):   > item 1 with some                                                                                                    
+02 (C):     - item 2 with som                                                                                                   
+03 (C):   > item 3 is a real                                                                                                    
 04 (C): 
 05 (C): 
 06 (C): 

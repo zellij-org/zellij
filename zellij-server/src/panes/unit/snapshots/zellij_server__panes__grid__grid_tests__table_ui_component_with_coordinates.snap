@@ -6,11 +6,11 @@ expression: "format!(\"{:?}\", grid)"
 00 (C): 
 01 (C):                                                                                                               
 02 (C):                                                                                                               
-03 (C):    title1                                                                                                     
-04 (C):    content 1                                                                                                  
-05 (C):    content 11                                                                                                 
-06 (C):                                                                                                               
-07 (C): 
+03 (C):                                                                                                               
+04 (C):     title1                                                                                                    
+05 (C):     content 1                                                                                                 
+06 (C):     content 11                                                                                                
+07 (C):                                                                                                               
 08 (C): 
 09 (C): 
 10 (C): 
