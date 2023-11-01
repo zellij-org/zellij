@@ -2040,9 +2040,13 @@ impl Tab {
 
         self.swap_layouts.set_is_floating_damaged();
 
-        self.floating_panes
+        let ret_size = self
+            .floating_panes
             .resize_floating_pane(pane_id, &mut self.os_api, new_size)
             .with_context(err_context)?;
+        if ret_size {
+            self.set_force_render();
+        }
         Ok(())
     }
 
