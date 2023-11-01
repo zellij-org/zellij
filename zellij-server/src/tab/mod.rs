@@ -2038,6 +2038,8 @@ impl Tab {
     ) -> Result<()> {
         let err_context = || format!("unable to resize float pane {pane_id:?} by given size");
 
+        self.swap_layouts.set_is_floating_damaged();
+
         self.floating_panes
             .resize_floating_pane(pane_id, &mut self.os_api, new_size)
             .with_context(err_context)?;
