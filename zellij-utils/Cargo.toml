@@ -58,8 +58,6 @@ futures = "0.3.28"
 surf = { version = "2.3.2", default-features = false, features = [
     "curl-client",
 ] }
-
-[target.'cfg(not(target_family = "wasm"))'.build-dependencies]
 openssl-sys = { version = "0.9.93", features = ["vendored"] }
 
 [dev-dependencies]
