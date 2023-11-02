@@ -1023,6 +1023,7 @@ impl Screen {
         let mut output = Output::new(
             self.sixel_image_store.clone(),
             self.character_cell_size.clone(),
+            self.ansi_underlines,
         );
         let mut tabs_to_close = vec![];
         for (tab_index, tab) in &mut self.tabs {

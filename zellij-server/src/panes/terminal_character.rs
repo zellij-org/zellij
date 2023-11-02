@@ -146,8 +146,11 @@ pub struct CharacterStyles {
 }
 
 impl CharacterStyles {
-    pub fn new() -> Self {
-        Default::default()
+    pub fn new(ansi_underlines: bool) -> Self {
+        Self {
+            ansi_underlines,
+            ..Default::default()
+        }
     }
     pub fn foreground(mut self, foreground_code: Option<AnsiCode>) -> Self {
         self.foreground = foreground_code;
@@ -231,7 +234,7 @@ impl CharacterStyles {
         }
 
         // create diff from all changed styles
-        let mut diff = CharacterStyles::new();
+        let mut diff = CharacterStyles::new(self.ansi_underlines);
 
         if self.foreground != new_styles.foreground {
             diff.foreground = new_styles.foreground;
