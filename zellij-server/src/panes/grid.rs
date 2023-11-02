@@ -2133,7 +2133,6 @@ impl Grid {
 impl Perform for Grid {
     fn print(&mut self, c: char) {
         let c = self.cursor.charsets[self.active_charset].map(c);
-        self.cursor.pending_styles.ansi_underlines = self.ansi_underlines;
 
         // apparently, building TerminalCharacter like this without a "new" method
         // is a little faster
