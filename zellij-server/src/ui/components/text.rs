@@ -37,7 +37,6 @@ pub fn stringify_text(
     let mut stringified = String::new();
     for (i, character) in text.text.chars().enumerate() {
         let character_width = character.width().unwrap_or(0);
-        // if is_too_wide(character_width, padding + 2 + text_width, &coordinates) {
         if is_too_wide(
             character_width,
             left_padding.unwrap_or(0) + text_width,
@@ -104,7 +103,6 @@ pub struct Text {
 
 impl Text {
     pub fn pad_text(&mut self, max_column_width: usize) {
-        // let mut padded = self.text.to_owned();
         for _ in ansi_len(&self.text)..max_column_width {
             self.text.push(' ');
         }
