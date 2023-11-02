@@ -185,6 +185,7 @@ pub(crate) struct Tab {
     swap_layouts: SwapLayouts,
     default_shell: Option<PathBuf>,
     debug: bool,
+    arrow_fonts: bool,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -533,6 +534,7 @@ impl Tab {
         swap_layouts: (Vec<SwapTiledLayout>, Vec<SwapFloatingLayout>),
         default_shell: Option<PathBuf>,
         debug: bool,
+        arrow_fonts: bool,
     ) -> Self {
         let name = if name.is_empty() {
             format!("Tab #{}", index + 1)
@@ -621,6 +623,7 @@ impl Tab {
             swap_layouts,
             default_shell,
             debug,
+            arrow_fonts,
         }
     }
 
@@ -652,6 +655,7 @@ impl Tab {
             &mut self.focus_pane_id,
             &self.os_api,
             self.debug,
+            self.arrow_fonts,
         )
         .apply_layout(
             layout,
@@ -713,6 +717,7 @@ impl Tab {
                 &mut self.focus_pane_id,
                 &self.os_api,
                 self.debug,
+                self.arrow_fonts,
             )
             .apply_floating_panes_layout_to_existing_panes(
                 &layout_candidate,
@@ -767,6 +772,7 @@ impl Tab {
                 &mut self.focus_pane_id,
                 &self.os_api,
                 self.debug,
+                self.arrow_fonts,
             )
             .apply_tiled_panes_layout_to_existing_panes(
                 &layout_candidate,
@@ -1053,6 +1059,7 @@ impl Tab {
                     initial_pane_title,
                     invoked_with,
                     self.debug,
+                    self.arrow_fonts,
                 )) as Box<dyn Pane>
             },
             PaneId::Plugin(plugin_pid) => {
@@ -1075,6 +1082,7 @@ impl Tab {
                     self.style,
                     invoked_with,
                     self.debug,
+                    self.arrow_fonts,
                 )) as Box<dyn Pane>
             },
         };
@@ -1111,6 +1119,7 @@ impl Tab {
                     None,
                     None,
                     self.debug,
+                    self.arrow_fonts,
                 );
                 new_pane.update_name("EDITING SCROLLBACK"); // we do this here and not in the
                                                             // constructor so it won't be overrided
@@ -1183,6 +1192,7 @@ impl Tab {
                     None,
                     run,
                     self.debug,
+                    self.arrow_fonts,
                 );
                 let replaced_pane = if self.floating_panes.panes_contain(&old_pane_id) {
                     self.floating_panes
@@ -1235,6 +1245,7 @@ impl Tab {
                     self.style,
                     run,
                     self.debug,
+                    self.arrow_fonts,
                 );
                 let replaced_pane = if self.floating_panes.panes_contain(&old_pane_id) {
                     self.floating_panes
@@ -1303,6 +1314,7 @@ impl Tab {
                     initial_pane_title,
                     None,
                     self.debug,
+                    self.arrow_fonts,
                 );
                 self.tiled_panes
                     .split_pane_horizontally(pid, Box::new(new_terminal), client_id);
@@ -1360,6 +1372,7 @@ impl Tab {
                     initial_pane_title,
                     None,
                     self.debug,
+                    self.arrow_fonts,
                 );
                 self.tiled_panes
                     .split_pane_vertically(pid, Box::new(new_terminal), client_id);
