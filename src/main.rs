@@ -46,6 +46,28 @@ fn main() {
             commands::send_action_to_session(command_cli_action, opts.session, config);
             std::process::exit(0);
         }
+        if let Some(Command::Sessions(Sessions::Plugin {
+            url,
+            floating,
+            in_place,
+            configuration,
+        })) = opts.command
+        {
+            let command_cli_action = CliAction::NewPane {
+                command: vec![],
+                plugin: Some(url),
+                direction: None,
+                cwd: None,
+                floating,
+                in_place,
+                name: None,
+                close_on_exit: false,
+                start_suspended: false,
+                configuration,
+            };
+            commands::send_action_to_session(command_cli_action, opts.session, config);
+            std::process::exit(0);
+        }
         if let Some(Command::Sessions(Sessions::Edit {
             file,
             direction,
