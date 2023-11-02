@@ -217,6 +217,32 @@ pub enum Sessions {
         #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
         start_suspended: bool,
     },
+    /// Load a plugin
+    #[clap(visible_alias = "r")]
+    Plugin {
+        /// Plugin URL, can either start with http(s), file: or zellij:
+        #[clap(last(true), required(true))]
+        url: String,
+
+        /// Plugin configuration
+        #[clap(short, long, value_parser)]
+        configuration: Option<PluginUserConfiguration>,
+
+        /// Open the new pane in floating mode
+        #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
+        floating: bool,
+
+        /// Open the new pane in place of the current pane, temporarily suspending it
+        #[clap(
+            short,
+            long,
+            value_parser,
+            default_value("false"),
+            takes_value(false),
+            conflicts_with("floating"),
+        )]
+        in_place: bool,
+    },
     /// Edit file with default $EDITOR / $VISUAL
     #[clap(visible_alias = "e")]
     Edit {

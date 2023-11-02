@@ -58,7 +58,9 @@ futures = "0.3.28"
 surf = { version = "2.3.2", default-features = false, features = [
     "curl-client",
 ] }
-openssl-sys = { openssl-sys = "0.9.93", features = ["vendored"] }
+
+[target.'cfg(not(target_family = "wasm"))'.build-dependencies]
+openssl-sys = { version = "0.9.93", features = ["vendored"] }
 
 [dev-dependencies]
 insta = { version = "1.6.0", features = ["backtrace"] }
