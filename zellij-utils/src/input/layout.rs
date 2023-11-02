@@ -333,9 +333,7 @@ impl RunPluginLocation {
                 };
                 Ok(Self::File(path))
             },
-            "https" | "http" => {
-                Ok(Self::Remote(url.as_str().to_owned()))
-            }
+            "https" | "http" => Ok(Self::Remote(url.as_str().to_owned())),
             _ => Err(PluginsConfigError::InvalidUrlScheme(url)),
         }
     }

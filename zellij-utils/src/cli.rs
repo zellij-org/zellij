@@ -239,7 +239,7 @@ pub enum Sessions {
             value_parser,
             default_value("false"),
             takes_value(false),
-            conflicts_with("floating"),
+            conflicts_with("floating")
         )]
         in_place: bool,
     },
