@@ -1,12 +1,11 @@
 use zellij_utils::async_std::task;
 use zellij_utils::consts::{
     session_info_cache_file_name, session_info_folder_for_session, session_layout_cache_file_name,
-    ZELLIJ_SOCK_DIR,
+    ZELLIJ_SOCK_DIR, ZELLIJ_SESSION_INFO_CACHE_DIR
 };
 use zellij_utils::data::{Event, HttpVerb, SessionInfo};
 use zellij_utils::errors::{prelude::*, BackgroundJobContext, ContextType};
 use zellij_utils::surf::{
-    self,
     http::{Method, Url},
     RequestBuilder,
 };
@@ -244,8 +243,48 @@ pub(crate) fn background_jobs_main(bus: Bus<BackgroundJob>) -> Result<()> {
                                     }
                                 }
                             }
+                            let resurrectable_sessions: BTreeMap<String, Duration> = match fs::read_dir(&*ZELLIJ_SESSION_INFO_CACHE_DIR) {
+                                Ok(files_in_session_info_folder) => {
+                                    let files_that_are_folders = files_in_session_info_folder
+                                        .filter_map(|f| f.ok().map(|f| f.path()))
+                                        .filter(|f| f.is_dir());
+                                    files_that_are_folders
+                                        .filter_map(|folder_name| {
+                                            let session_name = folder_name.file_name()?.to_str()?.to_owned();
+                                            if session_infos_on_machine.contains_key(&session_name) {
+                                                // this is not a dead session...
+                                                return None;
+                                            }
+                                            let layout_file_name =
+                                                session_layout_cache_file_name(&session_name);
+                                            let ctime = match std::fs::metadata(&layout_file_name)
+                                                .and_then(|metadata| metadata.created())
+                                            {
+                                                Ok(created) => Some(created),
+                                                Err(e) => {
+                                                    log::error!(
+                                                        "Failed to read created stamp of resurrection file: {:?}",
+                                                        e
+                                                    );
+                                                    None
+                                                },
+                                            };
+                                            let elapsed_duration = ctime
+                                                .map(|ctime| {
+                                                    Duration::from_secs(ctime.elapsed().ok().unwrap_or_default().as_secs())
+                                                })
+                                                .unwrap_or_default();
+                                            Some((session_name, elapsed_duration))
+                                        }).collect()
+                                },
+                                Err(e) => {
+                                    log::error!("Failed to read session info cache dir: {:?}", e);
+                                    BTreeMap::new()
+                                }
+                            };
                             let _ = senders.send_to_screen(ScreenInstruction::UpdateSessionInfos(
                                 session_infos_on_machine,
+                                resurrectable_sessions
                             ));
                             let _ = senders.send_to_screen(ScreenInstruction::DumpLayoutToHd);
                             task::sleep(std::time::Duration::from_millis(SESSION_READ_DURATION))

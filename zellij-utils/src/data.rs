@@ -3,6 +3,7 @@ use crate::input::config::ConversionError;
 use clap::ArgEnum;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::time::Duration;
 use std::fmt;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
@@ -495,7 +496,10 @@ pub enum Event {
     FileSystemDelete(Vec<PathBuf>),
     /// A Result of plugin permission request
     PermissionRequestResult(PermissionStatus),
-    SessionUpdate(Vec<SessionInfo>),
+    SessionUpdate(
+        Vec<SessionInfo>,
+        Vec<(String, Duration)> // resurrectable sessions
+    ),
     RunCommandResult(Option<i32>, Vec<u8>, Vec<u8>, BTreeMap<String, String>), // exit_code, STDOUT, STDERR,
     // context
     WebRequestResult(
@@ -1082,6 +1086,8 @@ pub enum PluginCommand {
     ReportPanic(String),             // stringified panic
     RequestPluginPermissions(Vec<PermissionType>),
     SwitchSession(ConnectToSession),
+    DeleteDeadSession(String), // String -> session name
+    DeleteAllDeadSessions, // String -> session name
     OpenTerminalInPlace(FileToOpen), // only used for the path as cwd
     OpenFileInPlace(FileToOpen),
     OpenCommandPaneInPlace(CommandToRun),

@@ -666,6 +666,22 @@ pub fn switch_session_with_focus(
     unsafe { host_run_plugin_command() };
 }
 
+/// Permanently delete a resurrectable session with the given name
+pub fn delete_dead_session(name: &str) {
+    let plugin_command = PluginCommand::DeleteDeadSession(name.to_owned());
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+/// Permanently delete aall resurrectable sessions on this machine
+pub fn delete_all_dead_sessions() {
+    let plugin_command = PluginCommand::DeleteAllDeadSessions;
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 // Utility Functions
 
 #[allow(unused)]

@@ -27,7 +27,7 @@ use url::Url;
 use crate::{panes::PaneId, screen::ScreenInstruction};
 
 use zellij_utils::{
-    consts::VERSION,
+    consts::{VERSION, ZELLIJ_SESSION_INFO_CACHE_DIR, ZELLIJ_SOCK_DIR},
     data::{
         CommandToRun, Direction, Event, EventType, FileToOpen, InputMode, PluginCommand, PluginIds,
         PluginMessage, Resize, ResizeStrategy,
@@ -224,6 +224,8 @@ fn host_run_plugin_command(env: FunctionEnvMut<ForeignFunctionEnv>) {
                         connect_to_session.tab_position,
                         connect_to_session.pane_id,
                     )?,
+                    PluginCommand::DeleteDeadSession(session_name) => delete_dead_session(session_name)?,
+                    PluginCommand::DeleteAllDeadSessions => delete_all_dead_sessions()?,
                     PluginCommand::OpenFileInPlace(file_to_open) => {
                         open_file_in_place(env, file_to_open)
                     },
@@ -837,6 +839,50 @@ fn switch_session(
     Ok(())
 }
 
+fn delete_dead_session(session_name: String) -> Result<()> {
+    std::fs::remove_dir_all(&*ZELLIJ_SESSION_INFO_CACHE_DIR.join(&session_name)).with_context(|| format!("Failed to delete dead session: {:?}", &session_name))
+}
+
+fn delete_all_dead_sessions () -> Result<()> {
+    use std::os::unix::fs::FileTypeExt;
+    let mut live_sessions = vec![];
+    if let Ok(files) = std::fs::read_dir(&*ZELLIJ_SOCK_DIR) {
+        files.for_each(|file| {
+            if let Ok(file) = file {
+                if let Ok(file_name) = file.file_name().into_string() {
+                    if file.file_type().unwrap().is_socket() {
+                        live_sessions.push(file_name);
+                    }
+                }
+            }
+        });
+    }
+    let dead_sessions: Vec<String> = match std::fs::read_dir(&*ZELLIJ_SESSION_INFO_CACHE_DIR) {
+        Ok(files_in_session_info_folder) => {
+            let files_that_are_folders = files_in_session_info_folder
+                .filter_map(|f| f.ok().map(|f| f.path()))
+                .filter(|f| f.is_dir());
+            files_that_are_folders
+                .filter_map(|folder_name| {
+                    let session_name = folder_name.file_name()?.to_str()?.to_owned();
+                    if live_sessions.contains(&session_name) {
+                        // this is not a dead session...
+                        return None;
+                    }
+                    Some(session_name)
+                }).collect()
+        },
+        Err(e) => {
+            log::error!("Failed to read session info cache dir: {:?}", e);
+            vec![]
+        }
+    };
+    for session in dead_sessions {
+        delete_dead_session(session)?;
+    }
+    Ok(())
+}
+
 fn edit_scrollback(env: &ForeignFunctionEnv) {
     let action = Action::EditScrollback;
     let error_msg = || format!("Failed to edit scrollback");
@@ -1263,6 +1309,8 @@ fn check_command_permission(
         | PluginCommand::RenameTerminalPane(..)
         | PluginCommand::RenamePluginPane(..)
         | PluginCommand::SwitchSession(..)
+        | PluginCommand::DeleteDeadSession(..)
+        | PluginCommand::DeleteAllDeadSessions
         | PluginCommand::RenameTab(..) => PermissionType::ChangeApplicationState,
         _ => return (PermissionStatus::Granted, None),
     };
