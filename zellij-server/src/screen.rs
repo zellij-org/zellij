@@ -560,6 +560,7 @@ pub(crate) struct Screen {
     default_shell: Option<PathBuf>,
     session_infos_on_machine: BTreeMap<String, SessionInfo>, // String is the session name, can also be this session
     styled_underlines: bool,
+    arrow_fonts: bool,
 }
 
 impl Screen {
@@ -580,6 +581,7 @@ impl Screen {
         serialize_pane_viewport: bool,
         scrollback_lines_to_serialize: Option<usize>,
         styled_underlines: bool,
+        arrow_fonts: bool,
     ) -> Self {
         let session_name = mode_info.session_name.clone().unwrap_or_default();
         let session_info = SessionInfo::new(session_name.clone());
@@ -615,6 +617,7 @@ impl Screen {
             serialize_pane_viewport,
             scrollback_lines_to_serialize,
             styled_underlines,
+            arrow_fonts,
         }
     }
 
@@ -1154,6 +1157,7 @@ impl Screen {
             swap_layouts,
             self.default_shell.clone(),
             self.debug,
+            self.arrow_fonts,
         );
         self.tabs.insert(tab_index, tab);
         Ok(())
@@ -2037,7 +2041,7 @@ pub(crate) fn screen_thread_main(
     debug: bool,
     default_layout: Box<Layout>,
 ) -> Result<()> {
-    let capabilities = config_options.simplified_ui;
+    let arrow_fonts = !config_options.simplified_ui.unwrap_or_default();
     let draw_pane_frames = config_options.pane_frames.unwrap_or(true);
     let auto_layout = config_options.auto_layout.unwrap_or(true);
     let session_serialization = config_options.session_serialization.unwrap_or(true);
@@ -2061,7 +2065,8 @@ pub(crate) fn screen_thread_main(
             config_options.default_mode.unwrap_or_default(),
             &client_attributes,
             PluginCapabilities {
-                arrow_fonts: capabilities.unwrap_or_default(),
+                //  ¯\_(ツ)_/¯
+                arrow_fonts: !arrow_fonts,
             },
         ),
         draw_pane_frames,
@@ -2075,6 +2080,7 @@ pub(crate) fn screen_thread_main(
         serialize_pane_viewport,
         scrollback_lines_to_serialize,
         styled_underlines,
+        arrow_fonts,
     );
 
     let mut pending_tab_ids: HashSet<usize> = HashSet::new();

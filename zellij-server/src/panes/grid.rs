@@ -38,6 +38,7 @@ use crate::panes::terminal_character::{
     AnsiCode, CharacterStyles, CharsetIndex, Cursor, CursorShape, StandardCharset,
     TerminalCharacter, EMPTY_TERMINAL_CHARACTER,
 };
+use crate::ui::components::UiComponentParser;
 
 fn get_top_non_canonical_rows(rows: &mut Vec<Row>) -> Vec<Row> {
     let mut index_of_last_non_canonical_row = None;
@@ -369,7 +370,10 @@ pub struct Grid {
     pub focus_event_tracking: bool,
     pub search_results: SearchResult,
     pub pending_clipboard_update: Option<String>,
+    ui_component_bytes: Option<Vec<u8>>,
+    style: Style,
     debug: bool,
+    arrow_fonts: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -457,7 +461,9 @@ impl Grid {
         link_handler: Rc<RefCell<LinkHandler>>,
         character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
         sixel_image_store: Rc<RefCell<SixelImageStore>>,
+        style: Style, // TODO: consolidate this with terminal_emulator_colors
         debug: bool,
+        arrow_fonts: bool,
     ) -> Self {
         let sixel_grid = SixelGrid::new(character_cell_size.clone(), sixel_image_store);
         // make sure this is initialized as it is used internally
@@ -507,7 +513,10 @@ impl Grid {
             search_results: Default::default(),
             sixel_grid,
             pending_clipboard_update: None,
+            ui_component_bytes: None,
+            style,
             debug,
+            arrow_fonts,
         }
     }
     pub fn render_full_viewport(&mut self) {
@@ -2196,6 +2205,9 @@ impl Perform for Grid {
                     params.iter().collect(),
                 );
             }
+        } else if c == 'z' {
+            // UI-component (Zellij internal)
+            self.ui_component_bytes = Some(vec![]);
         }
     }
 
@@ -2205,12 +2217,21 @@ impl Perform for Grid {
             // we explicitly set this to false here because in the context of Sixel, we only render the
             // image when it's done, i.e. in the unhook method
             self.should_render = false;
+        } else if let Some(ui_component_bytes) = self.ui_component_bytes.as_mut() {
+            ui_component_bytes.push(byte);
         }
     }
 
     fn unhook(&mut self) {
         if self.sixel_grid.is_parsing() {
             self.create_sixel_image();
+        } else if let Some(mut ui_component_bytes) = self.ui_component_bytes.take() {
+            let component_bytes = ui_component_bytes.drain(..);
+            let style = self.style.clone();
+            let arrow_fonts = self.arrow_fonts;
+            UiComponentParser::new(self, style, arrow_fonts)
+                .parse(component_bytes.collect())
+                .non_fatal();
         }
         self.mark_for_rerender();
     }
