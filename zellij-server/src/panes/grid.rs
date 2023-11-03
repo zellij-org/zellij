@@ -370,7 +370,6 @@ pub struct Grid {
     pub search_results: SearchResult,
     pub pending_clipboard_update: Option<String>,
     debug: bool,
-    ansi_underlines: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -459,7 +458,6 @@ impl Grid {
         character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
         sixel_image_store: Rc<RefCell<SixelImageStore>>,
         debug: bool,
-        ansi_underlines: bool,
     ) -> Self {
         let sixel_grid = SixelGrid::new(character_cell_size.clone(), sixel_image_store);
         // make sure this is initialized as it is used internally
@@ -510,7 +508,6 @@ impl Grid {
             sixel_grid,
             pending_clipboard_update: None,
             debug,
-            ansi_underlines,
         }
     }
     pub fn render_full_viewport(&mut self) {

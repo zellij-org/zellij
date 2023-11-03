@@ -44,7 +44,6 @@ fn create_pane() -> TerminalPane {
         None,
         None,
         debug,
-        ansi_underlines,
     ); // 0 is the pane index
     let content = read_fixture();
     terminal_pane.handle_pty_bytes(content);

@@ -1154,7 +1154,6 @@ impl Screen {
             swap_layouts,
             self.default_shell.clone(),
             self.debug,
-            self.ansi_underlines,
         );
         self.tabs.insert(tab_index, tab);
         Ok(())

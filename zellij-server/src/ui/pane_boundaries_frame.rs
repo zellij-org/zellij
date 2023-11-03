@@ -13,14 +13,14 @@ fn foreground_color(characters: &str, color: Option<PaletteColor>) -> Vec<Termin
     for character in characters.chars() {
         let styles = match color {
             Some(palette_color) => {
-                let mut styles = CharacterStyles::new(false);
+                let mut styles = CharacterStyles::new();
                 styles.reset_all();
                 styles
                     .foreground(Some(AnsiCode::from(palette_color)))
                     .bold(Some(AnsiCode::On))
             },
             None => {
-                let mut styles = CharacterStyles::new(false);
+                let mut styles = CharacterStyles::new();
                 styles.reset_all();
                 styles.bold(Some(AnsiCode::On))
             },
@@ -40,14 +40,14 @@ fn background_color(characters: &str, color: Option<PaletteColor>) -> Vec<Termin
     for character in characters.chars() {
         let styles = match color {
             Some(palette_color) => {
-                let mut styles = CharacterStyles::new(false);
+                let mut styles = CharacterStyles::new();
                 styles.reset_all();
                 styles
                     .background(Some(AnsiCode::from(palette_color)))
                     .bold(Some(AnsiCode::On))
             },
             None => {
-                let mut styles = CharacterStyles::new(false);
+                let mut styles = CharacterStyles::new();
                 styles.reset_all();
                 styles
             },
@@ -96,7 +96,6 @@ pub struct PaneFrame {
     pane_is_stacked_over: bool,
     pane_is_stacked_under: bool,
     should_draw_pane_frames: bool,
-    ansi_underlines: bool,
 }
 
 impl PaneFrame {
@@ -105,7 +104,6 @@ impl PaneFrame {
         scroll_position: (usize, usize),
         main_title: String,
         frame_params: FrameParams,
-        ansi_underlines: bool,
     ) -> Self {
         PaneFrame {
             geom,
@@ -122,7 +120,6 @@ impl PaneFrame {
             pane_is_stacked_over: frame_params.pane_is_stacked_over,
             pane_is_stacked_under: frame_params.pane_is_stacked_under,
             should_draw_pane_frames: frame_params.should_draw_pane_frames,
-            ansi_underlines,
         }
     }
     pub fn add_exit_status(&mut self, exit_status: Option<i32>) {

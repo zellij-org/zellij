@@ -250,7 +250,6 @@ fn read_from_channel(
                     None,
                     None,
                     debug,
-                    ansi_underlines,
                 ); // 0 is the pane index
                 loop {
                     if !should_keep_running.load(Ordering::SeqCst) {

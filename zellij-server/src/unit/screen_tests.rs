@@ -77,7 +77,6 @@ fn take_snapshots_and_cursor_coordinates_from_render_events<'a>(
         character_cell_size,
         sixel_image_store,
         debug,
-        ansi_underlines,
     );
     let snapshots: Vec<(Option<(usize, usize)>, String)> = all_events
         .filter_map(|server_instruction| {

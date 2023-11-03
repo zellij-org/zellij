@@ -115,7 +115,6 @@ pub struct TerminalPane {
     // held on startup and can possibly be used to display some errors
     pane_frame_color_override: Option<(PaletteColor, Option<String>)>,
     invoked_with: Option<Run>,
-    ansi_underlines: bool,
 }
 
 impl Pane for TerminalPane {
@@ -374,7 +373,6 @@ impl Pane for TerminalPane {
             self.grid.scrollback_position_and_length(),
             pane_title,
             frame_params,
-            self.ansi_underlines,
         );
         if let Some((exit_status, is_first_run, _run_command)) = &self.is_held {
             if *is_first_run {
@@ -788,7 +786,6 @@ impl TerminalPane {
         initial_pane_title: Option<String>,
         invoked_with: Option<Run>,
         debug: bool,
-        ansi_underlines: bool,
     ) -> TerminalPane {
         let initial_pane_title =
             initial_pane_title.unwrap_or_else(|| format!("Pane #{}", pane_index));
@@ -801,7 +798,6 @@ impl TerminalPane {
             character_cell_size,
             sixel_image_store,
             debug,
-            ansi_underlines,
         );
         TerminalPane {
             frame: HashMap::new(),
@@ -826,7 +822,6 @@ impl TerminalPane {
             banner: None,
             pane_frame_color_override: None,
             invoked_with,
-            ansi_underlines,
         }
     }
     pub fn get_x(&self) -> usize {

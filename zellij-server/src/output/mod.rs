@@ -91,7 +91,7 @@ fn serialize_chunks_with_newlines(
     let link_handler = link_handler.map(|l_h| l_h.borrow());
     for character_chunk in character_chunks {
         let chunk_changed_colors = character_chunk.changed_colors();
-        let mut character_styles = CharacterStyles::new(ansi_underlines);
+        let mut character_styles = CharacterStyles::new().enable_styled_underlines(ansi_underlines);
         vte_output.push_str("\n\r");
         let mut chunk_width = character_chunk.x;
         for t_character in character_chunk.terminal_characters.iter() {
@@ -130,7 +130,7 @@ fn serialize_chunks(
     let link_handler = link_handler.map(|l_h| l_h.borrow());
     for character_chunk in character_chunks {
         let chunk_changed_colors = character_chunk.changed_colors();
-        let mut character_styles = CharacterStyles::new(ansi_underlines);
+        let mut character_styles = CharacterStyles::new().enable_styled_underlines(ansi_underlines);
         vte_goto_instruction(character_chunk.x, character_chunk.y, &mut vte_output)
             .with_context(err_context)?;
         let mut chunk_width = character_chunk.x;

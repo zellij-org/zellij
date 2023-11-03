@@ -248,7 +248,6 @@ fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
         (vec![], vec![]),
         None,
         debug,
-        ansi_underlines,
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -323,7 +322,6 @@ fn create_new_tab_with_swap_layouts(
         swap_layouts,
         None,
         debug,
-        ansi_underlines,
     );
     let (
         base_layout,
@@ -400,7 +398,6 @@ fn create_new_tab_with_os_api(
         (vec![], vec![]), // swap layouts
         None,
         debug,
-        ansi_underlines,
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -463,7 +460,6 @@ fn create_new_tab_with_layout(size: Size, default_mode: ModeInfo, layout: &str) 
         (vec![], vec![]), // swap layouts
         None,
         debug,
-        ansi_underlines,
     );
     let pane_ids = tab_layout
         .extract_run_instructions()
@@ -540,7 +536,6 @@ fn create_new_tab_with_mock_pty_writer(
         (vec![], vec![]), // swap layouts
         None,
         debug,
-        ansi_underlines,
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -608,7 +603,6 @@ fn create_new_tab_with_sixel_support(
         (vec![], vec![]), // swap layouts
         None,
         debug,
-        ansi_underlines,
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -655,7 +649,6 @@ fn take_snapshot(ansi_instructions: &str, rows: usize, columns: usize, palette: 
         character_cell_size,
         sixel_image_store,
         debug,
-        ansi_underlines,
     );
     let mut vte_parser = vte::Parser::new();
     for &byte in ansi_instructions.as_bytes() {
@@ -687,7 +680,6 @@ fn take_snapshot_with_sixel(
         character_cell_size,
         sixel_image_store,
         debug,
-        ansi_underlines,
     );
     let mut vte_parser = vte::Parser::new();
     for &byte in ansi_instructions.as_bytes() {
@@ -716,7 +708,6 @@ fn take_snapshot_and_cursor_position(
         Rc::new(RefCell::new(None)),
         sixel_image_store,
         debug,
-        ansi_underlines,
     );
     let mut vte_parser = vte::Parser::new();
     for &byte in ansi_instructions.as_bytes() {

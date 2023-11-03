@@ -33,7 +33,7 @@ pub const RESET_STYLES: CharacterStyles = CharacterStyles {
     dim: Some(AnsiCode::Reset),
     italic: Some(AnsiCode::Reset),
     link_anchor: Some(LinkAnchor::End),
-    enable_ansi_underlines: false,
+    enable_styled_underlines: false,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -147,13 +147,12 @@ pub struct CharacterStyles {
     pub dim: Option<AnsiCode>,
     pub italic: Option<AnsiCode>,
     pub link_anchor: Option<LinkAnchor>,
-    pub enable_ansi_underlines: bool,
+    pub enable_styled_underlines: bool,
 }
 
 impl CharacterStyles {
-    pub fn new(ansi_underlines: bool) -> Self {
+    pub fn new() -> Self {
         Self {
-            enable_ansi_underlines: ansi_underlines,
             ..Default::default()
         }
     }
@@ -213,6 +212,10 @@ impl CharacterStyles {
         self.link_anchor = link_anchor;
         self
     }
+    pub fn enable_styled_underlines(mut self, enabled: bool) -> Self {
+        self.enable_styled_underlines = enabled;
+        self
+    }
     pub fn clear(&mut self) {
         self.foreground = None;
         self.background = None;
@@ -244,7 +247,8 @@ impl CharacterStyles {
         }
 
         // create diff from all changed styles
-        let mut diff = CharacterStyles::new(self.enable_ansi_underlines);
+        let mut diff =
+            CharacterStyles::new().enable_styled_underlines(self.enable_styled_underlines);
 
         if self.foreground != new_styles.foreground {
             diff.foreground = new_styles.foreground;
@@ -516,7 +520,7 @@ impl Display for CharacterStyles {
                 _ => {},
             }
         }
-        if self.enable_ansi_underlines {
+        if self.enable_styled_underlines {
             if let Some(ansi_code) = self.underline_color {
                 match ansi_code {
                     AnsiCode::RgbCode((r, g, b)) => {
@@ -616,7 +620,7 @@ impl Display for CharacterStyles {
         }
 
         if let Some(ansi_code) = self.styled_underline {
-            if self.enable_ansi_underlines {
+            if self.enable_styled_underlines {
                 match ansi_code {
                     AnsiStyledUnderline::Double => {
                         write!(f, "\u{1b}[4:2m")?;

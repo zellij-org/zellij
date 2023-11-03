@@ -50,7 +50,6 @@ macro_rules! get_or_create_grid {
                 $self.character_cell_size.clone(),
                 $self.sixel_image_store.clone(),
                 $self.debug,
-                $self.ansi_underlines,
             );
             grid.hide_cursor();
             grid
@@ -86,7 +85,6 @@ pub(crate) struct PluginPane {
     loading_indication: LoadingIndication,
     requesting_permissions: Option<PluginPermission>,
     debug: bool,
-    ansi_underlines: bool,
 }
 
 impl PluginPane {
@@ -105,7 +103,6 @@ impl PluginPane {
         style: Style,
         invoked_with: Option<Run>,
         debug: bool,
-        ansi_underlines: bool,
     ) -> Self {
         let loading_indication = LoadingIndication::new(title.clone()).with_colors(style.colors);
         let initial_loading_message = loading_indication.to_string();
@@ -137,7 +134,6 @@ impl PluginPane {
             loading_indication,
             requesting_permissions: None,
             debug,
-            ansi_underlines,
         };
         for client_id in currently_connected_clients {
             plugin.handle_plugin_bytes(client_id, initial_loading_message.as_bytes().to_vec());
@@ -353,7 +349,6 @@ impl Pane for PluginPane {
                 grid.scrollback_position_and_length(),
                 pane_title,
                 frame_params,
-                self.ansi_underlines,
             );
             if let Some((frame_color_override, _text)) = self.pane_frame_color_override.as_ref() {
                 frame.override_color(*frame_color_override);
