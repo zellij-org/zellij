@@ -152,9 +152,7 @@ pub struct CharacterStyles {
 
 impl CharacterStyles {
     pub fn new() -> Self {
-        Self {
-            ..Default::default()
-        }
+        Self::default()
     }
     pub fn foreground(mut self, foreground_code: Option<AnsiCode>) -> Self {
         self.foreground = foreground_code;
