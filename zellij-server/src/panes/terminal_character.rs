@@ -33,7 +33,7 @@ pub const RESET_STYLES: CharacterStyles = CharacterStyles {
     dim: Some(AnsiCode::Reset),
     italic: Some(AnsiCode::Reset),
     link_anchor: Some(LinkAnchor::End),
-    enable_styled_underlines: false,
+    styled_underlines_enabled: false,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -147,7 +147,7 @@ pub struct CharacterStyles {
     pub dim: Option<AnsiCode>,
     pub italic: Option<AnsiCode>,
     pub link_anchor: Option<LinkAnchor>,
-    pub enable_styled_underlines: bool,
+    pub styled_underlines_enabled: bool,
 }
 
 impl CharacterStyles {
@@ -213,7 +213,7 @@ impl CharacterStyles {
         self
     }
     pub fn enable_styled_underlines(mut self, enabled: bool) -> Self {
-        self.enable_styled_underlines = enabled;
+        self.styled_underlines_enabled = enabled;
         self
     }
     pub fn clear(&mut self) {
@@ -248,7 +248,7 @@ impl CharacterStyles {
 
         // create diff from all changed styles
         let mut diff =
-            CharacterStyles::new().enable_styled_underlines(self.enable_styled_underlines);
+            CharacterStyles::new().enable_styled_underlines(self.styled_underlines_enabled);
 
         if self.foreground != new_styles.foreground {
             diff.foreground = new_styles.foreground;
@@ -520,7 +520,7 @@ impl Display for CharacterStyles {
                 _ => {},
             }
         }
-        if self.enable_styled_underlines {
+        if self.styled_underlines_enabled {
             if let Some(ansi_code) = self.underline_color {
                 match ansi_code {
                     AnsiCode::RgbCode((r, g, b)) => {
@@ -620,7 +620,7 @@ impl Display for CharacterStyles {
         }
 
         if let Some(ansi_code) = self.styled_underline {
-            if self.enable_styled_underlines {
+            if self.styled_underlines_enabled {
                 match ansi_code {
                     AnsiStyledUnderline::Double => {
                         write!(f, "\u{1b}[4:2m")?;

@@ -235,7 +235,6 @@ fn read_from_channel(
                 })));
                 let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
                 let debug = false;
-                let ansi_underlines = true;
                 let mut terminal_output = TerminalPane::new(
                     0,
                     pane_geom,

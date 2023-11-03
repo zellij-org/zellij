@@ -1438,8 +1438,8 @@ impl Options {
         let scrollback_lines_to_serialize =
             kdl_property_first_arg_as_i64_or_error!(kdl_options, "scrollback_lines_to_serialize")
                 .map(|(v, _)| v as usize);
-        let ansi_underlines =
-            kdl_property_first_arg_as_bool_or_error!(kdl_options, "ansi_underlines")
+        let styled_underlines =
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "styled_underlines")
                 .map(|(v, _)| v);
         Ok(Options {
             simplified_ui,
@@ -1465,7 +1465,7 @@ impl Options {
             session_serialization,
             serialize_pane_viewport,
             scrollback_lines_to_serialize,
-            ansi_underlines,
+            styled_underlines,
         })
     }
 }

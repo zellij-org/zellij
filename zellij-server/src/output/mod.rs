@@ -83,7 +83,7 @@ fn serialize_chunks_with_newlines(
     character_chunks: Vec<CharacterChunk>,
     _sixel_chunks: Option<&Vec<SixelImageChunk>>, // TODO: fix this sometime
     link_handler: Option<&mut Rc<RefCell<LinkHandler>>>,
-    ansi_underlines: bool,
+    styled_underlines: bool,
 ) -> Result<String> {
     let err_context = || "failed to serialize input chunks".to_string();
 
@@ -91,7 +91,8 @@ fn serialize_chunks_with_newlines(
     let link_handler = link_handler.map(|l_h| l_h.borrow());
     for character_chunk in character_chunks {
         let chunk_changed_colors = character_chunk.changed_colors();
-        let mut character_styles = CharacterStyles::new().enable_styled_underlines(ansi_underlines);
+        let mut character_styles =
+            CharacterStyles::new().enable_styled_underlines(styled_underlines);
         vte_output.push_str("\n\r");
         let mut chunk_width = character_chunk.x;
         for t_character in character_chunk.terminal_characters.iter() {
@@ -121,7 +122,7 @@ fn serialize_chunks(
     sixel_chunks: Option<&Vec<SixelImageChunk>>,
     link_handler: Option<&mut Rc<RefCell<LinkHandler>>>,
     sixel_image_store: Option<&mut SixelImageStore>,
-    ansi_underlines: bool,
+    styled_underlines: bool,
 ) -> Result<String> {
     let err_context = || "failed to serialize input chunks".to_string();
 
@@ -130,7 +131,8 @@ fn serialize_chunks(
     let link_handler = link_handler.map(|l_h| l_h.borrow());
     for character_chunk in character_chunks {
         let chunk_changed_colors = character_chunk.changed_colors();
-        let mut character_styles = CharacterStyles::new().enable_styled_underlines(ansi_underlines);
+        let mut character_styles =
+            CharacterStyles::new().enable_styled_underlines(styled_underlines);
         vte_goto_instruction(character_chunk.x, character_chunk.y, &mut vte_output)
             .with_context(err_context)?;
         let mut chunk_width = character_chunk.x;
@@ -247,19 +249,19 @@ pub struct Output {
     sixel_image_store: Rc<RefCell<SixelImageStore>>,
     character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
     floating_panes_stack: Option<FloatingPanesStack>,
-    ansi_underlines: bool,
+    styled_underlines: bool,
 }
 
 impl Output {
     pub fn new(
         sixel_image_store: Rc<RefCell<SixelImageStore>>,
         character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
-        ansi_underlines: bool,
+        styled_underlines: bool,
     ) -> Self {
         Output {
             sixel_image_store,
             character_cell_size,
-            ansi_underlines,
+            styled_underlines,
             ..Default::default()
         }
     }
@@ -422,7 +424,7 @@ impl Output {
                     self.sixel_chunks.get(&client_id),
                     self.link_handler.as_mut(),
                     Some(&mut self.sixel_image_store.borrow_mut()),
-                    self.ansi_underlines,
+                    self.styled_underlines,
                 )
                 .with_context(err_context)?,
             ); // TODO: less allocations?
@@ -875,7 +877,7 @@ impl CharacterChunk {
 pub struct OutputBuffer {
     pub changed_lines: HashSet<usize>, // line index
     pub should_update_all_lines: bool,
-    ansi_underlines: bool,
+    styled_underlines: bool,
 }
 
 impl Default for OutputBuffer {
@@ -883,7 +885,7 @@ impl Default for OutputBuffer {
         OutputBuffer {
             changed_lines: HashSet::new(),
             should_update_all_lines: true, // first time we should do a full render
-            ansi_underlines: true,
+            styled_underlines: true,
         }
     }
 }
@@ -921,7 +923,7 @@ impl OutputBuffer {
             let y = line_index;
             chunks.push(CharacterChunk::new(terminal_characters, x, y));
         }
-        serialize_chunks_with_newlines(chunks, None, None, self.ansi_underlines)
+        serialize_chunks_with_newlines(chunks, None, None, self.styled_underlines)
     }
     pub fn changed_chunks_in_viewport(
         &self,

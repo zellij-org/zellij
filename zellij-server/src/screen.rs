@@ -559,7 +559,7 @@ pub(crate) struct Screen {
     default_layout: Box<Layout>,
     default_shell: Option<PathBuf>,
     session_infos_on_machine: BTreeMap<String, SessionInfo>, // String is the session name, can also be this session
-    ansi_underlines: bool,
+    styled_underlines: bool,
 }
 
 impl Screen {
@@ -579,7 +579,7 @@ impl Screen {
         session_serialization: bool,
         serialize_pane_viewport: bool,
         scrollback_lines_to_serialize: Option<usize>,
-        ansi_underlines: bool,
+        styled_underlines: bool,
     ) -> Self {
         let session_name = mode_info.session_name.clone().unwrap_or_default();
         let session_info = SessionInfo::new(session_name.clone());
@@ -614,7 +614,7 @@ impl Screen {
             session_serialization,
             serialize_pane_viewport,
             scrollback_lines_to_serialize,
-            ansi_underlines,
+            styled_underlines,
         }
     }
 
@@ -1023,7 +1023,7 @@ impl Screen {
         let mut output = Output::new(
             self.sixel_image_store.clone(),
             self.character_cell_size.clone(),
-            self.ansi_underlines,
+            self.styled_underlines,
         );
         let mut tabs_to_close = vec![];
         for (tab_index, tab) in &mut self.tabs {
@@ -2050,7 +2050,7 @@ pub(crate) fn screen_thread_main(
         config_options.copy_clipboard.unwrap_or_default(),
         config_options.copy_on_select.unwrap_or(true),
     );
-    let ansi_underlines = config_options.ansi_underlines.unwrap_or(true);
+    let styled_underlines = config_options.styled_underlines.unwrap_or(true);
 
     let thread_senders = bus.senders.clone();
     let mut screen = Screen::new(
@@ -2074,7 +2074,7 @@ pub(crate) fn screen_thread_main(
         session_serialization,
         serialize_pane_viewport,
         scrollback_lines_to_serialize,
-        ansi_underlines,
+        styled_underlines,
     );
 
     let mut pending_tab_ids: HashSet<usize> = HashSet::new();

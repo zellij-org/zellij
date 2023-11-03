@@ -3591,7 +3591,7 @@ Config {
         session_serialization: None,
         serialize_pane_viewport: None,
         scrollback_lines_to_serialize: None,
-        ansi_underlines: None,
+        styled_underlines: None,
     },
     themes: {
         "other-theme-from-config": Theme {

@@ -224,7 +224,6 @@ fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let debug = false;
-    let ansi_underlines = true;
     let mut tab = Tab::new(
         index,
         position,
@@ -298,7 +297,6 @@ fn create_new_tab_with_swap_layouts(
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let debug = false;
-    let ansi_underlines = true;
     let mut tab = Tab::new(
         index,
         position,
@@ -374,7 +372,6 @@ fn create_new_tab_with_os_api(
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let debug = false;
-    let ansi_underlines = true;
     let mut tab = Tab::new(
         index,
         position,
@@ -436,7 +433,6 @@ fn create_new_tab_with_layout(size: Size, default_mode: ModeInfo, layout: &str) 
     let layout = Layout::from_str(layout, "layout_file_name".into(), None, None).unwrap();
     let (tab_layout, floating_panes_layout) = layout.new_tab();
     let debug = false;
-    let ansi_underlines = true;
     let mut tab = Tab::new(
         index,
         position,
@@ -512,7 +508,6 @@ fn create_new_tab_with_mock_pty_writer(
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let debug = false;
-    let ansi_underlines = true;
     let mut tab = Tab::new(
         index,
         position,
@@ -579,7 +574,6 @@ fn create_new_tab_with_sixel_support(
     let copy_options = CopyOptions::default();
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
-    let ansi_underlines = true;
     let mut tab = Tab::new(
         index,
         position,
@@ -639,7 +633,6 @@ fn take_snapshot(ansi_instructions: &str, rows: usize, columns: usize, palette: 
         height: 21,
     })));
     let debug = false;
-    let ansi_underlines = true;
     let mut grid = Grid::new(
         rows,
         columns,
@@ -670,7 +663,6 @@ fn take_snapshot_with_sixel(
         height: 21,
     })));
     let debug = false;
-    let ansi_underlines = true;
     let mut grid = Grid::new(
         rows,
         columns,
@@ -698,7 +690,6 @@ fn take_snapshot_and_cursor_position(
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
-    let ansi_underlines = true;
     let mut grid = Grid::new(
         rows,
         columns,
