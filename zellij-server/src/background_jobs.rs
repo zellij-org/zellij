@@ -1,12 +1,11 @@
 use zellij_utils::async_std::task;
 use zellij_utils::consts::{
     session_info_cache_file_name, session_info_folder_for_session, session_layout_cache_file_name,
-    ZELLIJ_SOCK_DIR,
+    ZELLIJ_SESSION_INFO_CACHE_DIR, ZELLIJ_SOCK_DIR,
 };
 use zellij_utils::data::{Event, HttpVerb, SessionInfo};
 use zellij_utils::errors::{prelude::*, BackgroundJobContext, ContextType};
 use zellij_utils::surf::{
-    self,
     http::{Method, Url},
     RequestBuilder,
 };
@@ -35,7 +34,7 @@ pub enum BackgroundJob {
     StopPluginLoadingAnimation(u32),                      // u32 - plugin_id
     ReadAllSessionInfosOnMachine,                         // u32 - plugin_id
     ReportSessionInfo(String, SessionInfo),               // String - session name
-    ReportLayoutInfo((String, BTreeMap<String, String>)), // HashMap<file_name, pane_contents>
+    ReportLayoutInfo((String, BTreeMap<String, String>)), // BTreeMap<file_name, pane_contents>
     RunCommand(
         PluginId,
         ClientId,
@@ -163,89 +162,23 @@ pub(crate) fn background_jobs_main(bus: Bus<BackgroundJob>) -> Result<()> {
                     let current_session_layout = current_session_layout.clone();
                     async move {
                         loop {
-                            // write state of current session
-
-                            // write it to disk
                             let current_session_name =
                                 current_session_name.lock().unwrap().to_string();
-                            let metadata_cache_file_name =
-                                session_info_cache_file_name(&current_session_name);
                             let current_session_info = current_session_info.lock().unwrap().clone();
-                            let (current_session_layout, layout_files_to_write) =
+                            let current_session_layout =
                                 current_session_layout.lock().unwrap().clone();
-                            let _wrote_metadata_file = std::fs::create_dir_all(
-                                session_info_folder_for_session(&current_session_name).as_path(),
-                            )
-                            .and_then(|_| std::fs::File::create(metadata_cache_file_name))
-                            .and_then(|mut f| write!(f, "{}", current_session_info.to_string()));
-
-                            if !current_session_layout.is_empty() {
-                                let layout_cache_file_name =
-                                    session_layout_cache_file_name(&current_session_name);
-                                let _wrote_layout_file = std::fs::create_dir_all(
-                                    session_info_folder_for_session(&current_session_name)
-                                        .as_path(),
-                                )
-                                .and_then(|_| std::fs::File::create(layout_cache_file_name))
-                                .and_then(|mut f| write!(f, "{}", current_session_layout))
-                                .and_then(|_| {
-                                    let session_info_folder =
-                                        session_info_folder_for_session(&current_session_name);
-                                    for (external_file_name, external_file_contents) in
-                                        layout_files_to_write
-                                    {
-                                        std::fs::File::create(
-                                            session_info_folder.join(external_file_name),
-                                        )
-                                        .and_then(|mut f| write!(f, "{}", external_file_contents))
-                                        .unwrap_or_else(
-                                            |e| {
-                                                log::error!(
-                                                    "Failed to write layout metadata file: {:?}",
-                                                    e
-                                                );
-                                            },
-                                        );
-                                    }
-                                    Ok(())
-                                });
-                            }
-                            // start a background job (if not already running) that'll periodically read this and other
-                            // sesion infos and report back
-
-                            // read state of all sessions
-                            let mut other_session_names = vec![];
-                            let mut session_infos_on_machine = BTreeMap::new();
-                            // we do this so that the session infos will be actual and we're
-                            // reasonably sure their session is running
-                            if let Ok(files) = fs::read_dir(&*ZELLIJ_SOCK_DIR) {
-                                files.for_each(|file| {
-                                    if let Ok(file) = file {
-                                        if let Ok(file_name) = file.file_name().into_string() {
-                                            if file.file_type().unwrap().is_socket() {
-                                                other_session_names.push(file_name);
-                                            }
-                                        }
-                                    }
-                                });
-                            }
-
-                            for session_name in other_session_names {
-                                let session_cache_file_name =
-                                    session_info_cache_file_name(&session_name);
-                                if let Ok(raw_session_info) =
-                                    fs::read_to_string(&session_cache_file_name)
-                                {
-                                    if let Ok(session_info) = SessionInfo::from_string(
-                                        &raw_session_info,
-                                        &current_session_name,
-                                    ) {
-                                        session_infos_on_machine.insert(session_name, session_info);
-                                    }
-                                }
-                            }
+                            write_session_state_to_disk(
+                                current_session_name.clone(),
+                                current_session_info,
+                                current_session_layout,
+                            );
+                            let session_infos_on_machine =
+                                read_other_live_session_states(&current_session_name);
+                            let resurrectable_sessions =
+                                find_resurrectable_sessions(&session_infos_on_machine);
                             let _ = senders.send_to_screen(ScreenInstruction::UpdateSessionInfos(
                                 session_infos_on_machine,
+                                resurrectable_sessions,
                             ));
                             let _ = senders.send_to_screen(ScreenInstruction::DumpLayoutToHd);
                             task::sleep(std::time::Duration::from_millis(SESSION_READ_DURATION))
@@ -393,6 +326,113 @@ fn job_already_running(
         None => {
             running_jobs.insert(job.clone(), Instant::now());
             false
+        },
+    }
+}
+
+fn write_session_state_to_disk(
+    current_session_name: String,
+    current_session_info: SessionInfo,
+    current_session_layout: (String, BTreeMap<String, String>),
+) {
+    let metadata_cache_file_name = session_info_cache_file_name(&current_session_name);
+    let (current_session_layout, layout_files_to_write) = current_session_layout;
+    let _wrote_metadata_file =
+        std::fs::create_dir_all(session_info_folder_for_session(&current_session_name).as_path())
+            .and_then(|_| std::fs::File::create(metadata_cache_file_name))
+            .and_then(|mut f| write!(f, "{}", current_session_info.to_string()));
+
+    if !current_session_layout.is_empty() {
+        let layout_cache_file_name = session_layout_cache_file_name(&current_session_name);
+        let _wrote_layout_file = std::fs::create_dir_all(
+            session_info_folder_for_session(&current_session_name).as_path(),
+        )
+        .and_then(|_| std::fs::File::create(layout_cache_file_name))
+        .and_then(|mut f| write!(f, "{}", current_session_layout))
+        .and_then(|_| {
+            let session_info_folder = session_info_folder_for_session(&current_session_name);
+            for (external_file_name, external_file_contents) in layout_files_to_write {
+                std::fs::File::create(session_info_folder.join(external_file_name))
+                    .and_then(|mut f| write!(f, "{}", external_file_contents))
+                    .unwrap_or_else(|e| {
+                        log::error!("Failed to write layout metadata file: {:?}", e);
+                    });
+            }
+            Ok(())
+        });
+    }
+}
+
+fn read_other_live_session_states(current_session_name: &str) -> BTreeMap<String, SessionInfo> {
+    let mut other_session_names = vec![];
+    let mut session_infos_on_machine = BTreeMap::new();
+    // we do this so that the session infos will be actual and we're
+    // reasonably sure their session is running
+    if let Ok(files) = fs::read_dir(&*ZELLIJ_SOCK_DIR) {
+        files.for_each(|file| {
+            if let Ok(file) = file {
+                if let Ok(file_name) = file.file_name().into_string() {
+                    if file.file_type().unwrap().is_socket() {
+                        other_session_names.push(file_name);
+                    }
+                }
+            }
+        });
+    }
+
+    for session_name in other_session_names {
+        let session_cache_file_name = session_info_cache_file_name(&session_name);
+        if let Ok(raw_session_info) = fs::read_to_string(&session_cache_file_name) {
+            if let Ok(session_info) =
+                SessionInfo::from_string(&raw_session_info, &current_session_name)
+            {
+                session_infos_on_machine.insert(session_name, session_info);
+            }
+        }
+    }
+    session_infos_on_machine
+}
+
+fn find_resurrectable_sessions(
+    session_infos_on_machine: &BTreeMap<String, SessionInfo>,
+) -> BTreeMap<String, Duration> {
+    match fs::read_dir(&*ZELLIJ_SESSION_INFO_CACHE_DIR) {
+        Ok(files_in_session_info_folder) => {
+            let files_that_are_folders = files_in_session_info_folder
+                .filter_map(|f| f.ok().map(|f| f.path()))
+                .filter(|f| f.is_dir());
+            files_that_are_folders
+                .filter_map(|folder_name| {
+                    let session_name = folder_name.file_name()?.to_str()?.to_owned();
+                    if session_infos_on_machine.contains_key(&session_name) {
+                        // this is not a dead session...
+                        return None;
+                    }
+                    let layout_file_name = session_layout_cache_file_name(&session_name);
+                    let ctime = match std::fs::metadata(&layout_file_name)
+                        .and_then(|metadata| metadata.created())
+                    {
+                        Ok(created) => Some(created),
+                        Err(e) => {
+                            log::error!(
+                                "Failed to read created stamp of resurrection file: {:?}",
+                                e
+                            );
+                            None
+                        },
+                    };
+                    let elapsed_duration = ctime
+                        .map(|ctime| {
+                            Duration::from_secs(ctime.elapsed().ok().unwrap_or_default().as_secs())
+                        })
+                        .unwrap_or_default();
+                    Some((session_name, elapsed_duration))
+                })
+                .collect()
+        },
+        Err(e) => {
+            log::error!("Failed to read session info cache dir: {:?}", e);
+            BTreeMap::new()
         },
     }
 }
