@@ -6,7 +6,7 @@ use zellij_tile::prelude::*;
 use std::collections::BTreeMap;
 
 use ui::{
-    components::{render_controls_line, render_new_session_line, render_prompt, Colors},
+    components::{render_controls_line, render_new_session_line, render_prompt, render_resurrection_toggle, Colors},
     SessionUiInfo,
 };
 
@@ -64,8 +64,7 @@ impl ZellijPlugin for State {
             self.resurrectable_sessions.render(rows, cols);
             return;
         }
-
-
+        render_resurrection_toggle(cols, false);
         render_prompt(
             self.new_session_name.is_some(),
             &self.search_term,
@@ -123,6 +122,8 @@ impl State {
                 self.handle_selection();
             } else if let Some(new_session_name) = self.new_session_name.as_mut() {
                 new_session_name.push(character);
+            } else if self.browsing_resurrection_sessions {
+                self.resurrectable_sessions.handle_character(character);
             } else {
                 self.search_term.push(character);
                 self.sessions
@@ -136,6 +137,8 @@ impl State {
                 } else {
                     new_session_name.pop();
                 }
+            } else if self.browsing_resurrection_sessions {
+                self.resurrectable_sessions.handle_backspace();
             } else {
                 self.search_term.pop();
                 self.sessions
@@ -178,7 +181,7 @@ impl State {
             }
         } else if let Key::Ctrl('d') = key {
             if self.browsing_resurrection_sessions {
-                self.resurrectable_sessions.delete_all_sessions();
+                self.resurrectable_sessions.show_delete_all_sessions_warning();
                 should_render = true;
             }
         } else if let Key::Esc = key {
