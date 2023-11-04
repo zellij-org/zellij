@@ -144,6 +144,9 @@ impl ResurrectableSessions {
         let mut formatted_duration = String::new();
         for part in duration_parts {
             if !part.ends_with('s') {
+                if !formatted_duration.is_empty() {
+                    formatted_duration.push(' ');
+                }
                 formatted_duration.push_str(part);
             }
         };
