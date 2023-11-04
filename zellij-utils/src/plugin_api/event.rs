@@ -1274,7 +1274,7 @@ fn serialize_file_system_delete_event() {
 #[test]
 fn serialize_session_update_event() {
     use prost::Message;
-    let session_update_event = Event::SessionUpdate(Default::default());
+    let session_update_event = Event::SessionUpdate(Default::default(), Default::default());
     let protobuf_event: ProtobufEvent = session_update_event.clone().try_into().unwrap();
     let serialized_protobuf_event = protobuf_event.encode_to_vec();
     let deserialized_protobuf_event: ProtobufEvent =
@@ -1385,8 +1385,9 @@ fn serialize_session_update_event_with_non_default_values() {
         is_current_session: false,
     };
     let session_infos = vec![session_info_1, session_info_2];
+    let resurrectable_sessions = vec![];
 
-    let session_update_event = Event::SessionUpdate(session_infos);
+    let session_update_event = Event::SessionUpdate(session_infos, resurrectable_sessions);
     let protobuf_event: ProtobufEvent = session_update_event.clone().try_into().unwrap();
     let serialized_protobuf_event = protobuf_event.encode_to_vec();
     let deserialized_protobuf_event: ProtobufEvent =
