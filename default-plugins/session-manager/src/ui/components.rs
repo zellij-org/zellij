@@ -491,16 +491,47 @@ pub fn render_resurrection_toggle(cols: usize, resurrection_screen_is_active: bo
     let key_indication_len = key_indication_text.chars().count() + 1;
     let first_ribbon_length = running_sessions_text.chars().count() + 4;
     let second_ribbon_length = exited_sessions_text.chars().count() + 4;
-    let key_indication_x = cols.saturating_sub(key_indication_len + first_ribbon_length + second_ribbon_length);
+    let key_indication_x =
+        cols.saturating_sub(key_indication_len + first_ribbon_length + second_ribbon_length);
     let first_ribbon_x = key_indication_x + key_indication_len;
     let second_ribbon_x = first_ribbon_x + first_ribbon_length;
-    print_text_with_coordinates(Text::new(key_indication_text).color_range(3, ..), key_indication_x, 0, None, None);
+    print_text_with_coordinates(
+        Text::new(key_indication_text).color_range(3, ..),
+        key_indication_x,
+        0,
+        None,
+        None,
+    );
     if resurrection_screen_is_active {
-        print_ribbon_with_coordinates(Text::new(running_sessions_text), first_ribbon_x, 0, None, None);
-        print_ribbon_with_coordinates(Text::new(exited_sessions_text).selected(), second_ribbon_x, 0, None, None);
+        print_ribbon_with_coordinates(
+            Text::new(running_sessions_text),
+            first_ribbon_x,
+            0,
+            None,
+            None,
+        );
+        print_ribbon_with_coordinates(
+            Text::new(exited_sessions_text).selected(),
+            second_ribbon_x,
+            0,
+            None,
+            None,
+        );
     } else {
-        print_ribbon_with_coordinates(Text::new(running_sessions_text).selected(), first_ribbon_x, 0, None, None);
-        print_ribbon_with_coordinates(Text::new(exited_sessions_text), second_ribbon_x, 0, None, None);
+        print_ribbon_with_coordinates(
+            Text::new(running_sessions_text).selected(),
+            first_ribbon_x,
+            0,
+            None,
+            None,
+        );
+        print_ribbon_with_coordinates(
+            Text::new(exited_sessions_text),
+            second_ribbon_x,
+            0,
+            None,
+            None,
+        );
     }
 }
 

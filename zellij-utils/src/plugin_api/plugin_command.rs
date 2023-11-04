@@ -1051,18 +1051,14 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     })),
                 })
             },
-            PluginCommand::DeleteDeadSession(dead_session_name) => {
-                Ok(ProtobufPluginCommand {
-                    name: CommandName::DeleteDeadSession as i32,
-                    payload: Some(Payload::DeleteDeadSessionPayload(dead_session_name)),
-                })
-            },
-            PluginCommand::DeleteAllDeadSessions => {
-                Ok(ProtobufPluginCommand {
-                    name: CommandName::DeleteAllDeadSessions as i32,
-                    payload: None,
-                })
-            },
+            PluginCommand::DeleteDeadSession(dead_session_name) => Ok(ProtobufPluginCommand {
+                name: CommandName::DeleteDeadSession as i32,
+                payload: Some(Payload::DeleteDeadSessionPayload(dead_session_name)),
+            }),
+            PluginCommand::DeleteAllDeadSessions => Ok(ProtobufPluginCommand {
+                name: CommandName::DeleteAllDeadSessions as i32,
+                payload: None,
+            }),
         }
     }
 }

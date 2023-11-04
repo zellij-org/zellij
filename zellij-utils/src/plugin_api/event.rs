@@ -6,7 +6,8 @@ pub use super::generated_api::api::{
         EventType as ProtobufEventType, InputModeKeybinds as ProtobufInputModeKeybinds,
         KeyBind as ProtobufKeyBind, ModeUpdatePayload as ProtobufModeUpdatePayload,
         PaneInfo as ProtobufPaneInfo, PaneManifest as ProtobufPaneManifest,
-        SessionManifest as ProtobufSessionManifest, TabInfo as ProtobufTabInfo, ResurrectableSession as ProtobufResurrectableSession, *,
+        ResurrectableSession as ProtobufResurrectableSession,
+        SessionManifest as ProtobufSessionManifest, TabInfo as ProtobufTabInfo, *,
     },
     input_mode::InputMode as ProtobufInputMode,
     key::Key as ProtobufKey,
@@ -21,9 +22,9 @@ use crate::errors::prelude::*;
 use crate::input::actions::Action;
 
 use std::collections::{HashMap, HashSet};
-use std::time::Duration;
 use std::convert::TryFrom;
 use std::path::PathBuf;
+use std::time::Duration;
 
 impl TryFrom<ProtobufEvent> for Event {
     type Error = &'static str;
@@ -181,10 +182,15 @@ impl TryFrom<ProtobufEvent> for Event {
                     for protobuf_session_info in protobuf_session_update_payload.session_manifests {
                         session_infos.push(SessionInfo::try_from(protobuf_session_info)?);
                     }
-                    for protobuf_resurrectable_session in protobuf_session_update_payload.resurrectable_sessions {
+                    for protobuf_resurrectable_session in
+                        protobuf_session_update_payload.resurrectable_sessions
+                    {
                         resurrectable_sessions.push(protobuf_resurrectable_session.into());
                     }
-                    Ok(Event::SessionUpdate(session_infos, resurrectable_sessions.into()))
+                    Ok(Event::SessionUpdate(
+                        session_infos,
+                        resurrectable_sessions.into(),
+                    ))
                 },
                 _ => Err("Malformed payload for the SessionUpdate Event"),
             },
@@ -899,7 +905,10 @@ impl TryFrom<EventType> for ProtobufEventType {
 
 impl From<ProtobufResurrectableSession> for (String, Duration) {
     fn from(protobuf_resurrectable_session: ProtobufResurrectableSession) -> (String, Duration) {
-        (protobuf_resurrectable_session.name, Duration::from_secs(protobuf_resurrectable_session.creation_time))
+        (
+            protobuf_resurrectable_session.name,
+            Duration::from_secs(protobuf_resurrectable_session.creation_time),
+        )
     }
 }
 
@@ -907,7 +916,7 @@ impl From<(String, Duration)> for ProtobufResurrectableSession {
     fn from(session_name_and_creation_time: (String, Duration)) -> ProtobufResurrectableSession {
         ProtobufResurrectableSession {
             name: session_name_and_creation_time.0,
-            creation_time:  session_name_and_creation_time.1.as_secs()
+            creation_time: session_name_and_creation_time.1.as_secs(),
         }
     }
 }

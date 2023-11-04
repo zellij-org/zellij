@@ -224,7 +224,9 @@ fn host_run_plugin_command(env: FunctionEnvMut<ForeignFunctionEnv>) {
                         connect_to_session.tab_position,
                         connect_to_session.pane_id,
                     )?,
-                    PluginCommand::DeleteDeadSession(session_name) => delete_dead_session(session_name)?,
+                    PluginCommand::DeleteDeadSession(session_name) => {
+                        delete_dead_session(session_name)?
+                    },
                     PluginCommand::DeleteAllDeadSessions => delete_all_dead_sessions()?,
                     PluginCommand::OpenFileInPlace(file_to_open) => {
                         open_file_in_place(env, file_to_open)
@@ -840,10 +842,11 @@ fn switch_session(
 }
 
 fn delete_dead_session(session_name: String) -> Result<()> {
-    std::fs::remove_dir_all(&*ZELLIJ_SESSION_INFO_CACHE_DIR.join(&session_name)).with_context(|| format!("Failed to delete dead session: {:?}", &session_name))
+    std::fs::remove_dir_all(&*ZELLIJ_SESSION_INFO_CACHE_DIR.join(&session_name))
+        .with_context(|| format!("Failed to delete dead session: {:?}", &session_name))
 }
 
-fn delete_all_dead_sessions () -> Result<()> {
+fn delete_all_dead_sessions() -> Result<()> {
     use std::os::unix::fs::FileTypeExt;
     let mut live_sessions = vec![];
     if let Ok(files) = std::fs::read_dir(&*ZELLIJ_SOCK_DIR) {
@@ -870,12 +873,13 @@ fn delete_all_dead_sessions () -> Result<()> {
                         return None;
                     }
                     Some(session_name)
-                }).collect()
+                })
+                .collect()
         },
         Err(e) => {
             log::error!("Failed to read session info cache dir: {:?}", e);
             vec![]
-        }
+        },
     };
     for session in dead_sessions {
         delete_dead_session(session)?;

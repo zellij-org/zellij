@@ -4,8 +4,8 @@ use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::PathBuf;
 use std::rc::Rc;
-use std::time::Duration;
 use std::str;
+use std::time::Duration;
 
 use zellij_utils::data::{
     Direction, PaneManifest, PluginPermission, Resize, ResizeStrategy, SessionInfo,
@@ -304,7 +304,7 @@ pub enum ScreenInstruction {
     BreakPaneLeft(ClientId),
     UpdateSessionInfos(
         BTreeMap<String, SessionInfo>, // String is the session name
-        BTreeMap<String, Duration>, // resurrectable sessions - <name, created>
+        BTreeMap<String, Duration>,    // resurrectable sessions - <name, created>
     ),
     ReplacePane(
         PaneId,
@@ -563,7 +563,7 @@ pub(crate) struct Screen {
     session_infos_on_machine: BTreeMap<String, SessionInfo>, // String is the session name, can
     // also be this session
     resurrectable_sessions: BTreeMap<String, Duration>, // String is the session name, duration is
-                                                        // its creation time
+    // its creation time
     default_layout: Box<Layout>,
     default_shell: Option<PathBuf>,
     arrow_fonts: bool,
@@ -1434,7 +1434,13 @@ impl Screen {
             .send_to_plugin(PluginInstruction::Update(vec![(
                 None,
                 None,
-                Event::SessionUpdate(self.session_infos_on_machine.values().cloned().collect(), self.resurrectable_sessions.iter().map(|(n, c)| (n.clone(), c.clone())).collect()),
+                Event::SessionUpdate(
+                    self.session_infos_on_machine.values().cloned().collect(),
+                    self.resurrectable_sessions
+                        .iter()
+                        .map(|(n, c)| (n.clone(), c.clone()))
+                        .collect(),
+                ),
             )]))
             .context("failed to update session info")?;
         Ok(())

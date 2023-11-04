@@ -1,17 +1,20 @@
-mod session_list;
 mod resurrectable_sessions;
+mod session_list;
 mod ui;
 use zellij_tile::prelude::*;
 
 use std::collections::BTreeMap;
 
 use ui::{
-    components::{render_controls_line, render_new_session_line, render_prompt, render_resurrection_toggle, Colors},
+    components::{
+        render_controls_line, render_new_session_line, render_prompt, render_resurrection_toggle,
+        Colors,
+    },
     SessionUiInfo,
 };
 
-use session_list::SessionList;
 use resurrectable_sessions::ResurrectableSessions;
+use session_list::SessionList;
 
 #[derive(Default)]
 struct State {
@@ -50,7 +53,8 @@ impl ZellijPlugin for State {
                 should_render = true;
             },
             Event::SessionUpdate(session_infos, resurrectable_session_list) => {
-                self.resurrectable_sessions.update(resurrectable_session_list);
+                self.resurrectable_sessions
+                    .update(resurrectable_session_list);
                 self.update_session_infos(session_infos);
                 should_render = true;
             },
@@ -181,7 +185,8 @@ impl State {
             }
         } else if let Key::Ctrl('d') = key {
             if self.browsing_resurrection_sessions {
-                self.resurrectable_sessions.show_delete_all_sessions_warning();
+                self.resurrectable_sessions
+                    .show_delete_all_sessions_warning();
                 should_render = true;
             }
         } else if let Key::Esc = key {
@@ -191,7 +196,9 @@ impl State {
     }
     fn handle_selection(&mut self) {
         if self.browsing_resurrection_sessions {
-            if let Some(session_name_to_resurrect) = self.resurrectable_sessions.get_selected_session_name() {
+            if let Some(session_name_to_resurrect) =
+                self.resurrectable_sessions.get_selected_session_name()
+            {
                 switch_session(Some(&session_name_to_resurrect));
             }
         } else if let Some(new_session_name) = &self.new_session_name {

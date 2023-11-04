@@ -19,7 +19,6 @@ pub struct ResurrectableSessions {
     pub delete_all_dead_sessions_warning: bool,
 }
 
-
 impl ResurrectableSessions {
     pub fn update(&mut self, mut list: Vec<(String, Duration)>) {
         list.sort_by(|a, b| a.1.cmp(&b.1));
@@ -48,15 +47,24 @@ impl ResurrectableSessions {
         let (first_row_index_to_render, last_row_index_to_render) = self.range_to_render(
             table_rows,
             self.search_results.len(),
-            self.selected_search_index
+            self.selected_search_index,
         );
         for i in first_row_index_to_render..last_row_index_to_render {
             if let Some(search_result) = self.search_results.get(i) {
                 let is_selected = Some(i) == self.selected_search_index;
                 let mut table_cells = vec![
-                    self.render_session_name(&search_result.session_name, Some(search_result.indices.clone())),
+                    self.render_session_name(
+                        &search_result.session_name,
+                        Some(search_result.indices.clone()),
+                    ),
                     self.render_ctime(&search_result.ctime),
-                    self.render_more_indication_or_enter_as_needed(i, first_row_index_to_render, last_row_index_to_render, self.search_results.len(), is_selected),
+                    self.render_more_indication_or_enter_as_needed(
+                        i,
+                        first_row_index_to_render,
+                        last_row_index_to_render,
+                        self.search_results.len(),
+                        is_selected,
+                    ),
                 ];
                 if is_selected {
                     table_cells = table_cells.drain(..).map(|t| t.selected()).collect();
@@ -71,7 +79,7 @@ impl ResurrectableSessions {
         let (first_row_index_to_render, last_row_index_to_render) = self.range_to_render(
             table_rows,
             self.all_resurrectable_sessions.len(),
-            self.selected_index
+            self.selected_index,
         );
         for i in first_row_index_to_render..last_row_index_to_render {
             if let Some(session) = self.all_resurrectable_sessions.get(i) {
@@ -79,7 +87,13 @@ impl ResurrectableSessions {
                 let mut table_cells = vec![
                     self.render_session_name(&session.0, None),
                     self.render_ctime(&session.1),
-                    self.render_more_indication_or_enter_as_needed(i, first_row_index_to_render, last_row_index_to_render, self.all_resurrectable_sessions.len(), is_selected),
+                    self.render_more_indication_or_enter_as_needed(
+                        i,
+                        first_row_index_to_render,
+                        last_row_index_to_render,
+                        self.all_resurrectable_sessions.len(),
+                        is_selected,
+                    ),
                 ];
                 if is_selected {
                     table_cells = table_cells.drain(..).map(|t| t.selected()).collect();
@@ -95,14 +109,13 @@ impl ResurrectableSessions {
         }
         let session_count = self.all_resurrectable_sessions.len();
         let session_count_len = session_count.to_string().chars().count();
-        let warning_description_text = format!(
-            "This will delete {} resurrectable sessions",
-            session_count,
-        );
+        let warning_description_text =
+            format!("This will delete {} resurrectable sessions", session_count,);
         let confirmation_text = "Are you sure? (y/n)";
         let warning_y_location = (rows / 2).saturating_sub(1);
         let confirmation_y_location = (rows / 2) + 1;
-        let warning_x_location = columns.saturating_sub(warning_description_text.chars().count()) / 2;
+        let warning_x_location =
+            columns.saturating_sub(warning_description_text.chars().count()) / 2;
         let confirmation_x_location = columns.saturating_sub(confirmation_text.chars().count()) / 2;
         print_text_with_coordinates(
             Text::new(warning_description_text).color_range(0, 17..18 + session_count_len),
@@ -119,10 +132,17 @@ impl ResurrectableSessions {
             None,
         );
     }
-    fn range_to_render(&self, table_rows: usize, results_len: usize, selected_index: Option<usize>) -> (usize, usize) {
+    fn range_to_render(
+        &self,
+        table_rows: usize,
+        results_len: usize,
+        selected_index: Option<usize>,
+    ) -> (usize, usize) {
         if table_rows <= results_len {
             let row_count_to_render = table_rows.saturating_sub(1); // 1 for the title
-            let first_row_index_to_render = selected_index.unwrap_or(0).saturating_sub(row_count_to_render / 2);
+            let first_row_index_to_render = selected_index
+                .unwrap_or(0)
+                .saturating_sub(row_count_to_render / 2);
             let last_row_index_to_render = first_row_index_to_render + row_count_to_render;
             (first_row_index_to_render, last_row_index_to_render)
         } else {
@@ -135,7 +155,7 @@ impl ResurrectableSessions {
         let text = Text::new(&session_name).color_range(0, ..);
         match indices {
             Some(indices) => text.color_indices(1, indices),
-            None => text
+            None => text,
         }
     }
     fn render_ctime(&self, ctime: &Duration) -> Text {
@@ -149,28 +169,41 @@ impl ResurrectableSessions {
                 }
                 formatted_duration.push_str(part);
             }
-        };
+        }
         if formatted_duration.is_empty() {
             formatted_duration.push_str("<1m");
         }
         let duration_len = formatted_duration.chars().count();
         Text::new(format!("Created {} ago", formatted_duration)).color_range(2, 8..9 + duration_len)
     }
-    fn render_more_indication_or_enter_as_needed(&self, i: usize, first_row_index_to_render: usize, last_row_index_to_render: usize, results_len: usize, is_selected: bool) -> Text {
+    fn render_more_indication_or_enter_as_needed(
+        &self,
+        i: usize,
+        first_row_index_to_render: usize,
+        last_row_index_to_render: usize,
+        results_len: usize,
+        is_selected: bool,
+    ) -> Text {
         if is_selected {
             Text::new(format!("<ENTER> - Resurrect Session")).color_range(3, 0..7)
         } else if i == first_row_index_to_render && i > 0 {
             Text::new(format!("+ {} more", first_row_index_to_render)).color_range(1, ..)
-        } else if i == last_row_index_to_render.saturating_sub(1) && last_row_index_to_render < results_len {
-            Text::new(format!("+ {} more", results_len.saturating_sub(last_row_index_to_render))).color_range(1, ..)
+        } else if i == last_row_index_to_render.saturating_sub(1)
+            && last_row_index_to_render < results_len
+        {
+            Text::new(format!(
+                "+ {} more",
+                results_len.saturating_sub(last_row_index_to_render)
+            ))
+            .color_range(1, ..)
         } else {
             Text::new(" ")
         }
     }
     fn render_controls_line(&self, rows: usize) {
-        let controls_line = Text::new(
-            format!("Help: <↓↑> - Navigate, <DEL> - Delete Session, <Ctrl d> - Delete all sessions"),
-        )
+        let controls_line = Text::new(format!(
+            "Help: <↓↑> - Navigate, <DEL> - Delete Session, <Ctrl d> - Delete all sessions"
+        ))
         .color_range(3, 6..10)
         .color_range(3, 23..29)
         .color_range(3, 47..56);
@@ -248,11 +281,13 @@ impl ResurrectableSessions {
                     None
                 }
             })
-            .map(|session_name_and_creation_time| delete_dead_session(&session_name_and_creation_time.0));
+            .map(|session_name_and_creation_time| {
+                delete_dead_session(&session_name_and_creation_time.0)
+            });
     }
     fn delete_all_sessions(&mut self) {
         // optimistic update
-        self.all_resurrectable_sessions= vec![];
+        self.all_resurrectable_sessions = vec![];
         self.delete_all_dead_sessions_warning = false;
         delete_all_dead_sessions();
     }
@@ -277,7 +312,8 @@ impl ResurrectableSessions {
         let mut matches = vec![];
         let matcher = SkimMatcherV2::default().use_cache(true);
         for (session_name, ctime) in &self.all_resurrectable_sessions {
-            if let Some((score, indices)) = matcher.fuzzy_indices(&session_name, &self.search_term) {
+            if let Some((score, indices)) = matcher.fuzzy_indices(&session_name, &self.search_term)
+            {
                 matches.push(SearchResult {
                     session_name: session_name.to_owned(),
                     ctime: ctime.clone(),
