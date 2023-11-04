@@ -20,7 +20,9 @@ use zellij_utils::{
         FloatingPaneLayout, Layout, PluginUserConfiguration, Run, RunPlugin, RunPluginLocation,
         SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,
     },
+    envs::set_session_name,
     position::Position,
+    consts::{ZELLIJ_SOCK_DIR, session_info_folder_for_session},
 };
 
 use crate::background_jobs::BackgroundJob;
@@ -314,6 +316,7 @@ pub enum ScreenInstruction {
         ClientTabIndexOrPaneId,
     ),
     DumpLayoutToHd,
+    RenameSession(String, ClientId), // String -> new name
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -492,6 +495,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::ReplacePane(..) => ScreenContext::ReplacePane,
             ScreenInstruction::NewInPlacePluginPane(..) => ScreenContext::NewInPlacePluginPane,
             ScreenInstruction::DumpLayoutToHd => ScreenContext::DumpLayoutToHd,
+            ScreenInstruction::RenameSession(..) => ScreenContext::RenameSession,
         }
     }
 }
@@ -1516,7 +1520,10 @@ impl Screen {
         }
     }
 
-    pub fn change_mode(&mut self, mode_info: ModeInfo, client_id: ClientId) -> Result<()> {
+    pub fn change_mode(&mut self, mut mode_info: ModeInfo, client_id: ClientId) -> Result<()> {
+        if mode_info.session_name.as_ref() != Some(&self.session_name) {
+            mode_info.session_name = Some(self.session_name.clone());
+        }
         let previous_mode = self
             .mode_info
             .get(&client_id)
@@ -3464,6 +3471,60 @@ pub(crate) fn screen_thread_main(
                 if screen.session_serialization {
                     screen.dump_layout_to_hd()?;
                 }
+            },
+            ScreenInstruction::RenameSession(name, client_id) => {
+                if screen.session_infos_on_machine.contains_key(&name) {
+                    let error_text = "A session by this name already exists.";
+                    log::error!("{}", error_text);
+                    if let Some(os_input) = &mut screen.bus.os_input {
+                        let _ =
+                            os_input.send_to_client(client_id, ServerToClientMsg::LogError(vec![error_text.to_owned()]));
+                    }
+                } else if screen.resurrectable_sessions.contains_key(&name) {
+                    let error_text = "A resurrectable session by this name exists, cannot use this name.";
+                    log::error!("{}", error_text);
+                    if let Some(os_input) = &mut screen.bus.os_input {
+                        let _ =
+                            os_input.send_to_client(client_id, ServerToClientMsg::LogError(vec![error_text.to_owned()]));
+                    }
+                } else {
+                    let err_context = || format!("Failed to rename session");
+                    let old_session_name = screen.session_name.clone();
+
+                    // update state
+                    screen.session_name = name.clone();
+                    screen.default_mode_info.session_name = Some(name.clone());
+                    for (_client_id, mut mode_info) in screen.mode_info.iter_mut() {
+                        mode_info.session_name = Some(name.clone());
+                    }
+                    for (_, tab) in screen.tabs.iter_mut() {
+                        tab.rename_session(name.clone()).with_context(err_context)?;
+                    }
+
+                    // rename socket file
+                    let old_socket_file_path = ZELLIJ_SOCK_DIR.join(&old_session_name);
+                    let new_socket_file_path = ZELLIJ_SOCK_DIR.join(&name);
+                    if let Err(e) = std::fs::rename(old_socket_file_path, new_socket_file_path) {
+                        log::error!("Failed to rename ipc socket: {:?}", e);
+                    }
+
+                    // rename session_info folder (TODO: make this atomic, right now there is a
+                    // chance background_jobs will re-create this folder before it knows the
+                    // session was renamed)
+                    let old_session_info_folder = session_info_folder_for_session(&old_session_name);
+                    let new_session_info_folder = session_info_folder_for_session(&name);
+                    if let Err(e) = std::fs::rename(old_session_info_folder, new_session_info_folder) {
+                        log::error!("Failed to rename session_info folder: {:?}", e);
+                    }
+
+                    // report
+                    screen.log_and_report_session_state()
+                        .with_context(err_context)?;
+
+                    // set the env variable
+                    set_session_name(name);
+                }
+                screen.unblock_input()?;
             },
         }
     }

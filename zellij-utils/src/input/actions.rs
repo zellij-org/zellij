@@ -250,6 +250,7 @@ pub enum Action {
     BreakPane,
     BreakPaneRight,
     BreakPaneLeft,
+    RenameSession(String),
 }
 
 impl Action {
@@ -536,6 +537,9 @@ impl Action {
                     move_to_focused_tab,
                     in_place,
                 )])
+            },
+            CliAction::RenameSession { name } => {
+                Ok(vec![Action::RenameSession(name)])
             },
         }
     }

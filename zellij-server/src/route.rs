@@ -784,6 +784,11 @@ pub(crate) fn route_action(
                 .send_to_screen(ScreenInstruction::BreakPaneLeft(client_id))
                 .with_context(err_context)?;
         },
+        Action::RenameSession(name) => {
+            senders
+                .send_to_screen(ScreenInstruction::RenameSession(name, client_id))
+                .with_context(err_context)?;
+        },
     }
     Ok(should_break)
 }
