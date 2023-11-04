@@ -27,6 +27,7 @@ pub const RESET_STYLES: CharacterStyles = CharacterStyles {
     slow_blink: Some(AnsiCode::Reset),
     fast_blink: Some(AnsiCode::Reset),
     underline: Some(AnsiCode::Reset),
+    undercurl: Some(AnsiCode::Reset),
     bold: Some(AnsiCode::Reset),
     dim: Some(AnsiCode::Reset),
     italic: Some(AnsiCode::Reset),
@@ -128,6 +129,7 @@ pub struct CharacterStyles {
     pub slow_blink: Option<AnsiCode>,
     pub fast_blink: Option<AnsiCode>,
     pub underline: Option<AnsiCode>,
+    pub undercurl: Option<AnsiCode>,
     pub bold: Option<AnsiCode>,
     pub dim: Option<AnsiCode>,
     pub italic: Option<AnsiCode>,
@@ -160,6 +162,10 @@ impl CharacterStyles {
     }
     pub fn underline(mut self, underline_code: Option<AnsiCode>) -> Self {
         self.underline = underline_code;
+        self
+    }
+    pub fn undercurl(mut self, undercurl_code: Option<AnsiCode>) -> Self {
+        self.undercurl = undercurl_code;
         self
     }
     pub fn blink_slow(mut self, slow_blink_code: Option<AnsiCode>) -> Self {
@@ -195,6 +201,7 @@ impl CharacterStyles {
         self.slow_blink = None;
         self.fast_blink = None;
         self.underline = None;
+        self.undercurl = None;
         self.bold = None;
         self.dim = None;
         self.italic = None;
@@ -241,6 +248,9 @@ impl CharacterStyles {
         if self.underline != new_styles.underline {
             diff.underline = new_styles.underline;
         }
+        if self.undercurl != new_styles.undercurl {
+            diff.undercurl = new_styles.undercurl;
+        }
         if self.bold != new_styles.bold {
             diff.bold = new_styles.bold;
         }
@@ -278,6 +288,7 @@ impl CharacterStyles {
         self.dim = Some(AnsiCode::Reset);
         self.italic = Some(AnsiCode::Reset);
         self.underline = Some(AnsiCode::Reset);
+        self.undercurl = Some(AnsiCode::Reset);
         self.slow_blink = Some(AnsiCode::Reset);
         self.fast_blink = Some(AnsiCode::Reset);
         self.reverse = Some(AnsiCode::Reset);
@@ -291,6 +302,8 @@ impl CharacterStyles {
                 [1] => *self = self.bold(Some(AnsiCode::On)),
                 [2] => *self = self.dim(Some(AnsiCode::On)),
                 [3] => *self = self.italic(Some(AnsiCode::On)),
+                [4, 1] => *self = self.underline(Some(AnsiCode::On)),
+                [4, 3] => *self = self.undercurl(Some(AnsiCode::On)),
                 [4] => *self = self.underline(Some(AnsiCode::On)),
                 [5] => *self = self.blink_slow(Some(AnsiCode::On)),
                 [6] => *self = self.blink_fast(Some(AnsiCode::On)),
@@ -303,7 +316,10 @@ impl CharacterStyles {
                     *self = self.dim(Some(AnsiCode::Reset));
                 },
                 [23] => *self = self.italic(Some(AnsiCode::Reset)),
-                [24] => *self = self.underline(Some(AnsiCode::Reset)),
+                [24] => {
+                    *self = self.underline(Some(AnsiCode::Reset));
+                    *self = self.undercurl(Some(AnsiCode::Reset));
+                },
                 [25] => {
                     *self = self.blink_slow(Some(AnsiCode::Reset));
                     *self = self.blink_fast(Some(AnsiCode::Reset));
@@ -415,6 +431,7 @@ impl Display for CharacterStyles {
             && self.fast_blink == Some(AnsiCode::Reset)
             && self.slow_blink == Some(AnsiCode::Reset)
             && self.underline == Some(AnsiCode::Reset)
+            && self.undercurl == Some(AnsiCode::Reset)
             && self.bold == Some(AnsiCode::Reset)
             && self.dim == Some(AnsiCode::Reset)
             && self.italic == Some(AnsiCode::Reset)
@@ -534,6 +551,22 @@ impl Display for CharacterStyles {
                 },
                 AnsiCode::Reset => {
                     write!(f, "\u{1b}[24m")?;
+                },
+                _ => {},
+            }
+        }
+
+        if let Some(ansi_code) = self.undercurl {
+            match ansi_code {
+                AnsiCode::On => {
+                    write!(f, "\u{1b}[4:3m")?;
+                },
+                AnsiCode::Reset => {
+                    write!(f, "\u{1b}[24m")?;
+                    // ⬑ this SGR also clears underline, so reapply it
+                    if let Some(AnsiCode::On) = self.underline {
+                        write!(f, "\u{1b}[4m")?;
+                    }
                 },
                 _ => {},
             }
