@@ -113,6 +113,7 @@ impl WasmBridge {
         run: &RunPlugin,
         tab_index: usize,
         size: Size,
+        cwd: Option<PathBuf>,
         client_id: Option<ClientId>,
     ) -> Result<PluginId> {
         // returns the plugin id
@@ -153,7 +154,7 @@ impl WasmBridge {
             let plugin_map = self.plugin_map.clone();
             let connected_clients = self.connected_clients.clone();
             let path_to_default_shell = self.path_to_default_shell.clone();
-            let zellij_cwd = self.zellij_cwd.clone();
+            let zellij_cwd = cwd.unwrap_or_else(|| self.zellij_cwd.clone());
             let capabilities = self.capabilities.clone();
             let client_attributes = self.client_attributes.clone();
             let default_shell = self.default_shell.clone();
