@@ -237,6 +237,9 @@ fn host_run_plugin_command(env: FunctionEnvMut<ForeignFunctionEnv>) {
                     PluginCommand::OpenCommandPaneInPlace(command_to_run) => {
                         open_command_pane_in_place(env, command_to_run)
                     },
+                    PluginCommand::RenameSession(new_session_name) => {
+                        rename_session(env, new_session_name)
+                    },
                 },
                 (PermissionStatus::Denied, permission) => {
                     log::error!(
@@ -1188,6 +1191,12 @@ fn rename_tab(env: &ForeignFunctionEnv, tab_index: u32, new_name: &str) {
     apply_action!(rename_tab_action, error_msg, env);
 }
 
+fn rename_session(env: &ForeignFunctionEnv, new_session_name: String) {
+    let error_msg = || format!("failed to rename session in plugin {}", env.plugin_env.name());
+    let action = Action::RenameSession(new_session_name);
+    apply_action!(action, error_msg, env);
+}
+
 // Custom panic handler for plugins.
 //
 // This is called when a panic occurs in a plugin. Since most panics will likely originate in the
@@ -1315,6 +1324,7 @@ fn check_command_permission(
         | PluginCommand::SwitchSession(..)
         | PluginCommand::DeleteDeadSession(..)
         | PluginCommand::DeleteAllDeadSessions
+        | PluginCommand::RenameSession(..)
         | PluginCommand::RenameTab(..) => PermissionType::ChangeApplicationState,
         _ => return (PermissionStatus::Granted, None),
     };

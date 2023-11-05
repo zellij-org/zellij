@@ -308,6 +308,9 @@ impl ResurrectableSessions {
         self.search_term.pop();
         self.update_search_term();
     }
+    pub fn has_session(&self, session_name: &str) -> bool {
+        self.all_resurrectable_sessions.iter().any(|s| s.0 == session_name)
+    }
     fn update_search_term(&mut self) {
         let mut matches = vec![];
         let matcher = SkimMatcherV2::default().use_cache(true);
