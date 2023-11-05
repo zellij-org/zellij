@@ -28,7 +28,6 @@ pub const RESET_STYLES: CharacterStyles = CharacterStyles {
     slow_blink: Some(AnsiCode::Reset),
     fast_blink: Some(AnsiCode::Reset),
     underline: Some(AnsiCode::Reset),
-    styled_underline: Some(AnsiStyledUnderline::Reset),
     bold: Some(AnsiCode::Reset),
     dim: Some(AnsiCode::Reset),
     italic: Some(AnsiCode::Reset),
@@ -43,12 +42,11 @@ pub enum AnsiCode {
     NamedColor(NamedColor),
     RgbCode((u8, u8, u8)),
     ColorIndex(u8),
-    Underline,
+    Underline(Option<AnsiStyledUnderline>),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AnsiStyledUnderline {
-    Reset,
     Double,
     Undercurl,
     Underdotted,
@@ -142,7 +140,6 @@ pub struct CharacterStyles {
     pub slow_blink: Option<AnsiCode>,
     pub fast_blink: Option<AnsiCode>,
     pub underline: Option<AnsiCode>,
-    pub styled_underline: Option<AnsiStyledUnderline>,
     pub bold: Option<AnsiCode>,
     pub dim: Option<AnsiCode>,
     pub italic: Option<AnsiCode>,
@@ -180,10 +177,6 @@ impl CharacterStyles {
     }
     pub fn underline(mut self, underline_code: Option<AnsiCode>) -> Self {
         self.underline = underline_code;
-        self
-    }
-    pub fn styled_underline(mut self, styled_underline_code: Option<AnsiStyledUnderline>) -> Self {
-        self.styled_underline = styled_underline_code;
         self
     }
     pub fn blink_slow(mut self, slow_blink_code: Option<AnsiCode>) -> Self {
@@ -224,7 +217,6 @@ impl CharacterStyles {
         self.slow_blink = None;
         self.fast_blink = None;
         self.underline = None;
-        self.styled_underline = None;
         self.bold = None;
         self.dim = None;
         self.italic = None;
@@ -275,9 +267,6 @@ impl CharacterStyles {
         if self.underline != new_styles.underline {
             diff.underline = new_styles.underline;
         }
-        if self.styled_underline != new_styles.styled_underline {
-            diff.styled_underline = new_styles.styled_underline;
-        }
         if self.bold != new_styles.bold {
             diff.bold = new_styles.bold;
         }
@@ -316,7 +305,6 @@ impl CharacterStyles {
         self.dim = Some(AnsiCode::Reset);
         self.italic = Some(AnsiCode::Reset);
         self.underline = Some(AnsiCode::Reset);
-        self.styled_underline = Some(AnsiStyledUnderline::Reset);
         self.slow_blink = Some(AnsiCode::Reset);
         self.fast_blink = Some(AnsiCode::Reset);
         self.reverse = Some(AnsiCode::Reset);
@@ -331,12 +319,27 @@ impl CharacterStyles {
                 [2] => *self = self.dim(Some(AnsiCode::On)),
                 [3] => *self = self.italic(Some(AnsiCode::On)),
                 [4, 0] => *self = self.underline(Some(AnsiCode::Reset)),
-                [4, 1] => *self = self.underline(Some(AnsiCode::Underline)),
-                [4, 2] => *self = self.styled_underline(Some(AnsiStyledUnderline::Double)),
-                [4, 3] => *self = self.styled_underline(Some(AnsiStyledUnderline::Undercurl)),
-                [4, 4] => *self = self.styled_underline(Some(AnsiStyledUnderline::Underdotted)),
-                [4, 5] => *self = self.styled_underline(Some(AnsiStyledUnderline::Underdashed)),
-                [4] => *self = self.underline(Some(AnsiCode::Underline)),
+                [4, 1] => *self = self.underline(Some(AnsiCode::Underline(None))),
+                [4, 2] => {
+                    *self =
+                        self.underline(Some(AnsiCode::Underline(Some(AnsiStyledUnderline::Double))))
+                },
+                [4, 3] => {
+                    *self = self.underline(Some(AnsiCode::Underline(Some(
+                        AnsiStyledUnderline::Undercurl,
+                    ))))
+                },
+                [4, 4] => {
+                    *self = self.underline(Some(AnsiCode::Underline(Some(
+                        AnsiStyledUnderline::Underdotted,
+                    ))))
+                },
+                [4, 5] => {
+                    *self = self.underline(Some(AnsiCode::Underline(Some(
+                        AnsiStyledUnderline::Underdashed,
+                    ))))
+                },
+                [4] => *self = self.underline(Some(AnsiCode::Underline(None))),
                 [5] => *self = self.blink_slow(Some(AnsiCode::On)),
                 [6] => *self = self.blink_fast(Some(AnsiCode::On)),
                 [7] => *self = self.reverse(Some(AnsiCode::On)),
@@ -476,7 +479,6 @@ impl Display for CharacterStyles {
             && self.fast_blink == Some(AnsiCode::Reset)
             && self.slow_blink == Some(AnsiCode::Reset)
             && self.underline == Some(AnsiCode::Reset)
-            && self.styled_underline == Some(AnsiStyledUnderline::Reset)
             && self.bold == Some(AnsiCode::Reset)
             && self.dim == Some(AnsiCode::Reset)
             && self.italic == Some(AnsiCode::Reset)
@@ -607,35 +609,31 @@ impl Display for CharacterStyles {
         // otherwise
         if let Some(ansi_code) = self.underline {
             match ansi_code {
-                AnsiCode::Underline => {
+                AnsiCode::Underline(None) => {
                     write!(f, "\u{1b}[4m")?;
+                },
+                AnsiCode::Underline(Some(styled)) => {
+                    if self.styled_underlines_enabled {
+                        match styled {
+                            AnsiStyledUnderline::Double => {
+                                write!(f, "\u{1b}[4:2m")?;
+                            },
+                            AnsiStyledUnderline::Undercurl => {
+                                write!(f, "\u{1b}[4:3m")?;
+                            },
+                            AnsiStyledUnderline::Underdotted => {
+                                write!(f, "\u{1b}[4:4m")?;
+                            },
+                            AnsiStyledUnderline::Underdashed => {
+                                write!(f, "\u{1b}[4:5m")?;
+                            },
+                        }
+                    }
                 },
                 AnsiCode::Reset => {
                     write!(f, "\u{1b}[24m")?;
                 },
                 _ => {},
-            }
-        }
-
-        if let Some(ansi_code) = self.styled_underline {
-            if self.styled_underlines_enabled {
-                match ansi_code {
-                    AnsiStyledUnderline::Double => {
-                        write!(f, "\u{1b}[4:2m")?;
-                    },
-                    AnsiStyledUnderline::Undercurl => {
-                        write!(f, "\u{1b}[4:3m")?;
-                    },
-                    AnsiStyledUnderline::Underdotted => {
-                        write!(f, "\u{1b}[4:4m")?;
-                    },
-                    AnsiStyledUnderline::Underdashed => {
-                        write!(f, "\u{1b}[4:5m")?;
-                    },
-                    AnsiStyledUnderline::Reset => {
-                        write!(f, "\u{1b}[24m")?;
-                    },
-                }
             }
         }
 
