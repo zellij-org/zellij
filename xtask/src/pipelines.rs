@@ -197,10 +197,11 @@ pub fn publish(sh: &Shell, flags: flags::Publish) -> anyhow::Result<()> {
         None
     };
     let remote = flags.git_remote.unwrap_or("origin".into());
-    let registry = if let Some(registry) = flags.cargo_registry {
+    let registry = if let Some(ref registry) = flags.cargo_registry {
         Some(format!(
             "--registry={}",
             registry
+                .clone()
                 .into_string()
                 .map_err(|registry| anyhow::Error::msg(format!(
                     "failed to convert '{:?}' to valid registry name",
