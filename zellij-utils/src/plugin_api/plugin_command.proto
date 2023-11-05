@@ -84,6 +84,8 @@ enum CommandName {
   OpenFileInPlace = 70;
   RunCommand = 71;
   WebRequest = 72;
+  DeleteDeadSession = 73;
+  DeleteAllDeadSessions = 74;
 }
 
 message PluginCommand {
@@ -132,6 +134,7 @@ message PluginCommand {
     OpenCommandPanePayload open_command_pane_in_place_payload = 42;
     RunCommandPayload run_command_payload = 43;
     WebRequestPayload web_request_payload = 44;
+    string delete_dead_session_payload = 45;
   }
 }
 

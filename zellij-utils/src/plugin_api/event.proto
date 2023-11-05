@@ -70,6 +70,7 @@ message Event {
 
 message SessionUpdatePayload {
   repeated SessionManifest session_manifests = 1;
+  repeated ResurrectableSession resurrectable_sessions = 2;
 }
 
 message RunCommandResultPayload {
@@ -151,6 +152,11 @@ message SessionManifest {
   repeated PaneManifest panes = 3;
   uint32 connected_clients = 4;
   bool is_current_session = 5;
+}
+
+message ResurrectableSession {
+  string name = 1;
+  uint64 creation_time = 2;
 }
 
 message PaneInfo {

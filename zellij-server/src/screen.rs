@@ -5,6 +5,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::str;
+use std::time::Duration;
 
 use zellij_utils::data::{
     Direction, PaneManifest, PluginPermission, Resize, ResizeStrategy, SessionInfo,
@@ -301,7 +302,10 @@ pub enum ScreenInstruction {
     BreakPane(Box<Layout>, Option<TerminalAction>, ClientId),
     BreakPaneRight(ClientId),
     BreakPaneLeft(ClientId),
-    UpdateSessionInfos(BTreeMap<String, SessionInfo>), // String is the session name
+    UpdateSessionInfos(
+        BTreeMap<String, SessionInfo>, // String is the session name
+        BTreeMap<String, Duration>,    // resurrectable sessions - <name, created>
+    ),
     ReplacePane(
         PaneId,
         HoldForCommand,
@@ -556,6 +560,10 @@ pub(crate) struct Screen {
     copy_options: CopyOptions,
     debug: bool,
     session_name: String,
+    session_infos_on_machine: BTreeMap<String, SessionInfo>, // String is the session name, can
+    // also be this session
+    resurrectable_sessions: BTreeMap<String, Duration>, // String is the session name, duration is
+    // its creation time
     default_layout: Box<Layout>,
     default_shell: Option<PathBuf>,
     session_infos_on_machine: BTreeMap<String, SessionInfo>, // String is the session name, can also be this session
@@ -586,6 +594,7 @@ impl Screen {
         let session_name = mode_info.session_name.clone().unwrap_or_default();
         let session_info = SessionInfo::new(session_name.clone());
         let mut session_infos_on_machine = BTreeMap::new();
+        let resurrectable_sessions = BTreeMap::new();
         session_infos_on_machine.insert(session_name.clone(), session_info);
         Screen {
             bus,
@@ -618,6 +627,7 @@ impl Screen {
             scrollback_lines_to_serialize,
             styled_underlines,
             arrow_fonts,
+            resurrectable_sessions,
         }
     }
 
@@ -1420,14 +1430,22 @@ impl Screen {
     pub fn update_session_infos(
         &mut self,
         new_session_infos: BTreeMap<String, SessionInfo>,
+        resurrectable_sessions: BTreeMap<String, Duration>,
     ) -> Result<()> {
         self.session_infos_on_machine = new_session_infos;
+        self.resurrectable_sessions = resurrectable_sessions;
         self.bus
             .senders
             .send_to_plugin(PluginInstruction::Update(vec![(
                 None,
                 None,
-                Event::SessionUpdate(self.session_infos_on_machine.values().cloned().collect()),
+                Event::SessionUpdate(
+                    self.session_infos_on_machine.values().cloned().collect(),
+                    self.resurrectable_sessions
+                        .iter()
+                        .map(|(n, c)| (n.clone(), c.clone()))
+                        .collect(),
+                ),
             )]))
             .context("failed to update session info")?;
         Ok(())
@@ -3426,8 +3444,8 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::BreakPaneLeft(client_id) => {
                 screen.break_pane_to_new_tab(Direction::Left, client_id)?;
             },
-            ScreenInstruction::UpdateSessionInfos(new_session_infos) => {
-                screen.update_session_infos(new_session_infos)?;
+            ScreenInstruction::UpdateSessionInfos(new_session_infos, resurrectable_sessions) => {
+                screen.update_session_infos(new_session_infos, resurrectable_sessions)?;
             },
             ScreenInstruction::ReplacePane(
                 new_pane_id,
