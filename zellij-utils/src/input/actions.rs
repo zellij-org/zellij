@@ -250,6 +250,7 @@ pub enum Action {
     BreakPane,
     BreakPaneRight,
     BreakPaneLeft,
+    RenameSession(String),
 }
 
 impl Action {
@@ -537,6 +538,7 @@ impl Action {
                     in_place,
                 )])
             },
+            CliAction::RenameSession { name } => Ok(vec![Action::RenameSession(name)]),
         }
     }
 }

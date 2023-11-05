@@ -682,6 +682,14 @@ pub fn delete_all_dead_sessions() {
     unsafe { host_run_plugin_command() };
 }
 
+/// Rename the current session
+pub fn rename_session(name: &str) {
+    let plugin_command = PluginCommand::RenameSession(name.to_owned());
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 // Utility Functions
 
 #[allow(unused)]

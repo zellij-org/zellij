@@ -35,6 +35,10 @@ pub fn start_cli_client(os_input: Box<dyn ClientOsApi>, session_name: &str, acti
                 log_lines.iter().for_each(|line| println!("{line}"));
                 process::exit(0);
             },
+            Some((ServerToClientMsg::LogError(log_lines), _)) => {
+                log_lines.iter().for_each(|line| eprintln!("{line}"));
+                process::exit(2);
+            },
             _ => {},
         }
     }

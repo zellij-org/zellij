@@ -838,6 +838,16 @@ impl Tab {
         }
         Ok(())
     }
+    pub fn rename_session(&mut self, new_session_name: String) -> Result<()> {
+        {
+            let mode_infos = &mut self.mode_info.borrow_mut();
+            for (_client_id, mut mode_info) in mode_infos.iter_mut() {
+                mode_info.session_name = Some(new_session_name.clone());
+            }
+            self.default_mode_info.session_name = Some(new_session_name);
+        }
+        self.update_input_modes()
+    }
     pub fn update_input_modes(&mut self) -> Result<()> {
         // this updates all plugins with the client's input mode
         let mode_infos = self.mode_info.borrow();

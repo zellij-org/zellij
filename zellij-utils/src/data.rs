@@ -1104,4 +1104,5 @@ pub enum PluginCommand {
         Vec<u8>,                  // body
         BTreeMap<String, String>, // context
     ),
+    RenameSession(String), // String -> new session name
 }
