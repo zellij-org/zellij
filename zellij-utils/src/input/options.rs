@@ -383,6 +383,7 @@ impl From<CliOptions> for Options {
             session_serialization: opts.session_serialization,
             serialize_pane_viewport: opts.serialize_pane_viewport,
             scrollback_lines_to_serialize: opts.scrollback_lines_to_serialize,
+            styled_underlines: opts.styled_underlines,
             ..Default::default()
         }
     }
