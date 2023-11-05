@@ -20,6 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat(plugins): allow plugins to make web requests behind a permission (https://github.com/zellij-org/zellij/pull/2879)
 * feat(plugins): UI components for plugins (https://github.com/zellij-org/zellij/pull/2898)
 * feat(plugins): load plugins from the web (https://github.com/zellij-org/zellij/pull/2863)
+* feat(terminal): support styled underlines (https://github.com/zellij-org/zellij/pull/2730)
 
 ## [0.38.2] - 2023-09-15
 * fix(terminal): wrap lines in alternate screen mode when adding characters (https://github.com/zellij-org/zellij/pull/2789)
