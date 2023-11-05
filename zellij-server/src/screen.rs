@@ -15,14 +15,14 @@ use zellij_utils::input::command::RunCommand;
 use zellij_utils::input::options::Clipboard;
 use zellij_utils::pane_size::{Size, SizeInPixels};
 use zellij_utils::{
+    consts::{session_info_folder_for_session, ZELLIJ_SOCK_DIR},
+    envs::set_session_name,
     input::command::TerminalAction,
     input::layout::{
         FloatingPaneLayout, Layout, PluginUserConfiguration, Run, RunPlugin, RunPluginLocation,
         SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,
     },
-    envs::set_session_name,
     position::Position,
-    consts::{ZELLIJ_SOCK_DIR, session_info_folder_for_session},
 };
 
 use crate::background_jobs::BackgroundJob;
@@ -3477,15 +3477,20 @@ pub(crate) fn screen_thread_main(
                     let error_text = "A session by this name already exists.";
                     log::error!("{}", error_text);
                     if let Some(os_input) = &mut screen.bus.os_input {
-                        let _ =
-                            os_input.send_to_client(client_id, ServerToClientMsg::LogError(vec![error_text.to_owned()]));
+                        let _ = os_input.send_to_client(
+                            client_id,
+                            ServerToClientMsg::LogError(vec![error_text.to_owned()]),
+                        );
                     }
                 } else if screen.resurrectable_sessions.contains_key(&name) {
-                    let error_text = "A resurrectable session by this name exists, cannot use this name.";
+                    let error_text =
+                        "A resurrectable session by this name exists, cannot use this name.";
                     log::error!("{}", error_text);
                     if let Some(os_input) = &mut screen.bus.os_input {
-                        let _ =
-                            os_input.send_to_client(client_id, ServerToClientMsg::LogError(vec![error_text.to_owned()]));
+                        let _ = os_input.send_to_client(
+                            client_id,
+                            ServerToClientMsg::LogError(vec![error_text.to_owned()]),
+                        );
                     }
                 } else {
                     let err_context = || format!("Failed to rename session");
@@ -3511,14 +3516,18 @@ pub(crate) fn screen_thread_main(
                     // rename session_info folder (TODO: make this atomic, right now there is a
                     // chance background_jobs will re-create this folder before it knows the
                     // session was renamed)
-                    let old_session_info_folder = session_info_folder_for_session(&old_session_name);
+                    let old_session_info_folder =
+                        session_info_folder_for_session(&old_session_name);
                     let new_session_info_folder = session_info_folder_for_session(&name);
-                    if let Err(e) = std::fs::rename(old_session_info_folder, new_session_info_folder) {
+                    if let Err(e) =
+                        std::fs::rename(old_session_info_folder, new_session_info_folder)
+                    {
                         log::error!("Failed to rename session_info folder: {:?}", e);
                     }
 
                     // report
-                    screen.log_and_report_session_state()
+                    screen
+                        .log_and_report_session_state()
                         .with_context(err_context)?;
 
                     // set the env variable

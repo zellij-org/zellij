@@ -1192,7 +1192,12 @@ fn rename_tab(env: &ForeignFunctionEnv, tab_index: u32, new_name: &str) {
 }
 
 fn rename_session(env: &ForeignFunctionEnv, new_session_name: String) {
-    let error_msg = || format!("failed to rename session in plugin {}", env.plugin_env.name());
+    let error_msg = || {
+        format!(
+            "failed to rename session in plugin {}",
+            env.plugin_env.name()
+        )
+    };
     let action = Action::RenameSession(new_session_name);
     apply_action!(action, error_msg, env);
 }

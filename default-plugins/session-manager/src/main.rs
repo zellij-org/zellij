@@ -7,8 +7,8 @@ use std::collections::BTreeMap;
 
 use ui::{
     components::{
-        render_controls_line, render_error, render_renaming_session_screen, render_new_session_line, render_prompt, render_resurrection_toggle,
-        Colors,
+        render_controls_line, render_error, render_new_session_line, render_prompt,
+        render_renaming_session_screen, render_resurrection_toggle, Colors,
     },
     SessionUiInfo,
 };
@@ -266,7 +266,10 @@ impl State {
             } else if self.sessions.has_session(&renaming_session_name) {
                 self.show_error("A session by this name already exists.");
                 return; // s that we don't hide self
-            } else if self.resurrectable_sessions.has_session(&renaming_session_name) {
+            } else if self
+                .resurrectable_sessions
+                .has_session(&renaming_session_name)
+            {
                 self.show_error("A resurrectable session by this name already exists.");
                 return; // s that we don't hide self
             } else {
@@ -304,10 +307,10 @@ impl State {
     }
     fn update_current_session_name_in_ui(&mut self, new_name: &str) {
         if let Some(old_session_name) = self.session_name.as_ref() {
-            self.sessions.update_session_name(&old_session_name, new_name);
+            self.sessions
+                .update_session_name(&old_session_name, new_name);
         }
         self.session_name = Some(new_name.to_owned());
-
     }
     fn update_session_infos(&mut self, session_infos: Vec<SessionInfo>) {
         let session_infos: Vec<SessionUiInfo> = session_infos

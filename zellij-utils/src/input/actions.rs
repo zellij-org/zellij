@@ -538,9 +538,7 @@ impl Action {
                     in_place,
                 )])
             },
-            CliAction::RenameSession { name } => {
-                Ok(vec![Action::RenameSession(name)])
-            },
+            CliAction::RenameSession { name } => Ok(vec![Action::RenameSession(name)]),
         }
     }
 }
