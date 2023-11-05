@@ -566,6 +566,7 @@ pub(crate) struct Screen {
     // its creation time
     default_layout: Box<Layout>,
     default_shell: Option<PathBuf>,
+    styled_underlines: bool,
     arrow_fonts: bool,
 }
 
@@ -586,6 +587,7 @@ impl Screen {
         session_serialization: bool,
         serialize_pane_viewport: bool,
         scrollback_lines_to_serialize: Option<usize>,
+        styled_underlines: bool,
         arrow_fonts: bool,
     ) -> Self {
         let session_name = mode_info.session_name.clone().unwrap_or_default();
@@ -622,6 +624,7 @@ impl Screen {
             session_serialization,
             serialize_pane_viewport,
             scrollback_lines_to_serialize,
+            styled_underlines,
             arrow_fonts,
             resurrectable_sessions,
         }
@@ -1032,6 +1035,7 @@ impl Screen {
         let mut output = Output::new(
             self.sixel_image_store.clone(),
             self.character_cell_size.clone(),
+            self.styled_underlines,
         );
         let mut tabs_to_close = vec![];
         for (tab_index, tab) in &mut self.tabs {
@@ -2067,6 +2071,7 @@ pub(crate) fn screen_thread_main(
         config_options.copy_clipboard.unwrap_or_default(),
         config_options.copy_on_select.unwrap_or(true),
     );
+    let styled_underlines = config_options.styled_underlines.unwrap_or(true);
 
     let thread_senders = bus.senders.clone();
     let mut screen = Screen::new(
@@ -2091,6 +2096,7 @@ pub(crate) fn screen_thread_main(
         session_serialization,
         serialize_pane_viewport,
         scrollback_lines_to_serialize,
+        styled_underlines,
         arrow_fonts,
     );
 

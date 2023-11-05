@@ -2049,7 +2049,7 @@ fn move_floating_pane_with_sixel_image() {
         width: 8,
         height: 21,
     })));
-    let mut output = Output::new(sixel_image_store.clone(), character_cell_size);
+    let mut output = Output::new(sixel_image_store.clone(), character_cell_size, true);
 
     tab.toggle_floating_panes(Some(client_id), None).unwrap();
     tab.new_pane(new_pane_id, None, None, None, Some(client_id))
@@ -2087,7 +2087,7 @@ fn floating_pane_above_sixel_image() {
         width: 8,
         height: 21,
     })));
-    let mut output = Output::new(sixel_image_store.clone(), character_cell_size);
+    let mut output = Output::new(sixel_image_store.clone(), character_cell_size, true);
 
     tab.toggle_floating_panes(Some(client_id), None).unwrap();
     tab.new_pane(new_pane_id, None, None, None, Some(client_id))

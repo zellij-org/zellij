@@ -244,6 +244,7 @@ fn create_new_screen(size: Size) -> Screen {
     let scrollback_lines_to_serialize = None;
 
     let debug = false;
+    let styled_underlines = true;
     let arrow_fonts = true;
     let screen = Screen::new(
         bus,
@@ -260,6 +261,7 @@ fn create_new_screen(size: Size) -> Screen {
         session_serialization,
         serialize_pane_viewport,
         scrollback_lines_to_serialize,
+        styled_underlines,
         arrow_fonts,
     );
     screen
