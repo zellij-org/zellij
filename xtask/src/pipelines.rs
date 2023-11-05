@@ -212,6 +212,9 @@ pub fn publish(sh: &Shell, flags: flags::Publish) -> anyhow::Result<()> {
         None
     };
     let registry = registry.as_ref();
+    if flags.no_push && flags.cargo_registry.is_none() {
+        anyhow::bail!("flag '--no-push' can only be used with '--cargo-registry'");
+    }
 
     sh.change_dir(crate::project_root());
     let cargo = crate::cargo().context(err_context)?;
@@ -304,6 +307,8 @@ pub fn publish(sh: &Shell, flags: flags::Publish) -> anyhow::Result<()> {
         // Push commit and tag
         if flags.dry_run {
             println!("Skipping push due to dry-run");
+        } else if flags.no_push {
+            println!("Skipping push due to no-push");
         } else {
             cmd!(sh, "git push --atomic {remote} main v{version}")
                 .run()
