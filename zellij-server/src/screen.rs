@@ -566,7 +566,6 @@ pub(crate) struct Screen {
     // its creation time
     default_layout: Box<Layout>,
     default_shell: Option<PathBuf>,
-    session_infos_on_machine: BTreeMap<String, SessionInfo>, // String is the session name, can also be this session
     styled_underlines: bool,
     arrow_fonts: bool,
 }
