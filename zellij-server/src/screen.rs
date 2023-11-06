@@ -3146,16 +3146,19 @@ pub(crate) fn screen_thread_main(
                 let size = Size::default();
                 let should_float = Some(false);
                 let should_be_opened_in_place = false;
-                screen.bus.senders.send_to_plugin(PluginInstruction::Load(
-                    should_float,
-                    should_be_opened_in_place,
-                    pane_title,
-                    run_plugin,
-                    *tab_index,
-                    None, // pane it to replace
-                    client_id,
-                    size,
-                ))?;
+                screen
+                    .bus
+                    .senders
+                    .send_to_pty(PtyInstruction::FillPluginCwd(
+                        should_float,
+                        should_be_opened_in_place,
+                        pane_title,
+                        run_plugin,
+                        *tab_index,
+                        None,
+                        client_id,
+                        size,
+                    ))?;
             },
             ScreenInstruction::NewFloatingPluginPane(run_plugin, pane_title, client_id) => {
                 match screen.active_tab_indices.values().next() {
@@ -3163,16 +3166,19 @@ pub(crate) fn screen_thread_main(
                         let size = Size::default();
                         let should_float = Some(true);
                         let should_be_opened_in_place = false;
-                        screen.bus.senders.send_to_plugin(PluginInstruction::Load(
-                            should_float,
-                            should_be_opened_in_place,
-                            pane_title,
-                            run_plugin,
-                            *tab_index,
-                            None, // pane id to replace
-                            client_id,
-                            size,
-                        ))?;
+                        screen
+                            .bus
+                            .senders
+                            .send_to_pty(PtyInstruction::FillPluginCwd(
+                                should_float,
+                                should_be_opened_in_place,
+                                pane_title,
+                                run_plugin,
+                                *tab_index,
+                                None,
+                                client_id,
+                                size,
+                            ))?;
                     },
                     None => {
                         log::error!(
@@ -3191,16 +3197,19 @@ pub(crate) fn screen_thread_main(
                     let size = Size::default();
                     let should_float = None;
                     let should_be_in_place = true;
-                    screen.bus.senders.send_to_plugin(PluginInstruction::Load(
-                        should_float,
-                        should_be_in_place,
-                        pane_title,
-                        run_plugin,
-                        *tab_index,
-                        Some(pane_id_to_replace),
-                        client_id,
-                        size,
-                    ))?;
+                    screen
+                        .bus
+                        .senders
+                        .send_to_pty(PtyInstruction::FillPluginCwd(
+                            should_float,
+                            should_be_in_place,
+                            pane_title,
+                            run_plugin,
+                            *tab_index,
+                            Some(pane_id_to_replace),
+                            client_id,
+                            size,
+                        ))?;
                 },
                 None => {
                     log::error!(
@@ -3212,6 +3221,7 @@ pub(crate) fn screen_thread_main(
                 let tab_index = screen.active_tab_indices.values().next().unwrap_or(&1);
                 let size = Size::default();
                 let should_float = Some(false);
+
                 screen
                     .bus
                     .senders
@@ -3320,12 +3330,14 @@ pub(crate) fn screen_thread_main(
                 should_open_in_place,
                 pane_id_to_replace,
                 client_id,
-            ) => {
-                match pane_id_to_replace {
-                    Some(pane_id_to_replace) => match screen.active_tab_indices.values().next() {
-                        Some(tab_index) => {
-                            let size = Size::default();
-                            screen.bus.senders.send_to_plugin(PluginInstruction::Load(
+            ) => match pane_id_to_replace {
+                Some(pane_id_to_replace) => match screen.active_tab_indices.values().next() {
+                    Some(tab_index) => {
+                        let size = Size::default();
+                        screen
+                            .bus
+                            .senders
+                            .send_to_pty(PtyInstruction::FillPluginCwd(
                                 Some(should_float),
                                 should_open_in_place,
                                 None,
@@ -3335,54 +3347,56 @@ pub(crate) fn screen_thread_main(
                                 client_id,
                                 size,
                             ))?;
-                        },
-                        None => {
-                            log::error!(
-                                    "Could not find an active tab - is there at least 1 connected user?"
-                                );
-                        },
                     },
                     None => {
-                        let client_id = if screen.active_tab_indices.contains_key(&client_id) {
-                            Some(client_id)
-                        } else {
-                            screen.get_first_client_id()
-                        };
-                        let client_id_and_focused_tab = client_id.and_then(|client_id| {
-                            screen
-                                .active_tab_indices
-                                .get(&client_id)
-                                .map(|tab_index| (*tab_index, client_id))
-                        });
-                        match client_id_and_focused_tab {
-                            Some((tab_index, client_id)) => {
-                                if screen.focus_plugin_pane(
-                                    &run_plugin,
-                                    should_float,
-                                    move_to_focused_tab,
-                                    client_id,
-                                )? {
-                                    screen.render()?;
-                                    screen.log_and_report_session_state()?;
-                                } else {
-                                    screen.bus.senders.send_to_plugin(PluginInstruction::Load(
+                        log::error!(
+                            "Could not find an active tab - is there at least 1 connected user?"
+                        );
+                    },
+                },
+                None => {
+                    let client_id = if screen.active_tab_indices.contains_key(&client_id) {
+                        Some(client_id)
+                    } else {
+                        screen.get_first_client_id()
+                    };
+                    let client_id_and_focused_tab = client_id.and_then(|client_id| {
+                        screen
+                            .active_tab_indices
+                            .get(&client_id)
+                            .map(|tab_index| (*tab_index, client_id))
+                    });
+                    match client_id_and_focused_tab {
+                        Some((tab_index, client_id)) => {
+                            if screen.focus_plugin_pane(
+                                &run_plugin,
+                                should_float,
+                                move_to_focused_tab,
+                                client_id,
+                            )? {
+                                screen.render()?;
+                                screen.log_and_report_session_state()?;
+                            } else {
+                                screen
+                                    .bus
+                                    .senders
+                                    .send_to_pty(PtyInstruction::FillPluginCwd(
                                         Some(should_float),
                                         should_open_in_place,
                                         None,
                                         run_plugin,
                                         tab_index,
-                                        None, // pane id to replace
+                                        None,
                                         client_id,
                                         Size::default(),
                                     ))?;
-                                }
-                            },
-                            None => log::error!(
-                                "No connected clients found - cannot load or focus plugin"
-                            ),
-                        }
-                    },
-                }
+                            }
+                        },
+                        None => {
+                            log::error!("No connected clients found - cannot load or focus plugin")
+                        },
+                    }
+                },
             },
             ScreenInstruction::SuppressPane(pane_id, client_id) => {
                 let all_tabs = screen.get_tabs_mut();

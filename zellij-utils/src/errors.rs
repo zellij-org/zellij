@@ -367,6 +367,7 @@ pub enum PtyContext {
     SpawnInPlaceTerminal,
     DumpLayout,
     LogLayoutToHd,
+    FillPluginCwd,
     Exit,
 }
 

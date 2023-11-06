@@ -2581,14 +2581,14 @@ pub fn send_cli_launch_or_focus_plugin_action() {
     };
     let client_id = 10; // fake client id should not appear in the screen's state
     let mut mock_screen = MockScreen::new(size);
-    let plugin_receiver = mock_screen.plugin_receiver.take().unwrap();
+    let pty_receiver = mock_screen.pty_receiver.take().unwrap();
     let session_metadata = mock_screen.clone_session_metadata();
     let screen_thread = mock_screen.run(None, vec![]);
-    let received_plugin_instructions = Arc::new(Mutex::new(vec![]));
-    let plugin_thread = log_actions_in_thread!(
-        received_plugin_instructions,
-        PluginInstruction::Exit,
-        plugin_receiver
+    let received_pty_instructions = Arc::new(Mutex::new(vec![]));
+    let pty_thread = log_actions_in_thread!(
+        received_pty_instructions,
+        PtyInstruction::Exit,
+        pty_receiver
     );
     let cli_action = CliAction::LaunchOrFocusPlugin {
         floating: true,
@@ -2599,19 +2599,19 @@ pub fn send_cli_launch_or_focus_plugin_action() {
     };
     send_cli_action_to_server(&session_metadata, cli_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
-    mock_screen.teardown(vec![plugin_thread, screen_thread]);
+    mock_screen.teardown(vec![pty_thread, screen_thread]);
 
-    let plugin_load_instruction = received_plugin_instructions
+    let pty_fill_plugin_cwd_instruction = received_pty_instructions
         .lock()
         .unwrap()
         .iter()
         .find(|instruction| match instruction {
-            PluginInstruction::Load(..) => true,
+            PtyInstruction::FillPluginCwd(..) => true,
             _ => false,
         })
         .cloned();
 
-    assert_snapshot!(format!("{:#?}", plugin_load_instruction));
+    assert_snapshot!(format!("{:#?}", pty_fill_plugin_cwd_instruction));
 }
 
 #[test]
