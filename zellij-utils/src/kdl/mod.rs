@@ -505,6 +505,7 @@ impl Action {
                     })?;
                 Ok(Action::Search(search_direction))
             },
+            "RenameSession" => Ok(Action::RenameSession(string)),
             _ => Err(ConfigError::new_kdl_error(
                 format!("Unsupported action: {}", action_name),
                 action_node.span().offset(),
@@ -957,6 +958,11 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
             "BreakPane" => Ok(Action::BreakPane),
             "BreakPaneRight" => Ok(Action::BreakPaneRight),
             "BreakPaneLeft" => Ok(Action::BreakPaneLeft),
+            "RenameSession" => parse_kdl_action_char_or_string_arguments!(
+                action_name,
+                action_arguments,
+                kdl_action
+            ),
             _ => Err(ConfigError::new_kdl_error(
                 format!("Unsupported action: {}", action_name).into(),
                 kdl_action.span().offset(),
@@ -1438,6 +1444,9 @@ impl Options {
         let scrollback_lines_to_serialize =
             kdl_property_first_arg_as_i64_or_error!(kdl_options, "scrollback_lines_to_serialize")
                 .map(|(v, _)| v as usize);
+        let styled_underlines =
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "styled_underlines")
+                .map(|(v, _)| v);
         Ok(Options {
             simplified_ui,
             theme,
@@ -1462,6 +1471,7 @@ impl Options {
             session_serialization,
             serialize_pane_viewport,
             scrollback_lines_to_serialize,
+            styled_underlines,
         })
     }
 }

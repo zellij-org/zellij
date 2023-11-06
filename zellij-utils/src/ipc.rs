@@ -106,6 +106,7 @@ pub enum ServerToClientMsg {
     Connected,
     ActiveClients(Vec<ClientId>),
     Log(Vec<String>),
+    LogError(Vec<String>),
     SwitchSession(ConnectToSession),
 }
 

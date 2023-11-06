@@ -55,6 +55,8 @@ pub mod event {
 pub struct SessionUpdatePayload {
     #[prost(message, repeated, tag = "1")]
     pub session_manifests: ::prost::alloc::vec::Vec<SessionManifest>,
+    #[prost(message, repeated, tag = "2")]
+    pub resurrectable_sessions: ::prost::alloc::vec::Vec<ResurrectableSession>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -170,6 +172,14 @@ pub struct SessionManifest {
     pub connected_clients: u32,
     #[prost(bool, tag = "5")]
     pub is_current_session: bool,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ResurrectableSession {
+    #[prost(string, tag = "1")]
+    pub name: ::prost::alloc::string::String,
+    #[prost(uint64, tag = "2")]
+    pub creation_time: u64,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

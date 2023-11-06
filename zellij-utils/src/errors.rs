@@ -347,6 +347,7 @@ pub enum ScreenContext {
     ReplacePane,
     NewInPlacePluginPane,
     DumpLayoutToHd,
+    RenameSession,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.
@@ -366,6 +367,7 @@ pub enum PtyContext {
     SpawnInPlaceTerminal,
     DumpLayout,
     LogLayoutToHd,
+    FillPluginCwd,
     Exit,
 }
 
@@ -404,6 +406,7 @@ pub enum ClientContext {
     Connected,
     ActiveClients,
     Log,
+    LogError,
     OwnClientId,
     StartedParsingStdinQuery,
     DoneParsingStdinQuery,

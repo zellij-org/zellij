@@ -49,6 +49,7 @@ pub(crate) enum ClientInstruction {
     StartedParsingStdinQuery,
     DoneParsingStdinQuery,
     Log(Vec<String>),
+    LogError(Vec<String>),
     SwitchSession(ConnectToSession),
     SetSynchronizedOutput(Option<SyncOutput>),
 }
@@ -65,6 +66,7 @@ impl From<ServerToClientMsg> for ClientInstruction {
             ServerToClientMsg::Connected => ClientInstruction::Connected,
             ServerToClientMsg::ActiveClients(clients) => ClientInstruction::ActiveClients(clients),
             ServerToClientMsg::Log(log_lines) => ClientInstruction::Log(log_lines),
+            ServerToClientMsg::LogError(log_lines) => ClientInstruction::LogError(log_lines),
             ServerToClientMsg::SwitchSession(connect_to_session) => {
                 ClientInstruction::SwitchSession(connect_to_session)
             },
@@ -83,6 +85,7 @@ impl From<&ClientInstruction> for ClientContext {
             ClientInstruction::Connected => ClientContext::Connected,
             ClientInstruction::ActiveClients(_) => ClientContext::ActiveClients,
             ClientInstruction::Log(_) => ClientContext::Log,
+            ClientInstruction::LogError(_) => ClientContext::LogError,
             ClientInstruction::StartedParsingStdinQuery => ClientContext::StartedParsingStdinQuery,
             ClientInstruction::DoneParsingStdinQuery => ClientContext::DoneParsingStdinQuery,
             ClientInstruction::SwitchSession(..) => ClientContext::SwitchSession,
@@ -486,6 +489,11 @@ pub fn start_client(
             ClientInstruction::Log(lines_to_log) => {
                 for line in lines_to_log {
                     log::info!("{line}");
+                }
+            },
+            ClientInstruction::LogError(lines_to_log) => {
+                for line in lines_to_log {
+                    log::error!("{line}");
                 }
             },
             ClientInstruction::SwitchSession(connect_to_session) => {

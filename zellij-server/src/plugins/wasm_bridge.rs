@@ -4,6 +4,7 @@ use crate::plugins::plugin_map::{AtomicEvent, PluginEnv, PluginMap, RunningPlugi
 use crate::plugins::plugin_worker::MessageToWorker;
 use crate::plugins::watch_filesystem::watch_filesystem;
 use crate::plugins::zellij_exports::{wasi_read_string, wasi_write_object};
+use highway::{HighwayHash, PortableHash};
 use log::info;
 use std::{
     collections::{HashMap, HashSet},
@@ -14,7 +15,10 @@ use std::{
 use wasmer::{Module, Store, Value};
 use zellij_utils::async_channel::Sender;
 use zellij_utils::async_std::task::{self, JoinHandle};
+use zellij_utils::consts::ZELLIJ_CACHE_DIR;
 use zellij_utils::data::{PermissionStatus, PermissionType};
+use zellij_utils::downloader::download::Download;
+use zellij_utils::downloader::Downloader;
 use zellij_utils::input::permission::PermissionCache;
 use zellij_utils::notify_debouncer_full::{notify::RecommendedWatcher, Debouncer, FileIdMap};
 use zellij_utils::plugin_api::event::ProtobufEvent;
@@ -109,6 +113,7 @@ impl WasmBridge {
         run: &RunPlugin,
         tab_index: usize,
         size: Size,
+        cwd: Option<PathBuf>,
         client_id: Option<ClientId>,
     ) -> Result<PluginId> {
         // returns the plugin id
@@ -129,7 +134,7 @@ impl WasmBridge {
 
         let plugin_id = self.next_plugin_id;
 
-        let plugin = self
+        let mut plugin = self
             .plugins
             .get(run)
             .with_context(|| format!("failed to resolve plugin {run:?}"))
@@ -149,7 +154,7 @@ impl WasmBridge {
             let plugin_map = self.plugin_map.clone();
             let connected_clients = self.connected_clients.clone();
             let path_to_default_shell = self.path_to_default_shell.clone();
-            let zellij_cwd = self.zellij_cwd.clone();
+            let zellij_cwd = cwd.unwrap_or_else(|| self.zellij_cwd.clone());
             let capabilities = self.capabilities.clone();
             let client_attributes = self.client_attributes.clone();
             let default_shell = self.default_shell.clone();
@@ -158,6 +163,33 @@ impl WasmBridge {
                 let _ =
                     senders.send_to_background_jobs(BackgroundJob::AnimatePluginLoading(plugin_id));
                 let mut loading_indication = LoadingIndication::new(plugin_name.clone());
+
+                if let RunPluginLocation::Remote(url) = &plugin.location {
+                    let download = Download::from(url);
+
+                    let hash: String = PortableHash::default()
+                        .hash128(download.url.as_bytes())
+                        .iter()
+                        .map(ToString::to_string)
+                        .collect();
+
+                    let plugin_directory = ZELLIJ_CACHE_DIR.join(hash);
+
+                    // The plugin path is determined by the hash of the plugin URL in the cache directory.
+                    plugin.path = plugin_directory.join(&download.file_name);
+
+                    let downloader = Downloader::new(plugin_directory);
+                    match downloader.fetch(&download).await {
+                        Ok(_) => {},
+                        Err(e) => handle_plugin_loading_failure(
+                            &senders,
+                            plugin_id,
+                            &mut loading_indication,
+                            e,
+                        ),
+                    }
+                }
+
                 match PluginLoader::start_plugin(
                     plugin_id,
                     client_id,
