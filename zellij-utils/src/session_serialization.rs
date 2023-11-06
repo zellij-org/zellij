@@ -107,12 +107,14 @@ fn stringify_tab(
     match get_tiled_panes_layout_from_panegeoms(tiled_panes, None) {
         Some(tiled_panes_layout) => {
             let floating_panes_layout = get_floating_panes_layout_from_panegeoms(floating_panes);
-            let tiled_panes =
-                if &tiled_panes_layout.children_split_direction != &SplitDirection::default() || tiled_panes_layout.children_are_stacked {
-                    vec![tiled_panes_layout]
-                } else {
-                    tiled_panes_layout.children
-                };
+            let tiled_panes = if &tiled_panes_layout.children_split_direction
+                != &SplitDirection::default()
+                || tiled_panes_layout.children_are_stacked
+            {
+                vec![tiled_panes_layout]
+            } else {
+                tiled_panes_layout.children
+            };
             let mut tab_attributes = vec![format!("name=\"{}\"", tab_name,)];
             if is_focused {
                 tab_attributes.push(format!("focus=true"));
@@ -560,7 +562,7 @@ fn kdl_string_from_floating_pane(
         layout.focus,
         &layout.pane_initial_contents,
         pane_contents,
-        has_children
+        has_children,
     );
     kdl_string.push_str(" {\n");
     stringify_start_suspended(&command, &mut kdl_string);
