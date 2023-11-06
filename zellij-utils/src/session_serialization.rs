@@ -104,12 +104,11 @@ fn stringify_tab(
     pane_contents: &mut BTreeMap<String, String>,
 ) -> Option<String> {
     let mut kdl_string = String::new();
-    // let tiled_panes_layout = get_tiled_panes_layout_from_panegeoms(tiled_panes, None);
     match get_tiled_panes_layout_from_panegeoms(tiled_panes, None) {
         Some(tiled_panes_layout) => {
             let floating_panes_layout = get_floating_panes_layout_from_panegeoms(floating_panes);
             let tiled_panes =
-                if &tiled_panes_layout.children_split_direction != &SplitDirection::default() {
+                if &tiled_panes_layout.children_split_direction != &SplitDirection::default() || tiled_panes_layout.children_are_stacked {
                     vec![tiled_panes_layout]
                 } else {
                     tiled_panes_layout.children
@@ -182,6 +181,7 @@ fn kdl_string_from_tiled_pane(
     let (plugin, plugin_config) = extract_plugin_and_config(&layout.run);
     let (edit, _line_number) = extract_edit_and_line_number(&layout.run);
     let cwd = layout.run.as_ref().and_then(|r| r.get_cwd());
+    let has_children = layout.external_children_index.is_some() || !layout.children.is_empty();
     let mut kdl_string = stringify_pane_title_and_attributes(
         &command,
         &edit,
@@ -190,6 +190,7 @@ fn kdl_string_from_tiled_pane(
         layout.focus,
         &layout.pane_initial_contents,
         pane_contents,
+        has_children,
     );
 
     stringify_tiled_layout_attributes(&layout, ignore_size, &mut kdl_string);
@@ -260,6 +261,7 @@ fn stringify_pane_title_and_attributes(
     focus: Option<bool>,
     initial_pane_contents: &Option<String>,
     pane_contents: &mut BTreeMap<String, String>,
+    has_children: bool,
 ) -> String {
     let mut kdl_string = match (&command, &edit) {
         (Some(command), _) => format!("pane command=\"{}\"", command),
@@ -271,7 +273,7 @@ fn stringify_pane_title_and_attributes(
     }
     if let Some(cwd) = cwd {
         let path = cwd.display().to_string();
-        if !path.is_empty() {
+        if !path.is_empty() && !has_children {
             kdl_string.push_str(&format!(" cwd=\"{}\"", path));
         }
     }
@@ -549,6 +551,7 @@ fn kdl_string_from_floating_pane(
     let (plugin, plugin_config) = extract_plugin_and_config(&layout.run);
     let (edit, _line_number) = extract_edit_and_line_number(&layout.run);
     let cwd = layout.run.as_ref().and_then(|r| r.get_cwd());
+    let has_children = false;
     let mut kdl_string = stringify_pane_title_and_attributes(
         &command,
         &edit,
@@ -557,6 +560,7 @@ fn kdl_string_from_floating_pane(
         layout.focus,
         &layout.pane_initial_contents,
         pane_contents,
+        has_children
     );
     kdl_string.push_str(" {\n");
     stringify_start_suspended(&command, &mut kdl_string);
