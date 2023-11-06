@@ -566,6 +566,7 @@ impl ServerOsApi for ServerOsInputOutput {
         }
         Ok(())
     }
+    #[allow(unused_assignments)]
     fn spawn_terminal(
         &self,
         terminal_action: TerminalAction,
@@ -617,6 +618,7 @@ impl ServerOsApi for ServerOsInputOutput {
             None => Err(anyhow!("no more terminal IDs left to allocate")),
         }
     }
+    #[allow(unused_assignments)]
     fn reserve_terminal_id(&self) -> Result<u32> {
         let err_context = || "failed to reserve a terminal ID".to_string();
 
