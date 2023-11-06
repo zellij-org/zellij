@@ -115,6 +115,7 @@ pub struct TerminalPane {
     // held on startup and can possibly be used to display some errors
     pane_frame_color_override: Option<(PaletteColor, Option<String>)>,
     invoked_with: Option<Run>,
+    #[allow(dead_code)]
     arrow_fonts: bool,
 }
 

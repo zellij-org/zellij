@@ -91,7 +91,7 @@ pub fn open_file_floating(file_to_open: FileToOpen) {
     unsafe { host_run_plugin_command() };
 }
 
-/// Open a file in the user's default `$EDITOR` in a new floating pane
+/// Open a file in the user's default `$EDITOR`, replacing the focused pane
 pub fn open_file_in_place(file_to_open: FileToOpen) {
     let plugin_command = PluginCommand::OpenFileInPlace(file_to_open);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
@@ -117,7 +117,8 @@ pub fn open_terminal_floating<P: AsRef<Path>>(path: P) {
     unsafe { host_run_plugin_command() };
 }
 
-/// Open a new floating terminal pane to the specified location on the host filesystem
+/// Open a new terminal pane to the specified location on the host filesystem, temporarily
+/// replacing the focused pane
 pub fn open_terminal_in_place<P: AsRef<Path>>(path: P) {
     let file_to_open = FileToOpen::new(path.as_ref().to_path_buf());
     let plugin_command = PluginCommand::OpenTerminalInPlace(file_to_open);
@@ -208,6 +209,9 @@ pub fn run_command_with_env_variables_and_cwd(
     unsafe { host_run_plugin_command() };
 }
 
+/// Make a web request, optionally being notified of its output
+/// if subscribed to the `WebRequestResult` Event, the context will be returned verbatim in this
+/// event and can be used for eg. marking the request_id
 pub fn web_request<S: AsRef<str>>(
     url: S,
     verb: HttpVerb,
