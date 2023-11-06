@@ -21,7 +21,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat(plugins): UI components for plugins (https://github.com/zellij-org/zellij/pull/2898)
 * feat(plugins): load plugins from the web (https://github.com/zellij-org/zellij/pull/2863)
 * feat(terminal): support styled underlines (https://github.com/zellij-org/zellij/pull/2730)
-* feat(ux): allow renaming sessions
+* feat(ux): allow renaming sessions (https://github.com/zellij-org/zellij/pull/2903)
+* fix(plugins): open new plugins in the current cwd (https://github.com/zellij-org/zellij/pull/2905)
 
 ## [0.38.2] - 2023-09-15
 * fix(terminal): wrap lines in alternate screen mode when adding characters (https://github.com/zellij-org/zellij/pull/2789)
