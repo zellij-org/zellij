@@ -117,7 +117,6 @@ pub struct TerminalPane {
     invoked_with: Option<Run>,
     #[allow(dead_code)]
     arrow_fonts: bool,
-    styled_underlines: bool,
 }
 
 impl Pane for TerminalPane {
@@ -831,7 +830,6 @@ impl TerminalPane {
             pane_frame_color_override: None,
             invoked_with,
             arrow_fonts,
-            styled_underlines,
         }
     }
     pub fn get_x(&self) -> usize {
@@ -883,16 +881,10 @@ impl TerminalPane {
         let columns = self.get_content_columns();
         let rows = self.get_content_rows();
         let banner = match &self.is_held {
-            Some((_exit_status, _is_first_run, run_command)) => render_first_run_banner(
-                columns,
-                rows,
-                &self.style,
-                Some(run_command),
-                self.styled_underlines,
-            ),
-            None => {
-                render_first_run_banner(columns, rows, &self.style, None, self.styled_underlines)
+            Some((_exit_status, _is_first_run, run_command)) => {
+                render_first_run_banner(columns, rows, &self.style, Some(run_command))
             },
+            None => render_first_run_banner(columns, rows, &self.style, None),
         };
         self.banner = Some(banner.clone());
         self.handle_pty_bytes(banner.as_bytes().to_vec());

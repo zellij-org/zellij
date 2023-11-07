@@ -67,7 +67,6 @@ impl BoundarySymbol {
                 character,
                 width: 1,
                 styles: RESET_STYLES
-                    .enable_styled_underlines(true)
                     .foreground(self.color.map(|palette_color| palette_color.into())),
             }
         };
