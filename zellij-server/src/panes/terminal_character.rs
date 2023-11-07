@@ -231,9 +231,27 @@ impl CharacterStyles {
             return None;
         }
 
-        if *new_styles == RESET_STYLES {
-            *self = RESET_STYLES;
-            return Some(RESET_STYLES);
+        // if *new_styles == RESET_STYLES {
+        //     *self = RESET_STYLES.enable_styled_underlines(self.styled_underlines_enabled);
+        //     return Some(RESET_STYLES.enable_styled_underlines(self.styled_underlines_enabled));
+        // }
+
+        if new_styles.foreground == RESET_STYLES.foreground
+            && new_styles.background == RESET_STYLES.background
+            && new_styles.underline_color == RESET_STYLES.underline_color
+            && new_styles.strike == RESET_STYLES.strike
+            && new_styles.hidden == RESET_STYLES.hidden
+            && new_styles.reverse == RESET_STYLES.reverse
+            && new_styles.slow_blink == RESET_STYLES.slow_blink
+            && new_styles.fast_blink == RESET_STYLES.fast_blink
+            && new_styles.underline == RESET_STYLES.underline
+            && new_styles.bold == RESET_STYLES.bold
+            && new_styles.dim == RESET_STYLES.dim
+            && new_styles.italic == RESET_STYLES.italic
+            && new_styles.link_anchor == RESET_STYLES.link_anchor
+        {
+            *self = RESET_STYLES.enable_styled_underlines(self.styled_underlines_enabled);
+            return Some(RESET_STYLES.enable_styled_underlines(self.styled_underlines_enabled));
         }
 
         // create diff from all changed styles
@@ -805,7 +823,7 @@ impl Cursor {
         Cursor {
             x,
             y,
-            pending_styles: RESET_STYLES,
+            pending_styles: RESET_STYLES.enable_styled_underlines(true),
             charsets: Default::default(),
             shape: CursorShape::Initial,
         }
@@ -846,13 +864,15 @@ pub fn render_first_run_banner(
     rows: usize,
     style: &Style,
     run_command: Option<&RunCommand>,
+    enable_styled_underlines: bool,
 ) -> String {
     let middle_row = rows / 2;
     let middle_column = columns / 2;
+    let reset_styles = RESET_STYLES.enable_styled_underlines(enable_styled_underlines);
     match run_command {
         Some(run_command) => {
-            let bold_text = RESET_STYLES.bold(Some(AnsiCode::On));
-            let command_color_text = RESET_STYLES
+            let bold_text = reset_styles.bold(Some(AnsiCode::On));
+            let command_color_text = reset_styles
                 .foreground(Some(AnsiCode::from(style.colors.green)))
                 .bold(Some(AnsiCode::On));
             let waiting_to_run_text = "Waiting to run: ";
@@ -867,7 +887,7 @@ pub fn render_first_run_banner(
                 waiting_to_run_text,
                 command_color_text,
                 command_text,
-                RESET_STYLES
+                reset_styles
             );
 
             let controls_bare_text_first_part = "<";
@@ -877,7 +897,8 @@ pub fn render_first_run_banner(
             let controls_bare_text_third_part = "> drop to shell, <";
             let ctrl_c_bare_text = "Ctrl-c";
             let controls_bare_text_fourth_part = "> exit";
-            let controls_color = RESET_STYLES
+            let controls_color = reset_styles
+                .enable_styled_underlines(true)
                 .foreground(Some(AnsiCode::from(style.colors.orange)))
                 .bold(Some(AnsiCode::On));
             let controls_line_length = controls_bare_text_first_part.len()
@@ -896,30 +917,30 @@ pub fn render_first_run_banner(
                 bold_text,
                 controls_color,
                 enter_bare_text,
-                RESET_STYLES,
+                reset_styles,
                 bold_text,
                 controls_color,
                 esc_bare_text,
-                RESET_STYLES,
+                reset_styles,
                 bold_text,
                 controls_color,
                 ctrl_c_bare_text,
-                RESET_STYLES,
+                reset_styles,
                 bold_text
             );
             format!(
                 "\u{1b}[?25l{}{}{}{}",
-                RESET_STYLES, waiting_to_run_line, controls_line, RESET_STYLES
+                reset_styles, waiting_to_run_line, controls_line, reset_styles
             )
         },
         None => {
             let bare_text = format!("Waiting to start...");
             let bare_text_width = bare_text.width();
             let column_start_postion = middle_column.saturating_sub(bare_text_width / 2);
-            let bold_text = RESET_STYLES.bold(Some(AnsiCode::On));
+            let bold_text = reset_styles.bold(Some(AnsiCode::On));
             let waiting_to_run_line = format!(
                 "\u{1b}[?25l\u{1b}[{};{}H{}{}{}",
-                middle_row, column_start_postion, bold_text, bare_text, RESET_STYLES
+                middle_row, column_start_postion, bold_text, bare_text, reset_styles
             );
 
             let controls_bare_text_first_part = "<";
@@ -929,7 +950,7 @@ pub fn render_first_run_banner(
             let controls_bare_text_third_part = "> drop to shell, <";
             let ctrl_c_bare_text = "Ctrl-c";
             let controls_bare_text_fourth_part = "> exit";
-            let controls_color = RESET_STYLES
+            let controls_color = reset_styles
                 .foreground(Some(AnsiCode::from(style.colors.orange)))
                 .bold(Some(AnsiCode::On));
             let controls_line_length = controls_bare_text_first_part.len()
@@ -948,20 +969,20 @@ pub fn render_first_run_banner(
                 bold_text,
                 controls_color,
                 enter_bare_text,
-                RESET_STYLES,
+                reset_styles,
                 bold_text,
                 controls_color,
                 esc_bare_text,
-                RESET_STYLES,
+                reset_styles,
                 bold_text,
                 controls_color,
                 ctrl_c_bare_text,
-                RESET_STYLES,
+                reset_styles,
                 bold_text
             );
             format!(
                 "\u{1b}[?25l{}{}{}{}",
-                RESET_STYLES, waiting_to_run_line, controls_line, RESET_STYLES
+                reset_styles, waiting_to_run_line, controls_line, reset_styles
             )
         },
     }

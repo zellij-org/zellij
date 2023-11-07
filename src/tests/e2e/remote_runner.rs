@@ -236,6 +236,7 @@ fn read_from_channel(
                 let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
                 let debug = false;
                 let arrow_fonts = true;
+                let styled_underlines = true;
                 let mut terminal_output = TerminalPane::new(
                     0,
                     pane_geom,
@@ -251,6 +252,7 @@ fn read_from_channel(
                     None,
                     debug,
                     arrow_fonts,
+                    styled_underlines,
                 ); // 0 is the pane index
                 loop {
                     if !should_keep_running.load(Ordering::SeqCst) {

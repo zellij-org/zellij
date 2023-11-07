@@ -186,6 +186,7 @@ pub(crate) struct Tab {
     default_shell: Option<PathBuf>,
     debug: bool,
     arrow_fonts: bool,
+    styled_underlines: bool,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -535,6 +536,7 @@ impl Tab {
         default_shell: Option<PathBuf>,
         debug: bool,
         arrow_fonts: bool,
+        styled_underlines: bool,
     ) -> Self {
         let name = if name.is_empty() {
             format!("Tab #{}", index + 1)
@@ -624,6 +626,7 @@ impl Tab {
             default_shell,
             debug,
             arrow_fonts,
+            styled_underlines,
         }
     }
 
@@ -656,6 +659,7 @@ impl Tab {
             &self.os_api,
             self.debug,
             self.arrow_fonts,
+            self.styled_underlines,
         )
         .apply_layout(
             layout,
@@ -718,6 +722,7 @@ impl Tab {
                 &self.os_api,
                 self.debug,
                 self.arrow_fonts,
+                self.styled_underlines,
             )
             .apply_floating_panes_layout_to_existing_panes(
                 &layout_candidate,
@@ -773,6 +778,7 @@ impl Tab {
                 &self.os_api,
                 self.debug,
                 self.arrow_fonts,
+                self.styled_underlines,
             )
             .apply_tiled_panes_layout_to_existing_panes(
                 &layout_candidate,
@@ -1070,6 +1076,7 @@ impl Tab {
                     invoked_with,
                     self.debug,
                     self.arrow_fonts,
+                    self.styled_underlines,
                 )) as Box<dyn Pane>
             },
             PaneId::Plugin(plugin_pid) => {
@@ -1130,6 +1137,7 @@ impl Tab {
                     None,
                     self.debug,
                     self.arrow_fonts,
+                    self.styled_underlines,
                 );
                 new_pane.update_name("EDITING SCROLLBACK"); // we do this here and not in the
                                                             // constructor so it won't be overrided
@@ -1203,6 +1211,7 @@ impl Tab {
                     run,
                     self.debug,
                     self.arrow_fonts,
+                    self.styled_underlines,
                 );
                 let replaced_pane = if self.floating_panes.panes_contain(&old_pane_id) {
                     self.floating_panes
@@ -1325,6 +1334,7 @@ impl Tab {
                     None,
                     self.debug,
                     self.arrow_fonts,
+                    self.styled_underlines,
                 );
                 self.tiled_panes
                     .split_pane_horizontally(pid, Box::new(new_terminal), client_id);
@@ -1383,6 +1393,7 @@ impl Tab {
                     None,
                     self.debug,
                     self.arrow_fonts,
+                    self.styled_underlines,
                 );
                 self.tiled_panes
                     .split_pane_vertically(pid, Box::new(new_terminal), client_id);
