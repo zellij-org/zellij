@@ -5,6 +5,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+
+## [0.39.0] - 2023-07-11
 * feat(panes): start panes/editors/commands/plugins in-place (https://github.com/zellij-org/zellij/pull/2795)
 * fix(theme): fg color for gruvbox light theme (https://github.com/zellij-org/zellij/pull/2791)
 * fix: display parsing error for kdl files located under the 'themes' directory (https://github.com/zellij-org/zellij/pull/2762)
