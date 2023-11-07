@@ -263,6 +263,7 @@ impl<'a> LayoutApplier<'a> {
                             layout.run.clone(),
                             self.debug,
                             self.arrow_fonts,
+                            self.styled_underlines,
                         );
                         if let Some(pane_initial_contents) = &layout.pane_initial_contents {
                             new_plugin.handle_pty_bytes(pane_initial_contents.as_bytes().into());
@@ -391,6 +392,7 @@ impl<'a> LayoutApplier<'a> {
                     floating_pane_layout.run.clone(),
                     self.debug,
                     self.arrow_fonts,
+                    self.styled_underlines,
                 );
                 if let Some(pane_initial_contents) = &floating_pane_layout.pane_initial_contents {
                     new_pane.handle_pty_bytes(pane_initial_contents.as_bytes().into());

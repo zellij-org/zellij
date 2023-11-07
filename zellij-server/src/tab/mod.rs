@@ -1100,6 +1100,7 @@ impl Tab {
                     invoked_with,
                     self.debug,
                     self.arrow_fonts,
+                    self.styled_underlines,
                 )) as Box<dyn Pane>
             },
         };
@@ -1265,6 +1266,7 @@ impl Tab {
                     run,
                     self.debug,
                     self.arrow_fonts,
+                    self.styled_underlines,
                 );
                 let replaced_pane = if self.floating_panes.panes_contain(&old_pane_id) {
                     self.floating_panes

@@ -658,6 +658,7 @@ fn take_snapshot(ansi_instructions: &str, rows: usize, columns: usize, palette: 
     })));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         rows,
         columns,
@@ -669,6 +670,7 @@ fn take_snapshot(ansi_instructions: &str, rows: usize, columns: usize, palette: 
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let mut vte_parser = vte::Parser::new();
     for &byte in ansi_instructions.as_bytes() {
@@ -691,6 +693,7 @@ fn take_snapshot_with_sixel(
     })));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         rows,
         columns,
@@ -702,6 +705,7 @@ fn take_snapshot_with_sixel(
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let mut vte_parser = vte::Parser::new();
     for &byte in ansi_instructions.as_bytes() {
@@ -721,6 +725,7 @@ fn take_snapshot_and_cursor_position(
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         rows,
         columns,
@@ -732,6 +737,7 @@ fn take_snapshot_and_cursor_position(
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let mut vte_parser = vte::Parser::new();
     for &byte in ansi_instructions.as_bytes() {

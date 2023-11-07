@@ -31,6 +31,7 @@ fn vttest1_0() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         41,
         110,
@@ -42,6 +43,7 @@ fn vttest1_0() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "vttest1-0";
     let content = read_fixture(fixture_name);
@@ -58,6 +60,7 @@ fn vttest1_1() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         41,
         110,
@@ -69,6 +72,7 @@ fn vttest1_1() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "vttest1-1";
     let content = read_fixture(fixture_name);
@@ -85,6 +89,7 @@ fn vttest1_2() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         41,
         110,
@@ -96,6 +101,7 @@ fn vttest1_2() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "vttest1-2";
     let content = read_fixture(fixture_name);
@@ -112,6 +118,7 @@ fn vttest1_3() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         41,
         110,
@@ -123,6 +130,7 @@ fn vttest1_3() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "vttest1-3";
     let content = read_fixture(fixture_name);
@@ -139,6 +147,7 @@ fn vttest1_4() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         41,
         110,
@@ -150,6 +159,7 @@ fn vttest1_4() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "vttest1-4";
     let content = read_fixture(fixture_name);
@@ -166,6 +176,7 @@ fn vttest1_5() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         41,
         110,
@@ -177,6 +188,7 @@ fn vttest1_5() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "vttest1-5";
     let content = read_fixture(fixture_name);
@@ -193,6 +205,7 @@ fn vttest2_0() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         41,
         110,
@@ -204,6 +217,7 @@ fn vttest2_0() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "vttest2-0";
     let content = read_fixture(fixture_name);
@@ -220,6 +234,7 @@ fn vttest2_1() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         41,
         110,
@@ -231,6 +246,7 @@ fn vttest2_1() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "vttest2-1";
     let content = read_fixture(fixture_name);
@@ -247,6 +263,7 @@ fn vttest2_2() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         41,
         110,
@@ -258,6 +275,7 @@ fn vttest2_2() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "vttest2-2";
     let content = read_fixture(fixture_name);
@@ -274,6 +292,7 @@ fn vttest2_3() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         41,
         110,
@@ -285,6 +304,7 @@ fn vttest2_3() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "vttest2-3";
     let content = read_fixture(fixture_name);
@@ -301,6 +321,7 @@ fn vttest2_4() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         41,
         110,
@@ -312,6 +333,7 @@ fn vttest2_4() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "vttest2-4";
     let content = read_fixture(fixture_name);
@@ -328,6 +350,7 @@ fn vttest2_5() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         41,
         110,
@@ -339,6 +362,7 @@ fn vttest2_5() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "vttest2-5";
     let content = read_fixture(fixture_name);
@@ -355,6 +379,7 @@ fn vttest2_6() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         41,
         110,
@@ -366,6 +391,7 @@ fn vttest2_6() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "vttest2-6";
     let content = read_fixture(fixture_name);
@@ -382,6 +408,7 @@ fn vttest2_7() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         41,
         110,
@@ -393,6 +420,7 @@ fn vttest2_7() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "vttest2-7";
     let content = read_fixture(fixture_name);
@@ -409,6 +437,7 @@ fn vttest2_8() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         41,
         110,
@@ -420,6 +449,7 @@ fn vttest2_8() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "vttest2-8";
     let content = read_fixture(fixture_name);
@@ -436,6 +466,7 @@ fn vttest2_9() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         41,
         110,
@@ -447,6 +478,7 @@ fn vttest2_9() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "vttest2-9";
     let content = read_fixture(fixture_name);
@@ -463,6 +495,7 @@ fn vttest2_10() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         41,
         110,
@@ -474,6 +507,7 @@ fn vttest2_10() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "vttest2-10";
     let content = read_fixture(fixture_name);
@@ -490,6 +524,7 @@ fn vttest2_11() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         41,
         110,
@@ -501,6 +536,7 @@ fn vttest2_11() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "vttest2-11";
     let content = read_fixture(fixture_name);
@@ -517,6 +553,7 @@ fn vttest2_12() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         41,
         110,
@@ -528,6 +565,7 @@ fn vttest2_12() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "vttest2-12";
     let content = read_fixture(fixture_name);
@@ -544,6 +582,7 @@ fn vttest2_13() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         41,
         110,
@@ -555,6 +594,7 @@ fn vttest2_13() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "vttest2-13";
     let content = read_fixture(fixture_name);
@@ -571,6 +611,7 @@ fn vttest2_14() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         41,
         110,
@@ -582,6 +623,7 @@ fn vttest2_14() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "vttest2-14";
     let content = read_fixture(fixture_name);
@@ -598,6 +640,7 @@ fn vttest3_0() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         41,
         110,
@@ -609,6 +652,7 @@ fn vttest3_0() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "vttest3-0";
     let content = read_fixture(fixture_name);
@@ -625,6 +669,7 @@ fn vttest8_0() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         51,
         97,
@@ -636,6 +681,7 @@ fn vttest8_0() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "vttest8-0";
     let content = read_fixture(fixture_name);
@@ -652,6 +698,7 @@ fn vttest8_1() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         51,
         97,
@@ -663,6 +710,7 @@ fn vttest8_1() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "vttest8-1";
     let content = read_fixture(fixture_name);
@@ -679,6 +727,7 @@ fn vttest8_2() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         51,
         97,
@@ -690,6 +739,7 @@ fn vttest8_2() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "vttest8-2";
     let content = read_fixture(fixture_name);
@@ -706,6 +756,7 @@ fn vttest8_3() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         51,
         97,
@@ -717,6 +768,7 @@ fn vttest8_3() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "vttest8-3";
     let content = read_fixture(fixture_name);
@@ -733,6 +785,7 @@ fn vttest8_4() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         51,
         97,
@@ -744,6 +797,7 @@ fn vttest8_4() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "vttest8-4";
     let content = read_fixture(fixture_name);
@@ -760,6 +814,7 @@ fn vttest8_5() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         51,
         97,
@@ -771,6 +826,7 @@ fn vttest8_5() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "vttest8-5";
     let content = read_fixture(fixture_name);
@@ -787,6 +843,7 @@ fn csi_b() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         51,
         97,
@@ -798,6 +855,7 @@ fn csi_b() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "csi-b";
     let content = read_fixture(fixture_name);
@@ -814,6 +872,7 @@ fn csi_capital_i() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         51,
         97,
@@ -825,6 +884,7 @@ fn csi_capital_i() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "csi-capital-i";
     let content = read_fixture(fixture_name);
@@ -841,6 +901,7 @@ fn csi_capital_z() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         51,
         97,
@@ -852,6 +913,7 @@ fn csi_capital_z() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "csi-capital-z";
     let content = read_fixture(fixture_name);
@@ -868,6 +930,7 @@ fn terminal_reports() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         51,
         97,
@@ -879,6 +942,7 @@ fn terminal_reports() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "terminal_reports";
     let content = read_fixture(fixture_name);
@@ -895,6 +959,7 @@ fn wide_characters() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         21,
         104,
@@ -906,6 +971,7 @@ fn wide_characters() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "wide_characters";
     let content = read_fixture(fixture_name);
@@ -922,6 +988,7 @@ fn wide_characters_line_wrap() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         21,
         104,
@@ -933,6 +1000,7 @@ fn wide_characters_line_wrap() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "wide_characters_line_wrap";
     let content = read_fixture(fixture_name);
@@ -949,6 +1017,7 @@ fn insert_character_in_line_with_wide_character() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         21,
         104,
@@ -960,6 +1029,7 @@ fn insert_character_in_line_with_wide_character() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "wide_characters_middle_line_insert";
     let content = read_fixture(fixture_name);
@@ -976,6 +1046,7 @@ fn delete_char_in_middle_of_line_with_widechar() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         21,
         104,
@@ -987,6 +1058,7 @@ fn delete_char_in_middle_of_line_with_widechar() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "wide-chars-delete-middle";
     let content = read_fixture(fixture_name);
@@ -1003,6 +1075,7 @@ fn delete_char_in_middle_of_line_with_multiple_widechars() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         21,
         104,
@@ -1014,6 +1087,7 @@ fn delete_char_in_middle_of_line_with_multiple_widechars() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "wide-chars-delete-middle-after-multi";
     let content = read_fixture(fixture_name);
@@ -1030,6 +1104,7 @@ fn fish_wide_characters_override_clock() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         21,
         104,
@@ -1041,6 +1116,7 @@ fn fish_wide_characters_override_clock() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "fish_wide_characters_override_clock";
     let content = read_fixture(fixture_name);
@@ -1057,6 +1133,7 @@ fn bash_delete_wide_characters() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         21,
         104,
@@ -1068,6 +1145,7 @@ fn bash_delete_wide_characters() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "bash_delete_wide_characters";
     let content = read_fixture(fixture_name);
@@ -1084,6 +1162,7 @@ fn delete_wide_characters_before_cursor() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         21,
         104,
@@ -1095,6 +1174,7 @@ fn delete_wide_characters_before_cursor() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "delete_wide_characters_before_cursor";
     let content = read_fixture(fixture_name);
@@ -1111,6 +1191,7 @@ fn delete_wide_characters_before_cursor_when_cursor_is_on_wide_character() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         21,
         104,
@@ -1122,6 +1203,7 @@ fn delete_wide_characters_before_cursor_when_cursor_is_on_wide_character() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "delete_wide_characters_before_cursor_when_cursor_is_on_wide_character";
     let content = read_fixture(fixture_name);
@@ -1138,6 +1220,7 @@ fn delete_wide_character_under_cursor() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         21,
         104,
@@ -1149,6 +1232,7 @@ fn delete_wide_character_under_cursor() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "delete_wide_character_under_cursor";
     let content = read_fixture(fixture_name);
@@ -1165,6 +1249,7 @@ fn replace_wide_character_under_cursor() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         21,
         104,
@@ -1176,6 +1261,7 @@ fn replace_wide_character_under_cursor() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "replace_wide_character_under_cursor";
     let content = read_fixture(fixture_name);
@@ -1192,6 +1278,7 @@ fn wrap_wide_characters() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         21,
         90,
@@ -1203,6 +1290,7 @@ fn wrap_wide_characters() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "wide_characters_full";
     let content = read_fixture(fixture_name);
@@ -1219,6 +1307,7 @@ fn wrap_wide_characters_on_size_change() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         21,
         93,
@@ -1230,6 +1319,7 @@ fn wrap_wide_characters_on_size_change() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "wide_characters_full";
     let content = read_fixture(fixture_name);
@@ -1247,6 +1337,7 @@ fn unwrap_wide_characters_on_size_change() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         21,
         93,
@@ -1258,6 +1349,7 @@ fn unwrap_wide_characters_on_size_change() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "wide_characters_full";
     let content = read_fixture(fixture_name);
@@ -1276,6 +1368,7 @@ fn wrap_wide_characters_in_the_middle_of_the_line() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         21,
         91,
@@ -1287,6 +1380,7 @@ fn wrap_wide_characters_in_the_middle_of_the_line() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "wide_characters_line_middle";
     let content = read_fixture(fixture_name);
@@ -1303,6 +1397,7 @@ fn wrap_wide_characters_at_the_end_of_the_line() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         21,
         90,
@@ -1314,6 +1409,7 @@ fn wrap_wide_characters_at_the_end_of_the_line() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "wide_characters_line_end";
     let content = read_fixture(fixture_name);
@@ -1330,6 +1426,7 @@ fn copy_selected_text_from_viewport() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         27,
         125,
@@ -1341,6 +1438,7 @@ fn copy_selected_text_from_viewport() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "grid_copy";
     let content = read_fixture(fixture_name);
@@ -1365,6 +1463,7 @@ fn copy_wrapped_selected_text_from_viewport() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         22,
         73,
@@ -1376,6 +1475,7 @@ fn copy_wrapped_selected_text_from_viewport() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "grid_copy_wrapped";
     let content = read_fixture(fixture_name);
@@ -1399,6 +1499,7 @@ fn copy_selected_text_from_lines_above() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         27,
         125,
@@ -1410,6 +1511,7 @@ fn copy_selected_text_from_lines_above() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "grid_copy";
     let content = read_fixture(fixture_name);
@@ -1434,6 +1536,7 @@ fn copy_selected_text_from_lines_below() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         27,
         125,
@@ -1445,6 +1548,7 @@ fn copy_selected_text_from_lines_below() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "grid_copy";
     let content = read_fixture(fixture_name);
@@ -1477,6 +1581,7 @@ fn run_bandwhich_from_fish_shell() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         28,
         116,
@@ -1488,6 +1593,7 @@ fn run_bandwhich_from_fish_shell() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "fish_and_bandwhich";
     let content = read_fixture(fixture_name);
@@ -1504,6 +1610,7 @@ fn fish_tab_completion_options() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         28,
         116,
@@ -1515,6 +1622,7 @@ fn fish_tab_completion_options() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "fish_tab_completion_options";
     let content = read_fixture(fixture_name);
@@ -1537,6 +1645,7 @@ pub fn fish_select_tab_completion_options() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         28,
         116,
@@ -1548,6 +1657,7 @@ pub fn fish_select_tab_completion_options() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "fish_select_tab_completion_options";
     let content = read_fixture(fixture_name);
@@ -1574,6 +1684,7 @@ pub fn vim_scroll_region_down() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         28,
         116,
@@ -1585,6 +1696,7 @@ pub fn vim_scroll_region_down() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "vim_scroll_region_down";
     let content = read_fixture(fixture_name);
@@ -1608,6 +1720,7 @@ pub fn vim_ctrl_d() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         28,
         116,
@@ -1619,6 +1732,7 @@ pub fn vim_ctrl_d() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "vim_ctrl_d";
     let content = read_fixture(fixture_name);
@@ -1641,6 +1755,7 @@ pub fn vim_ctrl_u() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         28,
         116,
@@ -1652,6 +1767,7 @@ pub fn vim_ctrl_u() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "vim_ctrl_u";
     let content = read_fixture(fixture_name);
@@ -1668,6 +1784,7 @@ pub fn htop() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         28,
         116,
@@ -1679,6 +1796,7 @@ pub fn htop() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "htop";
     let content = read_fixture(fixture_name);
@@ -1695,6 +1813,7 @@ pub fn htop_scrolling() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         28,
         116,
@@ -1706,6 +1825,7 @@ pub fn htop_scrolling() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "htop_scrolling";
     let content = read_fixture(fixture_name);
@@ -1722,6 +1842,7 @@ pub fn htop_right_scrolling() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         28,
         116,
@@ -1733,6 +1854,7 @@ pub fn htop_right_scrolling() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "htop_right_scrolling";
     let content = read_fixture(fixture_name);
@@ -1759,6 +1881,7 @@ pub fn vim_overwrite() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         28,
         116,
@@ -1770,6 +1893,7 @@ pub fn vim_overwrite() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "vim_overwrite";
     let content = read_fixture(fixture_name);
@@ -1788,6 +1912,7 @@ pub fn clear_scroll_region() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         28,
         116,
@@ -1799,6 +1924,7 @@ pub fn clear_scroll_region() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "clear_scroll_region";
     let content = read_fixture(fixture_name);
@@ -1815,6 +1941,7 @@ pub fn display_tab_characters_properly() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         28,
         116,
@@ -1826,6 +1953,7 @@ pub fn display_tab_characters_properly() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "tab_characters";
     let content = read_fixture(fixture_name);
@@ -1842,6 +1970,7 @@ pub fn neovim_insert_mode() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         28,
         116,
@@ -1853,6 +1982,7 @@ pub fn neovim_insert_mode() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "nvim_insert";
     let content = read_fixture(fixture_name);
@@ -1869,6 +1999,7 @@ pub fn bash_cursor_linewrap() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         28,
         116,
@@ -1880,6 +2011,7 @@ pub fn bash_cursor_linewrap() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "bash_cursor_linewrap";
     let content = read_fixture(fixture_name);
@@ -1898,6 +2030,7 @@ pub fn fish_paste_multiline() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         28,
         149,
@@ -1909,6 +2042,7 @@ pub fn fish_paste_multiline() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "fish_paste_multiline";
     let content = read_fixture(fixture_name);
@@ -1925,6 +2059,7 @@ pub fn git_log() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         28,
         149,
@@ -1936,6 +2071,7 @@ pub fn git_log() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "git_log";
     let content = read_fixture(fixture_name);
@@ -1954,6 +2090,7 @@ pub fn git_diff_scrollup() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         28,
         149,
@@ -1965,6 +2102,7 @@ pub fn git_diff_scrollup() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "git_diff_scrollup";
     let content = read_fixture(fixture_name);
@@ -1981,6 +2119,7 @@ pub fn emacs_longbuf() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         60,
         284,
@@ -1992,6 +2131,7 @@ pub fn emacs_longbuf() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "emacs_longbuf_tutorial";
     let content = read_fixture(fixture_name);
@@ -2008,6 +2148,7 @@ pub fn top_and_quit() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         56,
         235,
@@ -2019,6 +2160,7 @@ pub fn top_and_quit() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "top_and_quit";
     let content = read_fixture(fixture_name);
@@ -2042,6 +2184,7 @@ pub fn exa_plus_omf_theme() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         56,
         235,
@@ -2053,6 +2196,7 @@ pub fn exa_plus_omf_theme() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "exa_plus_omf_theme";
     let content = read_fixture(fixture_name);
@@ -2069,6 +2213,7 @@ pub fn scroll_up() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         10,
         50,
@@ -2080,6 +2225,7 @@ pub fn scroll_up() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "scrolling";
     let content = read_fixture(fixture_name);
@@ -2097,6 +2243,7 @@ pub fn scroll_down() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         10,
         50,
@@ -2108,6 +2255,7 @@ pub fn scroll_down() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "scrolling";
     let content = read_fixture(fixture_name);
@@ -2126,6 +2274,7 @@ pub fn scroll_up_with_line_wraps() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         10,
         25,
@@ -2137,6 +2286,7 @@ pub fn scroll_up_with_line_wraps() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "scrolling";
     let content = read_fixture(fixture_name);
@@ -2154,6 +2304,7 @@ pub fn scroll_down_with_line_wraps() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         10,
         25,
@@ -2165,6 +2316,7 @@ pub fn scroll_down_with_line_wraps() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "scrolling";
     let content = read_fixture(fixture_name);
@@ -2183,6 +2335,7 @@ pub fn scroll_up_decrease_width_and_scroll_down() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         10,
         50,
@@ -2194,6 +2347,7 @@ pub fn scroll_up_decrease_width_and_scroll_down() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "scrolling";
     let content = read_fixture(fixture_name);
@@ -2217,6 +2371,7 @@ pub fn scroll_up_increase_width_and_scroll_down() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         10,
         25,
@@ -2228,6 +2383,7 @@ pub fn scroll_up_increase_width_and_scroll_down() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "scrolling";
     let content = read_fixture(fixture_name);
@@ -2251,6 +2407,7 @@ pub fn move_cursor_below_scroll_region() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         34,
         114,
@@ -2262,6 +2419,7 @@ pub fn move_cursor_below_scroll_region() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "move_cursor_below_scroll_region";
     let content = read_fixture(fixture_name);
@@ -2278,6 +2436,7 @@ pub fn insert_wide_characters_in_existing_line() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         21,
         86,
@@ -2289,6 +2448,7 @@ pub fn insert_wide_characters_in_existing_line() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "chinese_characters_line_middle";
     let content = read_fixture(fixture_name);
@@ -2311,6 +2471,7 @@ pub fn full_screen_scroll_region_and_scroll_up() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         54,
         80,
@@ -2322,6 +2483,7 @@ pub fn full_screen_scroll_region_and_scroll_up() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "scroll_region_full_screen";
     let content = read_fixture(fixture_name);
@@ -2341,6 +2503,7 @@ pub fn ring_bell() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         134,
         64,
@@ -2352,6 +2515,7 @@ pub fn ring_bell() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "ring_bell";
     let content = read_fixture(fixture_name);
@@ -2368,6 +2532,7 @@ pub fn alternate_screen_change_size() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         20,
         20,
@@ -2379,6 +2544,7 @@ pub fn alternate_screen_change_size() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "alternate_screen_change_size";
     let content = read_fixture(fixture_name);
@@ -2399,6 +2565,7 @@ pub fn fzf_fullscreen() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         51,
         112,
@@ -2410,6 +2577,7 @@ pub fn fzf_fullscreen() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "fzf_fullscreen";
     let content = read_fixture(fixture_name);
@@ -2430,6 +2598,7 @@ pub fn replace_multiple_wide_characters_under_cursor() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         51,
         112,
@@ -2441,6 +2610,7 @@ pub fn replace_multiple_wide_characters_under_cursor() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "replace_multiple_wide_characters";
     let content = read_fixture(fixture_name);
@@ -2461,6 +2631,7 @@ pub fn replace_non_wide_characters_with_wide_characters() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         51,
         112,
@@ -2472,6 +2643,7 @@ pub fn replace_non_wide_characters_with_wide_characters() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "replace_non_wide_characters_with_wide_characters";
     let content = read_fixture(fixture_name);
@@ -2488,6 +2660,7 @@ pub fn scroll_down_ansi() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         51,
         112,
@@ -2499,6 +2672,7 @@ pub fn scroll_down_ansi() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "scroll_down";
     let content = read_fixture(fixture_name);
@@ -2515,6 +2689,7 @@ pub fn ansi_capital_t() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         51,
         112,
@@ -2526,6 +2701,7 @@ pub fn ansi_capital_t() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let content = "foo\u{1b}[14Tbar".as_bytes();
     for byte in content {
@@ -2541,6 +2717,7 @@ pub fn ansi_capital_s() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         51,
         112,
@@ -2552,6 +2729,7 @@ pub fn ansi_capital_s() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let content = "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nfoo\u{1b}[14Sbar".as_bytes();
     for byte in content {
@@ -2567,6 +2745,7 @@ fn terminal_pixel_size_reports() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         51,
         97,
@@ -2581,6 +2760,7 @@ fn terminal_pixel_size_reports() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "terminal_pixel_size_reports";
     let content = read_fixture(fixture_name);
@@ -2603,6 +2783,7 @@ fn terminal_pixel_size_reports_in_unsupported_terminals() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         51,
         97,
@@ -2614,6 +2795,7 @@ fn terminal_pixel_size_reports_in_unsupported_terminals() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "terminal_pixel_size_reports";
     let content = read_fixture(fixture_name);
@@ -2637,6 +2819,7 @@ pub fn ansi_csi_at_sign() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         51,
         112,
@@ -2648,6 +2831,7 @@ pub fn ansi_csi_at_sign() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let content = "foo\u{1b}[2D\u{1b}[2@".as_bytes();
     for byte in content {
@@ -2667,6 +2851,7 @@ pub fn sixel_images_are_reaped_when_scrolled_off() {
     })));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         51,
         112,
@@ -2678,6 +2863,7 @@ pub fn sixel_images_are_reaped_when_scrolled_off() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let pane_content = read_fixture("sixel-image-500px.six");
     for byte in pane_content {
@@ -2706,6 +2892,7 @@ pub fn sixel_images_are_reaped_when_resetting() {
     })));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         51,
         112,
@@ -2717,6 +2904,7 @@ pub fn sixel_images_are_reaped_when_resetting() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let pane_content = read_fixture("sixel-image-500px.six");
     for byte in pane_content {
@@ -2742,6 +2930,7 @@ pub fn sixel_image_in_alternate_buffer() {
     })));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         30,
         112,
@@ -2753,6 +2942,7 @@ pub fn sixel_image_in_alternate_buffer() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
 
     let move_to_alternate_screen = "\u{1b}[?1049h";
@@ -2789,6 +2979,7 @@ pub fn sixel_with_image_scrolling_decsdm() {
     })));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         30,
         112,
@@ -2800,6 +2991,7 @@ pub fn sixel_with_image_scrolling_decsdm() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
 
     // enter DECSDM
@@ -2855,6 +3047,7 @@ pub fn osc_4_background_query() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         51,
         97,
@@ -2866,6 +3059,7 @@ pub fn osc_4_background_query() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let content = "\u{1b}]10;?\u{1b}\\";
     for byte in content.as_bytes() {
@@ -2889,6 +3083,7 @@ pub fn osc_4_foreground_query() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         51,
         97,
@@ -2900,6 +3095,7 @@ pub fn osc_4_foreground_query() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let content = "\u{1b}]11;?\u{1b}\\";
     for byte in content.as_bytes() {
@@ -2925,6 +3121,7 @@ pub fn osc_4_color_query() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(color_codes));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         51,
         97,
@@ -2936,6 +3133,7 @@ pub fn osc_4_color_query() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let content = "\u{1b}]4;222;?\u{1b}\\";
     for byte in content.as_bytes() {
@@ -2959,6 +3157,7 @@ pub fn xtsmgraphics_color_register_count() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         51,
         97,
@@ -2970,6 +3169,7 @@ pub fn xtsmgraphics_color_register_count() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let content = "\u{1b}[?1;1;S\u{1b}\\";
     for byte in content.as_bytes() {
@@ -2997,6 +3197,7 @@ pub fn xtsmgraphics_pixel_graphics_geometry() {
     })));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         51,
         97,
@@ -3008,6 +3209,7 @@ pub fn xtsmgraphics_pixel_graphics_geometry() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let content = "\u{1b}[?2;1;S\u{1b}\\";
     for byte in content.as_bytes() {
@@ -3035,6 +3237,7 @@ pub fn cursor_hide_persists_through_alternate_screen() {
     })));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         30,
         112,
@@ -3046,6 +3249,7 @@ pub fn cursor_hide_persists_through_alternate_screen() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
 
     let hide_cursor = "\u{1b}[?25l";
@@ -3087,6 +3291,7 @@ fn table_ui_component() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         41,
         110,
@@ -3098,6 +3303,7 @@ fn table_ui_component() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "table-ui-component";
     let content = read_fixture(fixture_name);
@@ -3114,6 +3320,7 @@ fn table_ui_component_with_coordinates() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         41,
         110,
@@ -3125,6 +3332,7 @@ fn table_ui_component_with_coordinates() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "table-ui-component-with-coordinates";
     let content = read_fixture(fixture_name);
@@ -3141,6 +3349,7 @@ fn ribbon_ui_component() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         41,
         110,
@@ -3152,6 +3361,7 @@ fn ribbon_ui_component() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "ribbon-ui-component";
     let content = read_fixture(fixture_name);
@@ -3168,6 +3378,7 @@ fn ribbon_ui_component_with_coordinates() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         41,
         110,
@@ -3179,6 +3390,7 @@ fn ribbon_ui_component_with_coordinates() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "ribbon-ui-component-with-coordinates";
     let content = read_fixture(fixture_name);
@@ -3195,6 +3407,7 @@ fn nested_list_ui_component() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         41,
         120,
@@ -3206,6 +3419,7 @@ fn nested_list_ui_component() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "nested-list-ui-component";
     let content = read_fixture(fixture_name);
@@ -3222,6 +3436,7 @@ fn nested_list_ui_component_with_coordinates() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         41,
         120,
@@ -3233,6 +3448,7 @@ fn nested_list_ui_component_with_coordinates() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "nested-list-ui-component-with-coordinates";
     let content = read_fixture(fixture_name);
@@ -3249,6 +3465,7 @@ fn text_ui_component() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         41,
         120,
@@ -3260,6 +3477,7 @@ fn text_ui_component() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "text-ui-component";
     let content = read_fixture(fixture_name);
@@ -3276,6 +3494,7 @@ fn text_ui_component_with_coordinates() {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         41,
         120,
@@ -3287,6 +3506,7 @@ fn text_ui_component_with_coordinates() {
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let fixture_name = "text-ui-component-with-coordinates";
     let content = read_fixture(fixture_name);

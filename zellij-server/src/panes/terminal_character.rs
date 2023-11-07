@@ -232,10 +232,6 @@ impl CharacterStyles {
         }
 
         // if *new_styles == RESET_STYLES {
-        //     *self = RESET_STYLES.enable_styled_underlines(self.styled_underlines_enabled);
-        //     return Some(RESET_STYLES.enable_styled_underlines(self.styled_underlines_enabled));
-        // }
-
         if new_styles.foreground == RESET_STYLES.foreground
             && new_styles.background == RESET_STYLES.background
             && new_styles.underline_color == RESET_STYLES.underline_color
@@ -819,11 +815,11 @@ pub struct Cursor {
 }
 
 impl Cursor {
-    pub fn new(x: usize, y: usize) -> Self {
+    pub fn new(x: usize, y: usize, styled_underlines: bool) -> Self {
         Cursor {
             x,
             y,
-            pending_styles: RESET_STYLES.enable_styled_underlines(true),
+            pending_styles: RESET_STYLES.enable_styled_underlines(styled_underlines),
             charsets: Default::default(),
             shape: CursorShape::Initial,
         }
@@ -864,11 +860,11 @@ pub fn render_first_run_banner(
     rows: usize,
     style: &Style,
     run_command: Option<&RunCommand>,
-    enable_styled_underlines: bool,
+    styled_underlines: bool,
 ) -> String {
     let middle_row = rows / 2;
     let middle_column = columns / 2;
-    let reset_styles = RESET_STYLES.enable_styled_underlines(enable_styled_underlines);
+    let reset_styles = RESET_STYLES.enable_styled_underlines(styled_underlines);
     match run_command {
         Some(run_command) => {
             let bold_text = reset_styles.bold(Some(AnsiCode::On));
@@ -898,7 +894,6 @@ pub fn render_first_run_banner(
             let ctrl_c_bare_text = "Ctrl-c";
             let controls_bare_text_fourth_part = "> exit";
             let controls_color = reset_styles
-                .enable_styled_underlines(true)
                 .foreground(Some(AnsiCode::from(style.colors.orange)))
                 .bold(Some(AnsiCode::On));
             let controls_line_length = controls_bare_text_first_part.len()

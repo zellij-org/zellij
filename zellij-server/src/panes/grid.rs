@@ -374,6 +374,7 @@ pub struct Grid {
     style: Style,
     debug: bool,
     arrow_fonts: bool,
+    styled_underlines: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -464,6 +465,7 @@ impl Grid {
         style: Style, // TODO: consolidate this with terminal_emulator_colors
         debug: bool,
         arrow_fonts: bool,
+        styled_underlines: bool,
     ) -> Self {
         let sixel_grid = SixelGrid::new(character_cell_size.clone(), sixel_image_store);
         // make sure this is initialized as it is used internally
@@ -476,7 +478,7 @@ impl Grid {
             viewport: vec![Row::new().canonical()],
             lines_below: vec![],
             horizontal_tabstops: create_horizontal_tabstops(columns),
-            cursor: Cursor::new(0, 0),
+            cursor: Cursor::new(0, 0, styled_underlines),
             cursor_is_hidden: false,
             saved_cursor_position: None,
             scroll_region: None,
@@ -517,6 +519,7 @@ impl Grid {
             style,
             debug,
             arrow_fonts,
+            styled_underlines,
         }
     }
     pub fn render_full_viewport(&mut self) {
@@ -1688,7 +1691,7 @@ impl Grid {
         self.cursor_key_mode = false;
         self.scroll_region = None;
         self.clear_viewport_before_rendering = true;
-        self.cursor = Cursor::new(0, 0);
+        self.cursor = Cursor::new(0, 0, self.styled_underlines);
         self.saved_cursor_position = None;
         self.active_charset = Default::default();
         self.erasure_mode = false;
@@ -2132,7 +2135,7 @@ impl Grid {
         self.lines_below.clear();
     }
     pub fn reset_cursor_position(&mut self) {
-        self.cursor = Cursor::new(0, 0);
+        self.cursor = Cursor::new(0, 0, self.styled_underlines);
     }
 }
 
@@ -2614,8 +2617,10 @@ impl Perform for Grid {
                                 std::mem::replace(&mut self.lines_above, VecDeque::new());
                             let current_viewport =
                                 std::mem::replace(&mut self.viewport, vec![Row::new().canonical()]);
-                            let current_cursor =
-                                std::mem::replace(&mut self.cursor, Cursor::new(0, 0));
+                            let current_cursor = std::mem::replace(
+                                &mut self.cursor,
+                                Cursor::new(0, 0, self.styled_underlines),
+                            );
                             let sixel_image_store = self.sixel_grid.sixel_image_store.clone();
                             let alternate_sixelgrid = std::mem::replace(
                                 &mut self.sixel_grid,

@@ -805,6 +805,7 @@ impl TerminalPane {
             style.clone(),
             debug,
             arrow_fonts,
+            styled_underlines,
         );
         TerminalPane {
             frame: HashMap::new(),
