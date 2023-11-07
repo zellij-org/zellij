@@ -335,6 +335,7 @@ pub enum ScreenContext {
     StartPluginLoadingIndication,
     RequestStateUpdateForPlugins,
     LaunchOrFocusPlugin,
+    LaunchPlugin,
     SuppressPane,
     FocusPaneWithId,
     RenamePane,

@@ -527,6 +527,17 @@ pub enum CliAction {
         #[clap(short, long, value_parser)]
         configuration: Option<PluginUserConfiguration>,
     },
+    LaunchPlugin {
+        #[clap(short, long, value_parser)]
+        floating: bool,
+        #[clap(short, long, value_parser)]
+        in_place: bool,
+        #[clap(short, long, value_parser)]
+        move_to_focused_tab: bool,
+        url: Url,
+        #[clap(short, long, value_parser)]
+        configuration: Option<PluginUserConfiguration>,
+    },
     RenameSession {
         name: String,
     },

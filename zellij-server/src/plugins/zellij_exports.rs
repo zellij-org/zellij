@@ -374,10 +374,12 @@ fn open_file(env: &ForeignFunctionEnv, file_to_open: FileToOpen) {
     let error_msg = || format!("failed to open file in plugin {}", env.plugin_env.name());
     let floating = false;
     let in_place = false;
+    let path = env.plugin_env.plugin_cwd.join(file_to_open.path);
+    let cwd = file_to_open.cwd.map(|cwd| env.plugin_env.plugin_cwd.join(cwd));
     let action = Action::EditFile(
-        file_to_open.path,
+        path,
         file_to_open.line_number,
-        file_to_open.cwd,
+        cwd,
         None,
         floating,
         in_place,
@@ -389,10 +391,12 @@ fn open_file_floating(env: &ForeignFunctionEnv, file_to_open: FileToOpen) {
     let error_msg = || format!("failed to open file in plugin {}", env.plugin_env.name());
     let floating = true;
     let in_place = false;
+    let path = env.plugin_env.plugin_cwd.join(file_to_open.path);
+    let cwd = file_to_open.cwd.map(|cwd| env.plugin_env.plugin_cwd.join(cwd));
     let action = Action::EditFile(
-        file_to_open.path,
+        path,
         file_to_open.line_number,
-        file_to_open.cwd,
+        cwd,
         None,
         floating,
         in_place,
@@ -404,10 +408,12 @@ fn open_file_in_place(env: &ForeignFunctionEnv, file_to_open: FileToOpen) {
     let error_msg = || format!("failed to open file in plugin {}", env.plugin_env.name());
     let floating = false;
     let in_place = true;
+    let path = env.plugin_env.plugin_cwd.join(file_to_open.path);
+    let cwd = file_to_open.cwd.map(|cwd| env.plugin_env.plugin_cwd.join(cwd));
     let action = Action::EditFile(
-        file_to_open.path,
+        path,
         file_to_open.line_number,
-        file_to_open.cwd,
+        cwd,
         None,
         floating,
         in_place,
@@ -417,6 +423,7 @@ fn open_file_in_place(env: &ForeignFunctionEnv, file_to_open: FileToOpen) {
 
 fn open_terminal(env: &ForeignFunctionEnv, cwd: PathBuf) {
     let error_msg = || format!("failed to open file in plugin {}", env.plugin_env.name());
+    let cwd = env.plugin_env.plugin_cwd.join(cwd);
     let mut default_shell = env
         .plugin_env
         .default_shell
@@ -433,6 +440,7 @@ fn open_terminal(env: &ForeignFunctionEnv, cwd: PathBuf) {
 
 fn open_terminal_floating(env: &ForeignFunctionEnv, cwd: PathBuf) {
     let error_msg = || format!("failed to open file in plugin {}", env.plugin_env.name());
+    let cwd = env.plugin_env.plugin_cwd.join(cwd);
     let mut default_shell = env
         .plugin_env
         .default_shell
@@ -449,6 +457,7 @@ fn open_terminal_floating(env: &ForeignFunctionEnv, cwd: PathBuf) {
 
 fn open_terminal_in_place(env: &ForeignFunctionEnv, cwd: PathBuf) {
     let error_msg = || format!("failed to open file in plugin {}", env.plugin_env.name());
+    let cwd = env.plugin_env.plugin_cwd.join(cwd);
     let mut default_shell = env
         .plugin_env
         .default_shell
@@ -466,7 +475,7 @@ fn open_terminal_in_place(env: &ForeignFunctionEnv, cwd: PathBuf) {
 fn open_command_pane(env: &ForeignFunctionEnv, command_to_run: CommandToRun) {
     let error_msg = || format!("failed to open command in plugin {}", env.plugin_env.name());
     let command = command_to_run.path;
-    let cwd = command_to_run.cwd;
+    let cwd = command_to_run.cwd.map(|cwd| env.plugin_env.plugin_cwd.join(cwd));
     let args = command_to_run.args;
     let direction = None;
     let hold_on_close = true;
@@ -487,7 +496,7 @@ fn open_command_pane(env: &ForeignFunctionEnv, command_to_run: CommandToRun) {
 fn open_command_pane_floating(env: &ForeignFunctionEnv, command_to_run: CommandToRun) {
     let error_msg = || format!("failed to open command in plugin {}", env.plugin_env.name());
     let command = command_to_run.path;
-    let cwd = command_to_run.cwd;
+    let cwd = command_to_run.cwd.map(|cwd| env.plugin_env.plugin_cwd.join(cwd));
     let args = command_to_run.args;
     let direction = None;
     let hold_on_close = true;
@@ -508,7 +517,7 @@ fn open_command_pane_floating(env: &ForeignFunctionEnv, command_to_run: CommandT
 fn open_command_pane_in_place(env: &ForeignFunctionEnv, command_to_run: CommandToRun) {
     let error_msg = || format!("failed to open command in plugin {}", env.plugin_env.name());
     let command = command_to_run.path;
-    let cwd = command_to_run.cwd;
+    let cwd = command_to_run.cwd.map(|cwd| env.plugin_env.plugin_cwd.join(cwd));
     let args = command_to_run.args;
     let direction = None;
     let hold_on_close = true;
@@ -621,6 +630,7 @@ fn run_command(
         log::error!("Command cannot be empty");
     } else {
         let command = command_line.remove(0);
+        let cwd = env.plugin_env.plugin_cwd.join(cwd);
         let _ = env
             .plugin_env
             .senders
