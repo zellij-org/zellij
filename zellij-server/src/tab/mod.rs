@@ -485,7 +485,7 @@ pub enum AdjustedInput {
     ReRunCommandInThisPane(RunCommand),
     PermissionRequestResult(Vec<PermissionType>, PermissionStatus),
     CloseThisPane,
-    DropToShellInThisPane,
+    DropToShellInThisPane { working_dir: Option<PathBuf> },
 }
 pub fn get_next_terminal_position(
     tiled_panes: &TiledPanes,
@@ -1723,13 +1723,14 @@ impl Tab {
                         self.close_pane(PaneId::Terminal(active_terminal_id), false, None);
                         should_update_ui = true;
                     },
-                    Some(AdjustedInput::DropToShellInThisPane) => {
+                    Some(AdjustedInput::DropToShellInThisPane { working_dir }) => {
                         self.pids_waiting_resize.insert(active_terminal_id);
                         self.senders
-                            .send_to_pty(PtyInstruction::DropToShellInPane(
-                                PaneId::Terminal(active_terminal_id),
-                                self.default_shell.clone(),
-                            ))
+                            .send_to_pty(PtyInstruction::DropToShellInPane {
+                                pane_id: PaneId::Terminal(active_terminal_id),
+                                shell: self.default_shell.clone(),
+                                working_dir,
+                            })
                             .with_context(err_context)?;
                         should_update_ui = true;
                     },
