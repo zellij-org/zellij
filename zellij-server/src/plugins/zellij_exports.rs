@@ -375,7 +375,9 @@ fn open_file(env: &ForeignFunctionEnv, file_to_open: FileToOpen) {
     let floating = false;
     let in_place = false;
     let path = env.plugin_env.plugin_cwd.join(file_to_open.path);
-    let cwd = file_to_open.cwd.map(|cwd| env.plugin_env.plugin_cwd.join(cwd));
+    let cwd = file_to_open
+        .cwd
+        .map(|cwd| env.plugin_env.plugin_cwd.join(cwd));
     let action = Action::EditFile(
         path,
         file_to_open.line_number,
@@ -392,7 +394,9 @@ fn open_file_floating(env: &ForeignFunctionEnv, file_to_open: FileToOpen) {
     let floating = true;
     let in_place = false;
     let path = env.plugin_env.plugin_cwd.join(file_to_open.path);
-    let cwd = file_to_open.cwd.map(|cwd| env.plugin_env.plugin_cwd.join(cwd));
+    let cwd = file_to_open
+        .cwd
+        .map(|cwd| env.plugin_env.plugin_cwd.join(cwd));
     let action = Action::EditFile(
         path,
         file_to_open.line_number,
@@ -409,7 +413,9 @@ fn open_file_in_place(env: &ForeignFunctionEnv, file_to_open: FileToOpen) {
     let floating = false;
     let in_place = true;
     let path = env.plugin_env.plugin_cwd.join(file_to_open.path);
-    let cwd = file_to_open.cwd.map(|cwd| env.plugin_env.plugin_cwd.join(cwd));
+    let cwd = file_to_open
+        .cwd
+        .map(|cwd| env.plugin_env.plugin_cwd.join(cwd));
     let action = Action::EditFile(
         path,
         file_to_open.line_number,
@@ -475,7 +481,9 @@ fn open_terminal_in_place(env: &ForeignFunctionEnv, cwd: PathBuf) {
 fn open_command_pane(env: &ForeignFunctionEnv, command_to_run: CommandToRun) {
     let error_msg = || format!("failed to open command in plugin {}", env.plugin_env.name());
     let command = command_to_run.path;
-    let cwd = command_to_run.cwd.map(|cwd| env.plugin_env.plugin_cwd.join(cwd));
+    let cwd = command_to_run
+        .cwd
+        .map(|cwd| env.plugin_env.plugin_cwd.join(cwd));
     let args = command_to_run.args;
     let direction = None;
     let hold_on_close = true;
@@ -496,7 +504,9 @@ fn open_command_pane(env: &ForeignFunctionEnv, command_to_run: CommandToRun) {
 fn open_command_pane_floating(env: &ForeignFunctionEnv, command_to_run: CommandToRun) {
     let error_msg = || format!("failed to open command in plugin {}", env.plugin_env.name());
     let command = command_to_run.path;
-    let cwd = command_to_run.cwd.map(|cwd| env.plugin_env.plugin_cwd.join(cwd));
+    let cwd = command_to_run
+        .cwd
+        .map(|cwd| env.plugin_env.plugin_cwd.join(cwd));
     let args = command_to_run.args;
     let direction = None;
     let hold_on_close = true;
@@ -517,7 +527,9 @@ fn open_command_pane_floating(env: &ForeignFunctionEnv, command_to_run: CommandT
 fn open_command_pane_in_place(env: &ForeignFunctionEnv, command_to_run: CommandToRun) {
     let error_msg = || format!("failed to open command in plugin {}", env.plugin_env.name());
     let command = command_to_run.path;
-    let cwd = command_to_run.cwd.map(|cwd| env.plugin_env.plugin_cwd.join(cwd));
+    let cwd = command_to_run
+        .cwd
+        .map(|cwd| env.plugin_env.plugin_cwd.join(cwd));
     let args = command_to_run.args;
     let direction = None;
     let hold_on_close = true;

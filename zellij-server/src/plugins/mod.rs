@@ -184,7 +184,8 @@ pub(crate) fn plugin_thread_main(
                 client_id,
                 size,
                 cwd,
-            ) => match wasm_bridge.load_plugin(&run, tab_index, size, cwd.clone(), Some(client_id)) {
+            ) => match wasm_bridge.load_plugin(&run, tab_index, size, cwd.clone(), Some(client_id))
+            {
                 Ok(plugin_id) => {
                     drop(bus.senders.send_to_screen(ScreenInstruction::AddPlugin(
                         should_float,

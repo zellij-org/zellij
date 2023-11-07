@@ -295,8 +295,8 @@ pub enum ScreenInstruction {
     RequestStateUpdateForPlugins,
     LaunchOrFocusPlugin(RunPlugin, bool, bool, bool, Option<PaneId>, ClientId), // bools are: should_float, move_to_focused_tab, should_open_in_place Option<PaneId> is the pane id to replace
     LaunchPlugin(RunPlugin, bool, bool, bool, Option<PaneId>, ClientId), // bools are: should_float, move_to_focused_tab, should_open_in_place Option<PaneId> is the pane id to replace
-    SuppressPane(PaneId, ClientId),          // bool is should_float
-    FocusPaneWithId(PaneId, bool, ClientId), // bool is should_float
+    SuppressPane(PaneId, ClientId),                                      // bool is should_float
+    FocusPaneWithId(PaneId, bool, ClientId),                             // bool is should_float
     RenamePane(PaneId, Vec<u8>),
     RenameTab(usize, Vec<u8>),
     RequestPluginPermissions(
@@ -3247,8 +3247,14 @@ pub(crate) fn screen_thread_main(
                 cwd,
                 client_id,
             ) => {
-                let pane_title =
-                    pane_title.unwrap_or_else(|| format!("({}) - {}", cwd.map(|cwd| cwd.display().to_string()).unwrap_or(".".to_owned()), run_plugin_location.location));
+                let pane_title = pane_title.unwrap_or_else(|| {
+                    format!(
+                        "({}) - {}",
+                        cwd.map(|cwd| cwd.display().to_string())
+                            .unwrap_or(".".to_owned()),
+                        run_plugin_location.location
+                    )
+                });
                 let run_plugin = Run::Plugin(run_plugin_location);
 
                 if should_be_in_place {

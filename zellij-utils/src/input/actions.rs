@@ -210,9 +210,9 @@ pub enum Action {
     RightClick(Position),
     MiddleClick(Position),
     LaunchOrFocusPlugin(RunPlugin, bool, bool, bool), // bools => should float,
-                                                      // move_to_focused_tab, should_open_in_place
+    // move_to_focused_tab, should_open_in_place
     LaunchPlugin(RunPlugin, bool, bool, bool), // bools => should float,
-                                               // move_to_focused_tab, should_open_in_place
+    // move_to_focused_tab, should_open_in_place
     LeftMouseRelease(Position),
     RightMouseRelease(Position),
     MiddleMouseRelease(Position),

@@ -413,33 +413,31 @@ impl TryFrom<ProtobufAction> for Action {
                     _ => Err("Wrong payload for Action::LaunchOrFocusPlugin"),
                 }
             },
-            Some(ProtobufActionName::LaunchPlugin) => {
-                match protobuf_action.optional_payload {
-                    Some(OptionalPayload::LaunchOrFocusPluginPayload(payload)) => {
-                        let run_plugin_location =
-                            RunPluginLocation::parse(&payload.plugin_url, None)
-                                .map_err(|_| "Malformed LaunchOrFocusPlugin payload")?;
-                        let configuration: PluginUserConfiguration = payload
-                            .plugin_configuration
-                            .and_then(|p| PluginUserConfiguration::try_from(p).ok())
-                            .unwrap_or_default();
-                        let run_plugin = RunPlugin {
-                            _allow_exec_host_cmd: false,
-                            location: run_plugin_location,
-                            configuration,
-                        };
-                        let should_float = payload.should_float;
-                        let move_to_focused_tab = payload.move_to_focused_tab;
-                        let should_open_in_place = payload.should_open_in_place;
-                        Ok(Action::LaunchPlugin(
-                            run_plugin,
-                            should_float,
-                            move_to_focused_tab,
-                            should_open_in_place,
-                        ))
-                    },
-                    _ => Err("Wrong payload for Action::LaunchOrFocusPlugin"),
-                }
+            Some(ProtobufActionName::LaunchPlugin) => match protobuf_action.optional_payload {
+                Some(OptionalPayload::LaunchOrFocusPluginPayload(payload)) => {
+                    let run_plugin_location =
+                        RunPluginLocation::parse(&payload.plugin_url, None)
+                            .map_err(|_| "Malformed LaunchOrFocusPlugin payload")?;
+                    let configuration: PluginUserConfiguration = payload
+                        .plugin_configuration
+                        .and_then(|p| PluginUserConfiguration::try_from(p).ok())
+                        .unwrap_or_default();
+                    let run_plugin = RunPlugin {
+                        _allow_exec_host_cmd: false,
+                        location: run_plugin_location,
+                        configuration,
+                    };
+                    let should_float = payload.should_float;
+                    let move_to_focused_tab = payload.move_to_focused_tab;
+                    let should_open_in_place = payload.should_open_in_place;
+                    Ok(Action::LaunchPlugin(
+                        run_plugin,
+                        should_float,
+                        move_to_focused_tab,
+                        should_open_in_place,
+                    ))
+                },
+                _ => Err("Wrong payload for Action::LaunchOrFocusPlugin"),
             },
             Some(ProtobufActionName::LeftMouseRelease) => match protobuf_action.optional_payload {
                 Some(OptionalPayload::LeftMouseReleasePayload(payload)) => {
