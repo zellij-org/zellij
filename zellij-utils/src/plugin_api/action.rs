@@ -1022,11 +1022,7 @@ impl TryFrom<Action> for ProtobufAction {
                     )),
                 })
             },
-            Action::LaunchPlugin(
-                run_plugin,
-                should_float,
-                should_open_in_place,
-            ) => {
+            Action::LaunchPlugin(run_plugin, should_float, should_open_in_place) => {
                 let url: Url = Url::from(&run_plugin.location);
                 Ok(ProtobufAction {
                     name: ProtobufActionName::LaunchPlugin as i32,

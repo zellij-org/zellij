@@ -295,8 +295,8 @@ pub enum ScreenInstruction {
     RequestStateUpdateForPlugins,
     LaunchOrFocusPlugin(RunPlugin, bool, bool, bool, Option<PaneId>, ClientId), // bools are: should_float, move_to_focused_tab, should_open_in_place Option<PaneId> is the pane id to replace
     LaunchPlugin(RunPlugin, bool, bool, Option<PaneId>, ClientId), // bools are: should_float, should_open_in_place Option<PaneId> is the pane id to replace
-    SuppressPane(PaneId, ClientId),                                      // bool is should_float
-    FocusPaneWithId(PaneId, bool, ClientId),                             // bool is should_float
+    SuppressPane(PaneId, ClientId),                                // bool is should_float
+    FocusPaneWithId(PaneId, bool, ClientId),                       // bool is should_float
     RenamePane(PaneId, Vec<u8>),
     RenameTab(usize, Vec<u8>),
     RequestPluginPermissions(

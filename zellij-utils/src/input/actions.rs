@@ -555,11 +555,7 @@ impl Action {
                     _allow_exec_host_cmd: false,
                     configuration: configuration.unwrap_or_default(),
                 };
-                Ok(vec![Action::LaunchPlugin(
-                    run_plugin,
-                    floating,
-                    in_place,
-                )])
+                Ok(vec![Action::LaunchPlugin(run_plugin, floating, in_place)])
             },
             CliAction::RenameSession { name } => Ok(vec![Action::RenameSession(name)]),
         }
