@@ -805,6 +805,7 @@ impl<'a> PluginLoader<'a> {
             client_attributes: self.client_attributes.clone(),
             default_shell: self.default_shell.clone(),
             default_layout: self.default_layout.clone(),
+            plugin_cwd: self.zellij_cwd.clone(),
         };
 
         let subscriptions = Arc::new(Mutex::new(HashSet::new()));

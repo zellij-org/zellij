@@ -184,7 +184,8 @@ pub(crate) fn plugin_thread_main(
                 client_id,
                 size,
                 cwd,
-            ) => match wasm_bridge.load_plugin(&run, tab_index, size, cwd, Some(client_id)) {
+            ) => match wasm_bridge.load_plugin(&run, tab_index, size, cwd.clone(), Some(client_id))
+            {
                 Ok(plugin_id) => {
                     drop(bus.senders.send_to_screen(ScreenInstruction::AddPlugin(
                         should_float,
@@ -194,6 +195,7 @@ pub(crate) fn plugin_thread_main(
                         tab_index,
                         plugin_id,
                         pane_id_to_replace,
+                        cwd,
                         Some(client_id),
                     )));
                 },
@@ -229,6 +231,7 @@ pub(crate) fn plugin_thread_main(
                                         pane_title,
                                         tab_index,
                                         plugin_id,
+                                        None,
                                         None,
                                         None,
                                     )));

@@ -5,7 +5,7 @@ pub struct Action {
     pub name: i32,
     #[prost(
         oneof = "action::OptionalPayload",
-        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45"
+        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46"
     )]
     pub optional_payload: ::core::option::Option<action::OptionalPayload>,
 }
@@ -102,6 +102,8 @@ pub mod action {
         RenameTabPayload(super::IdAndName),
         #[prost(string, tag = "45")]
         RenameSessionPayload(::prost::alloc::string::String),
+        #[prost(message, tag = "46")]
+        LaunchPluginPayload(super::LaunchOrFocusPluginPayload),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -403,6 +405,7 @@ pub enum ActionName {
     BreakPaneRight = 78,
     BreakPaneLeft = 79,
     RenameSession = 80,
+    LaunchPlugin = 81,
 }
 impl ActionName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -492,6 +495,7 @@ impl ActionName {
             ActionName::BreakPaneRight => "BreakPaneRight",
             ActionName::BreakPaneLeft => "BreakPaneLeft",
             ActionName::RenameSession => "RenameSession",
+            ActionName::LaunchPlugin => "LaunchPlugin",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -578,6 +582,7 @@ impl ActionName {
             "BreakPaneRight" => Some(Self::BreakPaneRight),
             "BreakPaneLeft" => Some(Self::BreakPaneLeft),
             "RenameSession" => Some(Self::RenameSession),
+            "LaunchPlugin" => Some(Self::LaunchPlugin),
             _ => None,
         }
     }

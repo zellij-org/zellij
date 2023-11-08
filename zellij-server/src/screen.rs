@@ -286,6 +286,7 @@ pub enum ScreenInstruction {
         usize,          // tab index
         u32,            // plugin id
         Option<PaneId>,
+        Option<PathBuf>, // cwd
         Option<ClientId>,
     ),
     UpdatePluginLoadingStage(u32, LoadingIndication), // u32 - plugin_id
@@ -293,8 +294,9 @@ pub enum ScreenInstruction {
     ProgressPluginLoadingOffset(u32),                 // u32 - plugin id
     RequestStateUpdateForPlugins,
     LaunchOrFocusPlugin(RunPlugin, bool, bool, bool, Option<PaneId>, ClientId), // bools are: should_float, move_to_focused_tab, should_open_in_place Option<PaneId> is the pane id to replace
-    SuppressPane(PaneId, ClientId),          // bool is should_float
-    FocusPaneWithId(PaneId, bool, ClientId), // bool is should_float
+    LaunchPlugin(RunPlugin, bool, bool, Option<PaneId>, ClientId), // bools are: should_float, should_open_in_place Option<PaneId> is the pane id to replace
+    SuppressPane(PaneId, ClientId),                                // bool is should_float
+    FocusPaneWithId(PaneId, bool, ClientId),                       // bool is should_float
     RenamePane(PaneId, Vec<u8>),
     RenameTab(usize, Vec<u8>),
     RequestPluginPermissions(
@@ -481,6 +483,7 @@ impl From<&ScreenInstruction> for ScreenContext {
                 ScreenContext::RequestStateUpdateForPlugins
             },
             ScreenInstruction::LaunchOrFocusPlugin(..) => ScreenContext::LaunchOrFocusPlugin,
+            ScreenInstruction::LaunchPlugin(..) => ScreenContext::LaunchPlugin,
             ScreenInstruction::SuppressPane(..) => ScreenContext::SuppressPane,
             ScreenInstruction::FocusPaneWithId(..) => ScreenContext::FocusPaneWithId,
             ScreenInstruction::RenamePane(..) => ScreenContext::RenamePane,
@@ -3242,10 +3245,17 @@ pub(crate) fn screen_thread_main(
                 tab_index,
                 plugin_id,
                 pane_id_to_replace,
+                cwd,
                 client_id,
             ) => {
-                let pane_title =
-                    pane_title.unwrap_or_else(|| run_plugin_location.location.to_string());
+                let pane_title = pane_title.unwrap_or_else(|| {
+                    format!(
+                        "({}) - {}",
+                        cwd.map(|cwd| cwd.display().to_string())
+                            .unwrap_or(".".to_owned()),
+                        run_plugin_location.location
+                    )
+                });
                 let run_plugin = Run::Plugin(run_plugin_location);
 
                 if should_be_in_place {
@@ -3392,6 +3402,70 @@ pub(crate) fn screen_thread_main(
                                         Size::default(),
                                     ))?;
                             }
+                        },
+                        None => {
+                            log::error!("No connected clients found - cannot load or focus plugin")
+                        },
+                    }
+                },
+            },
+            ScreenInstruction::LaunchPlugin(
+                run_plugin,
+                should_float,
+                should_open_in_place,
+                pane_id_to_replace,
+                client_id,
+            ) => match pane_id_to_replace {
+                Some(pane_id_to_replace) => match screen.active_tab_indices.values().next() {
+                    Some(tab_index) => {
+                        let size = Size::default();
+                        screen
+                            .bus
+                            .senders
+                            .send_to_pty(PtyInstruction::FillPluginCwd(
+                                Some(should_float),
+                                should_open_in_place,
+                                None,
+                                run_plugin,
+                                *tab_index,
+                                Some(pane_id_to_replace),
+                                client_id,
+                                size,
+                            ))?;
+                    },
+                    None => {
+                        log::error!(
+                            "Could not find an active tab - is there at least 1 connected user?"
+                        );
+                    },
+                },
+                None => {
+                    let client_id = if screen.active_tab_indices.contains_key(&client_id) {
+                        Some(client_id)
+                    } else {
+                        screen.get_first_client_id()
+                    };
+                    let client_id_and_focused_tab = client_id.and_then(|client_id| {
+                        screen
+                            .active_tab_indices
+                            .get(&client_id)
+                            .map(|tab_index| (*tab_index, client_id))
+                    });
+                    match client_id_and_focused_tab {
+                        Some((tab_index, client_id)) => {
+                            screen
+                                .bus
+                                .senders
+                                .send_to_pty(PtyInstruction::FillPluginCwd(
+                                    Some(should_float),
+                                    should_open_in_place,
+                                    None,
+                                    run_plugin,
+                                    tab_index,
+                                    None,
+                                    client_id,
+                                    Size::default(),
+                                ))?;
                         },
                         None => {
                             log::error!("No connected clients found - cannot load or focus plugin")
