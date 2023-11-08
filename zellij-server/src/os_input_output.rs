@@ -761,7 +761,8 @@ impl ServerOsApi for ServerOsInputOutput {
         for pid in pids {
             // Update by minimizing information.
             // See https://docs.rs/sysinfo/0.22.5/sysinfo/struct.ProcessRefreshKind.html#
-            let is_found = system_info.refresh_process_specifics(pid.into(), ProcessRefreshKind::default());
+            let is_found =
+                system_info.refresh_process_specifics(pid.into(), ProcessRefreshKind::default());
             if is_found {
                 if let Some(process) = system_info.process(pid.into()) {
                     let cwd = process.cwd();
