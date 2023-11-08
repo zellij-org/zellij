@@ -1171,6 +1171,7 @@ impl Screen {
             self.default_shell.clone(),
             self.debug,
             self.arrow_fonts,
+            self.styled_underlines,
         );
         self.tabs.insert(tab_index, tab);
         Ok(())

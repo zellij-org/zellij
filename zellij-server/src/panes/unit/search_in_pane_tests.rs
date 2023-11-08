@@ -30,6 +30,7 @@ fn create_pane() -> TerminalPane {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut terminal_pane = TerminalPane::new(
         pid,
         fake_win_size,
@@ -45,6 +46,7 @@ fn create_pane() -> TerminalPane {
         None,
         debug,
         arrow_fonts,
+        styled_underlines,
     ); // 0 is the pane index
     let content = read_fixture();
     terminal_pane.handle_pty_bytes(content);

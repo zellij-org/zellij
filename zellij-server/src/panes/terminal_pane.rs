@@ -789,6 +789,7 @@ impl TerminalPane {
         invoked_with: Option<Run>,
         debug: bool,
         arrow_fonts: bool,
+        styled_underlines: bool,
     ) -> TerminalPane {
         let initial_pane_title =
             initial_pane_title.unwrap_or_else(|| format!("Pane #{}", pane_index));
@@ -803,6 +804,7 @@ impl TerminalPane {
             style.clone(),
             debug,
             arrow_fonts,
+            styled_underlines,
         );
         TerminalPane {
             frame: HashMap::new(),

@@ -129,7 +129,7 @@ impl NamedColor {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Default)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct CharacterStyles {
     pub foreground: Option<AnsiCode>,
     pub background: Option<AnsiCode>,
@@ -145,6 +145,24 @@ pub struct CharacterStyles {
     pub italic: Option<AnsiCode>,
     pub link_anchor: Option<LinkAnchor>,
     pub styled_underlines_enabled: bool,
+}
+
+impl PartialEq for CharacterStyles {
+    fn eq(&self, other: &Self) -> bool {
+        self.foreground == other.foreground
+            && self.background == other.background
+            && self.underline_color == other.underline_color
+            && self.strike == other.strike
+            && self.hidden == other.hidden
+            && self.reverse == other.reverse
+            && self.slow_blink == other.slow_blink
+            && self.fast_blink == other.fast_blink
+            && self.underline == other.underline
+            && self.bold == other.bold
+            && self.dim == other.dim
+            && self.italic == other.italic
+            && self.link_anchor == other.link_anchor
+    }
 }
 
 impl CharacterStyles {
@@ -232,8 +250,8 @@ impl CharacterStyles {
         }
 
         if *new_styles == RESET_STYLES {
-            *self = RESET_STYLES;
-            return Some(RESET_STYLES);
+            *self = RESET_STYLES.enable_styled_underlines(self.styled_underlines_enabled);
+            return Some(RESET_STYLES.enable_styled_underlines(self.styled_underlines_enabled));
         }
 
         // create diff from all changed styles
@@ -801,11 +819,11 @@ pub struct Cursor {
 }
 
 impl Cursor {
-    pub fn new(x: usize, y: usize) -> Self {
+    pub fn new(x: usize, y: usize, styled_underlines: bool) -> Self {
         Cursor {
             x,
             y,
-            pending_styles: RESET_STYLES,
+            pending_styles: RESET_STYLES.enable_styled_underlines(styled_underlines),
             charsets: Default::default(),
             shape: CursorShape::Initial,
         }
