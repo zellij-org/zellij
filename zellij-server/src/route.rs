@@ -708,14 +708,12 @@ pub(crate) fn route_action(
         Action::LaunchPlugin(
             run_plugin,
             should_float,
-            move_to_focused_tab,
             should_open_in_place,
         ) => {
             senders
                 .send_to_screen(ScreenInstruction::LaunchPlugin(
                     run_plugin,
                     should_float,
-                    move_to_focused_tab,
                     should_open_in_place,
                     pane_id,
                     client_id,

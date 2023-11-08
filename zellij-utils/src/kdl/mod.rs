@@ -969,9 +969,6 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                 let should_float = command_metadata
                     .and_then(|c_m| kdl_child_bool_value_for_entry(c_m, "floating"))
                     .unwrap_or(false);
-                let move_to_focused_tab = command_metadata
-                    .and_then(|c_m| kdl_child_bool_value_for_entry(c_m, "move_to_focused_tab"))
-                    .unwrap_or(false);
                 let should_open_in_place = command_metadata
                     .and_then(|c_m| kdl_child_bool_value_for_entry(c_m, "in_place"))
                     .unwrap_or(false);
@@ -986,7 +983,6 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                 Ok(Action::LaunchPlugin(
                     run_plugin,
                     should_float,
-                    move_to_focused_tab,
                     should_open_in_place,
                 ))
             },

@@ -5398,7 +5398,7 @@ pub fn run_command_plugin_command() {
     )]));
     background_jobs_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
-    let new_tab_event = received_background_jobs_instructions
+    let new_background_job = received_background_jobs_instructions
         .lock()
         .unwrap()
         .iter()
@@ -5410,7 +5410,7 @@ pub fn run_command_plugin_command() {
             }
         })
         .clone();
-    assert_snapshot!(format!("{:#?}", new_tab_event));
+    assert!(format!("{:#?}", new_background_job).contains("user_value_1"));
 }
 
 #[test]

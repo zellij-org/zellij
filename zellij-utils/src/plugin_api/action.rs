@@ -428,12 +428,12 @@ impl TryFrom<ProtobufAction> for Action {
                         configuration,
                     };
                     let should_float = payload.should_float;
-                    let move_to_focused_tab = payload.move_to_focused_tab;
+                    let _move_to_focused_tab = payload.move_to_focused_tab; // not actually used in
+                                                                            // this action
                     let should_open_in_place = payload.should_open_in_place;
                     Ok(Action::LaunchPlugin(
                         run_plugin,
                         should_float,
-                        move_to_focused_tab,
                         should_open_in_place,
                     ))
                 },
@@ -1025,7 +1025,6 @@ impl TryFrom<Action> for ProtobufAction {
             Action::LaunchPlugin(
                 run_plugin,
                 should_float,
-                move_to_focused_tab,
                 should_open_in_place,
             ) => {
                 let url: Url = Url::from(&run_plugin.location);
@@ -1035,7 +1034,7 @@ impl TryFrom<Action> for ProtobufAction {
                         LaunchOrFocusPluginPayload {
                             plugin_url: url.into(),
                             should_float,
-                            move_to_focused_tab,
+                            move_to_focused_tab: false,
                             should_open_in_place,
                             plugin_configuration: Some(run_plugin.configuration.try_into()?),
                         },

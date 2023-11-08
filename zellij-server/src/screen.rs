@@ -294,7 +294,7 @@ pub enum ScreenInstruction {
     ProgressPluginLoadingOffset(u32),                 // u32 - plugin id
     RequestStateUpdateForPlugins,
     LaunchOrFocusPlugin(RunPlugin, bool, bool, bool, Option<PaneId>, ClientId), // bools are: should_float, move_to_focused_tab, should_open_in_place Option<PaneId> is the pane id to replace
-    LaunchPlugin(RunPlugin, bool, bool, bool, Option<PaneId>, ClientId), // bools are: should_float, move_to_focused_tab, should_open_in_place Option<PaneId> is the pane id to replace
+    LaunchPlugin(RunPlugin, bool, bool, Option<PaneId>, ClientId), // bools are: should_float, should_open_in_place Option<PaneId> is the pane id to replace
     SuppressPane(PaneId, ClientId),                                      // bool is should_float
     FocusPaneWithId(PaneId, bool, ClientId),                             // bool is should_float
     RenamePane(PaneId, Vec<u8>),
@@ -3411,7 +3411,6 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::LaunchPlugin(
                 run_plugin,
                 should_float,
-                move_to_focused_tab,
                 should_open_in_place,
                 pane_id_to_replace,
                 client_id,

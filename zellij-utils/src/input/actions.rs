@@ -211,8 +211,8 @@ pub enum Action {
     MiddleClick(Position),
     LaunchOrFocusPlugin(RunPlugin, bool, bool, bool), // bools => should float,
     // move_to_focused_tab, should_open_in_place
-    LaunchPlugin(RunPlugin, bool, bool, bool), // bools => should float,
-    // move_to_focused_tab, should_open_in_place
+    LaunchPlugin(RunPlugin, bool, bool), // bools => should float,
+    // should_open_in_place
     LeftMouseRelease(Position),
     RightMouseRelease(Position),
     MiddleMouseRelease(Position),
@@ -545,7 +545,6 @@ impl Action {
                 url,
                 floating,
                 in_place,
-                move_to_focused_tab,
                 configuration,
             } => {
                 let current_dir = get_current_dir();
@@ -559,7 +558,6 @@ impl Action {
                 Ok(vec![Action::LaunchPlugin(
                     run_plugin,
                     floating,
-                    move_to_focused_tab,
                     in_place,
                 )])
             },
