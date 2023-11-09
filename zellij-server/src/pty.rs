@@ -67,7 +67,11 @@ pub enum PtyInstruction {
     ClosePane(PaneId),
     CloseTab(Vec<PaneId>),
     ReRunCommandInPane(PaneId, RunCommand),
-    DropToShellInPane(PaneId, Option<PathBuf>), // Option<PathBuf> - default shell
+    DropToShellInPane {
+        pane_id: PaneId,
+        shell: Option<PathBuf>,
+        working_dir: Option<PathBuf>,
+    },
     SpawnInPlaceTerminal(
         Option<TerminalAction>,
         Option<String>,
@@ -101,7 +105,7 @@ impl From<&PtyInstruction> for PtyContext {
             PtyInstruction::CloseTab(_) => PtyContext::CloseTab,
             PtyInstruction::NewTab(..) => PtyContext::NewTab,
             PtyInstruction::ReRunCommandInPane(..) => PtyContext::ReRunCommandInPane,
-            PtyInstruction::DropToShellInPane(..) => PtyContext::DropToShellInPane,
+            PtyInstruction::DropToShellInPane { .. } => PtyContext::DropToShellInPane,
             PtyInstruction::SpawnInPlaceTerminal(..) => PtyContext::SpawnInPlaceTerminal,
             PtyInstruction::DumpLayout(..) => PtyContext::DumpLayout,
             PtyInstruction::LogLayoutToHd(..) => PtyContext::LogLayoutToHd,
@@ -546,17 +550,21 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     },
                 }
             },
-            PtyInstruction::DropToShellInPane(pane_id, default_shell) => {
+            PtyInstruction::DropToShellInPane {
+                pane_id,
+                shell,
+                working_dir,
+            } => {
                 let err_context = || format!("failed to rerun command in pane {:?}", pane_id);
 
                 // TODO: get configured default_shell from screen/tab as an option and default to
                 // this otherwise (also look for a place that turns get_default_shell into a
                 // RunCommand, we might have done this before)
                 let run_command = RunCommand {
-                    command: default_shell.unwrap_or_else(|| get_default_shell()),
+                    command: shell.unwrap_or_else(|| get_default_shell()),
                     hold_on_close: false,
                     hold_on_start: false,
-                    // TODO: cwd
+                    cwd: working_dir,
                     ..Default::default()
                 };
                 match pty

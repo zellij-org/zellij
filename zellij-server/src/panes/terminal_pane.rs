@@ -196,11 +196,13 @@ impl Pane for TerminalPane {
                     Some(AdjustedInput::ReRunCommandInThisPane(run_command))
                 },
                 ESC => {
+                    // Drop to shell in the same working directory as the command was run
+                    let working_dir = run_command.cwd.clone();
                     self.is_held = None;
                     self.grid.reset_terminal_state();
                     self.set_should_render(true);
                     self.remove_banner();
-                    Some(AdjustedInput::DropToShellInThisPane)
+                    Some(AdjustedInput::DropToShellInThisPane { working_dir })
                 },
                 CTRL_C => Some(AdjustedInput::CloseThisPane),
                 _ => None,
