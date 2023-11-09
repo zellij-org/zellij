@@ -78,15 +78,20 @@ impl From<&BackgroundJob> for BackgroundJobContext {
 
 static FLASH_DURATION_MS: u64 = 1000;
 static PLUGIN_ANIMATION_OFFSET_DURATION_MD: u64 = 500;
-static SESSION_READ_DURATION: u64 = 1000;
+static SESSION_READ_DURATION: u64 = 60000;
 
-pub(crate) fn background_jobs_main(bus: Bus<BackgroundJob>) -> Result<()> {
+pub(crate) fn background_jobs_main(
+    bus: Bus<BackgroundJob>,
+    serialization_interval: Option<u64>,
+) -> Result<()> {
     let err_context = || "failed to write to pty".to_string();
     let mut running_jobs: HashMap<BackgroundJob, Instant> = HashMap::new();
     let mut loading_plugins: HashMap<u32, Arc<AtomicBool>> = HashMap::new(); // u32 - plugin_id
     let current_session_name = Arc::new(Mutex::new(String::default()));
     let current_session_info = Arc::new(Mutex::new(SessionInfo::default()));
     let current_session_layout = Arc::new(Mutex::new((String::new(), BTreeMap::new())));
+    let serialization_interval = serialization_interval.map(|s| s * 1000); // convert to
+                                                                           // milliseconds
 
     loop {
         let (event, mut err_ctx) = bus.recv().with_context(err_context)?;
@@ -181,8 +186,10 @@ pub(crate) fn background_jobs_main(bus: Bus<BackgroundJob>) -> Result<()> {
                                 resurrectable_sessions,
                             ));
                             let _ = senders.send_to_screen(ScreenInstruction::DumpLayoutToHd);
-                            task::sleep(std::time::Duration::from_millis(SESSION_READ_DURATION))
-                                .await;
+                            task::sleep(std::time::Duration::from_millis(
+                                serialization_interval.unwrap_or(SESSION_READ_DURATION),
+                            ))
+                            .await;
                         }
                     }
                 });

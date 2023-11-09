@@ -751,6 +751,8 @@ fn init_session(
         arrow_fonts: config_options.simplified_ui.unwrap_or_default(),
     };
 
+    let serialization_interval = config_options.serialization_interval;
+
     let default_shell = config_options.default_shell.clone().map(|command| {
         TerminalAction::RunCommand(RunCommand {
             command,
@@ -885,7 +887,7 @@ fn init_session(
                 None,
                 Some(os_input.clone()),
             );
-            || background_jobs_main(background_jobs_bus).fatal()
+            move || background_jobs_main(background_jobs_bus, serialization_interval).fatal()
         })
         .unwrap();
 

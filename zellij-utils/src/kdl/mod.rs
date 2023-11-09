@@ -1480,6 +1480,9 @@ impl Options {
         let styled_underlines =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "styled_underlines")
                 .map(|(v, _)| v);
+        let serialization_interval =
+            kdl_property_first_arg_as_i64_or_error!(kdl_options, "serialization_interval")
+                .map(|(scroll_buffer_size, _entry)| scroll_buffer_size as u64);
         Ok(Options {
             simplified_ui,
             theme,
@@ -1505,6 +1508,7 @@ impl Options {
             serialize_pane_viewport,
             scrollback_lines_to_serialize,
             styled_underlines,
+            serialization_interval,
         })
     }
 }
