@@ -147,6 +147,10 @@ pub struct Options {
     #[clap(long, value_parser)]
     #[serde(default)]
     pub styled_underlines: Option<bool>,
+
+    /// The interval at which to serialize sessions for resurrection (in seconds)
+    #[clap(long, value_parser)]
+    pub serialization_interval: Option<u64>,
 }
 
 #[derive(ArgEnum, Deserialize, Serialize, Debug, Clone, Copy, PartialEq)]
@@ -218,6 +222,7 @@ impl Options {
             .scrollback_lines_to_serialize
             .or(self.scrollback_lines_to_serialize);
         let styled_underlines = other.styled_underlines.or(self.styled_underlines);
+        let serialization_interval = other.serialization_interval.or(self.serialization_interval);
 
         Options {
             simplified_ui,
@@ -244,6 +249,7 @@ impl Options {
             serialize_pane_viewport,
             scrollback_lines_to_serialize,
             styled_underlines,
+            serialization_interval,
         }
     }
 
@@ -295,6 +301,7 @@ impl Options {
             .scrollback_lines_to_serialize
             .or_else(|| self.scrollback_lines_to_serialize.clone());
         let styled_underlines = other.styled_underlines.or(self.styled_underlines);
+        let serialization_interval = other.serialization_interval.or(self.serialization_interval);
 
         Options {
             simplified_ui,
@@ -321,6 +328,7 @@ impl Options {
             serialize_pane_viewport,
             scrollback_lines_to_serialize,
             styled_underlines,
+            serialization_interval,
         }
     }
 
@@ -384,6 +392,7 @@ impl From<CliOptions> for Options {
             serialize_pane_viewport: opts.serialize_pane_viewport,
             scrollback_lines_to_serialize: opts.scrollback_lines_to_serialize,
             styled_underlines: opts.styled_underlines,
+            serialization_interval: opts.serialization_interval,
             ..Default::default()
         }
     }
