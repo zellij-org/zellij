@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix(plugins): add `LaunchPlugin` and some cwd fixes (https://github.com/zellij-org/zellij/pull/2916)
 * fix(performance): significantly reduce CPU utilization when serializing sessions (https://github.com/zellij-org/zellij/pull/2920)
 * fix(panes): reuse CWD when dropping to shell in command panes (https://github.com/zellij-org/zellij/pull/2915)
+* fix(resurrection): reduce default serialization interval to 1m and make it configurable (https://github.com/zellij-org/zellij/pull/2923)
 
 ## [0.39.0] - 2023-07-11
 * feat(panes): start panes/editors/commands/plugins in-place (https://github.com/zellij-org/zellij/pull/2795)
