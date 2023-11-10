@@ -658,6 +658,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                 client_id,
                 size,
             ) => {
+                #[cfg(unix)]
                 pty.fill_plugin_cwd(
                     should_float,
                     should_be_open_in_place,
@@ -748,6 +749,10 @@ impl Pty {
                     });
             };
         };
+    }
+    #[cfg(windows)]
+    fn fill_cwd(&self, terminal_action: &mut TerminalAction, client_id: ClientId) {
+        todo!()
     }
     #[cfg(unix)]
     fn fill_cwd_from_pane_id(&self, terminal_action: &mut TerminalAction, pane_id: &u32) {
@@ -1379,6 +1384,8 @@ impl Pty {
         session_layout_metadata.update_terminal_commands(terminal_ids_to_commands);
         session_layout_metadata.update_terminal_cwds(terminal_ids_to_cwds);
     }
+
+    #[cfg(unix)]
     pub fn fill_plugin_cwd(
         &self,
         should_float: Option<bool>,
@@ -1389,7 +1396,8 @@ impl Pty {
         pane_id_to_replace: Option<PaneId>, // pane id to replace if this is to be opened "in-place"
         client_id: ClientId,
         size: Size,
-    ) -> Result<()> {
+    ) -> Result<()>
+    {
         let cwd = self
             .active_panes
             .get(&client_id)

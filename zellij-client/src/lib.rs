@@ -21,6 +21,9 @@ use crate::{
     command_is_executing::CommandIsExecuting, input_handler::input_loop,
     os_input_output::ClientOsApi, stdin_handler::stdin_loop,
 };
+#[cfg(unix)]
+use zellij_utils::consts::set_permissions;
+use zellij_utils::pane_size::Size;
 use zellij_utils::{
     channels::{self, ChannelWithContext, SenderWithContext},
     consts::ZELLIJ_SOCK_DIR,
@@ -31,10 +34,7 @@ use zellij_utils::{
     ipc::{ClientAttributes, ClientToServerMsg, ExitReason, ServerToClientMsg},
     termwiz::input::InputEvent,
 };
-#[cfg(unix)]
-use zellij_utils::consts::set_permissions;
 use zellij_utils::{cli::CliArgs, input::layout::Layout};
-use zellij_utils::pane_size::Size;
 
 /// Instructions related to the client-side application
 #[derive(Debug, Clone)]
@@ -107,17 +107,27 @@ fn spawn_server(socket_path: &Path, debug: bool) -> io::Result<()> {
     if debug {
         cmd.arg("--debug");
     }
-    let status = cmd.status()?;
+    println!("Spawning server!");
+    #[cfg(unix)]
+    {
+        let status = cmd.status()?;
 
-    if status.success() {
+        if status.success() {
+            Ok(())
+        } else {
+            let msg = "Process returned non-zero exit code";
+            let err_msg = match status.code() {
+                Some(c) => format!("{}: {}", msg, c),
+                None => msg.to_string(),
+            };
+            Err(io::Error::new(io::ErrorKind::Other, err_msg))
+        }
+    }
+    #[cfg(windows)]
+    {
+        cmd.arg("--debug");
+        let status = cmd.spawn()?;
         Ok(())
-    } else {
-        let msg = "Process returned non-zero exit code";
-        let err_msg = match status.code() {
-            Some(c) => format!("{}: {}", msg, c),
-            None => msg.to_string(),
-        };
-        Err(io::Error::new(io::ErrorKind::Other, err_msg))
     }
 }
 
@@ -204,6 +214,7 @@ pub fn start_client(
         keybinds: config.keybinds.clone(),
     };
 
+    // TODO: Windows compatibility: Change ipc pipe to something cross platform instead of file
     let create_ipc_pipe = || -> std::path::PathBuf {
         let mut sock_dir = ZELLIJ_SOCK_DIR.clone();
         std::fs::create_dir_all(&sock_dir).unwrap();
@@ -276,11 +287,11 @@ pub fn start_client(
         let send_client_instructions = send_client_instructions.clone();
         let os_input = os_input.clone();
         Box::new(move |info| {
-                #[cfg(unix)]
-                if let Ok(()) = os_input.unset_raw_mode(0) {
-                    handle_panic(info, &send_client_instructions);
-                }
-            })
+            #[cfg(unix)]
+            if let Ok(()) = os_input.unset_raw_mode(0) {
+                handle_panic(info, &send_client_instructions);
+            }
+        })
     });
 
     let on_force_close = config_options.on_force_close.unwrap_or_default();

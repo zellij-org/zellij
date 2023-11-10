@@ -1,4 +1,5 @@
 use zellij_utils::anyhow::{Context, Result};
+use zellij_utils::interprocess::local_socket::LocalSocketListener;
 use zellij_utils::pane_size::Size;
 use zellij_utils::{interprocess, signal_hook};
 
@@ -20,9 +21,9 @@ use signal_hook::iterator::Signals;
 use std::io::prelude::*;
 #[cfg(not(windows))]
 use std::os::unix::io::RawFd;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use std::{io, thread, time};
+use std::{io, thread, time, process};
 use zellij_utils::{
     data::Palette,
     errors::ErrorContext,
@@ -267,8 +268,21 @@ impl ClientOsApi for ClientOsInputOutput {
                 },
             }
         }
+        let socket2;
+        loop {
+            let listener_path = PathBuf::from(format!("{}{}", path.to_string_lossy(), process::id()));
+            match LocalSocketListener::bind(listener_path) {
+                Ok(listener) => {
+                    socket2 = listener.accept().unwrap();
+                    break;
+                },
+                Err(_) => {
+                    std::thread::sleep(std::time::Duration::from_millis(50));
+                },
+            }
+        }
         let sender = IpcSenderWithContext::new(socket);
-        let receiver = sender.get_receiver();
+        let receiver = IpcReceiverWithContext::new(socket2);
         *self.send_instructions_to_server.lock().unwrap() = Some(sender);
         *self.receive_instructions_from_server.lock().unwrap() = Some(receiver);
     }

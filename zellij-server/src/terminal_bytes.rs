@@ -108,7 +108,7 @@ impl TerminalBytes {
                         #[cfg(unix)]
                         let _ = debug_to_file(bytes, self.pid);
                         #[cfg(windows)]
-                        todo!();
+                        let _ = debug_to_file(bytes);
                     }
                     self.async_send_to_screen(ScreenInstruction::PtyBytes(
                         self.terminal_id,

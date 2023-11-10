@@ -15,6 +15,10 @@ use nix::{
     unistd,
 };
 
+use std::ffi::OsString;
+#[cfg(windows)]
+use winptyrs::{PTYArgs, AgentConfig, PTY};
+
 use signal_hook::consts::*;
 use sysinfo::{ProcessExt, ProcessRefreshKind, System, SystemExt};
 use zellij_utils::{
@@ -261,6 +265,19 @@ fn handle_terminal(
                 .to_log(),
         },
     }
+}
+
+#[cfg(windows)]
+fn handle_terminal() -> Result<PTY, OsString> {
+    let pty_args = PTYArgs {
+        cols: 80,
+        rows: 25,
+        mouse_mode: winptyrs::MouseMode::WINPTY_MOUSE_MODE_NONE,
+        timeout: 300,
+        agent_config: AgentConfig::WINPTY_FLAG_COLOR_ESCAPES,
+    };
+
+    PTY::new(&pty_args)
 }
 
 // this is a utility method to separate the arguments from a pathbuf before we turn it into a
@@ -530,6 +547,7 @@ pub trait ServerOsApi: Send + Sync {
         &mut self,
         client_id: ClientId,
         stream: LocalSocketStream,
+        sender: LocalSocketStream
     ) -> Result<IpcReceiverWithContext<ClientToServerMsg>>;
     fn remove_client(&mut self, client_id: ClientId) -> Result<()>;
     fn load_palette(&self) -> Palette;
@@ -773,9 +791,10 @@ impl ServerOsApi for ServerOsInputOutput {
         &mut self,
         client_id: ClientId,
         stream: LocalSocketStream,
+        sender: LocalSocketStream,
     ) -> Result<IpcReceiverWithContext<ClientToServerMsg>> {
         let receiver = IpcReceiverWithContext::new(stream);
-        let sender = ClientSender::new(client_id, receiver.get_sender());
+        let sender = ClientSender::new(client_id, IpcSenderWithContext::new(sender));
         self.client_senders
             .lock()
             .to_anyhow()

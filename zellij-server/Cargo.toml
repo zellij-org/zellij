@@ -35,6 +35,10 @@ semver = "0.11.0"
 daemonize = "0.4.1"
 close_fds = "0.3.2"
 
+[target.'cfg(windows)'.dependencies]
+winpty-rs = "0.3.13"
+
+
 [dev-dependencies]
 insta = "1.6.0"
 tempfile = "3.2.0"

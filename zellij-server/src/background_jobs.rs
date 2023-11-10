@@ -365,7 +365,7 @@ fn write_session_state_to_disk(
 }
 
 fn read_other_live_session_states(current_session_name: &str) -> BTreeMap<String, SessionInfo> {
-    let mut other_session_names = vec![];
+    let mut other_session_names: Vec<String> = vec![];
     let mut session_infos_on_machine = BTreeMap::new();
     // we do this so that the session infos will be actual and we're
     // reasonably sure their session is running
@@ -373,6 +373,7 @@ fn read_other_live_session_states(current_session_name: &str) -> BTreeMap<String
         files.for_each(|file| {
             if let Ok(file) = file {
                 if let Ok(file_name) = file.file_name().into_string() {
+                    #[cfg(unix)]
                     if file.file_type().unwrap().is_socket() {
                         other_session_names.push(file_name);
                     }
@@ -380,7 +381,7 @@ fn read_other_live_session_states(current_session_name: &str) -> BTreeMap<String
             }
         });
     }
-
+    #[cfg(unix)]
     for session_name in other_session_names {
         let session_cache_file_name = session_info_cache_file_name(&session_name);
         if let Ok(raw_session_info) = fs::read_to_string(&session_cache_file_name) {
