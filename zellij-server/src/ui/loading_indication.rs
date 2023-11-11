@@ -25,6 +25,7 @@ pub struct LoadingIndication {
     animation_offset: usize,
     plugin_name: String,
     terminal_emulator_colors: Option<Palette>,
+    override_previous_error: bool,
 }
 
 impl LoadingIndication {
@@ -46,13 +47,16 @@ impl LoadingIndication {
         let current_animation_offset = self.animation_offset;
         let current_terminal_emulator_colors = self.terminal_emulator_colors.take();
         let mut current_error = self.error.take();
+        let override_previous_error = other.override_previous_error;
         drop(std::mem::replace(self, other));
         self.animation_offset = current_animation_offset;
         self.terminal_emulator_colors = current_terminal_emulator_colors;
         if let Some(current_error) = current_error.take() {
             // we do this so that only the first error (usually the root cause) will be shown
             // when plugins support scrolling, we might want to do an append here
-            self.error = Some(current_error);
+            if !override_previous_error {
+                self.error = Some(current_error);
+            }
         }
     }
     pub fn indicate_loading_plugin_from_memory(&mut self) {
@@ -112,6 +116,9 @@ impl LoadingIndication {
     }
     pub fn is_error(&self) -> bool {
         self.error.is_some()
+    }
+    pub fn override_previous_error(&mut self) {
+        self.override_previous_error = true;
     }
     fn started_loading(&self) -> bool {
         self.loading_from_memory.is_some()
