@@ -507,6 +507,7 @@ impl<'a> PluginLoader<'a> {
         Ok(module)
     }
     pub fn compile_module(&mut self) -> Result<Module> {
+        self.loading_indication.override_previous_error();
         display_loading_stage!(
             indicate_loading_plugin_from_hd_cache_notfound,
             self.loading_indication,
