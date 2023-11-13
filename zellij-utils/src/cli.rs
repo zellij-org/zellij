@@ -456,7 +456,7 @@ pub enum CliAction {
     },
     /// Embed focused pane if floating or float focused pane if embedded
     TogglePaneEmbedOrFloating,
-    /// Toggle the visibility of all fdirectionloating panes in the current Tab, open one if none exist
+    /// Toggle the visibility of all floating panes in the current Tab, open one if none exist
     ToggleFloatingPanes,
     /// Close the focused pane.
     ClosePane,
