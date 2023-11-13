@@ -5,6 +5,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+
+## [0.39.1] - 2023-11-13
 * fix: styled underlines in editors (https://github.com/zellij-org/zellij/pull/2918)
 * fix(plugins): add `LaunchPlugin` and some cwd fixes (https://github.com/zellij-org/zellij/pull/2916)
 * fix(performance): significantly reduce CPU utilization when serializing sessions (https://github.com/zellij-org/zellij/pull/2920)
@@ -12,7 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix(resurrection): reduce default serialization interval to 1m and make it configurable (https://github.com/zellij-org/zellij/pull/2923)
 * fix(plugins): allow reloading plugins if they crashed (https://github.com/zellij-org/zellij/pull/2929)
 
-## [0.39.0] - 2023-07-11
+## [0.39.0] - 2023-11-07
 * feat(panes): start panes/editors/commands/plugins in-place (https://github.com/zellij-org/zellij/pull/2795)
 * fix(theme): fg color for gruvbox light theme (https://github.com/zellij-org/zellij/pull/2791)
 * fix: display parsing error for kdl files located under the 'themes' directory (https://github.com/zellij-org/zellij/pull/2762)
