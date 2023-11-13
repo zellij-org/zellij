@@ -1525,7 +1525,9 @@ impl Grid {
                 if scroll_region_bottom < self.viewport.len() {
                     self.viewport.remove(scroll_region_bottom);
                 }
-                self.viewport.insert(current_line_index, Row::new()); // TODO: .canonical() ?
+
+                self.viewport
+                    .insert(current_line_index, Row::new().canonical());
             } else if current_line_index > scroll_region_top
                 && current_line_index <= scroll_region_bottom
             {
