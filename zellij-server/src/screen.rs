@@ -7,6 +7,7 @@ use std::rc::Rc;
 use std::str;
 use std::time::Duration;
 
+use log::info;
 use zellij_utils::data::{
     Direction, PaneManifest, PluginPermission, Resize, ResizeStrategy, SessionInfo,
 };
@@ -929,10 +930,12 @@ impl Screen {
         // below we don't check the result of sending the CloseTab instruction to the pty thread
         // because this might be happening when the app is closing, at which point the pty thread
         // has already closed and this would result in an error
+        info!("close tab idx1 {:?}", self.connected_clients);
         self.bus
             .senders
             .send_to_pty(PtyInstruction::CloseTab(pane_ids))
             .with_context(err_context)?;
+        info!("close tab idx2");
         if self.tabs.is_empty() {
             self.active_tab_indices.clear();
             self.bus
@@ -1039,6 +1042,10 @@ impl Screen {
 
     /// Renders this [`Screen`], which amounts to rendering its active [`Tab`].
     pub fn render(&mut self) -> Result<()> {
+        if self.connected_clients.borrow().is_empty() {
+            return Ok(());
+        }
+
         let err_context = "failed to render screen";
 
         let mut output = Output::new(
@@ -1401,6 +1408,10 @@ impl Screen {
         Ok(pane_manifest)
     }
     fn log_and_report_session_state(&mut self) -> Result<()> {
+        if self.connected_clients.borrow().is_empty() {
+            return Ok(());
+        }
+
         let err_context = || format!("Failed to log and report session state");
         // generate own session info
         let pane_manifest = self.generate_and_report_pane_state()?;
@@ -2139,6 +2150,7 @@ pub(crate) fn screen_thread_main(
             .bus
             .recv()
             .context("failed to receive event on channel")?;
+
         err_ctx.add_call(ContextType::Screen((&event).into()));
         // here we start caching resizes, so that we'll send them in bulk at the end of each event
         // when this cache is Dropped, for more information, see the comments in PtyWriter
@@ -2550,7 +2562,7 @@ pub(crate) fn screen_thread_main(
                     screen,
                     client_id,
                     |tab: &mut Tab, client_id: ClientId| tab
-                        .handle_scrollwheel_up(&point, 3, client_id), ?
+                        .handle_scrollwheel_up(&point, 1, client_id), ?
                 );
                 screen.render()?;
                 screen.unblock_input()?;
@@ -2687,6 +2699,7 @@ pub(crate) fn screen_thread_main(
                         }
                     },
                 }
+
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
             },
@@ -3010,6 +3023,7 @@ pub(crate) fn screen_thread_main(
                 screen.render()?;
             },
             ScreenInstruction::Exit => {
+                info!("exit");
                 break;
             },
             ScreenInstruction::ToggleTab(client_id) => {

@@ -18,6 +18,7 @@ mod ui;
 use background_jobs::{background_jobs_main, BackgroundJob};
 use log::info;
 use pty_writer::{pty_writer_main, PtyWriteInstruction};
+use zellij_utils::channels::{unbounded, bounded};
 use std::collections::{HashMap, HashSet};
 use std::{
     path::PathBuf,
@@ -130,25 +131,31 @@ pub(crate) struct SessionMetaData {
 impl Drop for SessionMetaData {
     fn drop(&mut self) {
         let _ = self.senders.send_to_pty(PtyInstruction::Exit);
-        let _ = self.senders.send_to_screen(ScreenInstruction::Exit);
-        let _ = self.senders.send_to_plugin(PluginInstruction::Exit);
-        let _ = self.senders.send_to_pty_writer(PtyWriteInstruction::Exit);
-        let _ = self.senders.send_to_background_jobs(BackgroundJob::Exit);
-        if let Some(screen_thread) = self.screen_thread.take() {
-            let _ = screen_thread.join();
-        }
         if let Some(pty_thread) = self.pty_thread.take() {
             let _ = pty_thread.join();
         }
-        if let Some(plugin_thread) = self.plugin_thread.take() {
-            let _ = plugin_thread.join();
-        }
+        
+        let _ = self.senders.send_to_pty_writer(PtyWriteInstruction::Exit);
         if let Some(pty_writer_thread) = self.pty_writer_thread.take() {
             let _ = pty_writer_thread.join();
         }
+
+        let _ = self.senders.send_to_plugin(PluginInstruction::Exit);
+        if let Some(plugin_thread) = self.plugin_thread.take() {
+            let _ = plugin_thread.is_finished();
+        }
+        
+        
+        let _ = self.senders.send_to_background_jobs(BackgroundJob::Exit);
+        let _ = self.senders.send_to_screen(ScreenInstruction::Exit);
         if let Some(background_jobs_thread) = self.background_jobs_thread.take() {
             let _ = background_jobs_thread.join();
         }
+
+        if let Some(screen_thread) = self.screen_thread.take() {
+            let _ = screen_thread.join();
+        }
+        
     }
 }
 
