@@ -5,6 +5,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+* fix(cli): typo in cli help (https://github.com/zellij-org/zellij/pull/2906/files)
+* fix(sessions): slow session updates in the session-manager (https://github.com/zellij-org/zellij/pull/2951)
 
 ## [0.39.1] - 2023-11-13
 * fix: styled underlines in editors (https://github.com/zellij-org/zellij/pull/2918)
@@ -13,7 +15,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix(panes): reuse CWD when dropping to shell in command panes (https://github.com/zellij-org/zellij/pull/2915)
 * fix(resurrection): reduce default serialization interval to 1m and make it configurable (https://github.com/zellij-org/zellij/pull/2923)
 * fix(plugins): allow reloading plugins if they crashed (https://github.com/zellij-org/zellij/pull/2929)
-* fix(cli): typo in cli help (https://github.com/zellij-org/zellij/pull/2906/files)
 
 ## [0.39.0] - 2023-11-07
 * feat(panes): start panes/editors/commands/plugins in-place (https://github.com/zellij-org/zellij/pull/2795)
