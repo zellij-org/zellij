@@ -78,7 +78,8 @@ impl From<&BackgroundJob> for BackgroundJobContext {
 
 static FLASH_DURATION_MS: u64 = 1000;
 static PLUGIN_ANIMATION_OFFSET_DURATION_MD: u64 = 500;
-static SESSION_READ_DURATION: u64 = 60000;
+static SESSION_READ_DURATION: u64 = 1000;
+static DEFAULT_SERIALIZATION_INTERVAL: u64 = 60000;
 
 pub(crate) fn background_jobs_main(
     bus: Bus<BackgroundJob>,
@@ -90,6 +91,7 @@ pub(crate) fn background_jobs_main(
     let current_session_name = Arc::new(Mutex::new(String::default()));
     let current_session_info = Arc::new(Mutex::new(SessionInfo::default()));
     let current_session_layout = Arc::new(Mutex::new((String::new(), BTreeMap::new())));
+    let last_serialization_time = Arc::new(Mutex::new(Instant::now()));
     let serialization_interval = serialization_interval.map(|s| s * 1000); // convert to
                                                                            // milliseconds
 
@@ -165,6 +167,7 @@ pub(crate) fn background_jobs_main(
                     let current_session_info = current_session_info.clone();
                     let current_session_name = current_session_name.clone();
                     let current_session_layout = current_session_layout.clone();
+                    let last_serialization_time = last_serialization_time.clone();
                     async move {
                         loop {
                             let current_session_name =
@@ -185,11 +188,20 @@ pub(crate) fn background_jobs_main(
                                 session_infos_on_machine,
                                 resurrectable_sessions,
                             ));
-                            let _ = senders.send_to_screen(ScreenInstruction::DumpLayoutToHd);
-                            task::sleep(std::time::Duration::from_millis(
-                                serialization_interval.unwrap_or(SESSION_READ_DURATION),
-                            ))
-                            .await;
+                            if last_serialization_time
+                                .lock()
+                                .unwrap()
+                                .elapsed()
+                                .as_millis()
+                                >= serialization_interval
+                                    .unwrap_or(DEFAULT_SERIALIZATION_INTERVAL)
+                                    .into()
+                            {
+                                let _ = senders.send_to_screen(ScreenInstruction::DumpLayoutToHd);
+                                *last_serialization_time.lock().unwrap() = Instant::now();
+                            }
+                            task::sleep(std::time::Duration::from_millis(SESSION_READ_DURATION))
+                                .await;
                         }
                     }
                 });
@@ -421,10 +433,15 @@ fn find_resurrectable_sessions(
                     {
                         Ok(created) => Some(created),
                         Err(e) => {
-                            log::error!(
-                                "Failed to read created stamp of resurrection file: {:?}",
-                                e
-                            );
+                            if e.kind() != std::io::ErrorKind::NotFound {
+                                // let's not spam the
+                                // logs if serialization
+                                // is disabled
+                                log::error!(
+                                    "Failed to read created stamp of resurrection file: {:?}",
+                                    e
+                                );
+                            }
                             None
                         },
                     };
