@@ -54,7 +54,7 @@ pub const NEW_TAB_IN_TAB_MODE: [u8; 1] = [110]; // n
 pub const SWITCH_NEXT_TAB_IN_TAB_MODE: [u8; 1] = [108]; // l
 pub const SWITCH_PREV_TAB_IN_TAB_MODE: [u8; 1] = [104]; // h
 pub const CLOSE_TAB_IN_TAB_MODE: [u8; 1] = [120]; // x
-pub const RENAME_TAB_MODE: [u8; 1] = [114]; // r
+pub const RENAME_TAB_MODE: [u8; 1] = [99]; // c
 
 pub const SESSION_MODE: [u8; 1] = [15]; // ctrl-o
 pub const DETACH_IN_SESSION_MODE: [u8; 1] = [100]; // d
