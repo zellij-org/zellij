@@ -222,7 +222,7 @@ keybinds:
         - action: [SwitchToMode: Session,]
           key: [Ctrl: 'o',]
         - action: [SwitchToMode: RenameTab, TabNameInput: [0],]
-          key: [Char: 'r']
+          key: [Char: 'c']
         - action: [Quit,]
           key: [Ctrl: 'q',]
         - action: [GoToPreviousTab,]

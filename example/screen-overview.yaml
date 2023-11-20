@@ -251,7 +251,7 @@ keybinds:
         - action: [SwitchToMode: Scroll,]
           key: [Ctrl: 's']
         - action: [SwitchToMode: RenameTab, TabNameInput: [0],]
-          key: [Char: 'r']
+          key: [Char: 'c']
         - action: [Quit,]
           key: [Ctrl: 'q',]
         - action: [FocusPreviousPane,]

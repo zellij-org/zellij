@@ -1052,7 +1052,7 @@ Config {
                 ),
             ],
             Char(
-                'r',
+                'c',
             ): [
                 SwitchToMode(
                     RenameTab,
