@@ -68,7 +68,7 @@ keybinds clear-defaults=true {
         bind "Ctrl h" { SwitchToMode "move"; }
         bind "Ctrl b" { SwitchToMode "tmux"; }
         bind "Ctrl o" { SwitchToMode "session"; }
-        bind "r" { SwitchToMode "RenameTab"; TabNameInput 0; }
+        bind "c" { SwitchToMode "RenameTab"; TabNameInput 0; }
         bind "Ctrl q" { Quit; }
         bind "h" "Left" "Up" "k" { GoToPreviousTab; }
         bind "l" "Right" "Down" "j" { GoToNextTab; }
@@ -328,7 +328,7 @@ pane_frames true
 // Choose the theme that is specified in the themes section.
 // Default: default
 //
-theme "default" 
+theme "default"
 
 // The name of the default layout to load on startup
 // Default: "default"
