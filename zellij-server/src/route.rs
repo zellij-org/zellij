@@ -705,6 +705,17 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
         },
+        Action::LaunchPlugin(run_plugin, should_float, should_open_in_place) => {
+            senders
+                .send_to_screen(ScreenInstruction::LaunchPlugin(
+                    run_plugin,
+                    should_float,
+                    should_open_in_place,
+                    pane_id,
+                    client_id,
+                ))
+                .with_context(err_context)?;
+        },
         Action::CloseTerminalPane(terminal_pane_id) => {
             senders
                 .send_to_screen(ScreenInstruction::ClosePane(

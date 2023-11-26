@@ -953,6 +953,39 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                     should_open_in_place,
                 ))
             },
+            "LaunchPlugin" => {
+                let arguments = action_arguments.iter().copied();
+                let mut args = kdl_arguments_that_are_strings(arguments)?;
+                if args.is_empty() {
+                    return Err(ConfigError::new_kdl_error(
+                        "No plugin found to launch in LaunchPlugin".into(),
+                        kdl_action.span().offset(),
+                        kdl_action.span().len(),
+                    ));
+                }
+                let plugin_path = args.remove(0);
+
+                let command_metadata = action_children.iter().next();
+                let should_float = command_metadata
+                    .and_then(|c_m| kdl_child_bool_value_for_entry(c_m, "floating"))
+                    .unwrap_or(false);
+                let should_open_in_place = command_metadata
+                    .and_then(|c_m| kdl_child_bool_value_for_entry(c_m, "in_place"))
+                    .unwrap_or(false);
+                let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+                let location = RunPluginLocation::parse(&plugin_path, Some(current_dir))?;
+                let configuration = KdlLayoutParser::parse_plugin_user_configuration(&kdl_action)?;
+                let run_plugin = RunPlugin {
+                    location,
+                    _allow_exec_host_cmd: false,
+                    configuration,
+                };
+                Ok(Action::LaunchPlugin(
+                    run_plugin,
+                    should_float,
+                    should_open_in_place,
+                ))
+            },
             "PreviousSwapLayout" => Ok(Action::PreviousSwapLayout),
             "NextSwapLayout" => Ok(Action::NextSwapLayout),
             "BreakPane" => Ok(Action::BreakPane),
@@ -1447,6 +1480,9 @@ impl Options {
         let styled_underlines =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "styled_underlines")
                 .map(|(v, _)| v);
+        let serialization_interval =
+            kdl_property_first_arg_as_i64_or_error!(kdl_options, "serialization_interval")
+                .map(|(scroll_buffer_size, _entry)| scroll_buffer_size as u64);
         Ok(Options {
             simplified_ui,
             theme,
@@ -1472,6 +1508,7 @@ impl Options {
             serialize_pane_viewport,
             scrollback_lines_to_serialize,
             styled_underlines,
+            serialization_interval,
         })
     }
 }

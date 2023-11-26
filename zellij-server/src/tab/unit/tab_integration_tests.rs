@@ -225,6 +225,7 @@ fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut tab = Tab::new(
         index,
         position,
@@ -249,6 +250,7 @@ fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
         None,
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -300,6 +302,7 @@ fn create_new_tab_with_swap_layouts(
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut tab = Tab::new(
         index,
         position,
@@ -324,6 +327,7 @@ fn create_new_tab_with_swap_layouts(
         None,
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let (
         base_layout,
@@ -377,6 +381,7 @@ fn create_new_tab_with_os_api(
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut tab = Tab::new(
         index,
         position,
@@ -401,6 +406,7 @@ fn create_new_tab_with_os_api(
         None,
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -440,6 +446,7 @@ fn create_new_tab_with_layout(size: Size, default_mode: ModeInfo, layout: &str) 
     let (tab_layout, floating_panes_layout) = layout.new_tab();
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut tab = Tab::new(
         index,
         position,
@@ -464,6 +471,7 @@ fn create_new_tab_with_layout(size: Size, default_mode: ModeInfo, layout: &str) 
         None,
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let pane_ids = tab_layout
         .extract_run_instructions()
@@ -517,6 +525,7 @@ fn create_new_tab_with_mock_pty_writer(
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut tab = Tab::new(
         index,
         position,
@@ -541,6 +550,7 @@ fn create_new_tab_with_mock_pty_writer(
         None,
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -585,6 +595,7 @@ fn create_new_tab_with_sixel_support(
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut tab = Tab::new(
         index,
         position,
@@ -609,6 +620,7 @@ fn create_new_tab_with_sixel_support(
         None,
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -646,6 +658,7 @@ fn take_snapshot(ansi_instructions: &str, rows: usize, columns: usize, palette: 
     })));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         rows,
         columns,
@@ -657,6 +670,7 @@ fn take_snapshot(ansi_instructions: &str, rows: usize, columns: usize, palette: 
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let mut vte_parser = vte::Parser::new();
     for &byte in ansi_instructions.as_bytes() {
@@ -679,6 +693,7 @@ fn take_snapshot_with_sixel(
     })));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         rows,
         columns,
@@ -690,6 +705,7 @@ fn take_snapshot_with_sixel(
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let mut vte_parser = vte::Parser::new();
     for &byte in ansi_instructions.as_bytes() {
@@ -709,6 +725,7 @@ fn take_snapshot_and_cursor_position(
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         rows,
         columns,
@@ -720,6 +737,7 @@ fn take_snapshot_and_cursor_position(
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let mut vte_parser = vte::Parser::new();
     for &byte in ansi_instructions.as_bytes() {

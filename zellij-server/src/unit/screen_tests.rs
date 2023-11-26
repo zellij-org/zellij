@@ -68,6 +68,7 @@ fn take_snapshots_and_cursor_coordinates_from_render_events<'a>(
     })));
     let debug = false;
     let arrow_fonts = true;
+    let styled_underlines = true;
     let mut grid = Grid::new(
         screen_size.rows,
         screen_size.cols,
@@ -79,6 +80,7 @@ fn take_snapshots_and_cursor_coordinates_from_render_events<'a>(
         Style::default(),
         debug,
         arrow_fonts,
+        styled_underlines,
     );
     let snapshots: Vec<(Option<(usize, usize)>, String)> = all_events
         .filter_map(|server_instruction| {

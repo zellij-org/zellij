@@ -5225,7 +5225,7 @@ dependencies = [
 
 [[package]]
 name = "zellij"
-version = "0.39.0"
+version = "0.40.0"
 dependencies = [
  "dialoguer",
  "insta",
@@ -5243,7 +5243,7 @@ dependencies = [
 
 [[package]]
 name = "zellij-client"
-version = "0.39.0"
+version = "0.40.0"
 dependencies = [
  "insta",
  "log",
@@ -5257,7 +5257,7 @@ dependencies = [
 
 [[package]]
 name = "zellij-server"
-version = "0.39.0"
+version = "0.40.0"
 dependencies = [
  "ansi_term",
  "arrayvec 0.7.4",
@@ -5289,7 +5289,7 @@ dependencies = [
 
 [[package]]
 name = "zellij-tile"
-version = "0.39.0"
+version = "0.40.0"
 dependencies = [
  "clap 3.2.25",
  "serde",
@@ -5301,14 +5301,14 @@ dependencies = [
 
 [[package]]
 name = "zellij-tile-utils"
-version = "0.39.0"
+version = "0.40.0"
 dependencies = [
  "ansi_term",
 ]
 
 [[package]]
 name = "zellij-utils"
-version = "0.39.0"
+version = "0.40.0"
 dependencies = [
  "anyhow",
  "async-channel",

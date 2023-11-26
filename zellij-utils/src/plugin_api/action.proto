@@ -52,6 +52,7 @@ message Action {
     IdAndName rename_plugin_pane_payload = 43;
     IdAndName rename_tab_payload = 44;
     string rename_session_payload = 45;
+    LaunchOrFocusPluginPayload launch_plugin_payload = 46;
   }
 }
 
@@ -223,6 +224,7 @@ enum ActionName {
     BreakPaneRight = 78;
     BreakPaneLeft = 79;
     RenameSession = 80;
+    LaunchPlugin = 81;
 }
 
 message Position {

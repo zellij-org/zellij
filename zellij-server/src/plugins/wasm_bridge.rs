@@ -927,5 +927,4 @@ pub fn handle_plugin_crash(plugin_id: PluginId, message: String, senders: Thread
         plugin_id,
         loading_indication,
     ));
-    let _ = senders.send_to_plugin(PluginInstruction::Unload(plugin_id));
 }
