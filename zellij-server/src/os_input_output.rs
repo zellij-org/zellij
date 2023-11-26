@@ -1,8 +1,8 @@
 use crate::{panes::PaneId, ClientId};
 
-use async_std::{fs::File as AsyncFile, io::ReadExt};
 #[cfg(unix)]
 use async_std::os::unix::io::FromRawFd;
+use async_std::{fs::File as AsyncFile, io::ReadExt};
 
 use interprocess::local_socket::LocalSocketStream;
 #[cfg(unix)]
@@ -17,7 +17,7 @@ use nix::{
 
 use std::ffi::OsString;
 #[cfg(windows)]
-use winptyrs::{PTYArgs, AgentConfig, PTY};
+use winptyrs::{AgentConfig, PTYArgs, PTY};
 
 use signal_hook::consts::*;
 use sysinfo::{ProcessExt, ProcessRefreshKind, System, SystemExt};
@@ -45,7 +45,6 @@ use std::{
     env,
     fs::File,
     io::Write,
-
     path::PathBuf,
     process::{Child, Command},
     sync::{Arc, Mutex},
@@ -57,6 +56,8 @@ use std::os::unix::{io::RawFd, process::CommandExt};
 pub use async_trait::async_trait;
 #[cfg(unix)]
 pub use nix::unistd::Pid;
+#[cfg(windows)]
+pub use sysinfo::Pid;
 
 #[cfg(unix)]
 fn set_terminal_size_using_fd(
@@ -102,7 +103,7 @@ fn handle_command_exit(mut child: Child) -> Result<Option<i32>> {
     let mut should_exit = false;
     let mut attempts = 3;
     #[cfg(unix)]
-        let mut signals =
+    let mut signals =
         signal_hook::iterator::Signals::new(&[SIGINT, SIGTERM]).with_context(err_context)?;
     'handle_exit: loop {
         // test whether the child process has exited
@@ -268,7 +269,13 @@ fn handle_terminal(
 }
 
 #[cfg(windows)]
-fn handle_terminal() -> Result<PTY, OsString> {
+fn handle_terminal(
+    cmd: RunCommand,
+    failover_cmd: Option<RunCommand>,
+    orig_pty: PTY,
+    quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
+    terminal_id: u32,
+) -> Result<bool, OsString> {
     let pty_args = PTYArgs {
         cols: 80,
         rows: 25,
@@ -277,7 +284,9 @@ fn handle_terminal() -> Result<PTY, OsString> {
         agent_config: AgentConfig::WINPTY_FLAG_COLOR_ESCAPES,
     };
 
-    PTY::new(&pty_args)
+    let mut pty = PTY::new(&pty_args)?;
+
+    pty.spawn(cmd.command.into(), None, None, None)
 }
 
 // this is a utility method to separate the arguments from a pathbuf before we turn it into a
@@ -457,6 +466,8 @@ impl ClientSender {
 pub struct ServerOsInputOutput {
     #[cfg(unix)]
     orig_termios: Arc<Mutex<termios::Termios>>,
+    #[cfg(windows)]
+    orig_pty: Arc<Mutex<PTY>>,
     client_senders: Arc<Mutex<HashMap<ClientId, ClientSender>>>,
     #[cfg(unix)]
     terminal_id_to_raw_fd: Arc<Mutex<BTreeMap<u32, Option<RawFd>>>>, // A value of None means the
@@ -517,8 +528,15 @@ pub trait ServerOsApi: Send + Sync {
         quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>, // u32 is the exit status
         default_editor: Option<PathBuf>,
     ) -> Result<(u32, RawFd, RawFd)>;
+    #[cfg(windows)]
+    fn spawn_terminal(
+        &self,
+        terminal_action: TerminalAction,
+        quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
+        default_editor: Option<PathBuf>,
+    ) -> Result<(u32, Pid, Pid)>;
     // reserves a terminal id without actually opening a terminal
-    fn reserve_terminal_id(&self) -> Result<u32> {
+    fn reserve_terminal_id(&self) -> Result<Pid> {
         unimplemented!()
     }
     /// Read bytes from the standard output of the virtual terminal referred to by `fd`.
@@ -547,15 +565,13 @@ pub trait ServerOsApi: Send + Sync {
         &mut self,
         client_id: ClientId,
         stream: LocalSocketStream,
-        sender: LocalSocketStream
+        sender: LocalSocketStream,
     ) -> Result<IpcReceiverWithContext<ClientToServerMsg>>;
     fn remove_client(&mut self, client_id: ClientId) -> Result<()>;
     fn load_palette(&self) -> Palette;
     /// Returns the current working directory for a given pid
-    #[cfg(unix)]
     fn get_cwd(&self, pid: Pid) -> Option<PathBuf>;
     /// Returns the current working directory for multiple pids
-    #[cfg(unix)]
     fn get_cwds(&self, _pids: Vec<Pid>) -> HashMap<Pid, PathBuf> {
         HashMap::new()
     }
@@ -676,6 +692,20 @@ impl ServerOsApi for ServerOsInputOutput {
             None => Err(anyhow!("no more terminal IDs left to allocate")),
         }
     }
+    #[cfg(windows)]
+    fn spawn_terminal(
+        &self,
+        terminal_action: TerminalAction,
+        quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
+        default_editor: Option<PathBuf>,
+    ) -> Result<(u32, Pid, Pid)> {
+        let err_context = || "failed to spawn terminal".to_string();
+
+        let orig_pty = self.orig_pty.lock().to_anyhow().with_context(err_context)?;
+
+        todo!("Spawn terminal");
+    }
+
     #[cfg(unix)]
     fn reserve_terminal_id(&self) -> Result<u32> {
         let err_context = || "failed to reserve a terminal ID".to_string();
@@ -819,7 +849,6 @@ impl ServerOsApi for ServerOsInputOutput {
         default_palette()
     }
 
-    #[cfg(unix)]
     fn get_cwd(&self, pid: Pid) -> Option<PathBuf> {
         let mut system_info = System::new();
         // Update by minimizing information.
@@ -836,7 +865,6 @@ impl ServerOsApi for ServerOsInputOutput {
         None
     }
 
-    #[cfg(unix)]
     fn get_cwds(&self, pids: Vec<Pid>) -> HashMap<Pid, PathBuf> {
         let mut system_info = System::new();
         // Update by minimizing information.
@@ -971,10 +999,11 @@ pub fn get_server_os_input() -> Result<ServerOsInputOutput, nix::Error> {
 }
 #[cfg(windows)]
 pub fn get_server_os_input() -> Result<ServerOsInputOutput, ()> {
-    Ok(ServerOsInputOutput {
-        client_senders: Arc::new(Mutex::new(HashMap::new())),
-        cached_resizes: Arc::new(Mutex::new(None)),
-    })
+    todo!()
+    // Ok(ServerOsInputOutput {
+    //     client_senders: Arc::new(Mutex::new(HashMap::new())),
+    //     cached_resizes: Arc::new(Mutex::new(None)),
+    // })
 }
 
 use crate::pty_writer::PtyWriteInstruction;
