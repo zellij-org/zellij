@@ -324,6 +324,8 @@ pub enum CliAction {
     MovePaneBackwards,
     /// Clear all buffers for a focused pane
     Clear,
+    /// Detach session from the client
+    Detach,
     /// Dump the focused pane to a file
     DumpScreen {
         path: PathBuf,

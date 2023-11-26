@@ -1222,6 +1222,7 @@ impl TryFrom<Action> for ProtobufAction {
             | Action::Deny
             | Action::Copy
             | Action::DumpLayout
+            | Action::CliDetach
             | Action::SkipConfirm(..) => Err("Unsupported action"),
         }
     }
