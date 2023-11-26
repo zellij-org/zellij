@@ -1005,11 +1005,21 @@ pub fn get_server_os_input() -> Result<ServerOsInputOutput, nix::Error> {
 }
 #[cfg(windows)]
 pub fn get_server_os_input() -> Result<ServerOsInputOutput, ()> {
-    todo!()
-    // Ok(ServerOsInputOutput {
-    //     client_senders: Arc::new(Mutex::new(HashMap::new())),
-    //     cached_resizes: Arc::new(Mutex::new(None)),
-    // })
+    use winptyrs::MouseMode;
+
+    let pty_args = PTYArgs {
+        cols: 80,
+        rows: 25,
+        mouse_mode: MouseMode::WINPTY_MOUSE_MODE_NONE,
+        timeout: 10000,
+        agent_config: AgentConfig::WINPTY_FLAG_COLOR_ESCAPES
+    };
+    let pty = PTY::new(&pty_args).unwrap();
+    Ok(ServerOsInputOutput {
+        client_senders: Arc::new(Mutex::new(HashMap::new())),
+        cached_resizes: Arc::new(Mutex::new(None)),
+        orig_pty: Arc::new(Mutex::new(pty)),
+    })
 }
 
 use crate::pty_writer::PtyWriteInstruction;
