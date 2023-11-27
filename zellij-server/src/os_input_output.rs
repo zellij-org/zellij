@@ -581,16 +581,16 @@ impl ServerOsApi for ServerOsInputOutput {
             .to_anyhow()
             .with_context(err_context)?;
         let terminal_id = self
-                .terminal_id_to_raw_fd
-                .lock()
-                .to_anyhow()
-                .with_context(err_context)?
-                .keys()
-                .copied()
-                .collect::<BTreeSet<u32>>()
-                .last()
-                .map(|l| l + 1)
-                .or(Some(0));
+            .terminal_id_to_raw_fd
+            .lock()
+            .to_anyhow()
+            .with_context(err_context)?
+            .keys()
+            .copied()
+            .collect::<BTreeSet<u32>>()
+            .last()
+            .map(|l| l + 1)
+            .or(Some(0));
         match terminal_id {
             Some(terminal_id) => {
                 self.terminal_id_to_raw_fd
@@ -622,16 +622,16 @@ impl ServerOsApi for ServerOsInputOutput {
         let err_context = || "failed to reserve a terminal ID".to_string();
 
         let terminal_id = self
-                .terminal_id_to_raw_fd
-                .lock()
-                .to_anyhow()
-                .with_context(err_context)?
-                .keys()
-                .copied()
-                .collect::<BTreeSet<u32>>()
-                .last()
-                .map(|l| l + 1)
-                .or(Some(0));
+            .terminal_id_to_raw_fd
+            .lock()
+            .to_anyhow()
+            .with_context(err_context)?
+            .keys()
+            .copied()
+            .collect::<BTreeSet<u32>>()
+            .last()
+            .map(|l| l + 1)
+            .or(Some(0));
         match terminal_id {
             Some(terminal_id) => {
                 self.terminal_id_to_raw_fd
