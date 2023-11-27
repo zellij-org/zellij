@@ -413,6 +413,32 @@ impl TryFrom<ProtobufAction> for Action {
                     _ => Err("Wrong payload for Action::LaunchOrFocusPlugin"),
                 }
             },
+            Some(ProtobufActionName::LaunchPlugin) => match protobuf_action.optional_payload {
+                Some(OptionalPayload::LaunchOrFocusPluginPayload(payload)) => {
+                    let run_plugin_location =
+                        RunPluginLocation::parse(&payload.plugin_url, None)
+                            .map_err(|_| "Malformed LaunchOrFocusPlugin payload")?;
+                    let configuration: PluginUserConfiguration = payload
+                        .plugin_configuration
+                        .and_then(|p| PluginUserConfiguration::try_from(p).ok())
+                        .unwrap_or_default();
+                    let run_plugin = RunPlugin {
+                        _allow_exec_host_cmd: false,
+                        location: run_plugin_location,
+                        configuration,
+                    };
+                    let should_float = payload.should_float;
+                    let _move_to_focused_tab = payload.move_to_focused_tab; // not actually used in
+                                                                            // this action
+                    let should_open_in_place = payload.should_open_in_place;
+                    Ok(Action::LaunchPlugin(
+                        run_plugin,
+                        should_float,
+                        should_open_in_place,
+                    ))
+                },
+                _ => Err("Wrong payload for Action::LaunchOrFocusPlugin"),
+            },
             Some(ProtobufActionName::LeftMouseRelease) => match protobuf_action.optional_payload {
                 Some(OptionalPayload::LeftMouseReleasePayload(payload)) => {
                     let position = payload.try_into()?;
@@ -625,6 +651,12 @@ impl TryFrom<ProtobufAction> for Action {
             Some(ProtobufActionName::BreakPaneLeft) => match protobuf_action.optional_payload {
                 Some(_) => Err("BreakPaneLeft should not have a payload"),
                 None => Ok(Action::BreakPaneLeft),
+            },
+            Some(ProtobufActionName::RenameSession) => match protobuf_action.optional_payload {
+                Some(OptionalPayload::RenameSessionPayload(name)) => {
+                    Ok(Action::RenameSession(name))
+                },
+                _ => Err("Wrong payload for Action::RenameSession"),
             },
             _ => Err("Unknown Action"),
         }
@@ -990,6 +1022,21 @@ impl TryFrom<Action> for ProtobufAction {
                     )),
                 })
             },
+            Action::LaunchPlugin(run_plugin, should_float, should_open_in_place) => {
+                let url: Url = Url::from(&run_plugin.location);
+                Ok(ProtobufAction {
+                    name: ProtobufActionName::LaunchPlugin as i32,
+                    optional_payload: Some(OptionalPayload::LaunchOrFocusPluginPayload(
+                        LaunchOrFocusPluginPayload {
+                            plugin_url: url.into(),
+                            should_float,
+                            move_to_focused_tab: false,
+                            should_open_in_place,
+                            plugin_configuration: Some(run_plugin.configuration.try_into()?),
+                        },
+                    )),
+                })
+            },
             Action::LeftMouseRelease(position) => {
                 let position: ProtobufPosition = position.try_into()?;
                 Ok(ProtobufAction {
@@ -1163,6 +1210,10 @@ impl TryFrom<Action> for ProtobufAction {
             Action::BreakPaneLeft => Ok(ProtobufAction {
                 name: ProtobufActionName::BreakPaneLeft as i32,
                 optional_payload: None,
+            }),
+            Action::RenameSession(session_name) => Ok(ProtobufAction {
+                name: ProtobufActionName::RenameSession as i32,
+                optional_payload: Some(OptionalPayload::RenameSessionPayload(session_name)),
             }),
             Action::NoOp
             | Action::Confirm

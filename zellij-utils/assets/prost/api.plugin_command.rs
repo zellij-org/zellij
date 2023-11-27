@@ -5,7 +5,7 @@ pub struct PluginCommand {
     pub name: i32,
     #[prost(
         oneof = "plugin_command::Payload",
-        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43"
+        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46"
     )]
     pub payload: ::core::option::Option<plugin_command::Payload>,
 }
@@ -98,6 +98,12 @@ pub mod plugin_command {
         OpenCommandPaneInPlacePayload(super::OpenCommandPanePayload),
         #[prost(message, tag = "43")]
         RunCommandPayload(super::RunCommandPayload),
+        #[prost(message, tag = "44")]
+        WebRequestPayload(super::WebRequestPayload),
+        #[prost(string, tag = "45")]
+        DeleteDeadSessionPayload(::prost::alloc::string::String),
+        #[prost(string, tag = "46")]
+        RenameSessionPayload(::prost::alloc::string::String),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -174,6 +180,20 @@ pub struct RunCommandPayload {
     #[prost(string, tag = "3")]
     pub cwd: ::prost::alloc::string::String,
     #[prost(message, repeated, tag = "4")]
+    pub context: ::prost::alloc::vec::Vec<ContextItem>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct WebRequestPayload {
+    #[prost(string, tag = "1")]
+    pub url: ::prost::alloc::string::String,
+    #[prost(enumeration = "HttpVerb", tag = "2")]
+    pub verb: i32,
+    #[prost(message, repeated, tag = "3")]
+    pub headers: ::prost::alloc::vec::Vec<super::event::Header>,
+    #[prost(bytes = "vec", tag = "4")]
+    pub body: ::prost::alloc::vec::Vec<u8>,
+    #[prost(message, repeated, tag = "5")]
     pub context: ::prost::alloc::vec::Vec<ContextItem>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -294,6 +314,10 @@ pub enum CommandName {
     OpenCommandInPlace = 69,
     OpenFileInPlace = 70,
     RunCommand = 71,
+    WebRequest = 72,
+    DeleteDeadSession = 73,
+    DeleteAllDeadSessions = 74,
+    RenameSession = 75,
 }
 impl CommandName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -374,6 +398,10 @@ impl CommandName {
             CommandName::OpenCommandInPlace => "OpenCommandInPlace",
             CommandName::OpenFileInPlace => "OpenFileInPlace",
             CommandName::RunCommand => "RunCommand",
+            CommandName::WebRequest => "WebRequest",
+            CommandName::DeleteDeadSession => "DeleteDeadSession",
+            CommandName::DeleteAllDeadSessions => "DeleteAllDeadSessions",
+            CommandName::RenameSession => "RenameSession",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -451,6 +479,42 @@ impl CommandName {
             "OpenCommandInPlace" => Some(Self::OpenCommandInPlace),
             "OpenFileInPlace" => Some(Self::OpenFileInPlace),
             "RunCommand" => Some(Self::RunCommand),
+            "WebRequest" => Some(Self::WebRequest),
+            "DeleteDeadSession" => Some(Self::DeleteDeadSession),
+            "DeleteAllDeadSessions" => Some(Self::DeleteAllDeadSessions),
+            "RenameSession" => Some(Self::RenameSession),
+            _ => None,
+        }
+    }
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum HttpVerb {
+    Get = 0,
+    Post = 1,
+    Put = 2,
+    Delete = 3,
+}
+impl HttpVerb {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            HttpVerb::Get => "Get",
+            HttpVerb::Post => "Post",
+            HttpVerb::Put => "Put",
+            HttpVerb::Delete => "Delete",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "Get" => Some(Self::Get),
+            "Post" => Some(Self::Post),
+            "Put" => Some(Self::Put),
+            "Delete" => Some(Self::Delete),
             _ => None,
         }
     }

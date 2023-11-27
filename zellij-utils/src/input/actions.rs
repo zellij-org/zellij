@@ -211,6 +211,8 @@ pub enum Action {
     MiddleClick(Position),
     LaunchOrFocusPlugin(RunPlugin, bool, bool, bool), // bools => should float,
     // move_to_focused_tab, should_open_in_place
+    LaunchPlugin(RunPlugin, bool, bool), // bools => should float,
+    // should_open_in_place
     LeftMouseRelease(Position),
     RightMouseRelease(Position),
     MiddleMouseRelease(Position),
@@ -250,6 +252,7 @@ pub enum Action {
     BreakPane,
     BreakPaneRight,
     BreakPaneLeft,
+    RenameSession(String),
 }
 
 impl Action {
@@ -258,6 +261,7 @@ impl Action {
         match (self, other_action) {
             (Action::NewTab(..), Action::NewTab(..)) => true,
             (Action::LaunchOrFocusPlugin(..), Action::LaunchOrFocusPlugin(..)) => true,
+            (Action::LaunchPlugin(..), Action::LaunchPlugin(..)) => true,
             _ => self == other_action,
         }
     }
@@ -537,6 +541,23 @@ impl Action {
                     in_place,
                 )])
             },
+            CliAction::LaunchPlugin {
+                url,
+                floating,
+                in_place,
+                configuration,
+            } => {
+                let current_dir = get_current_dir();
+                let run_plugin_location = RunPluginLocation::parse(url.as_str(), Some(current_dir))
+                    .map_err(|e| format!("Failed to parse plugin location: {}", e))?;
+                let run_plugin = RunPlugin {
+                    location: run_plugin_location,
+                    _allow_exec_host_cmd: false,
+                    configuration: configuration.unwrap_or_default(),
+                };
+                Ok(vec![Action::LaunchPlugin(run_plugin, floating, in_place)])
+            },
+            CliAction::RenameSession { name } => Ok(vec![Action::RenameSession(name)]),
         }
     }
 }

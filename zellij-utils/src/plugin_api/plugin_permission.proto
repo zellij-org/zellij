@@ -9,4 +9,5 @@ enum PermissionType {
   RunCommands = 3;
   OpenTerminalsOrPlugins = 4;
   WriteToStdin = 5;
+  WebAccess = 6;
 }

@@ -49,7 +49,10 @@ macro_rules! get_or_create_grid {
                 $self.link_handler.clone(),
                 $self.character_cell_size.clone(),
                 $self.sixel_image_store.clone(),
+                $self.style.clone(),
                 $self.debug,
+                $self.arrow_fonts,
+                $self.styled_underlines,
             );
             grid.hide_cursor();
             grid
@@ -85,6 +88,8 @@ pub(crate) struct PluginPane {
     loading_indication: LoadingIndication,
     requesting_permissions: Option<PluginPermission>,
     debug: bool,
+    arrow_fonts: bool,
+    styled_underlines: bool,
 }
 
 impl PluginPane {
@@ -103,6 +108,8 @@ impl PluginPane {
         style: Style,
         invoked_with: Option<Run>,
         debug: bool,
+        arrow_fonts: bool,
+        styled_underlines: bool,
     ) -> Self {
         let loading_indication = LoadingIndication::new(title.clone()).with_colors(style.colors);
         let initial_loading_message = loading_indication.to_string();
@@ -134,6 +141,8 @@ impl PluginPane {
             loading_indication,
             requesting_permissions: None,
             debug,
+            arrow_fonts,
+            styled_underlines,
         };
         for client_id in currently_connected_clients {
             plugin.handle_plugin_bytes(client_id, initial_loading_message.as_bytes().to_vec());

@@ -18,7 +18,7 @@ use std::{
 use wasmer::{imports, AsStoreMut, Function, FunctionEnv, FunctionEnvMut, Imports};
 use wasmer_wasi::WasiEnv;
 use zellij_utils::data::{
-    CommandType, ConnectToSession, PermissionStatus, PermissionType, PluginPermission,
+    CommandType, ConnectToSession, HttpVerb, PermissionStatus, PermissionType, PluginPermission,
 };
 use zellij_utils::input::permission::PermissionCache;
 
@@ -27,7 +27,7 @@ use url::Url;
 use crate::{panes::PaneId, screen::ScreenInstruction};
 
 use zellij_utils::{
-    consts::VERSION,
+    consts::{VERSION, ZELLIJ_SESSION_INFO_CACHE_DIR, ZELLIJ_SOCK_DIR},
     data::{
         CommandToRun, Direction, Event, EventType, FileToOpen, InputMode, PluginCommand, PluginIds,
         PluginMessage, Resize, ResizeStrategy,
@@ -130,6 +130,9 @@ fn host_run_plugin_command(env: FunctionEnvMut<ForeignFunctionEnv>) {
                     PluginCommand::RunCommand(command_line, env_variables, cwd, context) => {
                         run_command(env, command_line, env_variables, cwd, context)
                     },
+                    PluginCommand::WebRequest(url, verb, headers, body, context) => {
+                        web_request(env, url, verb, headers, body, context)
+                    },
                     PluginCommand::PostMessageTo(plugin_message) => {
                         post_message_to(env, plugin_message)?
                     },
@@ -221,6 +224,10 @@ fn host_run_plugin_command(env: FunctionEnvMut<ForeignFunctionEnv>) {
                         connect_to_session.tab_position,
                         connect_to_session.pane_id,
                     )?,
+                    PluginCommand::DeleteDeadSession(session_name) => {
+                        delete_dead_session(session_name)?
+                    },
+                    PluginCommand::DeleteAllDeadSessions => delete_all_dead_sessions()?,
                     PluginCommand::OpenFileInPlace(file_to_open) => {
                         open_file_in_place(env, file_to_open)
                     },
@@ -229,6 +236,9 @@ fn host_run_plugin_command(env: FunctionEnvMut<ForeignFunctionEnv>) {
                     },
                     PluginCommand::OpenCommandPaneInPlace(command_to_run) => {
                         open_command_pane_in_place(env, command_to_run)
+                    },
+                    PluginCommand::RenameSession(new_session_name) => {
+                        rename_session(env, new_session_name)
                     },
                 },
                 (PermissionStatus::Denied, permission) => {
@@ -364,10 +374,14 @@ fn open_file(env: &ForeignFunctionEnv, file_to_open: FileToOpen) {
     let error_msg = || format!("failed to open file in plugin {}", env.plugin_env.name());
     let floating = false;
     let in_place = false;
+    let path = env.plugin_env.plugin_cwd.join(file_to_open.path);
+    let cwd = file_to_open
+        .cwd
+        .map(|cwd| env.plugin_env.plugin_cwd.join(cwd));
     let action = Action::EditFile(
-        file_to_open.path,
+        path,
         file_to_open.line_number,
-        file_to_open.cwd,
+        cwd,
         None,
         floating,
         in_place,
@@ -379,10 +393,14 @@ fn open_file_floating(env: &ForeignFunctionEnv, file_to_open: FileToOpen) {
     let error_msg = || format!("failed to open file in plugin {}", env.plugin_env.name());
     let floating = true;
     let in_place = false;
+    let path = env.plugin_env.plugin_cwd.join(file_to_open.path);
+    let cwd = file_to_open
+        .cwd
+        .map(|cwd| env.plugin_env.plugin_cwd.join(cwd));
     let action = Action::EditFile(
-        file_to_open.path,
+        path,
         file_to_open.line_number,
-        file_to_open.cwd,
+        cwd,
         None,
         floating,
         in_place,
@@ -394,10 +412,14 @@ fn open_file_in_place(env: &ForeignFunctionEnv, file_to_open: FileToOpen) {
     let error_msg = || format!("failed to open file in plugin {}", env.plugin_env.name());
     let floating = false;
     let in_place = true;
+    let path = env.plugin_env.plugin_cwd.join(file_to_open.path);
+    let cwd = file_to_open
+        .cwd
+        .map(|cwd| env.plugin_env.plugin_cwd.join(cwd));
     let action = Action::EditFile(
-        file_to_open.path,
+        path,
         file_to_open.line_number,
-        file_to_open.cwd,
+        cwd,
         None,
         floating,
         in_place,
@@ -407,6 +429,7 @@ fn open_file_in_place(env: &ForeignFunctionEnv, file_to_open: FileToOpen) {
 
 fn open_terminal(env: &ForeignFunctionEnv, cwd: PathBuf) {
     let error_msg = || format!("failed to open file in plugin {}", env.plugin_env.name());
+    let cwd = env.plugin_env.plugin_cwd.join(cwd);
     let mut default_shell = env
         .plugin_env
         .default_shell
@@ -423,6 +446,7 @@ fn open_terminal(env: &ForeignFunctionEnv, cwd: PathBuf) {
 
 fn open_terminal_floating(env: &ForeignFunctionEnv, cwd: PathBuf) {
     let error_msg = || format!("failed to open file in plugin {}", env.plugin_env.name());
+    let cwd = env.plugin_env.plugin_cwd.join(cwd);
     let mut default_shell = env
         .plugin_env
         .default_shell
@@ -439,6 +463,7 @@ fn open_terminal_floating(env: &ForeignFunctionEnv, cwd: PathBuf) {
 
 fn open_terminal_in_place(env: &ForeignFunctionEnv, cwd: PathBuf) {
     let error_msg = || format!("failed to open file in plugin {}", env.plugin_env.name());
+    let cwd = env.plugin_env.plugin_cwd.join(cwd);
     let mut default_shell = env
         .plugin_env
         .default_shell
@@ -456,7 +481,9 @@ fn open_terminal_in_place(env: &ForeignFunctionEnv, cwd: PathBuf) {
 fn open_command_pane(env: &ForeignFunctionEnv, command_to_run: CommandToRun) {
     let error_msg = || format!("failed to open command in plugin {}", env.plugin_env.name());
     let command = command_to_run.path;
-    let cwd = command_to_run.cwd;
+    let cwd = command_to_run
+        .cwd
+        .map(|cwd| env.plugin_env.plugin_cwd.join(cwd));
     let args = command_to_run.args;
     let direction = None;
     let hold_on_close = true;
@@ -477,7 +504,9 @@ fn open_command_pane(env: &ForeignFunctionEnv, command_to_run: CommandToRun) {
 fn open_command_pane_floating(env: &ForeignFunctionEnv, command_to_run: CommandToRun) {
     let error_msg = || format!("failed to open command in plugin {}", env.plugin_env.name());
     let command = command_to_run.path;
-    let cwd = command_to_run.cwd;
+    let cwd = command_to_run
+        .cwd
+        .map(|cwd| env.plugin_env.plugin_cwd.join(cwd));
     let args = command_to_run.args;
     let direction = None;
     let hold_on_close = true;
@@ -498,7 +527,9 @@ fn open_command_pane_floating(env: &ForeignFunctionEnv, command_to_run: CommandT
 fn open_command_pane_in_place(env: &ForeignFunctionEnv, command_to_run: CommandToRun) {
     let error_msg = || format!("failed to open command in plugin {}", env.plugin_env.name());
     let command = command_to_run.path;
-    let cwd = command_to_run.cwd;
+    let cwd = command_to_run
+        .cwd
+        .map(|cwd| env.plugin_env.plugin_cwd.join(cwd));
     let args = command_to_run.args;
     let direction = None;
     let hold_on_close = true;
@@ -611,6 +642,7 @@ fn run_command(
         log::error!("Command cannot be empty");
     } else {
         let command = command_line.remove(0);
+        let cwd = env.plugin_env.plugin_cwd.join(cwd);
         let _ = env
             .plugin_env
             .senders
@@ -624,6 +656,28 @@ fn run_command(
                 context,
             ));
     }
+}
+
+fn web_request(
+    env: &ForeignFunctionEnv,
+    url: String,
+    verb: HttpVerb,
+    headers: BTreeMap<String, String>,
+    body: Vec<u8>,
+    context: BTreeMap<String, String>,
+) {
+    let _ = env
+        .plugin_env
+        .senders
+        .send_to_background_jobs(BackgroundJob::WebRequest(
+            env.plugin_env.plugin_id,
+            env.plugin_env.client_id,
+            url,
+            verb,
+            headers,
+            body,
+            context,
+        ));
 }
 
 fn post_message_to(env: &ForeignFunctionEnv, plugin_message: PluginMessage) -> Result<()> {
@@ -809,6 +863,52 @@ fn switch_session(
             client_id,
         ))
         .with_context(err_context)?;
+    Ok(())
+}
+
+fn delete_dead_session(session_name: String) -> Result<()> {
+    std::fs::remove_dir_all(&*ZELLIJ_SESSION_INFO_CACHE_DIR.join(&session_name))
+        .with_context(|| format!("Failed to delete dead session: {:?}", &session_name))
+}
+
+fn delete_all_dead_sessions() -> Result<()> {
+    use std::os::unix::fs::FileTypeExt;
+    let mut live_sessions = vec![];
+    if let Ok(files) = std::fs::read_dir(&*ZELLIJ_SOCK_DIR) {
+        files.for_each(|file| {
+            if let Ok(file) = file {
+                if let Ok(file_name) = file.file_name().into_string() {
+                    if file.file_type().unwrap().is_socket() {
+                        live_sessions.push(file_name);
+                    }
+                }
+            }
+        });
+    }
+    let dead_sessions: Vec<String> = match std::fs::read_dir(&*ZELLIJ_SESSION_INFO_CACHE_DIR) {
+        Ok(files_in_session_info_folder) => {
+            let files_that_are_folders = files_in_session_info_folder
+                .filter_map(|f| f.ok().map(|f| f.path()))
+                .filter(|f| f.is_dir());
+            files_that_are_folders
+                .filter_map(|folder_name| {
+                    let session_name = folder_name.file_name()?.to_str()?.to_owned();
+                    if live_sessions.contains(&session_name) {
+                        // this is not a dead session...
+                        return None;
+                    }
+                    Some(session_name)
+                })
+                .collect()
+        },
+        Err(e) => {
+            log::error!("Failed to read session info cache dir: {:?}", e);
+            vec![]
+        },
+    };
+    for session in dead_sessions {
+        delete_dead_session(session)?;
+    }
     Ok(())
 }
 
@@ -1113,6 +1213,17 @@ fn rename_tab(env: &ForeignFunctionEnv, tab_index: u32, new_name: &str) {
     apply_action!(rename_tab_action, error_msg, env);
 }
 
+fn rename_session(env: &ForeignFunctionEnv, new_session_name: String) {
+    let error_msg = || {
+        format!(
+            "failed to rename session in plugin {}",
+            env.plugin_env.name()
+        )
+    };
+    let action = Action::RenameSession(new_session_name);
+    apply_action!(action, error_msg, env);
+}
+
 // Custom panic handler for plugins.
 //
 // This is called when a panic occurs in a plugin. Since most panics will likely originate in the
@@ -1192,6 +1303,7 @@ fn check_command_permission(
         | PluginCommand::OpenCommandPaneInPlace(..)
         | PluginCommand::RunCommand(..)
         | PluginCommand::ExecCmd(..) => PermissionType::RunCommands,
+        PluginCommand::WebRequest(..) => PermissionType::WebAccess,
         PluginCommand::Write(..) | PluginCommand::WriteChars(..) => PermissionType::WriteToStdin,
         PluginCommand::SwitchTabTo(..)
         | PluginCommand::SwitchToMode(..)
@@ -1237,6 +1349,9 @@ fn check_command_permission(
         | PluginCommand::RenameTerminalPane(..)
         | PluginCommand::RenamePluginPane(..)
         | PluginCommand::SwitchSession(..)
+        | PluginCommand::DeleteDeadSession(..)
+        | PluginCommand::DeleteAllDeadSessions
+        | PluginCommand::RenameSession(..)
         | PluginCommand::RenameTab(..) => PermissionType::ChangeApplicationState,
         _ => return (PermissionStatus::Granted, None),
     };

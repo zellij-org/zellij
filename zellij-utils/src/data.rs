@@ -6,6 +6,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
+use std::time::Duration;
 use strum_macros::{Display, EnumDiscriminants, EnumIter, EnumString, ToString};
 
 pub type ClientId = u16; // TODO: merge with crate type?
@@ -495,9 +496,21 @@ pub enum Event {
     FileSystemDelete(Vec<PathBuf>),
     /// A Result of plugin permission request
     PermissionRequestResult(PermissionStatus),
-    SessionUpdate(Vec<SessionInfo>),
+    SessionUpdate(
+        Vec<SessionInfo>,
+        Vec<(String, Duration)>, // resurrectable sessions
+    ),
     RunCommandResult(Option<i32>, Vec<u8>, Vec<u8>, BTreeMap<String, String>), // exit_code, STDOUT, STDERR,
-                                                                               // context
+    // context
+    WebRequestResult(
+        u16,
+        BTreeMap<String, String>,
+        Vec<u8>,
+        BTreeMap<String, String>,
+    ), // status,
+       // headers,
+       // body,
+       // context
 }
 
 #[derive(
@@ -524,6 +537,7 @@ pub enum Permission {
     RunCommands,
     OpenTerminalsOrPlugins,
     WriteToStdin,
+    WebAccess,
 }
 
 impl PermissionType {
@@ -539,6 +553,7 @@ impl PermissionType {
             PermissionType::RunCommands => "Run commands".to_owned(),
             PermissionType::OpenTerminalsOrPlugins => "Start new terminals and plugins".to_owned(),
             PermissionType::WriteToStdin => "Write to standard input (STDIN)".to_owned(),
+            PermissionType::WebAccess => "Make web requests".to_owned(),
         }
     }
 }
@@ -991,6 +1006,14 @@ impl PluginMessage {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum HttpVerb {
+    Get,
+    Post,
+    Put,
+    Delete,
+}
+
 #[derive(Debug, Clone, EnumDiscriminants, ToString)]
 #[strum_discriminants(derive(EnumString, Hash, Serialize, Deserialize))]
 #[strum_discriminants(name(CommandType))]
@@ -1063,16 +1086,23 @@ pub enum PluginCommand {
     ReportPanic(String),             // stringified panic
     RequestPluginPermissions(Vec<PermissionType>),
     SwitchSession(ConnectToSession),
+    DeleteDeadSession(String),       // String -> session name
+    DeleteAllDeadSessions,           // String -> session name
     OpenTerminalInPlace(FileToOpen), // only used for the path as cwd
     OpenFileInPlace(FileToOpen),
     OpenCommandPaneInPlace(CommandToRun),
     RunCommand(
-        Vec<String>,
-        BTreeMap<String, String>,
-        PathBuf,
-        BTreeMap<String, String>,
-    ), // command,
-       // env_Variables,
-       // cwd,
-       // context
+        Vec<String>,              // command
+        BTreeMap<String, String>, // env_variables
+        PathBuf,                  // cwd
+        BTreeMap<String, String>, // context
+    ),
+    WebRequest(
+        String, // url
+        HttpVerb,
+        BTreeMap<String, String>, // headers
+        Vec<u8>,                  // body
+        BTreeMap<String, String>, // context
+    ),
+    RenameSession(String), // String -> new session name
 }

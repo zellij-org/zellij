@@ -55,6 +55,13 @@ impl PluginsConfig {
                 userspace_configuration: run.configuration.clone(),
                 ..plugin
             }),
+            RunPluginLocation::Remote(_) => Some(PluginConfig {
+                path: PathBuf::new(),
+                run: PluginType::Pane(None),
+                _allow_exec_host_cmd: run._allow_exec_host_cmd,
+                location: run.location.clone(),
+                userspace_configuration: run.configuration.clone(),
+            }),
         }
     }
 
@@ -231,7 +238,7 @@ pub enum PluginsConfigError {
     DuplicatePlugins(PluginTag),
     #[error("Failed to parse url: {0:?}")]
     InvalidUrl(#[from] url::ParseError),
-    #[error("Only 'file:' and 'zellij:' url schemes are supported for plugin lookup. '{0}' does not match either.")]
+    #[error("Only 'file:', 'http(s):' and 'zellij:' url schemes are supported for plugin lookup. '{0}' does not match either.")]
     InvalidUrlScheme(Url),
     #[error("Could not find plugin at the path: '{0:?}'")]
     InvalidPluginLocation(PathBuf),

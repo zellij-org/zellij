@@ -5,6 +5,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::str;
+use std::time::Duration;
 
 use zellij_utils::data::{
     Direction, PaneManifest, PluginPermission, Resize, ResizeStrategy, SessionInfo,
@@ -14,6 +15,8 @@ use zellij_utils::input::command::RunCommand;
 use zellij_utils::input::options::Clipboard;
 use zellij_utils::pane_size::{Size, SizeInPixels};
 use zellij_utils::{
+    consts::{session_info_folder_for_session, ZELLIJ_SOCK_DIR},
+    envs::set_session_name,
     input::command::TerminalAction,
     input::layout::{
         FloatingPaneLayout, Layout, PluginUserConfiguration, Run, RunPlugin, RunPluginLocation,
@@ -283,6 +286,7 @@ pub enum ScreenInstruction {
         usize,          // tab index
         u32,            // plugin id
         Option<PaneId>,
+        Option<PathBuf>, // cwd
         Option<ClientId>,
     ),
     UpdatePluginLoadingStage(u32, LoadingIndication), // u32 - plugin_id
@@ -290,8 +294,9 @@ pub enum ScreenInstruction {
     ProgressPluginLoadingOffset(u32),                 // u32 - plugin id
     RequestStateUpdateForPlugins,
     LaunchOrFocusPlugin(RunPlugin, bool, bool, bool, Option<PaneId>, ClientId), // bools are: should_float, move_to_focused_tab, should_open_in_place Option<PaneId> is the pane id to replace
-    SuppressPane(PaneId, ClientId),          // bool is should_float
-    FocusPaneWithId(PaneId, bool, ClientId), // bool is should_float
+    LaunchPlugin(RunPlugin, bool, bool, Option<PaneId>, ClientId), // bools are: should_float, should_open_in_place Option<PaneId> is the pane id to replace
+    SuppressPane(PaneId, ClientId),                                // bool is should_float
+    FocusPaneWithId(PaneId, bool, ClientId),                       // bool is should_float
     RenamePane(PaneId, Vec<u8>),
     RenameTab(usize, Vec<u8>),
     RequestPluginPermissions(
@@ -301,7 +306,10 @@ pub enum ScreenInstruction {
     BreakPane(Box<Layout>, Option<TerminalAction>, ClientId),
     BreakPaneRight(ClientId),
     BreakPaneLeft(ClientId),
-    UpdateSessionInfos(BTreeMap<String, SessionInfo>), // String is the session name
+    UpdateSessionInfos(
+        BTreeMap<String, SessionInfo>, // String is the session name
+        BTreeMap<String, Duration>,    // resurrectable sessions - <name, created>
+    ),
     ReplacePane(
         PaneId,
         HoldForCommand,
@@ -310,6 +318,7 @@ pub enum ScreenInstruction {
         ClientTabIndexOrPaneId,
     ),
     DumpLayoutToHd,
+    RenameSession(String, ClientId), // String -> new name
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -474,6 +483,7 @@ impl From<&ScreenInstruction> for ScreenContext {
                 ScreenContext::RequestStateUpdateForPlugins
             },
             ScreenInstruction::LaunchOrFocusPlugin(..) => ScreenContext::LaunchOrFocusPlugin,
+            ScreenInstruction::LaunchPlugin(..) => ScreenContext::LaunchPlugin,
             ScreenInstruction::SuppressPane(..) => ScreenContext::SuppressPane,
             ScreenInstruction::FocusPaneWithId(..) => ScreenContext::FocusPaneWithId,
             ScreenInstruction::RenamePane(..) => ScreenContext::RenamePane,
@@ -488,6 +498,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::ReplacePane(..) => ScreenContext::ReplacePane,
             ScreenInstruction::NewInPlacePluginPane(..) => ScreenContext::NewInPlacePluginPane,
             ScreenInstruction::DumpLayoutToHd => ScreenContext::DumpLayoutToHd,
+            ScreenInstruction::RenameSession(..) => ScreenContext::RenameSession,
         }
     }
 }
@@ -558,8 +569,12 @@ pub(crate) struct Screen {
     session_name: String,
     session_infos_on_machine: BTreeMap<String, SessionInfo>, // String is the session name, can
     // also be this session
+    resurrectable_sessions: BTreeMap<String, Duration>, // String is the session name, duration is
+    // its creation time
     default_layout: Box<Layout>,
     default_shell: Option<PathBuf>,
+    styled_underlines: bool,
+    arrow_fonts: bool,
 }
 
 impl Screen {
@@ -579,10 +594,13 @@ impl Screen {
         session_serialization: bool,
         serialize_pane_viewport: bool,
         scrollback_lines_to_serialize: Option<usize>,
+        styled_underlines: bool,
+        arrow_fonts: bool,
     ) -> Self {
         let session_name = mode_info.session_name.clone().unwrap_or_default();
         let session_info = SessionInfo::new(session_name.clone());
         let mut session_infos_on_machine = BTreeMap::new();
+        let resurrectable_sessions = BTreeMap::new();
         session_infos_on_machine.insert(session_name.clone(), session_info);
         Screen {
             bus,
@@ -613,6 +631,9 @@ impl Screen {
             session_serialization,
             serialize_pane_viewport,
             scrollback_lines_to_serialize,
+            styled_underlines,
+            arrow_fonts,
+            resurrectable_sessions,
         }
     }
 
@@ -1021,6 +1042,7 @@ impl Screen {
         let mut output = Output::new(
             self.sixel_image_store.clone(),
             self.character_cell_size.clone(),
+            self.styled_underlines,
         );
         let mut tabs_to_close = vec![];
         for (tab_index, tab) in &mut self.tabs {
@@ -1151,6 +1173,8 @@ impl Screen {
             swap_layouts,
             self.default_shell.clone(),
             self.debug,
+            self.arrow_fonts,
+            self.styled_underlines,
         );
         self.tabs.insert(tab_index, tab);
         Ok(())
@@ -1413,14 +1437,22 @@ impl Screen {
     pub fn update_session_infos(
         &mut self,
         new_session_infos: BTreeMap<String, SessionInfo>,
+        resurrectable_sessions: BTreeMap<String, Duration>,
     ) -> Result<()> {
         self.session_infos_on_machine = new_session_infos;
+        self.resurrectable_sessions = resurrectable_sessions;
         self.bus
             .senders
             .send_to_plugin(PluginInstruction::Update(vec![(
                 None,
                 None,
-                Event::SessionUpdate(self.session_infos_on_machine.values().cloned().collect()),
+                Event::SessionUpdate(
+                    self.session_infos_on_machine.values().cloned().collect(),
+                    self.resurrectable_sessions
+                        .iter()
+                        .map(|(n, c)| (n.clone(), c.clone()))
+                        .collect(),
+                ),
             )]))
             .context("failed to update session info")?;
         Ok(())
@@ -1496,7 +1528,10 @@ impl Screen {
         }
     }
 
-    pub fn change_mode(&mut self, mode_info: ModeInfo, client_id: ClientId) -> Result<()> {
+    pub fn change_mode(&mut self, mut mode_info: ModeInfo, client_id: ClientId) -> Result<()> {
+        if mode_info.session_name.as_ref() != Some(&self.session_name) {
+            mode_info.session_name = Some(self.session_name.clone());
+        }
         let previous_mode = self
             .mode_info
             .get(&client_id)
@@ -2034,7 +2069,7 @@ pub(crate) fn screen_thread_main(
     debug: bool,
     default_layout: Box<Layout>,
 ) -> Result<()> {
-    let capabilities = config_options.simplified_ui;
+    let arrow_fonts = !config_options.simplified_ui.unwrap_or_default();
     let draw_pane_frames = config_options.pane_frames.unwrap_or(true);
     let auto_layout = config_options.auto_layout.unwrap_or(true);
     let session_serialization = config_options.session_serialization.unwrap_or(true);
@@ -2047,6 +2082,7 @@ pub(crate) fn screen_thread_main(
         config_options.copy_clipboard.unwrap_or_default(),
         config_options.copy_on_select.unwrap_or(true),
     );
+    let styled_underlines = config_options.styled_underlines.unwrap_or(true);
 
     let thread_senders = bus.senders.clone();
     let mut screen = Screen::new(
@@ -2057,7 +2093,8 @@ pub(crate) fn screen_thread_main(
             config_options.default_mode.unwrap_or_default(),
             &client_attributes,
             PluginCapabilities {
-                arrow_fonts: capabilities.unwrap_or_default(),
+                //  ¯\_(ツ)_/¯
+                arrow_fonts: !arrow_fonts,
             },
         ),
         draw_pane_frames,
@@ -2070,6 +2107,8 @@ pub(crate) fn screen_thread_main(
         session_serialization,
         serialize_pane_viewport,
         scrollback_lines_to_serialize,
+        styled_underlines,
+        arrow_fonts,
     );
 
     let mut pending_tab_ids: HashSet<usize> = HashSet::new();
@@ -3111,16 +3150,19 @@ pub(crate) fn screen_thread_main(
                 let size = Size::default();
                 let should_float = Some(false);
                 let should_be_opened_in_place = false;
-                screen.bus.senders.send_to_plugin(PluginInstruction::Load(
-                    should_float,
-                    should_be_opened_in_place,
-                    pane_title,
-                    run_plugin,
-                    *tab_index,
-                    None, // pane it to replace
-                    client_id,
-                    size,
-                ))?;
+                screen
+                    .bus
+                    .senders
+                    .send_to_pty(PtyInstruction::FillPluginCwd(
+                        should_float,
+                        should_be_opened_in_place,
+                        pane_title,
+                        run_plugin,
+                        *tab_index,
+                        None,
+                        client_id,
+                        size,
+                    ))?;
             },
             ScreenInstruction::NewFloatingPluginPane(run_plugin, pane_title, client_id) => {
                 match screen.active_tab_indices.values().next() {
@@ -3128,16 +3170,19 @@ pub(crate) fn screen_thread_main(
                         let size = Size::default();
                         let should_float = Some(true);
                         let should_be_opened_in_place = false;
-                        screen.bus.senders.send_to_plugin(PluginInstruction::Load(
-                            should_float,
-                            should_be_opened_in_place,
-                            pane_title,
-                            run_plugin,
-                            *tab_index,
-                            None, // pane id to replace
-                            client_id,
-                            size,
-                        ))?;
+                        screen
+                            .bus
+                            .senders
+                            .send_to_pty(PtyInstruction::FillPluginCwd(
+                                should_float,
+                                should_be_opened_in_place,
+                                pane_title,
+                                run_plugin,
+                                *tab_index,
+                                None,
+                                client_id,
+                                size,
+                            ))?;
                     },
                     None => {
                         log::error!(
@@ -3156,16 +3201,19 @@ pub(crate) fn screen_thread_main(
                     let size = Size::default();
                     let should_float = None;
                     let should_be_in_place = true;
-                    screen.bus.senders.send_to_plugin(PluginInstruction::Load(
-                        should_float,
-                        should_be_in_place,
-                        pane_title,
-                        run_plugin,
-                        *tab_index,
-                        Some(pane_id_to_replace),
-                        client_id,
-                        size,
-                    ))?;
+                    screen
+                        .bus
+                        .senders
+                        .send_to_pty(PtyInstruction::FillPluginCwd(
+                            should_float,
+                            should_be_in_place,
+                            pane_title,
+                            run_plugin,
+                            *tab_index,
+                            Some(pane_id_to_replace),
+                            client_id,
+                            size,
+                        ))?;
                 },
                 None => {
                     log::error!(
@@ -3177,6 +3225,7 @@ pub(crate) fn screen_thread_main(
                 let tab_index = screen.active_tab_indices.values().next().unwrap_or(&1);
                 let size = Size::default();
                 let should_float = Some(false);
+
                 screen
                     .bus
                     .senders
@@ -3196,10 +3245,17 @@ pub(crate) fn screen_thread_main(
                 tab_index,
                 plugin_id,
                 pane_id_to_replace,
+                cwd,
                 client_id,
             ) => {
-                let pane_title =
-                    pane_title.unwrap_or_else(|| run_plugin_location.location.to_string());
+                let pane_title = pane_title.unwrap_or_else(|| {
+                    format!(
+                        "({}) - {}",
+                        cwd.map(|cwd| cwd.display().to_string())
+                            .unwrap_or(".".to_owned()),
+                        run_plugin_location.location
+                    )
+                });
                 let run_plugin = Run::Plugin(run_plugin_location);
 
                 if should_be_in_place {
@@ -3285,12 +3341,14 @@ pub(crate) fn screen_thread_main(
                 should_open_in_place,
                 pane_id_to_replace,
                 client_id,
-            ) => {
-                match pane_id_to_replace {
-                    Some(pane_id_to_replace) => match screen.active_tab_indices.values().next() {
-                        Some(tab_index) => {
-                            let size = Size::default();
-                            screen.bus.senders.send_to_plugin(PluginInstruction::Load(
+            ) => match pane_id_to_replace {
+                Some(pane_id_to_replace) => match screen.active_tab_indices.values().next() {
+                    Some(tab_index) => {
+                        let size = Size::default();
+                        screen
+                            .bus
+                            .senders
+                            .send_to_pty(PtyInstruction::FillPluginCwd(
                                 Some(should_float),
                                 should_open_in_place,
                                 None,
@@ -3300,54 +3358,120 @@ pub(crate) fn screen_thread_main(
                                 client_id,
                                 size,
                             ))?;
-                        },
-                        None => {
-                            log::error!(
-                                    "Could not find an active tab - is there at least 1 connected user?"
-                                );
-                        },
                     },
                     None => {
-                        let client_id = if screen.active_tab_indices.contains_key(&client_id) {
-                            Some(client_id)
-                        } else {
-                            screen.get_first_client_id()
-                        };
-                        let client_id_and_focused_tab = client_id.and_then(|client_id| {
-                            screen
-                                .active_tab_indices
-                                .get(&client_id)
-                                .map(|tab_index| (*tab_index, client_id))
-                        });
-                        match client_id_and_focused_tab {
-                            Some((tab_index, client_id)) => {
-                                if screen.focus_plugin_pane(
-                                    &run_plugin,
-                                    should_float,
-                                    move_to_focused_tab,
-                                    client_id,
-                                )? {
-                                    screen.render()?;
-                                    screen.log_and_report_session_state()?;
-                                } else {
-                                    screen.bus.senders.send_to_plugin(PluginInstruction::Load(
+                        log::error!(
+                            "Could not find an active tab - is there at least 1 connected user?"
+                        );
+                    },
+                },
+                None => {
+                    let client_id = if screen.active_tab_indices.contains_key(&client_id) {
+                        Some(client_id)
+                    } else {
+                        screen.get_first_client_id()
+                    };
+                    let client_id_and_focused_tab = client_id.and_then(|client_id| {
+                        screen
+                            .active_tab_indices
+                            .get(&client_id)
+                            .map(|tab_index| (*tab_index, client_id))
+                    });
+                    match client_id_and_focused_tab {
+                        Some((tab_index, client_id)) => {
+                            if screen.focus_plugin_pane(
+                                &run_plugin,
+                                should_float,
+                                move_to_focused_tab,
+                                client_id,
+                            )? {
+                                screen.render()?;
+                                screen.log_and_report_session_state()?;
+                            } else {
+                                screen
+                                    .bus
+                                    .senders
+                                    .send_to_pty(PtyInstruction::FillPluginCwd(
                                         Some(should_float),
                                         should_open_in_place,
                                         None,
                                         run_plugin,
                                         tab_index,
-                                        None, // pane id to replace
+                                        None,
                                         client_id,
                                         Size::default(),
                                     ))?;
-                                }
-                            },
-                            None => log::error!(
-                                "No connected clients found - cannot load or focus plugin"
-                            ),
-                        }
+                            }
+                        },
+                        None => {
+                            log::error!("No connected clients found - cannot load or focus plugin")
+                        },
+                    }
+                },
+            },
+            ScreenInstruction::LaunchPlugin(
+                run_plugin,
+                should_float,
+                should_open_in_place,
+                pane_id_to_replace,
+                client_id,
+            ) => match pane_id_to_replace {
+                Some(pane_id_to_replace) => match screen.active_tab_indices.values().next() {
+                    Some(tab_index) => {
+                        let size = Size::default();
+                        screen
+                            .bus
+                            .senders
+                            .send_to_pty(PtyInstruction::FillPluginCwd(
+                                Some(should_float),
+                                should_open_in_place,
+                                None,
+                                run_plugin,
+                                *tab_index,
+                                Some(pane_id_to_replace),
+                                client_id,
+                                size,
+                            ))?;
                     },
-                }
+                    None => {
+                        log::error!(
+                            "Could not find an active tab - is there at least 1 connected user?"
+                        );
+                    },
+                },
+                None => {
+                    let client_id = if screen.active_tab_indices.contains_key(&client_id) {
+                        Some(client_id)
+                    } else {
+                        screen.get_first_client_id()
+                    };
+                    let client_id_and_focused_tab = client_id.and_then(|client_id| {
+                        screen
+                            .active_tab_indices
+                            .get(&client_id)
+                            .map(|tab_index| (*tab_index, client_id))
+                    });
+                    match client_id_and_focused_tab {
+                        Some((tab_index, client_id)) => {
+                            screen
+                                .bus
+                                .senders
+                                .send_to_pty(PtyInstruction::FillPluginCwd(
+                                    Some(should_float),
+                                    should_open_in_place,
+                                    None,
+                                    run_plugin,
+                                    tab_index,
+                                    None,
+                                    client_id,
+                                    Size::default(),
+                                ))?;
+                        },
+                        None => {
+                            log::error!("No connected clients found - cannot load or focus plugin")
+                        },
+                    }
+                },
             },
             ScreenInstruction::SuppressPane(pane_id, client_id) => {
                 let all_tabs = screen.get_tabs_mut();
@@ -3415,8 +3539,8 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::BreakPaneLeft(client_id) => {
                 screen.break_pane_to_new_tab(Direction::Left, client_id)?;
             },
-            ScreenInstruction::UpdateSessionInfos(new_session_infos) => {
-                screen.update_session_infos(new_session_infos)?;
+            ScreenInstruction::UpdateSessionInfos(new_session_infos, resurrectable_sessions) => {
+                screen.update_session_infos(new_session_infos, resurrectable_sessions)?;
             },
             ScreenInstruction::ReplacePane(
                 new_pane_id,
@@ -3442,6 +3566,69 @@ pub(crate) fn screen_thread_main(
                 if screen.session_serialization {
                     screen.dump_layout_to_hd()?;
                 }
+            },
+            ScreenInstruction::RenameSession(name, client_id) => {
+                if screen.session_infos_on_machine.contains_key(&name) {
+                    let error_text = "A session by this name already exists.";
+                    log::error!("{}", error_text);
+                    if let Some(os_input) = &mut screen.bus.os_input {
+                        let _ = os_input.send_to_client(
+                            client_id,
+                            ServerToClientMsg::LogError(vec![error_text.to_owned()]),
+                        );
+                    }
+                } else if screen.resurrectable_sessions.contains_key(&name) {
+                    let error_text =
+                        "A resurrectable session by this name exists, cannot use this name.";
+                    log::error!("{}", error_text);
+                    if let Some(os_input) = &mut screen.bus.os_input {
+                        let _ = os_input.send_to_client(
+                            client_id,
+                            ServerToClientMsg::LogError(vec![error_text.to_owned()]),
+                        );
+                    }
+                } else {
+                    let err_context = || format!("Failed to rename session");
+                    let old_session_name = screen.session_name.clone();
+
+                    // update state
+                    screen.session_name = name.clone();
+                    screen.default_mode_info.session_name = Some(name.clone());
+                    for (_client_id, mut mode_info) in screen.mode_info.iter_mut() {
+                        mode_info.session_name = Some(name.clone());
+                    }
+                    for (_, tab) in screen.tabs.iter_mut() {
+                        tab.rename_session(name.clone()).with_context(err_context)?;
+                    }
+
+                    // rename socket file
+                    let old_socket_file_path = ZELLIJ_SOCK_DIR.join(&old_session_name);
+                    let new_socket_file_path = ZELLIJ_SOCK_DIR.join(&name);
+                    if let Err(e) = std::fs::rename(old_socket_file_path, new_socket_file_path) {
+                        log::error!("Failed to rename ipc socket: {:?}", e);
+                    }
+
+                    // rename session_info folder (TODO: make this atomic, right now there is a
+                    // chance background_jobs will re-create this folder before it knows the
+                    // session was renamed)
+                    let old_session_info_folder =
+                        session_info_folder_for_session(&old_session_name);
+                    let new_session_info_folder = session_info_folder_for_session(&name);
+                    if let Err(e) =
+                        std::fs::rename(old_session_info_folder, new_session_info_folder)
+                    {
+                        log::error!("Failed to rename session_info folder: {:?}", e);
+                    }
+
+                    // report
+                    screen
+                        .log_and_report_session_state()
+                        .with_context(err_context)?;
+
+                    // set the env variable
+                    set_session_name(name);
+                }
+                screen.unblock_input()?;
             },
         }
     }

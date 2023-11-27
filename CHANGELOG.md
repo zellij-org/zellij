@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+* fix(cli): typo in cli help (https://github.com/zellij-org/zellij/pull/2906)
+* fix(sessions): slow session updates in the session-manager (https://github.com/zellij-org/zellij/pull/2951)
+
+## [0.39.1] - 2023-11-13
+* fix: styled underlines in editors (https://github.com/zellij-org/zellij/pull/2918)
+* fix(plugins): add `LaunchPlugin` and some cwd fixes (https://github.com/zellij-org/zellij/pull/2916)
+* fix(performance): significantly reduce CPU utilization when serializing sessions (https://github.com/zellij-org/zellij/pull/2920)
+* fix(panes): reuse CWD when dropping to shell in command panes (https://github.com/zellij-org/zellij/pull/2915)
+* fix(resurrection): reduce default serialization interval to 1m and make it configurable (https://github.com/zellij-org/zellij/pull/2923)
+* fix(plugins): allow reloading plugins if they crashed (https://github.com/zellij-org/zellij/pull/2929)
+
+## [0.39.0] - 2023-11-07
 * feat(panes): start panes/editors/commands/plugins in-place (https://github.com/zellij-org/zellij/pull/2795)
 * fix(theme): fg color for gruvbox light theme (https://github.com/zellij-org/zellij/pull/2791)
 * fix: display parsing error for kdl files located under the 'themes' directory (https://github.com/zellij-org/zellij/pull/2762)
@@ -12,11 +24,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * refactor(config): dependency updates (https://github.com/zellij-org/zellij/pull/2820 and https://github.com/zellij-org/zellij/pull/2821)
 * fix(plugins): address cranelift-codegen vulnerability (https://github.com/zellij-org/zellij/pull/2830)
 * fix(plugins): use versioned path for plugin artifact cache (https://github.com/zellij-org/zellij/pull/2836)
-* feat(sessions): session resurrection (https://github.com/zellij-org/zellij/pull/2801 and https://github.com/zellij-org/zellij/pull/2851)
+* feat(sessions): session resurrection (https://github.com/zellij-org/zellij/pull/2801, https://github.com/zellij-org/zellij/pull/2851 and https://github.com/zellij-org/zellij/pull/2902)
 * feat(rendering): terminal synchronized output (https://github.com/zellij-org/zellij/pull/2798)
 * feat(plugins): plugin command API for executing commands in the background (https://github.com/zellij-org/zellij/pull/2862)
 * feat(ui): cyberpunk themes (https://github.com/zellij-org/zellij/pull/2868)
 * feat(ux): add ESC option to drop to shell in command panes (https://github.com/zellij-org/zellij/pull/2872)
+* feat(plugins): allow plugins to make web requests behind a permission (https://github.com/zellij-org/zellij/pull/2879)
+* feat(plugins): UI components for plugins (https://github.com/zellij-org/zellij/pull/2898)
+* feat(plugins): load plugins from the web (https://github.com/zellij-org/zellij/pull/2863)
+* feat(terminal): support styled underlines (https://github.com/zellij-org/zellij/pull/2730)
+* feat(ux): allow renaming sessions (https://github.com/zellij-org/zellij/pull/2903)
+* fix(plugins): open new plugins in the current cwd (https://github.com/zellij-org/zellij/pull/2905)
 
 ## [0.38.2] - 2023-09-15
 * fix(terminal): wrap lines in alternate screen mode when adding characters (https://github.com/zellij-org/zellij/pull/2789)

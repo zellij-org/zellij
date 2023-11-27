@@ -102,6 +102,10 @@ pub enum Sessions {
         /// Do not add colors and formatting to the list (useful for parsing)
         #[clap(short, long, value_parser, takes_value(false), default_value("false"))]
         no_formatting: bool,
+
+        /// Print just the session name
+        #[clap(short, long, value_parser, takes_value(false), default_value("false"))]
+        short: bool,
     },
 
     /// Attach to a session
@@ -212,6 +216,32 @@ pub enum Sessions {
         /// Start the command suspended, only running after you first presses ENTER
         #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
         start_suspended: bool,
+    },
+    /// Load a plugin
+    #[clap(visible_alias = "r")]
+    Plugin {
+        /// Plugin URL, can either start with http(s), file: or zellij:
+        #[clap(last(true), required(true))]
+        url: String,
+
+        /// Plugin configuration
+        #[clap(short, long, value_parser)]
+        configuration: Option<PluginUserConfiguration>,
+
+        /// Open the new pane in floating mode
+        #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
+        floating: bool,
+
+        /// Open the new pane in place of the current pane, temporarily suspending it
+        #[clap(
+            short,
+            long,
+            value_parser,
+            default_value("false"),
+            takes_value(false),
+            conflicts_with("floating")
+        )]
+        in_place: bool,
     },
     /// Edit file with default $EDITOR / $VISUAL
     #[clap(visible_alias = "e")]
@@ -426,7 +456,7 @@ pub enum CliAction {
     },
     /// Embed focused pane if floating or float focused pane if embedded
     TogglePaneEmbedOrFloating,
-    /// Toggle the visibility of all fdirectionloating panes in the current Tab, open one if none exist
+    /// Toggle the visibility of all floating panes in the current Tab, open one if none exist
     ToggleFloatingPanes,
     /// Close the focused pane.
     ClosePane,
@@ -496,5 +526,17 @@ pub enum CliAction {
         url: Url,
         #[clap(short, long, value_parser)]
         configuration: Option<PluginUserConfiguration>,
+    },
+    LaunchPlugin {
+        #[clap(short, long, value_parser)]
+        floating: bool,
+        #[clap(short, long, value_parser)]
+        in_place: bool,
+        url: Url,
+        #[clap(short, long, value_parser)]
+        configuration: Option<PluginUserConfiguration>,
+    },
+    RenameSession {
+        name: String,
     },
 }

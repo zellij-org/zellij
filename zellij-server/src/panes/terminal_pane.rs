@@ -115,6 +115,8 @@ pub struct TerminalPane {
     // held on startup and can possibly be used to display some errors
     pane_frame_color_override: Option<(PaletteColor, Option<String>)>,
     invoked_with: Option<Run>,
+    #[allow(dead_code)]
+    arrow_fonts: bool,
 }
 
 impl Pane for TerminalPane {
@@ -194,11 +196,13 @@ impl Pane for TerminalPane {
                     Some(AdjustedInput::ReRunCommandInThisPane(run_command))
                 },
                 ESC => {
+                    // Drop to shell in the same working directory as the command was run
+                    let working_dir = run_command.cwd.clone();
                     self.is_held = None;
                     self.grid.reset_terminal_state();
                     self.set_should_render(true);
                     self.remove_banner();
-                    Some(AdjustedInput::DropToShellInThisPane)
+                    Some(AdjustedInput::DropToShellInThisPane { working_dir })
                 },
                 CTRL_C => Some(AdjustedInput::CloseThisPane),
                 _ => None,
@@ -786,6 +790,8 @@ impl TerminalPane {
         initial_pane_title: Option<String>,
         invoked_with: Option<Run>,
         debug: bool,
+        arrow_fonts: bool,
+        styled_underlines: bool,
     ) -> TerminalPane {
         let initial_pane_title =
             initial_pane_title.unwrap_or_else(|| format!("Pane #{}", pane_index));
@@ -797,7 +803,10 @@ impl TerminalPane {
             link_handler,
             character_cell_size,
             sixel_image_store,
+            style.clone(),
             debug,
+            arrow_fonts,
+            styled_underlines,
         );
         TerminalPane {
             frame: HashMap::new(),
@@ -822,6 +831,7 @@ impl TerminalPane {
             banner: None,
             pane_frame_color_override: None,
             invoked_with,
+            arrow_fonts,
         }
     }
     pub fn get_x(&self) -> usize {

@@ -1,4 +1,5 @@
 pub mod boundaries;
+pub mod components;
 pub mod loading_indication;
 pub mod overlay;
 pub mod pane_boundaries_frame;

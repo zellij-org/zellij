@@ -19,6 +19,7 @@ impl TryFrom<ProtobufPermissionType> for PermissionType {
                 Ok(PermissionType::OpenTerminalsOrPlugins)
             },
             ProtobufPermissionType::WriteToStdin => Ok(PermissionType::WriteToStdin),
+            ProtobufPermissionType::WebAccess => Ok(PermissionType::WebAccess),
         }
     }
 }
@@ -39,6 +40,7 @@ impl TryFrom<PermissionType> for ProtobufPermissionType {
                 Ok(ProtobufPermissionType::OpenTerminalsOrPlugins)
             },
             PermissionType::WriteToStdin => Ok(ProtobufPermissionType::WriteToStdin),
+            PermissionType::WebAccess => Ok(ProtobufPermissionType::WebAccess),
         }
     }
 }

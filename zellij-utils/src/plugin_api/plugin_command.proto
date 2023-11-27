@@ -83,6 +83,10 @@ enum CommandName {
   OpenCommandInPlace = 69;
   OpenFileInPlace = 70;
   RunCommand = 71;
+  WebRequest = 72;
+  DeleteDeadSession = 73;
+  DeleteAllDeadSessions = 74;
+  RenameSession = 75;
 }
 
 message PluginCommand {
@@ -130,6 +134,9 @@ message PluginCommand {
     OpenFilePayload open_terminal_in_place_payload = 41;
     OpenCommandPanePayload open_command_pane_in_place_payload = 42;
     RunCommandPayload run_command_payload = 43;
+    WebRequestPayload web_request_payload = 44;
+    string delete_dead_session_payload = 45;
+    string rename_session_payload = 46;
   }
 }
 
@@ -177,6 +184,21 @@ message RunCommandPayload {
   repeated EnvVariable env_variables = 2;
   string cwd = 3;
   repeated ContextItem context = 4;
+}
+
+message WebRequestPayload {
+  string url = 1;
+  HttpVerb verb = 2;
+  repeated event.Header headers = 3;
+  bytes body = 4;
+  repeated ContextItem context = 5;
+}
+
+enum HttpVerb {
+  Get = 0;
+  Post = 1;
+  Put = 2;
+  Delete = 3;
 }
 
 message EnvVariable {

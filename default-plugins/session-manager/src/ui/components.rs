@@ -478,9 +478,60 @@ pub fn minimize_lines(
 pub fn render_prompt(typing_session_name: bool, search_term: &str, colors: Colors) {
     if !typing_session_name {
         let prompt = colors.bold(&format!("> {}_", search_term));
-        println!("{}\n", prompt);
+        println!("\u{1b}[H{}\n", prompt);
     } else {
         println!("\n");
+    }
+}
+
+pub fn render_resurrection_toggle(cols: usize, resurrection_screen_is_active: bool) {
+    let key_indication_text = "<TAB>";
+    let running_sessions_text = "Running";
+    let exited_sessions_text = "Exited";
+    let key_indication_len = key_indication_text.chars().count() + 1;
+    let first_ribbon_length = running_sessions_text.chars().count() + 4;
+    let second_ribbon_length = exited_sessions_text.chars().count() + 4;
+    let key_indication_x =
+        cols.saturating_sub(key_indication_len + first_ribbon_length + second_ribbon_length);
+    let first_ribbon_x = key_indication_x + key_indication_len;
+    let second_ribbon_x = first_ribbon_x + first_ribbon_length;
+    print_text_with_coordinates(
+        Text::new(key_indication_text).color_range(3, ..),
+        key_indication_x,
+        0,
+        None,
+        None,
+    );
+    if resurrection_screen_is_active {
+        print_ribbon_with_coordinates(
+            Text::new(running_sessions_text),
+            first_ribbon_x,
+            0,
+            None,
+            None,
+        );
+        print_ribbon_with_coordinates(
+            Text::new(exited_sessions_text).selected(),
+            second_ribbon_x,
+            0,
+            None,
+            None,
+        );
+    } else {
+        print_ribbon_with_coordinates(
+            Text::new(running_sessions_text).selected(),
+            first_ribbon_x,
+            0,
+            None,
+            None,
+        );
+        print_ribbon_with_coordinates(
+            Text::new(exited_sessions_text),
+            second_ribbon_x,
+            0,
+            None,
+            None,
+        );
     }
 }
 
@@ -507,29 +558,68 @@ pub fn render_new_session_line(session_name: &Option<String>, is_searching: bool
     }
 }
 
+pub fn render_error(error_text: &str, rows: usize, columns: usize) {
+    print_text_with_coordinates(
+        Text::new(format!("Error: {}", error_text)).color_range(3, ..),
+        0,
+        rows,
+        Some(columns),
+        None,
+    );
+}
+
+pub fn render_renaming_session_screen(new_session_name: &str, rows: usize, columns: usize) {
+    if rows == 0 || columns == 0 {
+        return;
+    }
+    let prompt_text = "NEW NAME FOR CURRENT SESSION";
+    let new_session_name = format!("{}_", new_session_name);
+    let prompt_y_location = (rows / 2).saturating_sub(1);
+    let session_name_y_location = (rows / 2) + 1;
+    let prompt_x_location = columns.saturating_sub(prompt_text.chars().count()) / 2;
+    let session_name_x_location = columns.saturating_sub(new_session_name.chars().count()) / 2;
+    print_text_with_coordinates(
+        Text::new(prompt_text).color_range(0, ..),
+        prompt_x_location,
+        prompt_y_location,
+        None,
+        None,
+    );
+    print_text_with_coordinates(
+        Text::new(new_session_name).color_range(3, ..),
+        session_name_x_location,
+        session_name_y_location,
+        None,
+        None,
+    );
+}
+
 pub fn render_controls_line(is_searching: bool, row: usize, max_cols: usize, colors: Colors) {
     let (arrows, navigate) = if is_searching {
         (colors.magenta("<↓↑>"), colors.bold("Navigate"))
     } else {
         (colors.magenta("<←↓↑→>"), colors.bold("Navigate and Expand"))
     };
+    let rename = colors.magenta("<Ctrl r>");
+    let rename_text = colors.bold("Rename session");
     let enter = colors.magenta("<ENTER>");
     let select = colors.bold("Switch to selected");
     let esc = colors.magenta("<ESC>");
     let to_hide = colors.bold("Hide");
 
-    if max_cols >= 80 {
+    if max_cols >= 104 {
         print!(
-            "\u{1b}[m\u{1b}[{row}HHelp: {arrows} - {navigate}, {enter} - {select}, {esc} - {to_hide}"
+            "\u{1b}[m\u{1b}[{row}HHelp: {arrows} - {navigate}, {enter} - {select}, {rename} - {rename_text}, {esc} - {to_hide}"
         );
-    } else if max_cols >= 57 {
+    } else if max_cols >= 73 {
         let navigate = colors.bold("Navigate");
         let select = colors.bold("Switch");
+        let rename_text = colors.bold("Rename");
         print!(
-            "\u{1b}[m\u{1b}[{row}HHelp: {arrows} - {navigate}, {enter} - {select}, {esc} - {to_hide}"
+            "\u{1b}[m\u{1b}[{row}HHelp: {arrows} - {navigate}, {enter} - {select}, {rename} - {rename_text}, {esc} - {to_hide}"
         );
-    } else if max_cols >= 20 {
-        print!("\u{1b}[m\u{1b}[{row}H{arrows}/{enter}/{esc}");
+    } else if max_cols >= 28 {
+        print!("\u{1b}[m\u{1b}[{row}H{arrows}/{enter}/{rename}/{esc}");
     }
 }
 

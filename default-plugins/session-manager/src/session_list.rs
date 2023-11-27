@@ -314,6 +314,15 @@ impl SessionList {
     pub fn reset_selected_index(&mut self) {
         self.selected_index.reset();
     }
+    pub fn has_session(&self, session_name: &str) -> bool {
+        self.session_ui_infos.iter().any(|s| s.name == session_name)
+    }
+    pub fn update_session_name(&mut self, old_name: &str, new_name: &str) {
+        self.session_ui_infos
+            .iter_mut()
+            .find(|s| s.name == old_name)
+            .map(|s| s.name = new_name.to_owned());
+    }
 }
 
 #[derive(Debug, Clone, Default)]

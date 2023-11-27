@@ -227,6 +227,7 @@ pub struct PluginEnv {
     pub client_attributes: ClientAttributes,
     pub default_shell: Option<TerminalAction>,
     pub default_layout: Box<Layout>,
+    pub plugin_cwd: PathBuf,
 }
 
 impl PluginEnv {

@@ -41,6 +41,8 @@ pub struct LayoutApplier<'a> {
     focus_pane_id: &'a mut Option<PaneId>,
     os_api: Box<dyn ServerOsApi>,
     debug: bool,
+    arrow_fonts: bool,
+    styled_underlines: bool,
 }
 
 impl<'a> LayoutApplier<'a> {
@@ -61,6 +63,8 @@ impl<'a> LayoutApplier<'a> {
         focus_pane_id: &'a mut Option<PaneId>,
         os_api: &Box<dyn ServerOsApi>,
         debug: bool,
+        arrow_fonts: bool,
+        styled_underlines: bool,
     ) -> Self {
         let viewport = viewport.clone();
         let senders = senders.clone();
@@ -90,6 +94,8 @@ impl<'a> LayoutApplier<'a> {
             focus_pane_id,
             os_api,
             debug,
+            arrow_fonts,
+            styled_underlines,
         }
     }
     pub fn apply_layout(
@@ -256,6 +262,8 @@ impl<'a> LayoutApplier<'a> {
                             self.style,
                             layout.run.clone(),
                             self.debug,
+                            self.arrow_fonts,
+                            self.styled_underlines,
                         );
                         if let Some(pane_initial_contents) = &layout.pane_initial_contents {
                             new_plugin.handle_pty_bytes(pane_initial_contents.as_bytes().into());
@@ -292,6 +300,8 @@ impl<'a> LayoutApplier<'a> {
                                 initial_title,
                                 layout.run.clone(),
                                 self.debug,
+                                self.arrow_fonts,
+                                self.styled_underlines,
                             );
                             if let Some(pane_initial_contents) = &layout.pane_initial_contents {
                                 new_pane.handle_pty_bytes(pane_initial_contents.as_bytes().into());
@@ -381,6 +391,8 @@ impl<'a> LayoutApplier<'a> {
                     self.style,
                     floating_pane_layout.run.clone(),
                     self.debug,
+                    self.arrow_fonts,
+                    self.styled_underlines,
                 );
                 if let Some(pane_initial_contents) = &floating_pane_layout.pane_initial_contents {
                     new_pane.handle_pty_bytes(pane_initial_contents.as_bytes().into());
@@ -420,6 +432,8 @@ impl<'a> LayoutApplier<'a> {
                     initial_title,
                     floating_pane_layout.run.clone(),
                     self.debug,
+                    self.arrow_fonts,
+                    self.styled_underlines,
                 );
                 if let Some(pane_initial_contents) = &floating_pane_layout.pane_initial_contents {
                     new_pane.handle_pty_bytes(pane_initial_contents.as_bytes().into());

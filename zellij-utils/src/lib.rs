@@ -17,6 +17,8 @@ pub mod shared;
 #[cfg(not(target_family = "wasm"))]
 pub mod channels; // Requires async_std
 #[cfg(not(target_family = "wasm"))]
+pub mod downloader; // Requires async_std
+#[cfg(not(target_family = "wasm"))]
 pub mod ipc; // Requires interprocess
 #[cfg(not(target_family = "wasm"))]
 pub mod logging; // Requires log4rs
@@ -24,7 +26,8 @@ pub mod logging; // Requires log4rs
 #[cfg(not(target_family = "wasm"))]
 pub use ::{
     anyhow, async_channel, async_std, clap, common_path, humantime, interprocess, lazy_static,
-    libc, miette, nix, notify_debouncer_full, regex, serde, signal_hook, tempfile, termwiz, vte,
+    libc, miette, nix, notify_debouncer_full, regex, serde, signal_hook, surf, tempfile, termwiz,
+    vte,
 };
 
 pub use ::prost;

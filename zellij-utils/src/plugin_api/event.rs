@@ -6,6 +6,7 @@ pub use super::generated_api::api::{
         EventType as ProtobufEventType, InputModeKeybinds as ProtobufInputModeKeybinds,
         KeyBind as ProtobufKeyBind, ModeUpdatePayload as ProtobufModeUpdatePayload,
         PaneInfo as ProtobufPaneInfo, PaneManifest as ProtobufPaneManifest,
+        ResurrectableSession as ProtobufResurrectableSession,
         SessionManifest as ProtobufSessionManifest, TabInfo as ProtobufTabInfo, *,
     },
     input_mode::InputMode as ProtobufInputMode,
@@ -23,6 +24,7 @@ use crate::input::actions::Action;
 use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
 use std::path::PathBuf;
+use std::time::Duration;
 
 impl TryFrom<ProtobufEvent> for Event {
     type Error = &'static str;
@@ -176,10 +178,19 @@ impl TryFrom<ProtobufEvent> for Event {
                     protobuf_session_update_payload,
                 )) => {
                     let mut session_infos: Vec<SessionInfo> = vec![];
+                    let mut resurrectable_sessions: Vec<(String, Duration)> = vec![];
                     for protobuf_session_info in protobuf_session_update_payload.session_manifests {
                         session_infos.push(SessionInfo::try_from(protobuf_session_info)?);
                     }
-                    Ok(Event::SessionUpdate(session_infos))
+                    for protobuf_resurrectable_session in
+                        protobuf_session_update_payload.resurrectable_sessions
+                    {
+                        resurrectable_sessions.push(protobuf_resurrectable_session.into());
+                    }
+                    Ok(Event::SessionUpdate(
+                        session_infos,
+                        resurrectable_sessions.into(),
+                    ))
                 },
                 _ => Err("Malformed payload for the SessionUpdate Event"),
             },
@@ -197,6 +208,25 @@ impl TryFrom<ProtobufEvent> for Event {
                     ))
                 },
                 _ => Err("Malformed payload for the RunCommandResult Event"),
+            },
+            Some(ProtobufEventType::WebRequestResult) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::WebRequestResultPayload(web_request_result_payload)) => {
+                    Ok(Event::WebRequestResult(
+                        web_request_result_payload.status as u16,
+                        web_request_result_payload
+                            .headers
+                            .into_iter()
+                            .map(|h| (h.name, h.value))
+                            .collect(),
+                        web_request_result_payload.body,
+                        web_request_result_payload
+                            .context
+                            .into_iter()
+                            .map(|c_i| (c_i.name, c_i.value))
+                            .collect(),
+                    ))
+                },
+                _ => Err("Malformed payload for the WebRequestResult Event"),
             },
             None => Err("Unknown Protobuf Event"),
         }
@@ -340,13 +370,18 @@ impl TryFrom<Event> for ProtobufEvent {
                     )),
                 })
             },
-            Event::SessionUpdate(session_infos) => {
+            Event::SessionUpdate(session_infos, resurrectable_sessions) => {
                 let mut protobuf_session_manifests = vec![];
                 for session_info in session_infos {
                     protobuf_session_manifests.push(session_info.try_into()?);
                 }
+                let mut protobuf_resurrectable_sessions = vec![];
+                for resurrectable_session in resurrectable_sessions {
+                    protobuf_resurrectable_sessions.push(resurrectable_session.into());
+                }
                 let session_update_payload = SessionUpdatePayload {
                     session_manifests: protobuf_session_manifests,
+                    resurrectable_sessions: protobuf_resurrectable_sessions,
                 };
                 Ok(ProtobufEvent {
                     name: ProtobufEventType::SessionUpdate as i32,
@@ -367,6 +402,26 @@ impl TryFrom<Event> for ProtobufEvent {
                     name: ProtobufEventType::RunCommandResult as i32,
                     payload: Some(event::Payload::RunCommandResultPayload(
                         run_command_result_payload,
+                    )),
+                })
+            },
+            Event::WebRequestResult(status, headers, body, context) => {
+                let web_request_result_payload = WebRequestResultPayload {
+                    status: status as i32,
+                    headers: headers
+                        .into_iter()
+                        .map(|(name, value)| Header { name, value })
+                        .collect(),
+                    body,
+                    context: context
+                        .into_iter()
+                        .map(|(name, value)| ContextItem { name, value })
+                        .collect(),
+                };
+                Ok(ProtobufEvent {
+                    name: ProtobufEventType::WebRequestResult as i32,
+                    payload: Some(event::Payload::WebRequestResultPayload(
+                        web_request_result_payload,
                     )),
                 })
             },
@@ -816,6 +871,7 @@ impl TryFrom<ProtobufEventType> for EventType {
             ProtobufEventType::PermissionRequestResult => EventType::PermissionRequestResult,
             ProtobufEventType::SessionUpdate => EventType::SessionUpdate,
             ProtobufEventType::RunCommandResult => EventType::RunCommandResult,
+            ProtobufEventType::WebRequestResult => EventType::WebRequestResult,
         })
     }
 }
@@ -842,7 +898,26 @@ impl TryFrom<EventType> for ProtobufEventType {
             EventType::PermissionRequestResult => ProtobufEventType::PermissionRequestResult,
             EventType::SessionUpdate => ProtobufEventType::SessionUpdate,
             EventType::RunCommandResult => ProtobufEventType::RunCommandResult,
+            EventType::WebRequestResult => ProtobufEventType::WebRequestResult,
         })
+    }
+}
+
+impl From<ProtobufResurrectableSession> for (String, Duration) {
+    fn from(protobuf_resurrectable_session: ProtobufResurrectableSession) -> (String, Duration) {
+        (
+            protobuf_resurrectable_session.name,
+            Duration::from_secs(protobuf_resurrectable_session.creation_time),
+        )
+    }
+}
+
+impl From<(String, Duration)> for ProtobufResurrectableSession {
+    fn from(session_name_and_creation_time: (String, Duration)) -> ProtobufResurrectableSession {
+        ProtobufResurrectableSession {
+            name: session_name_and_creation_time.0,
+            creation_time: session_name_and_creation_time.1.as_secs(),
+        }
     }
 }
 
@@ -1208,7 +1283,7 @@ fn serialize_file_system_delete_event() {
 #[test]
 fn serialize_session_update_event() {
     use prost::Message;
-    let session_update_event = Event::SessionUpdate(Default::default());
+    let session_update_event = Event::SessionUpdate(Default::default(), Default::default());
     let protobuf_event: ProtobufEvent = session_update_event.clone().try_into().unwrap();
     let serialized_protobuf_event = protobuf_event.encode_to_vec();
     let deserialized_protobuf_event: ProtobufEvent =
@@ -1319,8 +1394,9 @@ fn serialize_session_update_event_with_non_default_values() {
         is_current_session: false,
     };
     let session_infos = vec![session_info_1, session_info_2];
+    let resurrectable_sessions = vec![];
 
-    let session_update_event = Event::SessionUpdate(session_infos);
+    let session_update_event = Event::SessionUpdate(session_infos, resurrectable_sessions);
     let protobuf_event: ProtobufEvent = session_update_event.clone().try_into().unwrap();
     let serialized_protobuf_event = protobuf_event.encode_to_vec();
     let deserialized_protobuf_event: ProtobufEvent =

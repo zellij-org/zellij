@@ -507,6 +507,7 @@ impl<'a> PluginLoader<'a> {
         Ok(module)
     }
     pub fn compile_module(&mut self) -> Result<Module> {
+        self.loading_indication.override_previous_error();
         display_loading_stage!(
             indicate_loading_plugin_from_hd_cache_notfound,
             self.loading_indication,
@@ -805,6 +806,7 @@ impl<'a> PluginLoader<'a> {
             client_attributes: self.client_attributes.clone(),
             default_shell: self.default_shell.clone(),
             default_layout: self.default_layout.clone(),
+            plugin_cwd: self.zellij_cwd.clone(),
         };
 
         let subscriptions = Arc::new(Mutex::new(HashSet::new()));

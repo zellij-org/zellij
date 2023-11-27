@@ -92,7 +92,7 @@ fn start_zellij_mirrored_session(channel: &mut ssh2::Channel) {
     channel
         .write_all(
             format!(
-                "{} {} --session {} --data-dir {} options --mirror-session true\n",
+                "{} {} --session {} --data-dir {} options --mirror-session true --serialization-interval 1\n",
                 SET_ENV_VARIABLES, ZELLIJ_EXECUTABLE_LOCATION, SESSION_NAME, ZELLIJ_DATA_DIR
             )
             .as_bytes(),
@@ -107,7 +107,7 @@ fn start_zellij_mirrored_session_with_layout(channel: &mut ssh2::Channel, layout
     channel
         .write_all(
             format!(
-                "{} {} --session {} --data-dir {} --layout {} options --mirror-session true\n",
+                "{} {} --session {} --data-dir {} --layout {} options --mirror-session true --serialization-interval 1\n",
                 SET_ENV_VARIABLES,
                 ZELLIJ_EXECUTABLE_LOCATION,
                 SESSION_NAME,
@@ -129,7 +129,7 @@ fn start_zellij_mirrored_session_with_layout_and_viewport_serialization(
     channel
         .write_all(
             format!(
-                "{} {} --session {} --data-dir {} --layout {} options --mirror-session true --serialize-pane-viewport true\n",
+                "{} {} --session {} --data-dir {} --layout {} options --mirror-session true --serialize-pane-viewport true --serialization-interval 1\n",
                 SET_ENV_VARIABLES,
                 ZELLIJ_EXECUTABLE_LOCATION,
                 SESSION_NAME,
@@ -235,6 +235,8 @@ fn read_from_channel(
                 })));
                 let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
                 let debug = false;
+                let arrow_fonts = true;
+                let styled_underlines = true;
                 let mut terminal_output = TerminalPane::new(
                     0,
                     pane_geom,
@@ -249,6 +251,8 @@ fn read_from_channel(
                     None,
                     None,
                     debug,
+                    arrow_fonts,
+                    styled_underlines,
                 ); // 0 is the pane index
                 loop {
                     if !should_keep_running.load(Ordering::SeqCst) {
