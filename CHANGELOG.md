@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 ## [Unreleased]
 * fix(cli): typo in cli help (https://github.com/zellij-org/zellij/pull/2906)
 * fix(sessions): slow session updates in the session-manager (https://github.com/zellij-org/zellij/pull/2951)
+* fix: compiler warnings (https://github.com/zellij-org/zellij/pull/2873)
 
 ## [0.39.1] - 2023-11-13
 * fix: styled underlines in editors (https://github.com/zellij-org/zellij/pull/2918)
