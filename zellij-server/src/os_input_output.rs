@@ -580,18 +580,17 @@ impl ServerOsApi for ServerOsInputOutput {
             .lock()
             .to_anyhow()
             .with_context(err_context)?;
-        let mut terminal_id = None;
-        {
-            let current_ids: BTreeSet<u32> = self
-                .terminal_id_to_raw_fd
-                .lock()
-                .to_anyhow()
-                .with_context(err_context)?
-                .keys()
-                .copied()
-                .collect();
-            terminal_id = current_ids.last().map(|l| l + 1).or(Some(0));
-        }
+        let terminal_id = self
+            .terminal_id_to_raw_fd
+            .lock()
+            .to_anyhow()
+            .with_context(err_context)?
+            .keys()
+            .copied()
+            .collect::<BTreeSet<u32>>()
+            .last()
+            .map(|l| l + 1)
+            .or(Some(0));
         match terminal_id {
             Some(terminal_id) => {
                 self.terminal_id_to_raw_fd
@@ -622,18 +621,17 @@ impl ServerOsApi for ServerOsInputOutput {
     fn reserve_terminal_id(&self) -> Result<u32> {
         let err_context = || "failed to reserve a terminal ID".to_string();
 
-        let mut terminal_id = None;
-        {
-            let current_ids: BTreeSet<u32> = self
-                .terminal_id_to_raw_fd
-                .lock()
-                .to_anyhow()
-                .with_context(err_context)?
-                .keys()
-                .copied()
-                .collect();
-            terminal_id = current_ids.last().map(|l| l + 1).or(Some(0));
-        }
+        let terminal_id = self
+            .terminal_id_to_raw_fd
+            .lock()
+            .to_anyhow()
+            .with_context(err_context)?
+            .keys()
+            .copied()
+            .collect::<BTreeSet<u32>>()
+            .last()
+            .map(|l| l + 1)
+            .or(Some(0));
         match terminal_id {
             Some(terminal_id) => {
                 self.terminal_id_to_raw_fd
