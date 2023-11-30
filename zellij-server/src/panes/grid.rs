@@ -1663,7 +1663,8 @@ impl Grid {
             // pad row if needed
             if current_row.width_cached() < self.width {
                 let padding_count = self.width - current_row.width_cached();
-                let mut columns_padding = VecDeque::from(vec![EMPTY_TERMINAL_CHARACTER; padding_count]);
+                let mut columns_padding =
+                    VecDeque::from(vec![EMPTY_TERMINAL_CHARACTER; padding_count]);
                 current_row.columns.append(&mut columns_padding);
             }
             for _ in 0..count {
