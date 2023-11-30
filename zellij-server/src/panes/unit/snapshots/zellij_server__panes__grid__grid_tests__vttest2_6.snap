@@ -3,19 +3,19 @@ source: zellij-server/src/panes/./unit/grid_tests.rs
 assertion_line: 305
 expression: "format!(\"{:?}\", grid)"
 ---
-00 (W): Push <RETURN>
-01 (W): Soft scroll down region [12..13] size 2 Line 29
-02 (W): Soft scroll down region [12..13] size 2 Line 28
-03 (W): Soft scroll down region [12..13] size 2 Line 27
-04 (W): Soft scroll down region [12..13] size 2 Line 26
-05 (W): Soft scroll down region [12..13] size 2 Line 25
-06 (W): Soft scroll down region [12..13] size 2 Line 24
-07 (W): Soft scroll down region [12..13] size 2 Line 23
-08 (W): Soft scroll down region [12..13] size 2 Line 22
-09 (W): Soft scroll down region [12..13] size 2 Line 21
-10 (W): Soft scroll down region [12..13] size 2 Line 20
-11 (W): Soft scroll down region [12..13] size 2 Line 19
-12 (W): Soft scroll down region [12..13] size 2 Line 18
+00 (C): Push <RETURN>
+01 (C): Soft scroll down region [12..13] size 2 Line 29
+02 (C): Soft scroll down region [12..13] size 2 Line 28
+03 (C): Soft scroll down region [12..13] size 2 Line 27
+04 (C): Soft scroll down region [12..13] size 2 Line 26
+05 (C): Soft scroll down region [12..13] size 2 Line 25
+06 (C): Soft scroll down region [12..13] size 2 Line 24
+07 (C): Soft scroll down region [12..13] size 2 Line 23
+08 (C): Soft scroll down region [12..13] size 2 Line 22
+09 (C): Soft scroll down region [12..13] size 2 Line 21
+10 (C): Soft scroll down region [12..13] size 2 Line 20
+11 (C): Soft scroll down region [12..13] size 2 Line 19
+12 (C): Soft scroll down region [12..13] size 2 Line 18
 13 (C): Soft scroll down region [12..13] size 2 Line 17                                                               
 14 (C): Soft scroll down region [12..13] size 2 Line 16                                                               
 15 (C): Soft scroll down region [12..13] size 2 Line 15                                                               

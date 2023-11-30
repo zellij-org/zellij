@@ -1,7 +1,6 @@
 ---
 source: zellij-server/src/panes/./unit/grid_tests.rs
 expression: "format!(\"{:?}\", grid)"
-
 ---
 00 (C):                                                                                                                     
 01 (C):   1  [||||||||||||||||||||||||||||||||||||||||||100.0%]   Tasks: 79, 382 thr; 1 running                             
@@ -12,7 +11,7 @@ expression: "format!(\"{:?}\", grid)"
 06 (C):   Swp[                                        0K/16.0G]                                                             
 07 (C):                                                                                                                     
 08 (C):     PID USER      PRI  NI  VIRT   RES   SHR S CPU% MEM%   TIME+  Command                                            
-09 (W):  123934 aram       20   0  8444  4384  3364 R 66.7  0.0  0:00.05 htop --delay=100000000000                          
+09 (C):  123934 aram       20   0  8444  4384  3364 R 66.7  0.0  0:00.05 htop --delay=100000000000                          
 10 (C):       1 root       20   0  171M 11616  8608 S  0.0  0.1  0:56.91 /sbin/init                                         
 11 (C):     268 root       20   0 93324 34340 33072 S  0.0  0.2  0:01.05 /usr/lib/systemd/systemd-journald                  
 12 (C):     276 root       20   0 32648 10192  7240 S  0.0  0.1  0:01.13 /usr/lib/systemd/systemd-udevd                     
