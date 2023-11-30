@@ -1892,6 +1892,7 @@ pub fn send_cli_new_pane_action_with_default_parameters() {
         close_on_exit: false,
         start_suspended: false,
         configuration: None,
+        skip_plugin_cache: false,
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -1930,6 +1931,7 @@ pub fn send_cli_new_pane_action_with_split_direction() {
         close_on_exit: false,
         start_suspended: false,
         configuration: None,
+        skip_plugin_cache: false,
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -1968,6 +1970,7 @@ pub fn send_cli_new_pane_action_with_command_and_cwd() {
         close_on_exit: false,
         start_suspended: false,
         configuration: None,
+        skip_plugin_cache: false,
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -2598,6 +2601,7 @@ pub fn send_cli_launch_or_focus_plugin_action() {
         move_to_focused_tab: true,
         url: url::Url::parse("file:/path/to/fake/plugin").unwrap(),
         configuration: Default::default(),
+        skip_plugin_cache: false,
     };
     send_cli_action_to_server(&session_metadata, cli_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -2657,6 +2661,7 @@ pub fn send_cli_launch_or_focus_plugin_action_when_plugin_is_already_loaded() {
         move_to_focused_tab: true,
         url: url::Url::parse("file:/path/to/fake/plugin").unwrap(),
         configuration: Default::default(),
+        skip_plugin_cache: false,
     };
     send_cli_action_to_server(&session_metadata, cli_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be

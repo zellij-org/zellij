@@ -658,25 +658,25 @@ pub(crate) fn route_action(
                 .send_to_screen(ScreenInstruction::QueryTabNames(client_id))
                 .with_context(err_context)?;
         },
-        Action::NewTiledPluginPane(run_plugin, name) => {
+        Action::NewTiledPluginPane(run_plugin, name, skip_cache) => {
             senders
                 .send_to_screen(ScreenInstruction::NewTiledPluginPane(
-                    run_plugin, name, client_id,
+                    run_plugin, name, skip_cache, client_id,
                 ))
                 .with_context(err_context)?;
         },
-        Action::NewFloatingPluginPane(run_plugin, name) => {
+        Action::NewFloatingPluginPane(run_plugin, name, skip_cache) => {
             senders
                 .send_to_screen(ScreenInstruction::NewFloatingPluginPane(
-                    run_plugin, name, client_id,
+                    run_plugin, name, skip_cache, client_id,
                 ))
                 .with_context(err_context)?;
         },
-        Action::NewInPlacePluginPane(run_plugin, name) => {
+        Action::NewInPlacePluginPane(run_plugin, name, skip_cache) => {
             if let Some(pane_id) = pane_id {
                 senders
                     .send_to_screen(ScreenInstruction::NewInPlacePluginPane(
-                        run_plugin, name, pane_id, client_id,
+                        run_plugin, name, pane_id, skip_cache, client_id,
                     ))
                     .with_context(err_context)?;
             } else {
@@ -693,6 +693,7 @@ pub(crate) fn route_action(
             should_float,
             move_to_focused_tab,
             should_open_in_place,
+            skip_cache,
         ) => {
             senders
                 .send_to_screen(ScreenInstruction::LaunchOrFocusPlugin(
@@ -701,17 +702,19 @@ pub(crate) fn route_action(
                     move_to_focused_tab,
                     should_open_in_place,
                     pane_id,
+                    skip_cache,
                     client_id,
                 ))
                 .with_context(err_context)?;
         },
-        Action::LaunchPlugin(run_plugin, should_float, should_open_in_place) => {
+        Action::LaunchPlugin(run_plugin, should_float, should_open_in_place, skip_cache) => {
             senders
                 .send_to_screen(ScreenInstruction::LaunchPlugin(
                     run_plugin,
                     should_float,
                     should_open_in_place,
                     pane_id,
+                    skip_cache,
                     client_id,
                 ))
                 .with_context(err_context)?;

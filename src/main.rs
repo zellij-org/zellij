@@ -31,6 +31,7 @@ fn main() {
             start_suspended,
         })) = opts.command
         {
+            let skip_plugin_cache = false; // N/A for this action
             let command_cli_action = CliAction::NewPane {
                 command,
                 plugin: None,
@@ -42,6 +43,7 @@ fn main() {
                 close_on_exit,
                 start_suspended,
                 configuration: None,
+                skip_plugin_cache,
             };
             commands::send_action_to_session(command_cli_action, opts.session, config);
             std::process::exit(0);
@@ -51,6 +53,7 @@ fn main() {
             floating,
             in_place,
             configuration,
+            skip_plugin_cache,
         })) = opts.command
         {
             let command_cli_action = CliAction::NewPane {
@@ -64,6 +67,7 @@ fn main() {
                 close_on_exit: false,
                 start_suspended: false,
                 configuration,
+                skip_plugin_cache,
             };
             commands::send_action_to_session(command_cli_action, opts.session, config);
             std::process::exit(0);

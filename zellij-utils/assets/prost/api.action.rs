@@ -129,6 +129,8 @@ pub struct NewPluginPanePayload {
     pub plugin_url: ::prost::alloc::string::String,
     #[prost(string, optional, tag = "2")]
     pub pane_name: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(bool, tag = "3")]
+    pub skip_plugin_cache: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -143,6 +145,8 @@ pub struct LaunchOrFocusPluginPayload {
     pub move_to_focused_tab: bool,
     #[prost(bool, tag = "5")]
     pub should_open_in_place: bool,
+    #[prost(bool, tag = "6")]
+    pub skip_plugin_cache: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

@@ -88,6 +88,7 @@ pub enum PtyInstruction {
         Option<PaneId>, // pane id to replace if this is to be opened "in-place"
         ClientId,
         Size,
+        bool, // skip cache
     ),
     Exit,
 }
@@ -653,6 +654,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                 pane_id_to_replace,
                 client_id,
                 size,
+                skip_cache,
             ) => {
                 pty.fill_plugin_cwd(
                     should_float,
@@ -663,6 +665,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     pane_id_to_replace,
                     client_id,
                     size,
+                    skip_cache,
                 )?;
             },
             PtyInstruction::Exit => break,
@@ -1328,6 +1331,7 @@ impl Pty {
         pane_id_to_replace: Option<PaneId>, // pane id to replace if this is to be opened "in-place"
         client_id: ClientId,
         size: Size,
+        skip_cache: bool,
     ) -> Result<()> {
         let cwd = self
             .active_panes
@@ -1353,6 +1357,7 @@ impl Pty {
             client_id,
             size,
             cwd,
+            skip_cache,
         ))?;
         Ok(())
     }

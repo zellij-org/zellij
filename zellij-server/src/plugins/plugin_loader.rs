@@ -148,6 +148,7 @@ impl<'a> PluginLoader<'a> {
         client_attributes: ClientAttributes,
         default_shell: Option<TerminalAction>,
         default_layout: Box<Layout>,
+        skip_cache: bool,
     ) -> Result<()> {
         let err_context = || format!("failed to start plugin {plugin_id} for client {client_id}");
         let mut plugin_loader = PluginLoader::new(
@@ -168,27 +169,49 @@ impl<'a> PluginLoader<'a> {
             default_shell,
             default_layout,
         )?;
-        plugin_loader
-            .load_module_from_memory()
-            .or_else(|_e| plugin_loader.load_module_from_hd_cache())
-            .or_else(|_e| plugin_loader.compile_module())
-            .and_then(|module| plugin_loader.create_plugin_environment(module))
-            .and_then(|(store, instance, plugin_env, subscriptions)| {
-                plugin_loader.load_plugin_instance(
-                    store,
-                    &instance,
-                    &plugin_env,
-                    &plugin_map,
-                    &subscriptions,
-                )
-            })
-            .and_then(|_| {
-                plugin_loader.clone_instance_for_other_clients(
-                    &connected_clients.lock().unwrap(),
-                    &plugin_map,
-                )
-            })
-            .with_context(err_context)?;
+        if skip_cache {
+            plugin_loader
+                .compile_module()
+                .and_then(|module| plugin_loader.create_plugin_environment(module))
+                .and_then(|(store, instance, plugin_env, subscriptions)| {
+                    plugin_loader.load_plugin_instance(
+                        store,
+                        &instance,
+                        &plugin_env,
+                        &plugin_map,
+                        &subscriptions,
+                    )
+                })
+                .and_then(|_| {
+                    plugin_loader.clone_instance_for_other_clients(
+                        &connected_clients.lock().unwrap(),
+                        &plugin_map,
+                    )
+                })
+                .with_context(err_context)?;
+        } else {
+            plugin_loader
+                .load_module_from_memory()
+                .or_else(|_e| plugin_loader.load_module_from_hd_cache())
+                .or_else(|_e| plugin_loader.compile_module())
+                .and_then(|module| plugin_loader.create_plugin_environment(module))
+                .and_then(|(store, instance, plugin_env, subscriptions)| {
+                    plugin_loader.load_plugin_instance(
+                        store,
+                        &instance,
+                        &plugin_env,
+                        &plugin_map,
+                        &subscriptions,
+                    )
+                })
+                .and_then(|_| {
+                    plugin_loader.clone_instance_for_other_clients(
+                        &connected_clients.lock().unwrap(),
+                        &plugin_map,
+                    )
+                })
+                .with_context(err_context)?;
+        };
         display_loading_stage!(end, loading_indication, senders, plugin_id);
         Ok(())
     }
