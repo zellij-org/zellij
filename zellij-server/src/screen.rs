@@ -275,8 +275,8 @@ pub enum ScreenInstruction {
     NewTiledPluginPane(RunPlugin, Option<String>, bool, ClientId), // Option<String> is
     // optional pane title, bool is skip cache
     NewFloatingPluginPane(RunPlugin, Option<String>, bool, ClientId), // Option<String> is an
-                                                                      // optional pane title, bool
-                                                                      // is skip cache
+    // optional pane title, bool
+    // is skip cache
     NewInPlacePluginPane(RunPlugin, Option<String>, PaneId, bool, ClientId), // Option<String> is an
     // optional pane title, bool is skip cache
     StartOrReloadPluginPane(RunPlugin, Option<String>),
@@ -297,8 +297,8 @@ pub enum ScreenInstruction {
     RequestStateUpdateForPlugins,
     LaunchOrFocusPlugin(RunPlugin, bool, bool, bool, Option<PaneId>, bool, ClientId), // bools are: should_float, move_to_focused_tab, should_open_in_place, Option<PaneId> is the pane id to replace, bool following it is skip_cache
     LaunchPlugin(RunPlugin, bool, bool, Option<PaneId>, bool, ClientId), // bools are: should_float, should_open_in_place Option<PaneId> is the pane id to replace, bool after is skip_cache
-    SuppressPane(PaneId, ClientId),                                // bool is should_float
-    FocusPaneWithId(PaneId, bool, ClientId),                       // bool is should_float
+    SuppressPane(PaneId, ClientId),                                      // bool is should_float
+    FocusPaneWithId(PaneId, bool, ClientId),                             // bool is should_float
     RenamePane(PaneId, Vec<u8>),
     RenameTab(usize, Vec<u8>),
     RequestPluginPermissions(
@@ -3147,7 +3147,12 @@ pub(crate) fn screen_thread_main(
                     .senders
                     .send_to_server(ServerInstruction::Log(tab_names, client_id))?;
             },
-            ScreenInstruction::NewTiledPluginPane(run_plugin, pane_title, skip_cache, client_id) => {
+            ScreenInstruction::NewTiledPluginPane(
+                run_plugin,
+                pane_title,
+                skip_cache,
+                client_id,
+            ) => {
                 let tab_index = screen.active_tab_indices.values().next().unwrap_or(&1);
                 let size = Size::default();
                 let should_float = Some(false);
@@ -3167,33 +3172,36 @@ pub(crate) fn screen_thread_main(
                         skip_cache,
                     ))?;
             },
-            ScreenInstruction::NewFloatingPluginPane(run_plugin, pane_title, skip_cache, client_id) => {
-                match screen.active_tab_indices.values().next() {
-                    Some(tab_index) => {
-                        let size = Size::default();
-                        let should_float = Some(true);
-                        let should_be_opened_in_place = false;
-                        screen
-                            .bus
-                            .senders
-                            .send_to_pty(PtyInstruction::FillPluginCwd(
-                                should_float,
-                                should_be_opened_in_place,
-                                pane_title,
-                                run_plugin,
-                                *tab_index,
-                                None,
-                                client_id,
-                                size,
-                                skip_cache,
-                            ))?;
-                    },
-                    None => {
-                        log::error!(
-                            "Could not find an active tab - is there at least 1 connected user?"
-                        );
-                    },
-                }
+            ScreenInstruction::NewFloatingPluginPane(
+                run_plugin,
+                pane_title,
+                skip_cache,
+                client_id,
+            ) => match screen.active_tab_indices.values().next() {
+                Some(tab_index) => {
+                    let size = Size::default();
+                    let should_float = Some(true);
+                    let should_be_opened_in_place = false;
+                    screen
+                        .bus
+                        .senders
+                        .send_to_pty(PtyInstruction::FillPluginCwd(
+                            should_float,
+                            should_be_opened_in_place,
+                            pane_title,
+                            run_plugin,
+                            *tab_index,
+                            None,
+                            client_id,
+                            size,
+                            skip_cache,
+                        ))?;
+                },
+                None => {
+                    log::error!(
+                        "Could not find an active tab - is there at least 1 connected user?"
+                    );
+                },
             },
             ScreenInstruction::NewInPlacePluginPane(
                 run_plugin,

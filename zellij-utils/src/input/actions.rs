@@ -239,11 +239,11 @@ pub enum Action {
     QueryTabNames,
     /// Open a new tiled (embedded, non-floating) plugin pane
     NewTiledPluginPane(RunPlugin, Option<String>, bool), // String is an optional name, bool is
-                                                         // skip_cache
+    // skip_cache
     NewFloatingPluginPane(RunPlugin, Option<String>, bool), // String is an optional name, bool is
-                                                            // skip_cache
-    NewInPlacePluginPane(RunPlugin, Option<String>, bool),  // String is an optional name, bool is
-                                                            // skip_cache
+    // skip_cache
+    NewInPlacePluginPane(RunPlugin, Option<String>, bool), // String is an optional name, bool is
+    // skip_cache
     StartOrReloadPlugin(RunPlugin),
     CloseTerminalPane(u32),
     ClosePluginPane(u32),
@@ -329,9 +329,17 @@ impl Action {
                         configuration: user_configuration,
                     };
                     if floating {
-                        Ok(vec![Action::NewFloatingPluginPane(plugin, name, skip_plugin_cache)])
+                        Ok(vec![Action::NewFloatingPluginPane(
+                            plugin,
+                            name,
+                            skip_plugin_cache,
+                        )])
                     } else if in_place {
-                        Ok(vec![Action::NewInPlacePluginPane(plugin, name, skip_plugin_cache)])
+                        Ok(vec![Action::NewInPlacePluginPane(
+                            plugin,
+                            name,
+                            skip_plugin_cache,
+                        )])
                     } else {
                         // it is intentional that a new tiled plugin pane cannot include a
                         // direction
@@ -341,7 +349,11 @@ impl Action {
                         // is being loaded
                         // this is not the case with terminal panes for historical reasons of
                         // backwards compatibility to a time before we had auto layouts
-                        Ok(vec![Action::NewTiledPluginPane(plugin, name, skip_plugin_cache)])
+                        Ok(vec![Action::NewTiledPluginPane(
+                            plugin,
+                            name,
+                            skip_plugin_cache,
+                        )])
                     }
                 } else if !command.is_empty() {
                     let mut command = command.clone();
@@ -562,7 +574,12 @@ impl Action {
                     _allow_exec_host_cmd: false,
                     configuration: configuration.unwrap_or_default(),
                 };
-                Ok(vec![Action::LaunchPlugin(run_plugin, floating, in_place, skip_plugin_cache)])
+                Ok(vec![Action::LaunchPlugin(
+                    run_plugin,
+                    floating,
+                    in_place,
+                    skip_plugin_cache,
+                )])
             },
             CliAction::RenameSession { name } => Ok(vec![Action::RenameSession(name)]),
         }

@@ -246,7 +246,6 @@ pub enum Sessions {
         /// Skip the memory and HD cache and force recompile of the plugin (good for development)
         #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
         skip_plugin_cache: bool,
-
     },
     /// Edit file with default $EDITOR / $VISUAL
     #[clap(visible_alias = "e")]

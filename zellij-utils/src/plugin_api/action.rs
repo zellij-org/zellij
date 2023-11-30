@@ -544,7 +544,11 @@ impl TryFrom<ProtobufAction> for Action {
                         };
                         let pane_name = payload.pane_name;
                         let skip_plugin_cache = payload.skip_plugin_cache;
-                        Ok(Action::NewTiledPluginPane(run_plugin, pane_name, skip_plugin_cache))
+                        Ok(Action::NewTiledPluginPane(
+                            run_plugin,
+                            pane_name,
+                            skip_plugin_cache,
+                        ))
                     },
                     _ => Err("Wrong payload for Action::NewTiledPluginPane"),
                 }
@@ -562,7 +566,11 @@ impl TryFrom<ProtobufAction> for Action {
                         };
                         let pane_name = payload.pane_name;
                         let skip_plugin_cache = payload.skip_plugin_cache;
-                        Ok(Action::NewFloatingPluginPane(run_plugin, pane_name, skip_plugin_cache))
+                        Ok(Action::NewFloatingPluginPane(
+                            run_plugin,
+                            pane_name,
+                            skip_plugin_cache,
+                        ))
                     },
                     _ => Err("Wrong payload for Action::MiddleClick"),
                 }
@@ -1030,7 +1038,12 @@ impl TryFrom<Action> for ProtobufAction {
                     )),
                 })
             },
-            Action::LaunchPlugin(run_plugin, should_float, should_open_in_place, skip_plugin_cache) => {
+            Action::LaunchPlugin(
+                run_plugin,
+                should_float,
+                should_open_in_place,
+                skip_plugin_cache,
+            ) => {
                 let url: Url = Url::from(&run_plugin.location);
                 Ok(ProtobufAction {
                     name: ProtobufActionName::LaunchPlugin as i32,
