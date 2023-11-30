@@ -1421,8 +1421,10 @@ impl Grid {
         }
     }
     pub fn clear_cursor_line(&mut self) {
-        self.viewport.get_mut(self.cursor.y).unwrap().truncate(0);
-        self.output_buffer.update_line(self.cursor.y);
+        if let Some(viewport_line) = self.viewport.get_mut(self.cursor.y) {
+            viewport_line.truncate(0);
+            self.output_buffer.update_line(self.cursor.y);
+        }
     }
     pub fn clear_all(&mut self, replace_with: TerminalCharacter) {
         let replace_with_columns = VecDeque::from(vec![replace_with; self.width]);
@@ -1462,11 +1464,12 @@ impl Grid {
         if self.viewport.get(self.cursor.y).is_none() {
             self.pad_lines_until(self.cursor.y, pad_character);
         }
-        let current_row = self.viewport.get_mut(self.cursor.y).unwrap();
-        for _ in current_row.width()..position {
-            current_row.push(pad_character);
+        if let Some(current_row) = self.viewport.get_mut(self.cursor.y) {
+            for _ in current_row.width()..position {
+                current_row.push(pad_character);
+            }
+            self.output_buffer.update_line(self.cursor.y);
         }
-        self.output_buffer.update_line(self.cursor.y);
     }
     fn pad_lines_until(&mut self, position: usize, pad_character: TerminalCharacter) {
         for _ in self.viewport.len()..=position {
@@ -1646,35 +1649,36 @@ impl Grid {
         empty_character.styles = empty_char_style;
         let pad_until = std::cmp::min(self.width, self.cursor.x + count);
         self.pad_current_line_until(pad_until, empty_character);
-        let current_row = self.viewport.get_mut(self.cursor.y).unwrap();
-        for i in 0..count {
-            current_row.replace_character_at(empty_character, self.cursor.x + i);
+        if let Some(current_row) = self.viewport.get_mut(self.cursor.y) {
+            for i in 0..count {
+                current_row.replace_character_at(empty_character, self.cursor.x + i);
+            }
+            self.output_buffer.update_line(self.cursor.y);
         }
-        self.output_buffer.update_line(self.cursor.y);
     }
     fn erase_characters(&mut self, count: usize, empty_char_style: CharacterStyles) {
         let mut empty_character = EMPTY_TERMINAL_CHARACTER;
         empty_character.styles = empty_char_style;
-        let current_row = self.viewport.get_mut(self.cursor.y).unwrap();
-
-        // pad row if needed
-        if current_row.width_cached() < self.width {
-            let padding_count = self.width - current_row.width_cached();
-            let mut columns_padding = VecDeque::from(vec![EMPTY_TERMINAL_CHARACTER; padding_count]);
-            current_row.columns.append(&mut columns_padding);
-        }
-        for _ in 0..count {
-            let deleted_character = current_row.delete_and_return_character(self.cursor.x);
-            let excess_width = deleted_character
-                .map(|terminal_character| terminal_character.width)
-                .unwrap_or(0)
-                .saturating_sub(1);
-            for _ in 0..excess_width {
-                current_row.insert_character_at(empty_character, self.cursor.x);
+        if let Some(current_row) = self.viewport.get_mut(self.cursor.y) {
+            // pad row if needed
+            if current_row.width_cached() < self.width {
+                let padding_count = self.width - current_row.width_cached();
+                let mut columns_padding = VecDeque::from(vec![EMPTY_TERMINAL_CHARACTER; padding_count]);
+                current_row.columns.append(&mut columns_padding);
             }
-            current_row.push(empty_character);
+            for _ in 0..count {
+                let deleted_character = current_row.delete_and_return_character(self.cursor.x);
+                let excess_width = deleted_character
+                    .map(|terminal_character| terminal_character.width)
+                    .unwrap_or(0)
+                    .saturating_sub(1);
+                for _ in 0..excess_width {
+                    current_row.insert_character_at(empty_character, self.cursor.x);
+                }
+                current_row.push(empty_character);
+            }
+            self.output_buffer.update_line(self.cursor.y);
         }
-        self.output_buffer.update_line(self.cursor.y);
     }
     fn add_newline(&mut self) {
         self.add_canonical_line();
@@ -3278,11 +3282,12 @@ impl Row {
         if absolute_x_index < self.columns.len() {
             self.columns.push_back(terminal_character);
             // this is much more performant than remove/insert
-            let character = self.columns.swap_remove_back(absolute_x_index).unwrap();
-            let excess_width = character.width.saturating_sub(terminal_character.width);
-            for _ in 0..excess_width {
-                self.columns
-                    .insert(absolute_x_index, EMPTY_TERMINAL_CHARACTER);
+            if let Some(character) = self.columns.swap_remove_back(absolute_x_index) {
+                let excess_width = character.width.saturating_sub(terminal_character.width);
+                for _ in 0..excess_width {
+                    self.columns
+                        .insert(absolute_x_index, EMPTY_TERMINAL_CHARACTER);
+                }
             }
         }
         self.width = None;
@@ -3382,7 +3387,7 @@ impl Row {
         let erase_position = self.absolute_character_index(x);
         if erase_position < self.columns.len() {
             self.width = None;
-            Some(self.columns.remove(erase_position).unwrap()) // TODO: just return the remove part?
+            self.columns.remove(erase_position)
         } else {
             None
         }
@@ -3404,7 +3409,9 @@ impl Row {
             parts.push(Row::from_columns(current_part))
         };
         if !parts.is_empty() && self.is_canonical {
-            parts.get_mut(0).unwrap().is_canonical = true;
+            if let Some(part) = parts.get_mut(0) {
+                part.is_canonical = true;
+            }
         }
         if parts.is_empty() {
             parts.push(self.clone());
