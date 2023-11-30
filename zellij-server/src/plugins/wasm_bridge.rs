@@ -114,6 +114,7 @@ impl WasmBridge {
         tab_index: usize,
         size: Size,
         cwd: Option<PathBuf>,
+        skip_cache: bool,
         client_id: Option<ClientId>,
     ) -> Result<PluginId> {
         // returns the plugin id
@@ -209,6 +210,7 @@ impl WasmBridge {
                     client_attributes,
                     default_shell,
                     default_layout,
+                    skip_cache,
                 ) {
                     Ok(_) => handle_plugin_successful_loading(&senders, plugin_id),
                     Err(e) => handle_plugin_loading_failure(

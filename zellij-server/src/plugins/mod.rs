@@ -51,6 +51,7 @@ pub enum PluginInstruction {
         ClientId,
         Size,
         Option<PathBuf>, // cwd
+        bool, // skip cache
     ),
     Update(Vec<(Option<PluginId>, Option<ClientId>, Event)>), // Focused plugin / broadcast, client_id, event data
     Unload(PluginId),                                         // plugin_id
@@ -184,7 +185,8 @@ pub(crate) fn plugin_thread_main(
                 client_id,
                 size,
                 cwd,
-            ) => match wasm_bridge.load_plugin(&run, tab_index, size, cwd.clone(), Some(client_id))
+                skip_cache,
+            ) => match wasm_bridge.load_plugin(&run, tab_index, size, cwd.clone(), skip_cache, Some(client_id))
             {
                 Ok(plugin_id) => {
                     drop(bus.senders.send_to_screen(ScreenInstruction::AddPlugin(
@@ -221,7 +223,8 @@ pub(crate) fn plugin_thread_main(
                             log::warn!("Plugin {} not found, starting it instead", run.location);
                             // we intentionally do not provide the client_id here because it belongs to
                             // the cli who spawned the command and is not an existing client_id
-                            match wasm_bridge.load_plugin(&run, tab_index, size, None, None) {
+                            let skip_cache = true; // when reloading we always skip cache
+                            match wasm_bridge.load_plugin(&run, tab_index, size, None, skip_cache, None) {
                                 Ok(plugin_id) => {
                                     let should_be_open_in_place = false;
                                     drop(bus.senders.send_to_screen(ScreenInstruction::AddPlugin(
@@ -286,11 +289,13 @@ pub(crate) fn plugin_thread_main(
                 extracted_run_instructions.append(&mut extracted_floating_plugins);
                 for run_instruction in extracted_run_instructions {
                     if let Some(Run::Plugin(run)) = run_instruction {
+                        let skip_cache = false;
                         let plugin_id = wasm_bridge.load_plugin(
                             &run,
                             tab_index,
                             size,
                             None,
+                            skip_cache,
                             Some(client_id),
                         )?;
                         plugin_ids

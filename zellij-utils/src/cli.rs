@@ -242,6 +242,11 @@ pub enum Sessions {
             conflicts_with("floating")
         )]
         in_place: bool,
+
+        /// Skip the memory and HD cache and force recompile of the plugin (good for development)
+        #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
+        skip_plugin_cache: bool,
+
     },
     /// Edit file with default $EDITOR / $VISUAL
     #[clap(visible_alias = "e")]
@@ -417,6 +422,8 @@ pub enum CliAction {
         start_suspended: bool,
         #[clap(long, value_parser)]
         configuration: Option<PluginUserConfiguration>,
+        #[clap(short, long, value_parser)]
+        skip_plugin_cache: bool,
     },
     /// Open the specified file in a new zellij pane with your default EDITOR
     Edit {
@@ -526,6 +533,8 @@ pub enum CliAction {
         url: Url,
         #[clap(short, long, value_parser)]
         configuration: Option<PluginUserConfiguration>,
+        #[clap(short, long, value_parser)]
+        skip_plugin_cache: bool,
     },
     LaunchPlugin {
         #[clap(short, long, value_parser)]
@@ -535,6 +544,8 @@ pub enum CliAction {
         url: Url,
         #[clap(short, long, value_parser)]
         configuration: Option<PluginUserConfiguration>,
+        #[clap(short, long, value_parser)]
+        skip_plugin_cache: bool,
     },
     RenameSession {
         name: String,

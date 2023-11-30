@@ -403,11 +403,13 @@ impl TryFrom<ProtobufAction> for Action {
                         let should_float = payload.should_float;
                         let move_to_focused_tab = payload.move_to_focused_tab;
                         let should_open_in_place = payload.should_open_in_place;
+                        let skip_plugin_cache = payload.skip_plugin_cache;
                         Ok(Action::LaunchOrFocusPlugin(
                             run_plugin,
                             should_float,
                             move_to_focused_tab,
                             should_open_in_place,
+                            skip_plugin_cache,
                         ))
                     },
                     _ => Err("Wrong payload for Action::LaunchOrFocusPlugin"),
@@ -431,10 +433,12 @@ impl TryFrom<ProtobufAction> for Action {
                     let _move_to_focused_tab = payload.move_to_focused_tab; // not actually used in
                                                                             // this action
                     let should_open_in_place = payload.should_open_in_place;
+                    let skip_plugin_cache = payload.skip_plugin_cache;
                     Ok(Action::LaunchPlugin(
                         run_plugin,
                         should_float,
                         should_open_in_place,
+                        skip_plugin_cache,
                     ))
                 },
                 _ => Err("Wrong payload for Action::LaunchOrFocusPlugin"),
@@ -539,7 +543,8 @@ impl TryFrom<ProtobufAction> for Action {
                             configuration: PluginUserConfiguration::default(),
                         };
                         let pane_name = payload.pane_name;
-                        Ok(Action::NewTiledPluginPane(run_plugin, pane_name))
+                        let skip_plugin_cache = payload.skip_plugin_cache;
+                        Ok(Action::NewTiledPluginPane(run_plugin, pane_name, skip_plugin_cache))
                     },
                     _ => Err("Wrong payload for Action::NewTiledPluginPane"),
                 }
@@ -556,7 +561,8 @@ impl TryFrom<ProtobufAction> for Action {
                             configuration: PluginUserConfiguration::default(),
                         };
                         let pane_name = payload.pane_name;
-                        Ok(Action::NewFloatingPluginPane(run_plugin, pane_name))
+                        let skip_plugin_cache = payload.skip_plugin_cache;
+                        Ok(Action::NewFloatingPluginPane(run_plugin, pane_name, skip_plugin_cache))
                     },
                     _ => Err("Wrong payload for Action::MiddleClick"),
                 }
@@ -1007,6 +1013,7 @@ impl TryFrom<Action> for ProtobufAction {
                 should_float,
                 move_to_focused_tab,
                 should_open_in_place,
+                skip_plugin_cache,
             ) => {
                 let url: Url = Url::from(&run_plugin.location);
                 Ok(ProtobufAction {
@@ -1018,11 +1025,12 @@ impl TryFrom<Action> for ProtobufAction {
                             move_to_focused_tab,
                             should_open_in_place,
                             plugin_configuration: Some(run_plugin.configuration.try_into()?),
+                            skip_plugin_cache,
                         },
                     )),
                 })
             },
-            Action::LaunchPlugin(run_plugin, should_float, should_open_in_place) => {
+            Action::LaunchPlugin(run_plugin, should_float, should_open_in_place, skip_plugin_cache) => {
                 let url: Url = Url::from(&run_plugin.location);
                 Ok(ProtobufAction {
                     name: ProtobufActionName::LaunchPlugin as i32,
@@ -1033,6 +1041,7 @@ impl TryFrom<Action> for ProtobufAction {
                             move_to_focused_tab: false,
                             should_open_in_place,
                             plugin_configuration: Some(run_plugin.configuration.try_into()?),
+                            skip_plugin_cache,
                         },
                     )),
                 })
@@ -1115,7 +1124,7 @@ impl TryFrom<Action> for ProtobufAction {
                 name: ProtobufActionName::QueryTabNames as i32,
                 optional_payload: None,
             }),
-            Action::NewTiledPluginPane(run_plugin, pane_name) => {
+            Action::NewTiledPluginPane(run_plugin, pane_name, skip_plugin_cache) => {
                 let plugin_url: Url = Url::from(&run_plugin.location);
                 Ok(ProtobufAction {
                     name: ProtobufActionName::NewTiledPluginPane as i32,
@@ -1123,11 +1132,12 @@ impl TryFrom<Action> for ProtobufAction {
                         NewPluginPanePayload {
                             plugin_url: plugin_url.into(),
                             pane_name,
+                            skip_plugin_cache,
                         },
                     )),
                 })
             },
-            Action::NewFloatingPluginPane(run_plugin, pane_name) => {
+            Action::NewFloatingPluginPane(run_plugin, pane_name, skip_plugin_cache) => {
                 let plugin_url: Url = Url::from(&run_plugin.location);
                 Ok(ProtobufAction {
                     name: ProtobufActionName::NewFloatingPluginPane as i32,
@@ -1135,6 +1145,7 @@ impl TryFrom<Action> for ProtobufAction {
                         NewPluginPanePayload {
                             plugin_url: plugin_url.into(),
                             pane_name,
+                            skip_plugin_cache,
                         },
                     )),
                 })
