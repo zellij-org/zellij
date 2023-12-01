@@ -272,7 +272,11 @@ impl Display for LoadingIndication {
             None => {},
         }
         if let Some(error_text) = &self.error {
-            stringified.push_str(&format!("\n\r{} {}", red.bold().paint("ERROR: "), error_text.replace('\n', "\n\r")));
+            stringified.push_str(&format!(
+                "\n\r{} {}",
+                red.bold().paint("ERROR: "),
+                error_text.replace('\n', "\n\r")
+            ));
             // we add this additional line explicitly to make it easier to realize when something
             // is wrong in very small plugins (eg. the tab-bar and status-bar)
             stringified.push_str(&format!(

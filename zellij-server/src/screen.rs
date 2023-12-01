@@ -2058,7 +2058,11 @@ impl Screen {
         }
         session_layout_metadata
     }
-    fn update_plugin_loading_stage(&mut self, pid: u32, loading_indication: LoadingIndication) -> bool {
+    fn update_plugin_loading_stage(
+        &mut self,
+        pid: u32,
+        loading_indication: LoadingIndication,
+    ) -> bool {
         let all_tabs = self.get_tabs_mut();
         let mut found_plugin = false;
         for tab in all_tabs.values_mut() {
@@ -2821,7 +2825,9 @@ pub(crate) fn screen_thread_main(
 
                 for plugin_ids in new_plugin_ids.values() {
                     for plugin_id in plugin_ids {
-                        if let Some(loading_indication) = plugin_loading_message_cache.remove(plugin_id) {
+                        if let Some(loading_indication) =
+                            plugin_loading_message_cache.remove(plugin_id)
+                        {
                             screen.update_plugin_loading_stage(*plugin_id, loading_indication);
                             screen.render()?;
                         }
@@ -3333,13 +3339,13 @@ pub(crate) fn screen_thread_main(
                 if let Some(loading_indication) = plugin_loading_message_cache.remove(&plugin_id) {
                     screen.update_plugin_loading_stage(plugin_id, loading_indication);
                     screen.render()?;
-
                 }
                 screen.log_and_report_session_state()?;
                 screen.unblock_input()?;
             },
             ScreenInstruction::UpdatePluginLoadingStage(pid, loading_indication) => {
-                let found_plugin = screen.update_plugin_loading_stage(pid, loading_indication.clone());
+                let found_plugin =
+                    screen.update_plugin_loading_stage(pid, loading_indication.clone());
                 if !found_plugin {
                     plugin_loading_message_cache.insert(pid, loading_indication);
                 }
