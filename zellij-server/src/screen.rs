@@ -2058,6 +2058,18 @@ impl Screen {
         }
         session_layout_metadata
     }
+    fn update_plugin_loading_stage(&mut self, pid: u32, loading_indication: LoadingIndication) -> bool {
+        let all_tabs = self.get_tabs_mut();
+        let mut found_plugin = false;
+        for tab in all_tabs.values_mut() {
+            if tab.has_plugin(pid) {
+                found_plugin = true;
+                tab.update_plugin_loading_stage(pid, loading_indication);
+                break;
+            }
+        }
+        found_plugin
+    }
 }
 
 // The box is here in order to make the
@@ -2117,6 +2129,7 @@ pub(crate) fn screen_thread_main(
     let mut pending_tab_switches: HashSet<(usize, ClientId)> = HashSet::new(); // usize is the
                                                                                // tab_index
 
+    let mut plugin_loading_message_cache = HashMap::new();
     loop {
         let (event, mut err_ctx) = screen
             .bus
@@ -2793,9 +2806,9 @@ pub(crate) fn screen_thread_main(
                 screen.apply_layout(
                     layout,
                     floating_panes_layout,
-                    new_pane_pids,
+                    new_pane_pids.clone(),
                     new_floating_pane_pids,
-                    new_plugin_ids,
+                    new_plugin_ids.clone(),
                     tab_index,
                     client_id,
                 )?;
@@ -2805,6 +2818,16 @@ pub(crate) fn screen_thread_main(
                         screen.go_to_tab(tab_index as usize, client_id)?;
                     }
                 }
+
+                for plugin_ids in new_plugin_ids.values() {
+                    for plugin_id in plugin_ids {
+                        if let Some(loading_indication) = plugin_loading_message_cache.remove(plugin_id) {
+                            screen.update_plugin_loading_stage(*plugin_id, loading_indication);
+                            screen.render()?;
+                        }
+                    }
+                }
+
                 screen.unblock_input()?;
                 screen.render()?;
             },
@@ -3307,16 +3330,18 @@ pub(crate) fn screen_thread_main(
                 } else {
                     log::error!("Tab index not found: {:?}", tab_index);
                 }
+                if let Some(loading_indication) = plugin_loading_message_cache.remove(&plugin_id) {
+                    screen.update_plugin_loading_stage(plugin_id, loading_indication);
+                    screen.render()?;
+
+                }
                 screen.log_and_report_session_state()?;
                 screen.unblock_input()?;
             },
             ScreenInstruction::UpdatePluginLoadingStage(pid, loading_indication) => {
-                let all_tabs = screen.get_tabs_mut();
-                for tab in all_tabs.values_mut() {
-                    if tab.has_plugin(pid) {
-                        tab.update_plugin_loading_stage(pid, loading_indication);
-                        break;
-                    }
+                let found_plugin = screen.update_plugin_loading_stage(pid, loading_indication.clone());
+                if !found_plugin {
+                    plugin_loading_message_cache.insert(pid, loading_indication);
                 }
                 screen.render()?;
             },
