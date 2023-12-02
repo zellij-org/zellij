@@ -348,6 +348,7 @@ pub struct Grid {
     sixel_grid: SixelGrid,
     pub changed_colors: Option<[Option<AnsiCode>; 256]>,
     pub should_render: bool,
+    pub lock_renders: bool,
     pub cursor_key_mode: bool, // DECCKM - when set, cursor keys should send ANSI direction codes (eg. "OD") instead of the arrow keys (eg. "[D")
     pub bracketed_paste_mode: bool, // when set, paste instructions to the terminal should be escaped with a special sequence
     pub erasure_mode: bool,         // ERM
@@ -520,6 +521,7 @@ impl Grid {
             debug,
             arrow_fonts,
             styled_underlines,
+            lock_renders: false,
         }
     }
     pub fn render_full_viewport(&mut self) {
@@ -1074,6 +1076,9 @@ impl Grid {
         content_y: usize,
         style: &Style,
     ) -> Result<Option<(Vec<CharacterChunk>, Option<String>, Vec<SixelImageChunk>)>> {
+        if self.lock_renders {
+            return Ok(None);
+        }
         let mut raw_vte_output = String::new();
 
         let (mut character_chunks, sixel_image_chunks) = self.read_changes(content_x, content_y);
@@ -2144,6 +2149,12 @@ impl Grid {
     pub fn reset_cursor_position(&mut self) {
         self.cursor = Cursor::new(0, 0, self.styled_underlines);
     }
+    pub fn lock_renders(&mut self) {
+        self.lock_renders = true;
+    }
+    pub fn unlock_renders(&mut self) {
+        self.lock_renders = false;
+    }
 }
 
 impl Perform for Grid {
@@ -2520,6 +2531,9 @@ impl Perform for Grid {
             if first_intermediate_is_questionmark {
                 for param in params_iter.map(|param| param[0]) {
                     match param {
+                        2026 => {
+                            self.unlock_renders();
+                        },
                         2004 => {
                             self.bracketed_paste_mode = false;
                         },
@@ -2615,6 +2629,9 @@ impl Perform for Grid {
                             self.show_cursor();
                             self.mark_for_rerender();
                         },
+                        2026 => {
+                            self.lock_renders();
+                        },
                         2004 => {
                             self.bracketed_paste_mode = true;
                         },
@@ -2692,6 +2709,24 @@ impl Perform for Grid {
                         },
                         20 => {
                             self.new_line_mode = true;
+                        },
+                        _ => {},
+                    }
+                }
+            }
+        } else if c == 'p' {
+            let first_intermediate_is_questionmark = match intermediates.get(0) {
+                Some(b'?') => true,
+                None => false,
+                _ => false,
+            };
+            if first_intermediate_is_questionmark {
+                for param in params_iter.map(|param| param[0]) {
+                    match param {
+                        2026 => {
+                            let response = "\u{1b}[2026;2$y";
+                            self.pending_messages_to_pty
+                                .push(response.as_bytes().to_vec());
                         },
                         _ => {},
                     }
