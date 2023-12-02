@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix(grid): recover from various errors (https://github.com/zellij-org/zellij/pull/2972)
 * fix(grid): flaky scroll with scroll region (https://github.com/zellij-org/zellij/pull/2935)
 * fix(plugins): display errors properly (https://github.com/zellij-org/zellij/pull/2975)
+* feat(terminal): implement synchronized renders (https://github.com/zellij-org/zellij/pull/2977)
 
 ## [0.39.2] - 2023-11-29
 * fix(cli): typo in cli help (https://github.com/zellij-org/zellij/pull/2906)
