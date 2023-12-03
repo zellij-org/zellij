@@ -549,4 +549,8 @@ pub enum CliAction {
     RenameSession {
         name: String,
     },
+    Message {
+        name: String,
+        payload: String,
+    },
 }

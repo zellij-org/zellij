@@ -100,6 +100,8 @@ pub enum PluginInstruction {
     ),
     DumpLayout(SessionLayoutMetadata, ClientId),
     LogLayoutToHd(SessionLayoutMetadata),
+    SubscribePluginToCustomMessage(PluginId, ClientId, String), // String -> custom message name
+    Message(String, String, ClientId), // Strings -> name, payload
     Exit,
 }
 
@@ -131,6 +133,8 @@ impl From<&PluginInstruction> for PluginContext {
             },
             PluginInstruction::DumpLayout(..) => PluginContext::DumpLayout,
             PluginInstruction::LogLayoutToHd(..) => PluginContext::LogLayoutToHd,
+            PluginInstruction::SubscribePluginToCustomMessage(..) => PluginContext::SubscribePluginToCustomMessage,
+            PluginInstruction::Message(..) => PluginContext::Message,
         }
     }
 }
@@ -170,6 +174,8 @@ pub(crate) fn plugin_thread_main(
         default_shell,
         layout.clone(),
     );
+
+    let mut plugin_custom_message_subscriptions: HashMap<(PluginId, ClientId), HashSet<String>> = HashMap::new();
 
     loop {
         let (event, mut err_ctx) = bus.recv().expect("failed to receive event on channel");
@@ -397,6 +403,30 @@ pub(crate) fn plugin_thread_main(
                     bus.senders
                         .send_to_pty(PtyInstruction::LogLayoutToHd(session_layout_metadata)),
                 );
+            },
+            PluginInstruction::SubscribePluginToCustomMessage(plugin_id, client_id, custom_message_name) => {
+                plugin_custom_message_subscriptions.entry((plugin_id, client_id)).or_insert_with(HashSet::new).insert(custom_message_name);
+            },
+            PluginInstruction::Message(name, payload, client_id) => { // TODO: remove client_id,
+                                                                      // it's from the cli
+                let mut updates = vec![];
+                let mut found = false;
+                for ((plugin_id, client_id), subscriptions) in &plugin_custom_message_subscriptions {
+                    if subscriptions.contains(&name) {
+                        found = true;
+                        updates.push((Some(*plugin_id), Some(*client_id), Event::CustomMessage(name.clone(), payload.clone())));
+                    }
+
+                }
+                wasm_bridge.update_plugins(updates, shutdown_send.clone())?;
+                if !found {
+                    // TODO: send an error back to the cli or wherever
+
+                }
+                let _ = bus
+                    .senders
+                    .send_to_server(ServerInstruction::UnblockInputThread)
+                    .context("failed to unblock input");
             },
             PluginInstruction::Exit => {
                 break;

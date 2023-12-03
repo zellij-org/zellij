@@ -511,6 +511,10 @@ pub enum Event {
        // headers,
        // body,
        // context
+    // TODO CONTINUE HERE:
+    // * add a subscribe_to_external_message() plugin command
+    // * allow sending messages through zellij message (zm) <message>, <payload> and send to the
+    // relevant plugins through the CustomMessage event (change its docs to reflect this)
 }
 
 #[derive(
@@ -1105,4 +1109,5 @@ pub enum PluginCommand {
         BTreeMap<String, String>, // context
     ),
     RenameSession(String), // String -> new session name
+    SubscribeToCustomMessage(String), // String -> message name
 }

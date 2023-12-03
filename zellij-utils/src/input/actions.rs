@@ -256,6 +256,7 @@ pub enum Action {
     BreakPaneRight,
     BreakPaneLeft,
     RenameSession(String),
+    Message(String, String), // name, payload
 }
 
 impl Action {
@@ -582,6 +583,7 @@ impl Action {
                 )])
             },
             CliAction::RenameSession { name } => Ok(vec![Action::RenameSession(name)]),
+            CliAction::Message { name, payload } => Ok(vec![Action::Message(name, payload)]),
         }
     }
 }

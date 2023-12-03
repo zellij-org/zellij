@@ -87,6 +87,7 @@ enum CommandName {
   DeleteDeadSession = 73;
   DeleteAllDeadSessions = 74;
   RenameSession = 75;
+  SubscribeToCustomMessage = 76;
 }
 
 message PluginCommand {
@@ -137,6 +138,7 @@ message PluginCommand {
     WebRequestPayload web_request_payload = 44;
     string delete_dead_session_payload = 45;
     string rename_session_payload = 46;
+    string subscribe_to_custom_message_payload = 47;
   }
 }
 

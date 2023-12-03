@@ -410,42 +410,47 @@ impl WasmBridge {
                         let mut running_plugin = running_plugin.lock().unwrap();
                         let _s = _s; // guard to allow the task to complete before cleanup/shutdown
                         if running_plugin.apply_event_id(AtomicEvent::Resize, event_id) {
+                            let old_rows = running_plugin.rows;
+                            let old_columns = running_plugin.columns;
                             running_plugin.rows = new_rows;
                             running_plugin.columns = new_columns;
 
-                            let rendered_bytes = running_plugin
-                                .instance
-                                .clone()
-                                .exports
-                                .get_function("render")
-                                .map_err(anyError::new)
-                                .and_then(|render| {
-                                    render
-                                        .call(
-                                            &mut running_plugin.store,
-                                            &[
-                                                Value::I32(new_rows as i32),
-                                                Value::I32(new_columns as i32),
-                                            ],
-                                        )
-                                        .map_err(anyError::new)
-                                })
-                                .and_then(|_| wasi_read_string(&running_plugin.plugin_env.wasi_env))
-                                .with_context(err_context);
-                            match rendered_bytes {
-                                Ok(rendered_bytes) => {
-                                    let plugin_bytes = vec![(
-                                        plugin_id,
-                                        client_id,
-                                        rendered_bytes.as_bytes().to_vec(),
-                                    )];
-                                    senders
-                                        .send_to_screen(ScreenInstruction::PluginBytes(
-                                            plugin_bytes,
-                                        ))
-                                        .unwrap();
-                                },
-                                Err(e) => log::error!("{}", e),
+                            // TODO: better, right now the plugin doesn't render on first render?
+                            if old_rows != new_rows || old_columns != new_columns {
+                                let rendered_bytes = running_plugin
+                                    .instance
+                                    .clone()
+                                    .exports
+                                    .get_function("render")
+                                    .map_err(anyError::new)
+                                    .and_then(|render| {
+                                        render
+                                            .call(
+                                                &mut running_plugin.store,
+                                                &[
+                                                    Value::I32(new_rows as i32),
+                                                    Value::I32(new_columns as i32),
+                                                ],
+                                            )
+                                            .map_err(anyError::new)
+                                    })
+                                    .and_then(|_| wasi_read_string(&running_plugin.plugin_env.wasi_env))
+                                    .with_context(err_context);
+                                match rendered_bytes {
+                                    Ok(rendered_bytes) => {
+                                        let plugin_bytes = vec![(
+                                            plugin_id,
+                                            client_id,
+                                            rendered_bytes.as_bytes().to_vec(),
+                                        )];
+                                        senders
+                                            .send_to_screen(ScreenInstruction::PluginBytes(
+                                                plugin_bytes,
+                                            ))
+                                            .unwrap();
+                                    },
+                                    Err(e) => log::error!("{}", e),
+                                }
                             }
                         }
                     }

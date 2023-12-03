@@ -393,6 +393,8 @@ pub enum PluginContext {
     PermissionRequestResult,
     DumpLayout,
     LogLayoutToHd,
+    SubscribePluginToCustomMessage,
+    Message,
 }
 
 /// Stack call representations corresponding to the different types of [`ClientInstruction`]s.

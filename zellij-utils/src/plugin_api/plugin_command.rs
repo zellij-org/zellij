@@ -641,6 +641,12 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 },
                 _ => Err("Mismatched payload for RenameSession"),
             },
+            Some(CommandName::SubscribeToCustomMessage) => match protobuf_plugin_command.payload {
+                Some(Payload::SubscribeToCustomMessagePayload(custom_message_name)) => {
+                    Ok(PluginCommand::SubscribeToCustomMessage(custom_message_name))
+                },
+                _ => Err("Mismatched payload for SubscribeToCustomMessage"),
+            },
             None => Err("Unrecognized plugin command"),
         }
     }
@@ -1068,6 +1074,10 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
             PluginCommand::RenameSession(new_session_name) => Ok(ProtobufPluginCommand {
                 name: CommandName::RenameSession as i32,
                 payload: Some(Payload::RenameSessionPayload(new_session_name)),
+            }),
+            PluginCommand::SubscribeToCustomMessage(custom_message_name) => Ok(ProtobufPluginCommand {
+                name: CommandName::SubscribeToCustomMessage as i32,
+                payload: Some(Payload::SubscribeToCustomMessagePayload(custom_message_name)),
             }),
         }
     }

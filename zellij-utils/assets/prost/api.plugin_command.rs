@@ -5,7 +5,7 @@ pub struct PluginCommand {
     pub name: i32,
     #[prost(
         oneof = "plugin_command::Payload",
-        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46"
+        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47"
     )]
     pub payload: ::core::option::Option<plugin_command::Payload>,
 }
@@ -104,6 +104,8 @@ pub mod plugin_command {
         DeleteDeadSessionPayload(::prost::alloc::string::String),
         #[prost(string, tag = "46")]
         RenameSessionPayload(::prost::alloc::string::String),
+        #[prost(string, tag = "47")]
+        SubscribeToCustomMessagePayload(::prost::alloc::string::String),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -318,6 +320,7 @@ pub enum CommandName {
     DeleteDeadSession = 73,
     DeleteAllDeadSessions = 74,
     RenameSession = 75,
+    SubscribeToCustomMessage = 76,
 }
 impl CommandName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -402,6 +405,7 @@ impl CommandName {
             CommandName::DeleteDeadSession => "DeleteDeadSession",
             CommandName::DeleteAllDeadSessions => "DeleteAllDeadSessions",
             CommandName::RenameSession => "RenameSession",
+            CommandName::SubscribeToCustomMessage => "SubscribeToCustomMessage",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -483,6 +487,7 @@ impl CommandName {
             "DeleteDeadSession" => Some(Self::DeleteDeadSession),
             "DeleteAllDeadSessions" => Some(Self::DeleteAllDeadSessions),
             "RenameSession" => Some(Self::RenameSession),
+            "SubscribeToCustomMessage" => Some(Self::SubscribeToCustomMessage),
             _ => None,
         }
     }

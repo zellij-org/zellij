@@ -240,6 +240,9 @@ fn host_run_plugin_command(env: FunctionEnvMut<ForeignFunctionEnv>) {
                     PluginCommand::RenameSession(new_session_name) => {
                         rename_session(env, new_session_name)
                     },
+                    PluginCommand::SubscribeToCustomMessage(custom_message_name) => {
+                        subscribe_to_custom_message(env, custom_message_name)?
+                    },
                 },
                 (PermissionStatus::Denied, permission) => {
                     log::error!(
@@ -269,6 +272,17 @@ fn subscribe(env: &ForeignFunctionEnv, event_list: HashSet<EventType>) -> Result
             env.plugin_env.plugin_id,
             env.plugin_env.client_id,
             event_list,
+        ))
+}
+
+// TODO: permissions!!!111oneoneone
+fn subscribe_to_custom_message(env: &ForeignFunctionEnv, custom_message_name: String) -> Result<()> {
+    env.plugin_env
+        .senders
+        .send_to_plugin(PluginInstruction::SubscribePluginToCustomMessage(
+            env.plugin_env.plugin_id,
+            env.plugin_env.client_id,
+            custom_message_name,
         ))
 }
 

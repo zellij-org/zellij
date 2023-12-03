@@ -694,6 +694,14 @@ pub fn rename_session(name: &str) {
     unsafe { host_run_plugin_command() };
 }
 
+/// Allow sending this plugin custom messages with the given name
+pub fn subscribe_to_custom_message(name: &str) {
+    let plugin_command = PluginCommand::SubscribeToCustomMessage(name.to_owned());
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 // Utility Functions
 
 #[allow(unused)]
