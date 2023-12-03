@@ -329,17 +329,24 @@ pub(crate) fn session_exists(name: &str) -> Result<bool, io::ErrorKind> {
 }
 
 // if the session is resurrecable, the returned layout is the one to be used to resurrect it
-pub(crate) fn resurrection_layout(session_name_to_resurrect: &str) -> Option<Layout> {
+pub(crate) fn resurrection_layout(session_name_to_resurrect: &str) -> Option<(String, Layout)> {
     let resurrectable_sessions = get_resurrectable_sessions();
-    resurrectable_sessions
-        .iter()
-        .find_map(|(name, _timestamp, layout)| {
-            if name == session_name_to_resurrect {
-                Some(layout.clone())
-            } else {
-                None
-            }
-        })
+    let filtered_layouts: Vec<(String, Duration, Layout)> = resurrectable_sessions
+        .into_iter()
+        .filter(|e| e.0.starts_with(session_name_to_resurrect))
+        .collect();
+
+    for item in &filtered_layouts {
+        if item.0 == session_name_to_resurrect {
+            return Some((item.0.clone(), item.2.clone()));
+        }
+    }
+
+    match &filtered_layouts[..] {
+        [] => None,
+        [s] => Some((s.0.clone(), s.2.clone())),
+        _ => None,
+    }
 }
 
 pub(crate) fn assert_session(name: &str) {

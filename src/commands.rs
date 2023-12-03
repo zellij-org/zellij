@@ -380,6 +380,16 @@ fn attach_with_session_name(
     }
 }
 
+fn resurrect_by_session_prefix(session_name_prefix: &str) -> Option<ClientInfo> {
+    match resurrection_layout(session_name_prefix) {
+        Some((resurrection_name, resurrection_layout)) => Some(ClientInfo::Resurrect(
+            resurrection_name,
+            resurrection_layout,
+        )),
+        None => None,
+    }
+}
+
 pub(crate) fn start_client(opts: CliArgs) {
     // look for old YAML config/layout/theme files and convert them to KDL
     convert_old_yaml_files(&opts);
@@ -452,8 +462,9 @@ pub(crate) fn start_client(opts: CliArgs) {
                     .as_ref()
                     .and_then(|s| session_exists(&s).ok())
                     .unwrap_or(false);
-                let resurrection_layout =
-                    session_name.as_ref().and_then(|s| resurrection_layout(&s));
+                let resurrection_layout = session_name
+                    .as_ref()
+                    .and_then(|s| resurrection_layout(&s).map(|e| e.1));
                 if create && !session_exists && resurrection_layout.is_none() {
                     session_name.clone().map(start_client_plan);
                 }
@@ -462,7 +473,8 @@ pub(crate) fn start_client(opts: CliArgs) {
                         if force_run_commands {
                             resurrection_layout.recursively_add_start_suspended(Some(false));
                         }
-                        ClientInfo::Resurrect(session_name.clone(), resurrection_layout)
+                        resurrect_by_session_prefix(&session_name)
+                            .expect("resurrection layout should exist")
                     },
                     _ => attach_with_session_name(session_name, config_options.clone(), create),
                 }
