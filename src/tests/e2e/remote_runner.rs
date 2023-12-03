@@ -388,15 +388,18 @@ impl RemoteTerminal {
             .request_pty_size(cols, rows, Some(cols), Some(rows))
             .unwrap();
     }
-    pub fn attach_to_original_session(&mut self) {
+    pub fn attach_to_session_by_name(&mut self, session_name: &str) {
         let mut channel = self.channel.lock().unwrap();
         channel
             .write_all(
-                format!("{} attach {}\n", ZELLIJ_EXECUTABLE_LOCATION, SESSION_NAME).as_bytes(),
+                format!("{} attach {}\n", ZELLIJ_EXECUTABLE_LOCATION, session_name).as_bytes(),
             )
             .unwrap();
         channel.flush().unwrap();
         std::thread::sleep(std::time::Duration::from_secs(1)); // wait until Zellij stops parsing startup ANSI codes from the terminal STDIN
+    }
+    pub fn attach_to_original_session(&mut self) {
+        self.attach_to_session_by_name(SESSION_NAME)
     }
     pub fn send_command_through_the_cli(&mut self, command: &str) {
         let mut channel = self.channel.lock().unwrap();
