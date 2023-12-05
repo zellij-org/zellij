@@ -21,25 +21,59 @@ pub fn start_cli_client(os_input: Box<dyn ClientOsApi>, session_name: &str, acti
     let pane_id = os_input
         .env_variable("ZELLIJ_PANE_ID")
         .and_then(|e| e.trim().parse().ok());
-    for action in actions {
-        let msg = ClientToServerMsg::Action(action, pane_id, None);
-        os_input.send_to_server(msg);
-    }
-    loop {
-        match os_input.recv_from_server() {
-            Some((ServerToClientMsg::UnblockInputThread, _)) => {
-                os_input.send_to_server(ClientToServerMsg::ClientExited);
+
+    if let Some(name) = actions.get(0).and_then(|a| {
+        if let Action::Message(name, payload)= a { // TODO: drop the payload and rename to pipe or
+                                                   // smth
+            return Some(name.clone());
+        } else {
+            return None
+        }
+    }) {
+        use std::io::BufRead;
+        let stdin = std::io::stdin(); // TODO: from os_input
+        let mut handle = stdin.lock();
+
+        loop {
+            let mut buffer = String::new();
+            handle.read_line(&mut buffer).unwrap(); // TODO: no unwrap etc.
+            if buffer.is_empty() {
                 process::exit(0);
-            },
-            Some((ServerToClientMsg::Log(log_lines), _)) => {
-                log_lines.iter().for_each(|line| println!("{line}"));
-                process::exit(0);
-            },
-            Some((ServerToClientMsg::LogError(log_lines), _)) => {
-                log_lines.iter().for_each(|line| eprintln!("{line}"));
-                process::exit(2);
-            },
-            _ => {},
+            } else {
+                let msg = ClientToServerMsg::Action(Action::Message(name.clone(), buffer), pane_id, None);
+                os_input.send_to_server(msg);
+
+                loop {
+                    match os_input.recv_from_server() {
+                        Some((ServerToClientMsg::ContinuePipe, _)) => {
+                            break;
+                        },
+                        _ => {},
+                    }
+                }
+            }
+        }
+    } else {
+        for action in actions {
+            let msg = ClientToServerMsg::Action(action, pane_id, None);
+            os_input.send_to_server(msg);
+        }
+        loop {
+            match os_input.recv_from_server() {
+                Some((ServerToClientMsg::UnblockInputThread, _)) => {
+                    os_input.send_to_server(ClientToServerMsg::ClientExited);
+                    process::exit(0);
+                },
+                Some((ServerToClientMsg::Log(log_lines), _)) => {
+                    log_lines.iter().for_each(|line| println!("{line}"));
+                    process::exit(0);
+                },
+                Some((ServerToClientMsg::LogError(log_lines), _)) => {
+                    log_lines.iter().for_each(|line| eprintln!("{line}"));
+                    process::exit(2);
+                },
+                _ => {},
+            }
         }
     }
 }

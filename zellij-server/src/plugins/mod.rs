@@ -423,10 +423,6 @@ pub(crate) fn plugin_thread_main(
                     // TODO: send an error back to the cli or wherever
 
                 }
-                let _ = bus
-                    .senders
-                    .send_to_server(ServerInstruction::UnblockInputThread)
-                    .context("failed to unblock input");
             },
             PluginInstruction::Exit => {
                 break;

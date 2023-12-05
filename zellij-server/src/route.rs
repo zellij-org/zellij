@@ -804,7 +804,6 @@ pub(crate) fn route_action(
                 .with_context(err_context)?;
         },
         Action::Message(name, payload) => {
-            log::info!("Action::Message");
             senders
                 .send_to_plugin(PluginInstruction::Message(name, payload, client_id))
                 .with_context(err_context)?;

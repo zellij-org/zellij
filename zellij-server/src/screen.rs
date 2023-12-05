@@ -2167,6 +2167,11 @@ pub(crate) fn screen_thread_main(
                     }
                 }
                 screen.render()?;
+                // TODO: add the pipe id as an Option to PluginBytes
+                screen.bus
+                    .senders
+                    .send_to_server(ServerInstruction::ContinuePipe)
+                    .context("failed to unblock input");
             },
             ScreenInstruction::Render => {
                 screen.render()?;
