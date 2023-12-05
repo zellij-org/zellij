@@ -445,7 +445,7 @@ impl WasmBridge {
                                         )];
                                         senders
                                             .send_to_screen(ScreenInstruction::PluginBytes(
-                                                plugin_bytes,
+                                                plugin_bytes, None
                                             ))
                                             .unwrap();
                                     },
@@ -521,8 +521,10 @@ impl WasmBridge {
                                 &mut plugin_bytes,
                             ) {
                                 Ok(()) => {
+                                    let input_pipes_to_unblock = running_plugin.plugin_env.input_pipes_to_unblock.lock().unwrap().drain().collect();
                                     let _ = senders.send_to_screen(ScreenInstruction::PluginBytes(
                                         plugin_bytes,
+                                        Some(input_pipes_to_unblock), // TODO: optimize
                                     ));
                                 },
                                 Err(e) => {
@@ -647,8 +649,9 @@ impl WasmBridge {
                                     &mut plugin_bytes,
                                 ) {
                                     Ok(()) => {
+                                        let input_pipes_to_unblock = running_plugin.plugin_env.input_pipes_to_unblock.lock().unwrap().drain().collect();
                                         let _ = senders.send_to_screen(
-                                            ScreenInstruction::PluginBytes(plugin_bytes),
+                                            ScreenInstruction::PluginBytes(plugin_bytes, Some(input_pipes_to_unblock)),
                                         );
                                     },
                                     Err(e) => {

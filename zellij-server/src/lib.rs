@@ -70,7 +70,6 @@ pub enum ServerInstruction {
     ),
     Render(Option<HashMap<ClientId, String>>),
     UnblockInputThread,
-    ContinuePipe,
     ClientExit(ClientId),
     RemoveClient(ClientId),
     Error(String),
@@ -87,6 +86,8 @@ pub enum ServerInstruction {
     ActiveClients(ClientId),
     Log(Vec<String>, ClientId),
     SwitchSession(ConnectToSession, ClientId),
+    UnblockPipeInput(String), // String -> Pipe name
+    PipeOutput(String, String), // String -> Pipe name, String -> Output
 }
 
 impl From<&ServerInstruction> for ServerContext {
@@ -95,7 +96,6 @@ impl From<&ServerInstruction> for ServerContext {
             ServerInstruction::NewClient(..) => ServerContext::NewClient,
             ServerInstruction::Render(_) => ServerContext::Render,
             ServerInstruction::UnblockInputThread => ServerContext::UnblockInputThread,
-            ServerInstruction::ContinuePipe => ServerContext::ContinuePipe,
             ServerInstruction::ClientExit(..) => ServerContext::ClientExit,
             ServerInstruction::RemoveClient(..) => ServerContext::RemoveClient,
             ServerInstruction::Error(_) => ServerContext::Error,
@@ -106,6 +106,8 @@ impl From<&ServerInstruction> for ServerContext {
             ServerInstruction::ActiveClients(_) => ServerContext::ActiveClients,
             ServerInstruction::Log(..) => ServerContext::Log,
             ServerInstruction::SwitchSession(..) => ServerContext::SwitchSession,
+            ServerInstruction::UnblockPipeInput(..) => ServerContext::UnblockPipeInput,
+            ServerInstruction::PipeOutput(..) => ServerContext::PipeOutput,
         }
     }
 }
@@ -492,12 +494,22 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     );
                 }
             },
-            ServerInstruction::ContinuePipe => {
+            ServerInstruction::UnblockPipeInput(pipe_name) => {
                 for client_id in session_state.read().unwrap().clients.keys() {
                     send_to_client!(
                         *client_id,
                         os_input,
-                        ServerToClientMsg::ContinuePipe,
+                        ServerToClientMsg::UnblockPipeInput(pipe_name.clone()),
+                        session_state
+                    );
+                }
+            },
+            ServerInstruction::PipeOutput(pipe_name, output) => {
+                for client_id in session_state.read().unwrap().clients.keys() {
+                    send_to_client!(
+                        *client_id,
+                        os_input,
+                        ServerToClientMsg::PipeOutput(pipe_name.clone(), output.clone()),
                         session_state
                     );
                 }

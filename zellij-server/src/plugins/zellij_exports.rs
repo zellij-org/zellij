@@ -243,6 +243,12 @@ fn host_run_plugin_command(env: FunctionEnvMut<ForeignFunctionEnv>) {
                     PluginCommand::SubscribeToCustomMessage(custom_message_name) => {
                         subscribe_to_custom_message(env, custom_message_name)?
                     },
+                    PluginCommand::UnblockPipeInput(pipe_name) => { // TODO: permissions!
+                        unblock_pipe_input(env, pipe_name)?
+                    },
+                    PluginCommand::PipeOutput(pipe_name, output) => { // TODO: permissions!
+                        pipe_output(env, pipe_name, output)?
+                    },
                 },
                 (PermissionStatus::Denied, permission) => {
                     log::error!(
@@ -284,6 +290,25 @@ fn subscribe_to_custom_message(env: &ForeignFunctionEnv, custom_message_name: St
             env.plugin_env.client_id,
             custom_message_name,
         ))
+}
+
+// TODO: permissions!!!111oneoneone
+fn unblock_pipe_input(env: &ForeignFunctionEnv, pipe_name: String) -> Result<()> {
+    // TODO: do this after rendering somehow? or is this ok with backpressure?
+    env.plugin_env.input_pipes_to_unblock.lock().unwrap().insert(pipe_name);
+    Ok(()) // TODO: no result return
+//     env.plugin_env
+//         .senders
+//         .send_to_server(ServerInstruction::UnblockPipeInput(pipe_name))
+//         .context("failed to unblock pipe input")
+}
+
+// TODO: permissions!!!111oneoneone
+fn pipe_output(env: &ForeignFunctionEnv, pipe_name: String, output: String) -> Result<()> {
+    env.plugin_env
+        .senders
+        .send_to_server(ServerInstruction::PipeOutput(pipe_name, output))
+        .context("failed to send pipe output")
 }
 
 fn unsubscribe(env: &ForeignFunctionEnv, event_list: HashSet<EventType>) -> Result<()> {

@@ -138,7 +138,9 @@ type HoldForCommand = Option<RunCommand>;
 #[derive(Debug, Clone)]
 pub enum ScreenInstruction {
     PtyBytes(u32, VteBytes),
-    PluginBytes(Vec<(u32, ClientId, VteBytes)>), // u32 is plugin_id
+    PluginBytes(Vec<(u32, ClientId, VteBytes)>, Option<HashSet<String>>), // u32 is plugin_id,
+                                                                          // HashSet -> input pipes
+                                                                          // to unblock
     Render,
     NewPane(
         PaneId,
@@ -2155,7 +2157,7 @@ pub(crate) fn screen_thread_main(
                     }
                 }
             },
-            ScreenInstruction::PluginBytes(mut plugin_bytes) => {
+            ScreenInstruction::PluginBytes(mut plugin_bytes, input_pipes_to_unblock) => {
                 for (pid, client_id, vte_bytes) in plugin_bytes.drain(..) {
                     let all_tabs = screen.get_tabs_mut();
                     for tab in all_tabs.values_mut() {
@@ -2167,11 +2169,15 @@ pub(crate) fn screen_thread_main(
                     }
                 }
                 screen.render()?;
-                // TODO: add the pipe id as an Option to PluginBytes
-                screen.bus
-                    .senders
-                    .send_to_server(ServerInstruction::ContinuePipe)
-                    .context("failed to unblock input");
+                if let Some(input_pipes_to_unblock) = input_pipes_to_unblock {
+                    // TODO: add the pipe id as an Option to PluginBytes
+                    for pipe_name in input_pipes_to_unblock {
+                        screen.bus
+                            .senders
+                            .send_to_server(ServerInstruction::UnblockPipeInput(pipe_name))
+                            .context("failed to unblock input pipe");
+                        }
+                    }
             },
             ScreenInstruction::Render => {
                 screen.render()?;

@@ -1110,4 +1110,6 @@ pub enum PluginCommand {
     ),
     RenameSession(String), // String -> new session name
     SubscribeToCustomMessage(String), // String -> message name
+    UnblockPipeInput(String), // String => pipe name
+    PipeOutput(String, String), // String => pipe name, String => output
 }

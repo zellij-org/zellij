@@ -403,7 +403,6 @@ pub enum ClientContext {
     Exit,
     Error,
     UnblockInputThread,
-    ContinuePipe,
     Render,
     ServerError,
     SwitchToMode,
@@ -416,6 +415,8 @@ pub enum ClientContext {
     DoneParsingStdinQuery,
     SwitchSession,
     SetSynchronisedOutput,
+    UnblockPipeInput,
+    PipeOutput,
 }
 
 /// Stack call representations corresponding to the different types of [`ServerInstruction`]s.
@@ -424,7 +425,6 @@ pub enum ServerContext {
     NewClient,
     Render,
     UnblockInputThread,
-    ContinuePipe,
     ClientExit,
     RemoveClient,
     Error,
@@ -435,6 +435,8 @@ pub enum ServerContext {
     ActiveClients,
     Log,
     SwitchSession,
+    UnblockPipeInput,
+    PipeOutput,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]

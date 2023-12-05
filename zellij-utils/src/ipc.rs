@@ -96,7 +96,6 @@ pub enum ClientToServerMsg {
 pub enum ServerToClientMsg {
     Render(String),
     UnblockInputThread,
-    ContinuePipe,
     Exit(ExitReason),
     SwitchToMode(InputMode),
     Connected,
@@ -104,6 +103,8 @@ pub enum ServerToClientMsg {
     Log(Vec<String>),
     LogError(Vec<String>),
     SwitchSession(ConnectToSession),
+    UnblockPipeInput(String), // String -> pipe name
+    PipeOutput(String, String), // String -> pipe name, String -> Output
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

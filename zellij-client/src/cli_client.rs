@@ -45,8 +45,24 @@ pub fn start_cli_client(os_input: Box<dyn ClientOsApi>, session_name: &str, acti
 
                 loop {
                     match os_input.recv_from_server() {
-                        Some((ServerToClientMsg::ContinuePipe, _)) => {
-                            break;
+                        // TODO: CONTINUE HERE (05/12) - convert this to UnblockPipeInput(pipe_name), then
+                        // handle PipeOutput(pipe_name, output), then see what else we need and do
+                        // some tests with a plugin
+                        Some((ServerToClientMsg::UnblockPipeInput(pipe_name), _)) => {
+                            if pipe_name == name {
+                                break;
+                            }
+                        },
+                        Some((ServerToClientMsg::PipeOutput(pipe_name, output), _)) => {
+                            // TODO: handle errors
+                            let err_context = "Failed to write to stdout";
+                            if pipe_name == name {
+                                let mut stdout = os_input.get_stdout_writer();
+                                stdout
+                                    .write_all(output.as_bytes());
+                                    // .context(err_context);
+                                stdout.flush();//.context(err_context);
+                            }
                         },
                         _ => {},
                     }

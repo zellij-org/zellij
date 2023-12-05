@@ -8,7 +8,7 @@ pub use super::generated_api::api::{
         OpenFilePayload, PluginCommand as ProtobufPluginCommand, PluginMessagePayload,
         RequestPluginPermissionPayload, ResizePayload, RunCommandPayload, SetTimeoutPayload,
         SubscribePayload, SwitchSessionPayload, SwitchTabToPayload, UnsubscribePayload,
-        WebRequestPayload,
+        WebRequestPayload, PipeOutputPayload
     },
     plugin_permission::PermissionType as ProtobufPermissionType,
     resize::ResizeAction as ProtobufResizeAction,
@@ -647,6 +647,18 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 },
                 _ => Err("Mismatched payload for SubscribeToCustomMessage"),
             },
+            Some(CommandName::UnblockPipeInput) => match protobuf_plugin_command.payload {
+                Some(Payload::UnblockPipeInputPayload(pipe_name)) => {
+                    Ok(PluginCommand::UnblockPipeInput(pipe_name))
+                },
+                _ => Err("Mismatched payload for UnblockPipeInput"),
+            },
+            Some(CommandName::PipeOutput) => match protobuf_plugin_command.payload {
+                Some(Payload::PipeOutputPayload(PipeOutputPayload { pipe_name, output })) => {
+                    Ok(PluginCommand::PipeOutput(pipe_name, output))
+                },
+                _ => Err("Mismatched payload for PipeOutput"),
+            },
             None => Err("Unrecognized plugin command"),
         }
     }
@@ -1078,6 +1090,14 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
             PluginCommand::SubscribeToCustomMessage(custom_message_name) => Ok(ProtobufPluginCommand {
                 name: CommandName::SubscribeToCustomMessage as i32,
                 payload: Some(Payload::SubscribeToCustomMessagePayload(custom_message_name)),
+            }),
+            PluginCommand::UnblockPipeInput(pipe_name) => Ok(ProtobufPluginCommand {
+                name: CommandName::UnblockPipeInput as i32,
+                payload: Some(Payload::UnblockPipeInputPayload(pipe_name)),
+            }),
+            PluginCommand::PipeOutput(pipe_name, output) => Ok(ProtobufPluginCommand {
+                name: CommandName::PipeOutput as i32,
+                payload: Some(Payload::PipeOutputPayload(PipeOutputPayload { pipe_name, output })),
             }),
         }
     }

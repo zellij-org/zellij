@@ -39,7 +39,6 @@ pub(crate) enum ClientInstruction {
     Error(String),
     Render(String),
     UnblockInputThread,
-    ContinuePipe,
     Exit(ExitReason),
     SwitchToMode(InputMode),
     Connected,
@@ -50,6 +49,8 @@ pub(crate) enum ClientInstruction {
     LogError(Vec<String>),
     SwitchSession(ConnectToSession),
     SetSynchronizedOutput(Option<SyncOutput>),
+    UnblockPipeInput(String), // String -> pipe name
+    PipeOutput(String, String), // String -> pipe name, String -> output
 }
 
 impl From<ServerToClientMsg> for ClientInstruction {
@@ -58,7 +59,6 @@ impl From<ServerToClientMsg> for ClientInstruction {
             ServerToClientMsg::Exit(e) => ClientInstruction::Exit(e),
             ServerToClientMsg::Render(buffer) => ClientInstruction::Render(buffer),
             ServerToClientMsg::UnblockInputThread => ClientInstruction::UnblockInputThread,
-            ServerToClientMsg::ContinuePipe => ClientInstruction::ContinuePipe,
             ServerToClientMsg::SwitchToMode(input_mode) => {
                 ClientInstruction::SwitchToMode(input_mode)
             },
@@ -68,6 +68,12 @@ impl From<ServerToClientMsg> for ClientInstruction {
             ServerToClientMsg::LogError(log_lines) => ClientInstruction::LogError(log_lines),
             ServerToClientMsg::SwitchSession(connect_to_session) => {
                 ClientInstruction::SwitchSession(connect_to_session)
+            },
+            ServerToClientMsg::UnblockPipeInput(pipe_name) => {
+                ClientInstruction::UnblockPipeInput(pipe_name)
+            },
+            ServerToClientMsg::PipeOutput(pipe_name, output) => {
+                ClientInstruction::PipeOutput(pipe_name, output)
             },
         }
     }
@@ -80,7 +86,6 @@ impl From<&ClientInstruction> for ClientContext {
             ClientInstruction::Error(_) => ClientContext::Error,
             ClientInstruction::Render(_) => ClientContext::Render,
             ClientInstruction::UnblockInputThread => ClientContext::UnblockInputThread,
-            ClientInstruction::ContinuePipe => ClientContext::ContinuePipe,
             ClientInstruction::SwitchToMode(_) => ClientContext::SwitchToMode,
             ClientInstruction::Connected => ClientContext::Connected,
             ClientInstruction::ActiveClients(_) => ClientContext::ActiveClients,
@@ -90,6 +95,8 @@ impl From<&ClientInstruction> for ClientContext {
             ClientInstruction::DoneParsingStdinQuery => ClientContext::DoneParsingStdinQuery,
             ClientInstruction::SwitchSession(..) => ClientContext::SwitchSession,
             ClientInstruction::SetSynchronizedOutput(..) => ClientContext::SetSynchronisedOutput,
+            ClientInstruction::UnblockPipeInput(..) => ClientContext::UnblockPipeInput,
+            ClientInstruction::PipeOutput(..) => ClientContext::PipeOutput,
         }
     }
 }
