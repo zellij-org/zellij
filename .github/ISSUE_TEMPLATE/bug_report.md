@@ -7,12 +7,13 @@ assignees: ''
 
 ---
 
-Please choose the relevant section, follow the instructions and delete the other sections:
+<!-- Please choose the relevant section, follow the instructions and delete the other sections:
 
 1. Graphical issue inside a terminal pane (eg. something does not look as it should or as it looks outside of Zellij)
 2. Issues with the Zellij UI / behavior
 
-** Please note: comparisons of desired behavior to tmux are usually not relevant. tmux and Zellij are two extremely different entities that do things very differently. Zellij is not, nor does it try to be a tmux clone. Please try to refrain from such comparisons. **
+** Please note: comparisons of desired behavior to tmux are usually not relevant. tmux and Zellij are two extremely different programs that do things very differently. Zellij is not, nor does it try to be, a tmux clone. Please try to refrain from such comparisons. **
+-->
 
 # 1. Graphical issue inside a terminal pane (eg. something does not look as it should)
 
@@ -36,8 +37,21 @@ Please attach the files that were created in `/tmp/zellij-1000/zellij-log/` to t
 Reproduction steps, noticeable behavior, related issues, etc
 
 # 2. Issues with the Zellij UI / behavior
-Please find a minimal reproduction. If you have a complex setup that causes an issue, try to troubleshoot and narrow the problem down to as minimal a reproduction as possible. Remove as many parts of the equation as possible. If you are unsure what to do, you are welcome to ask for help either in the issue itself or in one of our community chats (Discord / Matrix). We will be happy to try and assist or suggest directions, but please note that the responsibility to troubleshoot the issue and find the problem is ultimately on your shoulders. Thank you for understanding.
+<!-- Please find a minimal reproduction. 
+
+If you have a complex setup that causes an issue, try to troubleshoot and narrow the problem down to as minimal a reproduction as possible. Remove as many parts of the equation as you can. 
+
+If you are unsure what to do, you are welcome to ask for help either in the issue itself or in one of our community chats (Discord / Matrix). We will be happy to try and assist or suggest directions, but please note that the responsibility to troubleshoot the issue and find the problem is ultimately on your shoulders. 
+
+You're the expert on your system and we believe you are in the best position to troubleshoot it. Thank you for understanding.
 
 Example of a good issue report: "The `default_tab_template` layout node does not work when resurrecting sessions".
 
 Example of an issue report that needs work before being submitted: "Zellij randomly crashes without an error when I use it with the attached script".
+-->
+
+## Issue description
+
+## Minimal reproduction
+
+## Other relevant information
