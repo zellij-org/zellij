@@ -7,7 +7,6 @@ use std::rc::Rc;
 use std::str;
 use std::time::Duration;
 
-use log::info;
 use zellij_utils::data::{
     Direction, PaneManifest, PluginPermission, Resize, ResizeStrategy, SessionInfo,
 };
