@@ -24,7 +24,6 @@ use std::{
     sync::{Arc, RwLock},
     thread,
 };
-use zellij_utils::channels::{bounded, unbounded};
 use zellij_utils::envs;
 use zellij_utils::nix::sys::stat::{umask, Mode};
 use zellij_utils::pane_size::Size;
