@@ -18,13 +18,13 @@ mod ui;
 use background_jobs::{background_jobs_main, BackgroundJob};
 use log::info;
 use pty_writer::{pty_writer_main, PtyWriteInstruction};
-use zellij_utils::channels::{unbounded, bounded};
 use std::collections::{HashMap, HashSet};
 use std::{
     path::PathBuf,
     sync::{Arc, RwLock},
     thread,
 };
+use zellij_utils::channels::{bounded, unbounded};
 use zellij_utils::envs;
 use zellij_utils::nix::sys::stat::{umask, Mode};
 use zellij_utils::pane_size::Size;
@@ -134,7 +134,7 @@ impl Drop for SessionMetaData {
         if let Some(pty_thread) = self.pty_thread.take() {
             let _ = pty_thread.join();
         }
-        
+
         let _ = self.senders.send_to_pty_writer(PtyWriteInstruction::Exit);
         if let Some(pty_writer_thread) = self.pty_writer_thread.take() {
             let _ = pty_writer_thread.join();
@@ -144,8 +144,7 @@ impl Drop for SessionMetaData {
         if let Some(plugin_thread) = self.plugin_thread.take() {
             let _ = plugin_thread.is_finished();
         }
-        
-        
+
         let _ = self.senders.send_to_background_jobs(BackgroundJob::Exit);
         let _ = self.senders.send_to_screen(ScreenInstruction::Exit);
         if let Some(background_jobs_thread) = self.background_jobs_thread.take() {
@@ -155,7 +154,6 @@ impl Drop for SessionMetaData {
         if let Some(screen_thread) = self.screen_thread.take() {
             let _ = screen_thread.join();
         }
-        
     }
 }
 
