@@ -4,7 +4,6 @@ use crate::{
     thread_bus::ThreadSenders,
 };
 use async_std::{future::timeout as async_timeout, task};
-use log::info;
 use std::{
     os::unix::io::RawFd,
     time::{Duration, Instant},
