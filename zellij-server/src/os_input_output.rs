@@ -17,6 +17,8 @@ use nix::{
 
 use std::ffi::OsString;
 #[cfg(windows)]
+use windows::Win32::System::Console::HPCON;
+#[cfg(windows)]
 use winptyrs::{AgentConfig, PTYArgs, PTY};
 
 use signal_hook::consts::*;
@@ -86,6 +88,23 @@ fn set_terminal_size_using_fd(
     unsafe {
         ioctl(fd, TIOCSWINSZ.into(), &winsize)
     };
+}
+
+#[cfg(windows)]
+fn set_terminal_size_using_fd(
+    fd: HPCON,
+    columns: u16,
+    rows: u16,
+    width_in_pixels: Option<u16>,
+    height_in_pixels: Option<u16>,
+) {
+    use windows::Win32::System::Console::{ResizePseudoConsole, COORD};
+
+    let winsize = COORD {
+        X: columns as i16,
+        Y: rows as i16,
+    };
+    unsafe { ResizePseudoConsole(fd, winsize) };
 }
 
 /// Handle some signals for the child process. This will loop until the child
@@ -272,10 +291,18 @@ fn handle_terminal(
 fn handle_terminal(
     cmd: RunCommand,
     failover_cmd: Option<RunCommand>,
-    orig_pty: PTY,
+    orig_pty: Arc<Mutex<PTY>>,
     quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
     terminal_id: u32,
-) -> Result<bool, OsString> {
+) -> Result<isize> {
+    let err_context = || "failed to spawn terminal";
+
+    let orig_pty = orig_pty
+        .lock()
+        .to_anyhow()
+        .with_context(err_context)
+        .map_err(|err| anyhow!(err))?;
+
     let pty_args = PTYArgs {
         cols: 80,
         rows: 25,
@@ -284,9 +311,11 @@ fn handle_terminal(
         agent_config: AgentConfig::WINPTY_FLAG_COLOR_ESCAPES,
     };
 
-    let mut pty = PTY::new(&pty_args)?;
-
+    let mut pty = PTY::new(&pty_args).map_err(|err| anyhow!("{:?}", err))?;
+    let command = &cmd.command.clone();
     pty.spawn(cmd.command.into(), None, None, None)
+        .map_err(move |err| anyhow!("Could not spawn terminal with command '{:?}': {:?}", command ,err))?;
+    Ok(pty.get_fd())
 }
 
 // this is a utility method to separate the arguments from a pathbuf before we turn it into a
@@ -397,6 +426,81 @@ fn spawn_terminal(
 
     handle_terminal(cmd, failover_cmd, orig_termios, quit_cb, terminal_id)
 }
+#[cfg(windows)]
+fn spawn_terminal(
+    terminal_action: TerminalAction,
+    orig_pty: Arc<Mutex<PTY>>,
+    quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>, // u32 is the exit_status
+    default_editor: Option<PathBuf>,
+    terminal_id: u32,
+) -> Result<isize> {
+    // returns the terminal_id, the primary fd and the
+    // secondary fd
+    let mut failover_cmd_args = None;
+    let cmd = match terminal_action {
+        TerminalAction::OpenFile(mut file_to_open, line_number, cwd) => {
+            if file_to_open.is_relative() {
+                if let Some(cwd) = cwd.as_ref() {
+                    file_to_open = cwd.join(file_to_open);
+                }
+            }
+            let mut command = default_editor.unwrap_or_else(|| {
+                PathBuf::from(
+                    env::var("EDITOR")
+                        .unwrap_or_else(|_| env::var("VISUAL").unwrap_or_else(|_| "vi".into())),
+                )
+            });
+
+            let mut args = vec![];
+
+            if !command.is_dir() {
+                separate_command_arguments(&mut command, &mut args);
+            }
+            let file_to_open = file_to_open
+                .into_os_string()
+                .into_string()
+                .expect("Not valid Utf8 Encoding");
+            if let Some(line_number) = line_number {
+                if command.ends_with("vim")
+                    || command.ends_with("nvim")
+                    || command.ends_with("emacs")
+                    || command.ends_with("nano")
+                    || command.ends_with("kak")
+                {
+                    failover_cmd_args = Some(vec![file_to_open.clone()]);
+                    args.push(format!("+{}", line_number));
+                    args.push(file_to_open);
+                } else if command.ends_with("hx") || command.ends_with("helix") {
+                    // at the time of writing, helix only supports this syntax
+                    // and it might be a good idea to leave this here anyway
+                    // to keep supporting old versions
+                    args.push(format!("{}:{}", file_to_open, line_number));
+                } else {
+                    args.push(file_to_open);
+                }
+            } else {
+                args.push(file_to_open);
+            }
+            RunCommand {
+                command,
+                args,
+                cwd,
+                hold_on_close: false,
+                hold_on_start: false,
+            }
+        },
+        TerminalAction::RunCommand(command) => command,
+    };
+    let failover_cmd = if let Some(failover_cmd_args) = failover_cmd_args {
+        let mut cmd = cmd.clone();
+        cmd.args = failover_cmd_args;
+        Some(cmd)
+    } else {
+        None
+    };
+
+    handle_terminal(cmd, failover_cmd, orig_pty, quit_cb, terminal_id)
+}
 
 // The ClientSender is in charge of sending messages to the client on a special thread
 // This is done so that when the unix socket buffer is full, we won't block the entire router
@@ -462,6 +566,16 @@ impl ClientSender {
     }
 }
 
+#[cfg(windows)]
+#[derive(Copy, Clone)]
+pub struct WinPtyReference {}
+
+impl WinPtyReference {
+    pub fn get_pid(&self) -> Pid {
+        todo!()
+    }
+}
+
 #[derive(Clone)]
 pub struct ServerOsInputOutput {
     #[cfg(unix)]
@@ -475,6 +589,8 @@ pub struct ServerOsInputOutput {
     // not connected to an fd (eg.
     // a command pane with a
     // non-existing command)
+    #[cfg(windows)]
+    terminal_id_to_reference: Arc<Mutex<BTreeMap<u32, Option<WinPtyReference>>>>,
     cached_resizes: Arc<Mutex<Option<BTreeMap<u32, (u16, u16, Option<u16>, Option<u16>)>>>>, // <terminal_id, (cols, rows, width_in_pixels, height_in_pixels)>
 }
 
@@ -534,9 +650,9 @@ pub trait ServerOsApi: Send + Sync {
         terminal_action: TerminalAction,
         quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
         default_editor: Option<PathBuf>,
-    ) -> Result<(u32, Pid, Pid)>;
+    ) -> Result<(u32, WinPtyReference)>;
     // reserves a terminal id without actually opening a terminal
-    fn reserve_terminal_id(&self) -> Result<Pid> {
+    fn reserve_terminal_id(&self) -> Result<WinPtyReference> {
         unimplemented!()
     }
     /// Read bytes from the standard output of the virtual terminal referred to by `fd`.
@@ -699,12 +815,48 @@ impl ServerOsApi for ServerOsInputOutput {
         terminal_action: TerminalAction,
         quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
         default_editor: Option<PathBuf>,
-    ) -> Result<(u32, Pid, Pid)> {
+    ) -> Result<(u32, WinPtyReference)> {
         let err_context = || "failed to spawn terminal".to_string();
 
-        let orig_pty = self.orig_pty.lock().to_anyhow().with_context(err_context)?;
+        let mut terminal_id = None;
+        {
+            let current_ids: BTreeSet<u32> = self
+                .terminal_id_to_reference
+                .lock()
+                .to_anyhow()
+                .with_context(err_context)?
+                .keys()
+                .copied()
+                .collect();
+            terminal_id = current_ids.last().map(|l| l + 1).or(Some(0));
+        }
 
-        todo!("Spawn terminal");
+        match terminal_id {
+            Some(terminal_id) => {
+                self.terminal_id_to_reference
+                    .lock()
+                    .to_anyhow()
+                    .with_context(err_context)?
+                    .insert(terminal_id, None);
+                spawn_terminal(
+                    terminal_action,
+                    self.orig_pty.clone(),
+                    quit_cb,
+                    default_editor,
+                    terminal_id,
+                )
+                .and_then(|thing| {
+
+                    self.terminal_id_to_reference
+                        .lock()
+                        .to_anyhow()?
+                        .insert(terminal_id, Some(WinPtyReference {  }));
+                    Ok((terminal_id, WinPtyReference { }))
+                })
+                .with_context(err_context)
+            },
+            None => Err(anyhow!("no more terminal IDs left to allocate")),
+        }
     }
 
     #[cfg(unix)]
@@ -1012,13 +1164,14 @@ pub fn get_server_os_input() -> Result<ServerOsInputOutput, ()> {
         rows: 25,
         mouse_mode: MouseMode::WINPTY_MOUSE_MODE_NONE,
         timeout: 10000,
-        agent_config: AgentConfig::WINPTY_FLAG_COLOR_ESCAPES
+        agent_config: AgentConfig::WINPTY_FLAG_COLOR_ESCAPES,
     };
     let pty = PTY::new(&pty_args).unwrap();
     Ok(ServerOsInputOutput {
         client_senders: Arc::new(Mutex::new(HashMap::new())),
         cached_resizes: Arc::new(Mutex::new(None)),
         orig_pty: Arc::new(Mutex::new(pty)),
+        terminal_id_to_reference: Arc::new(Mutex::new(BTreeMap::new())),
     })
 }
 

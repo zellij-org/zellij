@@ -1,4 +1,5 @@
 use crate::background_jobs::BackgroundJob;
+use crate::os_input_output::WinPtyReference;
 use crate::terminal_bytes::TerminalBytes;
 use crate::{
     panes::PaneId,
@@ -126,7 +127,7 @@ pub(crate) struct Pty {
     #[cfg(unix)]
     pub id_to_child_pid: HashMap<u32, RawFd>, // terminal_id => child raw fd
     #[cfg(windows)]
-    pub id_to_child_pid: HashMap<u32, Pid>,
+    pub id_to_child_pid: HashMap<u32, WinPtyReference>,
     debug_to_file: bool,
     task_handles: HashMap<u32, JoinHandle<()>>, // terminal_id to join-handle
     default_editor: Option<PathBuf>,
@@ -143,6 +144,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                 name,
                 client_or_tab_index,
             ) => {
+                log::info!("Spawning a terminal");
                 let err_context =
                     || format!("failed to spawn terminal for {:?}", client_or_tab_index);
 
@@ -749,9 +751,9 @@ impl Pty {
                     .get(&client_id)
                     .and_then(|pane| match pane {
                         PaneId::Plugin(..) => None,
-                        PaneId::Terminal(id) => self.id_to_child_pid.get(id),
+                        PaneId::Terminal(id) => self.id_to_child_pid.get(id).map(|r| r.get_pid()),
                     })
-                    .and_then(|&id| {
+                    .and_then(|id| {
                         #[cfg(windows)]
                         let pid = id;
                         #[cfg(unix)]
@@ -1055,14 +1057,16 @@ impl Pty {
             if let Some(new_pane_data) =
                 self.apply_run_instruction(run_instruction, default_shell.clone(), tab_index)?
             {
-                new_pane_pids.push(new_pane_data);
+                let pd = (new_pane_data.0, new_pane_data.1, new_pane_data.2, new_pane_data.3.map(|r| r.get_pid()));
+                new_pane_pids.push(pd);
             }
         }
         for run_instruction in extracted_floating_run_instructions {
             if let Some(new_pane_data) =
                 self.apply_run_instruction(run_instruction, default_shell.clone(), tab_index)?
             {
-                new_floating_panes_pids.push(new_pane_data);
+                let pd = (new_pane_data.0, new_pane_data.1, new_pane_data.2, new_pane_data.3.map(|r| r.get_pid()));
+                new_floating_panes_pids.push(pd);
             }
         }
         // Option<RunCommand> should only be Some if the pane starts held
@@ -1375,7 +1379,7 @@ impl Pty {
         run_instruction: Option<Run>,
         default_shell: TerminalAction,
         tab_index: usize,
-    ) -> Result<Option<(u32, bool, Option<RunCommand>, Result<Pid>)>> {
+    ) -> Result<Option<(u32, bool, Option<RunCommand>, Result<WinPtyReference>)>> {
         // terminal_id,
         // starts_held,
         // command
@@ -1428,7 +1432,7 @@ impl Pty {
                     {
                         Ok(terminal_id) => {
                             Ok(Some((
-                                terminal_id.as_u32(),
+                                terminal_id.get_pid().as_u32(),
                                 starts_held,
                                 Some(command.clone()),
                                 Ok(terminal_id), // this is not actually correct but gets
@@ -1447,13 +1451,13 @@ impl Pty {
                         .spawn_terminal(cmd, quit_cb, self.default_editor.clone())
                         .with_context(err_context)
                     {
-                        Ok((terminal_id, pid_primary, child_fd)) => {
-                            self.id_to_child_pid.insert(terminal_id, child_fd);
+                        Ok((terminal_id, reference)) => {
+                            self.id_to_child_pid.insert(terminal_id, reference);
                             Ok(Some((
                                 terminal_id,
                                 starts_held,
                                 Some(command.clone()),
-                                Ok(pid_primary),
+                                Ok(reference),
                             )))
                         },
                         Err(err) => {
@@ -1557,9 +1561,9 @@ impl Pty {
                     .spawn_terminal(default_shell.clone(), quit_cb, self.default_editor.clone())
                     .with_context(err_context)
                 {
-                    Ok((terminal_id, pid_primary, child_fd)) => {
-                        self.id_to_child_pid.insert(terminal_id, child_fd);
-                        Ok(Some((terminal_id, starts_held, None, Ok(pid_primary))))
+                    Ok((terminal_id, reference)) => {
+                        self.id_to_child_pid.insert(terminal_id, reference);
+                        Ok(Some((terminal_id, starts_held, None, Ok(reference))))
                     },
                     Err(err) => match err.downcast_ref::<ZellijError>() {
                         Some(ZellijError::CommandNotFound { terminal_id, .. }) => {
@@ -1805,7 +1809,7 @@ impl Drop for Pty {
 
     #[cfg(windows)]
     fn drop(&mut self) {
-        todo!()
+        // todo!()
     }
 }
 
@@ -1837,8 +1841,15 @@ fn send_command_not_found_to_screen(
 }
 
 pub fn get_default_shell() -> PathBuf {
-    PathBuf::from(std::env::var("SHELL").unwrap_or_else(|_| {
+    #[cfg(unix)]
+    return PathBuf::from(std::env::var("SHELL").unwrap_or_else(|_| {
         log::warn!("Cannot read SHELL env, falling back to use /bin/sh");
         "/bin/sh".to_string()
+    }));
+
+    #[cfg(windows)]
+    PathBuf::from(std::env::var("SHELL").unwrap_or_else(|_| {
+        log::warn!("Cannot read SHELL env, falling back to use cmd");
+        "cmd".to_string()
     }))
 }
