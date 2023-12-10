@@ -35,6 +35,7 @@ struct State {
     mode_info: ModeInfo,
     text_copy_destination: Option<CopyDestination>,
     display_system_clipboard_failure: bool,
+    colors_initialized: bool,
 }
 
 register_plugin!(State);
@@ -188,6 +189,7 @@ impl ZellijPlugin for State {
             EventType::InputReceived,
             EventType::SystemClipboardFailure,
         ]);
+        self.colors_initialized = false;
     }
 
     fn update(&mut self, event: Event) -> bool {
@@ -197,7 +199,13 @@ impl ZellijPlugin for State {
                 if self.mode_info != mode_info {
                     should_render = true;
                 }
+                let original_colors = self.mode_info.style.colors;
                 self.mode_info = mode_info;
+                if self.colors_initialized {
+                    self.mode_info.style.colors = original_colors;
+                } else {
+                    self.colors_initialized = true;
+                }
             },
             Event::TabUpdate(tabs) => {
                 if self.tabs != tabs {

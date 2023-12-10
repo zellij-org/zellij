@@ -24,6 +24,7 @@ struct State {
     active_tab_idx: usize,
     mode_info: ModeInfo,
     tab_line: Vec<LinePart>,
+    colors_initialized: bool,
 }
 
 static ARROW_SEPARATOR: &str = "";
@@ -38,6 +39,7 @@ impl ZellijPlugin for State {
             EventType::ModeUpdate,
             EventType::Mouse,
         ]);
+        self.colors_initialized = false;
     }
 
     fn update(&mut self, event: Event) -> bool {
@@ -47,7 +49,13 @@ impl ZellijPlugin for State {
                 if self.mode_info != mode_info {
                     should_render = true;
                 }
+                let original_colors = self.mode_info.style.colors;
                 self.mode_info = mode_info;
+                if self.colors_initialized {
+                    self.mode_info.style.colors = original_colors;
+                } else {
+                    self.colors_initialized = true;
+                }
             },
             Event::TabUpdate(tabs) => {
                 if let Some(active_tab_index) = tabs.iter().position(|t| t.active) {
