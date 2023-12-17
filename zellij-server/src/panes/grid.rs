@@ -167,21 +167,17 @@ fn transfer_rows_from_viewport_to_lines_above(
     max_viewport_width: usize,
 ) -> isize {
     let mut transferred_rows_count: isize = 0;
-    for _ in 0..count {
+    let drained_lines = std::cmp::min(count, viewport.len());
+    for next_line in viewport.drain(..drained_lines) {
         let mut next_lines: Vec<Row> = vec![];
-        if !viewport.is_empty() {
-            let next_line = viewport.remove(0);
-            transferred_rows_count +=
-                calculate_row_display_height(next_line.width(), max_viewport_width) as isize;
-            if !next_line.is_canonical {
-                let mut bottom_canonical_row_and_wraps_in_dst =
-                    get_lines_above_bottom_canonical_row_and_wraps(lines_above);
-                next_lines.append(&mut bottom_canonical_row_and_wraps_in_dst);
-            }
-            next_lines.push(next_line);
-        } else {
-            break; // no more rows
+        transferred_rows_count +=
+            calculate_row_display_height(next_line.width(), max_viewport_width) as isize;
+        if !next_line.is_canonical {
+            let mut bottom_canonical_row_and_wraps_in_dst =
+                get_lines_above_bottom_canonical_row_and_wraps(lines_above);
+            next_lines.append(&mut bottom_canonical_row_and_wraps_in_dst);
         }
+        next_lines.push(next_line);
         let dropped_line_width = bounded_push(lines_above, sixel_grid, Row::from_rows(next_lines));
         if let Some(width) = dropped_line_width {
             transferred_rows_count -=
