@@ -166,35 +166,26 @@ fn transfer_rows_from_viewport_to_lines_above(
     count: usize,
     max_viewport_width: usize,
 ) -> isize {
-    let mut next_lines: Vec<Row> = vec![];
     let mut transferred_rows_count: isize = 0;
     for _ in 0..count {
-        if next_lines.is_empty() {
-            if !viewport.is_empty() {
-                let next_line = viewport.remove(0);
-                transferred_rows_count +=
-                    calculate_row_display_height(next_line.width(), max_viewport_width) as isize;
-                if !next_line.is_canonical {
-                    let mut bottom_canonical_row_and_wraps_in_dst =
-                        get_lines_above_bottom_canonical_row_and_wraps(lines_above);
-                    next_lines.append(&mut bottom_canonical_row_and_wraps_in_dst);
-                }
-                next_lines.push(next_line);
-                next_lines = vec![Row::from_rows(next_lines)];
-            } else {
-                break; // no more rows
+        let mut next_lines: Vec<Row> = vec![];
+        if !viewport.is_empty() {
+            let next_line = viewport.remove(0);
+            transferred_rows_count +=
+                calculate_row_display_height(next_line.width(), max_viewport_width) as isize;
+            if !next_line.is_canonical {
+                let mut bottom_canonical_row_and_wraps_in_dst =
+                    get_lines_above_bottom_canonical_row_and_wraps(lines_above);
+                next_lines.append(&mut bottom_canonical_row_and_wraps_in_dst);
             }
+            next_lines.push(next_line);
+        } else {
+            break; // no more rows
         }
-        let dropped_line_width = bounded_push(lines_above, sixel_grid, next_lines.remove(0));
+        let dropped_line_width = bounded_push(lines_above, sixel_grid, Row::from_rows(next_lines));
         if let Some(width) = dropped_line_width {
             transferred_rows_count -=
                 calculate_row_display_height(width, max_viewport_width) as isize;
-        }
-    }
-    if !next_lines.is_empty() {
-        let excess_rows = Row::from_rows(next_lines).split_to_rows_of_length(max_viewport_width);
-        for row in excess_rows {
-            viewport.insert(0, row);
         }
     }
     transferred_rows_count
