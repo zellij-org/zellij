@@ -3366,19 +3366,20 @@ impl Row {
         self.width = None;
     }
     pub fn drain_until(&mut self, x: usize) -> VecDeque<TerminalCharacter> {
-        let mut drained_part: VecDeque<TerminalCharacter> = VecDeque::new();
         let mut drained_part_len = 0;
-        while let Some(next_character) = self.columns.remove(0) {
+        let mut split_pos = 0;
+        for next_character in self.columns.iter() {
             // drained_part_len == 0 here is so that if the grid is resized
             // to a size of 1, we won't drop wide characters
             if drained_part_len + next_character.width <= x || drained_part_len == 0 {
-                drained_part.push_back(next_character);
                 drained_part_len += next_character.width;
+                split_pos += 1
             } else {
-                self.columns.push_front(next_character); // put it back
                 break;
             }
         }
+        // Can't use split_off because it doesn't reduce capacity, causing OOM with long lines
+        let drained_part = self.columns.drain(..split_pos).collect();
         self.width = None;
         drained_part
     }
