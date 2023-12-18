@@ -6,7 +6,7 @@ mod watch_filesystem;
 mod zellij_exports;
 use log::info;
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{HashMap, HashSet, BTreeMap},
     fs,
     path::PathBuf,
     sync::{Arc, Mutex},
@@ -101,7 +101,12 @@ pub enum PluginInstruction {
     DumpLayout(SessionLayoutMetadata, ClientId),
     LogLayoutToHd(SessionLayoutMetadata),
     SubscribePluginToCustomMessage(PluginId, ClientId, String), // String -> custom message name
-    Message(String, String, ClientId), // Strings -> name, payload
+    Message {
+        name: String,
+        payload: Option<String>,
+        plugin: Option<String>,
+        args: Option<BTreeMap<String, String>>,
+    },
     Exit,
 }
 
@@ -134,7 +139,7 @@ impl From<&PluginInstruction> for PluginContext {
             PluginInstruction::DumpLayout(..) => PluginContext::DumpLayout,
             PluginInstruction::LogLayoutToHd(..) => PluginContext::LogLayoutToHd,
             PluginInstruction::SubscribePluginToCustomMessage(..) => PluginContext::SubscribePluginToCustomMessage,
-            PluginInstruction::Message(..) => PluginContext::Message,
+            PluginInstruction::Message{..} => PluginContext::Message,
         }
     }
 }
@@ -407,22 +412,39 @@ pub(crate) fn plugin_thread_main(
             PluginInstruction::SubscribePluginToCustomMessage(plugin_id, client_id, custom_message_name) => {
                 plugin_custom_message_subscriptions.entry((plugin_id, client_id)).or_insert_with(HashSet::new).insert(custom_message_name);
             },
-            PluginInstruction::Message(name, payload, client_id) => { // TODO: remove client_id,
+            PluginInstruction::Message{name, payload, plugin, args} => { // TODO: remove client_id,
                                                                       // it's from the cli
+                // TODO CONTINUE HERE(18/12):
+                // * make plugin pretty and make POC with pausing and filtering
+                // * remove subscribe mechanism,
+                // * we send name+payload either to all plugins if
+                // plugin is None or to the specific plugin if it is Some, then adjust accordingly
+                // in cli_client et al. - DONE (untested with single plugin)
                 let mut updates = vec![];
-                let mut found = false;
-                for ((plugin_id, client_id), subscriptions) in &plugin_custom_message_subscriptions {
-                    if subscriptions.contains(&name) {
-                        found = true;
-                        updates.push((Some(*plugin_id), Some(*client_id), Event::CustomMessage(name.clone(), payload.clone())));
+                match plugin {
+                    Some(plugin_url) => {
+                        match RunPlugin::from_url(&plugin_url) {
+                            Ok(run_plugin) => {
+                                let all_plugin_ids = wasm_bridge.all_plugin_and_client_ids_for_plugin_location(&run_plugin.location);
+                                for (plugin_id, client_id) in all_plugin_ids {
+                                    updates.push((Some(plugin_id), Some(client_id), Event::Message {name: name.clone(), payload: payload.clone(), args: args.clone() }));
+                                }
+                            },
+                            Err(e) => {
+                                log::error!("Failed to parse plugin url: {:?}", e);
+                                // TODO: inform cli client
+                            }
+                        }
+                    },
+                    None => {
+                        // send to all plugins
+                        let all_plugin_ids = wasm_bridge.all_plugin_ids();
+                        for (plugin_id, client_id) in all_plugin_ids {
+                            updates.push((Some(plugin_id), Some(client_id), Event::Message{ name: name.clone(), payload: payload.clone(), args: args.clone()}));
+                        }
                     }
-
                 }
                 wasm_bridge.update_plugins(updates, shutdown_send.clone())?;
-                if !found {
-                    // TODO: send an error back to the cli or wherever
-
-                }
             },
             PluginInstruction::Exit => {
                 break;

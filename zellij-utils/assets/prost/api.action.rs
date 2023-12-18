@@ -105,8 +105,20 @@ pub mod action {
         #[prost(message, tag = "46")]
         LaunchPluginPayload(super::LaunchOrFocusPluginPayload),
         #[prost(message, tag = "47")]
-        MessagePayload(super::NameAndValue),
+        MessagePayload(super::MessagePayload),
     }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MessagePayload {
+    #[prost(string, optional, tag = "1")]
+    pub name: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, tag = "2")]
+    pub payload: ::prost::alloc::string::String,
+    #[prost(message, repeated, tag = "3")]
+    pub args: ::prost::alloc::vec::Vec<NameAndValue>,
+    #[prost(string, optional, tag = "4")]
+    pub plugin: ::core::option::Option<::prost::alloc::string::String>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

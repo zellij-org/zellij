@@ -511,10 +511,11 @@ pub enum Event {
        // headers,
        // body,
        // context
-    // TODO CONTINUE HERE:
-    // * add a subscribe_to_external_message() plugin command
-    // * allow sending messages through zellij message (zm) <message>, <payload> and send to the
-    // relevant plugins through the CustomMessage event (change its docs to reflect this)
+    Message {
+        name: String,
+        payload: Option<String>, // None => end of pipe
+        args: Option<BTreeMap<String, String>>,
+    }
 }
 
 #[derive(

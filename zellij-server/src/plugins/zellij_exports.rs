@@ -294,13 +294,8 @@ fn subscribe_to_custom_message(env: &ForeignFunctionEnv, custom_message_name: St
 
 // TODO: permissions!!!111oneoneone
 fn unblock_pipe_input(env: &ForeignFunctionEnv, pipe_name: String) -> Result<()> {
-    // TODO: do this after rendering somehow? or is this ok with backpressure?
     env.plugin_env.input_pipes_to_unblock.lock().unwrap().insert(pipe_name);
     Ok(()) // TODO: no result return
-//     env.plugin_env
-//         .senders
-//         .send_to_server(ServerInstruction::UnblockPipeInput(pipe_name))
-//         .context("failed to unblock pipe input")
 }
 
 // TODO: permissions!!!111oneoneone

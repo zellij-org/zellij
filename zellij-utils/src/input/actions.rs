@@ -1,5 +1,7 @@
 //! Definition of the actions that can be bound to keys.
 
+use std::collections::BTreeMap;
+use url::Url;
 use super::command::RunCommandAction;
 use super::layout::{
     FloatingPaneLayout, Layout, RunPlugin, RunPluginLocation, SwapFloatingLayout, SwapTiledLayout,
@@ -256,7 +258,7 @@ pub enum Action {
     BreakPaneRight,
     BreakPaneLeft,
     RenameSession(String),
-    Message(String, String), // name, payload
+    Message { name: Option<String>, payload: Option<String>, args: Option<BTreeMap<String, String>>, plugin: Option<String> },
 }
 
 impl Action {
@@ -583,7 +585,7 @@ impl Action {
                 )])
             },
             CliAction::RenameSession { name } => Ok(vec![Action::RenameSession(name)]),
-            CliAction::Message { name, payload } => Ok(vec![Action::Message(name, payload)]),
+            CliAction::Message { name, payload, args, plugin } => Ok(vec![Action::Message{name, payload, args: args.map(|a| a.inner().clone()), plugin}]), // TODO: no clone somehow
         }
     }
 }

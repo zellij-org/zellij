@@ -803,10 +803,14 @@ pub(crate) fn route_action(
                 .send_to_screen(ScreenInstruction::RenameSession(name, client_id))
                 .with_context(err_context)?;
         },
-        Action::Message(name, payload) => {
-            senders
-                .send_to_plugin(PluginInstruction::Message(name, payload, client_id))
-                .with_context(err_context)?;
+        Action::Message{ mut name, payload, plugin, args } => {
+            if let Some(name) = name.take() {
+                senders
+                    .send_to_plugin(PluginInstruction::Message{ name, payload, plugin, args})
+                    .with_context(err_context)?;
+            } else {
+                log::error!("Message must have a name");
+            }
         },
     }
     Ok(should_break)

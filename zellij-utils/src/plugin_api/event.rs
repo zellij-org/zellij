@@ -228,6 +228,20 @@ impl TryFrom<ProtobufEvent> for Event {
                 },
                 _ => Err("Malformed payload for the WebRequestResult Event"),
             },
+            Some(ProtobufEventType::Message) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::MessagePayload(message_payload)) => {
+                    Ok(Event::Message {
+                        name: message_payload.name,
+                        payload: message_payload.payload,
+                        args: Some(message_payload
+                            .args
+                            .into_iter()
+                            .map(|c_i| (c_i.name, c_i.value))
+                            .collect()),
+                    })
+                },
+                _ => Err("Malformed payload for the message Event"),
+            },
             None => Err("Unknown Protobuf Event"),
         }
     }
@@ -425,6 +439,16 @@ impl TryFrom<Event> for ProtobufEvent {
                     )),
                 })
             },
+            Event::Message { name, payload, args } => Ok(ProtobufEvent {
+                name: ProtobufEventType::Message as i32,
+                payload: Some(event::Payload::MessagePayload(MessagePayload {
+                    name,
+                    payload,
+                    args: args
+                        .map(|a| a.into_iter().map(|(name, value)| ContextItem { name, value }).collect())
+                        .unwrap_or_default()
+                })),
+            }),
         }
     }
 }
@@ -872,6 +896,7 @@ impl TryFrom<ProtobufEventType> for EventType {
             ProtobufEventType::SessionUpdate => EventType::SessionUpdate,
             ProtobufEventType::RunCommandResult => EventType::RunCommandResult,
             ProtobufEventType::WebRequestResult => EventType::WebRequestResult,
+            ProtobufEventType::Message => EventType::Message,
         })
     }
 }
@@ -899,6 +924,7 @@ impl TryFrom<EventType> for ProtobufEventType {
             EventType::SessionUpdate => ProtobufEventType::SessionUpdate,
             EventType::RunCommandResult => ProtobufEventType::RunCommandResult,
             EventType::WebRequestResult => ProtobufEventType::WebRequestResult,
+            EventType::Message => ProtobufEventType::Message,
         })
     }
 }

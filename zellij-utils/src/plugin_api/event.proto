@@ -42,6 +42,7 @@ enum EventType {
     SessionUpdate = 16;
     RunCommandResult = 17;
     WebRequestResult = 18;
+    Message = 19;
 }
 
 message EventNameList {
@@ -65,6 +66,7 @@ message Event {
     SessionUpdatePayload session_update_payload = 13;
     RunCommandResultPayload run_command_result_payload = 14;
     WebRequestResultPayload web_request_result_payload = 15;
+    MessagePayload message_payload = 16;
   }
 }
 
@@ -108,6 +110,12 @@ message FileListPayload {
 message CustomMessagePayload {
   string message_name = 1;
   string payload = 2;
+}
+
+message MessagePayload {
+  string name = 1;
+  optional string payload = 2;
+  repeated ContextItem args = 3;
 }
 
 enum CopyDestination {

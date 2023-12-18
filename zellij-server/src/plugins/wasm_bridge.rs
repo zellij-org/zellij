@@ -701,6 +701,23 @@ impl WasmBridge {
             .unwrap()
             .all_plugin_ids_for_plugin_location(plugin_location)
     }
+    pub fn all_plugin_and_client_ids_for_plugin_location(
+        &self,
+        plugin_location: &RunPluginLocation,
+    ) -> Vec<(PluginId, ClientId)> {
+        self.plugin_map
+            .lock()
+            .unwrap()
+            .all_plugin_and_client_ids_for_plugin_location(plugin_location)
+    }
+    pub fn all_plugin_ids(
+        &self,
+    ) -> Vec<(PluginId, ClientId)> {
+        self.plugin_map
+            .lock()
+            .unwrap()
+            .all_plugin_ids()
+    }
     fn size_of_plugin_id(&self, plugin_id: PluginId) -> Option<(usize, usize)> {
         // (rows/colums)
         self.plugin_map

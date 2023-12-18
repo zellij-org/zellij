@@ -172,6 +172,28 @@ impl PluginMap {
         }
         Ok(plugin_ids)
     }
+    pub fn all_plugin_and_client_ids_for_plugin_location(
+        &self,
+        plugin_location: &RunPluginLocation,
+    ) -> Vec<(PluginId, ClientId)> {
+        self
+            .plugin_assets
+            .iter()
+            .filter(|(_, (running_plugin, _subscriptions, _workers))| {
+                &running_plugin.lock().unwrap().plugin_env.plugin.location == plugin_location
+            })
+            .map(|((plugin_id, client_id), _)| (*plugin_id, *client_id))
+            .collect()
+    }
+    pub fn all_plugin_ids(
+        &self,
+    ) -> Vec<(PluginId, ClientId)> {
+        self
+            .plugin_assets
+            .iter()
+            .map(|((plugin_id, client_id), _)| (*plugin_id, *client_id))
+            .collect()
+    }
     pub fn insert(
         &mut self,
         plugin_id: PluginId,

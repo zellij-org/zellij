@@ -11,7 +11,7 @@ pub struct Event {
     pub name: i32,
     #[prost(
         oneof = "event::Payload",
-        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15"
+        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16"
     )]
     pub payload: ::core::option::Option<event::Payload>,
 }
@@ -48,6 +48,8 @@ pub mod event {
         RunCommandResultPayload(super::RunCommandResultPayload),
         #[prost(message, tag = "15")]
         WebRequestResultPayload(super::WebRequestResultPayload),
+        #[prost(message, tag = "16")]
+        MessagePayload(super::MessagePayload),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -117,6 +119,16 @@ pub struct CustomMessagePayload {
     pub message_name: ::prost::alloc::string::String,
     #[prost(string, tag = "2")]
     pub payload: ::prost::alloc::string::String,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MessagePayload {
+    #[prost(string, tag = "1")]
+    pub name: ::prost::alloc::string::String,
+    #[prost(string, optional, tag = "2")]
+    pub payload: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(message, repeated, tag = "3")]
+    pub args: ::prost::alloc::vec::Vec<ContextItem>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -320,6 +332,7 @@ pub enum EventType {
     SessionUpdate = 16,
     RunCommandResult = 17,
     WebRequestResult = 18,
+    Message = 19,
 }
 impl EventType {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -347,6 +360,7 @@ impl EventType {
             EventType::SessionUpdate => "SessionUpdate",
             EventType::RunCommandResult => "RunCommandResult",
             EventType::WebRequestResult => "WebRequestResult",
+            EventType::Message => "Message",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -371,6 +385,7 @@ impl EventType {
             "SessionUpdate" => Some(Self::SessionUpdate),
             "RunCommandResult" => Some(Self::RunCommandResult),
             "WebRequestResult" => Some(Self::WebRequestResult),
+            "Message" => Some(Self::Message),
             _ => None,
         }
     }

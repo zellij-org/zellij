@@ -550,7 +550,10 @@ pub enum CliAction {
         name: String,
     },
     Message {
-        name: String,
-        payload: String,
+        name: Option<String>, // None would mean this is an anonymous message
+        payload: Option<String>, // TODO: Vec<u8>?
+        args: Option<PluginUserConfiguration>, // TODO: we might want to not re-use
+                                                        // PluginUserConfiguration
+        plugin: Option<String>
     },
 }
