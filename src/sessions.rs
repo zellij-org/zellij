@@ -5,6 +5,7 @@ use std::{fs, io, process};
 use suggest::Suggest;
 use zellij_utils::{
     anyhow,
+    cli::SessionStatus,
     consts::{
         session_info_folder_for_session, session_layout_cache_file_name,
         ZELLIJ_SESSION_INFO_CACHE_DIR, ZELLIJ_SOCK_DIR,
@@ -253,19 +254,43 @@ pub(crate) fn delete_session(name: &str, force: bool) {
     }
 }
 
-pub(crate) fn list_sessions(no_formatting: bool, short: bool) {
+pub(crate) fn list_sessions(no_formatting: bool, short: bool, status: Vec<Box<SessionStatus>>) {
+    let status: Vec<SessionStatus> = status.into_iter().map(|s| *s).collect();
     let exit_code = match get_sessions() {
         Ok(running_sessions) => {
             let resurrectable_sessions = get_resurrectable_sessions();
-            let mut all_sessions: HashMap<String, (Duration, bool)> = resurrectable_sessions
-                .iter()
-                .map(|(name, timestamp, _layout)| (name.clone(), (timestamp.clone(), true)))
+
+            let alive_sessions: HashMap<String, (Duration, bool)> = running_sessions
+                .into_iter()
+                .map(|(session_name, duration)| (session_name.clone(), (duration, false)))
                 .collect();
-            for (session_name, duration) in running_sessions {
-                all_sessions.insert(session_name.clone(), (duration, false));
+
+            let mut all_sessions = HashMap::<String, (Duration, bool)>::new();
+
+            if status.is_empty() || status.contains(&SessionStatus::Exited) {
+                all_sessions.extend(resurrectable_sessions.iter().filter_map(
+                    |(name, timestamp, _layout)| {
+                        if !alive_sessions.contains_key(&name.clone()) {
+                            Some((name.clone(), (timestamp.clone(), true)))
+                        } else {
+                            None
+                        }
+                    },
+                ));
+            }
+
+            if status.is_empty() || status.contains(&SessionStatus::Alive) {
+                all_sessions.extend(alive_sessions)
             }
             if all_sessions.is_empty() {
-                eprintln!("No active zellij sessions found.");
+                if status.is_empty() {
+                    eprintln!("No active zellij sessions found.");
+                } else {
+                    eprintln!(
+                        "No zellij sessions found matching following statuses: {:?}",
+                        status
+                    );
+                }
                 1
             } else {
                 print_sessions(

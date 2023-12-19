@@ -458,6 +458,9 @@ pub enum BackgroundJobContext {
 use thiserror::Error;
 #[derive(Debug, Error)]
 pub enum ZellijError {
+    #[error("Unknown status")]
+    UnknownStatus,
+
     #[error("could not find command '{command}' for terminal {terminal_id}")]
     CommandNotFound { terminal_id: u32, command: String },
 
