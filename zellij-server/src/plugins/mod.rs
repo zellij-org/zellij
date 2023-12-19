@@ -100,7 +100,6 @@ pub enum PluginInstruction {
     ),
     DumpLayout(SessionLayoutMetadata, ClientId),
     LogLayoutToHd(SessionLayoutMetadata),
-    SubscribePluginToCustomMessage(PluginId, ClientId, String), // String -> custom message name
     Message {
         name: String,
         payload: Option<String>,
@@ -138,7 +137,6 @@ impl From<&PluginInstruction> for PluginContext {
             },
             PluginInstruction::DumpLayout(..) => PluginContext::DumpLayout,
             PluginInstruction::LogLayoutToHd(..) => PluginContext::LogLayoutToHd,
-            PluginInstruction::SubscribePluginToCustomMessage(..) => PluginContext::SubscribePluginToCustomMessage,
             PluginInstruction::Message{..} => PluginContext::Message,
         }
     }
@@ -179,8 +177,6 @@ pub(crate) fn plugin_thread_main(
         default_shell,
         layout.clone(),
     );
-
-    let mut plugin_custom_message_subscriptions: HashMap<(PluginId, ClientId), HashSet<String>> = HashMap::new();
 
     loop {
         let (event, mut err_ctx) = bus.recv().expect("failed to receive event on channel");
@@ -409,14 +405,16 @@ pub(crate) fn plugin_thread_main(
                         .send_to_pty(PtyInstruction::LogLayoutToHd(session_layout_metadata)),
                 );
             },
-            PluginInstruction::SubscribePluginToCustomMessage(plugin_id, client_id, custom_message_name) => {
-                plugin_custom_message_subscriptions.entry((plugin_id, client_id)).or_insert_with(HashSet::new).insert(custom_message_name);
-            },
             PluginInstruction::Message{name, payload, plugin, args} => { // TODO: remove client_id,
                                                                       // it's from the cli
                 // TODO CONTINUE HERE(18/12):
-                // * make plugin pretty and make POC with pausing and filtering
-                // * remove subscribe mechanism,
+                // * make plugin pretty and make POC with pausing and filtering - DONE
+                // * remove subscribe mechanism, - DONE
+                // * change unblock mechanism to block - Nah
+                // * add permissions - DONE
+                // * tests?
+                // * launch plugin if no instances exist and messaging/piping
+                // * allow plugins to send/pipe messages to each other
                 // * we send name+payload either to all plugins if
                 // plugin is None or to the specific plugin if it is Some, then adjust accordingly
                 // in cli_client et al. - DONE (untested with single plugin)

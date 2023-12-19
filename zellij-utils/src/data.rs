@@ -543,6 +543,7 @@ pub enum Permission {
     OpenTerminalsOrPlugins,
     WriteToStdin,
     WebAccess,
+    ReadCliMessages,
 }
 
 impl PermissionType {
@@ -559,6 +560,7 @@ impl PermissionType {
             PermissionType::OpenTerminalsOrPlugins => "Start new terminals and plugins".to_owned(),
             PermissionType::WriteToStdin => "Write to standard input (STDIN)".to_owned(),
             PermissionType::WebAccess => "Make web requests".to_owned(),
+            PermissionType::ReadCliMessages => "Read messages from the command line".to_owned(),
         }
     }
 }
@@ -1110,7 +1112,6 @@ pub enum PluginCommand {
         BTreeMap<String, String>, // context
     ),
     RenameSession(String), // String -> new session name
-    SubscribeToCustomMessage(String), // String -> message name
     UnblockPipeInput(String), // String => pipe name
     PipeOutput(String, String), // String => pipe name, String => output
 }

@@ -5,7 +5,7 @@ pub struct PluginCommand {
     pub name: i32,
     #[prost(
         oneof = "plugin_command::Payload",
-        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49"
+        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48"
     )]
     pub payload: ::core::option::Option<plugin_command::Payload>,
 }
@@ -105,10 +105,8 @@ pub mod plugin_command {
         #[prost(string, tag = "46")]
         RenameSessionPayload(::prost::alloc::string::String),
         #[prost(string, tag = "47")]
-        SubscribeToCustomMessagePayload(::prost::alloc::string::String),
-        #[prost(string, tag = "48")]
         UnblockPipeInputPayload(::prost::alloc::string::String),
-        #[prost(message, tag = "49")]
+        #[prost(message, tag = "48")]
         PipeOutputPayload(super::PipeOutputPayload),
     }
 }
@@ -332,9 +330,8 @@ pub enum CommandName {
     DeleteDeadSession = 73,
     DeleteAllDeadSessions = 74,
     RenameSession = 75,
-    SubscribeToCustomMessage = 76,
-    UnblockPipeInput = 77,
-    PipeOutput = 78,
+    UnblockPipeInput = 76,
+    PipeOutput = 77,
 }
 impl CommandName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -419,7 +416,6 @@ impl CommandName {
             CommandName::DeleteDeadSession => "DeleteDeadSession",
             CommandName::DeleteAllDeadSessions => "DeleteAllDeadSessions",
             CommandName::RenameSession => "RenameSession",
-            CommandName::SubscribeToCustomMessage => "SubscribeToCustomMessage",
             CommandName::UnblockPipeInput => "UnblockPipeInput",
             CommandName::PipeOutput => "PipeOutput",
         }
@@ -503,7 +499,6 @@ impl CommandName {
             "DeleteDeadSession" => Some(Self::DeleteDeadSession),
             "DeleteAllDeadSessions" => Some(Self::DeleteAllDeadSessions),
             "RenameSession" => Some(Self::RenameSession),
-            "SubscribeToCustomMessage" => Some(Self::SubscribeToCustomMessage),
             "UnblockPipeInput" => Some(Self::UnblockPipeInput),
             "PipeOutput" => Some(Self::PipeOutput),
             _ => None,

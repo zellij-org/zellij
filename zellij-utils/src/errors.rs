@@ -393,7 +393,6 @@ pub enum PluginContext {
     PermissionRequestResult,
     DumpLayout,
     LogLayoutToHd,
-    SubscribePluginToCustomMessage,
     Message,
 }
 

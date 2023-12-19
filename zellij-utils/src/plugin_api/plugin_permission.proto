@@ -10,4 +10,5 @@ enum PermissionType {
   OpenTerminalsOrPlugins = 4;
   WriteToStdin = 5;
   WebAccess = 6;
+  ReadCliMessages = 7;
 }

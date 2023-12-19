@@ -240,13 +240,10 @@ fn host_run_plugin_command(env: FunctionEnvMut<ForeignFunctionEnv>) {
                     PluginCommand::RenameSession(new_session_name) => {
                         rename_session(env, new_session_name)
                     },
-                    PluginCommand::SubscribeToCustomMessage(custom_message_name) => {
-                        subscribe_to_custom_message(env, custom_message_name)?
-                    },
-                    PluginCommand::UnblockPipeInput(pipe_name) => { // TODO: permissions!
+                    PluginCommand::UnblockPipeInput(pipe_name) => {
                         unblock_pipe_input(env, pipe_name)?
                     },
-                    PluginCommand::PipeOutput(pipe_name, output) => { // TODO: permissions!
+                    PluginCommand::PipeOutput(pipe_name, output) => {
                         pipe_output(env, pipe_name, output)?
                     },
                 },
@@ -281,24 +278,11 @@ fn subscribe(env: &ForeignFunctionEnv, event_list: HashSet<EventType>) -> Result
         ))
 }
 
-// TODO: permissions!!!111oneoneone
-fn subscribe_to_custom_message(env: &ForeignFunctionEnv, custom_message_name: String) -> Result<()> {
-    env.plugin_env
-        .senders
-        .send_to_plugin(PluginInstruction::SubscribePluginToCustomMessage(
-            env.plugin_env.plugin_id,
-            env.plugin_env.client_id,
-            custom_message_name,
-        ))
-}
-
-// TODO: permissions!!!111oneoneone
 fn unblock_pipe_input(env: &ForeignFunctionEnv, pipe_name: String) -> Result<()> {
     env.plugin_env.input_pipes_to_unblock.lock().unwrap().insert(pipe_name);
     Ok(()) // TODO: no result return
 }
 
-// TODO: permissions!!!111oneoneone
 fn pipe_output(env: &ForeignFunctionEnv, pipe_name: String, output: String) -> Result<()> {
     env.plugin_env
         .senders
@@ -1387,6 +1371,8 @@ fn check_command_permission(
         | PluginCommand::DeleteAllDeadSessions
         | PluginCommand::RenameSession(..)
         | PluginCommand::RenameTab(..) => PermissionType::ChangeApplicationState,
+        PluginCommand::UnblockPipeInput(..)
+        | PluginCommand::PipeOutput(..) => PermissionType::ReadCliMessages,
         _ => return (PermissionStatus::Granted, None),
     };
 
