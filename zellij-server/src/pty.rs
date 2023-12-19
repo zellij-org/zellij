@@ -820,6 +820,7 @@ impl Pty {
         let quit_cb = Box::new({
             let senders = self.bus.senders.clone();
             move |pane_id, exit_status, command| {
+                let _ = senders.send_to_server(ServerInstruction::RunCommandComplete);
                 if hold_on_close {
                     let _ = senders.send_to_screen(ScreenInstruction::HoldPane(
                         pane_id,

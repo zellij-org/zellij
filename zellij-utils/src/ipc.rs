@@ -96,6 +96,7 @@ pub enum ClientToServerMsg {
 pub enum ServerToClientMsg {
     Render(String),
     UnblockInputThread,
+    RunCommandComplete,
     Exit(ExitReason),
     SwitchToMode(InputMode),
     Connected,

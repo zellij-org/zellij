@@ -17,6 +17,7 @@ pub fn start_cli_client(
     mut os_input: Box<dyn ClientOsApi>,
     session_name: &str,
     actions: Vec<Action>,
+    blocking: bool,
 ) {
     let zellij_ipc_pipe: PathBuf = {
         let mut sock_dir = zellij_utils::consts::ZELLIJ_SOCK_DIR.clone();
@@ -64,7 +65,7 @@ pub fn start_cli_client(
                 );
             },
             action => {
-                single_message_client(&mut os_input, action, pane_id);
+                single_message_client(&mut os_input, action, pane_id, blocking);
             },
         }
     }
@@ -186,12 +187,19 @@ fn single_message_client(
     os_input: &mut Box<dyn ClientOsApi>,
     action: Action,
     pane_id: Option<u32>,
+    blocking: bool,
 ) {
     let msg = ClientToServerMsg::Action(action, pane_id, None);
     os_input.send_to_server(msg);
     loop {
         match os_input.recv_from_server() {
             Some((ServerToClientMsg::UnblockInputThread, _)) => {
+                if !blocking {
+                    os_input.send_to_server(ClientToServerMsg::ClientExited);
+                    process::exit(0);
+                }
+            },
+            Some((ServerToClientMsg::RunCommandComplete, _)) => {
                 os_input.send_to_server(ClientToServerMsg::ClientExited);
                 process::exit(0);
             },

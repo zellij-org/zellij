@@ -39,6 +39,7 @@ pub(crate) enum ClientInstruction {
     Error(String),
     Render(String),
     UnblockInputThread,
+    RunCommandComplete,
     Exit(ExitReason),
     SwitchToMode(InputMode),
     Connected,
@@ -59,6 +60,7 @@ impl From<ServerToClientMsg> for ClientInstruction {
             ServerToClientMsg::Exit(e) => ClientInstruction::Exit(e),
             ServerToClientMsg::Render(buffer) => ClientInstruction::Render(buffer),
             ServerToClientMsg::UnblockInputThread => ClientInstruction::UnblockInputThread,
+            ServerToClientMsg::RunCommandComplete => ClientInstruction::RunCommandComplete,
             ServerToClientMsg::SwitchToMode(input_mode) => {
                 ClientInstruction::SwitchToMode(input_mode)
             },
@@ -86,6 +88,7 @@ impl From<&ClientInstruction> for ClientContext {
             ClientInstruction::Error(_) => ClientContext::Error,
             ClientInstruction::Render(_) => ClientContext::Render,
             ClientInstruction::UnblockInputThread => ClientContext::UnblockInputThread,
+            ClientInstruction::RunCommandComplete => ClientContext::RunCommandComplete,
             ClientInstruction::SwitchToMode(_) => ClientContext::SwitchToMode,
             ClientInstruction::Connected => ClientContext::Connected,
             ClientInstruction::ActiveClients(_) => ClientContext::ActiveClients,

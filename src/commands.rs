@@ -296,9 +296,19 @@ fn attach_with_cli_client(
 ) {
     let os_input = get_os_input(zellij_client::os_input_output::get_cli_client_os_input);
     let get_current_dir = || std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let blocking = match cli_action {
+        zellij_utils::cli::CliAction::NewPane { blocking, .. } => blocking,
+        _ => false,
+    };
+
     match Action::actions_from_cli(cli_action, Box::new(get_current_dir), config) {
         Ok(actions) => {
-            zellij_client::cli_client::start_cli_client(Box::new(os_input), session_name, actions);
+            zellij_client::cli_client::start_cli_client(
+                Box::new(os_input),
+                session_name,
+                actions,
+                blocking,
+            );
             std::process::exit(0);
         },
         Err(e) => {
