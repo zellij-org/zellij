@@ -8,6 +8,7 @@ mod compact_layout;
 mod edit_scrollbuffer;
 mod floating_panes_mouse;
 mod move_focus_hjkl_tab_switch;
+mod move_tabs;
 mod quicknav;
 mod send_mouse_click_to_terminal;
 mod sync_tab;
@@ -88,5 +89,25 @@ lazy_static! {
                 full: compact_layout::compact_layout_full,
             }
         ),
+        (
+            "move_tabs",
+            TipBody {
+                short: move_tabs::move_tabs_short,
+                medium: move_tabs::move_tabs_medium,
+                full: move_tabs::move_tabs_full,
+            }
+        )
     ]);
+}
+
+#[macro_export]
+macro_rules! ansi_strings {
+    ($ANSIStrings:expr) => {{
+        let strings: &[::ansi_term::ANSIString] = $ANSIStrings;
+        let ansi_strings = ::ansi_term::ANSIStrings(strings);
+        LinePart {
+            part: format!("{}", ansi_strings),
+            len: ::ansi_term::unstyled_len(&ansi_strings),
+        }
+    }};
 }

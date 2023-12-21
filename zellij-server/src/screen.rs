@@ -7,6 +7,7 @@ use std::rc::Rc;
 use std::str;
 use std::time::Duration;
 
+use log::{info, warn};
 use zellij_utils::data::{
     Direction, PaneManifest, PluginPermission, Resize, ResizeStrategy, SessionInfo,
 };
@@ -234,6 +235,8 @@ pub enum ScreenInstruction {
     ToggleTab(ClientId),
     UpdateTabName(Vec<u8>, ClientId),
     UndoRenameTab(ClientId),
+    MoveTabLeft(ClientId),
+    MoveTabRight(ClientId),
     TerminalResize(Size),
     TerminalPixelDimensions(PixelDimensions),
     TerminalBackgroundColor(String),
@@ -414,6 +417,8 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::GoToTabName(..) => ScreenContext::GoToTabName,
             ScreenInstruction::UpdateTabName(..) => ScreenContext::UpdateTabName,
             ScreenInstruction::UndoRenameTab(..) => ScreenContext::UndoRenameTab,
+            ScreenInstruction::MoveTabLeft(..) => ScreenContext::MoveTabLeft,
+            ScreenInstruction::MoveTabRight(..) => ScreenContext::MoveTabRight,
             ScreenInstruction::TerminalResize(..) => ScreenContext::TerminalResize,
             ScreenInstruction::TerminalPixelDimensions(..) => {
                 ScreenContext::TerminalPixelDimensions
@@ -1528,6 +1533,77 @@ impl Screen {
             },
             None => Ok(()),
         }
+    }
+
+    pub fn move_active_tab_to_left(&mut self, client_id: ClientId) -> Result<()> {
+        if self.tabs.len() < 2 {
+            info!("cannot move tab to left: only one tab exists");
+            return Ok(());
+        }
+        let Some(client_id) = self.client_id(client_id) else { return Ok(()); };
+        let Some(&active_tab_idx) = self.active_tab_indices.get(&client_id) else { return Ok(()); };
+        let left_tab_idx = self.index_on_left_of(active_tab_idx);
+        self.switch_tabs(active_tab_idx, left_tab_idx, client_id);
+        self.log_and_report_session_state()
+            .context("failed to move tab to left")?;
+        Ok(())
+    }
+
+    fn client_id(&mut self, client_id: ClientId) -> Option<u16> {
+        if self.get_active_tab(client_id).is_ok() {
+            Some(client_id)
+        } else {
+            self.get_first_client_id()
+        }
+    }
+
+    fn index_on_left_of(&self, current_index: usize) -> usize {
+        // wraps around: [tab1, tab2, tab3] => [tab1, tab2, tab3]
+        //                 ^                                 ^
+        //            current_index               index_on_left_of(current_index)
+        let tabs_count = self.tabs.len();
+        (current_index + tabs_count - 1) % tabs_count
+    }
+
+    fn switch_tabs(&mut self, active_tab_idx: usize, other_tab_idx: usize, client_id: u16) {
+        let (Some(mut active_tab), Some(mut other_tab)) = (
+            self.tabs.remove(&active_tab_idx),
+            self.tabs.remove(&other_tab_idx),
+        ) else {
+            warn!("failed to switch tabs: index {} or {} not found in {:?}", active_tab_idx, other_tab_idx, self.tabs.keys());
+            return;
+        };
+
+        std::mem::swap(&mut active_tab.index, &mut other_tab.index);
+        std::mem::swap(&mut active_tab.position, &mut other_tab.position);
+
+        // now, `active_tab.index` is changed, so we need to update it
+        self.active_tab_indices.insert(client_id, active_tab.index);
+
+        self.tabs.insert(active_tab.index, active_tab);
+        self.tabs.insert(other_tab.index, other_tab);
+    }
+
+    pub fn move_active_tab_to_right(&mut self, client_id: ClientId) -> Result<()> {
+        if self.tabs.len() < 2 {
+            info!("cannot move tab to right: only one tab exists");
+            return Ok(());
+        }
+        let Some(client_id) = self.client_id(client_id) else { return Ok(()); };
+        let Some(&active_tab_idx) = self.active_tab_indices.get(&client_id) else { return Ok(()); };
+        let right_tab_idx = self.index_on_right_of(active_tab_idx);
+        self.switch_tabs(active_tab_idx, right_tab_idx, client_id);
+        self.log_and_report_session_state()
+            .context("failed to move active tab to right")?;
+        Ok(())
+    }
+
+    fn index_on_right_of(&self, current_index: usize) -> usize {
+        // wraps around: [tab1, tab2, tab3] => [tab1, tab2, tab3]
+        //                             ^          ^
+        //                     current_index index_on_right_of(current_index)
+        let tabs_count = self.tabs.len();
+        (current_index + 1) % tabs_count
     }
 
     pub fn change_mode(&mut self, mut mode_info: ModeInfo, client_id: ClientId) -> Result<()> {
@@ -2912,6 +2988,16 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::UndoRenameTab(client_id) => {
                 screen.undo_active_rename_tab(client_id)?;
+                screen.unblock_input()?;
+                screen.render()?;
+            },
+            ScreenInstruction::MoveTabLeft(client_id) => {
+                screen.move_active_tab_to_left(client_id)?;
+                screen.unblock_input()?;
+                screen.render()?;
+            },
+            ScreenInstruction::MoveTabRight(client_id) => {
+                screen.move_active_tab_to_right(client_id)?;
                 screen.unblock_input()?;
                 screen.render()?;
             },

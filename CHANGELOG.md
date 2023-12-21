@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+* feat: allow moving tab to other position (https://github.com/zellij-org/zellij/issues/1656)
 * feat(plugins): skip plugin cache flag when loading plugins (https://github.com/zellij-org/zellij/pull/2971)
 * fix(grid): recover from various errors (https://github.com/zellij-org/zellij/pull/2972)
 * fix(grid): flaky scroll with scroll region (https://github.com/zellij-org/zellij/pull/2935)

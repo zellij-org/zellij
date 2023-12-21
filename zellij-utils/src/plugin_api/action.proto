@@ -53,6 +53,7 @@ message Action {
     IdAndName rename_tab_payload = 44;
     string rename_session_payload = 45;
     LaunchOrFocusPluginPayload launch_plugin_payload = 46;
+    MoveTabDirection move_tab_payload = 47;
   }
 }
 
@@ -227,6 +228,7 @@ enum ActionName {
     BreakPaneLeft = 79;
     RenameSession = 80;
     LaunchPlugin = 81;
+    MoveTab = 82;
 }
 
 message Position {
@@ -251,4 +253,9 @@ message PluginConfiguration {
 message NameAndValue {
   string name = 1;
   string value = 2;
+}
+
+enum MoveTabDirection {
+  Left = 0;
+  Right = 1;
 }

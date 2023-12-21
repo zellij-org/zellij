@@ -7,7 +7,7 @@ use super::layout::{
 };
 use crate::cli::CliAction;
 use crate::data::InputMode;
-use crate::data::{Direction, Resize};
+use crate::data::{Direction, HorizontalDirection, Resize};
 use crate::home::{find_default_config_dir, get_layout_dir};
 use crate::input::config::{Config, ConfigError, KdlError};
 use crate::input::options::OnForceClose;
@@ -202,6 +202,7 @@ pub enum Action {
     ToggleTab,
     TabNameInput(Vec<u8>),
     UndoRenameTab,
+    MoveTab(HorizontalDirection),
     /// Run specified command in new pane.
     Run(RunCommandAction),
     /// Detach session and exit
