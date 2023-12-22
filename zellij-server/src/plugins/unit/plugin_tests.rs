@@ -204,35 +204,6 @@ macro_rules! grant_permissions_and_log_actions_in_thread_naked_variant {
     };
 }
 
-macro_rules! log_actions_in_thread_naked_variant {
-    ( $arc_mutex_log:expr, $exit_event:path, $receiver:expr, $exit_after_count:expr ) => {
-        std::thread::Builder::new()
-            .name("logger thread".to_string())
-            .spawn({
-                let log = $arc_mutex_log.clone();
-                let mut exit_event_count = 0;
-                move || loop {
-                    let (event, _err_ctx) = $receiver
-                        .recv()
-                        .expect("failed to receive event on channel");
-                    match event {
-                        $exit_event => {
-                            exit_event_count += 1;
-                            log.lock().unwrap().push(event);
-                            if exit_event_count == $exit_after_count {
-                                break;
-                            }
-                        },
-                        _ => {
-                            log.lock().unwrap().push(event);
-                        },
-                    }
-                }
-            })
-            .unwrap()
-    };
-}
-
 fn create_plugin_thread(
     zellij_cwd: Option<PathBuf>,
 ) -> (
@@ -372,7 +343,7 @@ fn create_plugin_thread_with_server_receiver(
                 client_attributes,
                 default_shell_action,
             )
-            .expect("TEST")
+            .expect("TEST");
         })
         .unwrap();
     let teardown = {
@@ -599,7 +570,7 @@ pub fn load_new_plugin_from_hd() {
         received_screen_instructions,
         ScreenInstruction::PluginBytes,
         screen_receiver,
-        2,
+        1,
         &PermissionType::ChangeApplicationState,
         cache_path,
         plugin_thread_sender,
@@ -632,7 +603,7 @@ pub fn load_new_plugin_from_hd() {
         .unwrap()
         .iter()
         .find_map(|i| {
-            if let ScreenInstruction::PluginBytes(plugin_bytes) = i {
+            if let ScreenInstruction::PluginBytes(plugin_bytes, _) = i {
                 for (plugin_id, client_id, plugin_bytes) in plugin_bytes {
                     let plugin_bytes = String::from_utf8_lossy(plugin_bytes).to_string();
                     if plugin_bytes.contains("InputReceived") {
@@ -671,7 +642,7 @@ pub fn plugin_workers() {
         received_screen_instructions,
         ScreenInstruction::PluginBytes,
         screen_receiver,
-        3,
+        2,
         &PermissionType::ChangeApplicationState,
         cache_path,
         plugin_thread_sender,
@@ -708,7 +679,7 @@ pub fn plugin_workers() {
         .unwrap()
         .iter()
         .find_map(|i| {
-            if let ScreenInstruction::PluginBytes(plugin_bytes) = i {
+            if let ScreenInstruction::PluginBytes(plugin_bytes, _) = i {
                 for (plugin_id, client_id, plugin_bytes) in plugin_bytes {
                     let plugin_bytes = String::from_utf8_lossy(plugin_bytes).to_string();
                     if plugin_bytes.contains("Payload from worker") {
@@ -747,7 +718,7 @@ pub fn plugin_workers_persist_state() {
         received_screen_instructions,
         ScreenInstruction::PluginBytes,
         screen_receiver,
-        5,
+        4,
         &PermissionType::ChangeApplicationState,
         cache_path,
         plugin_thread_sender,
@@ -774,12 +745,13 @@ pub fn plugin_workers_persist_state() {
     // we do this a second time so that the worker will log the first message on its own state and
     // then send us the "received 2 messages" indication we check for below, letting us know it
     // managed to persist its own state and act upon it
-    std::thread::sleep(std::time::Duration::from_millis(500));
+    //std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),
         Event::SystemClipboardFailure,
     )]));
+    std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),
@@ -792,7 +764,7 @@ pub fn plugin_workers_persist_state() {
         .unwrap()
         .iter()
         .find_map(|i| {
-            if let ScreenInstruction::PluginBytes(plugin_bytes) = i {
+            if let ScreenInstruction::PluginBytes(plugin_bytes, _) = i {
                 for (plugin_id, client_id, plugin_bytes) in plugin_bytes {
                     let plugin_bytes = String::from_utf8_lossy(plugin_bytes).to_string();
                     if plugin_bytes.contains("received 2 messages") {
@@ -811,6 +783,7 @@ pub fn can_subscribe_to_hd_events() {
     let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
     let (plugin_thread_sender, screen_receiver, teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
@@ -827,11 +800,15 @@ pub fn can_subscribe_to_hd_events() {
         rows: 20,
     };
     let received_screen_instructions = Arc::new(Mutex::new(vec![]));
-    let screen_thread = log_actions_in_thread!(
+    let screen_thread = grant_permissions_and_log_actions_in_thread!(
         received_screen_instructions,
         ScreenInstruction::PluginBytes,
         screen_receiver,
-        2
+        2,
+        &PermissionType::ChangeApplicationState,
+        cache_path,
+        plugin_thread_sender,
+        client_id
     );
 
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
@@ -861,7 +838,7 @@ pub fn can_subscribe_to_hd_events() {
         .unwrap()
         .iter()
         .find_map(|i| {
-            if let ScreenInstruction::PluginBytes(plugin_bytes) = i {
+            if let ScreenInstruction::PluginBytes(plugin_bytes, _) = i {
                 for (plugin_id, client_id, plugin_bytes) in plugin_bytes {
                     let plugin_bytes = String::from_utf8_lossy(plugin_bytes).to_string();
                     if plugin_bytes.contains("FileSystemCreate") {
@@ -4471,6 +4448,7 @@ pub fn hide_self_plugin_command() {
     let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
     let (plugin_thread_sender, screen_receiver, teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
@@ -4487,11 +4465,15 @@ pub fn hide_self_plugin_command() {
         rows: 20,
     };
     let received_screen_instructions = Arc::new(Mutex::new(vec![]));
-    let screen_thread = log_actions_in_thread!(
+    let screen_thread = grant_permissions_and_log_actions_in_thread!(
         received_screen_instructions,
         ScreenInstruction::SuppressPane,
         screen_receiver,
-        1
+        1,
+        &PermissionType::ChangeApplicationState,
+        cache_path,
+        plugin_thread_sender,
+        client_id
     );
 
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
@@ -4536,6 +4518,7 @@ pub fn show_self_plugin_command() {
     let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
     let (plugin_thread_sender, screen_receiver, teardown) =
         create_plugin_thread(Some(plugin_host_folder));
     let plugin_should_float = Some(false);
@@ -4552,13 +4535,16 @@ pub fn show_self_plugin_command() {
         rows: 20,
     };
     let received_screen_instructions = Arc::new(Mutex::new(vec![]));
-    let screen_thread = log_actions_in_thread!(
+    let screen_thread = grant_permissions_and_log_actions_in_thread!(
         received_screen_instructions,
         ScreenInstruction::FocusPaneWithId,
         screen_receiver,
-        1
+        1,
+        &PermissionType::ChangeApplicationState,
+        cache_path,
+        plugin_thread_sender,
+        client_id
     );
-
     let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
     let _ = plugin_thread_sender.send(PluginInstruction::Load(
         plugin_should_float,
@@ -5633,4 +5619,157 @@ pub fn web_request_plugin_command() {
         })
         .clone();
     assert_snapshot!(format!("{:#?}", new_tab_event));
+}
+
+#[test]
+#[ignore]
+pub fn unblock_input_plugin_command() {
+    let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
+                                          // destructor removes the directory
+    let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
+    let (plugin_thread_sender, screen_receiver, teardown) =
+        create_plugin_thread(Some(plugin_host_folder));
+    let plugin_should_float = Some(false);
+    let plugin_title = Some("test_plugin".to_owned());
+    let run_plugin = RunPlugin {
+        _allow_exec_host_cmd: false,
+        location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
+    };
+    let tab_index = 1;
+    let client_id = 1;
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let received_screen_instructions = Arc::new(Mutex::new(vec![]));
+    let screen_thread = grant_permissions_and_log_actions_in_thread!(
+        received_screen_instructions,
+        ScreenInstruction::PluginBytes,
+        screen_receiver,
+        1,
+        &PermissionType::ReadCliMessages,
+        cache_path,
+        plugin_thread_sender,
+        client_id
+    );
+
+    let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
+    let _ = plugin_thread_sender.send(PluginInstruction::Load(
+        plugin_should_float,
+        false,
+        plugin_title,
+        run_plugin,
+        tab_index,
+        None,
+        client_id,
+        size,
+        None,
+        false,
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
+        None,
+        Some(client_id),
+        Event::Message { name: "message_name".to_owned(), payload: Some("message_payload".to_owned()), args: None}
+    )]));
+    screen_thread.join().unwrap(); // this might take a while if the cache is cold
+    teardown();
+    let plugin_bytes_events = received_screen_instructions
+        .lock()
+        .unwrap()
+        .iter()
+        .rev()
+        .find_map(|i| {
+            if let ScreenInstruction::PluginBytes(..) = i {
+                Some(i.clone())
+            } else {
+                None
+            }
+        })
+        .clone();
+    assert_snapshot!(format!("{:#?}", plugin_bytes_events));
+}
+
+#[test]
+#[ignore]
+pub fn pipe_output_plugin_command() {
+    // TODO: CONTINUE HERE (20/12) - make this test pass
+    let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
+                                          // destructor removes the directory
+    let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
+//     let (plugin_thread_sender, screen_receiver, teardown) =
+//         create_plugin_thread(Some(plugin_host_folder));
+    let (plugin_thread_sender, server_receiver, screen_receiver, teardown) =
+        create_plugin_thread_with_server_receiver(Some(plugin_host_folder));
+    let plugin_should_float = Some(false);
+    let plugin_title = Some("test_plugin".to_owned());
+    let run_plugin = RunPlugin {
+        _allow_exec_host_cmd: false,
+        location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
+    };
+    let tab_index = 1;
+    let client_id = 1;
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let received_screen_instructions = Arc::new(Mutex::new(vec![]));
+    let _screen_thread = grant_permissions_and_log_actions_in_thread_naked_variant!(
+        received_screen_instructions,
+        ScreenInstruction::Exit,
+        screen_receiver,
+        1,
+        &PermissionType::ChangeApplicationState,
+        cache_path,
+        plugin_thread_sender,
+        client_id
+    );
+    let received_server_instruction = Arc::new(Mutex::new(vec![]));
+    let server_thread = log_actions_in_thread!(
+        received_server_instruction,
+        ServerInstruction::PipeOutput,
+        server_receiver,
+        1
+    );
+
+    let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
+    let _ = plugin_thread_sender.send(PluginInstruction::Load(
+        plugin_should_float,
+        false,
+        plugin_title,
+        run_plugin,
+        tab_index,
+        None,
+        client_id,
+        size,
+        None,
+        false,
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
+        None,
+        Some(client_id),
+        Event::Message { name: "pipe_output".to_owned(), payload: Some("message_payload".to_owned()), args: None}
+    )]));
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    teardown();
+    server_thread.join().unwrap(); // this might take a while if the cache is cold
+    let plugin_bytes_events = received_server_instruction
+        .lock()
+        .unwrap()
+        .iter()
+        .rev()
+        .find_map(|i| {
+            if let ServerInstruction::PipeOutput(..) = i {
+                Some(i.clone())
+            } else {
+                None
+            }
+        })
+        .clone();
+    assert_snapshot!(format!("{:#?}", plugin_bytes_events));
 }

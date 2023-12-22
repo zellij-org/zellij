@@ -49,6 +49,7 @@ impl ZellijPlugin for State {
             PermissionType::OpenTerminalsOrPlugins,
             PermissionType::WriteToStdin,
             PermissionType::WebAccess,
+            PermissionType::ReadCliMessages,
         ]);
         self.configuration = configuration;
         subscribe(&[
@@ -59,6 +60,7 @@ impl ZellijPlugin for State {
             EventType::FileSystemCreate,
             EventType::FileSystemUpdate,
             EventType::FileSystemDelete,
+            EventType::Message,
         ]);
     }
 
@@ -279,6 +281,13 @@ impl ZellijPlugin for State {
             Event::CustomMessage(message, payload) => {
                 if message == "pong" {
                     self.received_payload = Some(payload.clone());
+                }
+            },
+            Event::Message{name, payload, ..} => {
+                if name == "message_name" && payload == &Some("message_payload".to_owned()) {
+                    unblock_pipe_input(name);
+                } else if name == "pipe_output" {
+                    pipe_output(name, "this_is_my_output");
                 }
             },
             Event::SystemClipboardFailure => {

@@ -343,6 +343,14 @@ fn request_permission(env: &ForeignFunctionEnv, permissions: Vec<PermissionType>
             ));
     }
 
+    // we do this so that messages that have arrived while the user is seeing the permission screen
+    // will be cached and reapplied once the permission is granted
+    let _ = env.plugin_env
+        .senders
+        .send_to_plugin(PluginInstruction::CachePluginEvents{
+            plugin_id: env.plugin_env.plugin_id,
+        });
+
     env.plugin_env
         .senders
         .send_to_screen(ScreenInstruction::RequestPluginPermissions(

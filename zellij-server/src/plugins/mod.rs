@@ -73,7 +73,7 @@ pub enum PluginInstruction {
         usize, // tab_index
         ClientId,
     ),
-    ApplyCachedEvents(Vec<PluginId>),
+    ApplyCachedEvents { plugin_ids: Vec<PluginId>, done_receiving_permissions: bool },
     ApplyCachedWorkerMessages(PluginId),
     PostMessagesToPluginWorker(
         PluginId,
@@ -106,6 +106,7 @@ pub enum PluginInstruction {
         plugin: Option<String>,
         args: Option<BTreeMap<String, String>>,
     },
+    CachePluginEvents { plugin_id: PluginId },
     Exit,
 }
 
@@ -121,7 +122,7 @@ impl From<&PluginInstruction> for PluginContext {
             PluginInstruction::AddClient(_) => PluginContext::AddClient,
             PluginInstruction::RemoveClient(_) => PluginContext::RemoveClient,
             PluginInstruction::NewTab(..) => PluginContext::NewTab,
-            PluginInstruction::ApplyCachedEvents(..) => PluginContext::ApplyCachedEvents,
+            PluginInstruction::ApplyCachedEvents{..} => PluginContext::ApplyCachedEvents,
             PluginInstruction::ApplyCachedWorkerMessages(..) => {
                 PluginContext::ApplyCachedWorkerMessages
             },
@@ -138,6 +139,7 @@ impl From<&PluginInstruction> for PluginContext {
             PluginInstruction::DumpLayout(..) => PluginContext::DumpLayout,
             PluginInstruction::LogLayoutToHd(..) => PluginContext::LogLayoutToHd,
             PluginInstruction::Message{..} => PluginContext::Message,
+            PluginInstruction::CachePluginEvents{..} => PluginContext::CachePluginEvents,
         }
     }
 }
@@ -201,7 +203,7 @@ pub(crate) fn plugin_thread_main(
                 skip_cache,
                 Some(client_id),
             ) {
-                Ok(plugin_id) => {
+                Ok((plugin_id, client_id)) => {
                     drop(bus.senders.send_to_screen(ScreenInstruction::AddPlugin(
                         should_float,
                         should_be_open_in_place,
@@ -240,7 +242,7 @@ pub(crate) fn plugin_thread_main(
                             match wasm_bridge
                                 .load_plugin(&run, tab_index, size, None, skip_cache, None)
                             {
-                                Ok(plugin_id) => {
+                                Ok((plugin_id, client_id)) => {
                                     let should_be_open_in_place = false;
                                     drop(bus.senders.send_to_screen(ScreenInstruction::AddPlugin(
                                         should_float,
@@ -305,7 +307,7 @@ pub(crate) fn plugin_thread_main(
                 for run_instruction in extracted_run_instructions {
                     if let Some(Run::Plugin(run)) = run_instruction {
                         let skip_cache = false;
-                        let plugin_id = wasm_bridge.load_plugin(
+                        let (plugin_id, client_id) = wasm_bridge.load_plugin(
                             &run,
                             tab_index,
                             size,
@@ -329,8 +331,8 @@ pub(crate) fn plugin_thread_main(
                     client_id,
                 )));
             },
-            PluginInstruction::ApplyCachedEvents(plugin_id) => {
-                wasm_bridge.apply_cached_events(plugin_id, shutdown_send.clone())?;
+            PluginInstruction::ApplyCachedEvents{plugin_ids, done_receiving_permissions} => {
+                wasm_bridge.apply_cached_events(plugin_ids, done_receiving_permissions, shutdown_send.clone())?;
             },
             PluginInstruction::ApplyCachedWorkerMessages(plugin_id) => {
                 wasm_bridge.apply_cached_worker_messages(plugin_id)?;
@@ -390,6 +392,8 @@ pub(crate) fn plugin_thread_main(
                     Event::PermissionRequestResult(status),
                 )];
                 wasm_bridge.update_plugins(updates, shutdown_send.clone())?;
+                let done_receiving_permissions = true;
+                wasm_bridge.apply_cached_events(vec![plugin_id], done_receiving_permissions, shutdown_send.clone())?;
             },
             PluginInstruction::DumpLayout(mut session_layout_metadata, client_id) => {
                 populate_session_layout_metadata(&mut session_layout_metadata, &wasm_bridge);
@@ -412,18 +416,74 @@ pub(crate) fn plugin_thread_main(
                 // * remove subscribe mechanism, - DONE
                 // * change unblock mechanism to block - Nah
                 // * add permissions - DONE
-                // * tests?
+                // * tests? - DONE
                 // * launch plugin if no instances exist and messaging/piping
+                //  - test: see that we don't lose messages - DONE
+                //  - while we're here, see if the cached messages are unordered/reversed? - DONE!!
+                //  - test: launching 2 plugins in different places in the chain (copy wasm file to
+                //  another path) - DONE
+                //  - make tests pass again (we probably created chaos) - DONE
+                //  - test that we're not losing messages when we already have permission - DONE
+                //  - same plugin 2 different places in path (with/without permissions) - DONE
                 // * allow plugins to send/pipe messages to each other
-                // * we send name+payload either to all plugins if
-                // plugin is None or to the specific plugin if it is Some, then adjust accordingly
-                // in cli_client et al. - DONE (untested with single plugin)
+                // * work on cli error messages, must be clearer
+
+                // TODO:
+                // * if the plugin is not running
+                // * do a wasm_bridge.load_plugin with as much defaults as possible (accept
+                // overrides in the instruction later)
+                // * make sure the below all_plugin_and_client_ids_for_plugin_location also returns
+                // pending plugins
+                // * continue as normal below (make sure to test this with a pipe, maybe even with
+                // a pipe to multiple plugins where one of them is not loaded)
+
+                // TODO: accept these as parameters and adjust defaults somewhere/somehow
+                let cwd = None;
+                let tab_index = 0;
+                let size = Size::default();
                 let mut updates = vec![];
+                let skip_cache = false;
+                let should_float = true;
+                let should_be_open_in_place = false;
+                let pane_title = None;
+                let pane_id_to_replace = None;
                 match plugin {
                     Some(plugin_url) => {
                         match RunPlugin::from_url(&plugin_url) {
                             Ok(run_plugin) => {
                                 let all_plugin_ids = wasm_bridge.all_plugin_and_client_ids_for_plugin_location(&run_plugin.location);
+                                let all_plugin_ids = if all_plugin_ids.is_empty() {
+                                    match wasm_bridge.load_plugin(
+                                        &run_plugin,
+                                        tab_index,
+                                        size,
+                                        cwd.clone(),
+                                        skip_cache,
+                                        None,
+                                    ) {
+                                        Ok((plugin_id, client_id)) => {
+                                            drop(bus.senders.send_to_screen(ScreenInstruction::AddPlugin(
+                                                Some(should_float),
+                                                should_be_open_in_place,
+                                                run_plugin,
+                                                pane_title,
+                                                tab_index,
+                                                plugin_id,
+                                                pane_id_to_replace,
+                                                cwd,
+                                                Some(client_id),
+                                            )));
+                                            vec![(plugin_id, client_id)]
+                                        },
+                                        Err(e) => {
+                                            log::error!("Failed to load plugin: {e}");
+                                            vec![]
+                                        },
+                                    }
+                                } else {
+                                    all_plugin_ids
+                                };
+                                
                                 for (plugin_id, client_id) in all_plugin_ids {
                                     updates.push((Some(plugin_id), Some(client_id), Event::Message {name: name.clone(), payload: payload.clone(), args: args.clone() }));
                                 }
@@ -444,6 +504,9 @@ pub(crate) fn plugin_thread_main(
                 }
                 wasm_bridge.update_plugins(updates, shutdown_send.clone())?;
             },
+            PluginInstruction::CachePluginEvents { plugin_id } => {
+                wasm_bridge.cache_plugin_events(plugin_id);
+            }
             PluginInstruction::Exit => {
                 break;
             },

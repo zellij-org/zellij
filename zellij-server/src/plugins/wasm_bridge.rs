@@ -50,6 +50,7 @@ pub struct WasmBridge {
     plugin_cache: Arc<Mutex<HashMap<PathBuf, Module>>>,
     plugin_map: Arc<Mutex<PluginMap>>,
     next_plugin_id: PluginId,
+    plugin_ids_waiting_for_permission_request: HashSet<PluginId>,
     cached_events_for_pending_plugins: HashMap<PluginId, Vec<Event>>,
     cached_resizes_for_pending_plugins: HashMap<PluginId, (usize, usize)>, // (rows, columns)
     cached_worker_messages: HashMap<PluginId, Vec<(ClientId, String, String, String)>>, // Vec<clientid,
@@ -97,6 +98,7 @@ impl WasmBridge {
             watcher,
             next_plugin_id: 0,
             cached_events_for_pending_plugins: HashMap::new(),
+            plugin_ids_waiting_for_permission_request: HashSet::new(),
             cached_resizes_for_pending_plugins: HashMap::new(),
             cached_worker_messages: HashMap::new(),
             loading_plugins: HashMap::new(),
@@ -116,7 +118,7 @@ impl WasmBridge {
         cwd: Option<PathBuf>,
         skip_cache: bool,
         client_id: Option<ClientId>,
-    ) -> Result<PluginId> {
+    ) -> Result<(PluginId, ClientId)> {
         // returns the plugin id
         let err_context = move || format!("failed to load plugin");
 
@@ -221,13 +223,13 @@ impl WasmBridge {
                     ),
                 }
                 let _ =
-                    senders.send_to_plugin(PluginInstruction::ApplyCachedEvents(vec![plugin_id]));
+                    senders.send_to_plugin(PluginInstruction::ApplyCachedEvents{plugin_ids: vec![plugin_id], done_receiving_permissions: false});
             }
         });
         self.loading_plugins
             .insert((plugin_id, run.clone()), load_plugin_task);
         self.next_plugin_id += 1;
-        Ok(plugin_id)
+        Ok((plugin_id, client_id))
     }
     pub fn unload_plugin(&mut self, pid: PluginId) -> Result<()> {
         info!("Bye from plugin {}", &pid);
@@ -338,7 +340,7 @@ impl WasmBridge {
                         }
                     },
                 }
-                let _ = senders.send_to_plugin(PluginInstruction::ApplyCachedEvents(plugin_ids));
+                let _ = senders.send_to_plugin(PluginInstruction::ApplyCachedEvents{plugin_ids, done_receiving_permissions: false});
             }
         });
         self.loading_plugins
@@ -417,6 +419,7 @@ impl WasmBridge {
 
                             // TODO: better, right now the plugin doesn't render on first render?
                             if old_rows != new_rows || old_columns != new_columns {
+                            // if true {
                                 let rendered_bytes = running_plugin
                                     .instance
                                     .clone()
@@ -556,10 +559,15 @@ impl WasmBridge {
     pub fn apply_cached_events(
         &mut self,
         plugin_ids: Vec<PluginId>,
+        done_receiving_permissions: bool,
         shutdown_sender: Sender<()>,
     ) -> Result<()> {
         let mut applied_plugin_paths = HashSet::new();
         for plugin_id in plugin_ids {
+            if !done_receiving_permissions && self.plugin_ids_waiting_for_permission_request.contains(&plugin_id) {
+                continue;
+            }
+            self.plugin_ids_waiting_for_permission_request.remove(&plugin_id);
             self.apply_cached_events_and_resizes_for_plugin(plugin_id, shutdown_sender.clone())?;
             if let Some(run_plugin) = self.run_plugin_of_loading_plugin_id(plugin_id) {
                 applied_plugin_paths.insert(run_plugin.clone());
@@ -625,42 +633,48 @@ impl WasmBridge {
                     .unwrap()
                     .get_running_plugin_and_subscriptions(plugin_id, *client_id)
                 {
-                    let subs = subscriptions.lock().unwrap().clone();
-                    for event in events.clone() {
-                        let event_type =
-                            EventType::from_str(&event.to_string()).with_context(err_context)?;
-                        if !subs.contains(&event_type) {
-                            continue;
-                        }
-                        task::spawn({
-                            let senders = self.senders.clone();
-                            let running_plugin = running_plugin.clone();
-                            let client_id = *client_id;
-                            let _s = shutdown_sender.clone();
-                            async move {
-                                let mut running_plugin = running_plugin.lock().unwrap();
-                                let mut plugin_bytes = vec![];
-                                let _s = _s; // guard to allow the task to complete before cleanup/shutdown
-                                match apply_event_to_plugin(
-                                    plugin_id,
-                                    client_id,
-                                    &mut running_plugin,
-                                    &event,
-                                    &mut plugin_bytes,
-                                ) {
-                                    Ok(()) => {
-                                        let input_pipes_to_unblock = running_plugin.plugin_env.input_pipes_to_unblock.lock().unwrap().drain().collect();
-                                        let _ = senders.send_to_screen(
-                                            ScreenInstruction::PluginBytes(plugin_bytes, Some(input_pipes_to_unblock)),
-                                        );
-                                    },
+                    task::spawn({
+                        let senders = self.senders.clone();
+                        let running_plugin = running_plugin.clone();
+                        let client_id = *client_id;
+                        let _s = shutdown_sender.clone();
+                        let events = events.clone();
+                        async move {
+                            let subs = subscriptions.lock().unwrap().clone();
+                            for event in events {
+                                match EventType::from_str(&event.to_string()).with_context(err_context) {
+                                    Ok(event_type) => {
+                                        if !subs.contains(&event_type) {
+                                            continue;
+                                        }
+                                        let mut running_plugin = running_plugin.lock().unwrap();
+                                        let mut plugin_bytes = vec![];
+                                        // let _s = _s; // guard to allow the task to complete before cleanup/shutdown
+                                        match apply_event_to_plugin(
+                                            plugin_id,
+                                            client_id,
+                                            &mut running_plugin,
+                                            &event,
+                                            &mut plugin_bytes,
+                                        ) {
+                                            Ok(()) => {
+                                                let input_pipes_to_unblock = running_plugin.plugin_env.input_pipes_to_unblock.lock().unwrap().drain().collect();
+                                                let _ = senders.send_to_screen(
+                                                    ScreenInstruction::PluginBytes(plugin_bytes, Some(input_pipes_to_unblock)),
+                                                );
+                                            },
+                                            Err(e) => {
+                                                log::error!("{}", e);
+                                            },
+                                        }
+                                    }
                                     Err(e) => {
-                                        log::error!("{}", e);
-                                    },
+                                        log::error!("Failed to apply event: {:?}", e);
+                                    }
                                 }
                             }
-                        });
-                    }
+                        }
+                    });
                 }
             }
         }
@@ -825,6 +839,12 @@ impl WasmBridge {
         );
 
         permission_cache.write_to_file().with_context(err_context)
+    }
+    // TODO: change name to reflect that this is only for waiting for permission request result
+    // thing
+    pub fn cache_plugin_events(&mut self, plugin_id: PluginId) {
+        self.plugin_ids_waiting_for_permission_request.insert(plugin_id);
+        self.cached_events_for_pending_plugins.entry(plugin_id).or_insert_with(Default::default);
     }
 }
 
