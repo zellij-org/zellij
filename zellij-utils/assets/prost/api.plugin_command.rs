@@ -105,14 +105,14 @@ pub mod plugin_command {
         #[prost(string, tag = "46")]
         RenameSessionPayload(::prost::alloc::string::String),
         #[prost(string, tag = "47")]
-        UnblockPipeInputPayload(::prost::alloc::string::String),
+        UnblockCliPipeInputPayload(::prost::alloc::string::String),
         #[prost(message, tag = "48")]
-        PipeOutputPayload(super::PipeOutputPayload),
+        CliPipeOutputPayload(super::CliPipeOutputPayload),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct PipeOutputPayload {
+pub struct CliPipeOutputPayload {
     #[prost(string, tag = "1")]
     pub pipe_name: ::prost::alloc::string::String,
     #[prost(string, tag = "2")]
@@ -330,8 +330,8 @@ pub enum CommandName {
     DeleteDeadSession = 73,
     DeleteAllDeadSessions = 74,
     RenameSession = 75,
-    UnblockPipeInput = 76,
-    PipeOutput = 77,
+    UnblockCliPipeInput = 76,
+    CliPipeOutput = 77,
 }
 impl CommandName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -416,8 +416,8 @@ impl CommandName {
             CommandName::DeleteDeadSession => "DeleteDeadSession",
             CommandName::DeleteAllDeadSessions => "DeleteAllDeadSessions",
             CommandName::RenameSession => "RenameSession",
-            CommandName::UnblockPipeInput => "UnblockPipeInput",
-            CommandName::PipeOutput => "PipeOutput",
+            CommandName::UnblockCliPipeInput => "UnblockCliPipeInput",
+            CommandName::CliPipeOutput => "CliPipeOutput",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -499,8 +499,8 @@ impl CommandName {
             "DeleteDeadSession" => Some(Self::DeleteDeadSession),
             "DeleteAllDeadSessions" => Some(Self::DeleteAllDeadSessions),
             "RenameSession" => Some(Self::RenameSession),
-            "UnblockPipeInput" => Some(Self::UnblockPipeInput),
-            "PipeOutput" => Some(Self::PipeOutput),
+            "UnblockCliPipeInput" => Some(Self::UnblockCliPipeInput),
+            "CliPipeOutput" => Some(Self::CliPipeOutput),
             _ => None,
         }
     }

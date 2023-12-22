@@ -511,7 +511,7 @@ pub enum Event {
        // headers,
        // body,
        // context
-    Message {
+    CliMessage {
         name: String,
         payload: Option<String>, // None => end of pipe
         args: Option<BTreeMap<String, String>>,
@@ -1112,6 +1112,6 @@ pub enum PluginCommand {
         BTreeMap<String, String>, // context
     ),
     RenameSession(String), // String -> new session name
-    UnblockPipeInput(String), // String => pipe name
-    PipeOutput(String, String), // String => pipe name, String => output
+    UnblockCliPipeInput(String), // String => pipe name
+    CliPipeOutput(String, String), // String => pipe name, String => output
 }

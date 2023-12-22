@@ -886,7 +886,7 @@ fn check_event_permission(
         | Event::CopyToClipboard(..)
         | Event::SystemClipboardFailure
         | Event::InputReceived => PermissionType::ReadApplicationState,
-        Event::Message {..} => PermissionType::ReadCliMessages,
+        Event::CliMessage {..} => PermissionType::ReadCliMessages,
         _ => return (PermissionStatus::Granted, None),
     };
 

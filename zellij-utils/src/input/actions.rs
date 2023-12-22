@@ -258,7 +258,7 @@ pub enum Action {
     BreakPaneRight,
     BreakPaneLeft,
     RenameSession(String),
-    Message { name: Option<String>, payload: Option<String>, args: Option<BTreeMap<String, String>>, plugin: Option<String> },
+    CliMessage { name: Option<String>, payload: Option<String>, args: Option<BTreeMap<String, String>>, plugin: Option<String> },
 }
 
 impl Action {
@@ -585,7 +585,7 @@ impl Action {
                 )])
             },
             CliAction::RenameSession { name } => Ok(vec![Action::RenameSession(name)]),
-            CliAction::Message { name, payload, args, plugin } => Ok(vec![Action::Message{name, payload, args: args.map(|a| a.inner().clone()), plugin}]), // TODO: no clone somehow
+            CliAction::Message { name, payload, args, plugin } => Ok(vec![Action::CliMessage{name, payload, args: args.map(|a| a.inner().clone()), plugin}]), // TODO: no clone somehow
         }
     }
 }

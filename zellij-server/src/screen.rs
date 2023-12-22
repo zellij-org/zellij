@@ -2174,7 +2174,7 @@ pub(crate) fn screen_thread_main(
                     for pipe_name in input_pipes_to_unblock {
                         screen.bus
                             .senders
-                            .send_to_server(ServerInstruction::UnblockPipeInput(pipe_name))
+                            .send_to_server(ServerInstruction::UnblockCliPipeInput(pipe_name))
                             .context("failed to unblock input pipe");
                         }
                     }

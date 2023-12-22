@@ -49,7 +49,7 @@ pub mod event {
         #[prost(message, tag = "15")]
         WebRequestResultPayload(super::WebRequestResultPayload),
         #[prost(message, tag = "16")]
-        MessagePayload(super::MessagePayload),
+        CliMessagePayload(super::CliMessagePayload),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -122,7 +122,7 @@ pub struct CustomMessagePayload {
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct MessagePayload {
+pub struct CliMessagePayload {
     #[prost(string, tag = "1")]
     pub name: ::prost::alloc::string::String,
     #[prost(string, optional, tag = "2")]
@@ -332,7 +332,7 @@ pub enum EventType {
     SessionUpdate = 16,
     RunCommandResult = 17,
     WebRequestResult = 18,
-    Message = 19,
+    CliMessage = 19,
 }
 impl EventType {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -360,7 +360,7 @@ impl EventType {
             EventType::SessionUpdate => "SessionUpdate",
             EventType::RunCommandResult => "RunCommandResult",
             EventType::WebRequestResult => "WebRequestResult",
-            EventType::Message => "Message",
+            EventType::CliMessage => "CliMessage",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -385,7 +385,7 @@ impl EventType {
             "SessionUpdate" => Some(Self::SessionUpdate),
             "RunCommandResult" => Some(Self::RunCommandResult),
             "WebRequestResult" => Some(Self::WebRequestResult),
-            "Message" => Some(Self::Message),
+            "CliMessage" => Some(Self::CliMessage),
             _ => None,
         }
     }

@@ -49,8 +49,8 @@ pub(crate) enum ClientInstruction {
     LogError(Vec<String>),
     SwitchSession(ConnectToSession),
     SetSynchronizedOutput(Option<SyncOutput>),
-    UnblockPipeInput(String), // String -> pipe name
-    PipeOutput(String, String), // String -> pipe name, String -> output
+    UnblockCliPipeInput(String), // String -> pipe name
+    CliPipeOutput(String, String), // String -> pipe name, String -> output
 }
 
 impl From<ServerToClientMsg> for ClientInstruction {
@@ -69,11 +69,11 @@ impl From<ServerToClientMsg> for ClientInstruction {
             ServerToClientMsg::SwitchSession(connect_to_session) => {
                 ClientInstruction::SwitchSession(connect_to_session)
             },
-            ServerToClientMsg::UnblockPipeInput(pipe_name) => {
-                ClientInstruction::UnblockPipeInput(pipe_name)
+            ServerToClientMsg::UnblockCliPipeInput(pipe_name) => {
+                ClientInstruction::UnblockCliPipeInput(pipe_name)
             },
-            ServerToClientMsg::PipeOutput(pipe_name, output) => {
-                ClientInstruction::PipeOutput(pipe_name, output)
+            ServerToClientMsg::CliPipeOutput(pipe_name, output) => {
+                ClientInstruction::CliPipeOutput(pipe_name, output)
             },
         }
     }
@@ -95,8 +95,8 @@ impl From<&ClientInstruction> for ClientContext {
             ClientInstruction::DoneParsingStdinQuery => ClientContext::DoneParsingStdinQuery,
             ClientInstruction::SwitchSession(..) => ClientContext::SwitchSession,
             ClientInstruction::SetSynchronizedOutput(..) => ClientContext::SetSynchronisedOutput,
-            ClientInstruction::UnblockPipeInput(..) => ClientContext::UnblockPipeInput,
-            ClientInstruction::PipeOutput(..) => ClientContext::PipeOutput,
+            ClientInstruction::UnblockCliPipeInput(..) => ClientContext::UnblockCliPipeInput,
+            ClientInstruction::CliPipeOutput(..) => ClientContext::CliPipeOutput,
         }
     }
 }

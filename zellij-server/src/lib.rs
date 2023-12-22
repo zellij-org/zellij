@@ -86,8 +86,8 @@ pub enum ServerInstruction {
     ActiveClients(ClientId),
     Log(Vec<String>, ClientId),
     SwitchSession(ConnectToSession, ClientId),
-    UnblockPipeInput(String), // String -> Pipe name
-    PipeOutput(String, String), // String -> Pipe name, String -> Output
+    UnblockCliPipeInput(String), // String -> Pipe name
+    CliPipeOutput(String, String), // String -> Pipe name, String -> Output
 }
 
 impl From<&ServerInstruction> for ServerContext {
@@ -106,8 +106,8 @@ impl From<&ServerInstruction> for ServerContext {
             ServerInstruction::ActiveClients(_) => ServerContext::ActiveClients,
             ServerInstruction::Log(..) => ServerContext::Log,
             ServerInstruction::SwitchSession(..) => ServerContext::SwitchSession,
-            ServerInstruction::UnblockPipeInput(..) => ServerContext::UnblockPipeInput,
-            ServerInstruction::PipeOutput(..) => ServerContext::PipeOutput,
+            ServerInstruction::UnblockCliPipeInput(..) => ServerContext::UnblockCliPipeInput,
+            ServerInstruction::CliPipeOutput(..) => ServerContext::CliPipeOutput,
         }
     }
 }
@@ -494,22 +494,22 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     );
                 }
             },
-            ServerInstruction::UnblockPipeInput(pipe_name) => {
+            ServerInstruction::UnblockCliPipeInput(pipe_name) => {
                 for client_id in session_state.read().unwrap().clients.keys() {
                     send_to_client!(
                         *client_id,
                         os_input,
-                        ServerToClientMsg::UnblockPipeInput(pipe_name.clone()),
+                        ServerToClientMsg::UnblockCliPipeInput(pipe_name.clone()),
                         session_state
                     );
                 }
             },
-            ServerInstruction::PipeOutput(pipe_name, output) => {
+            ServerInstruction::CliPipeOutput(pipe_name, output) => {
                 for client_id in session_state.read().unwrap().clients.keys() {
                     send_to_client!(
                         *client_id,
                         os_input,
-                        ServerToClientMsg::PipeOutput(pipe_name.clone(), output.clone()),
+                        ServerToClientMsg::CliPipeOutput(pipe_name.clone(), output.clone()),
                         session_state
                     );
                 }

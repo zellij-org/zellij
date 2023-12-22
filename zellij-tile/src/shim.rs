@@ -695,16 +695,16 @@ pub fn rename_session(name: &str) {
 }
 
 /// Unblock the input side of a pipe, requesting the next message be sent if there is one
-pub fn unblock_pipe_input(pipe_name: &str) {
-    let plugin_command = PluginCommand::UnblockPipeInput(pipe_name.to_owned());
+pub fn unblock_cli_pipe_input(pipe_name: &str) {
+    let plugin_command = PluginCommand::UnblockCliPipeInput(pipe_name.to_owned());
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
 }
 
 /// Send output to the output side of a pipe, ths does not affect the input side of same pipe
-pub fn pipe_output(pipe_name: &str, output: &str) {
-    let plugin_command = PluginCommand::PipeOutput(pipe_name.to_owned(), output.to_owned());
+pub fn cli_pipe_output(pipe_name: &str, output: &str) {
+    let plugin_command = PluginCommand::CliPipeOutput(pipe_name.to_owned(), output.to_owned());
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };

@@ -228,19 +228,19 @@ impl TryFrom<ProtobufEvent> for Event {
                 },
                 _ => Err("Malformed payload for the WebRequestResult Event"),
             },
-            Some(ProtobufEventType::Message) => match protobuf_event.payload {
-                Some(ProtobufEventPayload::MessagePayload(message_payload)) => {
-                    Ok(Event::Message {
-                        name: message_payload.name,
-                        payload: message_payload.payload,
-                        args: Some(message_payload
+            Some(ProtobufEventType::CliMessage) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::CliMessagePayload(cli_message_payload)) => {
+                    Ok(Event::CliMessage {
+                        name: cli_message_payload.name,
+                        payload: cli_message_payload.payload,
+                        args: Some(cli_message_payload
                             .args
                             .into_iter()
                             .map(|c_i| (c_i.name, c_i.value))
                             .collect()),
                     })
                 },
-                _ => Err("Malformed payload for the message Event"),
+                _ => Err("Malformed payload for the CliMessage Event"),
             },
             None => Err("Unknown Protobuf Event"),
         }
@@ -439,9 +439,9 @@ impl TryFrom<Event> for ProtobufEvent {
                     )),
                 })
             },
-            Event::Message { name, payload, args } => Ok(ProtobufEvent {
-                name: ProtobufEventType::Message as i32,
-                payload: Some(event::Payload::MessagePayload(MessagePayload {
+            Event::CliMessage { name, payload, args } => Ok(ProtobufEvent {
+                name: ProtobufEventType::CliMessage as i32,
+                payload: Some(event::Payload::CliMessagePayload(CliMessagePayload {
                     name,
                     payload,
                     args: args
@@ -896,7 +896,7 @@ impl TryFrom<ProtobufEventType> for EventType {
             ProtobufEventType::SessionUpdate => EventType::SessionUpdate,
             ProtobufEventType::RunCommandResult => EventType::RunCommandResult,
             ProtobufEventType::WebRequestResult => EventType::WebRequestResult,
-            ProtobufEventType::Message => EventType::Message,
+            ProtobufEventType::CliMessage => EventType::CliMessage,
         })
     }
 }
@@ -924,7 +924,7 @@ impl TryFrom<EventType> for ProtobufEventType {
             EventType::SessionUpdate => ProtobufEventType::SessionUpdate,
             EventType::RunCommandResult => ProtobufEventType::RunCommandResult,
             EventType::WebRequestResult => ProtobufEventType::WebRequestResult,
-            EventType::Message => ProtobufEventType::Message,
+            EventType::CliMessage => ProtobufEventType::CliMessage,
         })
     }
 }

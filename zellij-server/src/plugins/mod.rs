@@ -100,7 +100,7 @@ pub enum PluginInstruction {
     ),
     DumpLayout(SessionLayoutMetadata, ClientId),
     LogLayoutToHd(SessionLayoutMetadata),
-    Message {
+    CliMessage {
         name: String,
         payload: Option<String>,
         plugin: Option<String>,
@@ -138,7 +138,7 @@ impl From<&PluginInstruction> for PluginContext {
             },
             PluginInstruction::DumpLayout(..) => PluginContext::DumpLayout,
             PluginInstruction::LogLayoutToHd(..) => PluginContext::LogLayoutToHd,
-            PluginInstruction::Message{..} => PluginContext::Message,
+            PluginInstruction::CliMessage {..} => PluginContext::CliMessage,
             PluginInstruction::CachePluginEvents{..} => PluginContext::CachePluginEvents,
         }
     }
@@ -409,7 +409,7 @@ pub(crate) fn plugin_thread_main(
                         .send_to_pty(PtyInstruction::LogLayoutToHd(session_layout_metadata)),
                 );
             },
-            PluginInstruction::Message{name, payload, plugin, args} => { // TODO: remove client_id,
+            PluginInstruction::CliMessage {name, payload, plugin, args} => { // TODO: remove client_id,
                                                                       // it's from the cli
                 // TODO CONTINUE HERE(18/12):
                 // * make plugin pretty and make POC with pausing and filtering - DONE
@@ -426,6 +426,10 @@ pub(crate) fn plugin_thread_main(
                 //  - test that we're not losing messages when we already have permission - DONE
                 //  - same plugin 2 different places in path (with/without permissions) - DONE
                 // * allow plugins to send/pipe messages to each other
+                //  - change Message (all the way) to CliMessage (also the unblock and pipeoutput
+                //  methods' names should reflect this change)
+                //  - create a send_message plugin api that would act like Message but without
+                //  backpressure
                 // * work on cli error messages, must be clearer
 
                 // TODO:
@@ -485,7 +489,7 @@ pub(crate) fn plugin_thread_main(
                                 };
                                 
                                 for (plugin_id, client_id) in all_plugin_ids {
-                                    updates.push((Some(plugin_id), Some(client_id), Event::Message {name: name.clone(), payload: payload.clone(), args: args.clone() }));
+                                    updates.push((Some(plugin_id), Some(client_id), Event::CliMessage {name: name.clone(), payload: payload.clone(), args: args.clone() }));
                                 }
                             },
                             Err(e) => {
@@ -498,7 +502,7 @@ pub(crate) fn plugin_thread_main(
                         // send to all plugins
                         let all_plugin_ids = wasm_bridge.all_plugin_ids();
                         for (plugin_id, client_id) in all_plugin_ids {
-                            updates.push((Some(plugin_id), Some(client_id), Event::Message{ name: name.clone(), payload: payload.clone(), args: args.clone()}));
+                            updates.push((Some(plugin_id), Some(client_id), Event::CliMessage{ name: name.clone(), payload: payload.clone(), args: args.clone()}));
                         }
                     }
                 }

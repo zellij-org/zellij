@@ -60,7 +60,7 @@ impl ZellijPlugin for State {
             EventType::FileSystemCreate,
             EventType::FileSystemUpdate,
             EventType::FileSystemDelete,
-            EventType::Message,
+            EventType::CliMessage,
         ]);
     }
 
@@ -283,11 +283,11 @@ impl ZellijPlugin for State {
                     self.received_payload = Some(payload.clone());
                 }
             },
-            Event::Message{name, payload, ..} => {
+            Event::CliMessage{name, payload, ..} => {
                 if name == "message_name" && payload == &Some("message_payload".to_owned()) {
-                    unblock_pipe_input(name);
+                    unblock_cli_pipe_input(name);
                 } else if name == "pipe_output" {
-                    pipe_output(name, "this_is_my_output");
+                    cli_pipe_output(name, "this_is_my_output");
                 }
             },
             Event::SystemClipboardFailure => {

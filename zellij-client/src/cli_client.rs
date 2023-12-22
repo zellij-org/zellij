@@ -27,7 +27,7 @@ pub fn start_cli_client(mut os_input: Box<dyn ClientOsApi>, session_name: &str, 
 
     for action in actions {
         match action {
-            Action::Message { name, payload, plugin, args } if payload.is_none() => {
+            Action::CliMessage { name, payload, plugin, args } if payload.is_none() => {
                 pipe_client(&mut os_input, name, plugin, args, pane_id);
             },
             action => {
@@ -46,21 +46,21 @@ fn pipe_client(os_input: &mut Box<dyn ClientOsApi>, mut pipe_name: Option<String
         let mut buffer = String::new();
         handle.read_line(&mut buffer).unwrap(); // TODO: no unwrap etc.
         if buffer.is_empty() {
-            let msg = ClientToServerMsg::Action(Action::Message{ name: name.clone(), payload: None, args: args.clone(), plugin: plugin.clone() }, pane_id, None);
+            let msg = ClientToServerMsg::Action(Action::CliMessage{ name: name.clone(), payload: None, args: args.clone(), plugin: plugin.clone() }, pane_id, None);
             os_input.send_to_server(msg);
             break;
         } else {
-            let msg = ClientToServerMsg::Action(Action::Message{ name: name.clone(), payload: Some(buffer), args: args.clone(), plugin: plugin.clone() }, pane_id, None);
+            let msg = ClientToServerMsg::Action(Action::CliMessage{ name: name.clone(), payload: Some(buffer), args: args.clone(), plugin: plugin.clone() }, pane_id, None);
             os_input.send_to_server(msg);
         }
         loop {
             match os_input.recv_from_server() {
-                Some((ServerToClientMsg::UnblockPipeInput(pipe_name), _)) => {
+                Some((ServerToClientMsg::UnblockCliPipeInput(pipe_name), _)) => {
                     if Some(pipe_name) == name {
                         break;
                     }
                 },
-                Some((ServerToClientMsg::PipeOutput(pipe_name, output), _)) => {
+                Some((ServerToClientMsg::CliPipeOutput(pipe_name, output), _)) => {
                     let err_context = "Failed to write to stdout";
                     if Some(pipe_name) == name {
                         let mut stdout = os_input.get_stdout_writer();

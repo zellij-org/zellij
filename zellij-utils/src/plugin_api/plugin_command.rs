@@ -8,7 +8,7 @@ pub use super::generated_api::api::{
         OpenFilePayload, PluginCommand as ProtobufPluginCommand, PluginMessagePayload,
         RequestPluginPermissionPayload, ResizePayload, RunCommandPayload, SetTimeoutPayload,
         SubscribePayload, SwitchSessionPayload, SwitchTabToPayload, UnsubscribePayload,
-        WebRequestPayload, PipeOutputPayload
+        WebRequestPayload, CliPipeOutputPayload
     },
     plugin_permission::PermissionType as ProtobufPermissionType,
     resize::ResizeAction as ProtobufResizeAction,
@@ -641,15 +641,15 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 },
                 _ => Err("Mismatched payload for RenameSession"),
             },
-            Some(CommandName::UnblockPipeInput) => match protobuf_plugin_command.payload {
-                Some(Payload::UnblockPipeInputPayload(pipe_name)) => {
-                    Ok(PluginCommand::UnblockPipeInput(pipe_name))
+            Some(CommandName::UnblockCliPipeInput) => match protobuf_plugin_command.payload {
+                Some(Payload::UnblockCliPipeInputPayload(pipe_name)) => {
+                    Ok(PluginCommand::UnblockCliPipeInput(pipe_name))
                 },
                 _ => Err("Mismatched payload for UnblockPipeInput"),
             },
-            Some(CommandName::PipeOutput) => match protobuf_plugin_command.payload {
-                Some(Payload::PipeOutputPayload(PipeOutputPayload { pipe_name, output })) => {
-                    Ok(PluginCommand::PipeOutput(pipe_name, output))
+            Some(CommandName::CliPipeOutput) => match protobuf_plugin_command.payload {
+                Some(Payload::CliPipeOutputPayload(CliPipeOutputPayload { pipe_name, output })) => {
+                    Ok(PluginCommand::CliPipeOutput(pipe_name, output))
                 },
                 _ => Err("Mismatched payload for PipeOutput"),
             },
@@ -1081,13 +1081,13 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                 name: CommandName::RenameSession as i32,
                 payload: Some(Payload::RenameSessionPayload(new_session_name)),
             }),
-            PluginCommand::UnblockPipeInput(pipe_name) => Ok(ProtobufPluginCommand {
-                name: CommandName::UnblockPipeInput as i32,
-                payload: Some(Payload::UnblockPipeInputPayload(pipe_name)),
+            PluginCommand::UnblockCliPipeInput(pipe_name) => Ok(ProtobufPluginCommand {
+                name: CommandName::UnblockCliPipeInput as i32,
+                payload: Some(Payload::UnblockCliPipeInputPayload(pipe_name)),
             }),
-            PluginCommand::PipeOutput(pipe_name, output) => Ok(ProtobufPluginCommand {
-                name: CommandName::PipeOutput as i32,
-                payload: Some(Payload::PipeOutputPayload(PipeOutputPayload { pipe_name, output })),
+            PluginCommand::CliPipeOutput(pipe_name, output) => Ok(ProtobufPluginCommand {
+                name: CommandName::CliPipeOutput as i32,
+                payload: Some(Payload::CliPipeOutputPayload(CliPipeOutputPayload { pipe_name, output })),
             }),
         }
     }

@@ -103,8 +103,8 @@ pub enum ServerToClientMsg {
     Log(Vec<String>),
     LogError(Vec<String>),
     SwitchSession(ConnectToSession),
-    UnblockPipeInput(String), // String -> pipe name
-    PipeOutput(String, String), // String -> pipe name, String -> Output
+    UnblockCliPipeInput(String), // String -> pipe name
+    CliPipeOutput(String, String), // String -> pipe name, String -> Output
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
