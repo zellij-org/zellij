@@ -911,10 +911,9 @@ impl Grid {
                         saved_cursor_position.x = saved_cursor_x_coordinates;
                         saved_cursor_position.y = saved_cursor_y_coordinates;
                     },
-                    _ => {
-                        saved_cursor_position.x = new_cursor_x;
-                        saved_cursor_position.y = new_cursor_y;
-                    },
+                    _ => unreachable!("saved cursor {:?} {:?}",
+                        saved_cursor_x_coordinates,
+                        saved_cursor_y_coordinates),
                 }
             };
         }
