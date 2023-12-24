@@ -918,6 +918,14 @@ impl Grid {
             };
         }
         if new_rows != self.height {
+            let mut new_cursor_y = self.cursor.y;
+            let mut saved_cursor_y_coordinates =
+                self.saved_cursor_position.as_ref().map(|saved_cursor| saved_cursor.y);
+
+            let new_cursor_x = self.cursor.x;
+            let mut saved_cursor_x_coordinates =
+                self.saved_cursor_position.as_ref().map(|saved_cursor| saved_cursor.x);
+
             let current_viewport_row_count = self.viewport.len();
             match current_viewport_row_count.cmp(&new_rows) {
                 Ordering::Less => {
@@ -930,23 +938,22 @@ impl Grid {
                         new_columns,
                     );
                     let rows_pulled = self.viewport.len() - current_viewport_row_count;
-                    self.cursor.y += rows_pulled;
-                    if let Some(saved_cursor_position) = self.saved_cursor_position.as_mut() {
-                        saved_cursor_position.y += rows_pulled
+                    new_cursor_y += rows_pulled;
+                    if let Some(saved_cursor_y_coordinates) = saved_cursor_y_coordinates.as_mut() {
+                        *saved_cursor_y_coordinates += rows_pulled;
                     };
                 },
                 Ordering::Greater => {
                     let row_count_to_transfer = current_viewport_row_count - new_rows;
-                    if row_count_to_transfer > self.cursor.y {
-                        self.cursor.y = 0;
-                        if let Some(saved_cursor_position) = self.saved_cursor_position.as_mut() {
-                            saved_cursor_position.y = 0
+                    if row_count_to_transfer > new_cursor_y {
+                        new_cursor_y = 0;
+                        if let Some(saved_cursor_y_coordinates) = saved_cursor_y_coordinates.as_mut() {
+                            *saved_cursor_y_coordinates = 0
                         };
                     } else {
-                        self.cursor.y -= row_count_to_transfer;
-                        if let Some(saved_cursor_position) = self.saved_cursor_position.as_mut() {
-                            saved_cursor_position.y = saved_cursor_position
-                                .y
+                        new_cursor_y -= row_count_to_transfer;
+                        if let Some(saved_cursor_y_coordinates) = saved_cursor_y_coordinates.as_mut() {
+                            *saved_cursor_y_coordinates = saved_cursor_y_coordinates
                                 .saturating_sub(row_count_to_transfer);
                         };
                     }
@@ -960,6 +967,19 @@ impl Grid {
                 },
                 Ordering::Equal => {},
             }
+            self.cursor.y = new_cursor_y;
+            self.cursor.x = new_cursor_x;
+            if let Some(saved_cursor_position) = self.saved_cursor_position.as_mut() {
+                match (saved_cursor_x_coordinates, saved_cursor_y_coordinates) {
+                    (Some(saved_cursor_x_coordinates), Some(saved_cursor_y_coordinates)) => {
+                        saved_cursor_position.x = saved_cursor_x_coordinates;
+                        saved_cursor_position.y = saved_cursor_y_coordinates;
+                    },
+                    _ => unreachable!("saved cursor {:?} {:?}",
+                        saved_cursor_x_coordinates,
+                        saved_cursor_y_coordinates),
+                }
+            };
         }
         self.height = new_rows;
         self.width = new_columns;
