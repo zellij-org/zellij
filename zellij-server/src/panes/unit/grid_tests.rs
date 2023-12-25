@@ -2401,6 +2401,48 @@ pub fn scroll_up_increase_width_and_scroll_down() {
 }
 
 #[test]
+fn saved_cursor_across_resize() {
+    let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
+    let arrow_fonts = true;
+    let styled_underlines = true;
+    let mut grid = Grid::new(
+        4,
+        20,
+        Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
+        sixel_image_store,
+        Style::default(),
+        debug,
+        arrow_fonts,
+        styled_underlines,
+    );
+    let mut parse = |s, grid: &mut Grid|
+        for b in Vec::from(s) { vte_parser.advance(&mut *grid, b) };
+    let content = "\n
+\rLine 1 >fill to 20_<
+\rLine 2 >fill to 20_<
+\rLine 3 >fill to 20_<
+\rL\u{1b}[sine 4 >fill to 20_<";
+    parse(content, &mut grid);
+    // Move real cursor position up three lines
+    let content = "\u{1b}[3A";
+    parse(content, &mut grid);
+    // Truncate top of terminal, resetting cursor (but not saved cursor)
+    grid.change_size(3, 20);
+    // Wrap, resetting cursor again (but not saved cursor)
+    grid.change_size(3, 10);
+    // Restore saved cursor position and write ZZZ
+    let content = "\u{1b}[uZZZ";
+    parse(content, &mut grid);
+    assert_snapshot!(format!("{:?}", grid));
+}
+
+#[test]
 pub fn move_cursor_below_scroll_region() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));

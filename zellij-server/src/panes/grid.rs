@@ -923,7 +923,7 @@ impl Grid {
                 self.saved_cursor_position.as_ref().map(|saved_cursor| saved_cursor.y);
 
             let new_cursor_x = self.cursor.x;
-            let mut saved_cursor_x_coordinates =
+            let saved_cursor_x_coordinates =
                 self.saved_cursor_position.as_ref().map(|saved_cursor| saved_cursor.x);
 
             let current_viewport_row_count = self.viewport.len();
@@ -947,15 +947,15 @@ impl Grid {
                     let row_count_to_transfer = current_viewport_row_count - new_rows;
                     if row_count_to_transfer > new_cursor_y {
                         new_cursor_y = 0;
-                        if let Some(saved_cursor_y_coordinates) = saved_cursor_y_coordinates.as_mut() {
-                            *saved_cursor_y_coordinates = 0
-                        };
                     } else {
                         new_cursor_y -= row_count_to_transfer;
-                        if let Some(saved_cursor_y_coordinates) = saved_cursor_y_coordinates.as_mut() {
-                            *saved_cursor_y_coordinates = saved_cursor_y_coordinates
-                                .saturating_sub(row_count_to_transfer);
-                        };
+                    }
+                    if let Some(saved_cursor_y_coordinates) = saved_cursor_y_coordinates.as_mut() {
+                        if row_count_to_transfer > *saved_cursor_y_coordinates {
+                            *saved_cursor_y_coordinates = 0;
+                        } else {
+                            *saved_cursor_y_coordinates -= row_count_to_transfer;
+                        }
                     }
                     transfer_rows_from_viewport_to_lines_above(
                         &mut self.viewport,
