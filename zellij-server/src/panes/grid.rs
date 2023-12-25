@@ -849,16 +849,18 @@ impl Grid {
 
             self.viewport = new_viewport_rows;
 
-            let mut new_cursor_y = self.canonical_line_y_coordinates(cursor_canonical_line_index);
+            let mut new_cursor_y = self.canonical_line_y_coordinates(cursor_canonical_line_index)
+                + (cursor_index_in_canonical_line / new_columns);
             let mut saved_cursor_y_coordinates = self.saved_cursor_position.as_ref()
-                .map(|saved_cursor| self.canonical_line_y_coordinates(saved_cursor.y));
+                .map(|saved_cursor|
+                    self.canonical_line_y_coordinates(saved_cursor.y)
+                        + saved_cursor_index_in_canonical_line.as_ref().unwrap() / new_columns
+                );
 
-            let new_cursor_x = (cursor_index_in_canonical_line / new_columns)
-                + (cursor_index_in_canonical_line % new_columns);
+            let new_cursor_x = cursor_index_in_canonical_line % new_columns;
             let saved_cursor_x_coordinates = saved_cursor_index_in_canonical_line.as_ref()
                 .map(|saved_cursor_index_in_canonical_line|
-                     (*saved_cursor_index_in_canonical_line / new_columns)
-                        + (*saved_cursor_index_in_canonical_line % new_columns)
+                    *saved_cursor_index_in_canonical_line % new_columns
                 );
 
             let current_viewport_row_count = self.viewport.len();
