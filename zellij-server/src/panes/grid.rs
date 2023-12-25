@@ -623,8 +623,8 @@ impl Grid {
                 cursor_canonical_line_index = i;
             }
             if i == self.cursor.y {
-                let line_wrap_position_in_line = self.cursor.y - cursor_canonical_line_index;
-                cursor_index_in_canonical_line = line_wrap_position_in_line + self.cursor.x;
+                let line_wraps = self.cursor.y - cursor_canonical_line_index;
+                cursor_index_in_canonical_line = (line_wraps * self.width) + self.cursor.x;
                 break;
             }
         }
@@ -639,10 +639,9 @@ impl Grid {
                     cursor_canonical_line_index = i;
                 }
                 if i == saved_cursor_position.y {
-                    let line_wrap_position_in_line =
-                        saved_cursor_position.y - cursor_canonical_line_index;
+                    let line_wraps = saved_cursor_position.y - cursor_canonical_line_index;
                     cursor_index_in_canonical_line =
-                        line_wrap_position_in_line + saved_cursor_position.x;
+                        (line_wraps * self.width) + saved_cursor_position.x;
                     break;
                 }
             }
