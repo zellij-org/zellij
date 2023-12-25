@@ -857,11 +857,25 @@ impl Grid {
                         + saved_cursor_index_in_canonical_line.as_ref().unwrap() / new_columns
                 );
 
-            let new_cursor_x = cursor_index_in_canonical_line % new_columns;
+            // A cursor at EOL has two equivalent positions - end of this line or beginning of
+            // next. If not already at the beginning of line, bias to EOL so add character logic
+            // doesn't create spurious canonical lines
+            let mut new_cursor_x = cursor_index_in_canonical_line % new_columns;
+            if self.cursor.x != 0 && new_cursor_x == 0 {
+                new_cursor_y -= 1;
+                new_cursor_x = new_columns
+            }
             let saved_cursor_x_coordinates = saved_cursor_index_in_canonical_line.as_ref()
-                .map(|saved_cursor_index_in_canonical_line|
-                    *saved_cursor_index_in_canonical_line % new_columns
-                );
+                .map(|saved_cursor_index_in_canonical_line| {
+                    let x = self.saved_cursor_position.as_ref().unwrap().x;
+                    let mut new_x = *saved_cursor_index_in_canonical_line % new_columns;
+                    let new_y = saved_cursor_y_coordinates.as_mut().unwrap();
+                    if x != 0 && new_x == 0 {
+                        *new_y -= 1;
+                        new_x = new_columns
+                    }
+                    new_x
+                });
 
             let current_viewport_row_count = self.viewport.len();
             match current_viewport_row_count.cmp(&self.height) {

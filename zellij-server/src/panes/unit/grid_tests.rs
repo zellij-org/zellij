@@ -2468,9 +2468,10 @@ fn saved_cursor_across_resize_longline() {
     let content = "
 \rLine 1 >fill \u{1b}[sto 20_<";
     parse(content, &mut grid);
+    // Wrap each line halfway
     grid.change_size(4, 10);
     // Write 'YY' at the end, restore to the saved cursor and overwrite 'to' with 'ZZ'
-    let content = "YY\u{1b}[uZZ\u{1b}[s";
+    let content = "YY\u{1b}[uZZ";
     parse(content, &mut grid);
     assert_snapshot!(format!("{:?}", grid));
 }
