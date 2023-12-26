@@ -23,7 +23,7 @@ use wasm_bridge::WasmBridge;
 
 use zellij_utils::{
     async_std::{channel, future::timeout, task},
-    data::{Event, EventType, PermissionStatus, PermissionType, PluginCapabilities},
+    data::{Event, EventType, PermissionStatus, PermissionType, PluginCapabilities, MessageToPlugin},
     errors::{prelude::*, ContextType, PluginContext},
     input::{
         command::TerminalAction,
@@ -107,6 +107,7 @@ pub enum PluginInstruction {
         args: Option<BTreeMap<String, String>>,
     },
     CachePluginEvents { plugin_id: PluginId },
+    MessageFromPlugin(MessageToPlugin),
     Exit,
 }
 
@@ -140,6 +141,7 @@ impl From<&PluginInstruction> for PluginContext {
             PluginInstruction::LogLayoutToHd(..) => PluginContext::LogLayoutToHd,
             PluginInstruction::CliMessage {..} => PluginContext::CliMessage,
             PluginInstruction::CachePluginEvents{..} => PluginContext::CachePluginEvents,
+            PluginInstruction::MessageFromPlugin{..} => PluginContext::MessageFromPlugin,
         }
     }
 }
@@ -427,9 +429,14 @@ pub(crate) fn plugin_thread_main(
                 //  - same plugin 2 different places in path (with/without permissions) - DONE
                 // * allow plugins to send/pipe messages to each other
                 //  - change Message (all the way) to CliMessage (also the unblock and pipeoutput
-                //  methods' names should reflect this change)
+                //  methods' names should reflect this change) - DONE
                 //  - create a send_message plugin api that would act like Message but without
-                //  backpressure
+                //  backpressure - DONE
+                //  - write some plugin api tests for it (like the clioutput, etc. tests) -
+                //  TODO: CONTINUE HERE (25/12)
+                // * bring all the custo moverride stuff form the cli/plugin (the static variables
+                // at the beginning of the vairous PluginInstruction methods)
+                // * add permissions
                 // * work on cli error messages, must be clearer
 
                 // TODO:
@@ -455,41 +462,19 @@ pub(crate) fn plugin_thread_main(
                     Some(plugin_url) => {
                         match RunPlugin::from_url(&plugin_url) {
                             Ok(run_plugin) => {
-                                let all_plugin_ids = wasm_bridge.all_plugin_and_client_ids_for_plugin_location(&run_plugin.location);
-                                let all_plugin_ids = if all_plugin_ids.is_empty() {
-                                    match wasm_bridge.load_plugin(
-                                        &run_plugin,
-                                        tab_index,
-                                        size,
-                                        cwd.clone(),
-                                        skip_cache,
-                                        None,
-                                    ) {
-                                        Ok((plugin_id, client_id)) => {
-                                            drop(bus.senders.send_to_screen(ScreenInstruction::AddPlugin(
-                                                Some(should_float),
-                                                should_be_open_in_place,
-                                                run_plugin,
-                                                pane_title,
-                                                tab_index,
-                                                plugin_id,
-                                                pane_id_to_replace,
-                                                cwd,
-                                                Some(client_id),
-                                            )));
-                                            vec![(plugin_id, client_id)]
-                                        },
-                                        Err(e) => {
-                                            log::error!("Failed to load plugin: {e}");
-                                            vec![]
-                                        },
-                                    }
-                                } else {
-                                    all_plugin_ids
-                                };
-                                
+                                let all_plugin_ids = wasm_bridge.get_or_load_plugins(
+                                    run_plugin,
+                                    tab_index,
+                                    size,
+                                    cwd,
+                                    skip_cache,
+                                    should_float,
+                                    should_be_open_in_place,
+                                    pane_title,
+                                    pane_id_to_replace
+                                );
                                 for (plugin_id, client_id) in all_plugin_ids {
-                                    updates.push((Some(plugin_id), Some(client_id), Event::CliMessage {name: name.clone(), payload: payload.clone(), args: args.clone() }));
+                                    updates.push((Some(plugin_id), client_id, Event::CliMessage {name: name.clone(), payload: payload.clone(), args: args.clone() }));
                                 }
                             },
                             Err(e) => {
@@ -510,6 +495,58 @@ pub(crate) fn plugin_thread_main(
             },
             PluginInstruction::CachePluginEvents { plugin_id } => {
                 wasm_bridge.cache_plugin_events(plugin_id);
+            }
+            PluginInstruction::MessageFromPlugin(message_to_plugin) => {
+                let cwd = None;
+                let tab_index = 0;
+                let size = Size::default();
+                let mut updates = vec![];
+                let skip_cache = false;
+                let should_float = true;
+                let should_be_open_in_place = false;
+                let pane_title = None;
+                let pane_id_to_replace = None;
+                match message_to_plugin.plugin_url {
+                    Some(plugin_url) => {
+                        match RunPlugin::from_url(&plugin_url) {
+                            Ok(run_plugin) => {
+                                let all_plugin_ids = wasm_bridge.get_or_load_plugins(
+                                    run_plugin,
+                                    tab_index,
+                                    size,
+                                    cwd,
+                                    skip_cache,
+                                    should_float,
+                                    should_be_open_in_place,
+                                    pane_title,
+                                    pane_id_to_replace
+                                );
+                                for (plugin_id, client_id) in all_plugin_ids {
+                                    updates.push((Some(plugin_id), client_id, Event::MessageFromPlugin {
+                                        name: message_to_plugin.message_name.clone(),
+                                        payload: message_to_plugin.message_payload.clone(),
+                                        args: Some(message_to_plugin.message_args.clone()),
+                                    }));
+                                }
+                            },
+                            Err(e) => {
+                                log::error!("Failed to parse plugin url: {:?}", e);
+                            }
+                        }
+                    },
+                    None => {
+                        // send to all plugins
+                        let all_plugin_ids = wasm_bridge.all_plugin_ids();
+                        for (plugin_id, client_id) in all_plugin_ids {
+                            updates.push((Some(plugin_id), Some(client_id), Event::MessageFromPlugin {
+                                name: message_to_plugin.message_name.clone(),
+                                payload: message_to_plugin.message_payload.clone(),
+                                args: Some(message_to_plugin.message_args.clone()),
+                            }));
+                        }
+                    }
+                }
+                wasm_bridge.update_plugins(updates, shutdown_send.clone())?;
             }
             PluginInstruction::Exit => {
                 break;

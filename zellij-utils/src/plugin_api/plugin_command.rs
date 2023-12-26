@@ -8,13 +8,13 @@ pub use super::generated_api::api::{
         OpenFilePayload, PluginCommand as ProtobufPluginCommand, PluginMessagePayload,
         RequestPluginPermissionPayload, ResizePayload, RunCommandPayload, SetTimeoutPayload,
         SubscribePayload, SwitchSessionPayload, SwitchTabToPayload, UnsubscribePayload,
-        WebRequestPayload, CliPipeOutputPayload
+        WebRequestPayload, CliPipeOutputPayload, MessageToPluginPayload
     },
     plugin_permission::PermissionType as ProtobufPermissionType,
     resize::ResizeAction as ProtobufResizeAction,
 };
 
-use crate::data::{ConnectToSession, HttpVerb, PermissionType, PluginCommand};
+use crate::data::{ConnectToSession, HttpVerb, PermissionType, PluginCommand, MessageToPlugin};
 
 use std::collections::BTreeMap;
 use std::convert::TryFrom;
@@ -653,6 +653,26 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 },
                 _ => Err("Mismatched payload for PipeOutput"),
             },
+            Some(CommandName::MessageToPlugin) => match protobuf_plugin_command.payload {
+                Some(Payload::MessageToPluginPayload(MessageToPluginPayload { plugin_url, plugin_config, message_name, message_payload, message_args })) => {
+                    let plugin_config: BTreeMap<String, String> = plugin_config
+                        .into_iter()
+                        .map(|e| (e.name, e.value))
+                        .collect();
+                    let message_args : BTreeMap<String, String> = message_args
+                        .into_iter()
+                        .map(|e| (e.name, e.value))
+                        .collect();
+                    Ok(PluginCommand::MessageToPlugin(MessageToPlugin {
+                        plugin_url,
+                        plugin_config,
+                        message_name,
+                        message_payload,
+                        message_args,
+                    }))
+                },
+                _ => Err("Mismatched payload for PipeOutput"),
+            },
             None => Err("Unrecognized plugin command"),
         }
     }
@@ -1089,6 +1109,26 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                 name: CommandName::CliPipeOutput as i32,
                 payload: Some(Payload::CliPipeOutputPayload(CliPipeOutputPayload { pipe_name, output })),
             }),
+            PluginCommand::MessageToPlugin(message_to_plugin) => {
+                let plugin_config: Vec<_> = message_to_plugin.plugin_config
+                    .into_iter()
+                    .map(|(name, value)| ContextItem { name, value })
+                    .collect();
+                let message_args: Vec<_> = message_to_plugin.message_args
+                    .into_iter()
+                    .map(|(name, value)| ContextItem { name, value })
+                    .collect();
+                Ok(ProtobufPluginCommand {
+                    name: CommandName::MessageToPlugin as i32,
+                    payload: Some(Payload::MessageToPluginPayload(MessageToPluginPayload {
+                        plugin_url: message_to_plugin.plugin_url,
+                        plugin_config,
+                        message_name: message_to_plugin.message_name,
+                        message_payload: message_to_plugin.message_payload,
+                        message_args,
+                    }))
+                })
+            },
         }
     }
 }

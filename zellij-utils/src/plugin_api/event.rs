@@ -242,6 +242,20 @@ impl TryFrom<ProtobufEvent> for Event {
                 },
                 _ => Err("Malformed payload for the CliMessage Event"),
             },
+            Some(ProtobufEventType::MessageFromPlugin) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::MessageFromPluginPayload(message_from_plugin_payload)) => {
+                    Ok(Event::MessageFromPlugin {
+                        name: message_from_plugin_payload.name,
+                        payload: message_from_plugin_payload.payload,
+                        args: Some(message_from_plugin_payload
+                            .args
+                            .into_iter()
+                            .map(|c_i| (c_i.name, c_i.value))
+                            .collect()),
+                    })
+                },
+                _ => Err("Malformed payload for the MessageFromPlugin Event"),
+            },
             None => Err("Unknown Protobuf Event"),
         }
     }
@@ -442,6 +456,16 @@ impl TryFrom<Event> for ProtobufEvent {
             Event::CliMessage { name, payload, args } => Ok(ProtobufEvent {
                 name: ProtobufEventType::CliMessage as i32,
                 payload: Some(event::Payload::CliMessagePayload(CliMessagePayload {
+                    name,
+                    payload,
+                    args: args
+                        .map(|a| a.into_iter().map(|(name, value)| ContextItem { name, value }).collect())
+                        .unwrap_or_default()
+                })),
+            }),
+            Event::MessageFromPlugin { name, payload, args } => Ok(ProtobufEvent {
+                name: ProtobufEventType::MessageFromPlugin as i32,
+                payload: Some(event::Payload::MessageFromPluginPayload(MessageFromPluginPayload {
                     name,
                     payload,
                     args: args
@@ -897,6 +921,7 @@ impl TryFrom<ProtobufEventType> for EventType {
             ProtobufEventType::RunCommandResult => EventType::RunCommandResult,
             ProtobufEventType::WebRequestResult => EventType::WebRequestResult,
             ProtobufEventType::CliMessage => EventType::CliMessage,
+            ProtobufEventType::MessageFromPlugin => EventType::MessageFromPlugin,
         })
     }
 }
@@ -925,6 +950,7 @@ impl TryFrom<EventType> for ProtobufEventType {
             EventType::RunCommandResult => ProtobufEventType::RunCommandResult,
             EventType::WebRequestResult => ProtobufEventType::WebRequestResult,
             EventType::CliMessage => ProtobufEventType::CliMessage,
+            EventType::MessageFromPlugin => ProtobufEventType::MessageFromPlugin,
         })
     }
 }

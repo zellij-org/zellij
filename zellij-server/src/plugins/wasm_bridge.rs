@@ -25,6 +25,7 @@ use zellij_utils::plugin_api::event::ProtobufEvent;
 
 use zellij_utils::prost::Message;
 
+use crate::panes::PaneId;
 use crate::{
     background_jobs::BackgroundJob, screen::ScreenInstruction, thread_bus::ThreadSenders,
     ui::loading_indication::LoadingIndication, ClientId,
@@ -706,6 +707,11 @@ impl WasmBridge {
             .find(|((_plugin_id, run_plugin), _)| &run_plugin.location == plugin_location)
             .is_some()
     }
+    fn plugin_id_of_loading_plugin(&self, plugin_location: &RunPluginLocation) -> Option<PluginId> {
+        self.loading_plugins
+            .iter()
+            .find_map(|((plugin_id, run_plugin), _)| if &run_plugin.location == plugin_location { Some(*plugin_id) } else { None })
+    }
     fn all_plugin_ids_for_plugin_location(
         &self,
         plugin_location: &RunPluginLocation,
@@ -718,11 +724,14 @@ impl WasmBridge {
     pub fn all_plugin_and_client_ids_for_plugin_location(
         &self,
         plugin_location: &RunPluginLocation,
-    ) -> Vec<(PluginId, ClientId)> {
+    ) -> Vec<(PluginId, Option<ClientId>)> {
         self.plugin_map
             .lock()
             .unwrap()
             .all_plugin_and_client_ids_for_plugin_location(plugin_location)
+            .into_iter()
+            .map(|(p_id, c_id)| (p_id, Some(c_id)))
+            .collect()
     }
     pub fn all_plugin_ids(
         &self,
@@ -845,6 +854,46 @@ impl WasmBridge {
     pub fn cache_plugin_events(&mut self, plugin_id: PluginId) {
         self.plugin_ids_waiting_for_permission_request.insert(plugin_id);
         self.cached_events_for_pending_plugins.entry(plugin_id).or_insert_with(Default::default);
+    }
+
+    // gets all running plugins details matching this run_plugin, if none are running, loads one and
+    // returns its details
+    pub fn get_or_load_plugins(&mut self, run_plugin: RunPlugin, tab_index: usize, size: Size, cwd: Option<PathBuf>, skip_cache: bool, should_float: bool, should_be_open_in_place: bool, pane_title: Option<String>, pane_id_to_replace: Option<PaneId>) -> Vec<(PluginId, Option<ClientId>)> {
+        let all_plugin_ids = self.all_plugin_and_client_ids_for_plugin_location(&run_plugin.location);
+        if all_plugin_ids.is_empty() {
+            if let Some(loading_plugin_id) = self.plugin_id_of_loading_plugin(&run_plugin.location) {
+                return vec![(loading_plugin_id, None)];
+            }
+            match self.load_plugin(
+                &run_plugin,
+                tab_index,
+                size,
+                cwd.clone(),
+                skip_cache,
+                None,
+            ) {
+                Ok((plugin_id, client_id)) => {
+                    drop(self.senders.send_to_screen(ScreenInstruction::AddPlugin(
+                        Some(should_float),
+                        should_be_open_in_place,
+                        run_plugin,
+                        pane_title,
+                        tab_index,
+                        plugin_id,
+                        pane_id_to_replace,
+                        cwd,
+                        Some(client_id),
+                    )));
+                    vec![(plugin_id, Some(client_id))]
+                },
+                Err(e) => {
+                    log::error!("Failed to load plugin: {e}");
+                    vec![]
+                },
+            }
+        } else {
+            all_plugin_ids
+        }
     }
 }
 

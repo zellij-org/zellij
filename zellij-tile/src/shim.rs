@@ -710,6 +710,14 @@ pub fn cli_pipe_output(pipe_name: &str, output: &str) {
     unsafe { host_run_plugin_command() };
 }
 
+/// Send a message to a plugin, it will be launched if it is not already running
+pub fn send_message_to_plugin(message_to_plugin: MessageToPlugin) {
+    let plugin_command = PluginCommand::MessageToPlugin(message_to_plugin);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 // Utility Functions
 
 #[allow(unused)]

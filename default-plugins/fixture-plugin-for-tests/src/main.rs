@@ -11,6 +11,7 @@ struct State {
     received_events: Vec<Event>,
     received_payload: Option<String>,
     configuration: BTreeMap<String, String>,
+    message_to_plugin_payload: Option<String>,
 }
 
 #[derive(Default, Serialize, Deserialize)]
@@ -61,6 +62,7 @@ impl ZellijPlugin for State {
             EventType::FileSystemUpdate,
             EventType::FileSystemDelete,
             EventType::CliMessage,
+            EventType::MessageFromPlugin,
         ]);
     }
 
@@ -288,8 +290,15 @@ impl ZellijPlugin for State {
                     unblock_cli_pipe_input(name);
                 } else if name == "pipe_output" {
                     cli_pipe_output(name, "this_is_my_output");
+                } else if name == "send_message_to_plugin" {
+                    send_message_to_plugin(MessageToPlugin::new("message_to_plugin").with_payload("my_cool_payload"));
                 }
             },
+            Event::MessageFromPlugin {name, payload, ..} => {
+                if name == "message_to_plugin" {
+                    self.message_to_plugin_payload = payload.clone();
+                }
+            }
             Event::SystemClipboardFailure => {
                 // this is just to trigger the worker message
                 post_message_to(PluginMessage {
@@ -308,6 +317,8 @@ impl ZellijPlugin for State {
     fn render(&mut self, rows: usize, cols: usize) {
         if let Some(payload) = self.received_payload.as_ref() {
             println!("Payload from worker: {:?}", payload);
+        } else if let Some(payload) = self.message_to_plugin_payload.take() {
+            println!("Payload from self: {:?}", payload);
         } else {
             println!(
                 "Rows: {:?}, Cols: {:?}, Received events: {:?}",

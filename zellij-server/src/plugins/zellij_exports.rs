@@ -18,7 +18,7 @@ use std::{
 use wasmer::{imports, AsStoreMut, Function, FunctionEnv, FunctionEnvMut, Imports};
 use wasmer_wasi::WasiEnv;
 use zellij_utils::data::{
-    CommandType, ConnectToSession, HttpVerb, PermissionStatus, PermissionType, PluginPermission,
+    CommandType, ConnectToSession, HttpVerb, PermissionStatus, PermissionType, PluginPermission, MessageToPlugin
 };
 use zellij_utils::input::permission::PermissionCache;
 
@@ -246,6 +246,10 @@ fn host_run_plugin_command(env: FunctionEnvMut<ForeignFunctionEnv>) {
                     PluginCommand::CliPipeOutput(pipe_name, output) => {
                         cli_pipe_output(env, pipe_name, output)?
                     },
+                    // TODO: permissions!!!111oneoneone
+                    PluginCommand::MessageToPlugin(message) => {
+                        message_to_plugin(env, message)?
+                    },
                 },
                 (PermissionStatus::Denied, permission) => {
                     log::error!(
@@ -288,6 +292,14 @@ fn cli_pipe_output(env: &ForeignFunctionEnv, pipe_name: String, output: String) 
         .senders
         .send_to_server(ServerInstruction::CliPipeOutput(pipe_name, output))
         .context("failed to send pipe output")
+}
+
+// TODO: permissions!@!!111oneoneone
+fn message_to_plugin(env: &ForeignFunctionEnv, message_to_plugin: MessageToPlugin) -> Result<()> {
+    env.plugin_env
+        .senders
+        .send_to_plugin(PluginInstruction::MessageFromPlugin(message_to_plugin))
+        .context("failed to send message to plugin")
 }
 
 fn unsubscribe(env: &ForeignFunctionEnv, event_list: HashSet<EventType>) -> Result<()> {

@@ -5,7 +5,7 @@ pub struct PluginCommand {
     pub name: i32,
     #[prost(
         oneof = "plugin_command::Payload",
-        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48"
+        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49"
     )]
     pub payload: ::core::option::Option<plugin_command::Payload>,
 }
@@ -108,6 +108,8 @@ pub mod plugin_command {
         UnblockCliPipeInputPayload(::prost::alloc::string::String),
         #[prost(message, tag = "48")]
         CliPipeOutputPayload(super::CliPipeOutputPayload),
+        #[prost(message, tag = "49")]
+        MessageToPluginPayload(super::MessageToPluginPayload),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -117,6 +119,20 @@ pub struct CliPipeOutputPayload {
     pub pipe_name: ::prost::alloc::string::String,
     #[prost(string, tag = "2")]
     pub output: ::prost::alloc::string::String,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MessageToPluginPayload {
+    #[prost(string, optional, tag = "1")]
+    pub plugin_url: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(message, repeated, tag = "2")]
+    pub plugin_config: ::prost::alloc::vec::Vec<ContextItem>,
+    #[prost(string, tag = "3")]
+    pub message_name: ::prost::alloc::string::String,
+    #[prost(string, optional, tag = "4")]
+    pub message_payload: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(message, repeated, tag = "5")]
+    pub message_args: ::prost::alloc::vec::Vec<ContextItem>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -332,6 +348,7 @@ pub enum CommandName {
     RenameSession = 75,
     UnblockCliPipeInput = 76,
     CliPipeOutput = 77,
+    MessageToPlugin = 78,
 }
 impl CommandName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -418,6 +435,7 @@ impl CommandName {
             CommandName::RenameSession => "RenameSession",
             CommandName::UnblockCliPipeInput => "UnblockCliPipeInput",
             CommandName::CliPipeOutput => "CliPipeOutput",
+            CommandName::MessageToPlugin => "MessageToPlugin",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -501,6 +519,7 @@ impl CommandName {
             "RenameSession" => Some(Self::RenameSession),
             "UnblockCliPipeInput" => Some(Self::UnblockCliPipeInput),
             "CliPipeOutput" => Some(Self::CliPipeOutput),
+            "MessageToPlugin" => Some(Self::MessageToPlugin),
             _ => None,
         }
     }

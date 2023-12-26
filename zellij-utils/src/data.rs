@@ -515,6 +515,11 @@ pub enum Event {
         name: String,
         payload: Option<String>, // None => end of pipe
         args: Option<BTreeMap<String, String>>,
+    },
+    MessageFromPlugin {
+        name: String,
+        payload: Option<String>, // None => end of pipe
+        args: Option<BTreeMap<String, String>>,
     }
 }
 
@@ -982,6 +987,41 @@ impl CommandToRun {
     }
 }
 
+#[derive(Debug, Default, Clone)]
+pub struct MessageToPlugin {
+    pub plugin_url: Option<String>,
+    pub plugin_config: BTreeMap<String, String>,
+    pub message_name: String,
+    pub message_payload: Option<String>,
+    pub message_args: BTreeMap<String, String>,
+}
+
+impl MessageToPlugin {
+    pub fn new(message_name: impl Into<String>) -> Self {
+    // pub fn new(message_name: String) -> Self {
+        MessageToPlugin {
+            message_name: message_name.into(),
+            ..Default::default()
+        }
+    }
+    pub fn with_plugin_url(mut self, url: impl Into<String>) -> Self {
+        self.plugin_url = Some(url.into());
+        self
+    }
+    pub fn with_plugin_config(mut self, plugin_config: BTreeMap<String, String>) -> Self {
+        self.plugin_config = plugin_config;
+        self
+    }
+    pub fn with_payload(mut self, payload: impl Into<String>) -> Self {
+        self.message_payload = Some(payload.into());
+        self
+    }
+    pub fn with_args(mut self, args: BTreeMap<String, String>) -> Self {
+        self.message_args = args;
+        self
+    }
+}
+
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct ConnectToSession {
     pub name: Option<String>,
@@ -1114,4 +1154,5 @@ pub enum PluginCommand {
     RenameSession(String), // String -> new session name
     UnblockCliPipeInput(String), // String => pipe name
     CliPipeOutput(String, String), // String => pipe name, String => output
+    MessageToPlugin(MessageToPlugin),
 }

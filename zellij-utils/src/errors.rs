@@ -396,6 +396,7 @@ pub enum PluginContext {
     CliMessage,
     Message,
     CachePluginEvents,
+    MessageFromPlugin,
 }
 
 /// Stack call representations corresponding to the different types of [`ClientInstruction`]s.

@@ -89,6 +89,7 @@ enum CommandName {
   RenameSession = 75;
   UnblockCliPipeInput = 76;
   CliPipeOutput = 77;
+  MessageToPlugin = 78;
 }
 
 message PluginCommand {
@@ -141,12 +142,21 @@ message PluginCommand {
     string rename_session_payload = 46;
     string unblock_cli_pipe_input_payload = 47;
     CliPipeOutputPayload cli_pipe_output_payload = 48;
+    MessageToPluginPayload message_to_plugin_payload = 49;
   }
 }
 
 message CliPipeOutputPayload {
   string pipe_name = 1;
   string output = 2;
+}
+
+message MessageToPluginPayload {
+  optional string plugin_url = 1;
+  repeated ContextItem plugin_config = 2;
+  string message_name = 3;
+  optional string message_payload = 4;
+  repeated ContextItem message_args = 5;
 }
 
 message SwitchSessionPayload {

@@ -1,6 +1,6 @@
 ---
 source: zellij-server/src/plugins/./unit/plugin_tests.rs
-assertion_line: 5682
+assertion_line: 5695
 expression: "format!(\"{:#?}\", plugin_bytes_events)"
 ---
 Some(
@@ -49,6 +49,9 @@ Some(
                     58,
                     32,
                     91,
+                    67,
+                    108,
+                    105,
                     77,
                     101,
                     115,
