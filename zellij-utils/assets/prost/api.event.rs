@@ -131,6 +131,8 @@ pub struct CliMessagePayload {
     pub payload: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(message, repeated, tag = "3")]
     pub args: ::prost::alloc::vec::Vec<ContextItem>,
+    #[prost(string, tag = "4")]
+    pub input_pipe_id: ::prost::alloc::string::String,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

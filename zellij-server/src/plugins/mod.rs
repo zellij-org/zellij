@@ -101,6 +101,7 @@ pub enum PluginInstruction {
     DumpLayout(SessionLayoutMetadata, ClientId),
     LogLayoutToHd(SessionLayoutMetadata),
     CliMessage {
+        input_pipe_id: String,
         name: String,
         payload: Option<String>,
         plugin: Option<String>,
@@ -418,6 +419,7 @@ pub(crate) fn plugin_thread_main(
                 );
             },
             PluginInstruction::CliMessage {
+                input_pipe_id,
                 name,
                 payload,
                 plugin,
@@ -455,10 +457,13 @@ pub(crate) fn plugin_thread_main(
                 //  DONE
                 //  - TODO: check multiple simultaneous pipes, I think we have some deadlocks with
                 //  one Arc or another there... <=== CONTINUE HERE (26/12)
-                //  multi tab operations (to make sure removing the tab_index didn't do anything
-                //  bad), test also cli run plugins from a message and multi-tab operations...
+                //  - TODO: create a unique id for cli pipes and use it for unblocking instead of
+                //  the message name
                 //  - TODO: remove the launch_new from everything except the cli place thing
                 //  - TODO: consider re-adding the skip_cache flag
+                //  - TODO: only send messages (unblockclipipeinput, clipipeoutput) to the relevant client and not all of them
+                //  - TODO: look into leaking messages (simultaneously piping to 2 instances of the
+                //  plugin with --launch-new)
                 // * add permissions
                 // * work on cli error messages, must be clearer
 
@@ -496,7 +501,7 @@ pub(crate) fn plugin_thread_main(
                                     launch_new,
                                 );
                                 for (plugin_id, client_id) in all_plugin_ids {
-                                    updates.push((Some(plugin_id), client_id, Event::CliMessage {name: name.clone(), payload: payload.clone(), args: args.clone() }));
+                                    updates.push((Some(plugin_id), client_id, Event::CliMessage {input_pipe_id: input_pipe_id.clone(), name: name.clone(), payload: payload.clone(), args: args.clone() }));
                                 }
                             },
                             Err(e) => {
@@ -509,7 +514,7 @@ pub(crate) fn plugin_thread_main(
                         // send to all plugins
                         let all_plugin_ids = wasm_bridge.all_plugin_ids();
                         for (plugin_id, client_id) in all_plugin_ids {
-                            updates.push((Some(plugin_id), Some(client_id), Event::CliMessage{ name: name.clone(), payload: payload.clone(), args: args.clone()}));
+                            updates.push((Some(plugin_id), Some(client_id), Event::CliMessage{ input_pipe_id: input_pipe_id.clone(), name: name.clone(), payload: payload.clone(), args: args.clone()}));
                         }
                     }
                 }

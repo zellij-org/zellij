@@ -14,6 +14,7 @@ use crate::input::config::{Config, ConfigError, KdlError};
 use crate::input::options::OnForceClose;
 use miette::{NamedSource, Report};
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -258,6 +259,7 @@ pub enum Action {
     BreakPaneLeft,
     RenameSession(String),
     CliMessage {
+        input_pipe_id: String,
         name: Option<String>,
         payload: Option<String>,
         args: Option<BTreeMap<String, String>>,
@@ -611,7 +613,9 @@ impl Action {
                 let cwd = cwd
                     .map(|cwd| current_dir.join(cwd))
                     .or_else(|| Some(current_dir));
+                let input_pipe_id = Uuid::new_v4().to_string();
                 Ok(vec![Action::CliMessage{
+                    input_pipe_id,
                     name,
                     payload,
                     args: args.map(|a| a.inner().clone()), // TODO: no clone somehow

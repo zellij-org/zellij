@@ -512,6 +512,7 @@ pub enum Event {
        // body,
        // context
     CliMessage {
+        input_pipe_id: String,
         name: String,
         payload: Option<String>, // None => end of pipe
         args: Option<BTreeMap<String, String>>,

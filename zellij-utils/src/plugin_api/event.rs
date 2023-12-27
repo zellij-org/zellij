@@ -238,6 +238,7 @@ impl TryFrom<ProtobufEvent> for Event {
                             .into_iter()
                             .map(|c_i| (c_i.name, c_i.value))
                             .collect()),
+                        input_pipe_id: cli_message_payload.input_pipe_id,
                     })
                 },
                 _ => Err("Malformed payload for the CliMessage Event"),
@@ -453,14 +454,15 @@ impl TryFrom<Event> for ProtobufEvent {
                     )),
                 })
             },
-            Event::CliMessage { name, payload, args } => Ok(ProtobufEvent {
+            Event::CliMessage { name, payload, args, input_pipe_id } => Ok(ProtobufEvent {
                 name: ProtobufEventType::CliMessage as i32,
                 payload: Some(event::Payload::CliMessagePayload(CliMessagePayload {
                     name,
                     payload,
                     args: args
                         .map(|a| a.into_iter().map(|(name, value)| ContextItem { name, value }).collect())
-                        .unwrap_or_default()
+                        .unwrap_or_default(),
+                    input_pipe_id,
                 })),
             }),
             Event::MessageFromPlugin { name, payload, args } => Ok(ProtobufEvent {

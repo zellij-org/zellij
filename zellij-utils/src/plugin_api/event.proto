@@ -118,6 +118,7 @@ message CliMessagePayload {
   string name = 1;
   optional string payload = 2;
   repeated ContextItem args = 3;
+  string input_pipe_id = 4;
 }
 
 message MessageFromPluginPayload {

@@ -27,8 +27,8 @@ pub fn start_cli_client(mut os_input: Box<dyn ClientOsApi>, session_name: &str, 
 
     for action in actions {
         match action {
-            Action::CliMessage { name, payload, plugin, args, configuration, launch_new, floating, in_place, cwd, pane_title } if payload.is_none() => {
-                pipe_client(&mut os_input, name, plugin, args, configuration, launch_new, floating, in_place, pane_id, cwd, pane_title);
+            Action::CliMessage { input_pipe_id, name, payload, plugin, args, configuration, launch_new, floating, in_place, cwd, pane_title } if payload.is_none() => {
+                pipe_client(&mut os_input, input_pipe_id, name, plugin, args, configuration, launch_new, floating, in_place, pane_id, cwd, pane_title);
             },
             action => {
                 single_message_client(&mut os_input, action, pane_id);
@@ -39,7 +39,8 @@ pub fn start_cli_client(mut os_input: Box<dyn ClientOsApi>, session_name: &str, 
 
 fn pipe_client(
     os_input: &mut Box<dyn ClientOsApi>,
-    mut pipe_name: Option<String>,
+    input_pipe_id: String,
+    mut name: Option<String>,
     plugin: Option<String>,
     args: Option<BTreeMap<String, String>>,
     mut configuration: Option<BTreeMap<String, String>>,
@@ -53,7 +54,7 @@ fn pipe_client(
     use std::io::BufRead;
     let stdin = std::io::stdin(); // TODO: from os_input
     let mut handle = stdin.lock();
-    let name = pipe_name.take().or_else(|| Some(Uuid::new_v4().to_string()));
+    let name = name.take().or_else(|| Some(Uuid::new_v4().to_string()));
     if launch_new {
         configuration.get_or_insert_with(BTreeMap::new).insert("_zellij_id".to_owned(), Uuid::new_v4().to_string());
     }
@@ -63,6 +64,7 @@ fn pipe_client(
         handle.read_line(&mut buffer).unwrap(); // TODO: no unwrap etc.
         if buffer.is_empty() {
             let msg = ClientToServerMsg::Action(Action::CliMessage{
+                input_pipe_id: input_pipe_id.clone(),
                 name: name.clone(),
                 payload: None,
                 args: args.clone(),
@@ -78,6 +80,7 @@ fn pipe_client(
             break;
         } else {
             let msg = ClientToServerMsg::Action(Action::CliMessage{
+                input_pipe_id: input_pipe_id.clone(),
                 name: name.clone(),
                 payload: Some(buffer),
                 args: args.clone(),
@@ -96,13 +99,14 @@ fn pipe_client(
         loop {
             match os_input.recv_from_server() {
                 Some((ServerToClientMsg::UnblockCliPipeInput(pipe_name), _)) => {
-                    if Some(pipe_name) == name {
+                    if pipe_name == input_pipe_id {
                         break;
                     }
                 },
                 Some((ServerToClientMsg::CliPipeOutput(pipe_name, output), _)) => {
                     let err_context = "Failed to write to stdout";
-                    if Some(pipe_name) == name {
+                    // log::info!("CLI CLIENT, output to pipe: {:?}, input_pipe_id: {:?}", pipe_name, input_pipe_id);
+                    if pipe_name == input_pipe_id {
                         let mut stdout = os_input.get_stdout_writer();
                         stdout
                             .write_all(output.as_bytes())
