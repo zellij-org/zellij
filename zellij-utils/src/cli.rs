@@ -563,6 +563,8 @@ pub enum CliAction {
         #[clap(short, long, value_parser)]
         launch_new: Option<bool>,
         #[clap(short, long, value_parser)]
+        skip_cache: Option<bool>,
+        #[clap(short, long, value_parser)]
         floating: Option<bool>,
         #[clap(short, long, value_parser)]
         in_place: Option<bool>,

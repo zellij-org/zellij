@@ -266,6 +266,7 @@ pub enum Action {
         plugin: Option<String>,
         configuration: Option<BTreeMap<String, String>>,
         launch_new: bool,
+        skip_cache: bool,
         floating: Option<bool>,
         in_place: Option<bool>,
         cwd: Option<PathBuf>,
@@ -604,6 +605,7 @@ impl Action {
                 plugin,
                 configuration,
                 launch_new,
+                skip_cache,
                 floating,
                 in_place,
                 cwd,
@@ -613,6 +615,7 @@ impl Action {
                 let cwd = cwd
                     .map(|cwd| current_dir.join(cwd))
                     .or_else(|| Some(current_dir));
+                let skip_cache = skip_cache.unwrap_or(false);
                 let input_pipe_id = Uuid::new_v4().to_string();
                 Ok(vec![Action::CliMessage{
                     input_pipe_id,
@@ -627,6 +630,7 @@ impl Action {
                     in_place,
                     cwd,
                     pane_title,
+                    skip_cache,
                 }])
             },
         }

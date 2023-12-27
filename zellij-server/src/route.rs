@@ -803,7 +803,7 @@ pub(crate) fn route_action(
                 .send_to_screen(ScreenInstruction::RenameSession(name, client_id))
                 .with_context(err_context)?;
         },
-        Action::CliMessage{ input_pipe_id, mut name, payload, plugin, args, configuration, floating, in_place, launch_new, cwd, pane_title } => {
+        Action::CliMessage{ input_pipe_id, mut name, payload, plugin, args, configuration, floating, in_place, launch_new, skip_cache, cwd, pane_title } => {
             if let Some(name) = name.take() {
                 let should_open_in_place = in_place.unwrap_or(false);
                 if should_open_in_place && pane_id.is_none() {
@@ -811,7 +811,7 @@ pub(crate) fn route_action(
                 }
                 let pane_id_to_replace = if should_open_in_place { pane_id } else { None };
                 senders
-                    .send_to_plugin(PluginInstruction::CliMessage { input_pipe_id, name, payload, plugin, args, configuration, floating, pane_id_to_replace, launch_new, cwd, pane_title })
+                    .send_to_plugin(PluginInstruction::CliMessage { input_pipe_id, name, payload, plugin, args, configuration, floating, pane_id_to_replace, cwd, pane_title, skip_cache })
                     .with_context(err_context)?;
             } else {
                 log::error!("Message must have a name");

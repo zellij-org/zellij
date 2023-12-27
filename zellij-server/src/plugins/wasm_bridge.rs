@@ -873,13 +873,11 @@ impl WasmBridge {
 
     // gets all running plugins details matching this run_plugin, if none are running, loads one and
     // returns its details
-    pub fn get_or_load_plugins(&mut self, run_plugin: RunPlugin, size: Size, cwd: Option<PathBuf>, skip_cache: bool, should_float: bool, should_be_open_in_place: bool, pane_title: Option<String>, pane_id_to_replace: Option<PaneId>, launch_new: bool) -> Vec<(PluginId, Option<ClientId>)> {
+    pub fn get_or_load_plugins(&mut self, run_plugin: RunPlugin, size: Size, cwd: Option<PathBuf>, skip_cache: bool, should_float: bool, should_be_open_in_place: bool, pane_title: Option<String>, pane_id_to_replace: Option<PaneId>) -> Vec<(PluginId, Option<ClientId>)> {
         let all_plugin_ids = self.all_plugin_and_client_ids_for_plugin_location(&run_plugin.location, &run_plugin.configuration);
-        if all_plugin_ids.is_empty() || launch_new {
-            if !launch_new {
-                if let Some(loading_plugin_id) = self.plugin_id_of_loading_plugin(&run_plugin.location) {
-                    return vec![(loading_plugin_id, None)];
-                }
+        if all_plugin_ids.is_empty() {
+            if let Some(loading_plugin_id) = self.plugin_id_of_loading_plugin(&run_plugin.location) {
+                return vec![(loading_plugin_id, None)];
             }
             match self.load_plugin(
                 &run_plugin,

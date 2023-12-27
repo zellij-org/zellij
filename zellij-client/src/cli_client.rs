@@ -27,8 +27,8 @@ pub fn start_cli_client(mut os_input: Box<dyn ClientOsApi>, session_name: &str, 
 
     for action in actions {
         match action {
-            Action::CliMessage { input_pipe_id, name, payload, plugin, args, configuration, launch_new, floating, in_place, cwd, pane_title } if payload.is_none() => {
-                pipe_client(&mut os_input, input_pipe_id, name, plugin, args, configuration, launch_new, floating, in_place, pane_id, cwd, pane_title);
+            Action::CliMessage { input_pipe_id, name, payload, plugin, args, configuration, launch_new, skip_cache, floating, in_place, cwd, pane_title } if payload.is_none() => {
+                pipe_client(&mut os_input, input_pipe_id, name, plugin, args, configuration, launch_new, skip_cache, floating, in_place, pane_id, cwd, pane_title);
             },
             action => {
                 single_message_client(&mut os_input, action, pane_id);
@@ -45,6 +45,7 @@ fn pipe_client(
     args: Option<BTreeMap<String, String>>,
     mut configuration: Option<BTreeMap<String, String>>,
     launch_new: bool,
+    skip_cache: bool,
     floating: Option<bool>,
     in_place: Option<bool>,
     pane_id: Option<u32>,
@@ -58,7 +59,6 @@ fn pipe_client(
     if launch_new {
         configuration.get_or_insert_with(BTreeMap::new).insert("_zellij_id".to_owned(), Uuid::new_v4().to_string());
     }
-    let launch_new = false;
     loop {
         let mut buffer = String::new();
         handle.read_line(&mut buffer).unwrap(); // TODO: no unwrap etc.
@@ -73,6 +73,7 @@ fn pipe_client(
                 floating,
                 in_place,
                 launch_new,
+                skip_cache,
                 cwd: cwd.clone(),
                 pane_title: pane_title.clone()
             }, pane_id, None);
@@ -89,6 +90,7 @@ fn pipe_client(
                 floating,
                 in_place,
                 launch_new,
+                skip_cache,
                 cwd: cwd.clone(),
                 pane_title: pane_title.clone()
             }, pane_id, None);

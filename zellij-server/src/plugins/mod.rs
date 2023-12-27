@@ -109,9 +109,9 @@ pub enum PluginInstruction {
         configuration: Option<BTreeMap<String, String>>,
         floating: Option<bool>,
         pane_id_to_replace: Option<PaneId>,
-        launch_new: bool,
         pane_title: Option<String>,
         cwd: Option<PathBuf>,
+        skip_cache: bool,
     },
     CachePluginEvents { plugin_id: PluginId },
     MessageFromPlugin(MessageToPlugin),
@@ -427,9 +427,9 @@ pub(crate) fn plugin_thread_main(
                 mut configuration,
                 floating,
                 pane_id_to_replace,
-                launch_new,
                 pane_title,
-                cwd
+                cwd,
+                skip_cache
             } => {
                 // TODO CONTINUE HERE(18/12):
                 // * make plugin pretty and make POC with pausing and filtering - DONE
@@ -456,14 +456,16 @@ pub(crate) fn plugin_thread_main(
                 //  - TODO: check various core multi-tab operations, with plugins, various plugin -
                 //  DONE
                 //  - TODO: check multiple simultaneous pipes, I think we have some deadlocks with
-                //  one Arc or another there... <=== CONTINUE HERE (26/12)
+                //  one Arc or another there - DONE
                 //  - TODO: create a unique id for cli pipes and use it for unblocking instead of
-                //  the message name
-                //  - TODO: remove the launch_new from everything except the cli place thing
-                //  - TODO: consider re-adding the skip_cache flag
+                //  the message name - DONE
+                //  - TODO: remove the launch_new from everything except the cli place thing - DONE
+                //  - TODO: consider re-adding the skip_cache flag - DONE
                 //  - TODO: only send messages (unblockclipipeinput, clipipeoutput) to the relevant client and not all of them
                 //  - TODO: look into leaking messages (simultaneously piping to 2 instances of the
                 //  plugin with --launch-new)
+                // * bring all the custo moverride stuff form the plugin messages for when
+                // launching a new plugin with a message (like we did through the cli)
                 // * add permissions
                 // * work on cli error messages, must be clearer
 
@@ -480,7 +482,6 @@ pub(crate) fn plugin_thread_main(
 
                 let should_float = floating.unwrap_or(true);
                 let size = Size::default(); // TODO: why??
-                let skip_plugin_cache = false;
                 let mut updates = vec![];
                 match plugin {
                     Some(plugin_url) => {
@@ -493,12 +494,11 @@ pub(crate) fn plugin_thread_main(
                                     run_plugin,
                                     size,
                                     cwd,
-                                    skip_plugin_cache,
+                                    skip_cache,
                                     should_float,
                                     pane_id_to_replace.is_some(),
                                     pane_title,
                                     pane_id_to_replace,
-                                    launch_new,
                                 );
                                 for (plugin_id, client_id) in all_plugin_ids {
                                     updates.push((Some(plugin_id), client_id, Event::CliMessage {input_pipe_id: input_pipe_id.clone(), name: name.clone(), payload: payload.clone(), args: args.clone() }));
@@ -533,7 +533,6 @@ pub(crate) fn plugin_thread_main(
                 let should_be_open_in_place = false;
                 let pane_title = None;
                 let pane_id_to_replace = None;
-                let launch_new = false;
                 match message_to_plugin.plugin_url {
                     Some(plugin_url) => {
                         match RunPlugin::from_url(&plugin_url) {
@@ -547,7 +546,6 @@ pub(crate) fn plugin_thread_main(
                                     should_be_open_in_place,
                                     pane_title,
                                     pane_id_to_replace,
-                                    launch_new,
                                 );
                                 for (plugin_id, client_id) in all_plugin_ids {
                                     updates.push((Some(plugin_id), client_id, Event::MessageFromPlugin {
