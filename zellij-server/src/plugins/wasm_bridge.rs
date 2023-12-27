@@ -35,7 +35,7 @@ use zellij_utils::{
     errors::prelude::*,
     input::{
         command::TerminalAction,
-        layout::{Layout, RunPlugin, RunPluginLocation},
+        layout::{Layout, RunPlugin, RunPluginLocation, PluginUserConfiguration},
         plugins::PluginsConfig,
     },
     ipc::ClientAttributes,
@@ -67,6 +67,9 @@ pub struct WasmBridge {
     client_attributes: ClientAttributes,
     default_shell: Option<TerminalAction>,
     default_layout: Box<Layout>,
+    cached_plugin_map: HashMap<RunPluginLocation, HashMap<PluginUserConfiguration, Vec<(PluginId, ClientId)>>>,
+//         plugin_location: &RunPluginLocation,
+//         plugin_configuration: &PluginUserConfiguration,
 }
 
 impl WasmBridge {
@@ -109,12 +112,13 @@ impl WasmBridge {
             client_attributes,
             default_shell,
             default_layout,
+            cached_plugin_map: HashMap::new(),
         }
     }
     pub fn load_plugin(
         &mut self,
         run: &RunPlugin,
-        tab_index: usize,
+        tab_index: Option<usize>,
         size: Size,
         cwd: Option<PathBuf>,
         skip_cache: bool,
@@ -245,6 +249,7 @@ impl WasmBridge {
                 log::error!("Failed to remove cache dir for plugin: {:?}", e);
             }
         }
+        self.cached_plugin_map.clear();
         Ok(())
     }
     pub fn reload_plugin(&mut self, run_plugin: &RunPlugin) -> Result<()> {
@@ -253,7 +258,7 @@ impl WasmBridge {
             return Ok(());
         }
 
-        let plugin_ids = self.all_plugin_ids_for_plugin_location(&run_plugin.location)?;
+        let plugin_ids = self.all_plugin_ids_for_plugin_location(&run_plugin.location, &run_plugin.configuration)?;
         for plugin_id in &plugin_ids {
             let (rows, columns) = self.size_of_plugin_id(*plugin_id).unwrap_or((0, 0));
             self.cached_events_for_pending_plugins
@@ -575,6 +580,7 @@ impl WasmBridge {
             }
             self.loading_plugins
                 .retain(|(p_id, _run_plugin), _| p_id != &plugin_id);
+            self.clear_plugin_map_cache();
         }
         for run_plugin in applied_plugin_paths.drain() {
             if self.pending_plugin_reloads.remove(&run_plugin) {
@@ -715,23 +721,32 @@ impl WasmBridge {
     fn all_plugin_ids_for_plugin_location(
         &self,
         plugin_location: &RunPluginLocation,
+        plugin_configuration: &PluginUserConfiguration,
     ) -> Result<Vec<PluginId>> {
         self.plugin_map
             .lock()
             .unwrap()
-            .all_plugin_ids_for_plugin_location(plugin_location)
+            .all_plugin_ids_for_plugin_location(plugin_location, plugin_configuration)
     }
     pub fn all_plugin_and_client_ids_for_plugin_location(
-        &self,
+        &mut self,
         plugin_location: &RunPluginLocation,
+        plugin_configuration: &PluginUserConfiguration,
     ) -> Vec<(PluginId, Option<ClientId>)> {
-        self.plugin_map
-            .lock()
-            .unwrap()
-            .all_plugin_and_client_ids_for_plugin_location(plugin_location)
-            .into_iter()
-            .map(|(p_id, c_id)| (p_id, Some(c_id)))
-            .collect()
+        if self.cached_plugin_map.is_empty() {
+            self.cached_plugin_map = self.plugin_map.lock().unwrap().clone_plugin_assets();
+        }
+//             self.plugin_map
+//                 .lock()
+//                 .unwrap()
+//                 .all_plugin_and_client_ids_for_plugin_location(plugin_location, plugin_configuration)
+//                 .into_iter()
+//                 .map(|(p_id, c_id)| (p_id, Some(c_id)))
+//                 .collect()
+        match self.cached_plugin_map.get(plugin_location).and_then(|m| m.get(plugin_configuration)) {
+            Some(plugin_and_client_ids) => plugin_and_client_ids.iter().map(|(plugin_id, client_id)| (*plugin_id, Some(*client_id))).collect(),
+            None => vec![]
+        }
     }
     pub fn all_plugin_ids(
         &self,
@@ -858,15 +873,17 @@ impl WasmBridge {
 
     // gets all running plugins details matching this run_plugin, if none are running, loads one and
     // returns its details
-    pub fn get_or_load_plugins(&mut self, run_plugin: RunPlugin, tab_index: usize, size: Size, cwd: Option<PathBuf>, skip_cache: bool, should_float: bool, should_be_open_in_place: bool, pane_title: Option<String>, pane_id_to_replace: Option<PaneId>) -> Vec<(PluginId, Option<ClientId>)> {
-        let all_plugin_ids = self.all_plugin_and_client_ids_for_plugin_location(&run_plugin.location);
-        if all_plugin_ids.is_empty() {
-            if let Some(loading_plugin_id) = self.plugin_id_of_loading_plugin(&run_plugin.location) {
-                return vec![(loading_plugin_id, None)];
+    pub fn get_or_load_plugins(&mut self, run_plugin: RunPlugin, size: Size, cwd: Option<PathBuf>, skip_cache: bool, should_float: bool, should_be_open_in_place: bool, pane_title: Option<String>, pane_id_to_replace: Option<PaneId>, launch_new: bool) -> Vec<(PluginId, Option<ClientId>)> {
+        let all_plugin_ids = self.all_plugin_and_client_ids_for_plugin_location(&run_plugin.location, &run_plugin.configuration);
+        if all_plugin_ids.is_empty() || launch_new {
+            if !launch_new {
+                if let Some(loading_plugin_id) = self.plugin_id_of_loading_plugin(&run_plugin.location) {
+                    return vec![(loading_plugin_id, None)];
+                }
             }
             match self.load_plugin(
                 &run_plugin,
-                tab_index,
+                None,
                 size,
                 cwd.clone(),
                 skip_cache,
@@ -878,7 +895,7 @@ impl WasmBridge {
                         should_be_open_in_place,
                         run_plugin,
                         pane_title,
-                        tab_index,
+                        None,
                         plugin_id,
                         pane_id_to_replace,
                         cwd,
@@ -894,6 +911,9 @@ impl WasmBridge {
         } else {
             all_plugin_ids
         }
+    }
+    pub fn clear_plugin_map_cache(&mut self) {
+        self.cached_plugin_map.clear();
     }
 }
 

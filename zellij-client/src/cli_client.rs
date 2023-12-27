@@ -27,8 +27,8 @@ pub fn start_cli_client(mut os_input: Box<dyn ClientOsApi>, session_name: &str, 
 
     for action in actions {
         match action {
-            Action::CliMessage { name, payload, plugin, args } if payload.is_none() => {
-                pipe_client(&mut os_input, name, plugin, args, pane_id);
+            Action::CliMessage { name, payload, plugin, args, configuration, launch_new, floating, in_place, cwd, pane_title } if payload.is_none() => {
+                pipe_client(&mut os_input, name, plugin, args, configuration, launch_new, floating, in_place, pane_id, cwd, pane_title);
             },
             action => {
                 single_message_client(&mut os_input, action, pane_id);
@@ -37,21 +37,61 @@ pub fn start_cli_client(mut os_input: Box<dyn ClientOsApi>, session_name: &str, 
     }
 }
 
-fn pipe_client(os_input: &mut Box<dyn ClientOsApi>, mut pipe_name: Option<String>, plugin: Option<String>, args: Option<BTreeMap<String, String>>, pane_id: Option<u32>) {
+fn pipe_client(
+    os_input: &mut Box<dyn ClientOsApi>,
+    mut pipe_name: Option<String>,
+    plugin: Option<String>,
+    args: Option<BTreeMap<String, String>>,
+    mut configuration: Option<BTreeMap<String, String>>,
+    launch_new: bool,
+    floating: Option<bool>,
+    in_place: Option<bool>,
+    pane_id: Option<u32>,
+    cwd: Option<PathBuf>,
+    pane_title: Option<String>,
+) {
     use std::io::BufRead;
     let stdin = std::io::stdin(); // TODO: from os_input
     let mut handle = stdin.lock();
     let name = pipe_name.take().or_else(|| Some(Uuid::new_v4().to_string()));
+    if launch_new {
+        configuration.get_or_insert_with(BTreeMap::new).insert("_zellij_id".to_owned(), Uuid::new_v4().to_string());
+    }
+    let launch_new = false;
     loop {
         let mut buffer = String::new();
         handle.read_line(&mut buffer).unwrap(); // TODO: no unwrap etc.
         if buffer.is_empty() {
-            let msg = ClientToServerMsg::Action(Action::CliMessage{ name: name.clone(), payload: None, args: args.clone(), plugin: plugin.clone() }, pane_id, None);
+            let msg = ClientToServerMsg::Action(Action::CliMessage{
+                name: name.clone(),
+                payload: None,
+                args: args.clone(),
+                plugin: plugin.clone(),
+                configuration: configuration.clone(),
+                floating,
+                in_place,
+                launch_new,
+                cwd: cwd.clone(),
+                pane_title: pane_title.clone()
+            }, pane_id, None);
             os_input.send_to_server(msg);
             break;
         } else {
-            let msg = ClientToServerMsg::Action(Action::CliMessage{ name: name.clone(), payload: Some(buffer), args: args.clone(), plugin: plugin.clone() }, pane_id, None);
+            let msg = ClientToServerMsg::Action(Action::CliMessage{
+                name: name.clone(),
+                payload: Some(buffer),
+                args: args.clone(),
+                plugin: plugin.clone(),
+                configuration: configuration.clone(),
+                floating,
+                in_place,
+                launch_new,
+                cwd: cwd.clone(),
+                pane_title: pane_title.clone()
+            }, pane_id, None);
             os_input.send_to_server(msg);
+            // launch_new = false; // if we don't do this a plugin will be launched for each pipe
+                                // message and we definitely don't want that
         }
         loop {
             match os_input.recv_from_server() {

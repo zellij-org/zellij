@@ -105,6 +105,12 @@ pub enum PluginInstruction {
         payload: Option<String>,
         plugin: Option<String>,
         args: Option<BTreeMap<String, String>>,
+        configuration: Option<BTreeMap<String, String>>,
+        floating: Option<bool>,
+        pane_id_to_replace: Option<PaneId>,
+        launch_new: bool,
+        pane_title: Option<String>,
+        cwd: Option<PathBuf>,
     },
     CachePluginEvents { plugin_id: PluginId },
     MessageFromPlugin(MessageToPlugin),
@@ -199,7 +205,7 @@ pub(crate) fn plugin_thread_main(
                 skip_cache,
             ) => match wasm_bridge.load_plugin(
                 &run,
-                tab_index,
+                Some(tab_index),
                 size,
                 cwd.clone(),
                 skip_cache,
@@ -211,7 +217,7 @@ pub(crate) fn plugin_thread_main(
                         should_be_open_in_place,
                         run,
                         pane_title,
-                        tab_index,
+                        Some(tab_index),
                         plugin_id,
                         pane_id_to_replace,
                         cwd,
@@ -242,7 +248,7 @@ pub(crate) fn plugin_thread_main(
                             // the cli who spawned the command and is not an existing client_id
                             let skip_cache = true; // when reloading we always skip cache
                             match wasm_bridge
-                                .load_plugin(&run, tab_index, size, None, skip_cache, None)
+                                .load_plugin(&run, Some(tab_index), size, None, skip_cache, None)
                             {
                                 Ok((plugin_id, client_id)) => {
                                     let should_be_open_in_place = false;
@@ -251,7 +257,7 @@ pub(crate) fn plugin_thread_main(
                                         should_be_open_in_place,
                                         run,
                                         pane_title,
-                                        tab_index,
+                                        Some(tab_index),
                                         plugin_id,
                                         None,
                                         None,
@@ -311,7 +317,7 @@ pub(crate) fn plugin_thread_main(
                         let skip_cache = false;
                         let (plugin_id, client_id) = wasm_bridge.load_plugin(
                             &run,
-                            tab_index,
+                            Some(tab_index),
                             size,
                             None,
                             skip_cache,
@@ -411,8 +417,18 @@ pub(crate) fn plugin_thread_main(
                         .send_to_pty(PtyInstruction::LogLayoutToHd(session_layout_metadata)),
                 );
             },
-            PluginInstruction::CliMessage {name, payload, plugin, args} => { // TODO: remove client_id,
-                                                                      // it's from the cli
+            PluginInstruction::CliMessage {
+                name,
+                payload,
+                plugin,
+                args,
+                mut configuration,
+                floating,
+                pane_id_to_replace,
+                launch_new,
+                pane_title,
+                cwd
+            } => {
                 // TODO CONTINUE HERE(18/12):
                 // * make plugin pretty and make POC with pausing and filtering - DONE
                 // * remove subscribe mechanism, - DONE
@@ -432,10 +448,17 @@ pub(crate) fn plugin_thread_main(
                 //  methods' names should reflect this change) - DONE
                 //  - create a send_message plugin api that would act like Message but without
                 //  backpressure - DONE
-                //  - write some plugin api tests for it (like the clioutput, etc. tests) -
-                //  TODO: CONTINUE HERE (25/12)
+                //  - write some plugin api tests for it (like the clioutput, etc. tests) - DONE
                 // * bring all the custo moverride stuff form the cli/plugin (the static variables
                 // at the beginning of the vairous PluginInstruction methods)
+                //  - TODO: check various core multi-tab operations, with plugins, various plugin -
+                //  DONE
+                //  - TODO: check multiple simultaneous pipes, I think we have some deadlocks with
+                //  one Arc or another there... <=== CONTINUE HERE (26/12)
+                //  multi tab operations (to make sure removing the tab_index didn't do anything
+                //  bad), test also cli run plugins from a message and multi-tab operations...
+                //  - TODO: remove the launch_new from everything except the cli place thing
+                //  - TODO: consider re-adding the skip_cache flag
                 // * add permissions
                 // * work on cli error messages, must be clearer
 
@@ -448,30 +471,29 @@ pub(crate) fn plugin_thread_main(
                 // * continue as normal below (make sure to test this with a pipe, maybe even with
                 // a pipe to multiple plugins where one of them is not loaded)
 
-                // TODO: accept these as parameters and adjust defaults somewhere/somehow
-                let cwd = None;
-                let tab_index = 0;
-                let size = Size::default();
+                // TODO CONTINUE HERE: accept these as parameters and adjust defaults somewhere/somehow, then test everything manually
+
+                let should_float = floating.unwrap_or(true);
+                let size = Size::default(); // TODO: why??
+                let skip_plugin_cache = false;
                 let mut updates = vec![];
-                let skip_cache = false;
-                let should_float = true;
-                let should_be_open_in_place = false;
-                let pane_title = None;
-                let pane_id_to_replace = None;
                 match plugin {
                     Some(plugin_url) => {
                         match RunPlugin::from_url(&plugin_url) {
-                            Ok(run_plugin) => {
+                            Ok(mut run_plugin) => {
+                                if let Some(configuration) = configuration.take() {
+                                    run_plugin.configuration = PluginUserConfiguration::new(configuration);
+                                }
                                 let all_plugin_ids = wasm_bridge.get_or_load_plugins(
                                     run_plugin,
-                                    tab_index,
                                     size,
                                     cwd,
-                                    skip_cache,
+                                    skip_plugin_cache,
                                     should_float,
-                                    should_be_open_in_place,
+                                    pane_id_to_replace.is_some(),
                                     pane_title,
-                                    pane_id_to_replace
+                                    pane_id_to_replace,
+                                    launch_new,
                                 );
                                 for (plugin_id, client_id) in all_plugin_ids {
                                     updates.push((Some(plugin_id), client_id, Event::CliMessage {name: name.clone(), payload: payload.clone(), args: args.clone() }));
@@ -506,20 +528,21 @@ pub(crate) fn plugin_thread_main(
                 let should_be_open_in_place = false;
                 let pane_title = None;
                 let pane_id_to_replace = None;
+                let launch_new = false;
                 match message_to_plugin.plugin_url {
                     Some(plugin_url) => {
                         match RunPlugin::from_url(&plugin_url) {
                             Ok(run_plugin) => {
                                 let all_plugin_ids = wasm_bridge.get_or_load_plugins(
                                     run_plugin,
-                                    tab_index,
                                     size,
                                     cwd,
                                     skip_cache,
                                     should_float,
                                     should_be_open_in_place,
                                     pane_title,
-                                    pane_id_to_replace
+                                    pane_id_to_replace,
+                                    launch_new,
                                 );
                                 for (plugin_id, client_id) in all_plugin_ids {
                                     updates.push((Some(plugin_id), client_id, Event::MessageFromPlugin {

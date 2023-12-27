@@ -15,7 +15,7 @@ use zellij_utils::{
     data::EventType,
     data::PluginCapabilities,
     input::command::TerminalAction,
-    input::layout::{Layout, RunPlugin, RunPluginLocation},
+    input::layout::{Layout, RunPlugin, RunPluginLocation, PluginUserConfiguration},
     input::plugins::PluginConfig,
     ipc::ClientAttributes,
 };
@@ -157,13 +157,17 @@ impl PluginMap {
     pub fn all_plugin_ids_for_plugin_location(
         &self,
         plugin_location: &RunPluginLocation,
+        plugin_configuration: &PluginUserConfiguration,
     ) -> Result<Vec<PluginId>> {
         let err_context = || format!("Failed to get plugin ids for location {plugin_location}");
         let plugin_ids: Vec<PluginId> = self
             .plugin_assets
             .iter()
             .filter(|(_, (running_plugin, _subscriptions, _workers))| {
-                &running_plugin.lock().unwrap().plugin_env.plugin.location == plugin_location
+                let running_plugin = running_plugin.lock().unwrap();
+                let running_plugin_location = &running_plugin.plugin_env.plugin.location;
+                let running_plugin_configuration = &running_plugin.plugin_env.plugin.userspace_configuration;
+                running_plugin_location == plugin_location && running_plugin_configuration == plugin_configuration
             })
             .map(|((plugin_id, _client_id), _)| *plugin_id)
             .collect();
@@ -175,15 +179,45 @@ impl PluginMap {
     pub fn all_plugin_and_client_ids_for_plugin_location(
         &self,
         plugin_location: &RunPluginLocation,
+        plugin_configuration: &PluginUserConfiguration,
     ) -> Vec<(PluginId, ClientId)> {
         self
             .plugin_assets
             .iter()
             .filter(|(_, (running_plugin, _subscriptions, _workers))| {
-                &running_plugin.lock().unwrap().plugin_env.plugin.location == plugin_location
+                let running_plugin = running_plugin.lock().unwrap();
+                let running_plugin_location = &running_plugin.plugin_env.plugin.location;
+                let running_plugin_configuration = &running_plugin.plugin_env.plugin.userspace_configuration;
+                running_plugin_location == plugin_location && running_plugin_configuration == plugin_configuration
             })
             .map(|((plugin_id, client_id), _)| (*plugin_id, *client_id))
             .collect()
+    }
+    pub fn clone_plugin_assets(&self) -> HashMap<RunPluginLocation, HashMap<PluginUserConfiguration, Vec<(PluginId, ClientId)>>> {
+        let mut cloned_plugin_assets: HashMap<RunPluginLocation, HashMap<PluginUserConfiguration, Vec<(PluginId, ClientId)>>> = HashMap::new();
+        for ((plugin_id, client_id), (running_plugin, _, _)) in self.plugin_assets.iter() {
+            let running_plugin = running_plugin.lock().unwrap();
+            let running_plugin_location = &running_plugin.plugin_env.plugin.location;
+            let running_plugin_configuration = &running_plugin.plugin_env.plugin.userspace_configuration;
+            match cloned_plugin_assets.get_mut(running_plugin_location) {
+                Some(location_map) => {
+                    match location_map.get_mut(running_plugin_configuration) {
+                        Some(plugin_instances_info) => {
+                            plugin_instances_info.push((*plugin_id, *client_id));
+                        },
+                        None => {
+                            location_map.insert(running_plugin_configuration.clone(), vec![(*plugin_id, *client_id)]);
+                        }
+                    }
+                },
+                None => {
+                    let mut location_map = HashMap::new();
+                    location_map.insert(running_plugin_configuration.clone(), vec![(*plugin_id, *client_id)]);
+                    cloned_plugin_assets.insert(running_plugin_location.clone(), location_map);
+                }
+            }
+        }
+        cloned_plugin_assets
     }
     pub fn all_plugin_ids(
         &self,
@@ -240,7 +274,7 @@ pub struct PluginEnv {
     pub permissions: Arc<Mutex<Option<HashSet<PermissionType>>>>,
     pub senders: ThreadSenders,
     pub wasi_env: WasiEnv,
-    pub tab_index: usize,
+    pub tab_index: Option<usize>,
     pub client_id: ClientId,
     #[allow(dead_code)]
     pub plugin_own_data_dir: PathBuf,

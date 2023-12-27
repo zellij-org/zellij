@@ -1,7 +1,6 @@
 //! Definition of the actions that can be bound to keys.
 
 use std::collections::BTreeMap;
-use url::Url;
 use super::command::RunCommandAction;
 use super::layout::{
     FloatingPaneLayout, Layout, RunPlugin, RunPluginLocation, SwapFloatingLayout, SwapTiledLayout,
@@ -258,7 +257,18 @@ pub enum Action {
     BreakPaneRight,
     BreakPaneLeft,
     RenameSession(String),
-    CliMessage { name: Option<String>, payload: Option<String>, args: Option<BTreeMap<String, String>>, plugin: Option<String> },
+    CliMessage {
+        name: Option<String>,
+        payload: Option<String>,
+        args: Option<BTreeMap<String, String>>,
+        plugin: Option<String>,
+        configuration: Option<BTreeMap<String, String>>,
+        launch_new: bool,
+        floating: Option<bool>,
+        in_place: Option<bool>,
+        cwd: Option<PathBuf>,
+        pane_title: Option<String>,
+    },
 }
 
 impl Action {
@@ -585,7 +595,36 @@ impl Action {
                 )])
             },
             CliAction::RenameSession { name } => Ok(vec![Action::RenameSession(name)]),
-            CliAction::Message { name, payload, args, plugin } => Ok(vec![Action::CliMessage{name, payload, args: args.map(|a| a.inner().clone()), plugin}]), // TODO: no clone somehow
+            CliAction::Message {
+                name,
+                payload,
+                args,
+                plugin,
+                configuration,
+                launch_new,
+                floating,
+                in_place,
+                cwd,
+                pane_title,
+            } => {
+                let current_dir = get_current_dir();
+                let cwd = cwd
+                    .map(|cwd| current_dir.join(cwd))
+                    .or_else(|| Some(current_dir));
+                Ok(vec![Action::CliMessage{
+                    name,
+                    payload,
+                    args: args.map(|a| a.inner().clone()), // TODO: no clone somehow
+                    plugin,
+                    configuration: configuration.map(|a| a.inner().clone()), // TODO: no clone
+                                                                             // somehow
+                    launch_new: launch_new.unwrap_or(false),
+                    floating,
+                    in_place,
+                    cwd,
+                    pane_title,
+                }])
+            },
         }
     }
 }

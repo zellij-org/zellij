@@ -68,7 +68,8 @@ pub enum ServerInstruction {
         ClientId,
         Option<PluginsConfig>,
     ),
-    Render(Option<HashMap<ClientId, String>>),
+    Render(Option<HashMap<ClientId, String>>, Option<HashSet<String>>), // 2nd argument is
+                                                                    // input_pipes_to_unblock
     UnblockInputThread,
     ClientExit(ClientId),
     RemoveClient(ClientId),
@@ -94,7 +95,7 @@ impl From<&ServerInstruction> for ServerContext {
     fn from(server_instruction: &ServerInstruction) -> Self {
         match *server_instruction {
             ServerInstruction::NewClient(..) => ServerContext::NewClient,
-            ServerInstruction::Render(_) => ServerContext::Render,
+            ServerInstruction::Render(..) => ServerContext::Render,
             ServerInstruction::UnblockInputThread => ServerContext::UnblockInputThread,
             ServerInstruction::ClientExit(..) => ServerContext::ClientExit,
             ServerInstruction::RemoveClient(..) => ServerContext::RemoveClient,
@@ -621,7 +622,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                         .unwrap();
                 }
             },
-            ServerInstruction::Render(serialized_output) => {
+            ServerInstruction::Render(serialized_output, input_pipes_to_unblock) => {
                 let client_ids = session_state.read().unwrap().client_ids();
                 // If `Some(_)`- unwrap it and forward it to the clients to render.
                 // If `None`- Send an exit instruction. This is the case when a user closes the last Tab/Pane.
@@ -636,6 +637,18 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                             ServerToClientMsg::Render(client_render_instruction.clone()),
                             session_state
                         );
+                    }
+                    if let Some(input_pipes_to_unblock) = input_pipes_to_unblock {
+                        for pipe_name in input_pipes_to_unblock {
+                            for client_id in session_state.read().unwrap().clients.keys() {
+                                send_to_client!(
+                                    *client_id,
+                                    os_input,
+                                    ServerToClientMsg::UnblockCliPipeInput(pipe_name.clone()),
+                                    session_state
+                                );
+                            }
+                        }
                     }
                 } else {
                     for client_id in client_ids {
@@ -849,7 +862,8 @@ fn init_session(
         .spawn({
             let plugin_bus = Bus::new(
                 vec![plugin_receiver],
-                Some(&to_screen),
+                // Some(&to_screen),
+                Some(&to_screen_bounded),
                 Some(&to_pty),
                 Some(&to_plugin),
                 Some(&to_server),

@@ -557,6 +557,19 @@ pub enum CliAction {
         args: Option<PluginUserConfiguration>, // TODO: we might want to not re-use
                                                         // PluginUserConfiguration
         #[clap(short, long, value_parser)]
-        plugin: Option<String>
+        plugin: Option<String>,
+        #[clap(short, long, value_parser)]
+        configuration: Option<PluginUserConfiguration>,
+        #[clap(short, long, value_parser)]
+        launch_new: Option<bool>,
+        #[clap(short, long, value_parser)]
+        floating: Option<bool>,
+        #[clap(short, long, value_parser)]
+        in_place: Option<bool>,
+        /// Change the working directory of the new plugin
+        #[clap(long, value_parser)]
+        cwd: Option<PathBuf>,
+        #[clap(long, value_parser)]
+        pane_title: Option<String>,
     },
 }

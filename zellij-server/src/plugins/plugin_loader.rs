@@ -56,7 +56,7 @@ pub struct PluginLoader<'a> {
     store: Arc<Mutex<Store>>,
     plugin: PluginConfig,
     plugin_dir: &'a PathBuf,
-    tab_index: usize,
+    tab_index: Option<usize>,
     plugin_own_data_dir: PathBuf,
     size: Size,
     wasm_blob_on_hd: Option<(Vec<u8>, PathBuf)>,
@@ -133,7 +133,7 @@ impl<'a> PluginLoader<'a> {
         plugin_id: PluginId,
         client_id: ClientId,
         plugin: &PluginConfig,
-        tab_index: usize,
+        tab_index: Option<usize>,
         plugin_dir: PathBuf,
         plugin_cache: Arc<Mutex<HashMap<PathBuf, Module>>>,
         senders: ThreadSenders,
@@ -339,7 +339,7 @@ impl<'a> PluginLoader<'a> {
         store: Arc<Mutex<Store>>,
         plugin: PluginConfig,
         plugin_dir: &'a PathBuf,
-        tab_index: usize,
+        tab_index: Option<usize>,
         size: Size,
         path_to_default_shell: PathBuf,
         zellij_cwd: PathBuf,
@@ -814,7 +814,9 @@ impl<'a> PluginLoader<'a> {
             .import_object(store_mut, &module)
             .with_context(err_context)?;
         let mut mut_plugin = self.plugin.clone();
-        mut_plugin.set_tab_index(self.tab_index);
+        if let Some(tab_index) = self.tab_index {
+            mut_plugin.set_tab_index(tab_index);
+        }
         let plugin_env = PluginEnv {
             plugin_id: self.plugin_id,
             client_id: self.client_id,

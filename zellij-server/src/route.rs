@@ -803,10 +803,15 @@ pub(crate) fn route_action(
                 .send_to_screen(ScreenInstruction::RenameSession(name, client_id))
                 .with_context(err_context)?;
         },
-        Action::CliMessage{ mut name, payload, plugin, args } => {
+        Action::CliMessage{ mut name, payload, plugin, args, configuration, floating, in_place, launch_new, cwd, pane_title } => {
             if let Some(name) = name.take() {
+                let should_open_in_place = in_place.unwrap_or(false);
+                if should_open_in_place && pane_id.is_none() {
+                    log::error!("Was asked to open a new plugin in-place, but cannot identify the pane id... is the ZELLIJ_PANE_ID variable set?");
+                }
+                let pane_id_to_replace = if should_open_in_place { pane_id } else { None };
                 senders
-                    .send_to_plugin(PluginInstruction::CliMessage { name, payload, plugin, args})
+                    .send_to_plugin(PluginInstruction::CliMessage { name, payload, plugin, args, configuration, floating, pane_id_to_replace, launch_new, cwd, pane_title })
                     .with_context(err_context)?;
             } else {
                 log::error!("Message must have a name");
