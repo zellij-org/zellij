@@ -2421,8 +2421,11 @@ fn saved_cursor_across_resize() {
         arrow_fonts,
         styled_underlines,
     );
-    let mut parse = |s, grid: &mut Grid|
-        for b in Vec::from(s) { vte_parser.advance(&mut *grid, b) };
+    let mut parse = |s, grid: &mut Grid| {
+        for b in Vec::from(s) {
+            vte_parser.advance(&mut *grid, b)
+        }
+    };
     let content = "
 \rLine 1 >fill to 20_<
 \rLine 2 >fill to 20_<
@@ -2463,8 +2466,11 @@ fn saved_cursor_across_resize_longline() {
         arrow_fonts,
         styled_underlines,
     );
-    let mut parse = |s, grid: &mut Grid|
-        for b in Vec::from(s) { vte_parser.advance(&mut *grid, b) };
+    let mut parse = |s, grid: &mut Grid| {
+        for b in Vec::from(s) {
+            vte_parser.advance(&mut *grid, b)
+        }
+    };
     let content = "
 \rLine 1 >fill \u{1b}[sto 20_<";
     parse(content, &mut grid);
@@ -2487,7 +2493,7 @@ fn saved_cursor_across_resize_rewrap() {
     let styled_underlines = true;
     let mut grid = Grid::new(
         4,
-        4*8,
+        4 * 8,
         Rc::new(RefCell::new(Palette::default())),
         terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
@@ -2498,8 +2504,11 @@ fn saved_cursor_across_resize_rewrap() {
         arrow_fonts,
         styled_underlines,
     );
-    let mut parse = |s, grid: &mut Grid|
-        for b in Vec::from(s) { vte_parser.advance(&mut *grid, b) };
+    let mut parse = |s, grid: &mut Grid| {
+        for b in Vec::from(s) {
+            vte_parser.advance(&mut *grid, b)
+        }
+    };
     let content = "
 \r12345678123456781234567\u{1b}[s812345678"; // 4*8 chars
     parse(content, &mut grid);

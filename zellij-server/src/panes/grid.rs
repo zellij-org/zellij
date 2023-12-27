@@ -850,11 +850,11 @@ impl Grid {
 
             let mut new_cursor_y = self.canonical_line_y_coordinates(cursor_canonical_line_index)
                 + (cursor_index_in_canonical_line / new_columns);
-            let mut saved_cursor_y_coordinates = self.saved_cursor_position.as_ref()
-                .map(|saved_cursor|
+            let mut saved_cursor_y_coordinates =
+                self.saved_cursor_position.as_ref().map(|saved_cursor| {
                     self.canonical_line_y_coordinates(saved_cursor.y)
                         + saved_cursor_index_in_canonical_line.as_ref().unwrap() / new_columns
-                );
+                });
 
             // A cursor at EOL has two equivalent positions - end of this line or beginning of
             // next. If not already at the beginning of line, bias to EOL so add character logic
@@ -864,8 +864,8 @@ impl Grid {
                 new_cursor_y -= 1;
                 new_cursor_x = new_columns
             }
-            let saved_cursor_x_coordinates = saved_cursor_index_in_canonical_line.as_ref()
-                .map(|saved_cursor_index_in_canonical_line| {
+            let saved_cursor_x_coordinates = saved_cursor_index_in_canonical_line.as_ref().map(
+                |saved_cursor_index_in_canonical_line| {
                     let x = self.saved_cursor_position.as_ref().unwrap().x;
                     let mut new_x = *saved_cursor_index_in_canonical_line % new_columns;
                     let new_y = saved_cursor_y_coordinates.as_mut().unwrap();
@@ -874,7 +874,8 @@ impl Grid {
                         new_x = new_columns
                     }
                     new_x
-                });
+                },
+            );
 
             let current_viewport_row_count = self.viewport.len();
             match current_viewport_row_count.cmp(&self.height) {
@@ -926,20 +927,25 @@ impl Grid {
                         saved_cursor_position.x = saved_cursor_x_coordinates;
                         saved_cursor_position.y = saved_cursor_y_coordinates;
                     },
-                    _ => unreachable!("saved cursor {:?} {:?}",
-                        saved_cursor_x_coordinates,
-                        saved_cursor_y_coordinates),
+                    _ => unreachable!(
+                        "saved cursor {:?} {:?}",
+                        saved_cursor_x_coordinates, saved_cursor_y_coordinates
+                    ),
                 }
             };
         }
         if new_rows != self.height {
             let mut new_cursor_y = self.cursor.y;
-            let mut saved_cursor_y_coordinates =
-                self.saved_cursor_position.as_ref().map(|saved_cursor| saved_cursor.y);
+            let mut saved_cursor_y_coordinates = self
+                .saved_cursor_position
+                .as_ref()
+                .map(|saved_cursor| saved_cursor.y);
 
             let new_cursor_x = self.cursor.x;
-            let saved_cursor_x_coordinates =
-                self.saved_cursor_position.as_ref().map(|saved_cursor| saved_cursor.x);
+            let saved_cursor_x_coordinates = self
+                .saved_cursor_position
+                .as_ref()
+                .map(|saved_cursor| saved_cursor.x);
 
             let current_viewport_row_count = self.viewport.len();
             match current_viewport_row_count.cmp(&new_rows) {
@@ -990,9 +996,10 @@ impl Grid {
                         saved_cursor_position.x = saved_cursor_x_coordinates;
                         saved_cursor_position.y = saved_cursor_y_coordinates;
                     },
-                    _ => unreachable!("saved cursor {:?} {:?}",
-                        saved_cursor_x_coordinates,
-                        saved_cursor_y_coordinates),
+                    _ => unreachable!(
+                        "saved cursor {:?} {:?}",
+                        saved_cursor_x_coordinates, saved_cursor_y_coordinates
+                    ),
                 }
             };
         }
