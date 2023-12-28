@@ -769,7 +769,7 @@ impl Grid {
         }
         self.selection.reset();
         self.sixel_grid.character_cell_size_possibly_changed();
-        if new_columns != self.width {
+        let cursors = if new_columns != self.width {
             self.horizontal_tabstops = create_horizontal_tabstops(new_columns);
             let mut cursor_canonical_line_index = self.cursor_canonical_line_index();
             let cursor_index_in_canonical_line = self.cursor_index_in_canonical_line();
@@ -877,75 +877,41 @@ impl Grid {
                 },
             );
 
-            let current_viewport_row_count = self.viewport.len();
-            match current_viewport_row_count.cmp(&self.height) {
-                Ordering::Less => {
-                    let row_count_to_transfer = self.height - current_viewport_row_count;
-
-                    transfer_rows_from_lines_above_to_viewport(
-                        &mut self.lines_above,
-                        &mut self.viewport,
-                        &mut self.sixel_grid,
-                        row_count_to_transfer,
-                        new_columns,
-                    );
-                    let rows_pulled = self.viewport.len() - current_viewport_row_count;
-                    new_cursor_y += rows_pulled;
-                    if let Some(saved_cursor_y_coordinates) = saved_cursor_y_coordinates.as_mut() {
-                        *saved_cursor_y_coordinates += rows_pulled;
-                    }
-                },
-                Ordering::Greater => {
-                    let row_count_to_transfer = current_viewport_row_count - self.height;
-                    if row_count_to_transfer > new_cursor_y {
-                        new_cursor_y = 0;
-                    } else {
-                        new_cursor_y -= row_count_to_transfer;
-                    }
-                    if let Some(saved_cursor_y_coordinates) = saved_cursor_y_coordinates.as_mut() {
-                        if row_count_to_transfer > *saved_cursor_y_coordinates {
-                            *saved_cursor_y_coordinates = 0;
-                        } else {
-                            *saved_cursor_y_coordinates -= row_count_to_transfer;
-                        }
-                    }
-                    transfer_rows_from_viewport_to_lines_above(
-                        &mut self.viewport,
-                        &mut self.lines_above,
-                        &mut self.sixel_grid,
-                        row_count_to_transfer,
-                        new_columns,
-                    );
-                },
-                Ordering::Equal => {},
-            }
-            self.cursor.y = new_cursor_y;
-            self.cursor.x = new_cursor_x;
-            if let Some(saved_cursor_position) = self.saved_cursor_position.as_mut() {
-                match (saved_cursor_x_coordinates, saved_cursor_y_coordinates) {
-                    (Some(saved_cursor_x_coordinates), Some(saved_cursor_y_coordinates)) => {
-                        saved_cursor_position.x = saved_cursor_x_coordinates;
-                        saved_cursor_position.y = saved_cursor_y_coordinates;
-                    },
-                    _ => unreachable!(
-                        "saved cursor {:?} {:?}",
-                        saved_cursor_x_coordinates, saved_cursor_y_coordinates
-                    ),
-                }
-            };
-        }
-        if new_rows != self.height {
-            let mut new_cursor_y = self.cursor.y;
-            let mut saved_cursor_y_coordinates = self
+            Some((
+                new_cursor_y,
+                saved_cursor_y_coordinates,
+                new_cursor_x,
+                saved_cursor_x_coordinates,
+            ))
+        } else if new_rows != self.height {
+            let saved_cursor_y_coordinates = self
                 .saved_cursor_position
                 .as_ref()
                 .map(|saved_cursor| saved_cursor.y);
-
-            let new_cursor_x = self.cursor.x;
             let saved_cursor_x_coordinates = self
                 .saved_cursor_position
                 .as_ref()
                 .map(|saved_cursor| saved_cursor.x);
+
+            Some((
+                self.cursor.y,
+                saved_cursor_y_coordinates,
+                self.cursor.x,
+                saved_cursor_x_coordinates,
+            ))
+        } else {
+            None
+        };
+
+        if let Some(cursors) = cursors {
+            // At this point the x coordinates have been calculated, the y coordinates
+            // will be updated within this block
+            let (
+                mut new_cursor_y,
+                mut saved_cursor_y_coordinates,
+                new_cursor_x,
+                saved_cursor_x_coordinates
+            ) = cursors;
 
             let current_viewport_row_count = self.viewport.len();
             match current_viewport_row_count.cmp(&new_rows) {
@@ -1003,6 +969,7 @@ impl Grid {
                 }
             };
         }
+
         self.height = new_rows;
         self.width = new_columns;
         if self.scroll_region.is_some() {
