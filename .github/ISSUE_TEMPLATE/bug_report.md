@@ -10,7 +10,7 @@ assignees: ''
 <!-- Please choose the relevant section, follow the instructions and delete the other sections:
 
 1. Graphical issue inside a terminal pane (eg. something does not look as it should or as it looks outside of Zellij)
-2. Issues with the Zellij UI / behavior
+2. Issues with the Zellij UI / behavior / crash
 
 ** Please note: comparisons of desired behavior to tmux are usually not relevant. tmux and Zellij are two extremely different programs that do things very differently. Zellij is not, nor does it try to be, a tmux clone. Please try to refrain from such comparisons. **
 -->
@@ -36,7 +36,7 @@ Please attach the files that were created in `/tmp/zellij-1000/zellij-log/` to t
 ## Further information
 Reproduction steps, noticeable behavior, related issues, etc
 
-# 2. Issues with the Zellij UI / behavior
+# 2. Issues with the Zellij UI / behavior / crash
 <!-- Please find a minimal reproduction. 
 
 If you have a complex setup that causes an issue, try to troubleshoot and narrow the problem down to as minimal a reproduction as possible. Remove as many parts of the equation as you can. 
