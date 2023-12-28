@@ -713,10 +713,10 @@ impl WasmBridge {
             .find(|((_plugin_id, run_plugin), _)| &run_plugin.location == plugin_location)
             .is_some()
     }
-    fn plugin_id_of_loading_plugin(&self, plugin_location: &RunPluginLocation) -> Option<PluginId> {
+    fn plugin_id_of_loading_plugin(&self, plugin_location: &RunPluginLocation, plugin_configuration: &PluginUserConfiguration) -> Option<PluginId> {
         self.loading_plugins
             .iter()
-            .find_map(|((plugin_id, run_plugin), _)| if &run_plugin.location == plugin_location { Some(*plugin_id) } else { None })
+            .find_map(|((plugin_id, run_plugin), _)| if &run_plugin.location == plugin_location && &run_plugin.configuration == plugin_configuration { Some(*plugin_id) } else { None })
     }
     fn all_plugin_ids_for_plugin_location(
         &self,
@@ -876,7 +876,7 @@ impl WasmBridge {
     pub fn get_or_load_plugins(&mut self, run_plugin: RunPlugin, size: Size, cwd: Option<PathBuf>, skip_cache: bool, should_float: bool, should_be_open_in_place: bool, pane_title: Option<String>, pane_id_to_replace: Option<PaneId>) -> Vec<(PluginId, Option<ClientId>)> {
         let all_plugin_ids = self.all_plugin_and_client_ids_for_plugin_location(&run_plugin.location, &run_plugin.configuration);
         if all_plugin_ids.is_empty() {
-            if let Some(loading_plugin_id) = self.plugin_id_of_loading_plugin(&run_plugin.location) {
+            if let Some(loading_plugin_id) = self.plugin_id_of_loading_plugin(&run_plugin.location, &run_plugin.configuration) {
                 return vec![(loading_plugin_id, None)];
             }
             match self.load_plugin(
