@@ -1,4 +1,4 @@
-use std::collections::VecDeque;
+use std::collections::{VecDeque, HashSet};
 use std::sync::{Arc, RwLock};
 
 use crate::thread_bus::ThreadSenders;
@@ -36,6 +36,7 @@ pub(crate) fn route_action(
     client_attributes: ClientAttributes,
     default_shell: Option<TerminalAction>,
     default_layout: Box<Layout>,
+    mut seen_cli_pipes: Option<&mut HashSet<String>>,
 ) -> Result<bool> {
     let mut should_break = false;
     let err_context = || format!("failed to route action for client {client_id}");
@@ -804,6 +805,14 @@ pub(crate) fn route_action(
                 .with_context(err_context)?;
         },
         Action::CliMessage{ input_pipe_id, mut name, payload, plugin, args, configuration, floating, in_place, launch_new, skip_cache, cwd, pane_title } => {
+            if let Some(seen_cli_pipes) = seen_cli_pipes.as_mut() {
+                if !seen_cli_pipes.contains(&input_pipe_id) {
+                    seen_cli_pipes.insert(input_pipe_id.clone());
+                    senders
+                        .send_to_server(ServerInstruction::AssociatePipeWithClient{ pipe_id: input_pipe_id.clone(), client_id })
+                        .with_context(err_context)?;
+                }
+            }
             if let Some(name) = name.take() {
                 let should_open_in_place = in_place.unwrap_or(false);
                 if should_open_in_place && pane_id.is_none() {
@@ -847,12 +856,13 @@ pub(crate) fn route_thread_main(
 ) -> Result<()> {
     let mut retry_queue = VecDeque::new();
     let err_context = || format!("failed to handle instruction for client {client_id}");
+    let mut seen_cli_pipes = HashSet::new();
     'route_loop: loop {
         match receiver.recv() {
             Some((instruction, err_ctx)) => {
                 err_ctx.update_thread_ctx();
                 let rlocked_sessions = session_data.read().to_anyhow().with_context(err_context)?;
-                let handle_instruction = |instruction: ClientToServerMsg,
+                let mut handle_instruction = |instruction: ClientToServerMsg,
                                           mut retry_queue: Option<
                     &mut VecDeque<ClientToServerMsg>,
                 >|
@@ -882,6 +892,7 @@ pub(crate) fn route_thread_main(
                                     rlocked_sessions.client_attributes.clone(),
                                     rlocked_sessions.default_shell.clone(),
                                     rlocked_sessions.layout.clone(),
+                                    Some(&mut seen_cli_pipes),
                                 )? {
                                     should_break = true;
                                 }

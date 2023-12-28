@@ -439,6 +439,7 @@ pub enum ServerContext {
     SwitchSession,
     UnblockCliPipeInput,
     CliPipeOutput,
+    AssociatePipeWithClient,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]

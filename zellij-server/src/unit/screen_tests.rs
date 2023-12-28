@@ -85,7 +85,7 @@ fn take_snapshots_and_cursor_coordinates_from_render_events<'a>(
     let snapshots: Vec<(Option<(usize, usize)>, String)> = all_events
         .filter_map(|server_instruction| {
             match server_instruction {
-                ServerInstruction::Render(output) => {
+                ServerInstruction::Render(output, _) => {
                     if let Some(output) = output {
                         // note this only takes a snapshot of the first client!
                         let raw_snapshot = output.get(&1).unwrap();
@@ -125,6 +125,7 @@ fn send_cli_action_to_server(
             client_attributes.clone(),
             default_shell.clone(),
             default_layout.clone(),
+            None,
         )
         .unwrap();
     }

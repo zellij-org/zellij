@@ -58,6 +58,7 @@ macro_rules! apply_action {
             $env.plugin_env.client_attributes.clone(),
             $env.plugin_env.default_shell.clone(),
             $env.plugin_env.default_layout.clone(),
+            None,
         ) {
             log::error!("{}: {:?}", $error_message(), e);
         }

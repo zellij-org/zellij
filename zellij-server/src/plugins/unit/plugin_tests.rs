@@ -5672,7 +5672,7 @@ pub fn unblock_input_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),
-        Event::CliMessage { name: "message_name".to_owned(), payload: Some("message_payload".to_owned()), args: None}
+        Event::CliMessage { input_pipe_id: "input_pipe_id".to_owned(), name: "message_name".to_owned(), payload: Some("message_payload".to_owned()), args: None}
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
@@ -5750,7 +5750,7 @@ pub fn pipe_output_plugin_command() {
     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
         None,
         Some(client_id),
-        Event::CliMessage { name: "pipe_output".to_owned(), payload: Some("message_payload".to_owned()), args: None}
+        Event::CliMessage { input_pipe_id: "input_pipe_id".to_owned(), name: "pipe_output".to_owned(), payload: Some("message_payload".to_owned()), args: None}
     )]));
     std::thread::sleep(std::time::Duration::from_millis(500));
     teardown();
@@ -5825,7 +5825,7 @@ pub fn send_message_to_plugin_plugin_command() {
         Some(client_id),
         // this will trigger the fixture plugin to send a message to all plugins and then receive
         // it itself
-        Event::CliMessage { name: "send_message_to_plugin".to_owned(), payload: Some("payload_sent_to_self".to_owned()), args: None}
+        Event::CliMessage { input_pipe_id: "input_pipe_id".to_owned(), name: "send_message_to_plugin".to_owned(), payload: Some("payload_sent_to_self".to_owned()), args: None}
     )]));
     std::thread::sleep(std::time::Duration::from_millis(500));
     teardown();

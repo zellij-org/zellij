@@ -9,7 +9,7 @@ use zellij_utils::{
     uuid::Uuid,
     errors::prelude::*,
     input::actions::Action,
-    ipc::{ClientToServerMsg, ServerToClientMsg},
+    ipc::{ClientToServerMsg, ServerToClientMsg, ExitReason},
 };
 
 pub fn start_cli_client(mut os_input: Box<dyn ClientOsApi>, session_name: &str, actions: Vec<Action>) {
@@ -107,7 +107,6 @@ fn pipe_client(
                 },
                 Some((ServerToClientMsg::CliPipeOutput(pipe_name, output), _)) => {
                     let err_context = "Failed to write to stdout";
-                    // log::info!("CLI CLIENT, output to pipe: {:?}, input_pipe_id: {:?}", pipe_name, input_pipe_id);
                     if pipe_name == input_pipe_id {
                         let mut stdout = os_input.get_stdout_writer();
                         stdout
@@ -119,6 +118,17 @@ fn pipe_client(
                             .non_fatal();
                     }
                 },
+                Some((ServerToClientMsg::Exit(exit_reason), _)) => {
+                    match exit_reason {
+                        ExitReason::Error(e) => {
+                            eprintln!("{}", e);
+                            process::exit(2);
+                        },
+                        _ => {
+                            process::exit(0);
+                        }
+                    }
+                }
                 _ => {},
             }
         }
@@ -142,6 +152,17 @@ fn single_message_client(os_input: &mut Box<dyn ClientOsApi>, action: Action, pa
                 log_lines.iter().for_each(|line| eprintln!("{line}"));
                 process::exit(2);
             },
+            Some((ServerToClientMsg::Exit(exit_reason), _)) => {
+                match exit_reason {
+                    ExitReason::Error(e) => {
+                        eprintln!("{}", e);
+                        process::exit(2);
+                    },
+                    _ => {
+                        process::exit(0);
+                    }
+                }
+            }
             _ => {},
         }
     }

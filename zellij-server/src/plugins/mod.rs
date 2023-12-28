@@ -461,12 +461,14 @@ pub(crate) fn plugin_thread_main(
                 //  the message name - DONE
                 //  - TODO: remove the launch_new from everything except the cli place thing - DONE
                 //  - TODO: consider re-adding the skip_cache flag - DONE
-                //  - TODO: only send messages (unblockclipipeinput, clipipeoutput) to the relevant client and not all of them
+                //  - TODO: only send messages (unblockclipipeinput, clipipeoutput) to the relevant client and not all of them - DONE
                 //  - TODO: look into leaking messages (simultaneously piping to 2 instances of the
                 //  plugin with --launch-new)
                 // * bring all the custo moverride stuff form the plugin messages for when
                 // launching a new plugin with a message (like we did through the cli)
                 // * add permissions
+                // * work on product side... do we need all parameters? does enforcing name make
+                // sense? now that we separated name and id? rethink (some of) the interface?
                 // * work on cli error messages, must be clearer
 
                 // TODO:
