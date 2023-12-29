@@ -3301,16 +3301,13 @@ impl Row {
     }
     pub fn replace_character_at(&mut self, terminal_character: TerminalCharacter, x: usize) {
         let absolute_x_index = self.absolute_character_index(x);
-        if absolute_x_index < self.columns.len() {
+        if let Some(character) = self.columns.get_mut(absolute_x_index) {
             let terminal_character_width = terminal_character.width();
-            self.columns.push_back(terminal_character);
-            // this is much more performant than remove/insert
-            if let Some(character) = self.columns.swap_remove_back(absolute_x_index) {
-                let excess_width = character.width().saturating_sub(terminal_character_width);
-                for _ in 0..excess_width {
-                    self.columns
-                        .insert(absolute_x_index, EMPTY_TERMINAL_CHARACTER);
-                }
+            let character = std::mem::replace(character, terminal_character);
+            let excess_width = character.width().saturating_sub(terminal_character_width);
+            for _ in 0..excess_width {
+                self.columns
+                    .insert(absolute_x_index, EMPTY_TERMINAL_CHARACTER);
             }
         }
         self.width = None;
