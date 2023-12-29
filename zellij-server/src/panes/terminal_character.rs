@@ -1,6 +1,7 @@
 use std::convert::From;
 use std::fmt::{self, Debug, Display, Formatter};
 use std::ops::{Index, IndexMut};
+use std::rc::Rc;
 use unicode_width::UnicodeWidthChar;
 
 use unicode_width::UnicodeWidthStr;
@@ -15,7 +16,7 @@ use crate::panes::alacritty_functions::parse_sgr_color;
 pub const EMPTY_TERMINAL_CHARACTER: TerminalCharacter = TerminalCharacter {
     character: ' ',
     width: 1,
-    styles: RESET_STYLES,
+    styles: RcCharacterStyles::Reset,
 };
 
 pub const RESET_STYLES: CharacterStyles = CharacterStyles {
@@ -32,6 +33,25 @@ pub const RESET_STYLES: CharacterStyles = CharacterStyles {
     dim: Some(AnsiCode::Reset),
     italic: Some(AnsiCode::Reset),
     link_anchor: Some(LinkAnchor::End),
+    styled_underlines_enabled: false,
+};
+
+// Have to manually write this out because Default::default
+// is not a const fn
+const DEFAULT_STYLES: CharacterStyles = CharacterStyles {
+    foreground: None,
+    background: None,
+    underline_color: None,
+    strike: None,
+    hidden: None,
+    reverse: None,
+    slow_blink: None,
+    fast_blink: None,
+    underline: None,
+    bold: None,
+    dim: None,
+    italic: None,
+    link_anchor: None,
     styled_underlines_enabled: false,
 };
 
@@ -129,7 +149,54 @@ impl NamedColor {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq)]
+pub enum RcCharacterStyles {
+    #[default]
+    Default,
+    Reset,
+    Rc(Rc<CharacterStyles>),
+}
+
+impl From<CharacterStyles> for RcCharacterStyles {
+    fn from(styles: CharacterStyles) -> Self {
+        if styles == DEFAULT_STYLES {
+            RcCharacterStyles::Default
+        } else if styles == RESET_STYLES {
+            RcCharacterStyles::Reset
+        } else {
+            RcCharacterStyles::Rc(Rc::new(styles))
+        }
+    }
+}
+
+impl std::ops::Deref for RcCharacterStyles {
+    type Target = CharacterStyles;
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            RcCharacterStyles::Default => &DEFAULT_STYLES,
+            RcCharacterStyles::Reset => &RESET_STYLES,
+            RcCharacterStyles::Rc(styles) => &*styles,
+        }
+    }
+}
+
+impl Display for RcCharacterStyles {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let styles: &CharacterStyles = &*self;
+        Display::fmt(&styles, f)
+    }
+}
+
+impl RcCharacterStyles {
+    pub fn update(&mut self, f: impl FnOnce(&mut CharacterStyles)) {
+        let mut styles: CharacterStyles = **self;
+        f(&mut styles);
+        *self = styles.into();
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
 pub struct CharacterStyles {
     pub foreground: Option<AnsiCode>,
     pub background: Option<AnsiCode>,
@@ -145,6 +212,12 @@ pub struct CharacterStyles {
     pub italic: Option<AnsiCode>,
     pub link_anchor: Option<LinkAnchor>,
     pub styled_underlines_enabled: bool,
+}
+
+impl Default for CharacterStyles {
+    fn default() -> Self {
+        DEFAULT_STYLES
+    }
 }
 
 impl PartialEq for CharacterStyles {
@@ -813,7 +886,7 @@ impl CursorShape {
 pub struct Cursor {
     pub x: usize,
     pub y: usize,
-    pub pending_styles: CharacterStyles,
+    pub pending_styles: RcCharacterStyles,
     pub charsets: Charsets,
     shape: CursorShape,
 }
@@ -823,7 +896,9 @@ impl Cursor {
         Cursor {
             x,
             y,
-            pending_styles: RESET_STYLES.enable_styled_underlines(styled_underlines),
+            pending_styles: RESET_STYLES
+                .enable_styled_underlines(styled_underlines)
+                .into(),
             charsets: Default::default(),
             shape: CursorShape::Initial,
         }
@@ -839,18 +914,18 @@ impl Cursor {
 #[derive(Clone, PartialEq)]
 pub struct TerminalCharacter {
     pub character: char,
-    pub styles: CharacterStyles,
+    pub styles: RcCharacterStyles,
     width: u8,
 }
 
 impl TerminalCharacter {
     #[inline]
     pub fn new(character: char) -> Self {
-        Self::new_styled(character, CharacterStyles::default())
+        Self::new_styled(character, Default::default())
     }
 
     #[inline]
-    pub fn new_styled(character: char, styles: CharacterStyles) -> Self {
+    pub fn new_styled(character: char, styles: RcCharacterStyles) -> Self {
         TerminalCharacter {
             character,
             styles,
@@ -860,11 +935,11 @@ impl TerminalCharacter {
 
     #[inline]
     pub fn new_singlewidth(character: char) -> Self {
-        Self::new_singlewidth_styled(character, CharacterStyles::default())
+        Self::new_singlewidth_styled(character, Default::default())
     }
 
     #[inline]
-    pub fn new_singlewidth_styled(character: char, styles: CharacterStyles) -> Self {
+    pub fn new_singlewidth_styled(character: char, styles: RcCharacterStyles) -> Self {
         TerminalCharacter {
             character,
             styles,

@@ -98,7 +98,7 @@ fn serialize_chunks_with_newlines(
         for t_character in character_chunk.terminal_characters.iter() {
             let current_character_styles = adjust_styles_for_possible_selection(
                 character_chunk.selection_and_colors(),
-                t_character.styles,
+                *t_character.styles,
                 character_chunk.y,
                 chunk_width,
             );
@@ -139,7 +139,7 @@ fn serialize_chunks(
         for t_character in character_chunk.terminal_characters.iter() {
             let current_character_styles = adjust_styles_for_possible_selection(
                 character_chunk.selection_and_colors(),
-                t_character.styles,
+                *t_character.styles,
                 character_chunk.y,
                 chunk_width,
             );

@@ -66,7 +66,8 @@ impl BoundarySymbol {
             TerminalCharacter::new_singlewidth_styled(
                 character,
                 RESET_STYLES
-                    .foreground(self.color.map(|palette_color| palette_color.into())),
+                    .foreground(self.color.map(|palette_color| palette_color.into()))
+                    .into(),
             )
         };
         Ok(tc)

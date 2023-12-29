@@ -26,7 +26,7 @@ fn foreground_color(characters: &str, color: Option<PaletteColor>) -> Vec<Termin
             },
         };
         let terminal_character =
-            TerminalCharacter::new_styled(character, styles);
+            TerminalCharacter::new_styled(character, styles.into());
         colored_string.push(terminal_character);
     }
     colored_string
@@ -50,7 +50,7 @@ fn background_color(characters: &str, color: Option<PaletteColor>) -> Vec<Termin
             },
         };
         let terminal_character =
-            TerminalCharacter::new_styled(character, styles);
+            TerminalCharacter::new_styled(character, styles.into());
         colored_string.push(terminal_character);
     }
     colored_string
