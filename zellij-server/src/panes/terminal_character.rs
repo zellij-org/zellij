@@ -392,7 +392,7 @@ impl CharacterStyles {
         }
         Some(diff)
     }
-    fn reset_all(&mut self) {
+    fn reset_ansi(&mut self) {
         self.foreground = Some(AnsiCode::Reset);
         self.background = Some(AnsiCode::Reset);
         self.underline_color = Some(AnsiCode::Reset);
@@ -405,11 +405,12 @@ impl CharacterStyles {
         self.reverse = Some(AnsiCode::Reset);
         self.hidden = Some(AnsiCode::Reset);
         self.strike = Some(AnsiCode::Reset);
+        // Deliberately don't end link anchor
     }
     pub fn add_style_from_ansi_params(&mut self, params: &mut ParamsIter) {
         while let Some(param) = params.next() {
             match param {
-                [] | [0] => self.reset_all(),
+                [] | [0] => self.reset_ansi(),
                 [1] => *self = self.bold(Some(AnsiCode::On)),
                 [2] => *self = self.dim(Some(AnsiCode::On)),
                 [3] => *self = self.italic(Some(AnsiCode::On)),
