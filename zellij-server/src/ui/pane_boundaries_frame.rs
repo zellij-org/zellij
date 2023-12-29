@@ -25,11 +25,8 @@ fn foreground_color(characters: &str, color: Option<PaletteColor>) -> Vec<Termin
                 styles.bold(Some(AnsiCode::On))
             },
         };
-        let terminal_character = TerminalCharacter {
-            character,
-            styles,
-            width: character.width().unwrap_or(0),
-        };
+        let terminal_character =
+            TerminalCharacter::new_styled(character, styles);
         colored_string.push(terminal_character);
     }
     colored_string
@@ -52,11 +49,8 @@ fn background_color(characters: &str, color: Option<PaletteColor>) -> Vec<Termin
                 styles
             },
         };
-        let terminal_character = TerminalCharacter {
-            character,
-            styles,
-            width: character.width().unwrap_or(0),
-        };
+        let terminal_character =
+            TerminalCharacter::new_styled(character, styles);
         colored_string.push(terminal_character);
     }
     colored_string

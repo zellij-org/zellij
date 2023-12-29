@@ -110,7 +110,7 @@ fn serialize_chunks_with_newlines(
                 &mut vte_output,
             )
             .with_context(err_context)?;
-            chunk_width += t_character.width;
+            chunk_width += t_character.width();
             vte_output.push(t_character.character);
         }
         character_styles.clear();
@@ -151,7 +151,7 @@ fn serialize_chunks(
                 &mut vte_output,
             )
             .with_context(err_context)?;
-            chunk_width += t_character.width;
+            chunk_width += t_character.width();
             vte_output.push(t_character.character);
         }
         character_styles.clear();
@@ -215,7 +215,7 @@ fn adjust_middle_segment_for_wide_chars(
     let mut pad_left_end_by = 0;
     let mut pad_right_start_by = 0;
     for (absolute_index, t_character) in terminal_characters.iter().enumerate() {
-        current_x += t_character.width;
+        current_x += t_character.width();
         if current_x >= middle_start && absolute_middle_start_index.is_none() {
             if current_x > middle_start {
                 pad_left_end_by = current_x - middle_start;
@@ -802,7 +802,7 @@ impl CharacterChunk {
     pub fn width(&self) -> usize {
         let mut width = 0;
         for t_character in &self.terminal_characters {
-            width += t_character.width
+            width += t_character.width()
         }
         width
     }
@@ -814,14 +814,14 @@ impl CharacterChunk {
                 break;
             }
             let next_character = self.terminal_characters.remove(0); // TODO: consider copying self.terminal_characters into a VecDeque to make this process faster?
-            if drained_part_len + next_character.width <= x {
+            if drained_part_len + next_character.width() <= x {
                 drained_part.push_back(next_character);
-                drained_part_len += next_character.width;
+                drained_part_len += next_character.width();
             } else {
                 if drained_part_len == x {
                     self.terminal_characters.insert(0, next_character); // put it back
-                } else if next_character.width > 1 {
-                    for _ in 1..next_character.width {
+                } else if next_character.width() > 1 {
+                    for _ in 1..next_character.width() {
                         self.terminal_characters.insert(0, EMPTY_TERMINAL_CHARACTER);
                         drained_part.push_back(EMPTY_TERMINAL_CHARACTER);
                     }

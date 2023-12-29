@@ -3,7 +3,6 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
-use unicode_width::UnicodeWidthChar;
 use zellij_utils::data::Style;
 use zellij_utils::errors::prelude::*;
 use zellij_utils::regex::Regex;
@@ -416,11 +415,8 @@ impl Debug for Grid {
             for y in image_top_edge..image_bottom_edge {
                 let row = buffer.get_mut(y).unwrap();
                 for x in image_left_edge..image_right_edge {
-                    let fake_sixel_terminal_character = TerminalCharacter {
-                        character: sixel_indication_character(x),
-                        width: 1,
-                        styles: Default::default(),
-                    };
+                    let fake_sixel_terminal_character =
+                        TerminalCharacter::new_singlewidth(sixel_indication_character(x));
                     row.add_character_at(fake_sixel_terminal_character, x);
                 }
             }
@@ -1349,7 +1345,7 @@ impl Grid {
         }
     }
     pub fn add_character(&mut self, terminal_character: TerminalCharacter) {
-        let character_width = terminal_character.width;
+        let character_width = terminal_character.width();
         // Drop zero-width Unicode/UTF-8 codepoints, like for example Variation Selectors.
         // This breaks unicode grapheme segmentation, and is the reason why some characters
         // aren't displayed correctly. Refer to this issue for more information:
@@ -1664,7 +1660,7 @@ impl Grid {
             for _ in 0..count {
                 let deleted_character = current_row.delete_and_return_character(self.cursor.x);
                 let excess_width = deleted_character
-                    .map(|terminal_character| terminal_character.width)
+                    .map(|terminal_character| terminal_character.width())
                     .unwrap_or(0)
                     .saturating_sub(1);
                 for _ in 0..excess_width {
@@ -1795,7 +1791,7 @@ impl Grid {
                     line_selection.push(terminal_character.character);
                 }
 
-                terminal_col += terminal_character.width;
+                terminal_col += terminal_character.width();
             }
 
             if row.is_canonical {
@@ -2148,13 +2144,7 @@ impl Perform for Grid {
     fn print(&mut self, c: char) {
         let c = self.cursor.charsets[self.active_charset].map(c);
 
-        // apparently, building TerminalCharacter like this without a "new" method
-        // is a little faster
-        let terminal_character = TerminalCharacter {
-            character: c,
-            width: c.width().unwrap_or(0),
-            styles: self.cursor.pending_styles,
-        };
+        let terminal_character = TerminalCharacter::new_styled(c, self.cursor.pending_styles);
         self.set_preceding_character(terminal_character);
         self.add_character(terminal_character);
     }
@@ -3166,7 +3156,7 @@ impl Row {
         } else {
             let mut width = 0;
             for terminal_character in &self.columns {
-                width += terminal_character.width;
+                width += terminal_character.width();
             }
             self.width = Some(width);
             width
@@ -3175,15 +3165,15 @@ impl Row {
     pub fn width(&self) -> usize {
         let mut width = 0;
         for terminal_character in &self.columns {
-            width += terminal_character.width;
+            width += terminal_character.width();
         }
         width
     }
     pub fn excess_width(&self) -> usize {
         let mut acc = 0;
         for terminal_character in &self.columns {
-            if terminal_character.width > 1 {
-                acc += terminal_character.width - 1;
+            if terminal_character.width() > 1 {
+                acc += terminal_character.width() - 1;
             }
         }
         acc
@@ -3191,8 +3181,8 @@ impl Row {
     pub fn excess_width_until(&self, x: usize) -> usize {
         let mut acc = 0;
         for terminal_character in self.columns.iter().take(x) {
-            if terminal_character.width > 1 {
-                acc += terminal_character.width - 1;
+            if terminal_character.width() > 1 {
+                acc += terminal_character.width() - 1;
             }
         }
         acc
@@ -3204,7 +3194,7 @@ impl Row {
             if i == absolute_index {
                 break;
             }
-            if terminal_character.width > 1 {
+            if terminal_character.width() > 1 {
                 absolute_index = absolute_index.saturating_sub(1);
             }
         }
@@ -3217,10 +3207,10 @@ impl Row {
         let mut absolute_index = x;
         let mut position_inside_character = 0;
         for (i, terminal_character) in self.columns.iter().enumerate() {
-            accumulated_width += terminal_character.width;
+            accumulated_width += terminal_character.width();
             absolute_index = i;
             if accumulated_width > x {
-                let character_start_position = accumulated_width - terminal_character.width;
+                let character_start_position = accumulated_width - terminal_character.width();
                 position_inside_character = x - character_start_position;
                 break;
             }
@@ -3233,7 +3223,7 @@ impl Row {
                 // adding the character at the end of the current line
                 self.columns.push_back(terminal_character);
                 // this is unwrapped because this always happens after self.width_cached()
-                *self.width.as_mut().unwrap() += terminal_character.width;
+                *self.width.as_mut().unwrap() += terminal_character.width();
             },
             Ordering::Less => {
                 // adding the character after the end of the current line
@@ -3249,17 +3239,17 @@ impl Row {
                 // we replace the character at its position
                 let (absolute_x_index, position_inside_character) =
                     self.absolute_character_index_and_position_in_char(x);
-                let character_width = terminal_character.width;
+                let character_width = terminal_character.width();
                 let replaced_character =
                     std::mem::replace(&mut self.columns[absolute_x_index], terminal_character);
-                match character_width.cmp(&replaced_character.width) {
+                match character_width.cmp(&replaced_character.width()) {
                     Ordering::Greater => {
                         // the replaced character is narrower than the current character
                         // (eg. we added a wide emoji in place of an English character)
                         // we remove the character after it to make room
                         let position_to_remove = absolute_x_index + 1;
                         if let Some(removed) = self.columns.remove(position_to_remove) {
-                            if removed.width > 1 {
+                            if removed.width() > 1 {
                                 // the character we removed is a wide character itself, so we add
                                 // padding
                                 self.columns
@@ -3308,7 +3298,7 @@ impl Row {
             self.columns.push_back(terminal_character);
             // this is much more performant than remove/insert
             if let Some(character) = self.columns.swap_remove_back(absolute_x_index) {
-                let excess_width = character.width.saturating_sub(terminal_character.width);
+                let excess_width = character.width().saturating_sub(terminal_character.width());
                 for _ in 0..excess_width {
                     self.columns
                         .insert(absolute_x_index, EMPTY_TERMINAL_CHARACTER);
@@ -3339,8 +3329,8 @@ impl Row {
             if index == position {
                 break;
             }
-            if terminal_character.width > 1 {
-                position = position.saturating_sub(terminal_character.width.saturating_sub(1));
+            if terminal_character.width() > 1 {
+                position = position.saturating_sub(terminal_character.width().saturating_sub(1));
             }
         }
         position
@@ -3371,8 +3361,8 @@ impl Row {
         for next_character in self.columns.iter() {
             // drained_part_len == 0 here is so that if the grid is resized
             // to a size of 1, we won't drop wide characters
-            if drained_part_len + next_character.width <= x || drained_part_len == 0 {
-                drained_part_len += next_character.width;
+            if drained_part_len + next_character.width() <= x || drained_part_len == 0 {
+                drained_part_len += next_character.width();
                 split_pos += 1
             } else {
                 break;
@@ -3388,7 +3378,7 @@ impl Row {
         let width_of_current_character = self
             .columns
             .get(to_position_accounting_for_widechars)
-            .map(|character| character.width)
+            .map(|character| character.width())
             .unwrap_or(1);
         let mut replace_with =
             VecDeque::from(vec![terminal_character; to + width_of_current_character]);
@@ -3423,13 +3413,13 @@ impl Row {
         let mut current_part: VecDeque<TerminalCharacter> = VecDeque::new();
         let mut current_part_len = 0;
         for character in self.columns.drain(..) {
-            if current_part_len + character.width > max_row_length {
+            if current_part_len + character.width() > max_row_length {
                 parts.push(Row::from_columns(current_part));
                 current_part = VecDeque::new();
                 current_part_len = 0;
             }
             current_part.push_back(character);
-            current_part_len += character.width;
+            current_part_len += character.width();
         }
         if !current_part.is_empty() {
             parts.push(Row::from_columns(current_part))

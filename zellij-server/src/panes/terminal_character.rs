@@ -840,16 +840,40 @@ impl Cursor {
 pub struct TerminalCharacter {
     pub character: char,
     pub styles: CharacterStyles,
-    pub width: usize,
+    width: u8,
 }
 
 impl TerminalCharacter {
+    #[inline]
     pub fn new(character: char) -> Self {
+        Self::new_styled(character, CharacterStyles::default())
+    }
+
+    #[inline]
+    pub fn new_styled(character: char, styles: CharacterStyles) -> Self {
         TerminalCharacter {
             character,
-            styles: CharacterStyles::default(),
-            width: character.width().unwrap_or(0),
+            styles,
+            width: character.width().unwrap_or(0) as u8,
         }
+    }
+
+    #[inline]
+    pub fn new_singlewidth(character: char) -> Self {
+        Self::new_singlewidth_styled(character, CharacterStyles::default())
+    }
+
+    #[inline]
+    pub fn new_singlewidth_styled(character: char, styles: CharacterStyles) -> Self {
+        TerminalCharacter {
+            character,
+            styles,
+            width: 1,
+        }
+    }
+
+    pub fn width(&self) -> usize {
+        self.width as usize
     }
 }
 
