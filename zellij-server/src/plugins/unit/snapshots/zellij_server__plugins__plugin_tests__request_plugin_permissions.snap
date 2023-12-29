@@ -1,6 +1,6 @@
 ---
 source: zellij-server/src/plugins/./unit/plugin_tests.rs
-assertion_line: 5206
+assertion_line: 5217
 expression: "format!(\"{:#?}\", new_tab_event)"
 ---
 Some(
@@ -15,5 +15,6 @@ Some(
         WriteToStdin,
         WebAccess,
         ReadCliMessages,
+        MessageAndLaunchOtherPlugins,
     ],
 )

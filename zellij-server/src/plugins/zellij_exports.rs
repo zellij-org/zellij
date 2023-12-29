@@ -247,7 +247,6 @@ fn host_run_plugin_command(env: FunctionEnvMut<ForeignFunctionEnv>) {
                     PluginCommand::CliPipeOutput(pipe_name, output) => {
                         cli_pipe_output(env, pipe_name, output)?
                     },
-                    // TODO: permissions!!!111oneoneone
                     PluginCommand::MessageToPlugin(message) => {
                         message_to_plugin(env, message)?
                     },
@@ -295,7 +294,6 @@ fn cli_pipe_output(env: &ForeignFunctionEnv, pipe_name: String, output: String) 
         .context("failed to send pipe output")
 }
 
-// TODO: permissions!@!!111oneoneone
 fn message_to_plugin(env: &ForeignFunctionEnv, message_to_plugin: MessageToPlugin) -> Result<()> {
     env.plugin_env
         .senders
@@ -1394,6 +1392,7 @@ fn check_command_permission(
         | PluginCommand::RenameTab(..) => PermissionType::ChangeApplicationState,
         PluginCommand::UnblockCliPipeInput(..)
         | PluginCommand::CliPipeOutput(..) => PermissionType::ReadCliMessages,
+        PluginCommand::MessageToPlugin(..) => PermissionType::MessageAndLaunchOtherPlugins,
         _ => return (PermissionStatus::Granted, None),
     };
 

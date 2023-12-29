@@ -550,6 +550,7 @@ pub enum Permission {
     WriteToStdin,
     WebAccess,
     ReadCliMessages,
+    MessageAndLaunchOtherPlugins,
 }
 
 impl PermissionType {
@@ -567,6 +568,7 @@ impl PermissionType {
             PermissionType::WriteToStdin => "Write to standard input (STDIN)".to_owned(),
             PermissionType::WebAccess => "Make web requests".to_owned(),
             PermissionType::ReadCliMessages => "Read messages from the command line".to_owned(),
+            PermissionType::MessageAndLaunchOtherPlugins => "Send messages to and launch other plugins".to_owned(),
         }
     }
 }

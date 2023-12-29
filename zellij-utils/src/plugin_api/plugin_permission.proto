@@ -11,4 +11,5 @@ enum PermissionType {
   WriteToStdin = 5;
   WebAccess = 6;
   ReadCliMessages = 7;
+  MessageAndLaunchOtherPlugins = 8;
 }

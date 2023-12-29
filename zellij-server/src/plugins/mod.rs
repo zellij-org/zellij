@@ -467,7 +467,7 @@ pub(crate) fn plugin_thread_main(
                 //  plugin with --launch-new) - DONE
                 // * bring all the custo moverride stuff form the plugin messages for when
                 // launching a new plugin with a message (like we did through the cli) - DONE
-                // * add permissions
+                // * add permissions <== CONTINUE HERE
                 // * work on product side... do we need all parameters? does enforcing name make
                 // sense? now that we separated name and id? rethink (some of) the interface?
                 // * work on cli error messages, must be clearer
