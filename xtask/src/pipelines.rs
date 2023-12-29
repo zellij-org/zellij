@@ -337,7 +337,7 @@ pub fn publish(sh: &Shell, flags: flags::Publish) -> anyhow::Result<()> {
 
                 if let Err(err) = cmd!(
                     sh,
-                    "{cargo} publish {registry...} {more_args...} {dry_run...}"
+                    "{cargo} publish --locked {registry...} {more_args...} {dry_run...}"
                 )
                 .run()
                 .context(err_context)
