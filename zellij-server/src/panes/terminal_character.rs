@@ -36,9 +36,9 @@ pub const RESET_STYLES: CharacterStyles = CharacterStyles {
     styled_underlines_enabled: false,
 };
 
-// Have to manually write this out because Default::default
-// is not a const fn
-const DEFAULT_STYLES: CharacterStyles = CharacterStyles {
+// Prefer to use RcCharacterStyles::default() where it makes sense
+// as it will reduce memory usage
+pub const DEFAULT_STYLES: CharacterStyles = CharacterStyles {
     foreground: None,
     background: None,
     underline_color: None,
@@ -54,6 +54,11 @@ const DEFAULT_STYLES: CharacterStyles = CharacterStyles {
     link_anchor: None,
     styled_underlines_enabled: false,
 };
+
+thread_local! {
+    static RC_DEFAULT_STYLES: RcCharacterStyles =
+        RcCharacterStyles::Rc(Rc::new(DEFAULT_STYLES));
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AnsiCode {
@@ -149,23 +154,28 @@ impl NamedColor {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
+// This enum carefully only has two variants so
+// enum niche optimisations can keep it to 8 bytes
+#[derive(Clone, Debug, PartialEq)]
 pub enum RcCharacterStyles {
-    #[default]
-    Default,
     Reset,
     Rc(Rc<CharacterStyles>),
 }
+const _: [(); 8] = [(); std::mem::size_of::<RcCharacterStyles>()];
 
 impl From<CharacterStyles> for RcCharacterStyles {
     fn from(styles: CharacterStyles) -> Self {
-        if styles == DEFAULT_STYLES {
-            RcCharacterStyles::Default
-        } else if styles == RESET_STYLES {
+        if styles == RESET_STYLES {
             RcCharacterStyles::Reset
         } else {
             RcCharacterStyles::Rc(Rc::new(styles))
         }
+    }
+}
+
+impl Default for RcCharacterStyles {
+    fn default() -> Self {
+        RC_DEFAULT_STYLES.with(|s| s.clone())
     }
 }
 
@@ -174,7 +184,6 @@ impl std::ops::Deref for RcCharacterStyles {
 
     fn deref(&self) -> &Self::Target {
         match self {
-            RcCharacterStyles::Default => &DEFAULT_STYLES,
             RcCharacterStyles::Reset => &RESET_STYLES,
             RcCharacterStyles::Rc(styles) => &*styles,
         }
@@ -189,6 +198,10 @@ impl Display for RcCharacterStyles {
 }
 
 impl RcCharacterStyles {
+    pub fn reset() -> Self {
+        Self::Reset
+    }
+
     pub fn update(&mut self, f: impl FnOnce(&mut CharacterStyles)) {
         let mut styles: CharacterStyles = **self;
         f(&mut styles);
@@ -214,12 +227,6 @@ pub struct CharacterStyles {
     pub styled_underlines_enabled: bool,
 }
 
-impl Default for CharacterStyles {
-    fn default() -> Self {
-        DEFAULT_STYLES
-    }
-}
-
 impl PartialEq for CharacterStyles {
     fn eq(&self, other: &Self) -> bool {
         self.foreground == other.foreground
@@ -239,9 +246,6 @@ impl PartialEq for CharacterStyles {
 }
 
 impl CharacterStyles {
-    pub fn new() -> Self {
-        Self::default()
-    }
     pub fn foreground(mut self, foreground_code: Option<AnsiCode>) -> Self {
         self.foreground = foreground_code;
         self
@@ -329,7 +333,7 @@ impl CharacterStyles {
 
         // create diff from all changed styles
         let mut diff =
-            CharacterStyles::new().enable_styled_underlines(self.styled_underlines_enabled);
+            DEFAULT_STYLES.enable_styled_underlines(self.styled_underlines_enabled);
 
         if self.foreground != new_styles.foreground {
             diff.foreground = new_styles.foreground;
@@ -388,7 +392,7 @@ impl CharacterStyles {
         }
         Some(diff)
     }
-    pub fn reset_all(&mut self) {
+    fn reset_all(&mut self) {
         self.foreground = Some(AnsiCode::Reset);
         self.background = Some(AnsiCode::Reset);
         self.underline_color = Some(AnsiCode::Reset);
@@ -917,6 +921,9 @@ pub struct TerminalCharacter {
     pub styles: RcCharacterStyles,
     width: u8,
 }
+// This size has significant memory and CPU implications for long lines,
+// be careful about allowing it to grow
+const _: [(); 16] = [(); std::mem::size_of::<TerminalCharacter>()];
 
 impl TerminalCharacter {
     #[inline]

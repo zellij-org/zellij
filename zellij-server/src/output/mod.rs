@@ -6,7 +6,7 @@ use crate::panes::Row;
 use crate::{
     panes::sixel::SixelImageStore,
     panes::terminal_character::{AnsiCode, CharacterStyles},
-    panes::{LinkHandler, TerminalCharacter, EMPTY_TERMINAL_CHARACTER},
+    panes::{LinkHandler, TerminalCharacter, DEFAULT_STYLES, EMPTY_TERMINAL_CHARACTER},
     ClientId,
 };
 use std::cell::RefCell;
@@ -92,7 +92,7 @@ fn serialize_chunks_with_newlines(
     for character_chunk in character_chunks {
         let chunk_changed_colors = character_chunk.changed_colors();
         let mut character_styles =
-            CharacterStyles::new().enable_styled_underlines(styled_underlines);
+            DEFAULT_STYLES.enable_styled_underlines(styled_underlines);
         vte_output.push_str("\n\r");
         let mut chunk_width = character_chunk.x;
         for t_character in character_chunk.terminal_characters.iter() {
@@ -132,7 +132,7 @@ fn serialize_chunks(
     for character_chunk in character_chunks {
         let chunk_changed_colors = character_chunk.changed_colors();
         let mut character_styles =
-            CharacterStyles::new().enable_styled_underlines(styled_underlines);
+            DEFAULT_STYLES.enable_styled_underlines(styled_underlines);
         vte_goto_instruction(character_chunk.x, character_chunk.y, &mut vte_output)
             .with_context(err_context)?;
         let mut chunk_width = character_chunk.x;
