@@ -157,6 +157,25 @@ message MessageToPluginPayload {
   string message_name = 3;
   optional string message_payload = 4;
   repeated ContextItem message_args = 5;
+  optional NewPluginArgs new_plugin_args = 6;
+}
+
+message NewPluginArgs {
+    optional bool should_float = 1;
+    optional PaneId pane_id_to_replace = 2;
+    optional string pane_title = 3;
+    optional string cwd = 4;
+    bool skip_cache = 5;
+}
+
+message PaneId {
+  PaneType pane_type = 1;
+  uint32 id = 2;
+}
+
+enum PaneType {
+  Terminal = 0;
+  Plugin = 1;
 }
 
 message SwitchSessionPayload {

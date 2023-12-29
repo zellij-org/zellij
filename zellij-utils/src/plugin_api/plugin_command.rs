@@ -8,13 +8,14 @@ pub use super::generated_api::api::{
         OpenFilePayload, PluginCommand as ProtobufPluginCommand, PluginMessagePayload,
         RequestPluginPermissionPayload, ResizePayload, RunCommandPayload, SetTimeoutPayload,
         SubscribePayload, SwitchSessionPayload, SwitchTabToPayload, UnsubscribePayload,
-        WebRequestPayload, CliPipeOutputPayload, MessageToPluginPayload
+        WebRequestPayload, CliPipeOutputPayload, MessageToPluginPayload, PaneId as ProtobufPaneId,
+        PaneType as ProtobufPaneType, NewPluginArgs as ProtobufNewPluginArgs
     },
     plugin_permission::PermissionType as ProtobufPermissionType,
     resize::ResizeAction as ProtobufResizeAction,
 };
 
-use crate::data::{ConnectToSession, HttpVerb, PermissionType, PluginCommand, MessageToPlugin};
+use crate::data::{ConnectToSession, HttpVerb, PermissionType, PluginCommand, MessageToPlugin, NewPluginArgs, PaneId};
 
 use std::collections::BTreeMap;
 use std::convert::TryFrom;
@@ -38,6 +39,41 @@ impl Into<ProtobufHttpVerb> for HttpVerb {
             HttpVerb::Post => ProtobufHttpVerb::Post,
             HttpVerb::Put => ProtobufHttpVerb::Put,
             HttpVerb::Delete => ProtobufHttpVerb::Delete,
+        }
+    }
+}
+
+impl TryFrom<ProtobufPaneId> for PaneId {
+    type Error = &'static str;
+    fn try_from(protobuf_pane_id: ProtobufPaneId) -> Result<Self, &'static str> {
+        match ProtobufPaneType::from_i32(protobuf_pane_id.pane_type) {
+            Some(ProtobufPaneType::Terminal) => {
+                Ok(PaneId::Terminal(protobuf_pane_id.id))
+            },
+            Some(ProtobufPaneType::Plugin) => {
+                Ok(PaneId::Plugin(protobuf_pane_id.id))
+            },
+            None => Err("Failed to convert PaneId")
+        }
+    }
+}
+
+impl TryFrom<PaneId> for ProtobufPaneId {
+    type Error = &'static str;
+    fn try_from(pane_id: PaneId) -> Result<Self, &'static str> {
+        match pane_id {
+            PaneId::Terminal(id) => {
+                Ok(ProtobufPaneId {
+                    pane_type: ProtobufPaneType::Terminal as i32,
+                    id
+                })
+            }
+            PaneId::Plugin(id) => {
+                Ok(ProtobufPaneId {
+                    pane_type: ProtobufPaneType::Plugin as i32,
+                    id
+                })
+            }
         }
     }
 }
@@ -654,7 +690,7 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 _ => Err("Mismatched payload for PipeOutput"),
             },
             Some(CommandName::MessageToPlugin) => match protobuf_plugin_command.payload {
-                Some(Payload::MessageToPluginPayload(MessageToPluginPayload { plugin_url, plugin_config, message_name, message_payload, message_args })) => {
+                Some(Payload::MessageToPluginPayload(MessageToPluginPayload { plugin_url, plugin_config, message_name, message_payload, message_args, new_plugin_args })) => {
                     let plugin_config: BTreeMap<String, String> = plugin_config
                         .into_iter()
                         .map(|e| (e.name, e.value))
@@ -669,6 +705,15 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                         message_name,
                         message_payload,
                         message_args,
+                        new_plugin_args: new_plugin_args.and_then(|protobuf_new_plugin_args| {
+                            Some(NewPluginArgs {
+                                should_float: protobuf_new_plugin_args.should_float,
+                                pane_id_to_replace: protobuf_new_plugin_args.pane_id_to_replace.and_then(|p_id| PaneId::try_from(p_id).ok()),
+                                pane_title: protobuf_new_plugin_args.pane_title,
+                                cwd: protobuf_new_plugin_args.cwd.map(|cwd| PathBuf::from(cwd)),
+                                skip_cache: protobuf_new_plugin_args.skip_cache,
+                            })
+                        })
                     }))
                 },
                 _ => Err("Mismatched payload for PipeOutput"),
@@ -1126,9 +1171,17 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                         message_name: message_to_plugin.message_name,
                         message_payload: message_to_plugin.message_payload,
                         message_args,
+                        new_plugin_args: message_to_plugin.new_plugin_args.map(|m_t_p| ProtobufNewPluginArgs {
+                            should_float: m_t_p.should_float,
+                            pane_id_to_replace: m_t_p.pane_id_to_replace.and_then(|p_id| ProtobufPaneId::try_from(p_id).ok()),
+                            pane_title: m_t_p.pane_title,
+                            cwd: m_t_p.cwd.map(|cwd| cwd.display().to_string()),
+                            skip_cache: m_t_p.skip_cache,
+                        }),
                     }))
                 })
             },
         }
     }
 }
+

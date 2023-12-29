@@ -133,6 +133,30 @@ pub struct MessageToPluginPayload {
     pub message_payload: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(message, repeated, tag = "5")]
     pub message_args: ::prost::alloc::vec::Vec<ContextItem>,
+    #[prost(message, optional, tag = "6")]
+    pub new_plugin_args: ::core::option::Option<NewPluginArgs>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct NewPluginArgs {
+    #[prost(bool, optional, tag = "1")]
+    pub should_float: ::core::option::Option<bool>,
+    #[prost(message, optional, tag = "2")]
+    pub pane_id_to_replace: ::core::option::Option<PaneId>,
+    #[prost(string, optional, tag = "3")]
+    pub pane_title: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag = "4")]
+    pub cwd: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(bool, tag = "5")]
+    pub skip_cache: bool,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PaneId {
+    #[prost(enumeration = "PaneType", tag = "1")]
+    pub pane_type: i32,
+    #[prost(uint32, tag = "2")]
+    pub id: u32,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -520,6 +544,32 @@ impl CommandName {
             "UnblockCliPipeInput" => Some(Self::UnblockCliPipeInput),
             "CliPipeOutput" => Some(Self::CliPipeOutput),
             "MessageToPlugin" => Some(Self::MessageToPlugin),
+            _ => None,
+        }
+    }
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum PaneType {
+    Terminal = 0,
+    Plugin = 1,
+}
+impl PaneType {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            PaneType::Terminal => "Terminal",
+            PaneType::Plugin => "Plugin",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "Terminal" => Some(Self::Terminal),
+            "Plugin" => Some(Self::Plugin),
             _ => None,
         }
     }

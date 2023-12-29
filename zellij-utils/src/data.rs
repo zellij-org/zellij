@@ -995,11 +995,28 @@ pub struct MessageToPlugin {
     pub message_name: String,
     pub message_payload: Option<String>,
     pub message_args: BTreeMap<String, String>,
+    /// these will only be used in case we need to launch a new plugin to send this message to,
+    /// since none are running
+    pub new_plugin_args: Option<NewPluginArgs>,
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct NewPluginArgs {
+    pub should_float: Option<bool>,
+    pub pane_id_to_replace: Option<PaneId>,
+    pub pane_title: Option<String>,
+    pub cwd: Option<PathBuf>,
+    pub skip_cache: bool,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum PaneId {
+    Terminal(u32),
+    Plugin(u32)
 }
 
 impl MessageToPlugin {
     pub fn new(message_name: impl Into<String>) -> Self {
-    // pub fn new(message_name: String) -> Self {
         MessageToPlugin {
             message_name: message_name.into(),
             ..Default::default()
@@ -1019,6 +1036,31 @@ impl MessageToPlugin {
     }
     pub fn with_args(mut self, args: BTreeMap<String, String>) -> Self {
         self.message_args = args;
+        self
+    }
+    pub fn new_plugin_instance_should_float(mut self, should_float: bool) -> Self {
+        let mut new_plugin_args = self.new_plugin_args.get_or_insert_with(Default::default);
+        new_plugin_args.should_float = Some(should_float);
+        self
+    }
+    pub fn new_plugin_instance_should_replace_pane(mut self, pane_id: PaneId) -> Self {
+        let mut new_plugin_args = self.new_plugin_args.get_or_insert_with(Default::default);
+        new_plugin_args.pane_id_to_replace = Some(pane_id);
+        self
+    }
+    pub fn new_plugin_instance_should_have_pane_title(mut self, pane_title: impl Into<String>) -> Self {
+        let mut new_plugin_args = self.new_plugin_args.get_or_insert_with(Default::default);
+        new_plugin_args.pane_title = Some(pane_title.into());
+        self
+    }
+    pub fn new_plugin_instance_should_have_cwd(mut self, cwd: PathBuf) -> Self {
+        let mut new_plugin_args = self.new_plugin_args.get_or_insert_with(Default::default);
+        new_plugin_args.cwd = Some(cwd);
+        self
+    }
+    pub fn new_plugin_instance_should_skip_cache(mut self) -> Self {
+        let mut new_plugin_args = self.new_plugin_args.get_or_insert_with(Default::default);
+        new_plugin_args.skip_cache = true;
         self
     }
 }

@@ -35,6 +35,7 @@ use zellij_utils::{
     },
     ipc::ClientAttributes,
     pane_size::Size,
+    uuid::Uuid,
 };
 
 pub type PluginId = u32;
@@ -463,9 +464,9 @@ pub(crate) fn plugin_thread_main(
                 //  - TODO: consider re-adding the skip_cache flag - DONE
                 //  - TODO: only send messages (unblockclipipeinput, clipipeoutput) to the relevant client and not all of them - DONE
                 //  - TODO: look into leaking messages (simultaneously piping to 2 instances of the
-                //  plugin with --launch-new)
+                //  plugin with --launch-new) - DONE
                 // * bring all the custo moverride stuff form the plugin messages for when
-                // launching a new plugin with a message (like we did through the cli)
+                // launching a new plugin with a message (like we did through the cli) - DONE
                 // * add permissions
                 // * work on product side... do we need all parameters? does enforcing name make
                 // sense? now that we separated name and id? rethink (some of) the interface?
@@ -479,8 +480,6 @@ pub(crate) fn plugin_thread_main(
                 // pending plugins
                 // * continue as normal below (make sure to test this with a pipe, maybe even with
                 // a pipe to multiple plugins where one of them is not loaded)
-
-                // TODO CONTINUE HERE: accept these as parameters and adjust defaults somewhere/somehow, then test everything manually
 
                 let should_float = floating.unwrap_or(true);
                 let size = Size::default(); // TODO: why??
@@ -526,15 +525,21 @@ pub(crate) fn plugin_thread_main(
                 wasm_bridge.cache_plugin_events(plugin_id);
             }
             PluginInstruction::MessageFromPlugin(message_to_plugin) => {
-                let cwd = None;
-                let tab_index = 0;
+                let cwd = message_to_plugin.new_plugin_args.as_ref().and_then(|n| n.cwd.clone());
                 let size = Size::default();
                 let mut updates = vec![];
-                let skip_cache = false;
-                let should_float = true;
-                let should_be_open_in_place = false;
-                let pane_title = None;
-                let pane_id_to_replace = None;
+                let skip_cache = message_to_plugin.new_plugin_args.as_ref().map(|n| n.skip_cache).unwrap_or(false);
+                let should_float = message_to_plugin.new_plugin_args.as_ref().and_then(|n| n.should_float).unwrap_or(true);
+                let should_be_open_in_place = message_to_plugin
+                    .new_plugin_args
+                    .as_ref()
+                    .and_then(|n| n.pane_id_to_replace)
+                    .is_some();
+                let pane_title = message_to_plugin.new_plugin_args.as_ref().and_then(|n| n.pane_title.clone());
+                let pane_id_to_replace = message_to_plugin
+                    .new_plugin_args
+                    .as_ref()
+                    .and_then(|n| n.pane_id_to_replace);
                 match message_to_plugin.plugin_url {
                     Some(plugin_url) => {
                         match RunPlugin::from_url(&plugin_url) {
@@ -547,7 +552,7 @@ pub(crate) fn plugin_thread_main(
                                     should_float,
                                     should_be_open_in_place,
                                     pane_title,
-                                    pane_id_to_replace,
+                                    pane_id_to_replace.map(|p| p.into()),
                                 );
                                 for (plugin_id, client_id) in all_plugin_ids {
                                     updates.push((Some(plugin_id), client_id, Event::MessageFromPlugin {
