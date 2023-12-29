@@ -113,7 +113,6 @@ fn serialize_chunks_with_newlines(
             chunk_width += t_character.width();
             vte_output.push(t_character.character);
         }
-        character_styles.clear();
     }
     Ok(vte_output)
 }
@@ -154,7 +153,6 @@ fn serialize_chunks(
             chunk_width += t_character.width();
             vte_output.push(t_character.character);
         }
-        character_styles.clear();
     }
     if let Some(sixel_image_store) = sixel_image_store {
         if let Some(sixel_chunks) = sixel_chunks {
