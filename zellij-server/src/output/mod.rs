@@ -815,8 +815,8 @@ impl CharacterChunk {
             }
             let next_character = self.terminal_characters.remove(0); // TODO: consider copying self.terminal_characters into a VecDeque to make this process faster?
             if drained_part_len + next_character.width() <= x {
-                drained_part.push_back(next_character);
                 drained_part_len += next_character.width();
+                drained_part.push_back(next_character);
             } else {
                 if drained_part_len == x {
                     self.terminal_characters.insert(0, next_character); // put it back
@@ -963,7 +963,7 @@ impl OutputBuffer {
         row: &Row,
         viewport_width: usize,
     ) -> Vec<TerminalCharacter> {
-        let mut terminal_characters: Vec<TerminalCharacter> = row.columns.iter().copied().collect();
+        let mut terminal_characters: Vec<TerminalCharacter> = row.columns.iter().cloned().collect();
         // pad row
         let row_width = row.width();
         if row_width < viewport_width {

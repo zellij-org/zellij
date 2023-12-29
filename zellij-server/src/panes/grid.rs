@@ -987,7 +987,7 @@ impl Grid {
             .iter()
             .map(|r| {
                 let excess_width = r.excess_width();
-                let mut line: Vec<TerminalCharacter> = r.columns.iter().copied().collect();
+                let mut line: Vec<TerminalCharacter> = r.columns.iter().cloned().collect();
                 // pad line
                 line.resize(
                     self.width.saturating_sub(excess_width),
@@ -1205,7 +1205,7 @@ impl Grid {
             pad_character.styles = self.cursor.pending_styles;
             for _ in 0..count {
                 self.viewport.remove(scroll_region_top);
-                let columns = VecDeque::from(vec![pad_character; self.width]);
+                let columns = VecDeque::from(vec![pad_character.clone(); self.width]);
                 self.viewport
                     .insert(scroll_region_bottom, Row::from_columns(columns).canonical());
             }
@@ -1220,7 +1220,7 @@ impl Grid {
         };
 
         for _ in 0..self.height {
-            let columns = VecDeque::from(vec![character; self.width]);
+            let columns = VecDeque::from(vec![character.clone(); self.width]);
             self.viewport.push(Row::from_columns(columns).canonical());
         }
         self.output_buffer.update_all_lines();
@@ -1367,7 +1367,7 @@ impl Grid {
         self.viewport
             .get(self.cursor.y)
             .and_then(|current_line| current_line.columns.get(absolute_x_in_line))
-            .copied()
+            .cloned()
     }
     pub fn get_absolute_character_index(&self, x: usize, y: usize) -> usize {
         self.viewport.get(y).unwrap().absolute_character_index(x)
@@ -1390,7 +1390,7 @@ impl Grid {
     pub fn clear_all_after_cursor(&mut self, replace_with: TerminalCharacter) {
         if let Some(cursor_row) = self.viewport.get_mut(self.cursor.y) {
             cursor_row.truncate(self.cursor.x);
-            let replace_with_columns = VecDeque::from(vec![replace_with; self.width]);
+            let replace_with_columns = VecDeque::from(vec![replace_with.clone(); self.width]);
             self.replace_characters_in_line_after_cursor(replace_with);
             for row in self.viewport.iter_mut().skip(self.cursor.y + 1) {
                 row.replace_columns(replace_with_columns.clone());
@@ -1400,8 +1400,8 @@ impl Grid {
     }
     pub fn clear_all_before_cursor(&mut self, replace_with: TerminalCharacter) {
         if self.viewport.get(self.cursor.y).is_some() {
+            let replace_with_columns = VecDeque::from(vec![replace_with.clone(); self.width]);
             self.replace_characters_in_line_before_cursor(replace_with);
-            let replace_with_columns = VecDeque::from(vec![replace_with; self.width]);
             for row in self.viewport.iter_mut().take(self.cursor.y) {
                 row.replace_columns(replace_with_columns.clone());
             }
@@ -1415,7 +1415,7 @@ impl Grid {
         }
     }
     pub fn clear_all(&mut self, replace_with: TerminalCharacter) {
-        let replace_with_columns = VecDeque::from(vec![replace_with; self.width]);
+        let replace_with_columns = VecDeque::from(vec![replace_with.clone(); self.width]);
         self.replace_characters_in_line_after_cursor(replace_with);
         for row in &mut self.viewport {
             row.replace_columns(replace_with_columns.clone());
@@ -1450,18 +1450,18 @@ impl Grid {
 
     fn pad_current_line_until(&mut self, position: usize, pad_character: TerminalCharacter) {
         if self.viewport.get(self.cursor.y).is_none() {
-            self.pad_lines_until(self.cursor.y, pad_character);
+            self.pad_lines_until(self.cursor.y, pad_character.clone());
         }
         if let Some(current_row) = self.viewport.get_mut(self.cursor.y) {
             for _ in current_row.width()..position {
-                current_row.push(pad_character);
+                current_row.push(pad_character.clone());
             }
             self.output_buffer.update_line(self.cursor.y);
         }
     }
     fn pad_lines_until(&mut self, position: usize, pad_character: TerminalCharacter) {
         for _ in self.viewport.len()..=position {
-            let columns = VecDeque::from(vec![pad_character; self.width]);
+            let columns = VecDeque::from(vec![pad_character.clone(); self.width]);
             self.viewport.push(Row::from_columns(columns).canonical());
             self.output_buffer.update_line(self.viewport.len() - 1);
         }
@@ -1480,13 +1480,13 @@ impl Grid {
                 } else {
                     self.cursor.y = std::cmp::min(self.height - 1, y + y_offset);
                 }
-                self.pad_lines_until(self.cursor.y, pad_character);
+                self.pad_lines_until(self.cursor.y, pad_character.clone());
                 self.pad_current_line_until(self.cursor.x, pad_character);
             },
             None => {
                 self.cursor.x = std::cmp::min(self.width - 1, x);
                 self.cursor.y = std::cmp::min(self.height - 1, y);
-                self.pad_lines_until(self.cursor.y, pad_character);
+                self.pad_lines_until(self.cursor.y, pad_character.clone());
                 self.pad_current_line_until(self.cursor.x, pad_character);
             },
         }
@@ -1586,7 +1586,7 @@ impl Grid {
                 // region
                 for _ in 0..count {
                     self.viewport.remove(current_line_index);
-                    let columns = VecDeque::from(vec![pad_character; self.width]);
+                    let columns = VecDeque::from(vec![pad_character.clone(); self.width]);
                     if self.viewport.len() > scroll_region_bottom {
                         self.viewport
                             .insert(scroll_region_bottom, Row::from_columns(columns).canonical());
@@ -1615,7 +1615,7 @@ impl Grid {
                     if scroll_region_bottom < self.viewport.len() {
                         self.viewport.remove(scroll_region_bottom);
                     }
-                    let columns = VecDeque::from(vec![pad_character; self.width]);
+                    let columns = VecDeque::from(vec![pad_character.clone(); self.width]);
                     self.viewport
                         .insert(current_line_index, Row::from_columns(columns).canonical());
                 }
@@ -1638,10 +1638,10 @@ impl Grid {
         let mut empty_character = EMPTY_TERMINAL_CHARACTER;
         empty_character.styles = empty_char_style;
         let pad_until = std::cmp::min(self.width, self.cursor.x + count);
-        self.pad_current_line_until(pad_until, empty_character);
+        self.pad_current_line_until(pad_until, empty_character.clone());
         if let Some(current_row) = self.viewport.get_mut(self.cursor.y) {
             for i in 0..count {
-                current_row.replace_character_at(empty_character, self.cursor.x + i);
+                current_row.replace_character_at(empty_character.clone(), self.cursor.x + i);
             }
             self.output_buffer.update_line(self.cursor.y);
         }
@@ -1664,9 +1664,9 @@ impl Grid {
                     .unwrap_or(0)
                     .saturating_sub(1);
                 for _ in 0..excess_width {
-                    current_row.insert_character_at(empty_character, self.cursor.x);
+                    current_row.insert_character_at(empty_character.clone(), self.cursor.x);
                 }
-                current_row.push(empty_character);
+                current_row.push(empty_character.clone());
             }
             self.output_buffer.update_line(self.cursor.y);
         }
@@ -2145,7 +2145,7 @@ impl Perform for Grid {
         let c = self.cursor.charsets[self.active_charset].map(c);
 
         let terminal_character = TerminalCharacter::new_styled(c, self.cursor.pending_styles);
-        self.set_preceding_character(terminal_character);
+        self.set_preceding_character(terminal_character.clone());
         self.add_character(terminal_character);
     }
 
@@ -2821,9 +2821,9 @@ impl Perform for Grid {
                 self.add_character_at_cursor_position(pad_character, true);
             }
         } else if c == 'b' {
-            if let Some(c) = self.preceding_char {
+            if let Some(c) = self.preceding_char.clone() {
                 for _ in 0..next_param_or(1) {
-                    self.add_character(c);
+                    self.add_character(c.clone());
                 }
             }
         } else if c == 'E' {
@@ -3220,10 +3220,10 @@ impl Row {
     pub fn add_character_at(&mut self, terminal_character: TerminalCharacter, x: usize) {
         match self.width_cached().cmp(&x) {
             Ordering::Equal => {
-                // adding the character at the end of the current line
-                self.columns.push_back(terminal_character);
                 // this is unwrapped because this always happens after self.width_cached()
                 *self.width.as_mut().unwrap() += terminal_character.width();
+                // adding the character at the end of the current line
+                self.columns.push_back(terminal_character);
             },
             Ordering::Less => {
                 // adding the character after the end of the current line
@@ -3295,10 +3295,11 @@ impl Row {
     pub fn replace_character_at(&mut self, terminal_character: TerminalCharacter, x: usize) {
         let absolute_x_index = self.absolute_character_index(x);
         if absolute_x_index < self.columns.len() {
+            let terminal_character_width = terminal_character.width();
             self.columns.push_back(terminal_character);
             // this is much more performant than remove/insert
             if let Some(character) = self.columns.swap_remove_back(absolute_x_index) {
-                let excess_width = character.width().saturating_sub(terminal_character.width());
+                let excess_width = character.width().saturating_sub(terminal_character_width);
                 for _ in 0..excess_width {
                     self.columns
                         .insert(absolute_x_index, EMPTY_TERMINAL_CHARACTER);
@@ -3418,8 +3419,8 @@ impl Row {
                 current_part = VecDeque::new();
                 current_part_len = 0;
             }
-            current_part.push_back(character);
             current_part_len += character.width();
+            current_part.push_back(character);
         }
         if !current_part.is_empty() {
             parts.push(Row::from_columns(current_part))

@@ -836,7 +836,7 @@ impl Cursor {
     }
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct TerminalCharacter {
     pub character: char,
     pub styles: CharacterStyles,
