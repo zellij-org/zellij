@@ -52,22 +52,34 @@ pub fn build(sh: &Shell, flags: flags::Build) -> anyhow::Result<()> {
             std::fs::create_dir_all(&prost_asset_dir).unwrap();
 
             let mut prost = prost_build::Config::new();
+            let last_generated = prost_asset_dir.join("generated_plugin_api.rs")
+                .metadata()
+                .and_then(|m| m.modified());
+            let mut needs_regeneration = false;
             prost.out_dir(prost_asset_dir);
             prost.include_file("generated_plugin_api.rs");
             let mut proto_files = vec![];
             for entry in std::fs::read_dir(&protobuf_source_dir).unwrap() {
                 let entry_path = entry.unwrap().path();
                 if entry_path.is_file() {
-                    if let Some(extension) = entry_path.extension() {
-                        if extension == "proto" {
-                            proto_files.push(entry_path.display().to_string())
-                        }
+                    if !entry_path.extension().map(|e| e == "proto").unwrap_or(false) {
+                        continue
+                    }
+                    proto_files.push(entry_path.display().to_string());
+                    let modified = entry_path.metadata().and_then(|m| m.modified());
+                    needs_regeneration |= match (&last_generated, modified) {
+                        (Ok(last_generated), Ok(modified)) =>
+                            modified >= *last_generated,
+                        // Couldn't read some metadata, assume needs update
+                        _ => true,
                     }
                 }
             }
-            prost
-                .compile_protos(&proto_files, &[protobuf_source_dir])
-                .unwrap();
+            if needs_regeneration {
+                prost
+                    .compile_protos(&proto_files, &[protobuf_source_dir])
+                    .unwrap();
+            }
         }
 
         let _pd = sh.push_dir(Path::new(crate_name));
