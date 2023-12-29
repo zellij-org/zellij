@@ -332,8 +332,7 @@ impl CharacterStyles {
         }
 
         // create diff from all changed styles
-        let mut diff =
-            DEFAULT_STYLES.enable_styled_underlines(self.styled_underlines_enabled);
+        let mut diff = DEFAULT_STYLES.enable_styled_underlines(self.styled_underlines_enabled);
 
         if self.foreground != new_styles.foreground {
             diff.foreground = new_styles.foreground;

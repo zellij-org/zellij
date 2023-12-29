@@ -906,7 +906,7 @@ impl Grid {
                 mut new_cursor_y,
                 mut saved_cursor_y_coordinates,
                 new_cursor_x,
-                saved_cursor_x_coordinates
+                saved_cursor_x_coordinates,
             ) = cursors;
 
             let current_viewport_row_count = self.viewport.len();
@@ -2144,7 +2144,8 @@ impl Perform for Grid {
     fn print(&mut self, c: char) {
         let c = self.cursor.charsets[self.active_charset].map(c);
 
-        let terminal_character = TerminalCharacter::new_styled(c, self.cursor.pending_styles.clone());
+        let terminal_character =
+            TerminalCharacter::new_styled(c, self.cursor.pending_styles.clone());
         self.set_preceding_character(terminal_character.clone());
         self.add_character(terminal_character);
     }
@@ -2443,9 +2444,7 @@ impl Perform for Grid {
             if intermediates.is_empty() {
                 self.cursor
                     .pending_styles
-                    .update(|styles| {
-                        styles.add_style_from_ansi_params(&mut params_iter)
-                    })
+                    .update(|styles| styles.add_style_from_ansi_params(&mut params_iter))
             }
         } else if c == 'C' || c == 'a' {
             // move cursor forward
@@ -2456,9 +2455,9 @@ impl Perform for Grid {
             if let Some(clear_type) = params_iter.next().map(|param| param[0]) {
                 let mut char_to_replace = EMPTY_TERMINAL_CHARACTER;
                 if let Some(background_color) = self.cursor.pending_styles.background {
-                    char_to_replace.styles.update(|styles| {
-                        styles.background = Some(background_color)
-                    });
+                    char_to_replace
+                        .styles
+                        .update(|styles| styles.background = Some(background_color));
                 }
                 if clear_type == 0 {
                     self.replace_characters_in_line_after_cursor(char_to_replace);
@@ -2472,9 +2471,9 @@ impl Perform for Grid {
             // clear all (0 => below, 1 => above, 2 => all, 3 => saved)
             let mut char_to_replace = EMPTY_TERMINAL_CHARACTER;
             if let Some(background_color) = self.cursor.pending_styles.background {
-                char_to_replace.styles.update(|styles| {
-                    styles.background = Some(background_color)
-                });
+                char_to_replace
+                    .styles
+                    .update(|styles| styles.background = Some(background_color));
             }
             if let Some(clear_type) = params_iter.next().map(|param| param[0]) {
                 if clear_type == 0 {
