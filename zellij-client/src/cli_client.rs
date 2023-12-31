@@ -27,8 +27,8 @@ pub fn start_cli_client(mut os_input: Box<dyn ClientOsApi>, session_name: &str, 
 
     for action in actions {
         match action {
-            Action::CliMessage { input_pipe_id, name, payload, plugin, args, configuration, launch_new, skip_cache, floating, in_place, cwd, pane_title } if payload.is_none() => {
-                pipe_client(&mut os_input, input_pipe_id, name, plugin, args, configuration, launch_new, skip_cache, floating, in_place, pane_id, cwd, pane_title);
+            Action::CliMessage { input_pipe_id, name, payload, plugin, args, configuration, launch_new, skip_cache, floating, in_place, cwd, pane_title } => {
+                pipe_client(&mut os_input, input_pipe_id, name, payload, plugin, args, configuration, launch_new, skip_cache, floating, in_place, pane_id, cwd, pane_title);
             },
             action => {
                 single_message_client(&mut os_input, action, pane_id);
@@ -41,6 +41,7 @@ fn pipe_client(
     os_input: &mut Box<dyn ClientOsApi>,
     input_pipe_id: String,
     mut name: Option<String>,
+    payload: Option<String>,
     plugin: Option<String>,
     args: Option<BTreeMap<String, String>>,
     mut configuration: Option<BTreeMap<String, String>>,
@@ -60,6 +61,24 @@ fn pipe_client(
         configuration.get_or_insert_with(BTreeMap::new).insert("_zellij_id".to_owned(), Uuid::new_v4().to_string());
     }
     loop {
+        if payload.is_some() {
+            let msg = ClientToServerMsg::Action(Action::CliMessage{
+                input_pipe_id: input_pipe_id.clone(),
+                name: name.clone(),
+                payload,
+                args: args.clone(),
+                plugin: plugin.clone(),
+                configuration: configuration.clone(),
+                floating,
+                in_place,
+                launch_new,
+                skip_cache,
+                cwd: cwd.clone(),
+                pane_title: pane_title.clone()
+            }, pane_id, None);
+            os_input.send_to_server(msg);
+            break;
+        }
         let mut buffer = String::new();
         handle.read_line(&mut buffer).unwrap(); // TODO: no unwrap etc.
         if buffer.is_empty() {
