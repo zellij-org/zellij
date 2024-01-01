@@ -820,7 +820,7 @@ pub(crate) fn route_action(
                 }
                 let pane_id_to_replace = if should_open_in_place { pane_id } else { None };
                 senders
-                    .send_to_plugin(PluginInstruction::CliMessage { input_pipe_id, name, payload, plugin, args, configuration, floating, pane_id_to_replace, cwd, pane_title, skip_cache })
+                    .send_to_plugin(PluginInstruction::CliMessage { input_pipe_id, name, payload, plugin, args, configuration, floating, pane_id_to_replace, cwd, pane_title, skip_cache, cli_client_id: client_id })
                     .with_context(err_context)?;
             } else {
                 log::error!("Message must have a name");

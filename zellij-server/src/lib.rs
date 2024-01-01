@@ -86,6 +86,7 @@ pub enum ServerInstruction {
     ConnStatus(ClientId),
     ActiveClients(ClientId),
     Log(Vec<String>, ClientId),
+    LogError(Vec<String>, ClientId),
     SwitchSession(ConnectToSession, ClientId),
     UnblockCliPipeInput(String), // String -> Pipe name
     CliPipeOutput(String, String), // String -> Pipe name, String -> Output
@@ -107,6 +108,7 @@ impl From<&ServerInstruction> for ServerContext {
             ServerInstruction::ConnStatus(..) => ServerContext::ConnStatus,
             ServerInstruction::ActiveClients(_) => ServerContext::ActiveClients,
             ServerInstruction::Log(..) => ServerContext::Log,
+            ServerInstruction::LogError(..) => ServerContext::LogError,
             ServerInstruction::SwitchSession(..) => ServerContext::SwitchSession,
             ServerInstruction::UnblockCliPipeInput(..) => ServerContext::UnblockCliPipeInput,
             ServerInstruction::CliPipeOutput(..) => ServerContext::CliPipeOutput,
@@ -738,6 +740,14 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     client_id,
                     os_input,
                     ServerToClientMsg::Log(lines_to_log),
+                    session_state
+                );
+            },
+            ServerInstruction::LogError(lines_to_log, client_id) => {
+                send_to_client!(
+                    client_id,
+                    os_input,
+                    ServerToClientMsg::LogError(lines_to_log),
                     session_state
                 );
             },

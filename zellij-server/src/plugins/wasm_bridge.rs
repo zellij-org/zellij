@@ -29,6 +29,7 @@ use crate::panes::PaneId;
 use crate::{
     background_jobs::BackgroundJob, screen::ScreenInstruction, thread_bus::ThreadSenders,
     ui::loading_indication::LoadingIndication, ClientId,
+    ServerInstruction
 };
 use zellij_utils::{
     data::{Event, EventType, PluginCapabilities},
@@ -123,6 +124,7 @@ impl WasmBridge {
         cwd: Option<PathBuf>,
         skip_cache: bool,
         client_id: Option<ClientId>,
+        cli_client_id: Option<ClientId>,
     ) -> Result<(PluginId, ClientId)> {
         // returns the plugin id
         let err_context = move || format!("failed to load plugin");
@@ -194,6 +196,7 @@ impl WasmBridge {
                             plugin_id,
                             &mut loading_indication,
                             e,
+                            cli_client_id,
                         ),
                     }
                 }
@@ -225,6 +228,7 @@ impl WasmBridge {
                         plugin_id,
                         &mut loading_indication,
                         e,
+                        cli_client_id,
                     ),
                 }
                 let _ =
@@ -331,6 +335,7 @@ impl WasmBridge {
                                     *plugin_id,
                                     &mut loading_indication,
                                     e,
+                                    None,
                                 ),
                             }
                         }
@@ -342,6 +347,7 @@ impl WasmBridge {
                                 *plugin_id,
                                 &mut loading_indication,
                                 &e,
+                                None,
                             );
                         }
                     },
@@ -873,7 +879,7 @@ impl WasmBridge {
 
     // gets all running plugins details matching this run_plugin, if none are running, loads one and
     // returns its details
-    pub fn get_or_load_plugins(&mut self, run_plugin: RunPlugin, size: Size, cwd: Option<PathBuf>, skip_cache: bool, should_float: bool, should_be_open_in_place: bool, pane_title: Option<String>, pane_id_to_replace: Option<PaneId>) -> Vec<(PluginId, Option<ClientId>)> {
+    pub fn get_or_load_plugins(&mut self, run_plugin: RunPlugin, size: Size, cwd: Option<PathBuf>, skip_cache: bool, should_float: bool, should_be_open_in_place: bool, pane_title: Option<String>, pane_id_to_replace: Option<PaneId>, cli_client_id: Option<ClientId>) -> Vec<(PluginId, Option<ClientId>)> {
         let all_plugin_ids = self.all_plugin_and_client_ids_for_plugin_location(&run_plugin.location, &run_plugin.configuration);
         if all_plugin_ids.is_empty() {
             if let Some(loading_plugin_id) = self.plugin_id_of_loading_plugin(&run_plugin.location, &run_plugin.configuration) {
@@ -886,6 +892,7 @@ impl WasmBridge {
                 cwd.clone(),
                 skip_cache,
                 None,
+                cli_client_id,
             ) {
                 Ok((plugin_id, client_id)) => {
                     drop(self.senders.send_to_screen(ScreenInstruction::AddPlugin(
@@ -903,6 +910,11 @@ impl WasmBridge {
                 },
                 Err(e) => {
                     log::error!("Failed to load plugin: {e}");
+                    if let Some(cli_client_id) = cli_client_id {
+                        let _ = self.senders.send_to_server(
+                            ServerInstruction::LogError(vec![format!("Failed to log plugin: {e}")], cli_client_id)
+                        );
+                    }
                     vec![]
                 },
             }
@@ -925,6 +937,7 @@ fn handle_plugin_loading_failure(
     plugin_id: PluginId,
     loading_indication: &mut LoadingIndication,
     error: impl std::fmt::Debug,
+    cli_client_id: Option<ClientId>,
 ) {
     log::error!("{:?}", error);
     let _ = senders.send_to_background_jobs(BackgroundJob::StopPluginLoadingAnimation(plugin_id));
@@ -933,6 +946,11 @@ fn handle_plugin_loading_failure(
         plugin_id,
         loading_indication.clone(),
     ));
+    if let Some(cli_client_id) = cli_client_id {
+        let _ = senders.send_to_server(
+            ServerInstruction::LogError(vec![format!("{:?}", error)], cli_client_id)
+        );
+    }
 }
 
 // TODO: move to permissions?

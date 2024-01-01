@@ -436,6 +436,7 @@ pub enum ServerContext {
     ConnStatus,
     ActiveClients,
     Log,
+    LogError,
     SwitchSession,
     UnblockCliPipeInput,
     CliPipeOutput,

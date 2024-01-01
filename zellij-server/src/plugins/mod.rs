@@ -113,6 +113,7 @@ pub enum PluginInstruction {
         pane_title: Option<String>,
         cwd: Option<PathBuf>,
         skip_cache: bool,
+        cli_client_id: ClientId,
     },
     CachePluginEvents { plugin_id: PluginId },
     MessageFromPlugin(MessageToPlugin),
@@ -212,6 +213,7 @@ pub(crate) fn plugin_thread_main(
                 cwd.clone(),
                 skip_cache,
                 Some(client_id),
+                None,
             ) {
                 Ok((plugin_id, client_id)) => {
                     drop(bus.senders.send_to_screen(ScreenInstruction::AddPlugin(
@@ -250,7 +252,7 @@ pub(crate) fn plugin_thread_main(
                             // the cli who spawned the command and is not an existing client_id
                             let skip_cache = true; // when reloading we always skip cache
                             match wasm_bridge
-                                .load_plugin(&run, Some(tab_index), size, None, skip_cache, None)
+                                .load_plugin(&run, Some(tab_index), size, None, skip_cache, None, None)
                             {
                                 Ok((plugin_id, client_id)) => {
                                     let should_be_open_in_place = false;
@@ -324,6 +326,7 @@ pub(crate) fn plugin_thread_main(
                             None,
                             skip_cache,
                             Some(client_id),
+                            None,
                         )?;
                         plugin_ids
                             .entry((run.location, run.configuration))
@@ -430,7 +433,8 @@ pub(crate) fn plugin_thread_main(
                 pane_id_to_replace,
                 pane_title,
                 cwd,
-                skip_cache
+                skip_cache,
+                cli_client_id,
             } => {
                 // TODO CONTINUE HERE(18/12):
                 // * make plugin pretty and make POC with pausing and filtering - DONE
@@ -467,19 +471,13 @@ pub(crate) fn plugin_thread_main(
                 //  plugin with --launch-new) - DONE
                 // * bring all the custo moverride stuff form the plugin messages for when
                 // launching a new plugin with a message (like we did through the cli) - DONE
-                // * add permissions <== CONTINUE HERE
+                // * add permissions - DONE
                 // * work on product side... do we need all parameters? does enforcing name make
-                // sense? now that we separated name and id? rethink (some of) the interface?
-                // * work on cli error messages, must be clearer
-
-                // TODO:
-                // * if the plugin is not running
-                // * do a wasm_bridge.load_plugin with as much defaults as possible (accept
-                // overrides in the instruction later)
-                // * make sure the below all_plugin_and_client_ids_for_plugin_location also returns
-                // pending plugins
-                // * continue as normal below (make sure to test this with a pipe, maybe even with
-                // a pipe to multiple plugins where one of them is not loaded)
+                // sense? now that we separated name and id? rethink (some of) the interface? -
+                // DONE
+                // * work on cli error messages, must be clearer - DONE
+                // * make a `zellij pipe` (aliased: zpipe) alias for the cli message that will not
+                // include all the plugin launching stuff
 
                 let should_float = floating.unwrap_or(true);
                 let size = Size::default(); // TODO: why??
@@ -500,14 +498,16 @@ pub(crate) fn plugin_thread_main(
                                     pane_id_to_replace.is_some(),
                                     pane_title,
                                     pane_id_to_replace,
+                                    Some(cli_client_id),
                                 );
                                 for (plugin_id, client_id) in all_plugin_ids {
                                     updates.push((Some(plugin_id), client_id, Event::CliMessage {input_pipe_id: input_pipe_id.clone(), name: name.clone(), payload: payload.clone(), args: args.clone() }));
                                 }
                             },
                             Err(e) => {
-                                log::error!("Failed to parse plugin url: {:?}", e);
-                                // TODO: inform cli client
+                                let _ = bus.senders.send_to_server(
+                                    ServerInstruction::LogError(vec![format!("Failed to parse plugin url: {}", e)], cli_client_id)
+                                );
                             }
                         }
                     },
@@ -553,6 +553,7 @@ pub(crate) fn plugin_thread_main(
                                     should_be_open_in_place,
                                     pane_title,
                                     pane_id_to_replace.map(|p| p.into()),
+                                    None,
                                 );
                                 for (plugin_id, client_id) in all_plugin_ids {
                                     updates.push((Some(plugin_id), client_id, Event::MessageFromPlugin {

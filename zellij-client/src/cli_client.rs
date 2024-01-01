@@ -137,6 +137,14 @@ fn pipe_client(
                             .non_fatal();
                     }
                 },
+                Some((ServerToClientMsg::Log(log_lines), _)) => {
+                    log_lines.iter().for_each(|line| println!("{line}"));
+                    process::exit(0);
+                },
+                Some((ServerToClientMsg::LogError(log_lines), _)) => {
+                    log_lines.iter().for_each(|line| eprintln!("{line}"));
+                    process::exit(2);
+                },
                 Some((ServerToClientMsg::Exit(exit_reason), _)) => {
                     match exit_reason {
                         ExitReason::Error(e) => {
