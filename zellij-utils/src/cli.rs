@@ -289,6 +289,43 @@ pub enum Sessions {
     ConvertTheme {
         old_theme_file: PathBuf,
     },
+    /// Send data to one or more plugins, launch them if they are not running.
+    #[clap(override_usage(
+r#"
+zellij pipe [OPTIONS] [--] <PAYLOAD>
+
+* Send data to a specific plugin:
+
+zellij pipe --plugin file:/path/to/my/plugin.wasm --name my_pipe_name -- my_arbitrary_data
+
+* To all running plugins (that are listening):
+
+zellij pipe --name my_pipe_name -- my_arbitrary_data
+
+* Pipe data into this command's STDIN and get output from the plugin on this command's STDOUT
+
+tail -f /tmp/my-live-logfile | zellij pipe --name logs --plugin https://example.com/my-plugin.wasm | wc -l
+"#))]
+    Pipe {
+        /// The name of the pipe
+        #[clap(short, long, value_parser, display_order(1))]
+        name: Option<String>,
+        /// The data to send down this pipe (if blank, will listen to STDIN)
+        payload: Option<String>,
+
+        #[clap(short, long, value_parser, display_order(2))]
+        /// The args of the pipe
+        args: Option<PluginUserConfiguration>, // TODO: we might want to not re-use
+                                                        // PluginUserConfiguration
+        /// The plugin url (eg. file:/tmp/my-plugin.wasm) to direct this pipe to, if not specified,
+        /// will be sent to all plugins, if specified and is not running, the plugin will be launched
+        #[clap(short, long, value_parser, display_order(3))]
+        plugin: Option<String>,
+        /// The plugin configuration (note: the same plugin with different configuration is
+        /// considered a different plugin for the purposes of determining the pipe destination)
+        #[clap(short('c'), long, value_parser, display_order(4))]
+        plugin_configuration: Option<PluginUserConfiguration>,
+    }
 }
 
 #[derive(Debug, Subcommand, Clone, Serialize, Deserialize)]
@@ -552,13 +589,15 @@ pub enum CliAction {
     /// Send data to one or more plugins, launch them if they are not running.
     #[clap(override_usage(
 r#"
+zellij action pipe [OPTIONS] [--] <PAYLOAD>
+
 * Send data to a specific plugin:
 
-zellij action pipe --plugin file:/path/to/my/plugin.wasm --name my_pipe_name -- my-arbitrary-data
+zellij action pipe --plugin file:/path/to/my/plugin.wasm --name my_pipe_name -- my_arbitrary_data
 
 * To all running plugins (that are listening):
 
-zellij action pipe --name my_pipe_name -- my-arbitrary-data
+zellij action pipe --name my_pipe_name -- my_arbitrary_data
 
 * Pipe data into this command's STDIN and get output from the plugin on this command's STDOUT
 
