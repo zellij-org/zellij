@@ -543,7 +543,8 @@ pub(crate) fn plugin_thread_main(
                 match message_to_plugin.plugin_url {
                     Some(plugin_url) => {
                         match RunPlugin::from_url(&plugin_url) {
-                            Ok(run_plugin) => {
+                            Ok(mut run_plugin) => {
+                                run_plugin.configuration = PluginUserConfiguration::new(message_to_plugin.plugin_config);
                                 let all_plugin_ids = wasm_bridge.get_or_load_plugins(
                                     run_plugin,
                                     size,
