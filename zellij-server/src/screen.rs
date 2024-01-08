@@ -1039,6 +1039,10 @@ impl Screen {
 
     /// Renders this [`Screen`], which amounts to rendering its active [`Tab`].
     pub fn render(&mut self) -> Result<()> {
+        if self.connected_clients.borrow().is_empty() {
+            return Ok(());
+        }
+
         let err_context = "failed to render screen";
 
         let mut output = Output::new(
@@ -1401,6 +1405,10 @@ impl Screen {
         Ok(pane_manifest)
     }
     fn log_and_report_session_state(&mut self) -> Result<()> {
+        if self.connected_clients.borrow().is_empty() {
+            return Ok(());
+        }
+
         let err_context = || format!("Failed to log and report session state");
         // generate own session info
         let pane_manifest = self.generate_and_report_pane_state()?;
