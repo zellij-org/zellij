@@ -206,6 +206,7 @@ pub enum Action {
     Run(RunCommandAction),
     /// Detach session and exit
     Detach,
+    CliDetach,
     LeftClick(Position),
     RightClick(Position),
     MiddleClick(Position),
@@ -285,6 +286,7 @@ impl Action {
             CliAction::MovePane { direction } => Ok(vec![Action::MovePane(direction)]),
             CliAction::MovePaneBackwards => Ok(vec![Action::MovePaneBackwards]),
             CliAction::Clear => Ok(vec![Action::ClearScreen]),
+            CliAction::Detach => Ok(vec![Action::CliDetach]),
             CliAction::DumpScreen { path, full } => Ok(vec![Action::DumpScreen(
                 path.as_os_str().to_string_lossy().into(),
                 full,

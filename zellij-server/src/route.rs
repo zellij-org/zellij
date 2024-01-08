@@ -30,6 +30,7 @@ use crate::ClientId;
 pub(crate) fn route_action(
     action: Action,
     client_id: ClientId,
+    connected_clients: Vec<ClientId>,
     pane_id: Option<PaneId>,
     senders: ThreadSenders,
     capabilities: PluginCapabilities,
@@ -539,6 +540,14 @@ pub(crate) fn route_action(
                 .with_context(err_context)?;
             should_break = true;
         },
+        Action::CliDetach => {
+            if connected_clients.len() == 2 {
+                senders
+                    .send_to_server(ServerInstruction::DetachSession(connected_clients))
+                    .with_context(err_context)?;
+                should_break = true;
+            }
+        },
         Action::Detach => {
             senders
                 .send_to_server(ServerInstruction::DetachSession(vec![client_id]))
@@ -848,6 +857,11 @@ pub(crate) fn route_thread_main(
                         ClientToServerMsg::Action(action, maybe_pane_id, maybe_client_id) => {
                             let client_id = maybe_client_id.unwrap_or(client_id);
                             if let Some(rlocked_sessions) = rlocked_sessions.as_ref() {
+                                let connected_clients = session_state
+                                    .read()
+                                    .to_anyhow()
+                                    .with_context(err_context)?
+                                    .client_ids();
                                 if let Action::SwitchToMode(input_mode) = action {
                                     let send_res = os_input.send_to_client(
                                         client_id,
@@ -859,9 +873,24 @@ pub(crate) fn route_thread_main(
                                         return Ok(true);
                                     }
                                 }
+                                if let Action::CliDetach = action {
+                                    // detach only if one client (and CLI) is conected
+                                    if connected_clients.len() != 2 {
+                                        let _ = os_input.send_to_client(
+                                            client_id,
+                                            ServerToClientMsg::LogError(vec![
+                                                "No client has been detached because too many \
+                                                clients are currently connected to this session. \
+                                                It's not possible to determine which one should \
+                                                be detached.".to_string(),
+                                            ]),
+                                        );
+                                    }
+                                }
                                 if route_action(
                                     action,
                                     client_id,
+                                    connected_clients,
                                     maybe_pane_id.map(|p| PaneId::Terminal(p)),
                                     rlocked_sessions.senders.clone(),
                                     rlocked_sessions.capabilities.clone(),

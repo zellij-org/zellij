@@ -52,6 +52,7 @@ macro_rules! apply_action {
         if let Err(e) = route_action(
             $action,
             $env.plugin_env.client_id,
+            vec![],
             Some(PaneId::Plugin($env.plugin_env.plugin_id)),
             $env.plugin_env.senders.clone(),
             $env.plugin_env.capabilities.clone(),
