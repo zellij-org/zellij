@@ -436,49 +436,6 @@ pub(crate) fn plugin_thread_main(
                 skip_cache,
                 cli_client_id,
             } => {
-                // TODO CONTINUE HERE(18/12):
-                // * make plugin pretty and make POC with pausing and filtering - DONE
-                // * remove subscribe mechanism, - DONE
-                // * change unblock mechanism to block - Nah
-                // * add permissions - DONE
-                // * tests? - DONE
-                // * launch plugin if no instances exist and messaging/piping
-                //  - test: see that we don't lose messages - DONE
-                //  - while we're here, see if the cached messages are unordered/reversed? - DONE!!
-                //  - test: launching 2 plugins in different places in the chain (copy wasm file to
-                //  another path) - DONE
-                //  - make tests pass again (we probably created chaos) - DONE
-                //  - test that we're not losing messages when we already have permission - DONE
-                //  - same plugin 2 different places in path (with/without permissions) - DONE
-                // * allow plugins to send/pipe messages to each other
-                //  - change Message (all the way) to CliMessage (also the unblock and pipeoutput
-                //  methods' names should reflect this change) - DONE
-                //  - create a send_message plugin api that would act like Message but without
-                //  backpressure - DONE
-                //  - write some plugin api tests for it (like the clioutput, etc. tests) - DONE
-                // * bring all the custo moverride stuff form the cli/plugin (the static variables
-                // at the beginning of the vairous PluginInstruction methods)
-                //  - TODO: check various core multi-tab operations, with plugins, various plugin -
-                //  DONE
-                //  - TODO: check multiple simultaneous pipes, I think we have some deadlocks with
-                //  one Arc or another there - DONE
-                //  - TODO: create a unique id for cli pipes and use it for unblocking instead of
-                //  the message name - DONE
-                //  - TODO: remove the launch_new from everything except the cli place thing - DONE
-                //  - TODO: consider re-adding the skip_cache flag - DONE
-                //  - TODO: only send messages (unblockclipipeinput, clipipeoutput) to the relevant client and not all of them - DONE
-                //  - TODO: look into leaking messages (simultaneously piping to 2 instances of the
-                //  plugin with --launch-new) - DONE
-                // * bring all the custo moverride stuff form the plugin messages for when
-                // launching a new plugin with a message (like we did through the cli) - DONE
-                // * add permissions - DONE
-                // * work on product side... do we need all parameters? does enforcing name make
-                // sense? now that we separated name and id? rethink (some of) the interface? -
-                // DONE
-                // * work on cli error messages, must be clearer - DONE
-                // * make a `zellij pipe` (aliased: zpipe) alias for the cli message that will not
-                // include all the plugin launching stuff
-
                 let should_float = floating.unwrap_or(true);
                 let size = Size::default(); // TODO: why??
                 let mut updates = vec![];

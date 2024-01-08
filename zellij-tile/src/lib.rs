@@ -21,7 +21,7 @@ pub mod ui_components;
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
-use zellij_utils::data::Event;
+use zellij_utils::data::{Event, PipeSource, PipeMessage};
 
 // use zellij_tile::shim::plugin_api::event::ProtobufEvent;
 
@@ -35,6 +35,13 @@ pub trait ZellijPlugin: Default {
     /// Will be called with an [`Event`](prelude::Event) if the plugin is subscribed to said event.
     /// If the plugin returns `true` from this function, Zellij will know it should be rendered and call its `render` function.
     fn update(&mut self, event: Event) -> bool {
+        false
+    } // return true if it should render
+    /// Will be called when data is being piped to the plugin, a PipeMessage.payload of None signifies the pipe
+    /// has ended
+    /// If the plugin returns `true` from this function, Zellij will know it should be rendered and call its `render` function.
+    // fn pipe(&mut self, source: PipeSource, name: String, payload: Option<String>, args: BTreeMap<String, String>) -> bool {
+    fn pipe(&mut self, pipe_message: PipeMessage) -> bool {
         false
     } // return true if it should render
     /// Will be called either after an `update` that requested it, or when the plugin otherwise needs to be re-rendered (eg. on startup, or when the plugin is resized).
@@ -133,6 +140,21 @@ macro_rules! register_plugin {
                     ProtobufEvent::decode(protobuf_bytes.as_slice()).unwrap();
                 let event = protobuf_event.try_into().unwrap();
                 state.borrow_mut().update(event)
+            })
+        }
+
+        #[no_mangle]
+        pub fn pipe() -> bool {
+            let err_context = "Failed to deserialize pipe message";
+            use std::convert::TryInto;
+            use zellij_tile::shim::plugin_api::pipe_message::ProtobufPipeMessage;
+            use zellij_tile::shim::prost::Message;
+            STATE.with(|state| {
+                let protobuf_bytes: Vec<u8> = $crate::shim::object_from_stdin().unwrap();
+                let protobuf_pipe_message: ProtobufPipeMessage =
+                    ProtobufPipeMessage::decode(protobuf_bytes.as_slice()).unwrap();
+                let pipe_message = protobuf_pipe_message.try_into().unwrap();
+                state.borrow_mut().pipe(pipe_message)
             })
         }
 

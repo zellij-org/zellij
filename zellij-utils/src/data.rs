@@ -1106,6 +1106,21 @@ pub enum HttpVerb {
     Delete,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum PipeSource {
+    Cli(String), // String is the input_pipe_id of the CLI pipe (used for blocking/unblocking)
+    Plugin(u32), // u32 is the lugin id
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct PipeMessage {
+    pub source: PipeSource,
+    pub name: String,
+    pub payload: Option<String>,
+    pub args: BTreeMap<String, String>,
+}
+
+
 #[derive(Debug, Clone, EnumDiscriminants, ToString)]
 #[strum_discriminants(derive(EnumString, Hash, Serialize, Deserialize))]
 #[strum_discriminants(name(CommandType))]
