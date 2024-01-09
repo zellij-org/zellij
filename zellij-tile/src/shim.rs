@@ -702,6 +702,14 @@ pub fn unblock_cli_pipe_input(pipe_name: &str) {
     unsafe { host_run_plugin_command() };
 }
 
+/// Block the input side of a pipe, will only be released once this or another plugin unblocks it
+pub fn block_cli_pipe_input(pipe_name: &str) {
+    let plugin_command = PluginCommand::BlockCliPipeInput(pipe_name.to_owned());
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 /// Send output to the output side of a pipe, ths does not affect the input side of same pipe
 pub fn cli_pipe_output(pipe_name: &str, output: &str) {
     let plugin_command = PluginCommand::CliPipeOutput(pipe_name.to_owned(), output.to_owned());

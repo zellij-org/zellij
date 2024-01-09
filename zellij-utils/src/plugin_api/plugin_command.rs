@@ -683,6 +683,12 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 },
                 _ => Err("Mismatched payload for UnblockPipeInput"),
             },
+            Some(CommandName::BlockCliPipeInput) => match protobuf_plugin_command.payload {
+                Some(Payload::BlockCliPipeInputPayload(pipe_name)) => {
+                    Ok(PluginCommand::BlockCliPipeInput(pipe_name))
+                },
+                _ => Err("Mismatched payload for BlockPipeInput"),
+            },
             Some(CommandName::CliPipeOutput) => match protobuf_plugin_command.payload {
                 Some(Payload::CliPipeOutputPayload(CliPipeOutputPayload { pipe_name, output })) => {
                     Ok(PluginCommand::CliPipeOutput(pipe_name, output))
@@ -1149,6 +1155,10 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
             PluginCommand::UnblockCliPipeInput(pipe_name) => Ok(ProtobufPluginCommand {
                 name: CommandName::UnblockCliPipeInput as i32,
                 payload: Some(Payload::UnblockCliPipeInputPayload(pipe_name)),
+            }),
+            PluginCommand::BlockCliPipeInput(pipe_name) => Ok(ProtobufPluginCommand {
+                name: CommandName::BlockCliPipeInput as i32,
+                payload: Some(Payload::BlockCliPipeInputPayload(pipe_name)),
             }),
             PluginCommand::CliPipeOutput(pipe_name, output) => Ok(ProtobufPluginCommand {
                 name: CommandName::CliPipeOutput as i32,

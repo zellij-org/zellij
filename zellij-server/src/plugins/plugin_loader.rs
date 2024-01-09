@@ -833,6 +833,7 @@ impl<'a> PluginLoader<'a> {
             default_layout: self.default_layout.clone(),
             plugin_cwd: self.zellij_cwd.clone(),
             input_pipes_to_unblock: Arc::new(Mutex::new(HashSet::new())),
+            input_pipes_to_block: Arc::new(Mutex::new(HashSet::new())),
         };
 
         let subscriptions = Arc::new(Mutex::new(HashSet::new()));

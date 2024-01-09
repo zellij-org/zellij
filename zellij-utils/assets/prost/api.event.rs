@@ -11,7 +11,7 @@ pub struct Event {
     pub name: i32,
     #[prost(
         oneof = "event::Payload",
-        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17"
+        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15"
     )]
     pub payload: ::core::option::Option<event::Payload>,
 }
@@ -48,10 +48,6 @@ pub mod event {
         RunCommandResultPayload(super::RunCommandResultPayload),
         #[prost(message, tag = "15")]
         WebRequestResultPayload(super::WebRequestResultPayload),
-        #[prost(message, tag = "16")]
-        CliMessagePayload(super::CliMessagePayload),
-        #[prost(message, tag = "17")]
-        MessageFromPluginPayload(super::MessageFromPluginPayload),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -121,28 +117,6 @@ pub struct CustomMessagePayload {
     pub message_name: ::prost::alloc::string::String,
     #[prost(string, tag = "2")]
     pub payload: ::prost::alloc::string::String,
-}
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct CliMessagePayload {
-    #[prost(string, tag = "1")]
-    pub name: ::prost::alloc::string::String,
-    #[prost(string, optional, tag = "2")]
-    pub payload: ::core::option::Option<::prost::alloc::string::String>,
-    #[prost(message, repeated, tag = "3")]
-    pub args: ::prost::alloc::vec::Vec<ContextItem>,
-    #[prost(string, tag = "4")]
-    pub input_pipe_id: ::prost::alloc::string::String,
-}
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct MessageFromPluginPayload {
-    #[prost(string, tag = "1")]
-    pub name: ::prost::alloc::string::String,
-    #[prost(string, optional, tag = "2")]
-    pub payload: ::core::option::Option<::prost::alloc::string::String>,
-    #[prost(message, repeated, tag = "3")]
-    pub args: ::prost::alloc::vec::Vec<ContextItem>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -346,8 +320,6 @@ pub enum EventType {
     SessionUpdate = 16,
     RunCommandResult = 17,
     WebRequestResult = 18,
-    CliMessage = 19,
-    MessageFromPlugin = 20,
 }
 impl EventType {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -375,8 +347,6 @@ impl EventType {
             EventType::SessionUpdate => "SessionUpdate",
             EventType::RunCommandResult => "RunCommandResult",
             EventType::WebRequestResult => "WebRequestResult",
-            EventType::CliMessage => "CliMessage",
-            EventType::MessageFromPlugin => "MessageFromPlugin",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -401,8 +371,6 @@ impl EventType {
             "SessionUpdate" => Some(Self::SessionUpdate),
             "RunCommandResult" => Some(Self::RunCommandResult),
             "WebRequestResult" => Some(Self::WebRequestResult),
-            "CliMessage" => Some(Self::CliMessage),
-            "MessageFromPlugin" => Some(Self::MessageFromPlugin),
             _ => None,
         }
     }

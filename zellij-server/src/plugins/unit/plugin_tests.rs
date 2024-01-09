@@ -5669,11 +5669,102 @@ pub fn unblock_input_plugin_command() {
         false,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
-    let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
+
+    let _ = plugin_thread_sender.send(PluginInstruction::CliMessage{
+        input_pipe_id: "input_pipe_id".to_owned(),
+        name: "message_name".to_owned(),
+        payload: Some("message_payload".to_owned()),
+        plugin: None, // broadcast
+        args: None,
+        configuration: None,
+        floating: None,
+        pane_id_to_replace: None,
+        pane_title: None,
+        cwd: None,
+        skip_cache: false,
+        cli_client_id: client_id
+    });
+    screen_thread.join().unwrap(); // this might take a while if the cache is cold
+    teardown();
+    let plugin_bytes_events = received_screen_instructions
+        .lock()
+        .unwrap()
+        .iter()
+        .rev()
+        .find_map(|i| {
+            if let ScreenInstruction::PluginBytes(..) = i {
+                Some(i.clone())
+            } else {
+                None
+            }
+        })
+        .clone();
+    assert_snapshot!(format!("{:#?}", plugin_bytes_events));
+}
+
+#[test]
+#[ignore]
+pub fn block_input_plugin_command() {
+    let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
+                                          // destructor removes the directory
+    let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
+    let (plugin_thread_sender, screen_receiver, teardown) =
+        create_plugin_thread(Some(plugin_host_folder));
+    let plugin_should_float = Some(false);
+    let plugin_title = Some("test_plugin".to_owned());
+    let run_plugin = RunPlugin {
+        _allow_exec_host_cmd: false,
+        location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
+    };
+    let tab_index = 1;
+    let client_id = 1;
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let received_screen_instructions = Arc::new(Mutex::new(vec![]));
+    let screen_thread = grant_permissions_and_log_actions_in_thread!(
+        received_screen_instructions,
+        ScreenInstruction::PluginBytes,
+        screen_receiver,
+        1,
+        &PermissionType::ReadCliMessages,
+        cache_path,
+        plugin_thread_sender,
+        client_id
+    );
+
+    let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
+    let _ = plugin_thread_sender.send(PluginInstruction::Load(
+        plugin_should_float,
+        false,
+        plugin_title,
+        run_plugin,
+        tab_index,
         None,
-        Some(client_id),
-        Event::CliMessage { input_pipe_id: "input_pipe_id".to_owned(), name: "message_name".to_owned(), payload: Some("message_payload".to_owned()), args: None}
-    )]));
+        client_id,
+        size,
+        None,
+        false,
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(500));
+
+    let _ = plugin_thread_sender.send(PluginInstruction::CliMessage{
+        input_pipe_id: "input_pipe_id".to_owned(),
+        name: "message_name_block".to_owned(),
+        payload: Some("message_payload".to_owned()),
+        plugin: None, // broadcast
+        args: None,
+        configuration: None,
+        floating: None,
+        pane_id_to_replace: None,
+        pane_title: None,
+        cwd: None,
+        skip_cache: false,
+        cli_client_id: client_id
+    });
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
     let plugin_bytes_events = received_screen_instructions
@@ -5747,11 +5838,29 @@ pub fn pipe_output_plugin_command() {
         false,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
-    let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
-        None,
-        Some(client_id),
-        Event::CliMessage { input_pipe_id: "input_pipe_id".to_owned(), name: "pipe_output".to_owned(), payload: Some("message_payload".to_owned()), args: None}
-    )]));
+//     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
+//         None,
+//         Some(client_id),
+//         Event::CliMessage { input_pipe_id: "input_pipe_id".to_owned(), name: "pipe_output".to_owned(), payload: Some("message_payload".to_owned()), args: None}
+//     )]));
+
+    let _ = plugin_thread_sender.send(PluginInstruction::CliMessage{
+        input_pipe_id: "input_pipe_id".to_owned(),
+        name: "pipe_output".to_owned(),
+        payload: Some("message_payload".to_owned()),
+        plugin: None, // broadcast
+        args: None,
+        configuration: None,
+        floating: None,
+        pane_id_to_replace: None,
+        pane_title: None,
+        cwd: None,
+        skip_cache: false,
+        cli_client_id: client_id
+    });
+
+
+
     std::thread::sleep(std::time::Duration::from_millis(500));
     teardown();
     server_thread.join().unwrap(); // this might take a while if the cache is cold
@@ -5794,7 +5903,6 @@ pub fn send_message_to_plugin_plugin_command() {
         rows: 20,
     };
     let received_screen_instructions = Arc::new(Mutex::new(vec![]));
-    // let screen_thread = grant_permissions_and_log_actions_in_thread_naked_variant!(
     let screen_thread = grant_permissions_and_log_actions_in_thread!(
         received_screen_instructions,
         ScreenInstruction::PluginBytes,
@@ -5820,13 +5928,30 @@ pub fn send_message_to_plugin_plugin_command() {
         false,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
-    let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
-        None,
-        Some(client_id),
-        // this will trigger the fixture plugin to send a message to all plugins and then receive
-        // it itself
-        Event::CliMessage { input_pipe_id: "input_pipe_id".to_owned(), name: "send_message_to_plugin".to_owned(), payload: Some("payload_sent_to_self".to_owned()), args: None}
-    )]));
+    let _ = plugin_thread_sender.send(PluginInstruction::CliMessage{
+        input_pipe_id: "input_pipe_id".to_owned(),
+        name: "send_message_to_plugin".to_owned(),
+        payload: Some("payload_sent_to_self".to_owned()),
+        plugin: None, // broadcast
+        args: None,
+        configuration: None,
+        floating: None,
+        pane_id_to_replace: None,
+        pane_title: None,
+        cwd: None,
+        skip_cache: false,
+        cli_client_id: client_id
+    });
+
+
+
+//             vec![(
+//         None,
+//         Some(client_id),
+//         // this will trigger the fixture plugin to send a message to all plugins and then receive
+//         // it itself
+//         Event::CliMessage { input_pipe_id: "input_pipe_id".to_owned(), name: "send_message_to_plugin".to_owned(), payload: Some("payload_sent_to_self".to_owned()), args: None}
+//     )]));
     std::thread::sleep(std::time::Duration::from_millis(500));
     teardown();
     screen_thread.join().unwrap(); // this might take a while if the cache is cold

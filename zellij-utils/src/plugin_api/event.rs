@@ -228,35 +228,6 @@ impl TryFrom<ProtobufEvent> for Event {
                 },
                 _ => Err("Malformed payload for the WebRequestResult Event"),
             },
-            Some(ProtobufEventType::CliMessage) => match protobuf_event.payload {
-                Some(ProtobufEventPayload::CliMessagePayload(cli_message_payload)) => {
-                    Ok(Event::CliMessage {
-                        name: cli_message_payload.name,
-                        payload: cli_message_payload.payload,
-                        args: Some(cli_message_payload
-                            .args
-                            .into_iter()
-                            .map(|c_i| (c_i.name, c_i.value))
-                            .collect()),
-                        input_pipe_id: cli_message_payload.input_pipe_id,
-                    })
-                },
-                _ => Err("Malformed payload for the CliMessage Event"),
-            },
-            Some(ProtobufEventType::MessageFromPlugin) => match protobuf_event.payload {
-                Some(ProtobufEventPayload::MessageFromPluginPayload(message_from_plugin_payload)) => {
-                    Ok(Event::MessageFromPlugin {
-                        name: message_from_plugin_payload.name,
-                        payload: message_from_plugin_payload.payload,
-                        args: Some(message_from_plugin_payload
-                            .args
-                            .into_iter()
-                            .map(|c_i| (c_i.name, c_i.value))
-                            .collect()),
-                    })
-                },
-                _ => Err("Malformed payload for the MessageFromPlugin Event"),
-            },
             None => Err("Unknown Protobuf Event"),
         }
     }
@@ -454,27 +425,6 @@ impl TryFrom<Event> for ProtobufEvent {
                     )),
                 })
             },
-            Event::CliMessage { name, payload, args, input_pipe_id } => Ok(ProtobufEvent {
-                name: ProtobufEventType::CliMessage as i32,
-                payload: Some(event::Payload::CliMessagePayload(CliMessagePayload {
-                    name,
-                    payload,
-                    args: args
-                        .map(|a| a.into_iter().map(|(name, value)| ContextItem { name, value }).collect())
-                        .unwrap_or_default(),
-                    input_pipe_id,
-                })),
-            }),
-            Event::MessageFromPlugin { name, payload, args } => Ok(ProtobufEvent {
-                name: ProtobufEventType::MessageFromPlugin as i32,
-                payload: Some(event::Payload::MessageFromPluginPayload(MessageFromPluginPayload {
-                    name,
-                    payload,
-                    args: args
-                        .map(|a| a.into_iter().map(|(name, value)| ContextItem { name, value }).collect())
-                        .unwrap_or_default()
-                })),
-            }),
         }
     }
 }
@@ -922,8 +872,6 @@ impl TryFrom<ProtobufEventType> for EventType {
             ProtobufEventType::SessionUpdate => EventType::SessionUpdate,
             ProtobufEventType::RunCommandResult => EventType::RunCommandResult,
             ProtobufEventType::WebRequestResult => EventType::WebRequestResult,
-            ProtobufEventType::CliMessage => EventType::CliMessage,
-            ProtobufEventType::MessageFromPlugin => EventType::MessageFromPlugin,
         })
     }
 }
@@ -951,8 +899,6 @@ impl TryFrom<EventType> for ProtobufEventType {
             EventType::SessionUpdate => ProtobufEventType::SessionUpdate,
             EventType::RunCommandResult => ProtobufEventType::RunCommandResult,
             EventType::WebRequestResult => ProtobufEventType::WebRequestResult,
-            EventType::CliMessage => ProtobufEventType::CliMessage,
-            EventType::MessageFromPlugin => ProtobufEventType::MessageFromPlugin,
         })
     }
 }

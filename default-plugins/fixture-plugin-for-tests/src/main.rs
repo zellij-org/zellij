@@ -35,9 +35,12 @@ impl<'de> ZellijWorker<'de> for TestWorker {
     }
 }
 
+#[cfg(target_family = "wasm")]
 register_plugin!(State);
+#[cfg(target_family = "wasm")]
 register_worker!(TestWorker, test_worker, TEST_WORKER);
 
+#[cfg(target_family = "wasm")]
 impl ZellijPlugin for State {
     fn load(&mut self, configuration: BTreeMap<String, String>) {
         request_permission(&[
@@ -62,8 +65,6 @@ impl ZellijPlugin for State {
             EventType::FileSystemCreate,
             EventType::FileSystemUpdate,
             EventType::FileSystemDelete,
-            EventType::CliMessage,
-            EventType::MessageFromPlugin,
         ]);
     }
 
@@ -286,20 +287,6 @@ impl ZellijPlugin for State {
                     self.received_payload = Some(payload.clone());
                 }
             },
-            Event::CliMessage{name, payload, ..} => {
-                if name == "message_name" && payload == &Some("message_payload".to_owned()) {
-                    unblock_cli_pipe_input(name);
-                } else if name == "pipe_output" {
-                    cli_pipe_output(name, "this_is_my_output");
-                } else if name == "send_message_to_plugin" {
-                    send_message_to_plugin(MessageToPlugin::new("message_to_plugin").with_payload("my_cool_payload"));
-                }
-            },
-            Event::MessageFromPlugin {name, payload, ..} => {
-                if name == "message_to_plugin" {
-                    self.message_to_plugin_payload = payload.clone();
-                }
-            }
             Event::SystemClipboardFailure => {
                 // this is just to trigger the worker message
                 post_message_to(PluginMessage {
@@ -312,6 +299,27 @@ impl ZellijPlugin for State {
         }
         let should_render = true;
         self.received_events.push(event);
+        should_render
+    }
+    fn pipe(&mut self, pipe_message: PipeMessage) -> bool {
+        let input_pipe_id = match pipe_message.source {
+            PipeSource::Cli(id) => id.clone(),
+            PipeSource::Plugin(id) => format!("{}", id)
+        };
+        let name = pipe_message.name;
+        let payload = pipe_message.payload;
+        if name == "message_name" && payload == Some("message_payload".to_owned()) {
+            unblock_cli_pipe_input(&input_pipe_id);
+        } else if name == "message_name_block" {
+            block_cli_pipe_input(&input_pipe_id);
+        } else if name == "pipe_output" {
+            cli_pipe_output(&name, "this_is_my_output");
+        } else if name == "send_message_to_plugin" {
+            send_message_to_plugin(MessageToPlugin::new("message_to_plugin").with_payload("my_cool_payload"));
+        } else if name == "message_to_plugin" {
+            self.message_to_plugin_payload = payload.clone();
+        }
+        let should_render = true;
         should_render
     }
 

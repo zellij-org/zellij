@@ -5,7 +5,7 @@ pub struct PluginCommand {
     pub name: i32,
     #[prost(
         oneof = "plugin_command::Payload",
-        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49"
+        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50"
     )]
     pub payload: ::core::option::Option<plugin_command::Payload>,
 }
@@ -106,9 +106,11 @@ pub mod plugin_command {
         RenameSessionPayload(::prost::alloc::string::String),
         #[prost(string, tag = "47")]
         UnblockCliPipeInputPayload(::prost::alloc::string::String),
-        #[prost(message, tag = "48")]
-        CliPipeOutputPayload(super::CliPipeOutputPayload),
+        #[prost(string, tag = "48")]
+        BlockCliPipeInputPayload(::prost::alloc::string::String),
         #[prost(message, tag = "49")]
+        CliPipeOutputPayload(super::CliPipeOutputPayload),
+        #[prost(message, tag = "50")]
         MessageToPluginPayload(super::MessageToPluginPayload),
     }
 }
@@ -371,8 +373,9 @@ pub enum CommandName {
     DeleteAllDeadSessions = 74,
     RenameSession = 75,
     UnblockCliPipeInput = 76,
-    CliPipeOutput = 77,
-    MessageToPlugin = 78,
+    BlockCliPipeInput = 77,
+    CliPipeOutput = 78,
+    MessageToPlugin = 79,
 }
 impl CommandName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -458,6 +461,7 @@ impl CommandName {
             CommandName::DeleteAllDeadSessions => "DeleteAllDeadSessions",
             CommandName::RenameSession => "RenameSession",
             CommandName::UnblockCliPipeInput => "UnblockCliPipeInput",
+            CommandName::BlockCliPipeInput => "BlockCliPipeInput",
             CommandName::CliPipeOutput => "CliPipeOutput",
             CommandName::MessageToPlugin => "MessageToPlugin",
         }
@@ -542,6 +546,7 @@ impl CommandName {
             "DeleteAllDeadSessions" => Some(Self::DeleteAllDeadSessions),
             "RenameSession" => Some(Self::RenameSession),
             "UnblockCliPipeInput" => Some(Self::UnblockCliPipeInput),
+            "BlockCliPipeInput" => Some(Self::BlockCliPipeInput),
             "CliPipeOutput" => Some(Self::CliPipeOutput),
             "MessageToPlugin" => Some(Self::MessageToPlugin),
             _ => None,

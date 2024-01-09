@@ -88,8 +88,9 @@ enum CommandName {
   DeleteAllDeadSessions = 74;
   RenameSession = 75;
   UnblockCliPipeInput = 76;
-  CliPipeOutput = 77;
-  MessageToPlugin = 78;
+  BlockCliPipeInput = 77;
+  CliPipeOutput = 78;
+  MessageToPlugin = 79;
 }
 
 message PluginCommand {
@@ -141,8 +142,9 @@ message PluginCommand {
     string delete_dead_session_payload = 45;
     string rename_session_payload = 46;
     string unblock_cli_pipe_input_payload = 47;
-    CliPipeOutputPayload cli_pipe_output_payload = 48;
-    MessageToPluginPayload message_to_plugin_payload = 49;
+    string block_cli_pipe_input_payload = 48;
+    CliPipeOutputPayload cli_pipe_output_payload = 49;
+    MessageToPluginPayload message_to_plugin_payload = 50;
   }
 }
 

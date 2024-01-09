@@ -511,17 +511,17 @@ pub enum Event {
        // headers,
        // body,
        // context
-    CliMessage {
-        input_pipe_id: String,
-        name: String,
-        payload: Option<String>, // None => end of pipe
-        args: Option<BTreeMap<String, String>>,
-    },
-    MessageFromPlugin {
-        name: String,
-        payload: Option<String>, // None => end of pipe
-        args: Option<BTreeMap<String, String>>,
-    }
+//     CliMessage {
+//         input_pipe_id: String,
+//         name: String,
+//         payload: Option<String>, // None => end of pipe
+//         args: Option<BTreeMap<String, String>>,
+//     },
+//     MessageFromPlugin {
+//         name: String,
+//         payload: Option<String>, // None => end of pipe
+//         args: Option<BTreeMap<String, String>>,
+//     }
 }
 
 #[derive(
@@ -1118,6 +1118,23 @@ pub struct PipeMessage {
     pub name: String,
     pub payload: Option<String>,
     pub args: BTreeMap<String, String>,
+    // TODO: add audience: Audience::Self, Audience::All
+}
+
+impl PipeMessage {
+    pub fn new(
+        source: PipeSource,
+        name: impl Into<String>,
+        payload: &Option<String>,
+        args: &Option<BTreeMap<String, String>>
+    ) -> Self {
+        PipeMessage {
+            source,
+            name: name.into(),
+            payload: payload.clone(),
+            args: args.clone().unwrap_or_else(|| Default::default()),
+        }
+    }
 }
 
 
@@ -1213,6 +1230,7 @@ pub enum PluginCommand {
     ),
     RenameSession(String), // String -> new session name
     UnblockCliPipeInput(String), // String => pipe name
+    BlockCliPipeInput(String), // String => pipe name
     CliPipeOutput(String, String), // String => pipe name, String => output
     MessageToPlugin(MessageToPlugin),
 }

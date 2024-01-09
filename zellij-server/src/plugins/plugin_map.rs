@@ -285,6 +285,7 @@ pub struct PluginEnv {
     pub default_layout: Box<Layout>,
     pub plugin_cwd: PathBuf,
     pub input_pipes_to_unblock: Arc<Mutex<HashSet<String>>>,
+    pub input_pipes_to_block: Arc<Mutex<HashSet<String>>>,
 }
 
 impl PluginEnv {

@@ -42,8 +42,6 @@ enum EventType {
     SessionUpdate = 16;
     RunCommandResult = 17;
     WebRequestResult = 18;
-    CliMessage = 19;
-    MessageFromPlugin = 20;
 }
 
 message EventNameList {
@@ -67,8 +65,6 @@ message Event {
     SessionUpdatePayload session_update_payload = 13;
     RunCommandResultPayload run_command_result_payload = 14;
     WebRequestResultPayload web_request_result_payload = 15;
-    CliMessagePayload cli_message_payload = 16;
-    MessageFromPluginPayload message_from_plugin_payload = 17;
   }
 }
 
@@ -112,19 +108,6 @@ message FileListPayload {
 message CustomMessagePayload {
   string message_name = 1;
   string payload = 2;
-}
-
-message CliMessagePayload {
-  string name = 1;
-  optional string payload = 2;
-  repeated ContextItem args = 3;
-  string input_pipe_id = 4;
-}
-
-message MessageFromPluginPayload {
-  string name = 1;
-  optional string payload = 2;
-  repeated ContextItem args = 3;
 }
 
 enum CopyDestination {

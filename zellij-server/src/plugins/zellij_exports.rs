@@ -244,6 +244,9 @@ fn host_run_plugin_command(env: FunctionEnvMut<ForeignFunctionEnv>) {
                     PluginCommand::UnblockCliPipeInput(pipe_name) => {
                         unblock_cli_pipe_input(env, pipe_name)?
                     },
+                    PluginCommand::BlockCliPipeInput(pipe_name) => {
+                        block_cli_pipe_input(env, pipe_name)?
+                    },
                     PluginCommand::CliPipeOutput(pipe_name, output) => {
                         cli_pipe_output(env, pipe_name, output)?
                     },
@@ -287,6 +290,11 @@ fn unblock_cli_pipe_input(env: &ForeignFunctionEnv, pipe_name: String) -> Result
     Ok(()) // TODO: no result return
 }
 
+fn block_cli_pipe_input(env: &ForeignFunctionEnv, pipe_name: String) -> Result<()> {
+    env.plugin_env.input_pipes_to_block.lock().unwrap().insert(pipe_name);
+    Ok(()) // TODO: no result return
+}
+
 fn cli_pipe_output(env: &ForeignFunctionEnv, pipe_name: String, output: String) -> Result<()> {
     env.plugin_env
         .senders
@@ -297,7 +305,7 @@ fn cli_pipe_output(env: &ForeignFunctionEnv, pipe_name: String, output: String) 
 fn message_to_plugin(env: &ForeignFunctionEnv, message_to_plugin: MessageToPlugin) -> Result<()> {
     env.plugin_env
         .senders
-        .send_to_plugin(PluginInstruction::MessageFromPlugin(message_to_plugin))
+        .send_to_plugin(PluginInstruction::MessageFromPlugin{source_plugin_id: env.plugin_env.plugin_id, message: message_to_plugin})
         .context("failed to send message to plugin")
 }
 
@@ -1391,6 +1399,7 @@ fn check_command_permission(
         | PluginCommand::RenameSession(..)
         | PluginCommand::RenameTab(..) => PermissionType::ChangeApplicationState,
         PluginCommand::UnblockCliPipeInput(..)
+        | PluginCommand::BlockCliPipeInput(..)
         | PluginCommand::CliPipeOutput(..) => PermissionType::ReadCliMessages,
         PluginCommand::MessageToPlugin(..) => PermissionType::MessageAndLaunchOtherPlugins,
         _ => return (PermissionStatus::Granted, None),

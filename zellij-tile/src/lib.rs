@@ -21,7 +21,7 @@ pub mod ui_components;
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
-use zellij_utils::data::{Event, PipeSource, PipeMessage};
+use zellij_utils::data::{Event, PipeMessage};
 
 // use zellij_tile::shim::plugin_api::event::ProtobufEvent;
 
@@ -40,7 +40,6 @@ pub trait ZellijPlugin: Default {
     /// Will be called when data is being piped to the plugin, a PipeMessage.payload of None signifies the pipe
     /// has ended
     /// If the plugin returns `true` from this function, Zellij will know it should be rendered and call its `render` function.
-    // fn pipe(&mut self, source: PipeSource, name: String, payload: Option<String>, args: BTreeMap<String, String>) -> bool {
     fn pipe(&mut self, pipe_message: PipeMessage) -> bool {
         false
     } // return true if it should render
