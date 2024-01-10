@@ -258,9 +258,8 @@ pub enum Action {
     BreakPaneRight,
     BreakPaneLeft,
     RenameSession(String),
-    // TODO: rename to CLiPipe
-    CliMessage {
-        input_pipe_id: String,
+    CliPipe {
+        pipe_id: String,
         name: Option<String>,
         payload: Option<String>,
         args: Option<BTreeMap<String, String>>,
@@ -617,9 +616,9 @@ impl Action {
                     .map(|cwd| current_dir.join(cwd))
                     .or_else(|| Some(current_dir));
                 let skip_cache = skip_plugin_cache;
-                let input_pipe_id = Uuid::new_v4().to_string();
-                Ok(vec![Action::CliMessage{
-                    input_pipe_id,
+                let pipe_id = Uuid::new_v4().to_string();
+                Ok(vec![Action::CliPipe {
+                    pipe_id,
                     name,
                     payload,
                     args: args.map(|a| a.inner().clone()), // TODO: no clone somehow

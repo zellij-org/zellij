@@ -511,17 +511,6 @@ pub enum Event {
        // headers,
        // body,
        // context
-//     CliMessage {
-//         input_pipe_id: String,
-//         name: String,
-//         payload: Option<String>, // None => end of pipe
-//         args: Option<BTreeMap<String, String>>,
-//     },
-//     MessageFromPlugin {
-//         name: String,
-//         payload: Option<String>, // None => end of pipe
-//         args: Option<BTreeMap<String, String>>,
-//     }
 }
 
 #[derive(
@@ -549,7 +538,7 @@ pub enum Permission {
     OpenTerminalsOrPlugins,
     WriteToStdin,
     WebAccess,
-    ReadCliMessages,
+    ReadCliPipes,
     MessageAndLaunchOtherPlugins,
 }
 
@@ -567,7 +556,7 @@ impl PermissionType {
             PermissionType::OpenTerminalsOrPlugins => "Start new terminals and plugins".to_owned(),
             PermissionType::WriteToStdin => "Write to standard input (STDIN)".to_owned(),
             PermissionType::WebAccess => "Make web requests".to_owned(),
-            PermissionType::ReadCliMessages => "Read messages from the command line".to_owned(),
+            PermissionType::ReadCliPipes => "Read pipes/messages from the command line".to_owned(),
             PermissionType::MessageAndLaunchOtherPlugins => "Send messages to and launch other plugins".to_owned(),
         }
     }
@@ -1108,7 +1097,7 @@ pub enum HttpVerb {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum PipeSource {
-    Cli(String), // String is the input_pipe_id of the CLI pipe (used for blocking/unblocking)
+    Cli(String), // String is the pipe_id of the CLI pipe (used for blocking/unblocking)
     Plugin(u32), // u32 is the lugin id
 }
 

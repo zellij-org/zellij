@@ -14,7 +14,7 @@ Some(
         OpenTerminalsOrPlugins,
         WriteToStdin,
         WebAccess,
-        ReadCliMessages,
+        ReadCliPipes,
         MessageAndLaunchOtherPlugins,
     ],
 )

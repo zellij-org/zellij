@@ -27,8 +27,8 @@ pub fn start_cli_client(mut os_input: Box<dyn ClientOsApi>, session_name: &str, 
 
     for action in actions {
         match action {
-            Action::CliMessage { input_pipe_id, name, payload, plugin, args, configuration, launch_new, skip_cache, floating, in_place, cwd, pane_title } => {
-                pipe_client(&mut os_input, input_pipe_id, name, payload, plugin, args, configuration, launch_new, skip_cache, floating, in_place, pane_id, cwd, pane_title);
+            Action::CliPipe { pipe_id, name, payload, plugin, args, configuration, launch_new, skip_cache, floating, in_place, cwd, pane_title } => {
+                pipe_client(&mut os_input, pipe_id, name, payload, plugin, args, configuration, launch_new, skip_cache, floating, in_place, pane_id, cwd, pane_title);
             },
             action => {
                 single_message_client(&mut os_input, action, pane_id);
@@ -39,7 +39,7 @@ pub fn start_cli_client(mut os_input: Box<dyn ClientOsApi>, session_name: &str, 
 
 fn pipe_client(
     os_input: &mut Box<dyn ClientOsApi>,
-    input_pipe_id: String,
+    pipe_id: String,
     mut name: Option<String>,
     payload: Option<String>,
     plugin: Option<String>,
@@ -62,8 +62,8 @@ fn pipe_client(
     }
     loop {
         if payload.is_some() {
-            let msg = ClientToServerMsg::Action(Action::CliMessage{
-                input_pipe_id: input_pipe_id.clone(),
+            let msg = ClientToServerMsg::Action(Action::CliPipe {
+                pipe_id: pipe_id.clone(),
                 name: name.clone(),
                 payload,
                 args: args.clone(),
@@ -82,8 +82,8 @@ fn pipe_client(
         let mut buffer = String::new();
         handle.read_line(&mut buffer).unwrap(); // TODO: no unwrap etc.
         if buffer.is_empty() {
-            let msg = ClientToServerMsg::Action(Action::CliMessage{
-                input_pipe_id: input_pipe_id.clone(),
+            let msg = ClientToServerMsg::Action(Action::CliPipe {
+                pipe_id: pipe_id.clone(),
                 name: name.clone(),
                 payload: None,
                 args: args.clone(),
@@ -99,8 +99,8 @@ fn pipe_client(
             os_input.send_to_server(msg);
             break;
         } else {
-            let msg = ClientToServerMsg::Action(Action::CliMessage{
-                input_pipe_id: input_pipe_id.clone(),
+            let msg = ClientToServerMsg::Action(Action::CliPipe {
+                pipe_id: pipe_id.clone(),
                 name: name.clone(),
                 payload: Some(buffer),
                 args: args.clone(),
@@ -120,13 +120,13 @@ fn pipe_client(
         loop {
             match os_input.recv_from_server() {
                 Some((ServerToClientMsg::UnblockCliPipeInput(pipe_name), _)) => {
-                    if pipe_name == input_pipe_id {
+                    if pipe_name == pipe_id {
                         break;
                     }
                 },
                 Some((ServerToClientMsg::CliPipeOutput(pipe_name, output), _)) => {
                     let err_context = "Failed to write to stdout";
-                    if pipe_name == input_pipe_id {
+                    if pipe_name == pipe_id {
                         let mut stdout = os_input.get_stdout_writer();
                         stdout
                             .write_all(output.as_bytes())

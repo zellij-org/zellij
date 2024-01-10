@@ -53,7 +53,7 @@ impl ZellijPlugin for State {
             PermissionType::OpenTerminalsOrPlugins,
             PermissionType::WriteToStdin,
             PermissionType::WebAccess,
-            PermissionType::ReadCliMessages,
+            PermissionType::ReadCliPipes,
             PermissionType::MessageAndLaunchOtherPlugins,
         ]);
         self.configuration = configuration;

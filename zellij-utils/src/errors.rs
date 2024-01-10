@@ -393,7 +393,7 @@ pub enum PluginContext {
     PermissionRequestResult,
     DumpLayout,
     LogLayoutToHd,
-    CliMessage,
+    CliPipe,
     Message,
     CachePluginEvents,
     MessageFromPlugin,

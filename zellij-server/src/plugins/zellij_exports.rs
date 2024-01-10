@@ -1400,7 +1400,7 @@ fn check_command_permission(
         | PluginCommand::RenameTab(..) => PermissionType::ChangeApplicationState,
         PluginCommand::UnblockCliPipeInput(..)
         | PluginCommand::BlockCliPipeInput(..)
-        | PluginCommand::CliPipeOutput(..) => PermissionType::ReadCliMessages,
+        | PluginCommand::CliPipeOutput(..) => PermissionType::ReadCliPipes,
         PluginCommand::MessageToPlugin(..) => PermissionType::MessageAndLaunchOtherPlugins,
         _ => return (PermissionStatus::Granted, None),
     };

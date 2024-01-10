@@ -8,7 +8,7 @@ pub enum PermissionType {
     OpenTerminalsOrPlugins = 4,
     WriteToStdin = 5,
     WebAccess = 6,
-    ReadCliMessages = 7,
+    ReadCliPipes = 7,
     MessageAndLaunchOtherPlugins = 8,
 }
 impl PermissionType {
@@ -25,7 +25,7 @@ impl PermissionType {
             PermissionType::OpenTerminalsOrPlugins => "OpenTerminalsOrPlugins",
             PermissionType::WriteToStdin => "WriteToStdin",
             PermissionType::WebAccess => "WebAccess",
-            PermissionType::ReadCliMessages => "ReadCliMessages",
+            PermissionType::ReadCliPipes => "ReadCliPipes",
             PermissionType::MessageAndLaunchOtherPlugins => {
                 "MessageAndLaunchOtherPlugins"
             }
@@ -41,7 +41,7 @@ impl PermissionType {
             "OpenTerminalsOrPlugins" => Some(Self::OpenTerminalsOrPlugins),
             "WriteToStdin" => Some(Self::WriteToStdin),
             "WebAccess" => Some(Self::WebAccess),
-            "ReadCliMessages" => Some(Self::ReadCliMessages),
+            "ReadCliPipes" => Some(Self::ReadCliPipes),
             "MessageAndLaunchOtherPlugins" => Some(Self::MessageAndLaunchOtherPlugins),
             _ => None,
         }

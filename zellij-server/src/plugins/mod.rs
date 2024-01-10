@@ -101,8 +101,8 @@ pub enum PluginInstruction {
     ),
     DumpLayout(SessionLayoutMetadata, ClientId),
     LogLayoutToHd(SessionLayoutMetadata),
-    CliMessage {
-        input_pipe_id: String,
+    CliPipe {
+        pipe_id: String,
         name: String,
         payload: Option<String>,
         plugin: Option<String>,
@@ -151,7 +151,7 @@ impl From<&PluginInstruction> for PluginContext {
             },
             PluginInstruction::DumpLayout(..) => PluginContext::DumpLayout,
             PluginInstruction::LogLayoutToHd(..) => PluginContext::LogLayoutToHd,
-            PluginInstruction::CliMessage {..} => PluginContext::CliMessage,
+            PluginInstruction::CliPipe {..} => PluginContext::CliPipe,
             PluginInstruction::CachePluginEvents{..} => PluginContext::CachePluginEvents,
             PluginInstruction::MessageFromPlugin{..} => PluginContext::MessageFromPlugin,
         }
@@ -425,8 +425,8 @@ pub(crate) fn plugin_thread_main(
                         .send_to_pty(PtyInstruction::LogLayoutToHd(session_layout_metadata)),
                 );
             },
-            PluginInstruction::CliMessage {
-                input_pipe_id,
+            PluginInstruction::CliPipe {
+                pipe_id,
                 name,
                 payload,
                 plugin,
@@ -464,7 +464,7 @@ pub(crate) fn plugin_thread_main(
                                     pipe_messages.push((
                                         Some(plugin_id),
                                         client_id,
-                                        PipeMessage::new(PipeSource::Cli(input_pipe_id.clone()), &name, &payload, &args)
+                                        PipeMessage::new(PipeSource::Cli(pipe_id.clone()), &name, &payload, &args)
                                     ));
                                 }
                             },
@@ -482,7 +482,7 @@ pub(crate) fn plugin_thread_main(
                             pipe_messages.push((
                                 Some(plugin_id),
                                 Some(client_id),
-                                PipeMessage::new(PipeSource::Cli(input_pipe_id.clone()), &name, &payload, &args)
+                                PipeMessage::new(PipeSource::Cli(pipe_id.clone()), &name, &payload, &args)
                             ));
                         }
                     }

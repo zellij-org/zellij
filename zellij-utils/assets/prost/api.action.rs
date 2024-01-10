@@ -105,12 +105,12 @@ pub mod action {
         #[prost(message, tag = "46")]
         LaunchPluginPayload(super::LaunchOrFocusPluginPayload),
         #[prost(message, tag = "47")]
-        MessagePayload(super::CliMessagePayload),
+        MessagePayload(super::CliPipePayload),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct CliMessagePayload {
+pub struct CliPipePayload {
     #[prost(string, optional, tag = "1")]
     pub name: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(string, tag = "2")]
@@ -424,7 +424,7 @@ pub enum ActionName {
     BreakPaneLeft = 79,
     RenameSession = 80,
     LaunchPlugin = 81,
-    CliMessage = 82,
+    CliPipe = 82,
 }
 impl ActionName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -515,7 +515,7 @@ impl ActionName {
             ActionName::BreakPaneLeft => "BreakPaneLeft",
             ActionName::RenameSession => "RenameSession",
             ActionName::LaunchPlugin => "LaunchPlugin",
-            ActionName::CliMessage => "CliMessage",
+            ActionName::CliPipe => "CliPipe",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -603,7 +603,7 @@ impl ActionName {
             "BreakPaneLeft" => Some(Self::BreakPaneLeft),
             "RenameSession" => Some(Self::RenameSession),
             "LaunchPlugin" => Some(Self::LaunchPlugin),
-            "CliMessage" => Some(Self::CliMessage),
+            "CliPipe" => Some(Self::CliPipe),
             _ => None,
         }
     }

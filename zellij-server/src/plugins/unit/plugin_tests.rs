@@ -5649,7 +5649,7 @@ pub fn unblock_input_plugin_command() {
         ScreenInstruction::PluginBytes,
         screen_receiver,
         1,
-        &PermissionType::ReadCliMessages,
+        &PermissionType::ReadCliPipes,
         cache_path,
         plugin_thread_sender,
         client_id
@@ -5670,8 +5670,8 @@ pub fn unblock_input_plugin_command() {
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
 
-    let _ = plugin_thread_sender.send(PluginInstruction::CliMessage{
-        input_pipe_id: "input_pipe_id".to_owned(),
+    let _ = plugin_thread_sender.send(PluginInstruction::CliPipe {
+        pipe_id: "input_pipe_id".to_owned(),
         name: "message_name".to_owned(),
         payload: Some("message_payload".to_owned()),
         plugin: None, // broadcast
@@ -5730,7 +5730,7 @@ pub fn block_input_plugin_command() {
         ScreenInstruction::PluginBytes,
         screen_receiver,
         1,
-        &PermissionType::ReadCliMessages,
+        &PermissionType::ReadCliPipes,
         cache_path,
         plugin_thread_sender,
         client_id
@@ -5749,10 +5749,11 @@ pub fn block_input_plugin_command() {
         None,
         false,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(500));
+    // extra long time because we only start the fs watcher on plugin load
+    std::thread::sleep(std::time::Duration::from_millis(5000));
 
-    let _ = plugin_thread_sender.send(PluginInstruction::CliMessage{
-        input_pipe_id: "input_pipe_id".to_owned(),
+    let _ = plugin_thread_sender.send(PluginInstruction::CliPipe {
+        pipe_id: "input_pipe_id".to_owned(),
         name: "message_name_block".to_owned(),
         payload: Some("message_payload".to_owned()),
         plugin: None, // broadcast
@@ -5838,14 +5839,9 @@ pub fn pipe_output_plugin_command() {
         false,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
-//     let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
-//         None,
-//         Some(client_id),
-//         Event::CliMessage { input_pipe_id: "input_pipe_id".to_owned(), name: "pipe_output".to_owned(), payload: Some("message_payload".to_owned()), args: None}
-//     )]));
 
-    let _ = plugin_thread_sender.send(PluginInstruction::CliMessage{
-        input_pipe_id: "input_pipe_id".to_owned(),
+    let _ = plugin_thread_sender.send(PluginInstruction::CliPipe {
+        pipe_id: "input_pipe_id".to_owned(),
         name: "pipe_output".to_owned(),
         payload: Some("message_payload".to_owned()),
         plugin: None, // broadcast
@@ -5908,7 +5904,7 @@ pub fn send_message_to_plugin_plugin_command() {
         ScreenInstruction::PluginBytes,
         screen_receiver,
         2,
-        &PermissionType::ReadCliMessages,
+        &PermissionType::ReadCliPipes,
         cache_path,
         plugin_thread_sender,
         client_id
@@ -5928,8 +5924,8 @@ pub fn send_message_to_plugin_plugin_command() {
         false,
     ));
     std::thread::sleep(std::time::Duration::from_millis(500));
-    let _ = plugin_thread_sender.send(PluginInstruction::CliMessage{
-        input_pipe_id: "input_pipe_id".to_owned(),
+    let _ = plugin_thread_sender.send(PluginInstruction::CliPipe {
+        pipe_id: "input_pipe_id".to_owned(),
         name: "send_message_to_plugin".to_owned(),
         payload: Some("payload_sent_to_self".to_owned()),
         plugin: None, // broadcast
@@ -5942,16 +5938,6 @@ pub fn send_message_to_plugin_plugin_command() {
         skip_cache: false,
         cli_client_id: client_id
     });
-
-
-
-//             vec![(
-//         None,
-//         Some(client_id),
-//         // this will trigger the fixture plugin to send a message to all plugins and then receive
-//         // it itself
-//         Event::CliMessage { input_pipe_id: "input_pipe_id".to_owned(), name: "send_message_to_plugin".to_owned(), payload: Some("payload_sent_to_self".to_owned()), args: None}
-//     )]));
     std::thread::sleep(std::time::Duration::from_millis(500));
     teardown();
     screen_thread.join().unwrap(); // this might take a while if the cache is cold

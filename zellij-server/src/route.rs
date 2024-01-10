@@ -804,12 +804,12 @@ pub(crate) fn route_action(
                 .send_to_screen(ScreenInstruction::RenameSession(name, client_id))
                 .with_context(err_context)?;
         },
-        Action::CliMessage{ input_pipe_id, mut name, payload, plugin, args, configuration, floating, in_place, launch_new, skip_cache, cwd, pane_title } => {
+        Action::CliPipe { pipe_id, mut name, payload, plugin, args, configuration, floating, in_place, launch_new, skip_cache, cwd, pane_title } => {
             if let Some(seen_cli_pipes) = seen_cli_pipes.as_mut() {
-                if !seen_cli_pipes.contains(&input_pipe_id) {
-                    seen_cli_pipes.insert(input_pipe_id.clone());
+                if !seen_cli_pipes.contains(&pipe_id) {
+                    seen_cli_pipes.insert(pipe_id.clone());
                     senders
-                        .send_to_server(ServerInstruction::AssociatePipeWithClient{ pipe_id: input_pipe_id.clone(), client_id })
+                        .send_to_server(ServerInstruction::AssociatePipeWithClient{ pipe_id: pipe_id.clone(), client_id })
                         .with_context(err_context)?;
                 }
             }
@@ -820,7 +820,7 @@ pub(crate) fn route_action(
                 }
                 let pane_id_to_replace = if should_open_in_place { pane_id } else { None };
                 senders
-                    .send_to_plugin(PluginInstruction::CliMessage { input_pipe_id, name, payload, plugin, args, configuration, floating, pane_id_to_replace, cwd, pane_title, skip_cache, cli_client_id: client_id })
+                    .send_to_plugin(PluginInstruction::CliPipe { pipe_id, name, payload, plugin, args, configuration, floating, pane_id_to_replace, cwd, pane_title, skip_cache, cli_client_id: client_id })
                     .with_context(err_context)?;
             } else {
                 log::error!("Message must have a name");
