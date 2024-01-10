@@ -3,6 +3,7 @@
 use std::process;
 use std::{fs, path::PathBuf};
 use std::collections::BTreeMap;
+use std::io::BufRead;
 
 use crate::os_input_output::ClientOsApi;
 use zellij_utils::{
@@ -53,78 +54,63 @@ fn pipe_client(
     cwd: Option<PathBuf>,
     pane_title: Option<String>,
 ) {
-    use std::io::BufRead;
-    let stdin = std::io::stdin(); // TODO: from os_input
-    let mut handle = stdin.lock();
+    let mut stdin = os_input.get_stdin_reader();
     let name = name.take().or_else(|| Some(Uuid::new_v4().to_string()));
     if launch_new {
+        // we do this to make sure the plugin is unique (has a unique configuration parameter) so
+        // that a new one would be launched, but we'll still send it to the same instance rather
+        // than launching a new one in every iteration of the loop
         configuration.get_or_insert_with(BTreeMap::new).insert("_zellij_id".to_owned(), Uuid::new_v4().to_string());
     }
+    let create_msg = |payload: Option<String>| -> ClientToServerMsg {
+        ClientToServerMsg::Action(Action::CliPipe {
+            pipe_id: pipe_id.clone(),
+            name: name.clone(),
+            payload,
+            args: args.clone(),
+            plugin: plugin.clone(),
+            configuration: configuration.clone(),
+            floating,
+            in_place,
+            launch_new,
+            skip_cache,
+            cwd: cwd.clone(),
+            pane_title: pane_title.clone()
+        }, pane_id, None)
+    };
     loop {
         if payload.is_some() {
-            let msg = ClientToServerMsg::Action(Action::CliPipe {
-                pipe_id: pipe_id.clone(),
-                name: name.clone(),
-                payload,
-                args: args.clone(),
-                plugin: plugin.clone(),
-                configuration: configuration.clone(),
-                floating,
-                in_place,
-                launch_new,
-                skip_cache,
-                cwd: cwd.clone(),
-                pane_title: pane_title.clone()
-            }, pane_id, None);
+            // we got payload from the command line, we should use it and not wait for more
+            let msg = create_msg(payload);
             os_input.send_to_server(msg);
             break;
         }
+        // we didn't get payload from the command line, meaning we listen on STDIN because this
+        // signifies the user is about to pipe more (eg. cat my-large-file | zellij pipe ...)
         let mut buffer = String::new();
-        handle.read_line(&mut buffer).unwrap(); // TODO: no unwrap etc.
+        let _ = stdin.read_line(&mut buffer);
         if buffer.is_empty() {
-            let msg = ClientToServerMsg::Action(Action::CliPipe {
-                pipe_id: pipe_id.clone(),
-                name: name.clone(),
-                payload: None,
-                args: args.clone(),
-                plugin: plugin.clone(),
-                configuration: configuration.clone(),
-                floating,
-                in_place,
-                launch_new,
-                skip_cache,
-                cwd: cwd.clone(),
-                pane_title: pane_title.clone()
-            }, pane_id, None);
+            // end of pipe, send an empty message down the pipe
+            let msg = create_msg(None);
             os_input.send_to_server(msg);
             break;
         } else {
-            let msg = ClientToServerMsg::Action(Action::CliPipe {
-                pipe_id: pipe_id.clone(),
-                name: name.clone(),
-                payload: Some(buffer),
-                args: args.clone(),
-                plugin: plugin.clone(),
-                configuration: configuration.clone(),
-                floating,
-                in_place,
-                launch_new,
-                skip_cache,
-                cwd: cwd.clone(),
-                pane_title: pane_title.clone()
-            }, pane_id, None);
+            // we've got data! send it down the pipe (most common)
+            let msg = create_msg(Some(buffer));
             os_input.send_to_server(msg);
-            // launch_new = false; // if we don't do this a plugin will be launched for each pipe
-                                // message and we definitely don't want that
         }
         loop {
+            // wait for a response and act accordingly
             match os_input.recv_from_server() {
                 Some((ServerToClientMsg::UnblockCliPipeInput(pipe_name), _)) => {
+                    // unblock this pipe, meaning we need to stop waiting for a response and read
+                    // once more from STDIN
                     if pipe_name == pipe_id {
                         break;
                     }
                 },
                 Some((ServerToClientMsg::CliPipeOutput(pipe_name, output), _)) => {
+                    // send data to STDOUT, this *does not* mean we need to unblock the input
                     let err_context = "Failed to write to stdout";
                     if pipe_name == pipe_id {
                         let mut stdout = os_input.get_stdout_writer();

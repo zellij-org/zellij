@@ -151,10 +151,10 @@ impl ClientOsApi for FakeClientOsApi {
         let fake_stdout_writer = FakeStdoutWriter::new(self.stdout_buffer.clone());
         Box::new(fake_stdout_writer)
     }
-    fn get_stdin_reader(&self) -> Box<dyn io::Read> {
+    fn get_stdin_reader(&self) -> Box<dyn io::BufRead> {
         unimplemented!()
     }
-    fn update_session_name(&mut self, new_session_name: String) {}
+    fn update_session_name(&mut self, _new_session_name: String) {}
     fn read_from_stdin(&mut self) -> Result<Vec<u8>, &'static str> {
         Ok(self.stdin_buffer.drain(..).collect())
     }
