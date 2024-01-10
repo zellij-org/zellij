@@ -1107,7 +1107,7 @@ pub struct PipeMessage {
     pub name: String,
     pub payload: Option<String>,
     pub args: BTreeMap<String, String>,
-    // TODO: add audience: Audience::Self, Audience::All
+    pub is_private: bool,
 }
 
 impl PipeMessage {
@@ -1115,13 +1115,15 @@ impl PipeMessage {
         source: PipeSource,
         name: impl Into<String>,
         payload: &Option<String>,
-        args: &Option<BTreeMap<String, String>>
+        args: &Option<BTreeMap<String, String>>,
+        is_private: bool,
     ) -> Self {
         PipeMessage {
             source,
             name: name.into(),
             payload: payload.clone(),
             args: args.clone().unwrap_or_else(|| Default::default()),
+            is_private,
         }
     }
 }

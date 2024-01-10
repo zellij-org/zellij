@@ -314,8 +314,8 @@ impl ZellijPlugin for State {
             block_cli_pipe_input(&input_pipe_id);
         } else if name == "pipe_output" {
             cli_pipe_output(&name, "this_is_my_output");
-        } else if name == "send_message_to_plugin" {
-            send_message_to_plugin(MessageToPlugin::new("message_to_plugin").with_payload("my_cool_payload"));
+        } else if name == "pipe_message_to_plugin" {
+            pipe_message_to_plugin(MessageToPlugin::new("message_to_plugin").with_payload("my_cool_payload"));
         } else if name == "message_to_plugin" {
             self.message_to_plugin_payload = payload.clone();
         }

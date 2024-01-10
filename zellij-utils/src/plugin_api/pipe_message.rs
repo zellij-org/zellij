@@ -14,11 +14,13 @@ impl TryFrom<ProtobufPipeMessage> for PipeMessage {
         let name = protobuf_pipe_message.name;
         let payload = protobuf_pipe_message.payload;
         let args = protobuf_pipe_message.args.into_iter().map(|arg| (arg.key, arg.value)).collect();
+        let is_private = protobuf_pipe_message.is_private;
         Ok(PipeMessage {
             source,
             name,
             payload,
             args,
+            is_private,
         })
     }
 }
@@ -36,6 +38,7 @@ impl TryFrom<PipeMessage> for ProtobufPipeMessage {
             .into_iter()
             .map(|(key, value)| ProtobufArg { key, value })
             .collect();
+        let is_private = pipe_message.is_private;
         Ok(ProtobufPipeMessage {
             source,
             cli_source_id,
@@ -43,6 +46,7 @@ impl TryFrom<PipeMessage> for ProtobufPipeMessage {
             name,
             payload,
             args,
+            is_private,
         })
     }
 }

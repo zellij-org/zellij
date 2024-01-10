@@ -9,6 +9,7 @@ message PipeMessage {
     string name = 4;
     optional string payload = 5;
     repeated Arg args = 6;
+    bool is_private = 7;
 }
 
 enum PipeSource {

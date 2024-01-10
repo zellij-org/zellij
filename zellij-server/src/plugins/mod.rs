@@ -444,6 +444,8 @@ pub(crate) fn plugin_thread_main(
                 let mut pipe_messages = vec![];
                 match plugin {
                     Some(plugin_url) => {
+                        // send to specific plugin(s)
+                        let is_private = true;
                         match RunPlugin::from_url(&plugin_url) {
                             Ok(mut run_plugin) => {
                                 if let Some(configuration) = configuration.take() {
@@ -464,7 +466,7 @@ pub(crate) fn plugin_thread_main(
                                     pipe_messages.push((
                                         Some(plugin_id),
                                         client_id,
-                                        PipeMessage::new(PipeSource::Cli(pipe_id.clone()), &name, &payload, &args)
+                                        PipeMessage::new(PipeSource::Cli(pipe_id.clone()), &name, &payload, &args, is_private)
                                     ));
                                 }
                             },
@@ -477,12 +479,13 @@ pub(crate) fn plugin_thread_main(
                     },
                     None => {
                         // send to all plugins
+                        let is_private = false;
                         let all_plugin_ids = wasm_bridge.all_plugin_ids();
                         for (plugin_id, client_id) in all_plugin_ids {
                             pipe_messages.push((
                                 Some(plugin_id),
                                 Some(client_id),
-                                PipeMessage::new(PipeSource::Cli(pipe_id.clone()), &name, &payload, &args)
+                                PipeMessage::new(PipeSource::Cli(pipe_id.clone()), &name, &payload, &args, is_private)
                             ));
                         }
                     }
@@ -510,6 +513,8 @@ pub(crate) fn plugin_thread_main(
                     .and_then(|n| n.pane_id_to_replace);
                 match message.plugin_url {
                     Some(plugin_url) => {
+                        // send to specific plugin(s)
+                        let is_private = true;
                         match RunPlugin::from_url(&plugin_url) {
                             Ok(mut run_plugin) => {
                                 run_plugin.configuration = PluginUserConfiguration::new(message.plugin_config);
@@ -528,7 +533,7 @@ pub(crate) fn plugin_thread_main(
                                     pipe_messages.push((
                                         Some(plugin_id),
                                         client_id,
-                                        PipeMessage::new(PipeSource::Plugin(source_plugin_id), &message.message_name, &message.message_payload, &Some(message.message_args.clone())),
+                                        PipeMessage::new(PipeSource::Plugin(source_plugin_id), &message.message_name, &message.message_payload, &Some(message.message_args.clone()), is_private),
                                     ))
                                 }
                             },
@@ -539,12 +544,13 @@ pub(crate) fn plugin_thread_main(
                     },
                     None => {
                         // send to all plugins
+                        let is_private = false;
                         let all_plugin_ids = wasm_bridge.all_plugin_ids();
                         for (plugin_id, client_id) in all_plugin_ids {
                             pipe_messages.push((
                                 Some(plugin_id),
                                 Some(client_id),
-                                PipeMessage::new(PipeSource::Plugin(source_plugin_id), &message.message_name, &message.message_payload, &Some(message.message_args.clone()))
+                                PipeMessage::new(PipeSource::Plugin(source_plugin_id), &message.message_name, &message.message_payload, &Some(message.message_args.clone()), is_private)
                             ));
                         }
                     }

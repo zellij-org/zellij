@@ -5878,7 +5878,7 @@ pub fn pipe_output_plugin_command() {
 
 #[test]
 #[ignore]
-pub fn send_message_to_plugin_plugin_command() {
+pub fn pipe_message_to_plugin_plugin_command() {
     let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
@@ -5926,7 +5926,7 @@ pub fn send_message_to_plugin_plugin_command() {
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = plugin_thread_sender.send(PluginInstruction::CliPipe {
         pipe_id: "input_pipe_id".to_owned(),
-        name: "send_message_to_plugin".to_owned(),
+        name: "pipe_message_to_plugin".to_owned(),
         payload: Some("payload_sent_to_self".to_owned()),
         plugin: None, // broadcast
         args: None,
