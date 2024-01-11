@@ -436,9 +436,7 @@ impl WasmBridge {
                             running_plugin.rows = new_rows;
                             running_plugin.columns = new_columns;
 
-                            // TODO: better, right now the plugin doesn't render on first render?
                             if old_rows != new_rows || old_columns != new_columns {
-                            // if true {
                                 let rendered_bytes = running_plugin
                                     .instance
                                     .clone()
@@ -519,11 +517,7 @@ impl WasmBridge {
                 let event_type =
                     EventType::from_str(&event.to_string()).with_context(err_context)?;
                 if (subs.contains(&event_type) || event_type == EventType::PermissionRequestResult)
-                    && ((pid.is_none() && cid.is_none())
-                        || (pid.is_none() && cid == Some(*client_id))
-                        || (cid.is_none() && pid == Some(*plugin_id))
-                        || (cid == Some(*client_id) && pid == Some(*plugin_id)))
-                {
+                    && self.message_is_directed_at_plugin(pid, cid, plugin_id, client_id) {
                     task::spawn({
                         let mut senders = self.senders.clone();
                         let running_plugin = running_plugin.clone();
@@ -576,8 +570,6 @@ impl WasmBridge {
         mut messages: Vec<(Option<PluginId>, Option<ClientId>, PipeMessage)>,
         shutdown_sender: Sender<()>,
     ) -> Result<()> {
-        let err_context = || "failed to update plugin state".to_string();
-
         let plugins_to_update: Vec<(
             PluginId,
             ClientId,
@@ -597,12 +589,8 @@ impl WasmBridge {
             })
             .collect();
         for (pid, cid, pipe_message) in messages.drain(..) {
-            for (plugin_id, client_id, running_plugin, subscriptions) in &plugins_to_update {
-                // TODO: break this conditional out to self.is_directed_at_plugin or some such
-                if (pid.is_none() && cid.is_none())
-                    || (pid.is_none() && cid == Some(*client_id))
-                    || (cid.is_none() && pid == Some(*plugin_id))
-                    || (cid == Some(*client_id) && pid == Some(*plugin_id)) {
+            for (plugin_id, client_id, running_plugin, _subscriptions) in &plugins_to_update {
+                if self.message_is_directed_at_plugin(pid, cid, plugin_id, client_id) {
                     task::spawn({
                         let mut senders = self.senders.clone();
                         let running_plugin = running_plugin.clone();
@@ -736,6 +724,7 @@ impl WasmBridge {
                         let events_or_pipe_messages = events_or_pipe_messages.clone();
                         async move {
                             let subs = subscriptions.lock().unwrap().clone();
+                            let _s = _s; // guard to allow the task to complete before cleanup/shutdown
                             for event_or_pipe_message in events_or_pipe_messages {
                                 match event_or_pipe_message {
                                     EventOrPipeMessage::Event(event) => {
@@ -746,7 +735,6 @@ impl WasmBridge {
                                                 }
                                                 let mut running_plugin = running_plugin.lock().unwrap();
                                                 let mut plugin_bytes = vec![];
-                                                // let _s = _s; // guard to allow the task to complete before cleanup/shutdown
                                                 match apply_event_to_plugin(
                                                     plugin_id,
                                                     client_id,
@@ -770,7 +758,6 @@ impl WasmBridge {
                                     EventOrPipeMessage::PipeMessage(pipe_message) => {
                                         let mut running_plugin = running_plugin.lock().unwrap();
                                         let mut plugin_bytes = vec![];
-                                        // let _s = _s; // guard to allow the task to complete before cleanup/shutdown
 
                                         match apply_pipe_message_to_plugin(
                                             plugin_id,
@@ -855,13 +842,6 @@ impl WasmBridge {
         if self.cached_plugin_map.is_empty() {
             self.cached_plugin_map = self.plugin_map.lock().unwrap().clone_plugin_assets();
         }
-//             self.plugin_map
-//                 .lock()
-//                 .unwrap()
-//                 .all_plugin_and_client_ids_for_plugin_location(plugin_location, plugin_configuration)
-//                 .into_iter()
-//                 .map(|(p_id, c_id)| (p_id, Some(c_id)))
-//                 .collect()
         match self.cached_plugin_map.get(plugin_location).and_then(|m| m.get(plugin_configuration)) {
             Some(plugin_and_client_ids) => plugin_and_client_ids.iter().map(|(plugin_id, client_id)| (*plugin_id, Some(*client_id))).collect(),
             None => vec![]
@@ -983,8 +963,6 @@ impl WasmBridge {
 
         permission_cache.write_to_file().with_context(err_context)
     }
-    // TODO: change name to reflect that this is only for waiting for permission request result
-    // thing
     pub fn cache_plugin_events(&mut self, plugin_id: PluginId) {
         self.plugin_ids_waiting_for_permission_request.insert(plugin_id);
         self.cached_events_for_pending_plugins.entry(plugin_id).or_insert_with(Default::default);
@@ -1037,6 +1015,12 @@ impl WasmBridge {
     }
     pub fn clear_plugin_map_cache(&mut self) {
         self.cached_plugin_map.clear();
+    }
+    fn message_is_directed_at_plugin(&self, message_pid: Option<PluginId>, message_cid: Option<ClientId>, plugin_id: &PluginId, client_id: &ClientId) -> bool {
+        message_pid.is_none() && message_cid.is_none()
+            || (message_pid.is_none() && message_cid == Some(*client_id))
+            || (message_cid.is_none() && message_pid == Some(*plugin_id))
+            || (message_cid == Some(*client_id) && message_pid == Some(*plugin_id))
     }
 }
 
@@ -1211,7 +1195,7 @@ pub fn apply_pipe_message_to_plugin(
                 plugin_bytes.push((plugin_id, client_id, rendered_bytes.as_bytes().to_vec()));
             }
         },
-        Err(e) => {
+        Err(_e) => {
             // no-op, this is probably an old plugin that does not have this interface
             // we don't log this error because if we do the logs will be super crowded
         }

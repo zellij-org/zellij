@@ -5854,9 +5854,6 @@ pub fn pipe_output_plugin_command() {
         skip_cache: false,
         cli_client_id: client_id
     });
-
-
-
     std::thread::sleep(std::time::Duration::from_millis(500));
     teardown();
     server_thread.join().unwrap(); // this might take a while if the cache is cold

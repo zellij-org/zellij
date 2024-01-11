@@ -2177,15 +2177,6 @@ pub(crate) fn screen_thread_main(
                     }
                 }
                 screen.render(input_pipes_to_unblock)?;
-//                 if let Some(input_pipes_to_unblock) = input_pipes_to_unblock {
-//                     // TODO: add the pipe id as an Option to PluginBytes
-//                     for pipe_name in input_pipes_to_unblock {
-//                         screen.bus
-//                             .senders
-//                             .send_to_server(ServerInstruction::UnblockCliPipeInput(pipe_name))
-//                             .context("failed to unblock input pipe");
-//                     }
-//                 }
             },
             ScreenInstruction::Render => {
                 screen.render(None)?;

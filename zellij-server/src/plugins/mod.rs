@@ -35,7 +35,6 @@ use zellij_utils::{
     },
     ipc::ClientAttributes,
     pane_size::Size,
-    uuid::Uuid,
 };
 
 pub type PluginId = u32;
@@ -257,7 +256,7 @@ pub(crate) fn plugin_thread_main(
                             match wasm_bridge
                                 .load_plugin(&run, Some(tab_index), size, None, skip_cache, None, None)
                             {
-                                Ok((plugin_id, client_id)) => {
+                                Ok((plugin_id, _client_id)) => {
                                     let should_be_open_in_place = false;
                                     drop(bus.senders.send_to_screen(ScreenInstruction::AddPlugin(
                                         should_float,
@@ -322,7 +321,7 @@ pub(crate) fn plugin_thread_main(
                 for run_instruction in extracted_run_instructions {
                     if let Some(Run::Plugin(run)) = run_instruction {
                         let skip_cache = false;
-                        let (plugin_id, client_id) = wasm_bridge.load_plugin(
+                        let (plugin_id, _client_id) = wasm_bridge.load_plugin(
                             &run,
                             Some(tab_index),
                             size,
@@ -431,7 +430,7 @@ pub(crate) fn plugin_thread_main(
                 payload,
                 plugin,
                 args,
-                mut configuration,
+                configuration,
                 floating,
                 pane_id_to_replace,
                 pane_title,
@@ -440,54 +439,31 @@ pub(crate) fn plugin_thread_main(
                 cli_client_id,
             } => {
                 let should_float = floating.unwrap_or(true);
-                let size = Size::default(); // TODO: why??
                 let mut pipe_messages = vec![];
                 match plugin {
                     Some(plugin_url) => {
                         // send to specific plugin(s)
-                        let is_private = true;
-                        match RunPlugin::from_url(&plugin_url) {
-                            Ok(mut run_plugin) => {
-                                if let Some(configuration) = configuration.take() {
-                                    run_plugin.configuration = PluginUserConfiguration::new(configuration);
-                                }
-                                let all_plugin_ids = wasm_bridge.get_or_load_plugins(
-                                    run_plugin,
-                                    size,
-                                    cwd,
-                                    skip_cache,
-                                    should_float,
-                                    pane_id_to_replace.is_some(),
-                                    pane_title,
-                                    pane_id_to_replace,
-                                    Some(cli_client_id),
-                                );
-                                for (plugin_id, client_id) in all_plugin_ids {
-                                    pipe_messages.push((
-                                        Some(plugin_id),
-                                        client_id,
-                                        PipeMessage::new(PipeSource::Cli(pipe_id.clone()), &name, &payload, &args, is_private)
-                                    ));
-                                }
-                            },
-                            Err(e) => {
-                                let _ = bus.senders.send_to_server(
-                                    ServerInstruction::LogError(vec![format!("Failed to parse plugin url: {}", e)], cli_client_id)
-                                );
-                            }
-                        }
+                        pipe_to_specific_plugins(
+                            PipeSource::Cli(pipe_id.clone()),
+                            &plugin_url,
+                            &configuration,
+                            &cwd,
+                            skip_cache,
+                            should_float,
+                            &pane_id_to_replace,
+                            &pane_title,
+                            Some(cli_client_id),
+                            &mut pipe_messages,
+                            &name,
+                            &payload,
+                            &args,
+                            &bus,
+                            &mut wasm_bridge,
+                        );
                     },
                     None => {
-                        // send to all plugins
-                        let is_private = false;
-                        let all_plugin_ids = wasm_bridge.all_plugin_ids();
-                        for (plugin_id, client_id) in all_plugin_ids {
-                            pipe_messages.push((
-                                Some(plugin_id),
-                                Some(client_id),
-                                PipeMessage::new(PipeSource::Cli(pipe_id.clone()), &name, &payload, &args, is_private)
-                            ));
-                        }
+                        // no specific destination, send to all plugins
+                        pipe_to_all_plugins(PipeSource::Cli(pipe_id.clone()), &name, &payload, &args, &mut wasm_bridge, &mut pipe_messages);
                     }
                 }
                 wasm_bridge.pipe_messages(pipe_messages, shutdown_send.clone())?;
@@ -497,15 +473,9 @@ pub(crate) fn plugin_thread_main(
             }
             PluginInstruction::MessageFromPlugin{source_plugin_id, message} => {
                 let cwd = message.new_plugin_args.as_ref().and_then(|n| n.cwd.clone());
-                let size = Size::default();
                 let mut pipe_messages = vec![];
                 let skip_cache = message.new_plugin_args.as_ref().map(|n| n.skip_cache).unwrap_or(false);
                 let should_float = message.new_plugin_args.as_ref().and_then(|n| n.should_float).unwrap_or(true);
-                let should_be_open_in_place = message
-                    .new_plugin_args
-                    .as_ref()
-                    .and_then(|n| n.pane_id_to_replace)
-                    .is_some();
                 let pane_title = message.new_plugin_args.as_ref().and_then(|n| n.pane_title.clone());
                 let pane_id_to_replace = message
                     .new_plugin_args
@@ -514,45 +484,27 @@ pub(crate) fn plugin_thread_main(
                 match message.plugin_url {
                     Some(plugin_url) => {
                         // send to specific plugin(s)
-                        let is_private = true;
-                        match RunPlugin::from_url(&plugin_url) {
-                            Ok(mut run_plugin) => {
-                                run_plugin.configuration = PluginUserConfiguration::new(message.plugin_config);
-                                let all_plugin_ids = wasm_bridge.get_or_load_plugins(
-                                    run_plugin,
-                                    size,
-                                    cwd,
-                                    skip_cache,
-                                    should_float,
-                                    should_be_open_in_place,
-                                    pane_title,
-                                    pane_id_to_replace.map(|p| p.into()),
-                                    None,
-                                );
-                                for (plugin_id, client_id) in all_plugin_ids {
-                                    pipe_messages.push((
-                                        Some(plugin_id),
-                                        client_id,
-                                        PipeMessage::new(PipeSource::Plugin(source_plugin_id), &message.message_name, &message.message_payload, &Some(message.message_args.clone()), is_private),
-                                    ))
-                                }
-                            },
-                            Err(e) => {
-                                log::error!("Failed to parse plugin url: {:?}", e);
-                            }
-                        }
+                        pipe_to_specific_plugins(
+                            PipeSource::Plugin(source_plugin_id),
+                            &plugin_url,
+                            &Some(message.plugin_config),
+                            &cwd,
+                            skip_cache,
+                            should_float,
+                            &pane_id_to_replace.map(|p| p.into()),
+                            &pane_title,
+                            None,
+                            &mut pipe_messages,
+                            &message.message_name,
+                            &message.message_payload,
+                            &Some(message.message_args),
+                            &bus,
+                            &mut wasm_bridge,
+                        );
                     },
                     None => {
                         // send to all plugins
-                        let is_private = false;
-                        let all_plugin_ids = wasm_bridge.all_plugin_ids();
-                        for (plugin_id, client_id) in all_plugin_ids {
-                            pipe_messages.push((
-                                Some(plugin_id),
-                                Some(client_id),
-                                PipeMessage::new(PipeSource::Plugin(source_plugin_id), &message.message_name, &message.message_payload, &Some(message.message_args.clone()), is_private)
-                            ));
-                        }
+                        pipe_to_all_plugins(PipeSource::Plugin(source_plugin_id), &message.message_name, &message.message_payload, &Some(message.message_args), &mut wasm_bridge, &mut pipe_messages);
                     }
                 }
                 wasm_bridge.pipe_messages(pipe_messages, shutdown_send.clone())?;
@@ -605,6 +557,87 @@ fn populate_session_layout_metadata(
         }
     }
     session_layout_metadata.update_plugin_cmds(plugin_ids_to_cmds);
+}
+
+fn pipe_to_all_plugins(
+    pipe_source: PipeSource,
+    name: &str,
+    payload: &Option<String>,
+    args: &Option<BTreeMap<String, String>>,
+    wasm_bridge: &mut WasmBridge,
+    pipe_messages: &mut Vec<(Option<PluginId>, Option<ClientId>, PipeMessage)>
+) {
+    let is_private = false;
+    let all_plugin_ids = wasm_bridge.all_plugin_ids();
+    for (plugin_id, client_id) in all_plugin_ids {
+        pipe_messages.push((
+            Some(plugin_id),
+            Some(client_id),
+            PipeMessage::new(pipe_source.clone(), name, payload, &args, is_private)
+            // PipeMessage::new(pipe_source, &message.message_name, &message.message_payload, &Some(message.message_args.clone()), is_private)
+            // PipeMessage::new(PipeSource::Plugin(source_plugin_id), &message.message_name, &message.message_payload, &Some(message.message_args.clone()), is_private)
+        ));
+    }
+}
+
+fn pipe_to_specific_plugins(
+    pipe_source: PipeSource,
+    plugin_url: &str,
+    configuration: &Option<BTreeMap<String, String>>,
+    cwd: &Option<PathBuf>,
+    skip_cache: bool,
+    should_float: bool,
+    pane_id_to_replace: &Option<PaneId>,
+    pane_title: &Option<String>,
+    cli_client_id: Option<ClientId>,
+    pipe_messages: &mut Vec<(Option<PluginId>, Option<ClientId>, PipeMessage)>,
+    name: &str,
+    payload: &Option<String>,
+    args: &Option<BTreeMap<String, String>>,
+    bus: &Bus<PluginInstruction>,
+    wasm_bridge: &mut WasmBridge
+) {
+    let is_private = true;
+    let size = Size::default();
+    match RunPlugin::from_url(&plugin_url) {
+        Ok(mut run_plugin) => {
+            if let Some(configuration) = configuration {
+                run_plugin.configuration = PluginUserConfiguration::new(configuration.clone());
+            }
+            let all_plugin_ids = wasm_bridge.get_or_load_plugins(
+                run_plugin,
+                size,
+                cwd.clone(),
+                skip_cache,
+                should_float,
+                pane_id_to_replace.is_some(),
+                pane_title.clone(),
+                pane_id_to_replace.clone(),
+                cli_client_id,
+            );
+            for (plugin_id, client_id) in all_plugin_ids {
+                pipe_messages.push((
+                    Some(plugin_id),
+                    client_id,
+                    PipeMessage::new(pipe_source.clone(), name, payload, args, is_private)
+                    // PipeMessage::new(PipeSource::Cli(pipe_id.clone()), &name, &payload, &args, is_private)
+                ));
+            }
+        },
+        Err(e) => {
+
+            match cli_client_id {
+                Some(cli_client_id) => {
+                    let _ = bus.senders.send_to_server(
+                        ServerInstruction::LogError(vec![format!("Failed to parse plugin url: {}", e)], cli_client_id)
+                    );
+                },
+                None => {
+                    log::error!("Failed to parse plugin url: {}", e);
+                }
+            }
+        }
+    }
 }
 
 const EXIT_TIMEOUT: Duration = Duration::from_secs(3);

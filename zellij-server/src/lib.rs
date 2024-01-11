@@ -928,7 +928,6 @@ fn init_session(
         .spawn({
             let plugin_bus = Bus::new(
                 vec![plugin_receiver],
-                // Some(&to_screen),
                 Some(&to_screen_bounded),
                 Some(&to_pty),
                 Some(&to_plugin),
