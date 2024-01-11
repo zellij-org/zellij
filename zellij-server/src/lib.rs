@@ -69,7 +69,7 @@ pub enum ServerInstruction {
         Option<PluginsConfig>,
     ),
     Render(Option<HashMap<ClientId, String>>, Option<HashSet<String>>), // 2nd argument is
-                                                                    // input_pipes_to_unblock
+    // input_pipes_to_unblock
     UnblockInputThread,
     ClientExit(ClientId),
     RemoveClient(ClientId),
@@ -88,9 +88,12 @@ pub enum ServerInstruction {
     Log(Vec<String>, ClientId),
     LogError(Vec<String>, ClientId),
     SwitchSession(ConnectToSession, ClientId),
-    UnblockCliPipeInput(String), // String -> Pipe name
+    UnblockCliPipeInput(String),   // String -> Pipe name
     CliPipeOutput(String, String), // String -> Pipe name, String -> Output
-    AssociatePipeWithClient { pipe_id: String, client_id: ClientId },
+    AssociatePipeWithClient {
+        pipe_id: String,
+        client_id: ClientId,
+    },
 }
 
 impl From<&ServerInstruction> for ServerContext {
@@ -112,7 +115,9 @@ impl From<&ServerInstruction> for ServerContext {
             ServerInstruction::SwitchSession(..) => ServerContext::SwitchSession,
             ServerInstruction::UnblockCliPipeInput(..) => ServerContext::UnblockCliPipeInput,
             ServerInstruction::CliPipeOutput(..) => ServerContext::CliPipeOutput,
-            ServerInstruction::AssociatePipeWithClient{..} => ServerContext::AssociatePipeWithClient,
+            ServerInstruction::AssociatePipeWithClient { .. } => {
+                ServerContext::AssociatePipeWithClient
+            },
         }
     }
 }
@@ -536,7 +541,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                                 session_state
                             );
                         }
-                    }
+                    },
                 }
             },
             ServerInstruction::CliPipeOutput(pipe_name, output) => {
@@ -559,7 +564,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                                 session_state
                             );
                         }
-                    }
+                    },
                 }
             },
             ServerInstruction::ClientExit(client_id) => {
@@ -594,7 +599,13 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .unwrap();
                 if !session_state.read().unwrap().active_clients_are_connected() {
                     *session_data.write().unwrap() = None;
-                    let client_ids_to_cleanup: Vec<ClientId> = session_state.read().unwrap().clients.keys().copied().collect();
+                    let client_ids_to_cleanup: Vec<ClientId> = session_state
+                        .read()
+                        .unwrap()
+                        .clients
+                        .keys()
+                        .copied()
+                        .collect();
                     // these are just the pipes
                     for client_id in client_ids_to_cleanup {
                         remove_client!(client_id, os_input, session_state);
@@ -786,12 +797,12 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 );
                 remove_client!(client_id, os_input, session_state);
             },
-            ServerInstruction::AssociatePipeWithClient{ pipe_id, client_id } => {
+            ServerInstruction::AssociatePipeWithClient { pipe_id, client_id } => {
                 session_state
                     .write()
                     .unwrap()
                     .associate_pipe_with_client(pipe_id, client_id);
-            }
+            },
         }
     }
 

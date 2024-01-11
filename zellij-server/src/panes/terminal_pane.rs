@@ -16,7 +16,7 @@ use std::time::{self, Instant};
 use zellij_utils::input::command::RunCommand;
 use zellij_utils::pane_size::Offset;
 use zellij_utils::{
-    data::{InputMode, Palette, PaletteColor, Style, PaneId as ZellijUtilsPaneId},
+    data::{InputMode, Palette, PaletteColor, PaneId as ZellijUtilsPaneId, Style},
     errors::prelude::*,
     input::layout::Run,
     pane_size::PaneGeom,

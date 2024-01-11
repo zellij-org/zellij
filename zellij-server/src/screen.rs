@@ -139,8 +139,8 @@ type HoldForCommand = Option<RunCommand>;
 pub enum ScreenInstruction {
     PtyBytes(u32, VteBytes),
     PluginBytes(Vec<(u32, ClientId, VteBytes)>, Option<HashSet<String>>), // u32 is plugin_id,
-                                                                          // HashSet -> input pipes
-                                                                          // to unblock
+    // HashSet -> input pipes
+    // to unblock
     Render,
     NewPane(
         PaneId,
@@ -287,7 +287,7 @@ pub enum ScreenInstruction {
         bool,         // should be opened in place
         RunPlugin,
         Option<String>, // pane title
-        Option<usize>,          // tab index
+        Option<usize>,  // tab index
         u32,            // plugin id
         Option<PaneId>,
         Option<PathBuf>, // cwd
@@ -1063,7 +1063,10 @@ impl Screen {
             let serialized_output = output.serialize().context(err_context)?;
             self.bus
                 .senders
-                .send_to_server(ServerInstruction::Render(Some(serialized_output), input_pipes_to_unblock))
+                .send_to_server(ServerInstruction::Render(
+                    Some(serialized_output),
+                    input_pipes_to_unblock,
+                ))
                 .context(err_context)
         } else if let Some(input_pipes_to_unblock) = input_pipes_to_unblock {
             for pipe_name in input_pipes_to_unblock {
@@ -3345,7 +3348,9 @@ pub(crate) fn screen_thread_main(
                             None,
                         )
                     }, ?);
-                } else if let Some(active_tab) = tab_index.and_then(|tab_index| screen.tabs.get_mut(&tab_index)) {
+                } else if let Some(active_tab) =
+                    tab_index.and_then(|tab_index| screen.tabs.get_mut(&tab_index))
+                {
                     active_tab.new_pane(
                         PaneId::Plugin(plugin_id),
                         Some(pane_title),

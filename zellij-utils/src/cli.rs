@@ -316,7 +316,7 @@ tail -f /tmp/my-live-logfile | zellij pipe --name logs --plugin https://example.
         #[clap(short, long, value_parser, display_order(2))]
         /// The args of the pipe
         args: Option<PluginUserConfiguration>, // TODO: we might want to not re-use
-                                                        // PluginUserConfiguration
+        // PluginUserConfiguration
         /// The plugin url (eg. file:/tmp/my-plugin.wasm) to direct this pipe to, if not specified,
         /// will be sent to all plugins, if specified and is not running, the plugin will be launched
         #[clap(short, long, value_parser, display_order(3))]
@@ -325,7 +325,7 @@ tail -f /tmp/my-live-logfile | zellij pipe --name logs --plugin https://example.
         /// considered a different plugin for the purposes of determining the pipe destination)
         #[clap(short('c'), long, value_parser, display_order(4))]
         plugin_configuration: Option<PluginUserConfiguration>,
-    }
+    },
 }
 
 #[derive(Debug, Subcommand, Clone, Serialize, Deserialize)]
@@ -613,7 +613,7 @@ tail -f /tmp/my-live-logfile | zellij action pipe --name logs --plugin https://e
         #[clap(short, long, value_parser, display_order(2))]
         /// The args of the pipe
         args: Option<PluginUserConfiguration>, // TODO: we might want to not re-use
-                                                        // PluginUserConfiguration
+        // PluginUserConfiguration
         /// The plugin url (eg. file:/tmp/my-plugin.wasm) to direct this pipe to, if not specified,
         /// will be sent to all plugins, if specified and is not running, the plugin will be launched
         #[clap(short, long, value_parser, display_order(3))]
@@ -623,16 +623,36 @@ tail -f /tmp/my-live-logfile | zellij action pipe --name logs --plugin https://e
         #[clap(short('c'), long, value_parser, display_order(4))]
         plugin_configuration: Option<PluginUserConfiguration>,
         /// Launch a new plugin even if one is already running
-        #[clap(short('l'), long, value_parser, takes_value(false), default_value("false"), display_order(5))]
+        #[clap(
+            short('l'),
+            long,
+            value_parser,
+            takes_value(false),
+            default_value("false"),
+            display_order(5)
+        )]
         force_launch_plugin: bool,
         /// If launching a new plugin, skip cache and force-compile the plugin
-        #[clap(short('s'), long, value_parser, takes_value(false), default_value("false"), display_order(6))]
+        #[clap(
+            short('s'),
+            long,
+            value_parser,
+            takes_value(false),
+            default_value("false"),
+            display_order(6)
+        )]
         skip_plugin_cache: bool,
         /// If launching a plugin, should it be floating or not, defaults to floating
         #[clap(short('f'), long, value_parser, display_order(7))]
         floating_plugin: Option<bool>,
         /// If launching a plugin, launch it in-place (on top of the current pane)
-        #[clap(short('i'), long, value_parser, conflicts_with("floating-plugin"), display_order(8))]
+        #[clap(
+            short('i'),
+            long,
+            value_parser,
+            conflicts_with("floating-plugin"),
+            display_order(8)
+        )]
         in_place_plugin: Option<bool>,
         /// If launching a plugin, specify its working directory
         #[clap(short('w'), long, value_parser, display_order(9))]

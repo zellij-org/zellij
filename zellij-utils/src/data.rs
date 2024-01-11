@@ -557,7 +557,9 @@ impl PermissionType {
             PermissionType::WriteToStdin => "Write to standard input (STDIN)".to_owned(),
             PermissionType::WebAccess => "Make web requests".to_owned(),
             PermissionType::ReadCliPipes => "Read pipes/messages from the command line".to_owned(),
-            PermissionType::MessageAndLaunchOtherPlugins => "Send messages to and launch other plugins".to_owned(),
+            PermissionType::MessageAndLaunchOtherPlugins => {
+                "Send messages to and launch other plugins".to_owned()
+            },
         }
     }
 }
@@ -1003,7 +1005,7 @@ pub struct NewPluginArgs {
 #[derive(Debug, Clone, Copy)]
 pub enum PaneId {
     Terminal(u32),
-    Plugin(u32)
+    Plugin(u32),
 }
 
 impl MessageToPlugin {
@@ -1039,7 +1041,10 @@ impl MessageToPlugin {
         new_plugin_args.pane_id_to_replace = Some(pane_id);
         self
     }
-    pub fn new_plugin_instance_should_have_pane_title(mut self, pane_title: impl Into<String>) -> Self {
+    pub fn new_plugin_instance_should_have_pane_title(
+        mut self,
+        pane_title: impl Into<String>,
+    ) -> Self {
         let mut new_plugin_args = self.new_plugin_args.get_or_insert_with(Default::default);
         new_plugin_args.pane_title = Some(pane_title.into());
         self
@@ -1127,7 +1132,6 @@ impl PipeMessage {
         }
     }
 }
-
 
 #[derive(Debug, Clone, EnumDiscriminants, ToString)]
 #[strum_discriminants(derive(EnumString, Hash, Serialize, Deserialize))]
@@ -1219,9 +1223,9 @@ pub enum PluginCommand {
         Vec<u8>,                  // body
         BTreeMap<String, String>, // context
     ),
-    RenameSession(String), // String -> new session name
-    UnblockCliPipeInput(String), // String => pipe name
-    BlockCliPipeInput(String), // String => pipe name
+    RenameSession(String),         // String -> new session name
+    UnblockCliPipeInput(String),   // String => pipe name
+    BlockCliPipeInput(String),     // String => pipe name
     CliPipeOutput(String, String), // String => pipe name, String => output
     MessageToPlugin(MessageToPlugin),
 }

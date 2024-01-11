@@ -1,19 +1,23 @@
 //! The `[cli_client]` is used to attach to a running server session
 //! and dispatch actions, that are specified through the command line.
-use std::process;
-use std::{fs, path::PathBuf};
 use std::collections::BTreeMap;
 use std::io::BufRead;
+use std::process;
+use std::{fs, path::PathBuf};
 
 use crate::os_input_output::ClientOsApi;
 use zellij_utils::{
-    uuid::Uuid,
     errors::prelude::*,
     input::actions::Action,
-    ipc::{ClientToServerMsg, ServerToClientMsg, ExitReason},
+    ipc::{ClientToServerMsg, ExitReason, ServerToClientMsg},
+    uuid::Uuid,
 };
 
-pub fn start_cli_client(mut os_input: Box<dyn ClientOsApi>, session_name: &str, actions: Vec<Action>) {
+pub fn start_cli_client(
+    mut os_input: Box<dyn ClientOsApi>,
+    session_name: &str,
+    actions: Vec<Action>,
+) {
     let zellij_ipc_pipe: PathBuf = {
         let mut sock_dir = zellij_utils::consts::ZELLIJ_SOCK_DIR.clone();
         fs::create_dir_all(&sock_dir).unwrap();
@@ -28,12 +32,40 @@ pub fn start_cli_client(mut os_input: Box<dyn ClientOsApi>, session_name: &str, 
 
     for action in actions {
         match action {
-            Action::CliPipe { pipe_id, name, payload, plugin, args, configuration, launch_new, skip_cache, floating, in_place, cwd, pane_title } => {
-                pipe_client(&mut os_input, pipe_id, name, payload, plugin, args, configuration, launch_new, skip_cache, floating, in_place, pane_id, cwd, pane_title);
+            Action::CliPipe {
+                pipe_id,
+                name,
+                payload,
+                plugin,
+                args,
+                configuration,
+                launch_new,
+                skip_cache,
+                floating,
+                in_place,
+                cwd,
+                pane_title,
+            } => {
+                pipe_client(
+                    &mut os_input,
+                    pipe_id,
+                    name,
+                    payload,
+                    plugin,
+                    args,
+                    configuration,
+                    launch_new,
+                    skip_cache,
+                    floating,
+                    in_place,
+                    pane_id,
+                    cwd,
+                    pane_title,
+                );
             },
             action => {
                 single_message_client(&mut os_input, action, pane_id);
-            }
+            },
         }
     }
 }
@@ -60,23 +92,29 @@ fn pipe_client(
         // we do this to make sure the plugin is unique (has a unique configuration parameter) so
         // that a new one would be launched, but we'll still send it to the same instance rather
         // than launching a new one in every iteration of the loop
-        configuration.get_or_insert_with(BTreeMap::new).insert("_zellij_id".to_owned(), Uuid::new_v4().to_string());
+        configuration
+            .get_or_insert_with(BTreeMap::new)
+            .insert("_zellij_id".to_owned(), Uuid::new_v4().to_string());
     }
     let create_msg = |payload: Option<String>| -> ClientToServerMsg {
-        ClientToServerMsg::Action(Action::CliPipe {
-            pipe_id: pipe_id.clone(),
-            name: name.clone(),
-            payload,
-            args: args.clone(),
-            plugin: plugin.clone(),
-            configuration: configuration.clone(),
-            floating,
-            in_place,
-            launch_new,
-            skip_cache,
-            cwd: cwd.clone(),
-            pane_title: pane_title.clone()
-        }, pane_id, None)
+        ClientToServerMsg::Action(
+            Action::CliPipe {
+                pipe_id: pipe_id.clone(),
+                name: name.clone(),
+                payload,
+                args: args.clone(),
+                plugin: plugin.clone(),
+                configuration: configuration.clone(),
+                floating,
+                in_place,
+                launch_new,
+                skip_cache,
+                cwd: cwd.clone(),
+                pane_title: pane_title.clone(),
+            },
+            pane_id,
+            None,
+        )
     };
     loop {
         if payload.is_some() {
@@ -118,9 +156,7 @@ fn pipe_client(
                             .write_all(output.as_bytes())
                             .context(err_context)
                             .non_fatal();
-                        stdout.flush()
-                            .context(err_context)
-                            .non_fatal();
+                        stdout.flush().context(err_context).non_fatal();
                     }
                 },
                 Some((ServerToClientMsg::Log(log_lines), _)) => {
@@ -131,24 +167,26 @@ fn pipe_client(
                     log_lines.iter().for_each(|line| eprintln!("{line}"));
                     process::exit(2);
                 },
-                Some((ServerToClientMsg::Exit(exit_reason), _)) => {
-                    match exit_reason {
-                        ExitReason::Error(e) => {
-                            eprintln!("{}", e);
-                            process::exit(2);
-                        },
-                        _ => {
-                            process::exit(0);
-                        }
-                    }
-                }
+                Some((ServerToClientMsg::Exit(exit_reason), _)) => match exit_reason {
+                    ExitReason::Error(e) => {
+                        eprintln!("{}", e);
+                        process::exit(2);
+                    },
+                    _ => {
+                        process::exit(0);
+                    },
+                },
                 _ => {},
             }
         }
     }
 }
 
-fn single_message_client(os_input: &mut Box<dyn ClientOsApi>, action: Action, pane_id: Option<u32>) {
+fn single_message_client(
+    os_input: &mut Box<dyn ClientOsApi>,
+    action: Action,
+    pane_id: Option<u32>,
+) {
     let msg = ClientToServerMsg::Action(action, pane_id, None);
     os_input.send_to_server(msg);
     loop {
@@ -165,17 +203,15 @@ fn single_message_client(os_input: &mut Box<dyn ClientOsApi>, action: Action, pa
                 log_lines.iter().for_each(|line| eprintln!("{line}"));
                 process::exit(2);
             },
-            Some((ServerToClientMsg::Exit(exit_reason), _)) => {
-                match exit_reason {
-                    ExitReason::Error(e) => {
-                        eprintln!("{}", e);
-                        process::exit(2);
-                    },
-                    _ => {
-                        process::exit(0);
-                    }
-                }
-            }
+            Some((ServerToClientMsg::Exit(exit_reason), _)) => match exit_reason {
+                ExitReason::Error(e) => {
+                    eprintln!("{}", e);
+                    process::exit(2);
+                },
+                _ => {
+                    process::exit(0);
+                },
+            },
             _ => {},
         }
     }

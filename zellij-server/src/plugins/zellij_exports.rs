@@ -18,7 +18,8 @@ use std::{
 use wasmer::{imports, AsStoreMut, Function, FunctionEnv, FunctionEnvMut, Imports};
 use wasmer_wasi::WasiEnv;
 use zellij_utils::data::{
-    CommandType, ConnectToSession, HttpVerb, PermissionStatus, PermissionType, PluginPermission, MessageToPlugin
+    CommandType, ConnectToSession, HttpVerb, MessageToPlugin, PermissionStatus, PermissionType,
+    PluginPermission,
 };
 use zellij_utils::input::permission::PermissionCache;
 
@@ -250,9 +251,7 @@ fn host_run_plugin_command(env: FunctionEnvMut<ForeignFunctionEnv>) {
                     PluginCommand::CliPipeOutput(pipe_name, output) => {
                         cli_pipe_output(env, pipe_name, output)?
                     },
-                    PluginCommand::MessageToPlugin(message) => {
-                        message_to_plugin(env, message)?
-                    },
+                    PluginCommand::MessageToPlugin(message) => message_to_plugin(env, message)?,
                 },
                 (PermissionStatus::Denied, permission) => {
                     log::error!(
@@ -286,12 +285,20 @@ fn subscribe(env: &ForeignFunctionEnv, event_list: HashSet<EventType>) -> Result
 }
 
 fn unblock_cli_pipe_input(env: &ForeignFunctionEnv, pipe_name: String) -> Result<()> {
-    env.plugin_env.input_pipes_to_unblock.lock().unwrap().insert(pipe_name);
+    env.plugin_env
+        .input_pipes_to_unblock
+        .lock()
+        .unwrap()
+        .insert(pipe_name);
     Ok(()) // TODO: no result return
 }
 
 fn block_cli_pipe_input(env: &ForeignFunctionEnv, pipe_name: String) -> Result<()> {
-    env.plugin_env.input_pipes_to_block.lock().unwrap().insert(pipe_name);
+    env.plugin_env
+        .input_pipes_to_block
+        .lock()
+        .unwrap()
+        .insert(pipe_name);
     Ok(()) // TODO: no result return
 }
 
@@ -305,7 +312,10 @@ fn cli_pipe_output(env: &ForeignFunctionEnv, pipe_name: String, output: String) 
 fn message_to_plugin(env: &ForeignFunctionEnv, message_to_plugin: MessageToPlugin) -> Result<()> {
     env.plugin_env
         .senders
-        .send_to_plugin(PluginInstruction::MessageFromPlugin{source_plugin_id: env.plugin_env.plugin_id, message: message_to_plugin})
+        .send_to_plugin(PluginInstruction::MessageFromPlugin {
+            source_plugin_id: env.plugin_env.plugin_id,
+            message: message_to_plugin,
+        })
         .context("failed to send message to plugin")
 }
 
@@ -364,9 +374,10 @@ fn request_permission(env: &ForeignFunctionEnv, permissions: Vec<PermissionType>
 
     // we do this so that messages that have arrived while the user is seeing the permission screen
     // will be cached and reapplied once the permission is granted
-    let _ = env.plugin_env
+    let _ = env
+        .plugin_env
         .senders
-        .send_to_plugin(PluginInstruction::CachePluginEvents{
+        .send_to_plugin(PluginInstruction::CachePluginEvents {
             plugin_id: env.plugin_env.plugin_id,
         });
 

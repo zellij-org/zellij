@@ -1,6 +1,5 @@
 //! Definition of the actions that can be bound to keys.
 
-use std::collections::BTreeMap;
 use super::command::RunCommandAction;
 use super::layout::{
     FloatingPaneLayout, Layout, RunPlugin, RunPluginLocation, SwapFloatingLayout, SwapTiledLayout,
@@ -14,6 +13,7 @@ use crate::input::config::{Config, ConfigError, KdlError};
 use crate::input::options::OnForceClose;
 use miette::{NamedSource, Report};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use uuid::Uuid;
 
 use std::path::PathBuf;
@@ -624,7 +624,7 @@ impl Action {
                     args: args.map(|a| a.inner().clone()), // TODO: no clone somehow
                     plugin,
                     configuration: plugin_configuration.map(|a| a.inner().clone()), // TODO: no clone
-                                                                             // somehow
+                    // somehow
                     launch_new: force_launch_plugin,
                     floating: floating_plugin,
                     in_place: in_place_plugin,

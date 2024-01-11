@@ -304,7 +304,7 @@ impl ZellijPlugin for State {
     fn pipe(&mut self, pipe_message: PipeMessage) -> bool {
         let input_pipe_id = match pipe_message.source {
             PipeSource::Cli(id) => id.clone(),
-            PipeSource::Plugin(id) => format!("{}", id)
+            PipeSource::Plugin(id) => format!("{}", id),
         };
         let name = pipe_message.name;
         let payload = pipe_message.payload;
@@ -315,7 +315,9 @@ impl ZellijPlugin for State {
         } else if name == "pipe_output" {
             cli_pipe_output(&name, "this_is_my_output");
         } else if name == "pipe_message_to_plugin" {
-            pipe_message_to_plugin(MessageToPlugin::new("message_to_plugin").with_payload("my_cool_payload"));
+            pipe_message_to_plugin(
+                MessageToPlugin::new("message_to_plugin").with_payload("my_cool_payload"),
+            );
         } else if name == "message_to_plugin" {
             self.message_to_plugin_payload = payload.clone();
         }
