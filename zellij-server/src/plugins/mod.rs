@@ -639,8 +639,7 @@ fn pipe_to_all_plugins(
         pipe_messages.push((
             Some(plugin_id),
             Some(client_id),
-            PipeMessage::new(pipe_source.clone(), name, payload, &args, is_private), // PipeMessage::new(pipe_source, &message.message_name, &message.message_payload, &Some(message.message_args.clone()), is_private)
-                                                                                     // PipeMessage::new(PipeSource::Plugin(source_plugin_id), &message.message_name, &message.message_payload, &Some(message.message_args.clone()), is_private)
+            PipeMessage::new(pipe_source.clone(), name, payload, &args, is_private),
         ));
     }
 }

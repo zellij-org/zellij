@@ -243,10 +243,10 @@ fn host_run_plugin_command(env: FunctionEnvMut<ForeignFunctionEnv>) {
                         rename_session(env, new_session_name)
                     },
                     PluginCommand::UnblockCliPipeInput(pipe_name) => {
-                        unblock_cli_pipe_input(env, pipe_name)?
+                        unblock_cli_pipe_input(env, pipe_name)
                     },
                     PluginCommand::BlockCliPipeInput(pipe_name) => {
-                        block_cli_pipe_input(env, pipe_name)?
+                        block_cli_pipe_input(env, pipe_name)
                     },
                     PluginCommand::CliPipeOutput(pipe_name, output) => {
                         cli_pipe_output(env, pipe_name, output)?
@@ -284,22 +284,20 @@ fn subscribe(env: &ForeignFunctionEnv, event_list: HashSet<EventType>) -> Result
         ))
 }
 
-fn unblock_cli_pipe_input(env: &ForeignFunctionEnv, pipe_name: String) -> Result<()> {
+fn unblock_cli_pipe_input(env: &ForeignFunctionEnv, pipe_name: String) {
     env.plugin_env
         .input_pipes_to_unblock
         .lock()
         .unwrap()
         .insert(pipe_name);
-    Ok(()) // TODO: no result return
 }
 
-fn block_cli_pipe_input(env: &ForeignFunctionEnv, pipe_name: String) -> Result<()> {
+fn block_cli_pipe_input(env: &ForeignFunctionEnv, pipe_name: String) {
     env.plugin_env
         .input_pipes_to_block
         .lock()
         .unwrap()
         .insert(pipe_name);
-    Ok(()) // TODO: no result return
 }
 
 fn cli_pipe_output(env: &ForeignFunctionEnv, pipe_name: String, output: String) -> Result<()> {
