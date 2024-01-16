@@ -1,54 +1,68 @@
 use super::{PluginId, PluginInstruction};
-use crate::plugins::wasm_bridge::PluginRenderAsset;
 use crate::plugins::plugin_map::RunningPlugin;
+use crate::plugins::wasm_bridge::PluginRenderAsset;
 use crate::plugins::zellij_exports::{wasi_read_string, wasi_write_object};
 use std::collections::{HashMap, HashSet};
 use wasmer::Value;
 use zellij_utils::data::{PipeMessage, PipeSource};
 use zellij_utils::plugin_api::pipe_message::ProtobufPipeMessage;
 
-use zellij_utils::prost::Message;
 use zellij_utils::errors::prelude::*;
+use zellij_utils::prost::Message;
 
-use crate::{
-    thread_bus::ThreadSenders,
-    ClientId
-};
+use crate::{thread_bus::ThreadSenders, ClientId};
 
 #[derive(Debug, Clone)]
 pub enum PipeStateChange {
     NoChange,
     Block,
-    Unblock
+    Unblock,
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct PendingPipes {
-    pipes: HashMap<String, PendingPipeInfo>
+    pipes: HashMap<String, PendingPipeInfo>,
 }
 
 impl PendingPipes {
-    pub fn mark_being_processed(&mut self, pipe_id: &str, plugin_id: &PluginId, client_id: &ClientId) {
+    pub fn mark_being_processed(
+        &mut self,
+        pipe_id: &str,
+        plugin_id: &PluginId,
+        client_id: &ClientId,
+    ) {
         if self.pipes.contains_key(pipe_id) {
-            self.pipes.get_mut(pipe_id).map(|pending_pipe_info| pending_pipe_info.add_processing_plugin(plugin_id, client_id));
+            self.pipes.get_mut(pipe_id).map(|pending_pipe_info| {
+                pending_pipe_info.add_processing_plugin(plugin_id, client_id)
+            });
         } else {
-            self.pipes.insert(pipe_id.to_owned(), PendingPipeInfo::new(plugin_id, client_id));
+            self.pipes.insert(
+                pipe_id.to_owned(),
+                PendingPipeInfo::new(plugin_id, client_id),
+            );
         }
     }
     // returns a list of pipes that are no longer pending and should be unblocked
-    pub fn update_pipe_state_change(&mut self, cli_pipe_name: &str, pipe_state_change: PipeStateChange, plugin_id: &PluginId, client_id: &ClientId) -> Vec<String> {
+    pub fn update_pipe_state_change(
+        &mut self,
+        cli_pipe_name: &str,
+        pipe_state_change: PipeStateChange,
+        plugin_id: &PluginId,
+        client_id: &ClientId,
+    ) -> Vec<String> {
         let mut pipe_names_to_unblock = vec![];
         match self.pipes.get_mut(cli_pipe_name) {
             Some(pending_pipe_info) => {
-                let should_unblock_this_pipe = pending_pipe_info.update_state_change(pipe_state_change, plugin_id, client_id);
+                let should_unblock_this_pipe =
+                    pending_pipe_info.update_state_change(pipe_state_change, plugin_id, client_id);
                 if should_unblock_this_pipe {
                     pipe_names_to_unblock.push(cli_pipe_name.to_owned());
                 }
-            }
+            },
             None => {
                 // state somehow corrupted, let's recover...
                 pipe_names_to_unblock.push(cli_pipe_name.to_owned());
-            }
+            },
         }
         for pipe_name in &pipe_names_to_unblock {
             self.pipes.remove(pipe_name);
@@ -68,14 +82,13 @@ impl PendingPipes {
             self.pipes.remove(pipe_name);
         }
         pipe_names_to_unblock
-
     }
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct PendingPipeInfo {
     is_explicitly_blocked: bool,
-    currently_being_processed_by: HashSet<(PluginId, ClientId)>
+    currently_being_processed_by: HashSet<(PluginId, ClientId)>,
 }
 
 impl PendingPipeInfo {
@@ -88,10 +101,16 @@ impl PendingPipeInfo {
         }
     }
     pub fn add_processing_plugin(&mut self, plugin_id: &PluginId, client_id: &ClientId) {
-        self.currently_being_processed_by.insert((*plugin_id, *client_id));
+        self.currently_being_processed_by
+            .insert((*plugin_id, *client_id));
     }
     // returns true if this pipe should be unblocked
-    pub fn update_state_change(&mut self, pipe_state_change: PipeStateChange, plugin_id: &PluginId, client_id: &ClientId) -> bool {
+    pub fn update_state_change(
+        &mut self,
+        pipe_state_change: PipeStateChange,
+        plugin_id: &PluginId,
+        client_id: &ClientId,
+    ) -> bool {
         match pipe_state_change {
             PipeStateChange::Block => {
                 self.is_explicitly_blocked = true;
@@ -99,15 +118,18 @@ impl PendingPipeInfo {
             PipeStateChange::Unblock => {
                 self.is_explicitly_blocked = false;
             },
-            _ => {}
+            _ => {},
         };
-        self.currently_being_processed_by.remove(&(*plugin_id, *client_id));
-        let pipe_should_be_unblocked = self.currently_being_processed_by.is_empty() && !self.is_explicitly_blocked;
+        self.currently_being_processed_by
+            .remove(&(*plugin_id, *client_id));
+        let pipe_should_be_unblocked =
+            self.currently_being_processed_by.is_empty() && !self.is_explicitly_blocked;
         pipe_should_be_unblocked
     }
     // returns true if this pipe should be unblocked
     pub fn unload_plugin(&mut self, plugin_id_to_unload: &PluginId) -> bool {
-        self.currently_being_processed_by.retain(|(plugin_id, _)| plugin_id != plugin_id_to_unload);
+        self.currently_being_processed_by
+            .retain(|(plugin_id, _)| plugin_id != plugin_id_to_unload);
         if self.currently_being_processed_by.is_empty() && !self.is_explicitly_blocked {
             true
         } else {
@@ -160,37 +182,52 @@ pub fn apply_pipe_message_to_plugin(
                     })
                     .and_then(|_| wasi_read_string(&plugin_env.wasi_env))
                     .with_context(err_context)?;
-                let pipes_to_block_or_unblock = pipes_to_block_or_unblock(running_plugin, Some(&pipe_message.source));
-                let plugin_render_asset = PluginRenderAsset::new(plugin_id, client_id, rendered_bytes.as_bytes().to_vec())
-                    .with_pipes(pipes_to_block_or_unblock);
+                let pipes_to_block_or_unblock =
+                    pipes_to_block_or_unblock(running_plugin, Some(&pipe_message.source));
+                let plugin_render_asset = PluginRenderAsset::new(
+                    plugin_id,
+                    client_id,
+                    rendered_bytes.as_bytes().to_vec(),
+                )
+                .with_pipes(pipes_to_block_or_unblock);
                 plugin_render_assets.push(plugin_render_asset);
             } else {
-                let pipes_to_block_or_unblock = pipes_to_block_or_unblock(running_plugin, Some(&pipe_message.source));
+                let pipes_to_block_or_unblock =
+                    pipes_to_block_or_unblock(running_plugin, Some(&pipe_message.source));
                 let plugin_render_asset = PluginRenderAsset::new(plugin_id, client_id, vec![])
                     .with_pipes(pipes_to_block_or_unblock);
                 let _ = senders
-                    .send_to_plugin(PluginInstruction::UnblockCliPipes(vec![plugin_render_asset]))
+                    .send_to_plugin(PluginInstruction::UnblockCliPipes(vec![
+                        plugin_render_asset,
+                    ]))
                     .context("failed to unblock input pipe");
             }
         },
         Err(_e) => {
             // no-op, this is probably an old plugin that does not have this interface
             // we don't log this error because if we do the logs will be super crowded
-            let pipes_to_block_or_unblock = pipes_to_block_or_unblock(running_plugin, Some(&pipe_message.source));
+            let pipes_to_block_or_unblock =
+                pipes_to_block_or_unblock(running_plugin, Some(&pipe_message.source));
             let plugin_render_asset = PluginRenderAsset::new(
                 plugin_id,
                 client_id,
                 vec![], // nothing to render
-            ).with_pipes(pipes_to_block_or_unblock);
+            )
+            .with_pipes(pipes_to_block_or_unblock);
             let _ = senders
-                .send_to_plugin(PluginInstruction::UnblockCliPipes(vec![plugin_render_asset]))
+                .send_to_plugin(PluginInstruction::UnblockCliPipes(vec![
+                    plugin_render_asset,
+                ]))
                 .context("failed to unblock input pipe");
         },
     }
     Ok(())
 }
 
-pub fn pipes_to_block_or_unblock(running_plugin: &mut RunningPlugin, current_pipe: Option<&PipeSource>) -> HashMap<String, PipeStateChange> {
+pub fn pipes_to_block_or_unblock(
+    running_plugin: &mut RunningPlugin,
+    current_pipe: Option<&PipeSource>,
+) -> HashMap<String, PipeStateChange> {
     let mut pipe_state_changes = HashMap::new();
     let mut input_pipes_to_unblock: HashSet<String> = running_plugin
         .plugin_env

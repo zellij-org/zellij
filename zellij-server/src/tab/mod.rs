@@ -3295,9 +3295,8 @@ impl Tab {
                 Ok(_) => output
                     .serialize()
                     .and_then(|serialized_output| {
-                        self.senders.send_to_server(ServerInstruction::Render(
-                            Some(serialized_output),
-                        ))
+                        self.senders
+                            .send_to_server(ServerInstruction::Render(Some(serialized_output)))
                     })
                     .and_then(|_| {
                         Ok(Event::CopyToClipboard(

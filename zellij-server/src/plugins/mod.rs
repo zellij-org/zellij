@@ -1,8 +1,8 @@
+mod pipes;
 mod plugin_loader;
 mod plugin_map;
 mod plugin_worker;
 mod wasm_bridge;
-mod pipes;
 mod watch_filesystem;
 mod zellij_exports;
 use log::info;
@@ -20,8 +20,8 @@ use crate::screen::ScreenInstruction;
 use crate::session_layout_metadata::SessionLayoutMetadata;
 use crate::{pty::PtyInstruction, thread_bus::Bus, ClientId, ServerInstruction};
 
-use wasm_bridge::WasmBridge;
 pub use wasm_bridge::PluginRenderAsset;
+use wasm_bridge::WasmBridge;
 
 use zellij_utils::{
     async_std::{channel, future::timeout, task},
@@ -574,7 +574,7 @@ pub(crate) fn plugin_thread_main(
                         .send_to_server(ServerInstruction::UnblockCliPipeInput(pipe_name))
                         .context("failed to unblock input pipe");
                 }
-            }
+            },
             PluginInstruction::Exit => {
                 break;
             },

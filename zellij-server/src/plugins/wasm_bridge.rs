@@ -1,6 +1,8 @@
 use super::{PluginId, PluginInstruction};
+use crate::plugins::pipes::{
+    apply_pipe_message_to_plugin, pipes_to_block_or_unblock, PendingPipes, PipeStateChange,
+};
 use crate::plugins::plugin_loader::PluginLoader;
-use crate::plugins::pipes::{PipeStateChange, PendingPipes, apply_pipe_message_to_plugin, pipes_to_block_or_unblock};
 use crate::plugins::plugin_map::{AtomicEvent, PluginEnv, PluginMap, RunningPlugin, Subscriptions};
 use crate::plugins::plugin_worker::MessageToWorker;
 use crate::plugins::watch_filesystem::watch_filesystem;
@@ -50,7 +52,8 @@ pub enum EventOrPipeMessage {
 }
 
 #[derive(Debug, Clone, Default)]
-pub struct PluginRenderAsset { // TODO: naming
+pub struct PluginRenderAsset {
+    // TODO: naming
     pub client_id: ClientId,
     pub plugin_id: PluginId,
     pub bytes: Vec<u8>,
@@ -143,7 +146,7 @@ impl WasmBridge {
             default_shell,
             default_layout,
             cached_plugin_map: HashMap::new(),
-            pending_pipes: Default::default()
+            pending_pipes: Default::default(),
         }
     }
     pub fn load_plugin(
@@ -288,7 +291,8 @@ impl WasmBridge {
         self.cached_plugin_map.clear();
         let mut pipes_to_unblock = self.pending_pipes.unload_plugin(&pid);
         for pipe_name in pipes_to_unblock.drain(..) {
-            let _ = self.senders
+            let _ = self
+                .senders
                 .send_to_server(ServerInstruction::UnblockCliPipeInput(pipe_name))
                 .context("failed to unblock input pipe");
         }
@@ -498,12 +502,12 @@ impl WasmBridge {
                                         let plugin_render_asset = PluginRenderAsset::new(
                                             plugin_id,
                                             client_id,
-                                            rendered_bytes.as_bytes().to_vec()
+                                            rendered_bytes.as_bytes().to_vec(),
                                         );
                                         senders
-                                            .send_to_screen(ScreenInstruction::PluginBytes(
-                                                vec![plugin_render_asset]
-                                            ))
+                                            .send_to_screen(ScreenInstruction::PluginBytes(vec![
+                                                plugin_render_asset,
+                                            ]))
                                             .unwrap();
                                     },
                                     Err(e) => log::error!("{}", e),
@@ -575,7 +579,9 @@ impl WasmBridge {
                                 &mut plugin_render_assets,
                             ) {
                                 Ok(()) => {
-                                    let _ = senders.send_to_screen(ScreenInstruction::PluginBytes(plugin_render_assets));
+                                    let _ = senders.send_to_screen(ScreenInstruction::PluginBytes(
+                                        plugin_render_assets,
+                                    ));
                                 },
                                 Err(e) => {
                                     log::error!("{:?}", e);
@@ -628,9 +634,15 @@ impl WasmBridge {
             .collect();
         for (message_pid, message_cid, pipe_message) in messages.drain(..) {
             for (plugin_id, client_id, running_plugin, _subscriptions) in &plugins_to_update {
-                if Self::message_is_directed_at_plugin(message_pid, message_cid, plugin_id, client_id) {
+                if Self::message_is_directed_at_plugin(
+                    message_pid,
+                    message_cid,
+                    plugin_id,
+                    client_id,
+                ) {
                     if let PipeSource::Cli(pipe_id) = &pipe_message.source {
-                        self.pending_pipes.mark_being_processed(pipe_id, plugin_id, client_id);
+                        self.pending_pipes
+                            .mark_being_processed(pipe_id, plugin_id, client_id);
                     }
                     task::spawn({
                         let senders = self.senders.clone();
@@ -652,7 +664,9 @@ impl WasmBridge {
                                 &senders,
                             ) {
                                 Ok(()) => {
-                                    let _ = senders.send_to_screen(ScreenInstruction::PluginBytes(plugin_render_assets));
+                                    let _ = senders.send_to_screen(ScreenInstruction::PluginBytes(
+                                        plugin_render_assets,
+                                    ));
                                 },
                                 Err(e) => {
                                     log::error!("{:?}", e);
@@ -684,8 +698,14 @@ impl WasmBridge {
                     cached_events.push(EventOrPipeMessage::PipeMessage(pipe_message.clone()));
                     if let PipeSource::Cli(pipe_id) = &pipe_message.source {
                         for client_id in &all_connected_clients {
-                            if Self::message_is_directed_at_plugin(message_pid, message_cid, plugin_id, client_id) {
-                                self.pending_pipes.mark_being_processed(pipe_id, plugin_id, client_id);
+                            if Self::message_is_directed_at_plugin(
+                                message_pid,
+                                message_cid,
+                                plugin_id,
+                                client_id,
+                            ) {
+                                self.pending_pipes
+                                    .mark_being_processed(pipe_id, plugin_id, client_id);
                             }
                         }
                     }
@@ -809,7 +829,11 @@ impl WasmBridge {
                                                     &mut plugin_render_assets,
                                                 ) {
                                                     Ok(()) => {
-                                                        let _ = senders.send_to_screen(ScreenInstruction::PluginBytes(plugin_render_assets));
+                                                        let _ = senders.send_to_screen(
+                                                            ScreenInstruction::PluginBytes(
+                                                                plugin_render_assets,
+                                                            ),
+                                                        );
                                                     },
                                                     Err(e) => {
                                                         log::error!("{}", e);
@@ -834,7 +858,11 @@ impl WasmBridge {
                                             &senders,
                                         ) {
                                             Ok(()) => {
-                                                let _ = senders.send_to_screen(ScreenInstruction::PluginBytes(plugin_render_assets));
+                                                let _ = senders.send_to_screen(
+                                                    ScreenInstruction::PluginBytes(
+                                                        plugin_render_assets,
+                                                    ),
+                                                );
                                             },
                                             Err(e) => {
                                                 log::error!("{:?}", e);
@@ -1118,19 +1146,30 @@ impl WasmBridge {
         self.cached_plugin_map.clear();
     }
     // returns the pipe names to unblock
-    pub fn update_cli_pipe_state(&mut self, pipe_state_changes: Vec<PluginRenderAsset>) -> Vec<String> {
+    pub fn update_cli_pipe_state(
+        &mut self,
+        pipe_state_changes: Vec<PluginRenderAsset>,
+    ) -> Vec<String> {
         let mut pipe_names_to_unblock = vec![];
         for pipe_state_change in pipe_state_changes {
             let client_id = pipe_state_change.client_id;
             let plugin_id = pipe_state_change.plugin_id;
             for (cli_pipe_name, pipe_state_change) in pipe_state_change.cli_pipes {
-                pipe_names_to_unblock.append(&mut self.pending_pipes.update_pipe_state_change(&cli_pipe_name, pipe_state_change, &plugin_id, &client_id));
+                pipe_names_to_unblock.append(&mut self.pending_pipes.update_pipe_state_change(
+                    &cli_pipe_name,
+                    pipe_state_change,
+                    &plugin_id,
+                    &client_id,
+                ));
             }
         }
-        let pipe_names_to_unblock = pipe_names_to_unblock.into_iter().fold(HashSet::new(), |mut acc, p| {
-            acc.insert(p);
-            acc
-        });
+        let pipe_names_to_unblock =
+            pipe_names_to_unblock
+                .into_iter()
+                .fold(HashSet::new(), |mut acc, p| {
+                    acc.insert(p);
+                    acc
+                });
         pipe_names_to_unblock.into_iter().collect()
     }
     fn message_is_directed_at_plugin(
@@ -1260,7 +1299,8 @@ pub fn apply_event_to_plugin(
                     plugin_id,
                     client_id,
                     rendered_bytes.as_bytes().to_vec(),
-                ).with_pipes(pipes_to_block_or_unblock);
+                )
+                .with_pipes(pipes_to_block_or_unblock);
                 plugin_render_assets.push(plugin_render_asset);
             }
         },

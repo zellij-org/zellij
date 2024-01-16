@@ -1059,13 +1059,15 @@ impl Screen {
         }
         if output.is_dirty() {
             let serialized_output = output.serialize().context(err_context)?;
-            let _ = self.bus
+            let _ = self
+                .bus
                 .senders
                 .send_to_server(ServerInstruction::Render(Some(serialized_output)))
                 .context(err_context);
         }
         if let Some(plugin_render_assets) = plugin_render_assets {
-            let _ = self.bus
+            let _ = self
+                .bus
                 .senders
                 .send_to_plugin(PluginInstruction::UnblockCliPipes(plugin_render_assets))
                 .context("failed to unblock input pipe");
