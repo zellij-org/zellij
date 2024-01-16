@@ -886,7 +886,7 @@ impl Layout {
             None => {
                 let home = find_default_config_dir();
                 let Some(home) = home else {
-                    return Layout::stringified_from_default_assets(layout)
+                    return Layout::stringified_from_default_assets(layout);
                 };
 
                 let layout_path = &home.join(layout);

@@ -10,6 +10,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix(grid): flaky scroll with scroll region (https://github.com/zellij-org/zellij/pull/2935)
 * fix(plugins): display errors properly (https://github.com/zellij-org/zellij/pull/2975)
 * feat(terminal): implement synchronized renders (https://github.com/zellij-org/zellij/pull/2977)
+* perf(plugins): improve plugin download & load feature (https://github.com/zellij-org/zellij/pull/3001)
+* chore: bump Rust toolchain to 1.75.0 (https://github.com/zellij-org/zellij/pull/3039)
 
 ## [0.39.2] - 2023-11-29
 * fix(cli): typo in cli help (https://github.com/zellij-org/zellij/pull/2906)

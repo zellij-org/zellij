@@ -208,22 +208,15 @@ impl WasmBridge {
                 let mut loading_indication = LoadingIndication::new(plugin_name.clone());
 
                 if let RunPluginLocation::Remote(url) = &plugin.location {
-                    let download = Download::from(url);
-
-                    let hash: String = PortableHash::default()
-                        .hash128(download.url.as_bytes())
+                    let file_name: String = PortableHash::default()
+                        .hash128(url.as_bytes())
                         .iter()
                         .map(ToString::to_string)
                         .collect();
 
-                    let plugin_directory = ZELLIJ_CACHE_DIR.join(hash);
-
-                    // The plugin path is determined by the hash of the plugin URL in the cache directory.
-                    plugin.path = plugin_directory.join(&download.file_name);
-
-                    let downloader = Downloader::new(plugin_directory);
-                    match downloader.fetch(&download).await {
-                        Ok(_) => {},
+                    let downloader = Downloader::new(ZELLIJ_CACHE_DIR.to_path_buf());
+                    match downloader.download(url, Some(&file_name)).await {
+                        Ok(_) => plugin.path = ZELLIJ_CACHE_DIR.join(&file_name),
                         Err(e) => handle_plugin_loading_failure(
                             &senders,
                             plugin_id,
