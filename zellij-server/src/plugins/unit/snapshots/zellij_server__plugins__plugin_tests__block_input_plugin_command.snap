@@ -1,15 +1,15 @@
 ---
 source: zellij-server/src/plugins/./unit/plugin_tests.rs
-assertion_line: 5783
+assertion_line: 5812
 expression: "format!(\"{:#?}\", plugin_bytes_events)"
 ---
 Some(
     PluginBytes(
         [
-            (
-                0,
-                1,
-                [
+            PluginRenderAsset {
+                client_id: 1,
+                plugin_id: 0,
+                bytes: [
                     82,
                     111,
                     119,
@@ -53,10 +53,10 @@ Some(
                     10,
                     13,
                 ],
-            ),
+                cli_pipes: {
+                    "input_pipe_id": Block,
+                },
+            },
         ],
-        Some(
-            {},
-        ),
     ),
 )

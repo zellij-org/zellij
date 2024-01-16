@@ -397,6 +397,7 @@ pub enum PluginContext {
     Message,
     CachePluginEvents,
     MessageFromPlugin,
+    UnblockCliPipes,
 }
 
 /// Stack call representations corresponding to the different types of [`ClientInstruction`]s.

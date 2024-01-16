@@ -68,8 +68,7 @@ pub enum ServerInstruction {
         ClientId,
         Option<PluginsConfig>,
     ),
-    Render(Option<HashMap<ClientId, String>>, Option<HashSet<String>>), // 2nd argument is
-    // input_pipes_to_unblock
+    Render(Option<HashMap<ClientId, String>>),
     UnblockInputThread,
     ClientExit(ClientId),
     RemoveClient(ClientId),
@@ -228,7 +227,7 @@ impl SessionState {
     }
     pub fn remove_client(&mut self, client_id: ClientId) {
         self.clients.remove(&client_id);
-        self.pipes.retain(|p_id, c_id| c_id != &client_id);
+        self.pipes.retain(|_p_id, c_id| c_id != &client_id);
     }
     pub fn set_client_size(&mut self, client_id: ClientId, size: Size) {
         self.clients.insert(client_id, Some(size));
@@ -685,7 +684,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                         .unwrap();
                 }
             },
-            ServerInstruction::Render(serialized_output, input_pipes_to_unblock) => {
+            ServerInstruction::Render(serialized_output) => {
                 let client_ids = session_state.read().unwrap().client_ids();
                 // If `Some(_)`- unwrap it and forward it to the clients to render.
                 // If `None`- Send an exit instruction. This is the case when a user closes the last Tab/Pane.
@@ -700,18 +699,6 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                             ServerToClientMsg::Render(client_render_instruction.clone()),
                             session_state
                         );
-                    }
-                    if let Some(input_pipes_to_unblock) = input_pipes_to_unblock {
-                        for pipe_name in input_pipes_to_unblock {
-                            for client_id in session_state.read().unwrap().clients.keys() {
-                                send_to_client!(
-                                    *client_id,
-                                    os_input,
-                                    ServerToClientMsg::UnblockCliPipeInput(pipe_name.clone()),
-                                    session_state
-                                );
-                            }
-                        }
                     }
                 } else {
                     for client_id in client_ids {

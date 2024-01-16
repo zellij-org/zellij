@@ -2,6 +2,7 @@ mod plugin_loader;
 mod plugin_map;
 mod plugin_worker;
 mod wasm_bridge;
+mod pipes;
 mod watch_filesystem;
 mod zellij_exports;
 use log::info;
@@ -20,6 +21,7 @@ use crate::session_layout_metadata::SessionLayoutMetadata;
 use crate::{pty::PtyInstruction, thread_bus::Bus, ClientId, ServerInstruction};
 
 use wasm_bridge::WasmBridge;
+pub use wasm_bridge::PluginRenderAsset;
 
 use zellij_utils::{
     async_std::{channel, future::timeout, task},
@@ -127,6 +129,7 @@ pub enum PluginInstruction {
         source_plugin_id: u32,
         message: MessageToPlugin,
     },
+    UnblockCliPipes(Vec<PluginRenderAsset>),
     Exit,
 }
 
@@ -161,6 +164,7 @@ impl From<&PluginInstruction> for PluginContext {
             PluginInstruction::CliPipe { .. } => PluginContext::CliPipe,
             PluginInstruction::CachePluginEvents { .. } => PluginContext::CachePluginEvents,
             PluginInstruction::MessageFromPlugin { .. } => PluginContext::MessageFromPlugin,
+            PluginInstruction::UnblockCliPipes { .. } => PluginContext::UnblockCliPipes,
         }
     }
 }
@@ -562,6 +566,15 @@ pub(crate) fn plugin_thread_main(
                 }
                 wasm_bridge.pipe_messages(pipe_messages, shutdown_send.clone())?;
             },
+            PluginInstruction::UnblockCliPipes(pipes_to_unblock) => {
+                let pipes_to_unblock = wasm_bridge.update_cli_pipe_state(pipes_to_unblock);
+                for pipe_name in pipes_to_unblock {
+                    let _ = bus
+                        .senders
+                        .send_to_server(ServerInstruction::UnblockCliPipeInput(pipe_name))
+                        .context("failed to unblock input pipe");
+                }
+            }
             PluginInstruction::Exit => {
                 break;
             },

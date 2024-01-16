@@ -813,10 +813,10 @@ pub(crate) fn route_action(
             configuration,
             floating,
             in_place,
-            launch_new,
             skip_cache,
             cwd,
             pane_title,
+            ..
         } => {
             if let Some(seen_cli_pipes) = seen_cli_pipes.as_mut() {
                 if !seen_cli_pipes.contains(&pipe_id) {

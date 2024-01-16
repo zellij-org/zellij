@@ -178,24 +178,6 @@ impl PluginMap {
         }
         Ok(plugin_ids)
     }
-    pub fn all_plugin_and_client_ids_for_plugin_location(
-        &self,
-        plugin_location: &RunPluginLocation,
-        plugin_configuration: &PluginUserConfiguration,
-    ) -> Vec<(PluginId, ClientId)> {
-        self.plugin_assets
-            .iter()
-            .filter(|(_, (running_plugin, _subscriptions, _workers))| {
-                let running_plugin = running_plugin.lock().unwrap();
-                let running_plugin_location = &running_plugin.plugin_env.plugin.location;
-                let running_plugin_configuration =
-                    &running_plugin.plugin_env.plugin.userspace_configuration;
-                running_plugin_location == plugin_location
-                    && running_plugin_configuration == plugin_configuration
-            })
-            .map(|((plugin_id, client_id), _)| (*plugin_id, *client_id))
-            .collect()
-    }
     pub fn clone_plugin_assets(
         &self,
     ) -> HashMap<RunPluginLocation, HashMap<PluginUserConfiguration, Vec<(PluginId, ClientId)>>>

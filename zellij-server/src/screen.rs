@@ -35,7 +35,7 @@ use crate::{
     output::Output,
     panes::sixel::SixelImageStore,
     panes::PaneId,
-    plugins::PluginInstruction,
+    plugins::{PluginInstruction, PluginRenderAsset},
     pty::{ClientTabIndexOrPaneId, PtyInstruction, VteBytes},
     tab::Tab,
     thread_bus::Bus,
@@ -138,9 +138,7 @@ type HoldForCommand = Option<RunCommand>;
 #[derive(Debug, Clone)]
 pub enum ScreenInstruction {
     PtyBytes(u32, VteBytes),
-    PluginBytes(Vec<(u32, ClientId, VteBytes)>, Option<HashSet<String>>), // u32 is plugin_id,
-    // HashSet -> input pipes
-    // to unblock
+    PluginBytes(Vec<PluginRenderAsset>),
     Render,
     NewPane(
         PaneId,
@@ -939,7 +937,7 @@ impl Screen {
             self.active_tab_indices.clear();
             self.bus
                 .senders
-                .send_to_server(ServerInstruction::Render(None, None))
+                .send_to_server(ServerInstruction::Render(None))
                 .with_context(err_context)
         } else {
             let client_mode_infos_in_closed_tab = tab_to_close.drain_connected_clients(None);
@@ -1040,7 +1038,7 @@ impl Screen {
     }
 
     /// Renders this [`Screen`], which amounts to rendering its active [`Tab`].
-    pub fn render(&mut self, input_pipes_to_unblock: Option<HashSet<String>>) -> Result<()> {
+    pub fn render(&mut self, plugin_render_assets: Option<Vec<PluginRenderAsset>>) -> Result<()> {
         let err_context = "failed to render screen";
 
         let mut output = Output::new(
@@ -1061,24 +1059,18 @@ impl Screen {
         }
         if output.is_dirty() {
             let serialized_output = output.serialize().context(err_context)?;
-            self.bus
+            let _ = self.bus
                 .senders
-                .send_to_server(ServerInstruction::Render(
-                    Some(serialized_output),
-                    input_pipes_to_unblock,
-                ))
-                .context(err_context)
-        } else if let Some(input_pipes_to_unblock) = input_pipes_to_unblock {
-            for pipe_name in input_pipes_to_unblock {
-                self.bus
-                    .senders
-                    .send_to_server(ServerInstruction::UnblockCliPipeInput(pipe_name))
-                    .context("failed to unblock input pipe");
-            }
-            Ok(())
-        } else {
-            Ok(())
+                .send_to_server(ServerInstruction::Render(Some(serialized_output)))
+                .context(err_context);
         }
+        if let Some(plugin_render_assets) = plugin_render_assets {
+            let _ = self.bus
+                .senders
+                .send_to_plugin(PluginInstruction::UnblockCliPipes(plugin_render_assets))
+                .context("failed to unblock input pipe");
+        }
+        Ok(())
     }
 
     /// Returns a mutable reference to this [`Screen`]'s tabs.
@@ -2168,18 +2160,22 @@ pub(crate) fn screen_thread_main(
                     }
                 }
             },
-            ScreenInstruction::PluginBytes(mut plugin_bytes, input_pipes_to_unblock) => {
-                for (pid, client_id, vte_bytes) in plugin_bytes.drain(..) {
+            ScreenInstruction::PluginBytes(mut plugin_render_assets) => {
+                for plugin_render_asset in plugin_render_assets.iter_mut() {
+                    let plugin_id = plugin_render_asset.plugin_id;
+                    let client_id = plugin_render_asset.client_id;
+                    let vte_bytes = plugin_render_asset.bytes.drain(..).collect();
+
                     let all_tabs = screen.get_tabs_mut();
                     for tab in all_tabs.values_mut() {
-                        if tab.has_plugin(pid) {
-                            tab.handle_plugin_bytes(pid, client_id, vte_bytes)
+                        if tab.has_plugin(plugin_id) {
+                            tab.handle_plugin_bytes(plugin_id, client_id, vte_bytes)
                                 .context("failed to process plugin bytes")?;
                             break;
                         }
                     }
                 }
-                screen.render(input_pipes_to_unblock)?;
+                screen.render(Some(plugin_render_assets))?;
             },
             ScreenInstruction::Render => {
                 screen.render(None)?;

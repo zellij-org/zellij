@@ -3297,7 +3297,6 @@ impl Tab {
                     .and_then(|serialized_output| {
                         self.senders.send_to_server(ServerInstruction::Render(
                             Some(serialized_output),
-                            None,
                         ))
                     })
                     .and_then(|_| {

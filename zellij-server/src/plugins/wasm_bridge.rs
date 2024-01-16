@@ -1,5 +1,6 @@
 use super::{PluginId, PluginInstruction};
 use crate::plugins::plugin_loader::PluginLoader;
+use crate::plugins::pipes::{PipeStateChange, PendingPipes, apply_pipe_message_to_plugin, pipes_to_block_or_unblock};
 use crate::plugins::plugin_map::{AtomicEvent, PluginEnv, PluginMap, RunningPlugin, Subscriptions};
 use crate::plugins::plugin_worker::MessageToWorker;
 use crate::plugins::watch_filesystem::watch_filesystem;
@@ -22,7 +23,6 @@ use zellij_utils::downloader::Downloader;
 use zellij_utils::input::permission::PermissionCache;
 use zellij_utils::notify_debouncer_full::{notify::RecommendedWatcher, Debouncer, FileIdMap};
 use zellij_utils::plugin_api::event::ProtobufEvent;
-use zellij_utils::plugin_api::pipe_message::ProtobufPipeMessage;
 
 use zellij_utils::prost::Message;
 
@@ -43,10 +43,33 @@ use zellij_utils::{
     pane_size::Size,
 };
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub enum EventOrPipeMessage {
     Event(Event),
     PipeMessage(PipeMessage),
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct PluginRenderAsset { // TODO: naming
+    pub client_id: ClientId,
+    pub plugin_id: PluginId,
+    pub bytes: Vec<u8>,
+    pub cli_pipes: HashMap<String, PipeStateChange>,
+}
+
+impl PluginRenderAsset {
+    pub fn new(plugin_id: PluginId, client_id: ClientId, bytes: Vec<u8>) -> Self {
+        PluginRenderAsset {
+            client_id,
+            plugin_id,
+            bytes,
+            ..Default::default()
+        }
+    }
+    pub fn with_pipes(mut self, cli_pipes: HashMap<String, PipeStateChange>) -> Self {
+        self.cli_pipes = cli_pipes;
+        self
+    }
 }
 
 pub struct WasmBridge {
@@ -76,8 +99,7 @@ pub struct WasmBridge {
     default_layout: Box<Layout>,
     cached_plugin_map:
         HashMap<RunPluginLocation, HashMap<PluginUserConfiguration, Vec<(PluginId, ClientId)>>>,
-    //         plugin_location: &RunPluginLocation,
-    //         plugin_configuration: &PluginUserConfiguration,
+    pending_pipes: PendingPipes,
 }
 
 impl WasmBridge {
@@ -121,6 +143,7 @@ impl WasmBridge {
             default_shell,
             default_layout,
             cached_plugin_map: HashMap::new(),
+            pending_pipes: Default::default()
         }
     }
     pub fn load_plugin(
@@ -263,6 +286,12 @@ impl WasmBridge {
             }
         }
         self.cached_plugin_map.clear();
+        let mut pipes_to_unblock = self.pending_pipes.unload_plugin(&pid);
+        for pipe_name in pipes_to_unblock.drain(..) {
+            let _ = self.senders
+                .send_to_server(ServerInstruction::UnblockCliPipeInput(pipe_name))
+                .context("failed to unblock input pipe");
+        }
         Ok(())
     }
     pub fn reload_plugin(&mut self, run_plugin: &RunPlugin) -> Result<()> {
@@ -466,15 +495,14 @@ impl WasmBridge {
                                     .with_context(err_context);
                                 match rendered_bytes {
                                     Ok(rendered_bytes) => {
-                                        let plugin_bytes = vec![(
+                                        let plugin_render_asset = PluginRenderAsset::new(
                                             plugin_id,
                                             client_id,
-                                            rendered_bytes.as_bytes().to_vec(),
-                                        )];
+                                            rendered_bytes.as_bytes().to_vec()
+                                        );
                                         senders
                                             .send_to_screen(ScreenInstruction::PluginBytes(
-                                                plugin_bytes,
-                                                None,
+                                                vec![plugin_render_asset]
                                             ))
                                             .unwrap();
                                     },
@@ -526,10 +554,10 @@ impl WasmBridge {
                 let event_type =
                     EventType::from_str(&event.to_string()).with_context(err_context)?;
                 if (subs.contains(&event_type) || event_type == EventType::PermissionRequestResult)
-                    && self.message_is_directed_at_plugin(pid, cid, plugin_id, client_id)
+                    && Self::message_is_directed_at_plugin(pid, cid, plugin_id, client_id)
                 {
                     task::spawn({
-                        let mut senders = self.senders.clone();
+                        let senders = self.senders.clone();
                         let running_plugin = running_plugin.clone();
                         let event = event.clone();
                         let plugin_id = *plugin_id;
@@ -537,22 +565,17 @@ impl WasmBridge {
                         let _s = shutdown_sender.clone();
                         async move {
                             let mut running_plugin = running_plugin.lock().unwrap();
-                            let mut plugin_bytes = vec![];
+                            let mut plugin_render_assets = vec![];
                             let _s = _s; // guard to allow the task to complete before cleanup/shutdown
                             match apply_event_to_plugin(
                                 plugin_id,
                                 client_id,
                                 &mut running_plugin,
                                 &event,
-                                &mut plugin_bytes,
+                                &mut plugin_render_assets,
                             ) {
                                 Ok(()) => {
-                                    render_plugin_to_screen(
-                                        &mut running_plugin,
-                                        None,
-                                        plugin_bytes,
-                                        &mut senders,
-                                    );
+                                    let _ = senders.send_to_screen(ScreenInstruction::PluginBytes(plugin_render_assets));
                                 },
                                 Err(e) => {
                                     log::error!("{:?}", e);
@@ -603,11 +626,14 @@ impl WasmBridge {
                     .contains_key(&plugin_id)
             })
             .collect();
-        for (pid, cid, pipe_message) in messages.drain(..) {
+        for (message_pid, message_cid, pipe_message) in messages.drain(..) {
             for (plugin_id, client_id, running_plugin, _subscriptions) in &plugins_to_update {
-                if self.message_is_directed_at_plugin(pid, cid, plugin_id, client_id) {
+                if Self::message_is_directed_at_plugin(message_pid, message_cid, plugin_id, client_id) {
+                    if let PipeSource::Cli(pipe_id) = &pipe_message.source {
+                        self.pending_pipes.mark_being_processed(pipe_id, plugin_id, client_id);
+                    }
                     task::spawn({
-                        let mut senders = self.senders.clone();
+                        let senders = self.senders.clone();
                         let running_plugin = running_plugin.clone();
                         let pipe_message = pipe_message.clone();
                         let plugin_id = *plugin_id;
@@ -615,22 +641,18 @@ impl WasmBridge {
                         let _s = shutdown_sender.clone();
                         async move {
                             let mut running_plugin = running_plugin.lock().unwrap();
-                            let mut plugin_bytes = vec![];
+                            let mut plugin_render_assets = vec![];
                             let _s = _s; // guard to allow the task to complete before cleanup/shutdown
                             match apply_pipe_message_to_plugin(
                                 plugin_id,
                                 client_id,
                                 &mut running_plugin,
                                 &pipe_message,
-                                &mut plugin_bytes,
+                                &mut plugin_render_assets,
+                                &senders,
                             ) {
                                 Ok(()) => {
-                                    render_plugin_to_screen(
-                                        &mut running_plugin,
-                                        Some(pipe_message.source),
-                                        plugin_bytes,
-                                        &mut senders,
-                                    );
+                                    let _ = senders.send_to_screen(ScreenInstruction::PluginBytes(plugin_render_assets));
                                 },
                                 Err(e) => {
                                     log::error!("{:?}", e);
@@ -650,9 +672,23 @@ impl WasmBridge {
                     });
                 }
             }
+            let all_connected_clients: Vec<ClientId> = self
+                .connected_clients
+                .lock()
+                .unwrap()
+                .iter()
+                .copied()
+                .collect();
             for (plugin_id, cached_events) in self.cached_events_for_pending_plugins.iter_mut() {
-                if pid.is_none() || pid.as_ref() == Some(plugin_id) {
+                if message_pid.is_none() || message_pid.as_ref() == Some(plugin_id) {
                     cached_events.push(EventOrPipeMessage::PipeMessage(pipe_message.clone()));
+                    if let PipeSource::Cli(pipe_id) = &pipe_message.source {
+                        for client_id in &all_connected_clients {
+                            if Self::message_is_directed_at_plugin(message_pid, message_cid, plugin_id, client_id) {
+                                self.pending_pipes.mark_being_processed(pipe_id, plugin_id, client_id);
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -744,7 +780,7 @@ impl WasmBridge {
                     .get_running_plugin_and_subscriptions(plugin_id, *client_id)
                 {
                     task::spawn({
-                        let mut senders = self.senders.clone();
+                        let senders = self.senders.clone();
                         let running_plugin = running_plugin.clone();
                         let client_id = *client_id;
                         let _s = shutdown_sender.clone();
@@ -764,21 +800,16 @@ impl WasmBridge {
                                                 }
                                                 let mut running_plugin =
                                                     running_plugin.lock().unwrap();
-                                                let mut plugin_bytes = vec![];
+                                                let mut plugin_render_assets = vec![];
                                                 match apply_event_to_plugin(
                                                     plugin_id,
                                                     client_id,
                                                     &mut running_plugin,
                                                     &event,
-                                                    &mut plugin_bytes,
+                                                    &mut plugin_render_assets,
                                                 ) {
                                                     Ok(()) => {
-                                                        render_plugin_to_screen(
-                                                            &mut running_plugin,
-                                                            None,
-                                                            plugin_bytes,
-                                                            &mut senders,
-                                                        );
+                                                        let _ = senders.send_to_screen(ScreenInstruction::PluginBytes(plugin_render_assets));
                                                     },
                                                     Err(e) => {
                                                         log::error!("{}", e);
@@ -792,22 +823,18 @@ impl WasmBridge {
                                     },
                                     EventOrPipeMessage::PipeMessage(pipe_message) => {
                                         let mut running_plugin = running_plugin.lock().unwrap();
-                                        let mut plugin_bytes = vec![];
+                                        let mut plugin_render_assets = vec![];
 
                                         match apply_pipe_message_to_plugin(
                                             plugin_id,
                                             client_id,
                                             &mut running_plugin,
                                             &pipe_message,
-                                            &mut plugin_bytes,
+                                            &mut plugin_render_assets,
+                                            &senders,
                                         ) {
                                             Ok(()) => {
-                                                render_plugin_to_screen(
-                                                    &mut running_plugin,
-                                                    Some(pipe_message.source),
-                                                    plugin_bytes,
-                                                    &mut senders,
-                                                );
+                                                let _ = senders.send_to_screen(ScreenInstruction::PluginBytes(plugin_render_assets));
                                             },
                                             Err(e) => {
                                                 log::error!("{:?}", e);
@@ -1090,8 +1117,23 @@ impl WasmBridge {
     pub fn clear_plugin_map_cache(&mut self) {
         self.cached_plugin_map.clear();
     }
+    // returns the pipe names to unblock
+    pub fn update_cli_pipe_state(&mut self, pipe_state_changes: Vec<PluginRenderAsset>) -> Vec<String> {
+        let mut pipe_names_to_unblock = vec![];
+        for pipe_state_change in pipe_state_changes {
+            let client_id = pipe_state_change.client_id;
+            let plugin_id = pipe_state_change.plugin_id;
+            for (cli_pipe_name, pipe_state_change) in pipe_state_change.cli_pipes {
+                pipe_names_to_unblock.append(&mut self.pending_pipes.update_pipe_state_change(&cli_pipe_name, pipe_state_change, &plugin_id, &client_id));
+            }
+        }
+        let pipe_names_to_unblock = pipe_names_to_unblock.into_iter().fold(HashSet::new(), |mut acc, p| {
+            acc.insert(p);
+            acc
+        });
+        pipe_names_to_unblock.into_iter().collect()
+    }
     fn message_is_directed_at_plugin(
-        &self,
         message_pid: Option<PluginId>,
         message_cid: Option<ClientId>,
         plugin_id: &PluginId,
@@ -1166,7 +1208,7 @@ pub fn apply_event_to_plugin(
     client_id: ClientId,
     running_plugin: &mut RunningPlugin,
     event: &Event,
-    plugin_bytes: &mut Vec<(PluginId, ClientId, Vec<u8>)>,
+    plugin_render_assets: &mut Vec<PluginRenderAsset>,
 ) -> Result<()> {
     let instance = &running_plugin.instance;
     let plugin_env = &running_plugin.plugin_env;
@@ -1213,7 +1255,13 @@ pub fn apply_event_to_plugin(
                     })
                     .and_then(|_| wasi_read_string(&plugin_env.wasi_env))
                     .with_context(err_context)?;
-                plugin_bytes.push((plugin_id, client_id, rendered_bytes.as_bytes().to_vec()));
+                let pipes_to_block_or_unblock = pipes_to_block_or_unblock(running_plugin, None);
+                let plugin_render_asset = PluginRenderAsset::new(
+                    plugin_id,
+                    client_id,
+                    rendered_bytes.as_bytes().to_vec(),
+                ).with_pipes(pipes_to_block_or_unblock);
+                plugin_render_assets.push(plugin_render_asset);
             }
         },
         (PermissionStatus::Denied, permission) => {
@@ -1230,95 +1278,11 @@ pub fn apply_event_to_plugin(
     Ok(())
 }
 
-pub fn apply_pipe_message_to_plugin(
-    plugin_id: PluginId,
-    client_id: ClientId,
-    running_plugin: &mut RunningPlugin,
-    pipe_message: &PipeMessage,
-    plugin_bytes: &mut Vec<(PluginId, ClientId, Vec<u8>)>,
-) -> Result<()> {
-    let instance = &running_plugin.instance;
-    let plugin_env = &running_plugin.plugin_env;
-    let rows = running_plugin.rows;
-    let columns = running_plugin.columns;
-
-    let err_context = || format!("Failed to apply event to plugin {plugin_id}");
-    let protobuf_pipe_message: ProtobufPipeMessage = pipe_message
-        .clone()
-        .try_into()
-        .map_err(|e| anyhow!("Failed to convert to protobuf: {:?}", e))?;
-    match instance.exports.get_function("pipe") {
-        Ok(pipe) => {
-            wasi_write_object(&plugin_env.wasi_env, &protobuf_pipe_message.encode_to_vec())
-                .with_context(err_context)?;
-            let pipe_return = pipe
-                .call(&mut running_plugin.store, &[])
-                .with_context(err_context)?;
-            let should_render = match pipe_return.get(0) {
-                Some(Value::I32(n)) => *n == 1,
-                _ => false,
-            };
-            if rows > 0 && columns > 0 && should_render {
-                let rendered_bytes = instance
-                    .exports
-                    .get_function("render")
-                    .map_err(anyError::new)
-                    .and_then(|render| {
-                        render
-                            .call(
-                                &mut running_plugin.store,
-                                &[Value::I32(rows as i32), Value::I32(columns as i32)],
-                            )
-                            .map_err(anyError::new)
-                    })
-                    .and_then(|_| wasi_read_string(&plugin_env.wasi_env))
-                    .with_context(err_context)?;
-                plugin_bytes.push((plugin_id, client_id, rendered_bytes.as_bytes().to_vec()));
-            }
-        },
-        Err(_e) => {
-            // no-op, this is probably an old plugin that does not have this interface
-            // we don't log this error because if we do the logs will be super crowded
-        },
-    }
-    Ok(())
-}
-
 pub fn handle_plugin_crash(plugin_id: PluginId, message: String, senders: ThreadSenders) {
     let mut loading_indication = LoadingIndication::new("Panic!".to_owned());
     loading_indication.indicate_loading_error(message);
     let _ = senders.send_to_screen(ScreenInstruction::UpdatePluginLoadingStage(
         plugin_id,
         loading_indication,
-    ));
-}
-
-fn render_plugin_to_screen(
-    running_plugin: &mut RunningPlugin,
-    pipe_message_source: Option<PipeSource>,
-    plugin_bytes: Vec<(PluginId, ClientId, Vec<u8>)>,
-    senders: &mut ThreadSenders,
-) {
-    let mut input_pipes_to_unblock: HashSet<String> = running_plugin
-        .plugin_env
-        .input_pipes_to_unblock
-        .lock()
-        .unwrap()
-        .drain()
-        .collect();
-    let input_pipes_to_block: HashSet<String> = running_plugin
-        .plugin_env
-        .input_pipes_to_block
-        .lock()
-        .unwrap()
-        .drain()
-        .collect();
-    if let Some(PipeSource::Cli(cli_pipe_id)) = pipe_message_source {
-        input_pipes_to_unblock.insert(cli_pipe_id.clone());
-    }
-    input_pipes_to_unblock.retain(|p| !&input_pipes_to_block.contains(p));
-    let _ = senders.send_to_screen(ScreenInstruction::PluginBytes(
-        plugin_bytes,
-        Some(input_pipes_to_unblock),
     ));
 }

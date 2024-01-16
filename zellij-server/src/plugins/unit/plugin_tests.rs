@@ -603,11 +603,14 @@ pub fn load_new_plugin_from_hd() {
         .unwrap()
         .iter()
         .find_map(|i| {
-            if let ScreenInstruction::PluginBytes(plugin_bytes, _) = i {
-                for (plugin_id, client_id, plugin_bytes) in plugin_bytes {
-                    let plugin_bytes = String::from_utf8_lossy(plugin_bytes).to_string();
+            if let ScreenInstruction::PluginBytes(plugin_render_assets) = i {
+                for plugin_render_asset in plugin_render_assets {
+                    let plugin_id = plugin_render_asset.plugin_id;
+                    let client_id = plugin_render_asset.client_id;
+                    let plugin_bytes = plugin_render_asset.bytes.clone();
+                    let plugin_bytes = String::from_utf8_lossy(plugin_bytes.as_slice()).to_string();
                     if plugin_bytes.contains("InputReceived") {
-                        return Some((*plugin_id, *client_id, plugin_bytes));
+                        return Some((plugin_id, client_id, plugin_bytes));
                     }
                 }
             }
@@ -679,11 +682,14 @@ pub fn plugin_workers() {
         .unwrap()
         .iter()
         .find_map(|i| {
-            if let ScreenInstruction::PluginBytes(plugin_bytes, _) = i {
-                for (plugin_id, client_id, plugin_bytes) in plugin_bytes {
-                    let plugin_bytes = String::from_utf8_lossy(plugin_bytes).to_string();
+            if let ScreenInstruction::PluginBytes(plugin_render_assets) = i {
+                for plugin_render_asset in plugin_render_assets {
+                    let plugin_id = plugin_render_asset.plugin_id;
+                    let client_id = plugin_render_asset.client_id;
+                    let plugin_bytes = plugin_render_asset.bytes.clone();
+                    let plugin_bytes = String::from_utf8_lossy(plugin_bytes.as_slice()).to_string();
                     if plugin_bytes.contains("Payload from worker") {
-                        return Some((*plugin_id, *client_id, plugin_bytes));
+                        return Some((plugin_id, client_id, plugin_bytes));
                     }
                 }
             }
@@ -764,11 +770,14 @@ pub fn plugin_workers_persist_state() {
         .unwrap()
         .iter()
         .find_map(|i| {
-            if let ScreenInstruction::PluginBytes(plugin_bytes, _) = i {
-                for (plugin_id, client_id, plugin_bytes) in plugin_bytes {
-                    let plugin_bytes = String::from_utf8_lossy(plugin_bytes).to_string();
+            if let ScreenInstruction::PluginBytes(plugin_render_assets) = i {
+                for plugin_render_asset in plugin_render_assets {
+                    let plugin_bytes = plugin_render_asset.bytes.clone();
+                    let plugin_id = plugin_render_asset.plugin_id;
+                    let client_id = plugin_render_asset.client_id;
+                    let plugin_bytes = String::from_utf8_lossy(plugin_bytes.as_slice()).to_string();
                     if plugin_bytes.contains("received 2 messages") {
-                        return Some((*plugin_id, *client_id, plugin_bytes));
+                        return Some((plugin_id, client_id, plugin_bytes));
                     }
                 }
             }
@@ -838,11 +847,14 @@ pub fn can_subscribe_to_hd_events() {
         .unwrap()
         .iter()
         .find_map(|i| {
-            if let ScreenInstruction::PluginBytes(plugin_bytes, _) = i {
-                for (plugin_id, client_id, plugin_bytes) in plugin_bytes {
-                    let plugin_bytes = String::from_utf8_lossy(plugin_bytes).to_string();
+            if let ScreenInstruction::PluginBytes(plugin_render_assets) = i {
+                for plugin_render_asset in plugin_render_assets {
+                    let plugin_id = plugin_render_asset.plugin_id;
+                    let client_id = plugin_render_asset.client_id;
+                    let plugin_bytes = plugin_render_asset.bytes.clone();
+                    let plugin_bytes = String::from_utf8_lossy(plugin_bytes.as_slice()).to_string();
                     if plugin_bytes.contains("FileSystemCreate") {
-                        return Some((*plugin_id, *client_id, plugin_bytes));
+                        return Some((plugin_id, client_id, plugin_bytes));
                     }
                 }
             }
@@ -5943,11 +5955,14 @@ pub fn pipe_message_to_plugin_plugin_command() {
         .unwrap()
         .iter()
         .find_map(|i| {
-            if let ScreenInstruction::PluginBytes(plugin_bytes, _) = i {
-                for (plugin_id, client_id, plugin_bytes) in plugin_bytes {
-                    let plugin_bytes = String::from_utf8_lossy(plugin_bytes).to_string();
+            if let ScreenInstruction::PluginBytes(plugin_render_assets) = i {
+                for plugin_render_asset in plugin_render_assets {
+                    let plugin_id = plugin_render_asset.plugin_id;
+                    let client_id = plugin_render_asset.client_id;
+                    let plugin_bytes = plugin_render_asset.bytes.clone();
+                    let plugin_bytes = String::from_utf8_lossy(plugin_bytes.as_slice()).to_string();
                     if plugin_bytes.contains("Payload from self:") {
-                        return Some((*plugin_id, *client_id, plugin_bytes));
+                        return Some((plugin_id, client_id, plugin_bytes));
                     }
                 }
             }
