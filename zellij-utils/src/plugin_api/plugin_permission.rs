@@ -20,6 +20,10 @@ impl TryFrom<ProtobufPermissionType> for PermissionType {
             },
             ProtobufPermissionType::WriteToStdin => Ok(PermissionType::WriteToStdin),
             ProtobufPermissionType::WebAccess => Ok(PermissionType::WebAccess),
+            ProtobufPermissionType::ReadCliPipes => Ok(PermissionType::ReadCliPipes),
+            ProtobufPermissionType::MessageAndLaunchOtherPlugins => {
+                Ok(PermissionType::MessageAndLaunchOtherPlugins)
+            },
         }
     }
 }
@@ -41,6 +45,10 @@ impl TryFrom<PermissionType> for ProtobufPermissionType {
             },
             PermissionType::WriteToStdin => Ok(ProtobufPermissionType::WriteToStdin),
             PermissionType::WebAccess => Ok(ProtobufPermissionType::WebAccess),
+            PermissionType::ReadCliPipes => Ok(ProtobufPermissionType::ReadCliPipes),
+            PermissionType::MessageAndLaunchOtherPlugins => {
+                Ok(ProtobufPermissionType::MessageAndLaunchOtherPlugins)
+            },
         }
     }
 }

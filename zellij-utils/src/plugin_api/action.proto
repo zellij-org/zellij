@@ -53,7 +53,15 @@ message Action {
     IdAndName rename_tab_payload = 44;
     string rename_session_payload = 45;
     LaunchOrFocusPluginPayload launch_plugin_payload = 46;
+    CliPipePayload message_payload = 47;
   }
+}
+
+message CliPipePayload {
+  optional string name = 1;
+  string payload = 2;
+  repeated NameAndValue args = 3;
+  optional string plugin = 4;
 }
 
 message IdAndName {
@@ -227,6 +235,7 @@ enum ActionName {
     BreakPaneLeft = 79;
     RenameSession = 80;
     LaunchPlugin = 81;
+    CliPipe = 82;
 }
 
 message Position {

@@ -5,7 +5,7 @@ pub struct PluginCommand {
     pub name: i32,
     #[prost(
         oneof = "plugin_command::Payload",
-        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46"
+        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50"
     )]
     pub payload: ::core::option::Option<plugin_command::Payload>,
 }
@@ -104,7 +104,61 @@ pub mod plugin_command {
         DeleteDeadSessionPayload(::prost::alloc::string::String),
         #[prost(string, tag = "46")]
         RenameSessionPayload(::prost::alloc::string::String),
+        #[prost(string, tag = "47")]
+        UnblockCliPipeInputPayload(::prost::alloc::string::String),
+        #[prost(string, tag = "48")]
+        BlockCliPipeInputPayload(::prost::alloc::string::String),
+        #[prost(message, tag = "49")]
+        CliPipeOutputPayload(super::CliPipeOutputPayload),
+        #[prost(message, tag = "50")]
+        MessageToPluginPayload(super::MessageToPluginPayload),
     }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CliPipeOutputPayload {
+    #[prost(string, tag = "1")]
+    pub pipe_name: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub output: ::prost::alloc::string::String,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MessageToPluginPayload {
+    #[prost(string, optional, tag = "1")]
+    pub plugin_url: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(message, repeated, tag = "2")]
+    pub plugin_config: ::prost::alloc::vec::Vec<ContextItem>,
+    #[prost(string, tag = "3")]
+    pub message_name: ::prost::alloc::string::String,
+    #[prost(string, optional, tag = "4")]
+    pub message_payload: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(message, repeated, tag = "5")]
+    pub message_args: ::prost::alloc::vec::Vec<ContextItem>,
+    #[prost(message, optional, tag = "6")]
+    pub new_plugin_args: ::core::option::Option<NewPluginArgs>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct NewPluginArgs {
+    #[prost(bool, optional, tag = "1")]
+    pub should_float: ::core::option::Option<bool>,
+    #[prost(message, optional, tag = "2")]
+    pub pane_id_to_replace: ::core::option::Option<PaneId>,
+    #[prost(string, optional, tag = "3")]
+    pub pane_title: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag = "4")]
+    pub cwd: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(bool, tag = "5")]
+    pub skip_cache: bool,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PaneId {
+    #[prost(enumeration = "PaneType", tag = "1")]
+    pub pane_type: i32,
+    #[prost(uint32, tag = "2")]
+    pub id: u32,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -318,6 +372,10 @@ pub enum CommandName {
     DeleteDeadSession = 73,
     DeleteAllDeadSessions = 74,
     RenameSession = 75,
+    UnblockCliPipeInput = 76,
+    BlockCliPipeInput = 77,
+    CliPipeOutput = 78,
+    MessageToPlugin = 79,
 }
 impl CommandName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -402,6 +460,10 @@ impl CommandName {
             CommandName::DeleteDeadSession => "DeleteDeadSession",
             CommandName::DeleteAllDeadSessions => "DeleteAllDeadSessions",
             CommandName::RenameSession => "RenameSession",
+            CommandName::UnblockCliPipeInput => "UnblockCliPipeInput",
+            CommandName::BlockCliPipeInput => "BlockCliPipeInput",
+            CommandName::CliPipeOutput => "CliPipeOutput",
+            CommandName::MessageToPlugin => "MessageToPlugin",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -483,6 +545,36 @@ impl CommandName {
             "DeleteDeadSession" => Some(Self::DeleteDeadSession),
             "DeleteAllDeadSessions" => Some(Self::DeleteAllDeadSessions),
             "RenameSession" => Some(Self::RenameSession),
+            "UnblockCliPipeInput" => Some(Self::UnblockCliPipeInput),
+            "BlockCliPipeInput" => Some(Self::BlockCliPipeInput),
+            "CliPipeOutput" => Some(Self::CliPipeOutput),
+            "MessageToPlugin" => Some(Self::MessageToPlugin),
+            _ => None,
+        }
+    }
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum PaneType {
+    Terminal = 0,
+    Plugin = 1,
+}
+impl PaneType {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            PaneType::Terminal => "Terminal",
+            PaneType::Plugin => "Plugin",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "Terminal" => Some(Self::Terminal),
+            "Plugin" => Some(Self::Plugin),
             _ => None,
         }
     }

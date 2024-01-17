@@ -18,7 +18,8 @@ use std::{
 use wasmer::{imports, AsStoreMut, Function, FunctionEnv, FunctionEnvMut, Imports};
 use wasmer_wasi::WasiEnv;
 use zellij_utils::data::{
-    CommandType, ConnectToSession, HttpVerb, PermissionStatus, PermissionType, PluginPermission,
+    CommandType, ConnectToSession, HttpVerb, MessageToPlugin, PermissionStatus, PermissionType,
+    PluginPermission,
 };
 use zellij_utils::input::permission::PermissionCache;
 
@@ -58,6 +59,7 @@ macro_rules! apply_action {
             $env.plugin_env.client_attributes.clone(),
             $env.plugin_env.default_shell.clone(),
             $env.plugin_env.default_layout.clone(),
+            None,
         ) {
             log::error!("{}: {:?}", $error_message(), e);
         }
@@ -240,6 +242,16 @@ fn host_run_plugin_command(env: FunctionEnvMut<ForeignFunctionEnv>) {
                     PluginCommand::RenameSession(new_session_name) => {
                         rename_session(env, new_session_name)
                     },
+                    PluginCommand::UnblockCliPipeInput(pipe_name) => {
+                        unblock_cli_pipe_input(env, pipe_name)
+                    },
+                    PluginCommand::BlockCliPipeInput(pipe_name) => {
+                        block_cli_pipe_input(env, pipe_name)
+                    },
+                    PluginCommand::CliPipeOutput(pipe_name, output) => {
+                        cli_pipe_output(env, pipe_name, output)?
+                    },
+                    PluginCommand::MessageToPlugin(message) => message_to_plugin(env, message)?,
                 },
                 (PermissionStatus::Denied, permission) => {
                     log::error!(
@@ -270,6 +282,39 @@ fn subscribe(env: &ForeignFunctionEnv, event_list: HashSet<EventType>) -> Result
             env.plugin_env.client_id,
             event_list,
         ))
+}
+
+fn unblock_cli_pipe_input(env: &ForeignFunctionEnv, pipe_name: String) {
+    env.plugin_env
+        .input_pipes_to_unblock
+        .lock()
+        .unwrap()
+        .insert(pipe_name);
+}
+
+fn block_cli_pipe_input(env: &ForeignFunctionEnv, pipe_name: String) {
+    env.plugin_env
+        .input_pipes_to_block
+        .lock()
+        .unwrap()
+        .insert(pipe_name);
+}
+
+fn cli_pipe_output(env: &ForeignFunctionEnv, pipe_name: String, output: String) -> Result<()> {
+    env.plugin_env
+        .senders
+        .send_to_server(ServerInstruction::CliPipeOutput(pipe_name, output))
+        .context("failed to send pipe output")
+}
+
+fn message_to_plugin(env: &ForeignFunctionEnv, message_to_plugin: MessageToPlugin) -> Result<()> {
+    env.plugin_env
+        .senders
+        .send_to_plugin(PluginInstruction::MessageFromPlugin {
+            source_plugin_id: env.plugin_env.plugin_id,
+            message: message_to_plugin,
+        })
+        .context("failed to send message to plugin")
 }
 
 fn unsubscribe(env: &ForeignFunctionEnv, event_list: HashSet<EventType>) -> Result<()> {
@@ -324,6 +369,15 @@ fn request_permission(env: &ForeignFunctionEnv, permissions: Vec<PermissionType>
                 None,
             ));
     }
+
+    // we do this so that messages that have arrived while the user is seeing the permission screen
+    // will be cached and reapplied once the permission is granted
+    let _ = env
+        .plugin_env
+        .senders
+        .send_to_plugin(PluginInstruction::CachePluginEvents {
+            plugin_id: env.plugin_env.plugin_id,
+        });
 
     env.plugin_env
         .senders
@@ -1353,6 +1407,10 @@ fn check_command_permission(
         | PluginCommand::DeleteAllDeadSessions
         | PluginCommand::RenameSession(..)
         | PluginCommand::RenameTab(..) => PermissionType::ChangeApplicationState,
+        PluginCommand::UnblockCliPipeInput(..)
+        | PluginCommand::BlockCliPipeInput(..)
+        | PluginCommand::CliPipeOutput(..) => PermissionType::ReadCliPipes,
+        PluginCommand::MessageToPlugin(..) => PermissionType::MessageAndLaunchOtherPlugins,
         _ => return (PermissionStatus::Granted, None),
     };
 
