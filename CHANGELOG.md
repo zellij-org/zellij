@@ -12,6 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat(terminal): implement synchronized renders (https://github.com/zellij-org/zellij/pull/2977)
 * perf(plugins): improve plugin download & load feature (https://github.com/zellij-org/zellij/pull/3001)
 * chore: bump Rust toolchain to 1.75.0 (https://github.com/zellij-org/zellij/pull/3039)
+* feat(plugins): introduce pipes to control data flow to plugins from the command line (https://github.com/zellij-org/zellij/pull/3066)
 
 ## [0.39.2] - 2023-11-29
 * fix(cli): typo in cli help (https://github.com/zellij-org/zellij/pull/2906)
