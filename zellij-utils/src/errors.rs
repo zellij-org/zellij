@@ -393,6 +393,11 @@ pub enum PluginContext {
     PermissionRequestResult,
     DumpLayout,
     LogLayoutToHd,
+    CliPipe,
+    Message,
+    CachePluginEvents,
+    MessageFromPlugin,
+    UnblockCliPipes,
 }
 
 /// Stack call representations corresponding to the different types of [`ClientInstruction`]s.
@@ -413,6 +418,8 @@ pub enum ClientContext {
     DoneParsingStdinQuery,
     SwitchSession,
     SetSynchronisedOutput,
+    UnblockCliPipeInput,
+    CliPipeOutput,
 }
 
 /// Stack call representations corresponding to the different types of [`ServerInstruction`]s.
@@ -430,7 +437,11 @@ pub enum ServerContext {
     ConnStatus,
     ActiveClients,
     Log,
+    LogError,
     SwitchSession,
+    UnblockCliPipeInput,
+    CliPipeOutput,
+    AssociatePipeWithClient,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]

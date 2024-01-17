@@ -87,6 +87,10 @@ enum CommandName {
   DeleteDeadSession = 73;
   DeleteAllDeadSessions = 74;
   RenameSession = 75;
+  UnblockCliPipeInput = 76;
+  BlockCliPipeInput = 77;
+  CliPipeOutput = 78;
+  MessageToPlugin = 79;
 }
 
 message PluginCommand {
@@ -137,7 +141,43 @@ message PluginCommand {
     WebRequestPayload web_request_payload = 44;
     string delete_dead_session_payload = 45;
     string rename_session_payload = 46;
+    string unblock_cli_pipe_input_payload = 47;
+    string block_cli_pipe_input_payload = 48;
+    CliPipeOutputPayload cli_pipe_output_payload = 49;
+    MessageToPluginPayload message_to_plugin_payload = 50;
   }
+}
+
+message CliPipeOutputPayload {
+  string pipe_name = 1;
+  string output = 2;
+}
+
+message MessageToPluginPayload {
+  optional string plugin_url = 1;
+  repeated ContextItem plugin_config = 2;
+  string message_name = 3;
+  optional string message_payload = 4;
+  repeated ContextItem message_args = 5;
+  optional NewPluginArgs new_plugin_args = 6;
+}
+
+message NewPluginArgs {
+    optional bool should_float = 1;
+    optional PaneId pane_id_to_replace = 2;
+    optional string pane_title = 3;
+    optional string cwd = 4;
+    bool skip_cache = 5;
+}
+
+message PaneId {
+  PaneType pane_type = 1;
+  uint32 id = 2;
+}
+
+enum PaneType {
+  Terminal = 0;
+  Plugin = 1;
 }
 
 message SwitchSessionPayload {

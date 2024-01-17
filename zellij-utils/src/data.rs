@@ -538,6 +538,8 @@ pub enum Permission {
     OpenTerminalsOrPlugins,
     WriteToStdin,
     WebAccess,
+    ReadCliPipes,
+    MessageAndLaunchOtherPlugins,
 }
 
 impl PermissionType {
@@ -554,6 +556,10 @@ impl PermissionType {
             PermissionType::OpenTerminalsOrPlugins => "Start new terminals and plugins".to_owned(),
             PermissionType::WriteToStdin => "Write to standard input (STDIN)".to_owned(),
             PermissionType::WebAccess => "Make web requests".to_owned(),
+            PermissionType::ReadCliPipes => "Control command line pipes and output".to_owned(),
+            PermissionType::MessageAndLaunchOtherPlugins => {
+                "Send messages to and launch other plugins".to_owned()
+            },
         }
     }
 }
@@ -975,6 +981,86 @@ impl CommandToRun {
     }
 }
 
+#[derive(Debug, Default, Clone)]
+pub struct MessageToPlugin {
+    pub plugin_url: Option<String>,
+    pub plugin_config: BTreeMap<String, String>,
+    pub message_name: String,
+    pub message_payload: Option<String>,
+    pub message_args: BTreeMap<String, String>,
+    /// these will only be used in case we need to launch a new plugin to send this message to,
+    /// since none are running
+    pub new_plugin_args: Option<NewPluginArgs>,
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct NewPluginArgs {
+    pub should_float: Option<bool>,
+    pub pane_id_to_replace: Option<PaneId>,
+    pub pane_title: Option<String>,
+    pub cwd: Option<PathBuf>,
+    pub skip_cache: bool,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum PaneId {
+    Terminal(u32),
+    Plugin(u32),
+}
+
+impl MessageToPlugin {
+    pub fn new(message_name: impl Into<String>) -> Self {
+        MessageToPlugin {
+            message_name: message_name.into(),
+            ..Default::default()
+        }
+    }
+    pub fn with_plugin_url(mut self, url: impl Into<String>) -> Self {
+        self.plugin_url = Some(url.into());
+        self
+    }
+    pub fn with_plugin_config(mut self, plugin_config: BTreeMap<String, String>) -> Self {
+        self.plugin_config = plugin_config;
+        self
+    }
+    pub fn with_payload(mut self, payload: impl Into<String>) -> Self {
+        self.message_payload = Some(payload.into());
+        self
+    }
+    pub fn with_args(mut self, args: BTreeMap<String, String>) -> Self {
+        self.message_args = args;
+        self
+    }
+    pub fn new_plugin_instance_should_float(mut self, should_float: bool) -> Self {
+        let mut new_plugin_args = self.new_plugin_args.get_or_insert_with(Default::default);
+        new_plugin_args.should_float = Some(should_float);
+        self
+    }
+    pub fn new_plugin_instance_should_replace_pane(mut self, pane_id: PaneId) -> Self {
+        let mut new_plugin_args = self.new_plugin_args.get_or_insert_with(Default::default);
+        new_plugin_args.pane_id_to_replace = Some(pane_id);
+        self
+    }
+    pub fn new_plugin_instance_should_have_pane_title(
+        mut self,
+        pane_title: impl Into<String>,
+    ) -> Self {
+        let mut new_plugin_args = self.new_plugin_args.get_or_insert_with(Default::default);
+        new_plugin_args.pane_title = Some(pane_title.into());
+        self
+    }
+    pub fn new_plugin_instance_should_have_cwd(mut self, cwd: PathBuf) -> Self {
+        let mut new_plugin_args = self.new_plugin_args.get_or_insert_with(Default::default);
+        new_plugin_args.cwd = Some(cwd);
+        self
+    }
+    pub fn new_plugin_instance_should_skip_cache(mut self) -> Self {
+        let mut new_plugin_args = self.new_plugin_args.get_or_insert_with(Default::default);
+        new_plugin_args.skip_cache = true;
+        self
+    }
+}
+
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct ConnectToSession {
     pub name: Option<String>,
@@ -1012,6 +1098,39 @@ pub enum HttpVerb {
     Post,
     Put,
     Delete,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum PipeSource {
+    Cli(String), // String is the pipe_id of the CLI pipe (used for blocking/unblocking)
+    Plugin(u32), // u32 is the lugin id
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct PipeMessage {
+    pub source: PipeSource,
+    pub name: String,
+    pub payload: Option<String>,
+    pub args: BTreeMap<String, String>,
+    pub is_private: bool,
+}
+
+impl PipeMessage {
+    pub fn new(
+        source: PipeSource,
+        name: impl Into<String>,
+        payload: &Option<String>,
+        args: &Option<BTreeMap<String, String>>,
+        is_private: bool,
+    ) -> Self {
+        PipeMessage {
+            source,
+            name: name.into(),
+            payload: payload.clone(),
+            args: args.clone().unwrap_or_else(|| Default::default()),
+            is_private,
+        }
+    }
 }
 
 #[derive(Debug, Clone, EnumDiscriminants, ToString)]
@@ -1104,5 +1223,9 @@ pub enum PluginCommand {
         Vec<u8>,                  // body
         BTreeMap<String, String>, // context
     ),
-    RenameSession(String), // String -> new session name
+    RenameSession(String),         // String -> new session name
+    UnblockCliPipeInput(String),   // String => pipe name
+    BlockCliPipeInput(String),     // String => pipe name
+    CliPipeOutput(String, String), // String => pipe name, String => output
+    MessageToPlugin(MessageToPlugin),
 }

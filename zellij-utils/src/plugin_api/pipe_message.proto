@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package api.pipe_message;
+
+message PipeMessage {
+    PipeSource source = 1;
+    optional string cli_source_id = 2;
+    optional uint32 plugin_source_id = 3;
+    string name = 4;
+    optional string payload = 5;
+    repeated Arg args = 6;
+    bool is_private = 7;
+}
+
+enum PipeSource {
+  Cli = 0;
+  Plugin = 1;
+}
+
+message Arg {
+  string key = 1;
+  string value = 2;
+}

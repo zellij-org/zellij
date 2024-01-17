@@ -16,7 +16,7 @@ use std::time::{self, Instant};
 use zellij_utils::input::command::RunCommand;
 use zellij_utils::pane_size::Offset;
 use zellij_utils::{
-    data::{InputMode, Palette, PaletteColor, Style},
+    data::{InputMode, Palette, PaletteColor, PaneId as ZellijUtilsPaneId, Style},
     errors::prelude::*,
     input::layout::Run,
     pane_size::PaneGeom,
@@ -83,6 +83,16 @@ impl AnsiEncoding {
 pub enum PaneId {
     Terminal(u32),
     Plugin(u32), // FIXME: Drop the trait object, make this a wrapper for the struct?
+}
+
+// because crate architecture and reasons...
+impl From<ZellijUtilsPaneId> for PaneId {
+    fn from(zellij_utils_pane_id: ZellijUtilsPaneId) -> Self {
+        match zellij_utils_pane_id {
+            ZellijUtilsPaneId::Terminal(id) => PaneId::Terminal(id),
+            ZellijUtilsPaneId::Plugin(id) => PaneId::Plugin(id),
+        }
+    }
 }
 
 type IsFirstRun = bool;

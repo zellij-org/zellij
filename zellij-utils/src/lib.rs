@@ -27,7 +27,7 @@ pub mod logging; // Requires log4rs
 pub use ::{
     anyhow, async_channel, async_std, clap, common_path, humantime, interprocess, lazy_static,
     libc, miette, nix, notify_debouncer_full, regex, serde, signal_hook, surf, tempfile, termwiz,
-    vte,
+    url, uuid, vte,
 };
 
 pub use ::prost;
