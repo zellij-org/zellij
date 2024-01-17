@@ -556,7 +556,7 @@ impl PermissionType {
             PermissionType::OpenTerminalsOrPlugins => "Start new terminals and plugins".to_owned(),
             PermissionType::WriteToStdin => "Write to standard input (STDIN)".to_owned(),
             PermissionType::WebAccess => "Make web requests".to_owned(),
-            PermissionType::ReadCliPipes => "Read pipes/messages from the command line".to_owned(),
+            PermissionType::ReadCliPipes => "Control command line pipes and output".to_owned(),
             PermissionType::MessageAndLaunchOtherPlugins => {
                 "Send messages to and launch other plugins".to_owned()
             },
