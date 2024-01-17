@@ -1,4 +1,4 @@
-use std::collections::VecDeque;
+use std::collections::{HashSet, VecDeque};
 use std::sync::{Arc, RwLock};
 
 use crate::thread_bus::ThreadSenders;
@@ -36,6 +36,7 @@ pub(crate) fn route_action(
     client_attributes: ClientAttributes,
     default_shell: Option<TerminalAction>,
     default_layout: Box<Layout>,
+    mut seen_cli_pipes: Option<&mut HashSet<String>>,
 ) -> Result<bool> {
     let mut should_break = false;
     let err_context = || format!("failed to route action for client {client_id}");
@@ -803,6 +804,57 @@ pub(crate) fn route_action(
                 .send_to_screen(ScreenInstruction::RenameSession(name, client_id))
                 .with_context(err_context)?;
         },
+        Action::CliPipe {
+            pipe_id,
+            mut name,
+            payload,
+            plugin,
+            args,
+            configuration,
+            floating,
+            in_place,
+            skip_cache,
+            cwd,
+            pane_title,
+            ..
+        } => {
+            if let Some(seen_cli_pipes) = seen_cli_pipes.as_mut() {
+                if !seen_cli_pipes.contains(&pipe_id) {
+                    seen_cli_pipes.insert(pipe_id.clone());
+                    senders
+                        .send_to_server(ServerInstruction::AssociatePipeWithClient {
+                            pipe_id: pipe_id.clone(),
+                            client_id,
+                        })
+                        .with_context(err_context)?;
+                }
+            }
+            if let Some(name) = name.take() {
+                let should_open_in_place = in_place.unwrap_or(false);
+                if should_open_in_place && pane_id.is_none() {
+                    log::error!("Was asked to open a new plugin in-place, but cannot identify the pane id... is the ZELLIJ_PANE_ID variable set?");
+                }
+                let pane_id_to_replace = if should_open_in_place { pane_id } else { None };
+                senders
+                    .send_to_plugin(PluginInstruction::CliPipe {
+                        pipe_id,
+                        name,
+                        payload,
+                        plugin,
+                        args,
+                        configuration,
+                        floating,
+                        pane_id_to_replace,
+                        cwd,
+                        pane_title,
+                        skip_cache,
+                        cli_client_id: client_id,
+                    })
+                    .with_context(err_context)?;
+            } else {
+                log::error!("Message must have a name");
+            }
+        },
     }
     Ok(should_break)
 }
@@ -833,13 +885,14 @@ pub(crate) fn route_thread_main(
 ) -> Result<()> {
     let mut retry_queue = VecDeque::new();
     let err_context = || format!("failed to handle instruction for client {client_id}");
+    let mut seen_cli_pipes = HashSet::new();
     'route_loop: loop {
         match receiver.recv() {
             Some((instruction, err_ctx)) => {
                 err_ctx.update_thread_ctx();
                 let rlocked_sessions = session_data.read().to_anyhow().with_context(err_context)?;
-                let handle_instruction = |instruction: ClientToServerMsg,
-                                          mut retry_queue: Option<
+                let mut handle_instruction = |instruction: ClientToServerMsg,
+                                              mut retry_queue: Option<
                     &mut VecDeque<ClientToServerMsg>,
                 >|
                  -> Result<bool> {
@@ -868,6 +921,7 @@ pub(crate) fn route_thread_main(
                                     rlocked_sessions.client_attributes.clone(),
                                     rlocked_sessions.default_shell.clone(),
                                     rlocked_sessions.layout.clone(),
+                                    Some(&mut seen_cli_pipes),
                                 )? {
                                     should_break = true;
                                 }

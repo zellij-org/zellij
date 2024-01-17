@@ -265,6 +265,9 @@ impl PluginUserConfiguration {
     pub fn inner(&self) -> &BTreeMap<String, String> {
         &self.0
     }
+    pub fn insert(&mut self, config_key: impl Into<String>, config_value: impl Into<String>) {
+        self.0.insert(config_key.into(), config_value.into());
+    }
 }
 
 impl FromStr for PluginUserConfiguration {

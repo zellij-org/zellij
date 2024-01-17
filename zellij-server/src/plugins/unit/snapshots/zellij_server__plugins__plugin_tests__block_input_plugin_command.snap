@@ -1,0 +1,62 @@
+---
+source: zellij-server/src/plugins/./unit/plugin_tests.rs
+assertion_line: 5812
+expression: "format!(\"{:#?}\", plugin_bytes_events)"
+---
+Some(
+    PluginBytes(
+        [
+            PluginRenderAsset {
+                client_id: 1,
+                plugin_id: 0,
+                bytes: [
+                    82,
+                    111,
+                    119,
+                    115,
+                    58,
+                    32,
+                    50,
+                    48,
+                    44,
+                    32,
+                    67,
+                    111,
+                    108,
+                    115,
+                    58,
+                    32,
+                    49,
+                    50,
+                    49,
+                    44,
+                    32,
+                    82,
+                    101,
+                    99,
+                    101,
+                    105,
+                    118,
+                    101,
+                    100,
+                    32,
+                    101,
+                    118,
+                    101,
+                    110,
+                    116,
+                    115,
+                    58,
+                    32,
+                    91,
+                    93,
+                    10,
+                    13,
+                ],
+                cli_pipes: {
+                    "input_pipe_id": Block,
+                },
+            },
+        ],
+    ),
+)
