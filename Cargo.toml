@@ -46,10 +46,6 @@ members = [
 ]
 
 [workspace.dependencies]
-zellij-client = { path = "zellij-client/", version = "0.40.0" }
-zellij-server = { path = "zellij-server/", version = "0.40.0" }
-zellij-utils = { path = "zellij-utils/", version = "0.40.0" }
-zellij-tile-utils = { path = "../../zellij-tile-utils", version = "0.40.0"  }
 thiserror = "1.0.40"
 names = { version = "0.14.0", default-features = false }
 log = "0.4.17"

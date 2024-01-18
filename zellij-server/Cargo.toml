@@ -9,34 +9,34 @@ license = "MIT"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-highway = "0.6.4"
-ansi_term = "0.12.1"
-async-trait = "0.1.50"
-base64 = "0.13.0"
-byteorder = "1.4.3"
-daemonize = "0.4.1"
-serde_json = "1.0"
-unicode-width = "0.1.8"
-url = "2.2.2"
-wasmer = "3.1.1"
-wasmer-wasi = "3.1.1"
-cassowary = "0.3.0"
+highway = { workspace = true }
+ansi_term = { workspace = true }
+async-trait = { workspace = true }
+base64 = { workspace = true }
+byteorder = { workspace = true }
+daemonize = { workspace = true }
+serde_json = { workspace = true }
+unicode-width = { workspace = true }
+url = { workspace = true }
+wasmer = { workspace = true }
+wasmer-wasi = { workspace = true }
+cassowary = { workspace = true }
 zellij-utils = { path = "../zellij-utils/", version = "0.40.0" }
-log = "0.4.17"
-typetag = "0.1.7"
-chrono = "0.4.19"
-close_fds = "0.3.2"
-sysinfo = "0.22.5"
-sixel-tokenizer = "0.1.0"
-sixel-image = "0.1.0"
-arrayvec = "0.7.2"
-uuid = { version = "1.4.1", features = ["serde", "v4"] }
-semver = "0.11.0"
+log = { workspace = true }
+typetag = { workspace = true }
+chrono = { workspace = true }
+close_fds = { workspace = true }
+sysinfo = { workspace = true }
+sixel-tokenizer = { workspace = true }
+sixel-image = { workspace = true }
+arrayvec = { workspace = true }
+uuid = { workspace = true }
+semver = { workspace = true }
 
 [dev-dependencies]
 insta = "1.6.0"
-tempfile = "3.2.0"
-wasmer = { version = "3.1.1", features = ["singlepass"] }
+tempfile = { workspace = true }
+wasmer = {  workspace = true , features = ["singlepass"] }
 
 [features]
 singlepass = ["wasmer/singlepass"]

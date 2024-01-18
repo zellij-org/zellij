@@ -7,13 +7,13 @@ description = "A simplified ranger clone written as a Zellij plugin"
 license = "MIT"
 
 [dependencies]
-colored = "2.0.0"
+colored = {workspace = true}
 zellij-tile = { path = "../../zellij-tile" }
-pretty-bytes = "0.2.2"
-ignore = "0.4.20"
-fuzzy-matcher = "0.3.7"
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-unicode-width = "0.1.8"
-ansi_term = "0.12.1"
-strip-ansi-escapes = "0.1.1"
+pretty-bytes = {workspace = true}
+ignore = {workspace = true}
+fuzzy-matcher = {workspace = true}
+serde = {workspace = true}
+serde_json = {workspace = true}
+unicode-width = {workspace = true}
+ansi_term = {workspace = true}
+strip-ansi-escapes = {workspace = true}
