@@ -34,7 +34,7 @@ uuid = { workspace = true }
 semver = { workspace = true }
 
 [dev-dependencies]
-insta = "1.6.0"
+insta = { workspace = true }
 tempfile = { workspace = true }
 wasmer = {  workspace = true , features = ["singlepass"] }
 

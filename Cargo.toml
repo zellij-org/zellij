@@ -136,6 +136,9 @@ surf = { version = "2.3.2", default-features = false, features = [
     "curl-client",
 ] }
 openssl-sys = { version = "0.9.93", features = ["vendored"] }
+# dev dependency
+insta = "1.6.0"
+expect-test = "1.4.1"
 
 [profile.dev-opt]
 inherits = "dev"

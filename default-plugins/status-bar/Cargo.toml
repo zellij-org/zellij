@@ -17,4 +17,4 @@ zellij-tile = { path = "../../zellij-tile" }
 zellij-tile-utils = { path = "../../zellij-tile-utils" }
 
 [dev-dependencies]
-regex = "1"
+regex = {workspace = true}

@@ -59,8 +59,8 @@ surf = { workspace = true }
 openssl-sys = { workspace = true }
 
 [dev-dependencies]
-insta = { version = "1.6.0", features = ["backtrace"] }
-expect-test = "1.4.1"
+insta = { workspace = true, features = ["backtrace"] }
+expect-test = { workspace = true }
 
 [build-dependencies]
 prost-build = { workspace = true }

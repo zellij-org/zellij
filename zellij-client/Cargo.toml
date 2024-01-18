@@ -18,7 +18,7 @@ zellij-utils = { path = "../zellij-utils/", version = "0.40.0" }
 log = { workspace = true }
 
 [dev-dependencies]
-insta = "1.6.0"
+insta = { workspace = true }
 
 [features]
 unstable = [ ]
