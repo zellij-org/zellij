@@ -21,13 +21,14 @@ use zellij_utils::{
     data::ConnectToSession,
     envs,
     input::{
+        layout::Layout,
         actions::Action,
         config::{Config, ConfigError},
         options::Options,
     },
     miette::{Report, Result},
     nix,
-    setup::Setup,
+    setup::{Setup, get_layout_dir, find_default_config_dir},
 };
 
 pub(crate) use crate::sessions::list_sessions;
@@ -400,7 +401,7 @@ pub(crate) fn start_client(opts: CliArgs) {
     loop {
         let os_input = os_input.clone();
         let config = config.clone();
-        let layout = layout.clone();
+        let mut layout = layout.clone();
         let mut config_options = config_options.clone();
         let mut opts = opts.clone();
         let mut is_a_reconnect = false;
@@ -411,6 +412,8 @@ pub(crate) fn start_client(opts: CliArgs) {
             //
             // ideally, we should write tests for this whole function and refctor it
             if reconnect_to_session.name.is_some() {
+
+
                 opts.command = Some(Command::Sessions(Sessions::Attach {
                     session_name: reconnect_to_session.name.clone(),
                     create: true,
@@ -423,6 +426,34 @@ pub(crate) fn start_client(opts: CliArgs) {
                 opts.session = None;
                 config_options.attach_to_session = None;
             }
+
+            //
+            // *** integration code for switching to a new session with a specific layout
+            //
+            // TODO: make sure this work with a specific layout_dir from the cli or a differnt one
+            // in the config
+            // TODO: CONTINUE HERE: get this from the plugin
+//             let layout_name = "foo"; // TODO: removeme
+//             let layout_name = "/tmp/foolayout.kdl"; // TODO: removeme
+            if let Some(layout_name) = &reconnect_to_session.layout {
+                let layout_dir = config.options.layout_dir.clone()
+                    .or_else(|| {
+                        get_layout_dir(opts.config_dir.clone().or_else(find_default_config_dir))
+                    });
+                let new_session_layout = Layout::from_path_or_default(
+                    Some(&PathBuf::from(layout_name)),
+                    layout_dir.clone(),
+                    config.clone()
+                );
+                if let Ok(new_session_layout) = new_session_layout {
+                    // TODO: handle error
+                    layout = new_session_layout.0; // TODO: also merge config (the .1)
+                }
+            }
+            //
+            // *** end of integration code for switching to a new session with a specific layout
+            //
+
             is_a_reconnect = true;
         }
 

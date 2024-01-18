@@ -1066,6 +1066,8 @@ pub struct ConnectToSession {
     pub name: Option<String>,
     pub tab_position: Option<usize>,
     pub pane_id: Option<(u32, bool)>, // (id, is_plugin)
+    pub layout: Option<String>, // the layout name or a path to the layout to load for the new
+                                // session
 }
 
 #[derive(Debug, Default, Clone)]

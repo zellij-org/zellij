@@ -23,6 +23,7 @@ struct State {
     resurrectable_sessions: ResurrectableSessions,
     search_term: String,
     new_session_name: Option<String>,
+    new_session_layout: Option<String>,
     renaming_session_name: Option<String>,
     error: Option<String>,
     browsing_resurrection_sessions: bool,
@@ -33,6 +34,13 @@ register_plugin!(State);
 
 impl ZellijPlugin for State {
     fn load(&mut self, _configuration: BTreeMap<String, String>) {
+        // TODO: CONTINUE HERE - build a UI for this (though maybe we first want to refactor the
+        // new_session_name thing to its separate struct called NewSession and add the layout stuff
+        // to it so things don't get out of hand...
+        // also, we'll need to get a list of built-in sessions to populate the list. we can start
+        // with hard-coded (look in ~/.config/layouts, there's some stuff there) and then add the
+        // capability in Zellij
+        self.new_session_layout = Some("zellij-e2e".to_owned()); // TODO: no
         subscribe(&[
             EventType::ModeUpdate,
             EventType::SessionUpdate,
@@ -247,12 +255,14 @@ impl State {
             }
         } else if let Some(new_session_name) = &self.new_session_name {
             if new_session_name.is_empty() {
-                switch_session(None);
+                // switch_session(None);
+                switch_session_with_layout(None, self.new_session_layout.as_ref().map(|x| x.as_str()));
             } else if self.session_name.as_ref() == Some(new_session_name) {
                 // noop - we're already here!
                 self.new_session_name = None;
             } else {
-                switch_session(Some(new_session_name));
+                // switch_session(Some(new_session_name));
+                switch_session_with_layout(Some(new_session_name), self.new_session_layout.as_ref().map(|x| x.as_str()));
             }
         } else if let Some(renaming_session_name) = &self.renaming_session_name.take() {
             if renaming_session_name.is_empty() {
