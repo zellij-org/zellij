@@ -218,7 +218,7 @@ pub enum Sessions {
         start_suspended: bool,
     },
     /// Load a plugin
-    #[clap(visible_alias = "r")]
+    #[clap(visible_alias = "p")]
     Plugin {
         /// Plugin URL, can either start with http(s), file: or zellij:
         #[clap(last(true), required(true))]
