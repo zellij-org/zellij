@@ -623,7 +623,7 @@ impl Grid {
                 cursor_canonical_line_index = i;
             }
             if i == self.cursor.y {
-                let line_wraps = self.cursor.y - cursor_canonical_line_index;
+                let line_wraps = self.cursor.y.saturating_sub(cursor_canonical_line_index);
                 cursor_index_in_canonical_line = (line_wraps * self.width) + self.cursor.x;
                 break;
             }
@@ -861,21 +861,30 @@ impl Grid {
             // doesn't create spurious canonical lines
             let mut new_cursor_x = cursor_index_in_canonical_line % new_columns;
             if self.cursor.x != 0 && new_cursor_x == 0 {
-                new_cursor_y -= 1;
+                new_cursor_y = new_cursor_y.saturating_sub(1);
                 new_cursor_x = new_columns
             }
-            let saved_cursor_x_coordinates = saved_cursor_index_in_canonical_line.as_ref().map(
-                |saved_cursor_index_in_canonical_line| {
-                    let x = self.saved_cursor_position.as_ref().unwrap().x;
+            let saved_cursor_x_coordinates = match (
+                saved_cursor_index_in_canonical_line.as_ref(),
+                self.saved_cursor_position.as_mut(),
+                saved_cursor_y_coordinates.as_mut(),
+            ) {
+                (
+                    Some(saved_cursor_index_in_canonical_line),
+                    Some(saved_cursor_position),
+                    Some(saved_cursor_y_coordinates),
+                ) => {
+                    let x = saved_cursor_position.x;
                     let mut new_x = *saved_cursor_index_in_canonical_line % new_columns;
-                    let new_y = saved_cursor_y_coordinates.as_mut().unwrap();
+                    let new_y = saved_cursor_y_coordinates;
                     if x != 0 && new_x == 0 {
-                        *new_y -= 1;
+                        *new_y = new_y.saturating_sub(1);
                         new_x = new_columns
                     }
-                    new_x
+                    Some(new_x)
                 },
-            );
+                _ => None,
+            };
 
             let current_viewport_row_count = self.viewport.len();
             match current_viewport_row_count.cmp(&self.height) {
@@ -927,9 +936,10 @@ impl Grid {
                         saved_cursor_position.x = saved_cursor_x_coordinates;
                         saved_cursor_position.y = saved_cursor_y_coordinates;
                     },
-                    _ => unreachable!(
-                        "saved cursor {:?} {:?}",
-                        saved_cursor_x_coordinates, saved_cursor_y_coordinates
+                    _ => log::error!(
+                        "invalid state - cannot set saved cursor to {:?} {:?}",
+                        saved_cursor_x_coordinates,
+                        saved_cursor_y_coordinates
                     ),
                 }
             };
@@ -996,9 +1006,10 @@ impl Grid {
                         saved_cursor_position.x = saved_cursor_x_coordinates;
                         saved_cursor_position.y = saved_cursor_y_coordinates;
                     },
-                    _ => unreachable!(
-                        "saved cursor {:?} {:?}",
-                        saved_cursor_x_coordinates, saved_cursor_y_coordinates
+                    _ => log::error!(
+                        "invalid state - cannot set saved cursor to {:?} {:?}",
+                        saved_cursor_x_coordinates,
+                        saved_cursor_y_coordinates
                     ),
                 }
             };
