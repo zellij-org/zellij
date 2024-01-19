@@ -30,7 +30,7 @@ pub fn set_permissions(_path: &std::path::Path, _mode: u32) -> std::io::Result<(
 }
 
 pub fn ansi_len(s: &str) -> usize {
-    from_utf8(&strip(s).unwrap()).unwrap().width()
+    from_utf8(&strip(s)).unwrap().width()
 }
 
 pub fn adjust_to_size(s: &str, rows: usize, columns: usize) -> String {

@@ -167,10 +167,8 @@ impl Search {
                             Ok(line) => {
                                 self.file_contents.insert(
                                     (file_path_stripped_prefix.clone(), index + 1),
-                                    String::from_utf8_lossy(
-                                        &strip_ansi_escapes::strip(line).unwrap(),
-                                    )
-                                    .to_string(),
+                                    String::from_utf8_lossy(&strip_ansi_escapes::strip(line))
+                                        .to_string(),
                                 );
                             },
                             Err(_) => {

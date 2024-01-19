@@ -19,8 +19,8 @@ zellij-utils = { path = "zellij-utils/", version = "0.40.0" }
 thiserror = "1.0.40"
 names = { version = "0.14.0", default-features = false }
 log = "0.4.17"
-dialoguer = "0.10.4"
-suggest = "0.4.0"
+dialoguer = "0.11.0"
+suggest = "0.5.0"
 
 [dev-dependencies]
 insta = { version = "1.6.0", features = ["backtrace"] }
@@ -49,8 +49,8 @@ members = [
 thiserror = "1.0.40"
 names = { version = "0.14.0", default-features = false }
 log = "0.4.17"
-dialoguer = "0.10.4"
-suggest = "0.4.0"
+dialoguer = "0.11"
+suggest = "0.5.0"
 # For default plugins
 ## For compact-bar
 ansi_term = "0.12.1"
@@ -69,28 +69,28 @@ rand = "0.8.4"
 colored = "2.0.0"
 pretty-bytes = "0.2.2"
 ignore = "0.4.20"
-strip-ansi-escapes = "0.1.1"
+strip-ansi-escapes = "0.2.0"
 # XTask
 
 xshell = "= 0.2.2"
 xflags = "0.3.1"
-which = "4.2"
-toml = "0.5"
-prost-build = "0.11.9"
+which = "6.0.0"
+toml = "0.8.8"
+prost-build = "0.12.3"
 # Zellij client
-mio = { version = "0.7.11", features = ['os-ext'] }
+mio = { version = "0.8.10", features = ['os-ext'] }
 serde_yaml = "0.8"
 # Zellij server
-highway = "0.6.4"
+highway = "1.1"
 async-trait = "0.1.50"
-base64 = "0.13.0"
+base64 = "0.21.7"
 byteorder = "1.4.3"
 daemonize = "0.5.0"
 url = "2.2.2"
 wasmer = "3.1.1"
 wasmer-wasi = "3.1.1"
 cassowary = "0.3.0"
-typetag = "0.1.7"
+typetag = "0.2.15"
 chrono = "0.4.19"
 close_fds = "0.3.2"
 sysinfo = "0.22.5"
@@ -98,7 +98,7 @@ sixel-tokenizer = "0.1.0"
 sixel-image = "0.1.0"
 arrayvec = "0.7.2"
 uuid = { version = "1.4.1", features = ["serde", "v4"] }
-semver = "0.11.0"
+semver = "1.0.21"
 # zellij utils
 anyhow = { version = "1.0.70"}
 backtrace = "0.3.55"
@@ -112,9 +112,9 @@ libc = "0.2"
 nix = "0.23.1"
 once_cell = "1.8.0"
 percent-encoding = "2.1.0"
-strum = "0.20.0"
-strum_macros = "0.20.1"
-vte = { version = "0.11.0", default-features = false }
+strum = "0.25.0"
+strum_macros = "0.25.3"
+vte = { version = "0.13.0", default-features = false }
 miette = { version = "5.7.0", features = ["fancy"] }
 regex = "1.5.5"
 tempfile = "3.2.0"
@@ -130,7 +130,7 @@ log4rs = "1.2.0"
 signal-hook = "0.3"
 interprocess = "1.2.1"
 async-std = { version = "1.3.0", features = ["unstable", "attributes"] }
-notify-debouncer-full = "0.1.0"
+notify-debouncer-full = "0.3.1"
 futures = "0.3.28"
 surf = { version = "2.3.2", default-features = false, features = [
     "curl-client",
