@@ -751,17 +751,24 @@ impl Pty {
                     .get(&client_id)
                     .and_then(|pane| match pane {
                         PaneId::Plugin(..) => None,
-                        PaneId::Terminal(id) => self.id_to_child_pid.get(id).map(|r| r.get_pid()),
+                        PaneId::Terminal(id) => self.id_to_child_pid.get(id),
                     })
-                    .and_then(|id| {
+                    .and_then(|winptyreference| {
                         #[cfg(windows)]
-                        let pid = id;
+                        {
+                            let pty = winptyreference.pty.lock().unwrap();
+                            self.bus
+                            .os_input
+                            .as_ref()
+                            .and_then(|input| input.get_cwd((pty.get_pid() as usize).into()))
+                        }
                         #[cfg(unix)]
-                        let pid = Pid::from_raw(id);
+                        {let pid = Pid::from_raw(id);
                         self.bus
                             .os_input
                             .as_ref()
                             .and_then(|input| input.get_cwd(pid))
+                        }
                     });
             };
         };
@@ -1045,11 +1052,11 @@ impl Pty {
             .iter()
             .filter(|f| !f.already_running)
             .map(|f| f.run.clone());
-        let mut new_pane_pids: Vec<(u32, bool, Option<RunCommand>, Result<Pid>)> = vec![]; // (terminal_id,
+        let mut new_pane_pids: Vec<(u32, bool, Option<RunCommand>, Result<WinPtyReference>)> = vec![]; // (terminal_id,
                                                                                              // starts_held,
                                                                                              // run_command,
                                                                                              // file_descriptor)
-        let mut new_floating_panes_pids: Vec<(u32, bool, Option<RunCommand>, Result<Pid>)> =
+        let mut new_floating_panes_pids: Vec<(u32, bool, Option<RunCommand>, Result<WinPtyReference>)> =
             vec![]; // same
                     // as
                     // new_pane_pids
@@ -1057,7 +1064,7 @@ impl Pty {
             if let Some(new_pane_data) =
                 self.apply_run_instruction(run_instruction, default_shell.clone(), tab_index)?
             {
-                let pd = (new_pane_data.0, new_pane_data.1, new_pane_data.2, new_pane_data.3.map(|r| r.get_pid()));
+                let pd = (new_pane_data.0, new_pane_data.1, new_pane_data.2, new_pane_data.3);
                 new_pane_pids.push(pd);
             }
         }
@@ -1065,7 +1072,7 @@ impl Pty {
             if let Some(new_pane_data) =
                 self.apply_run_instruction(run_instruction, default_shell.clone(), tab_index)?
             {
-                let pd = (new_pane_data.0, new_pane_data.1, new_pane_data.2, new_pane_data.3.map(|r| r.get_pid()));
+                let pd = (new_pane_data.0, new_pane_data.1, new_pane_data.2, new_pane_data.3);
                 new_floating_panes_pids.push(pd);
             }
         }
@@ -1431,8 +1438,10 @@ impl Pty {
                         .reserve_terminal_id()
                     {
                         Ok(terminal_id) => {
+                            let tid = terminal_id.clone();
+                            let pty = tid.pty.lock().unwrap();
                             Ok(Some((
-                                terminal_id.get_pid().as_u32(),
+                                pty.get_pid(),
                                 starts_held,
                                 Some(command.clone()),
                                 Ok(terminal_id), // this is not actually correct but gets
@@ -1452,7 +1461,7 @@ impl Pty {
                         .with_context(err_context)
                     {
                         Ok((terminal_id, reference)) => {
-                            self.id_to_child_pid.insert(terminal_id, reference);
+                            self.id_to_child_pid.insert(terminal_id, reference.clone());
                             Ok(Some((
                                 terminal_id,
                                 starts_held,
@@ -1562,7 +1571,7 @@ impl Pty {
                     .with_context(err_context)
                 {
                     Ok((terminal_id, reference)) => {
-                        self.id_to_child_pid.insert(terminal_id, reference);
+                        self.id_to_child_pid.insert(terminal_id, reference.clone());
                         Ok(Some((terminal_id, starts_held, None, Ok(reference))))
                     },
                     Err(err) => match err.downcast_ref::<ZellijError>() {

@@ -294,7 +294,7 @@ fn handle_terminal(
     orig_pty: Arc<Mutex<PTY>>,
     quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
     terminal_id: u32,
-) -> Result<isize> {
+) -> Result<PTY> {
     let err_context = || "failed to spawn terminal";
 
     let orig_pty = orig_pty
@@ -314,8 +314,14 @@ fn handle_terminal(
     let mut pty = PTY::new(&pty_args).map_err(|err| anyhow!("{:?}", err))?;
     let command = &cmd.command.clone();
     pty.spawn(cmd.command.into(), None, None, None)
-        .map_err(move |err| anyhow!("Could not spawn terminal with command '{:?}': {:?}", command ,err))?;
-    Ok(pty.get_fd())
+        .map_err(move |err| {
+            anyhow!(
+                "Could not spawn terminal with command '{:?}': {:?}",
+                command,
+                err
+            )
+        })?;
+    Ok(pty)
 }
 
 // this is a utility method to separate the arguments from a pathbuf before we turn it into a
@@ -433,7 +439,7 @@ fn spawn_terminal(
     quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>, // u32 is the exit_status
     default_editor: Option<PathBuf>,
     terminal_id: u32,
-) -> Result<isize> {
+) -> Result<PTY> {
     // returns the terminal_id, the primary fd and the
     // secondary fd
     let mut failover_cmd_args = None;
@@ -567,14 +573,12 @@ impl ClientSender {
 }
 
 #[cfg(windows)]
-#[derive(Copy, Clone)]
-pub struct WinPtyReference {}
-
-impl WinPtyReference {
-    pub fn get_pid(&self) -> Pid {
-        todo!()
-    }
+#[derive(Clone)]
+pub struct WinPtyReference {
+    pub pty: Arc<Mutex<PTY>>,
 }
+
+impl WinPtyReference {}
 
 #[derive(Clone)]
 pub struct ServerOsInputOutput {
@@ -620,6 +624,21 @@ impl RawFdAsyncReader {
 impl AsyncReader for RawFdAsyncReader {
     async fn read(&mut self, buf: &mut [u8]) -> Result<usize, std::io::Error> {
         self.fd.read(buf).await
+    }
+}
+
+struct WinPtyReader {
+    pty: Arc<Mutex<PTY>>,
+}
+
+#[async_trait]
+impl AsyncReader for WinPtyReader {
+    async fn read(&mut self, mut buf: &mut [u8]) -> Result<usize, std::io::Error> {
+        let len = buf.len();
+        let pty = self.pty.lock().unwrap();
+        let read_chars = pty.read(len as u32, false)
+            .map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err.to_str().unwrap()))?;
+        buf.write(read_chars.as_os_str().as_encoded_bytes())
     }
 }
 
@@ -846,12 +865,13 @@ impl ServerOsApi for ServerOsInputOutput {
                     terminal_id,
                 )
                 .and_then(|thing| {
-
+                    let pty = Arc::new(Mutex::new(thing));
+                    let reference = WinPtyReference { pty };
                     self.terminal_id_to_reference
                         .lock()
                         .to_anyhow()?
-                        .insert(terminal_id, Some(WinPtyReference {  }));
-                    Ok((terminal_id, WinPtyReference { }))
+                        .insert(terminal_id, Some(reference.clone()));
+                    Ok((terminal_id, reference))
                 })
                 .with_context(err_context)
             },
@@ -898,7 +918,8 @@ impl ServerOsApi for ServerOsInputOutput {
     }
     #[cfg(windows)]
     fn async_file_reader(&self) -> Box<dyn AsyncReader> {
-        todo!()
+        let pty = self.orig_pty.clone();
+        Box::new(WinPtyReader {pty})
     }
 
     #[cfg(unix)]
