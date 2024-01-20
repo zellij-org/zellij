@@ -636,7 +636,8 @@ impl AsyncReader for WinPtyReader {
     async fn read(&mut self, mut buf: &mut [u8]) -> Result<usize, std::io::Error> {
         let len = buf.len();
         let pty = self.pty.lock().unwrap();
-        let read_chars = pty.read(len as u32, false)
+        let read_chars = pty
+            .read(len as u32, false)
             .map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err.to_str().unwrap()))?;
         buf.write(read_chars.as_os_str().as_encoded_bytes())
     }
@@ -919,7 +920,7 @@ impl ServerOsApi for ServerOsInputOutput {
     #[cfg(windows)]
     fn async_file_reader(&self) -> Box<dyn AsyncReader> {
         let pty = self.orig_pty.clone();
-        Box::new(WinPtyReader {pty})
+        Box::new(WinPtyReader { pty })
     }
 
     #[cfg(unix)]
@@ -939,7 +940,26 @@ impl ServerOsApi for ServerOsInputOutput {
     }
     #[cfg(windows)]
     fn write_to_tty_stdin(&self, terminal_id: u32, buf: &[u8]) -> Result<usize> {
-        todo!()
+        let s = unsafe { std::ffi::OsStr::from_encoded_bytes_unchecked(buf) };
+        let err_context = || format!("failed to write to stdin of TTY ID {}", terminal_id);
+
+        match self
+            .terminal_id_to_reference
+            .lock()
+            .to_anyhow()
+            .with_context(err_context)?
+            .get(&terminal_id)
+        {
+            Some(Some(r)) => r
+                .pty
+                .lock()
+                .to_anyhow()
+                .with_context(|| format!("Could not lock writer of TTY with ID: {}", &terminal_id))?
+                .write(s.into())
+                .map(|written| written as usize)
+                .map_err(|e| anyhow!("{:?}", e)),
+            _ => Err(anyhow!("could not find pty reference")).with_context(err_context),
+        }
     }
 
     #[cfg(unix)]
@@ -960,7 +980,7 @@ impl ServerOsApi for ServerOsInputOutput {
 
     #[cfg(windows)]
     fn tcdrain(&self, terminal_id: u32) -> Result<()> {
-        todo!()
+        Ok(())
     }
 
     fn box_clone(&self) -> Box<dyn ServerOsApi> {
