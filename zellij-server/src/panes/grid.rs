@@ -857,7 +857,7 @@ impl Grid {
             // doesn't create spurious canonical lines
             let mut new_cursor_x = cursor_index_in_canonical_line % new_columns;
             if self.cursor.x != 0 && new_cursor_x == 0 {
-                new_cursor_y -= 1;
+                new_cursor_y = new_cursor_y.saturating_sub(1);
                 new_cursor_x = new_columns
             }
             let saved_cursor_x_coordinates = match (
