@@ -1,11 +1,11 @@
 ---
 source: src/tests/e2e/cases.rs
-assertion_line: 1194
+assertion_line: 1326
 expression: last_snapshot
 ---
  Zellij (e2e-test)  Tab #1 
 $                                                          │$ █                                                         
-                                                           │                                                            
+$                                                          │                                                            
                                                            │                                                            
                                                            │                                                            
                                                            │                                                            
