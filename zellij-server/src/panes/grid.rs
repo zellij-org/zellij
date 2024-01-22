@@ -881,7 +881,6 @@ impl Grid {
                 },
                 _ => None,
             };
-
             Some((
                 new_cursor_y,
                 saved_cursor_y_coordinates,
