@@ -623,8 +623,8 @@ impl Grid {
                 cursor_canonical_line_index = i;
             }
             if i == self.cursor.y {
-                let line_wrap_position_in_line = self.cursor.y - cursor_canonical_line_index;
-                cursor_index_in_canonical_line = line_wrap_position_in_line + self.cursor.x;
+                let line_wraps = self.cursor.y.saturating_sub(cursor_canonical_line_index);
+                cursor_index_in_canonical_line = (line_wraps * self.width) + self.cursor.x;
                 break;
             }
         }
@@ -639,10 +639,9 @@ impl Grid {
                     cursor_canonical_line_index = i;
                 }
                 if i == saved_cursor_position.y {
-                    let line_wrap_position_in_line =
-                        saved_cursor_position.y - cursor_canonical_line_index;
+                    let line_wraps = saved_cursor_position.y - cursor_canonical_line_index;
                     cursor_index_in_canonical_line =
-                        line_wrap_position_in_line + saved_cursor_position.x;
+                        (line_wraps * self.width) + saved_cursor_position.x;
                     break;
                 }
             }
@@ -849,26 +848,44 @@ impl Grid {
 
             self.viewport = new_viewport_rows;
 
-            let mut new_cursor_y = self.canonical_line_y_coordinates(cursor_canonical_line_index);
+            let mut new_cursor_y = self.canonical_line_y_coordinates(cursor_canonical_line_index)
+                + (cursor_index_in_canonical_line / new_columns);
             let mut saved_cursor_y_coordinates =
-                if let Some(saved_cursor) = self.saved_cursor_position.as_ref() {
-                    Some(self.canonical_line_y_coordinates(saved_cursor.y))
-                } else {
-                    None
-                };
+                self.saved_cursor_position.as_ref().map(|saved_cursor| {
+                    self.canonical_line_y_coordinates(saved_cursor.y)
+                        + saved_cursor_index_in_canonical_line.as_ref().unwrap() / new_columns
+                });
 
-            let new_cursor_x = (cursor_index_in_canonical_line / new_columns)
-                + (cursor_index_in_canonical_line % new_columns);
-            let saved_cursor_x_coordinates = if let Some(saved_cursor_index_in_canonical_line) =
-                saved_cursor_index_in_canonical_line.as_ref()
-            {
-                Some(
-                    (*saved_cursor_index_in_canonical_line / new_columns)
-                        + (*saved_cursor_index_in_canonical_line % new_columns),
-                )
-            } else {
-                None
+            // A cursor at EOL has two equivalent positions - end of this line or beginning of
+            // next. If not already at the beginning of line, bias to EOL so add character logic
+            // doesn't create spurious canonical lines
+            let mut new_cursor_x = cursor_index_in_canonical_line % new_columns;
+            if self.cursor.x != 0 && new_cursor_x == 0 {
+                new_cursor_y = new_cursor_y.saturating_sub(1);
+                new_cursor_x = new_columns
+            }
+            let saved_cursor_x_coordinates = match (
+                saved_cursor_index_in_canonical_line.as_ref(),
+                self.saved_cursor_position.as_mut(),
+                saved_cursor_y_coordinates.as_mut(),
+            ) {
+                (
+                    Some(saved_cursor_index_in_canonical_line),
+                    Some(saved_cursor_position),
+                    Some(saved_cursor_y_coordinates),
+                ) => {
+                    let x = saved_cursor_position.x;
+                    let mut new_x = *saved_cursor_index_in_canonical_line % new_columns;
+                    let new_y = saved_cursor_y_coordinates;
+                    if x != 0 && new_x == 0 {
+                        *new_y = new_y.saturating_sub(1);
+                        new_x = new_columns
+                    }
+                    Some(new_x)
+                },
+                _ => None,
             };
+
             let current_viewport_row_count = self.viewport.len();
             match current_viewport_row_count.cmp(&self.height) {
                 Ordering::Less => {
@@ -919,14 +936,27 @@ impl Grid {
                         saved_cursor_position.x = saved_cursor_x_coordinates;
                         saved_cursor_position.y = saved_cursor_y_coordinates;
                     },
-                    _ => {
-                        saved_cursor_position.x = new_cursor_x;
-                        saved_cursor_position.y = new_cursor_y;
-                    },
+                    _ => log::error!(
+                        "invalid state - cannot set saved cursor to {:?} {:?}",
+                        saved_cursor_x_coordinates,
+                        saved_cursor_y_coordinates
+                    ),
                 }
             };
         }
         if new_rows != self.height {
+            let mut new_cursor_y = self.cursor.y;
+            let mut saved_cursor_y_coordinates = self
+                .saved_cursor_position
+                .as_ref()
+                .map(|saved_cursor| saved_cursor.y);
+
+            let new_cursor_x = self.cursor.x;
+            let saved_cursor_x_coordinates = self
+                .saved_cursor_position
+                .as_ref()
+                .map(|saved_cursor| saved_cursor.x);
+
             let current_viewport_row_count = self.viewport.len();
             match current_viewport_row_count.cmp(&new_rows) {
                 Ordering::Less => {
@@ -939,25 +969,24 @@ impl Grid {
                         new_columns,
                     );
                     let rows_pulled = self.viewport.len() - current_viewport_row_count;
-                    self.cursor.y += rows_pulled;
-                    if let Some(saved_cursor_position) = self.saved_cursor_position.as_mut() {
-                        saved_cursor_position.y += rows_pulled
+                    new_cursor_y += rows_pulled;
+                    if let Some(saved_cursor_y_coordinates) = saved_cursor_y_coordinates.as_mut() {
+                        *saved_cursor_y_coordinates += rows_pulled;
                     };
                 },
                 Ordering::Greater => {
                     let row_count_to_transfer = current_viewport_row_count - new_rows;
-                    if row_count_to_transfer > self.cursor.y {
-                        self.cursor.y = 0;
-                        if let Some(saved_cursor_position) = self.saved_cursor_position.as_mut() {
-                            saved_cursor_position.y = 0
-                        };
+                    if row_count_to_transfer > new_cursor_y {
+                        new_cursor_y = 0;
                     } else {
-                        self.cursor.y -= row_count_to_transfer;
-                        if let Some(saved_cursor_position) = self.saved_cursor_position.as_mut() {
-                            saved_cursor_position.y = saved_cursor_position
-                                .y
-                                .saturating_sub(row_count_to_transfer);
-                        };
+                        new_cursor_y -= row_count_to_transfer;
+                    }
+                    if let Some(saved_cursor_y_coordinates) = saved_cursor_y_coordinates.as_mut() {
+                        if row_count_to_transfer > *saved_cursor_y_coordinates {
+                            *saved_cursor_y_coordinates = 0;
+                        } else {
+                            *saved_cursor_y_coordinates -= row_count_to_transfer;
+                        }
                     }
                     transfer_rows_from_viewport_to_lines_above(
                         &mut self.viewport,
@@ -969,6 +998,21 @@ impl Grid {
                 },
                 Ordering::Equal => {},
             }
+            self.cursor.y = new_cursor_y;
+            self.cursor.x = new_cursor_x;
+            if let Some(saved_cursor_position) = self.saved_cursor_position.as_mut() {
+                match (saved_cursor_x_coordinates, saved_cursor_y_coordinates) {
+                    (Some(saved_cursor_x_coordinates), Some(saved_cursor_y_coordinates)) => {
+                        saved_cursor_position.x = saved_cursor_x_coordinates;
+                        saved_cursor_position.y = saved_cursor_y_coordinates;
+                    },
+                    _ => log::error!(
+                        "invalid state - cannot set saved cursor to {:?} {:?}",
+                        saved_cursor_x_coordinates,
+                        saved_cursor_y_coordinates
+                    ),
+                }
+            };
         }
         self.height = new_rows;
         self.width = new_columns;

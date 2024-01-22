@@ -2039,9 +2039,19 @@ fn save_cursor_position_across_resizes() {
         1,
         Vec::from("\n\n\rI am some text\n\rI am another line of text\n\rLet's save the cursor position here \u{1b}[sI should be ovewritten".as_bytes()),
     ).unwrap();
-    tab.resize_whole_tab(Size { cols: 100, rows: 3 }).unwrap();
+
+    // We check cursor and saved cursor are handled separately by:
+    // 1. moving real cursor up two lines
+    tab.handle_pty_bytes(1, Vec::from("\u{1b}[2A".as_bytes()));
+    // 2. resizing so real cursor gets lost above the viewport, which resets it to row 0
+    // The saved cursor ends up on row 1, allowing detection if it (incorrectly) gets reset too
+    tab.resize_whole_tab(Size { cols: 35, rows: 4 }).unwrap();
+
+    // Now overwrite
     tab.handle_pty_bytes(1, Vec::from("\u{1b}[uthis overwrote me!".as_bytes()))
         .unwrap();
+
+    tab.resize_whole_tab(Size { cols: 100, rows: 3 }).unwrap();
 
     tab.render(&mut output).unwrap();
     let snapshot = take_snapshot(
