@@ -1,17 +1,19 @@
 mod resurrectable_sessions;
 mod session_list;
 mod ui;
+mod new_session_info;
 use zellij_tile::prelude::*;
 
 use std::collections::BTreeMap;
 
 use ui::{
     components::{
-        render_controls_line, render_error, render_new_session_line, render_prompt,
+        render_controls_line, render_error, render_new_session_block, render_prompt,
         render_renaming_session_screen, render_resurrection_toggle, Colors,
     },
     SessionUiInfo,
 };
+use new_session_info::NewSessionInfo;
 
 use resurrectable_sessions::ResurrectableSessions;
 use session_list::SessionList;
@@ -22,8 +24,7 @@ struct State {
     sessions: SessionList,
     resurrectable_sessions: ResurrectableSessions,
     search_term: String,
-    new_session_name: Option<String>,
-    new_session_layout: Option<String>,
+    new_session_info: NewSessionInfo,
     renaming_session_name: Option<String>,
     error: Option<String>,
     browsing_resurrection_sessions: bool,
@@ -34,13 +35,16 @@ register_plugin!(State);
 
 impl ZellijPlugin for State {
     fn load(&mut self, _configuration: BTreeMap<String, String>) {
-        // TODO: CONTINUE HERE - build a UI for this (though maybe we first want to refactor the
-        // new_session_name thing to its separate struct called NewSession and add the layout stuff
-        // to it so things don't get out of hand...
-        // also, we'll need to get a list of built-in sessions to populate the list. we can start
-        // with hard-coded (look in ~/.config/layouts, there's some stuff there) and then add the
-        // capability in Zellij
-        self.new_session_layout = Some("zellij-e2e".to_owned()); // TODO: no
+        self.new_session_info.update_layout_list(vec![
+            "default-rust",
+            "foo",
+            "supermode",
+            "test",
+            "test1",
+            "zellij-add-screen-action",
+            "zellij-e2e",
+            "zjstatus",
+        ]);
         subscribe(&[
             EventType::ModeUpdate,
             EventType::SessionUpdate,
@@ -83,11 +87,16 @@ impl ZellijPlugin for State {
         }
         render_resurrection_toggle(cols, false);
         render_prompt(
-            self.new_session_name.is_some(),
+            self.new_session_info.entering_new_session_info(),
             &self.search_term,
             self.colors,
         );
-        let room_for_list = rows.saturating_sub(5); // search line and controls
+        let room_for_list = if self.new_session_info.entering_new_session_info() {
+            let layout_count = self.new_session_info.layout_count();
+            rows.saturating_sub(layout_count)
+        } else {
+            rows
+        }.saturating_sub(5); // search line and controls;
         self.sessions.update_rows(room_for_list);
         let list = self
             .sessions
@@ -95,11 +104,14 @@ impl ZellijPlugin for State {
         for line in list {
             println!("{}", line.render());
         }
-        render_new_session_line(
-            &self.new_session_name,
-            self.sessions.is_searching,
-            self.colors,
-        );
+        if !self.sessions.is_searching {
+            let max_size_of_new_session_block = rows.saturating_sub(5); // search line and controls
+            render_new_session_block(
+                &self.new_session_info,
+                self.colors,
+                max_size_of_new_session_block
+            );
+        }
         if let Some(error) = self.error.as_ref() {
             render_error(&error, rows, cols);
         } else {
@@ -119,34 +131,38 @@ impl State {
         }
         let mut should_render = false;
         if let Key::Right = key {
-            if self.new_session_name.is_none() {
+            if !self.new_session_info.entering_new_session_info() {
                 self.sessions.result_expand();
             }
             should_render = true;
         } else if let Key::Left = key {
-            if self.new_session_name.is_none() {
+            if !self.new_session_info.entering_new_session_info() {
                 self.sessions.result_shrink();
             }
             should_render = true;
         } else if let Key::Down = key {
             if self.browsing_resurrection_sessions {
                 self.resurrectable_sessions.move_selection_down();
-            } else if self.new_session_name.is_none() && self.renaming_session_name.is_none() {
+            } else if !self.new_session_info.entering_new_session_info() && self.renaming_session_name.is_none() {
                 self.sessions.move_selection_down();
+            } else if self.new_session_info.entering_new_session_info() {
+                self.new_session_info.handle_key(key);
             }
             should_render = true;
         } else if let Key::Up = key {
             if self.browsing_resurrection_sessions {
                 self.resurrectable_sessions.move_selection_up();
-            } else if self.new_session_name.is_none() && self.renaming_session_name.is_none() {
+            } else if !self.new_session_info.entering_new_session_info() && self.renaming_session_name.is_none() {
                 self.sessions.move_selection_up();
+            } else if self.new_session_info.entering_new_session_info() {
+                self.new_session_info.handle_key(key);
             }
             should_render = true;
         } else if let Key::Char(character) = key {
             if character == '\n' {
                 self.handle_selection();
-            } else if let Some(new_session_name) = self.new_session_name.as_mut() {
-                new_session_name.push(character);
+            } else if self.new_session_info.entering_new_session_info() {
+                self.new_session_info.handle_key(key);
             } else if let Some(renaming_session_name) = self.renaming_session_name.as_mut() {
                 renaming_session_name.push(character);
             } else if self.browsing_resurrection_sessions {
@@ -158,12 +174,8 @@ impl State {
             }
             should_render = true;
         } else if let Key::Backspace = key {
-            if let Some(new_session_name) = self.new_session_name.as_mut() {
-                if new_session_name.is_empty() {
-                    self.new_session_name = None;
-                } else {
-                    new_session_name.pop();
-                }
+            if self.new_session_info.entering_new_session_info() {
+                self.new_session_info.handle_key(key);
             } else if let Some(renaming_session_name) = self.renaming_session_name.as_mut() {
                 if renaming_session_name.is_empty() {
                     self.renaming_session_name = None;
@@ -181,10 +193,8 @@ impl State {
         } else if let Key::Ctrl('w') = key {
             if self.sessions.is_searching || self.browsing_resurrection_sessions {
                 // no-op
-            } else if self.new_session_name.is_some() {
-                self.new_session_name = None;
             } else {
-                self.new_session_name = Some(String::new());
+                self.new_session_info.toggle_entering_info();
             }
             should_render = true;
         } else if let Key::Ctrl('r') = key {
@@ -197,12 +207,8 @@ impl State {
             }
             should_render = true;
         } else if let Key::Ctrl('c') = key {
-            if let Some(new_session_name) = self.new_session_name.as_mut() {
-                if new_session_name.is_empty() {
-                    self.new_session_name = None;
-                } else {
-                    new_session_name.clear()
-                }
+            if self.new_session_info.entering_new_session_info() {
+                self.new_session_info.handle_key(key);
             } else if let Some(renaming_session_name) = self.renaming_session_name.as_mut() {
                 if renaming_session_name.is_empty() {
                     self.renaming_session_name = None;
@@ -237,8 +243,8 @@ impl State {
             if self.renaming_session_name.is_some() {
                 self.renaming_session_name = None;
                 should_render = true;
-            } else if self.new_session_name.is_some() {
-                self.new_session_name = None;
+            } else if self.new_session_info.entering_new_session_info() {
+                self.new_session_info.handle_key(key);
                 should_render = true;
             } else {
                 hide_self();
@@ -253,17 +259,8 @@ impl State {
             {
                 switch_session(Some(&session_name_to_resurrect));
             }
-        } else if let Some(new_session_name) = &self.new_session_name {
-            if new_session_name.is_empty() {
-                // switch_session(None);
-                switch_session_with_layout(None, self.new_session_layout.as_ref().map(|x| x.as_str()));
-            } else if self.session_name.as_ref() == Some(new_session_name) {
-                // noop - we're already here!
-                self.new_session_name = None;
-            } else {
-                // switch_session(Some(new_session_name));
-                switch_session_with_layout(Some(new_session_name), self.new_session_layout.as_ref().map(|x| x.as_str()));
-            }
+        } else if self.new_session_info.entering_new_session_info() {
+            self.new_session_info.handle_selection(&self.session_name);
         } else if let Some(renaming_session_name) = &self.renaming_session_name.take() {
             if renaming_session_name.is_empty() {
                 // TODO: implement these, then implement the error UI, then implement the renaming
@@ -306,7 +303,6 @@ impl State {
             }
         }
         self.reset_selected_index();
-        self.new_session_name = None;
         self.search_term.clear();
         self.sessions
             .update_search_term(&self.search_term, &self.colors);

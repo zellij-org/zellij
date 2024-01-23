@@ -3,6 +3,7 @@ use unicode_width::UnicodeWidthStr;
 use zellij_tile::prelude::*;
 
 use crate::ui::{PaneUiInfo, SessionUiInfo, TabUiInfo};
+use crate::NewSessionInfo;
 
 #[derive(Debug)]
 pub struct ListItem {
@@ -535,27 +536,37 @@ pub fn render_resurrection_toggle(cols: usize, resurrection_screen_is_active: bo
     }
 }
 
-pub fn render_new_session_line(session_name: &Option<String>, is_searching: bool, colors: Colors) {
-    if is_searching {
-        return;
-    }
+pub fn render_new_session_block(new_session_info: &NewSessionInfo, colors: Colors, max_size_of_new_session_block: usize) {
     let new_session_shortcut_text = "<Ctrl w>";
     let new_session_shortcut = colors.magenta(new_session_shortcut_text);
     let new_session = colors.bold("New session");
     let enter = colors.magenta("<ENTER>");
-    match session_name {
-        Some(session_name) => {
-            println!(
-                "\u{1b}[m > {}_ ({}, {} when done)",
-                colors.orange(session_name),
-                colors.bold("Type optional name"),
-                enter
-            );
-        },
-        None => {
-            println!("\u{1b}[m > {new_session_shortcut} - {new_session}");
-        },
+    if new_session_info.entering_new_session_info() {
+        println!(
+            "\u{1b}[m > {}_ ({}, {} when done)",
+            colors.orange(&new_session_info.name()),
+            colors.bold("Type optional name"),
+            enter
+        );
+        render_layout_selection_list(new_session_info, max_size_of_new_session_block);
+    } else {
+        println!("\u{1b}[m > {new_session_shortcut} - {new_session}");
     }
+}
+
+pub fn render_layout_selection_list(new_session_info: &NewSessionInfo, max_size_of_new_session_block: usize) {
+    let selection_list: Vec<NestedListItem> = new_session_info.layout_info().into_iter().enumerate().filter_map(|(i, (layout_name, is_selected))| {
+        if i > max_size_of_new_session_block {
+            None
+        } else if is_selected {
+            Some(NestedListItem::new(layout_name).selected().indent(1).color_range(1, ..))
+        } else {
+            Some(NestedListItem::new(layout_name).indent(1).color_range(1, ..))
+        }
+    }).collect();
+    print_text(Text::new("   Layout: <↓↑>").color_range(3, 11..15));
+    println!("");
+    print_nested_list(selection_list);
 }
 
 pub fn render_error(error_text: &str, rows: usize, columns: usize) {
