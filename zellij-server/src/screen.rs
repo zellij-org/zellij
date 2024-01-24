@@ -1577,10 +1577,7 @@ impl Screen {
     }
 
     fn switch_tabs(&mut self, active_tab_idx: usize, other_tab_idx: usize, client_id: u16) {
-        let (Some(mut active_tab), Some(mut other_tab)) = (
-            self.tabs.remove(&active_tab_idx),
-            self.tabs.remove(&other_tab_idx),
-        ) else {
+        if !self.tabs.contains_key(&active_tab_idx) || !self.tabs.contains_key(&other_tab_idx) {
             warn!(
                 "failed to switch tabs: index {} or {} not found in {:?}",
                 active_tab_idx,
@@ -1588,7 +1585,11 @@ impl Screen {
                 self.tabs.keys()
             );
             return;
-        };
+        }
+
+        // NOTE: Can `expect` here, because we checked that the keys exist above
+        let mut active_tab = self.tabs.remove(&active_tab_idx).expect("active tab not found");
+        let mut other_tab = self.tabs.remove(&other_tab_idx).expect("other tab not found");
 
         std::mem::swap(&mut active_tab.index, &mut other_tab.index);
         std::mem::swap(&mut active_tab.position, &mut other_tab.position);
