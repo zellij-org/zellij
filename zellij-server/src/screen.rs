@@ -7,7 +7,7 @@ use std::rc::Rc;
 use std::str;
 use std::time::Duration;
 
-use log::{info, warn};
+use log::{debug, warn};
 use zellij_utils::data::{
     Direction, PaneManifest, PluginPermission, Resize, ResizeStrategy, SessionInfo,
 };
@@ -1544,11 +1544,15 @@ impl Screen {
 
     pub fn move_active_tab_to_left(&mut self, client_id: ClientId) -> Result<()> {
         if self.tabs.len() < 2 {
-            info!("cannot move tab to left: only one tab exists");
+            debug!("cannot move tab to left: only one tab exists");
             return Ok(());
         }
-        let Some(client_id) = self.client_id(client_id) else { return Ok(()); };
-        let Some(&active_tab_idx) = self.active_tab_indices.get(&client_id) else { return Ok(()); };
+        let Some(client_id) = self.client_id(client_id) else {
+            return Ok(());
+        };
+        let Some(&active_tab_idx) = self.active_tab_indices.get(&client_id) else {
+            return Ok(());
+        };
         let left_tab_idx = self.index_on_left_of(active_tab_idx);
         self.switch_tabs(active_tab_idx, left_tab_idx, client_id);
         self.log_and_report_session_state()
@@ -1577,7 +1581,12 @@ impl Screen {
             self.tabs.remove(&active_tab_idx),
             self.tabs.remove(&other_tab_idx),
         ) else {
-            warn!("failed to switch tabs: index {} or {} not found in {:?}", active_tab_idx, other_tab_idx, self.tabs.keys());
+            warn!(
+                "failed to switch tabs: index {} or {} not found in {:?}",
+                active_tab_idx,
+                other_tab_idx,
+                self.tabs.keys()
+            );
             return;
         };
 
@@ -1593,11 +1602,15 @@ impl Screen {
 
     pub fn move_active_tab_to_right(&mut self, client_id: ClientId) -> Result<()> {
         if self.tabs.len() < 2 {
-            info!("cannot move tab to right: only one tab exists");
+            debug!("cannot move tab to right: only one tab exists");
             return Ok(());
         }
-        let Some(client_id) = self.client_id(client_id) else { return Ok(()); };
-        let Some(&active_tab_idx) = self.active_tab_indices.get(&client_id) else { return Ok(()); };
+        let Some(client_id) = self.client_id(client_id) else {
+            return Ok(());
+        };
+        let Some(&active_tab_idx) = self.active_tab_indices.get(&client_id) else {
+            return Ok(());
+        };
         let right_tab_idx = self.index_on_right_of(active_tab_idx);
         self.switch_tabs(active_tab_idx, right_tab_idx, client_id);
         self.log_and_report_session_state()
