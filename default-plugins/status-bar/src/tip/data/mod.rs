@@ -90,3 +90,15 @@ lazy_static! {
         ),
     ]);
 }
+
+#[macro_export]
+macro_rules! ansi_strings {
+    ($ANSIStrings:expr) => {{
+        let strings: &[::ansi_term::ANSIString] = $ANSIStrings;
+        let ansi_strings = ::ansi_term::ANSIStrings(strings);
+        LinePart {
+            part: format!("{}", ansi_strings),
+            len: ::ansi_term::unstyled_len(&ansi_strings),
+        }
+    }};
+}

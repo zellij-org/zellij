@@ -1,25 +1,9 @@
-use ansi_term::{
-    unstyled_len, ANSIString, ANSIStrings,
-    Color::{Fixed, RGB},
-    Style,
-};
+use ansi_term::Color::{Fixed, RGB};
+use ansi_term::{ANSIString, Style};
 
-use crate::{action_key, style_key_with_modifier, LinePart};
+use crate::{action_key, ansi_strings, style_key_with_modifier, LinePart};
 use zellij_tile::prelude::{actions::Action, *};
 use zellij_tile_utils::palette_match;
-
-macro_rules! strings {
-    ($ANSIStrings:expr) => {{
-        let strings: &[ANSIString] = $ANSIStrings;
-
-        let ansi_strings = ANSIStrings(strings);
-
-        LinePart {
-            part: format!("{}", ansi_strings),
-            len: unstyled_len(&ansi_strings),
-        }
-    }};
-}
 
 pub fn edit_scrollbuffer_full(help: &ModeInfo) -> LinePart {
     // Tip: Search through the scrollbuffer using your default $EDITOR with
@@ -33,7 +17,7 @@ pub fn edit_scrollbuffer_full(help: &ModeInfo) -> LinePart {
         Style::new().paint(" with "),
     ];
     bits.extend(add_keybinds(help));
-    strings!(&bits)
+    ansi_strings!(&bits)
 }
 
 pub fn edit_scrollbuffer_medium(help: &ModeInfo) -> LinePart {
@@ -48,7 +32,7 @@ pub fn edit_scrollbuffer_medium(help: &ModeInfo) -> LinePart {
         Style::new().paint(" with "),
     ];
     bits.extend(add_keybinds(help));
-    strings!(&bits)
+    ansi_strings!(&bits)
 }
 
 pub fn edit_scrollbuffer_short(help: &ModeInfo) -> LinePart {
@@ -62,7 +46,7 @@ pub fn edit_scrollbuffer_short(help: &ModeInfo) -> LinePart {
         Style::new().paint(" with "),
     ];
     bits.extend(add_keybinds(help));
-    strings!(&bits)
+    ansi_strings!(&bits)
 }
 
 fn add_keybinds(help: &ModeInfo) -> Vec<ANSIString> {
