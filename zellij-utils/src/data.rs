@@ -251,35 +251,6 @@ impl FromStr for Direction {
     }
 }
 
-#[derive(Eq, Clone, Copy, Debug, PartialEq, Hash, Deserialize, Serialize, PartialOrd, Ord)]
-pub enum HorizontalDirection {
-    Left,
-    Right,
-}
-
-impl fmt::Display for HorizontalDirection {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            HorizontalDirection::Left => write!(f, "←"),
-            HorizontalDirection::Right => write!(f, "→"),
-        }
-    }
-}
-
-impl FromStr for HorizontalDirection {
-    type Err = String;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "Left" | "left" => Ok(HorizontalDirection::Left),
-            "Right" | "right" => Ok(HorizontalDirection::Right),
-            _ => Err(format!(
-                "Failed to parse HorizontalDirection. Unknown HorizontalDirection: {}",
-                s
-            )),
-        }
-    }
-}
-
 /// Resize operation to perform.
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, Deserialize, Serialize)]
 pub enum Resize {

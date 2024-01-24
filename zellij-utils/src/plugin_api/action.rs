@@ -13,7 +13,7 @@ pub use super::generated_api::api::{
     input_mode::InputMode as ProtobufInputMode,
     resize::{Resize as ProtobufResize, ResizeDirection as ProtobufResizeDirection},
 };
-use crate::data::{Direction, HorizontalDirection, InputMode, ResizeStrategy};
+use crate::data::{Direction, InputMode, ResizeStrategy};
 use crate::errors::prelude::*;
 use crate::input::actions::Action;
 use crate::input::actions::{SearchDirection, SearchOption};
@@ -356,7 +356,7 @@ impl TryFrom<ProtobufAction> for Action {
             },
             Some(ProtobufActionName::MoveTab) => match protobuf_action.optional_payload {
                 Some(OptionalPayload::MoveTabPayload(move_tab_payload)) => {
-                    let direction: HorizontalDirection =
+                    let direction: Direction =
                         ProtobufMoveTabDirection::from_i32(move_tab_payload)
                             .ok_or("Malformed move tab direction for Action::MoveTab")?
                             .try_into()?;
@@ -1312,24 +1312,25 @@ impl TryFrom<SearchDirection> for ProtobufSearchDirection {
     }
 }
 
-impl TryFrom<ProtobufMoveTabDirection> for HorizontalDirection {
+impl TryFrom<ProtobufMoveTabDirection> for Direction {
     type Error = &'static str;
     fn try_from(
         protobuf_move_tab_direction: ProtobufMoveTabDirection,
     ) -> Result<Self, &'static str> {
         match protobuf_move_tab_direction {
-            ProtobufMoveTabDirection::Left => Ok(HorizontalDirection::Left),
-            ProtobufMoveTabDirection::Right => Ok(HorizontalDirection::Right),
+            ProtobufMoveTabDirection::Left => Ok(Direction::Left),
+            ProtobufMoveTabDirection::Right => Ok(Direction::Right),
         }
     }
 }
 
-impl TryFrom<HorizontalDirection> for ProtobufMoveTabDirection {
+impl TryFrom<Direction> for ProtobufMoveTabDirection {
     type Error = &'static str;
-    fn try_from(horizontal_direction: HorizontalDirection) -> Result<Self, &'static str> {
-        match horizontal_direction {
-            HorizontalDirection::Left => Ok(ProtobufMoveTabDirection::Left),
-            HorizontalDirection::Right => Ok(ProtobufMoveTabDirection::Right),
+    fn try_from(direction: Direction) -> Result<Self, &'static str> {
+        match direction {
+            Direction::Left => Ok(ProtobufMoveTabDirection::Left),
+            Direction::Right => Ok(ProtobufMoveTabDirection::Right),
+            _ => Err("Wrong direction for ProtobufMoveTabDirection"),
         }
     }
 }

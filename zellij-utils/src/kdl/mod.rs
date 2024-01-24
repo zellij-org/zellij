@@ -1,6 +1,6 @@
 mod kdl_layout_parser;
 use crate::data::{
-    Direction, HorizontalDirection, InputMode, Key, Palette, PaletteColor, PaneInfo, PaneManifest,
+    Direction, InputMode, Key, Palette, PaletteColor, PaneInfo, PaneManifest,
     PermissionType, Resize, SessionInfo, TabInfo,
 };
 use crate::envs::EnvironmentVariables;
@@ -454,7 +454,7 @@ impl Action {
                 Ok(Action::MoveFocusOrTab(direction))
             },
             "MoveTab" => {
-                let direction = HorizontalDirection::from_str(string.as_str()).map_err(|_| {
+                let direction = Direction::from_str(string.as_str()).map_err(|_| {
                     ConfigError::new_kdl_error(
                         format!("Invalid horizontal direction: '{}'", string),
                         action_node.span().offset(),

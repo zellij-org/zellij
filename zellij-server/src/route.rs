@@ -12,7 +12,7 @@ use crate::{
 };
 use zellij_utils::{
     channels::SenderWithContext,
-    data::{Direction, Event, HorizontalDirection, PluginCapabilities, ResizeStrategy},
+    data::{Direction, Event, PluginCapabilities, ResizeStrategy},
     errors::prelude::*,
     input::{
         actions::{Action, SearchDirection, SearchOption},
@@ -536,8 +536,9 @@ pub(crate) fn route_action(
         },
         Action::MoveTab(direction) => {
             let screen_instr = match direction {
-                HorizontalDirection::Left => ScreenInstruction::MoveTabLeft(client_id),
-                HorizontalDirection::Right => ScreenInstruction::MoveTabRight(client_id),
+                Direction::Left => ScreenInstruction::MoveTabLeft(client_id),
+                Direction::Right => ScreenInstruction::MoveTabRight(client_id),
+                _ => return Ok(false),
             };
             senders
                 .send_to_screen(screen_instr)
