@@ -1,10 +1,26 @@
-use ansi_term::Color::{Fixed, RGB};
-use ansi_term::{ANSIString, Style};
+use ansi_term::{
+    unstyled_len, ANSIString, ANSIStrings,
+    Color::{Fixed, RGB},
+    Style,
+};
 
+use crate::LinePart;
 use crate::{action_key, style_key_with_modifier};
-use crate::{ansi_strings, LinePart};
 use zellij_tile::prelude::{actions::Action, *};
 use zellij_tile_utils::palette_match;
+
+macro_rules! strings {
+    ($ANSIStrings:expr) => {{
+        let strings: &[ANSIString] = $ANSIStrings;
+
+        let ansi_strings = ANSIStrings(strings);
+
+        LinePart {
+            part: format!("{}", ansi_strings),
+            len: unstyled_len(&ansi_strings),
+        }
+    }};
+}
 
 pub fn compact_layout_full(help: &ModeInfo) -> LinePart {
     // Tip: UI taking up too much space? Start Zellij with
@@ -21,7 +37,7 @@ pub fn compact_layout_full(help: &ModeInfo) -> LinePart {
         Style::new().paint(" or remove pane frames with "),
     ];
     bits.extend(add_keybinds(help));
-    ansi_strings!(&bits)
+    strings!(&bits)
 }
 
 pub fn compact_layout_medium(help: &ModeInfo) -> LinePart {
@@ -39,7 +55,7 @@ pub fn compact_layout_medium(help: &ModeInfo) -> LinePart {
         Style::new().paint(" or remove frames with "),
     ];
     bits.extend(add_keybinds(help));
-    ansi_strings!(&bits)
+    strings!(&bits)
 }
 
 pub fn compact_layout_short(help: &ModeInfo) -> LinePart {
@@ -56,7 +72,7 @@ pub fn compact_layout_short(help: &ModeInfo) -> LinePart {
         Style::new().paint(" or remove frames with "),
     ];
     bits.extend(add_keybinds(help));
-    ansi_strings!(&bits)
+    strings!(&bits)
 }
 
 fn add_keybinds(help: &ModeInfo) -> Vec<ANSIString> {

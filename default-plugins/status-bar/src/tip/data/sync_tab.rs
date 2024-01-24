@@ -1,7 +1,20 @@
-use ansi_term::{ANSIString, Style};
+use ansi_term::{unstyled_len, ANSIString, ANSIStrings, Style};
 
-use crate::{action_key, ansi_strings, style_key_with_modifier, LinePart};
+use crate::{action_key, style_key_with_modifier, LinePart};
 use zellij_tile::prelude::{actions::Action, *};
+
+macro_rules! strings {
+    ($ANSIStrings:expr) => {{
+        let strings: &[ANSIString] = $ANSIStrings;
+
+        let ansi_strings = ANSIStrings(strings);
+
+        LinePart {
+            part: format!("{}", ansi_strings),
+            len: unstyled_len(&ansi_strings),
+        }
+    }};
+}
 
 pub fn sync_tab_full(help: &ModeInfo) -> LinePart {
     // Tip: Sync a tab and write keyboard input to all panes with Ctrl + <t> + <s>
@@ -10,7 +23,7 @@ pub fn sync_tab_full(help: &ModeInfo) -> LinePart {
         Style::new().paint("Sync a tab and write keyboard input to all its panes with "),
     ];
     bits.extend(add_keybinds(help));
-    ansi_strings!(&bits)
+    strings!(&bits)
 }
 
 pub fn sync_tab_medium(help: &ModeInfo) -> LinePart {
@@ -20,14 +33,14 @@ pub fn sync_tab_medium(help: &ModeInfo) -> LinePart {
         Style::new().paint("Sync input to panes in a tab with "),
     ];
     bits.extend(add_keybinds(help));
-    ansi_strings!(&bits)
+    strings!(&bits)
 }
 
 pub fn sync_tab_short(help: &ModeInfo) -> LinePart {
     // Sync input in a tab with Ctrl + <t> + <s>
     let mut bits = vec![Style::new().paint(" Sync input in a tab with ")];
     bits.extend(add_keybinds(help));
-    ansi_strings!(&bits)
+    strings!(&bits)
 }
 
 fn add_keybinds(help: &ModeInfo) -> Vec<ANSIString> {

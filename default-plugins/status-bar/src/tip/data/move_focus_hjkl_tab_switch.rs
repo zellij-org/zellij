@@ -1,7 +1,20 @@
-use ansi_term::{ANSIString, Style};
+use ansi_term::{unstyled_len, ANSIString, ANSIStrings, Style};
 
-use crate::{action_key_group, ansi_strings, style_key_with_modifier, LinePart};
+use crate::{action_key_group, style_key_with_modifier, LinePart};
 use zellij_tile::prelude::{actions::Action, *};
+
+macro_rules! strings {
+    ($ANSIStrings:expr) => {{
+        let strings: &[ANSIString] = $ANSIStrings;
+
+        let ansi_strings = ANSIStrings(strings);
+
+        LinePart {
+            part: format!("{}", ansi_strings),
+            len: unstyled_len(&ansi_strings),
+        }
+    }};
+}
 
 pub fn move_focus_hjkl_tab_switch_full(help: &ModeInfo) -> LinePart {
     // Tip: When changing focus with Alt + <←↓↑→> moving off screen left/right focuses the next tab.
@@ -11,7 +24,7 @@ pub fn move_focus_hjkl_tab_switch_full(help: &ModeInfo) -> LinePart {
     ];
     bits.extend(add_keybinds(help));
     bits.push(Style::new().paint(" moving off screen left/right focuses the next tab."));
-    ansi_strings!(&bits)
+    strings!(&bits)
 }
 
 pub fn move_focus_hjkl_tab_switch_medium(help: &ModeInfo) -> LinePart {
@@ -22,14 +35,14 @@ pub fn move_focus_hjkl_tab_switch_medium(help: &ModeInfo) -> LinePart {
     ];
     bits.extend(add_keybinds(help));
     bits.push(Style::new().paint(" off screen focuses the next tab."));
-    ansi_strings!(&bits)
+    strings!(&bits)
 }
 
 pub fn move_focus_hjkl_tab_switch_short(help: &ModeInfo) -> LinePart {
     // Alt + <←↓↑→> off screen edge focuses next tab.
     let mut bits = add_keybinds(help);
     bits.push(Style::new().paint(" off screen edge focuses next tab."));
-    ansi_strings!(&bits)
+    strings!(&bits)
 }
 
 fn add_keybinds(help: &ModeInfo) -> Vec<ANSIString> {

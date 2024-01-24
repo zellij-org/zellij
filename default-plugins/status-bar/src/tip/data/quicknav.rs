@@ -1,7 +1,20 @@
-use ansi_term::{ANSIString, Style};
+use ansi_term::{unstyled_len, ANSIString, ANSIStrings, Style};
 
-use crate::{action_key, action_key_group, ansi_strings, style_key_with_modifier, LinePart};
+use crate::{action_key, action_key_group, style_key_with_modifier, LinePart};
 use zellij_tile::prelude::{actions::Action, *};
+
+macro_rules! strings {
+    ($ANSIStrings:expr) => {{
+        let strings: &[ANSIString] = $ANSIStrings;
+
+        let ansi_strings = ANSIStrings(strings);
+
+        LinePart {
+            part: format!("{}", ansi_strings),
+            len: unstyled_len(&ansi_strings),
+        }
+    }};
+}
 
 pub fn quicknav_full(help: &ModeInfo) -> LinePart {
     let groups = add_keybinds(help);
@@ -13,7 +26,7 @@ pub fn quicknav_full(help: &ModeInfo) -> LinePart {
     bits.push(Style::new().paint(" => navigate between panes. "));
     bits.extend(groups.resize);
     bits.push(Style::new().paint(" => increase/decrease pane size."));
-    ansi_strings!(&bits)
+    strings!(&bits)
 }
 
 pub fn quicknav_medium(help: &ModeInfo) -> LinePart {
@@ -26,7 +39,7 @@ pub fn quicknav_medium(help: &ModeInfo) -> LinePart {
     bits.push(Style::new().paint(" => navigate. "));
     bits.extend(groups.resize);
     bits.push(Style::new().paint(" => resize pane."));
-    ansi_strings!(&bits)
+    strings!(&bits)
 }
 
 pub fn quicknav_short(help: &ModeInfo) -> LinePart {
@@ -38,7 +51,7 @@ pub fn quicknav_short(help: &ModeInfo) -> LinePart {
     bits.extend(groups.move_focus);
     bits.push(Style::new().paint(" / "));
     bits.extend(groups.resize);
-    ansi_strings!(&bits)
+    strings!(&bits)
 }
 
 struct Keygroups<'a> {

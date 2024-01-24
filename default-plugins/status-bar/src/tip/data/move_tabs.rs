@@ -1,10 +1,26 @@
-use ansi_term::Color::{Fixed, RGB};
-use ansi_term::Style;
+use ansi_term::{
+    unstyled_len, ANSIString, ANSIStrings,
+    Color::{Fixed, RGB},
+    Style,
+};
 
 use zellij_tile::prelude::*;
 use zellij_tile_utils::palette_match;
 
-use crate::{ansi_strings, LinePart};
+use crate::LinePart;
+
+macro_rules! strings {
+    ($ANSIStrings:expr) => {{
+        let strings: &[ANSIString] = $ANSIStrings;
+
+        let ansi_strings = ANSIStrings(strings);
+
+        LinePart {
+            part: format!("{}", ansi_strings),
+            len: unstyled_len(&ansi_strings),
+        }
+    }};
+}
 
 pub fn move_tabs_full(help: &ModeInfo) -> LinePart {
     // Tip: Wrong order of tabs? You can move them to left and right with:
@@ -19,7 +35,7 @@ pub fn move_tabs_full(help: &ModeInfo) -> LinePart {
         Style::new().fg(green_color).bold().paint("Alt + o"),
         Style::new().paint(" (right)"),
     ];
-    ansi_strings!(&bits)
+    strings!(&bits)
 }
 
 pub fn move_tabs_medium(help: &ModeInfo) -> LinePart {
@@ -35,7 +51,7 @@ pub fn move_tabs_medium(help: &ModeInfo) -> LinePart {
         Style::new().fg(green_color).bold().paint("Alt + o"),
         Style::new().paint(" (right)"),
     ];
-    ansi_strings!(&bits)
+    strings!(&bits)
 }
 
 pub fn move_tabs_short(help: &ModeInfo) -> LinePart {
@@ -49,5 +65,5 @@ pub fn move_tabs_short(help: &ModeInfo) -> LinePart {
         Style::new().fg(green_color).bold().paint("Alt + o"),
         Style::new().paint(" (right)"),
     ];
-    ansi_strings!(&bits)
+    strings!(&bits)
 }
