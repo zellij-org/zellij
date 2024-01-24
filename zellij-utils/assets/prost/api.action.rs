@@ -343,6 +343,32 @@ impl SearchOption {
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
+pub enum MoveTabDirection {
+    Left = 0,
+    Right = 1,
+}
+impl MoveTabDirection {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            MoveTabDirection::Left => "Left",
+            MoveTabDirection::Right => "Right",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "Left" => Some(Self::Left),
+            "Right" => Some(Self::Right),
+            _ => None,
+        }
+    }
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
 pub enum ActionName {
     Quit = 0,
     Write = 1,
@@ -609,32 +635,6 @@ impl ActionName {
             "LaunchPlugin" => Some(Self::LaunchPlugin),
             "CliPipe" => Some(Self::CliPipe),
             "MoveTab" => Some(Self::MoveTab),
-            _ => None,
-        }
-    }
-}
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
-#[repr(i32)]
-pub enum MoveTabDirection {
-    Left = 0,
-    Right = 1,
-}
-impl MoveTabDirection {
-    /// String value of the enum field names used in the ProtoBuf definition.
-    ///
-    /// The values are not transformed in any way and thus are considered stable
-    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
-    pub fn as_str_name(&self) -> &'static str {
-        match self {
-            MoveTabDirection::Left => "Left",
-            MoveTabDirection::Right => "Right",
-        }
-    }
-    /// Creates an enum from field names used in the ProtoBuf definition.
-    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
-        match value {
-            "Left" => Some(Self::Left),
-            "Right" => Some(Self::Right),
             _ => None,
         }
     }

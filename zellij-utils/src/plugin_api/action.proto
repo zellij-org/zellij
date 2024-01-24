@@ -92,6 +92,11 @@ enum SearchOption {
   Wrap = 2;
 }
 
+enum MoveTabDirection {
+  Left = 0;
+  Right = 1;
+}
+
 message LaunchOrFocusPluginPayload {
   string plugin_url = 1;
   bool should_float = 2;
@@ -262,9 +267,4 @@ message PluginConfiguration {
 message NameAndValue {
   string name = 1;
   string value = 2;
-}
-
-enum MoveTabDirection {
-  Left = 0;
-  Right = 1;
 }
