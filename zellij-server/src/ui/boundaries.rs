@@ -63,12 +63,12 @@ impl BoundarySymbol {
                         self.boundary_type
                     )
                 })?;
-            TerminalCharacter {
+            TerminalCharacter::new_singlewidth_styled(
                 character,
-                width: 1,
-                styles: RESET_STYLES
-                    .foreground(self.color.map(|palette_color| palette_color.into())),
-            }
+                RESET_STYLES
+                    .foreground(self.color.map(|palette_color| palette_color.into()))
+                    .into(),
+            )
         };
         Ok(tc)
     }

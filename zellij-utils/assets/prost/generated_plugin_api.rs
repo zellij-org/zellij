@@ -20,6 +20,9 @@ pub mod api {
     pub mod message {
         include!("api.message.rs");
     }
+    pub mod pipe_message {
+        include!("api.pipe_message.rs");
+    }
     pub mod plugin_command {
         include!("api.plugin_command.rs");
     }

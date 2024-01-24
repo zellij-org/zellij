@@ -1,5 +1,5 @@
 use crate::output::CharacterChunk;
-use crate::panes::{AnsiCode, CharacterStyles, TerminalCharacter, EMPTY_TERMINAL_CHARACTER};
+use crate::panes::{AnsiCode, RcCharacterStyles, TerminalCharacter, EMPTY_TERMINAL_CHARACTER};
 use crate::ui::boundaries::boundary_type;
 use crate::ClientId;
 use zellij_utils::data::{client_id_to_colors, PaletteColor, Style};
@@ -11,25 +11,17 @@ use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 fn foreground_color(characters: &str, color: Option<PaletteColor>) -> Vec<TerminalCharacter> {
     let mut colored_string = Vec::new();
     for character in characters.chars() {
-        let styles = match color {
-            Some(palette_color) => {
-                let mut styles = CharacterStyles::new();
-                styles.reset_all();
-                styles
-                    .foreground(Some(AnsiCode::from(palette_color)))
-                    .bold(Some(AnsiCode::On))
-            },
-            None => {
-                let mut styles = CharacterStyles::new();
-                styles.reset_all();
-                styles.bold(Some(AnsiCode::On))
-            },
-        };
-        let terminal_character = TerminalCharacter {
-            character,
-            styles,
-            width: character.width().unwrap_or(0),
-        };
+        let mut styles = RcCharacterStyles::reset();
+        styles.update(|styles| {
+            styles.bold = Some(AnsiCode::On);
+            match color {
+                Some(palette_color) => {
+                    styles.foreground = Some(AnsiCode::from(palette_color));
+                },
+                None => {},
+            }
+        });
+        let terminal_character = TerminalCharacter::new_styled(character, styles);
         colored_string.push(terminal_character);
     }
     colored_string
@@ -38,25 +30,15 @@ fn foreground_color(characters: &str, color: Option<PaletteColor>) -> Vec<Termin
 fn background_color(characters: &str, color: Option<PaletteColor>) -> Vec<TerminalCharacter> {
     let mut colored_string = Vec::new();
     for character in characters.chars() {
-        let styles = match color {
+        let mut styles = RcCharacterStyles::reset();
+        styles.update(|styles| match color {
             Some(palette_color) => {
-                let mut styles = CharacterStyles::new();
-                styles.reset_all();
-                styles
-                    .background(Some(AnsiCode::from(palette_color)))
-                    .bold(Some(AnsiCode::On))
+                styles.background = Some(AnsiCode::from(palette_color));
+                styles.bold(Some(AnsiCode::On));
             },
-            None => {
-                let mut styles = CharacterStyles::new();
-                styles.reset_all();
-                styles
-            },
-        };
-        let terminal_character = TerminalCharacter {
-            character,
-            styles,
-            width: character.width().unwrap_or(0),
-        };
+            None => {},
+        });
+        let terminal_character = TerminalCharacter::new_styled(character, styles);
         colored_string.push(terminal_character);
     }
     colored_string

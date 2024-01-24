@@ -289,6 +289,43 @@ pub enum Sessions {
     ConvertTheme {
         old_theme_file: PathBuf,
     },
+    /// Send data to one or more plugins, launch them if they are not running.
+    #[clap(override_usage(
+r#"
+zellij pipe [OPTIONS] [--] <PAYLOAD>
+
+* Send data to a specific plugin:
+
+zellij pipe --plugin file:/path/to/my/plugin.wasm --name my_pipe_name -- my_arbitrary_data
+
+* To all running plugins (that are listening):
+
+zellij pipe --name my_pipe_name -- my_arbitrary_data
+
+* Pipe data into this command's STDIN and get output from the plugin on this command's STDOUT
+
+tail -f /tmp/my-live-logfile | zellij pipe --name logs --plugin https://example.com/my-plugin.wasm | wc -l
+"#))]
+    Pipe {
+        /// The name of the pipe
+        #[clap(short, long, value_parser, display_order(1))]
+        name: Option<String>,
+        /// The data to send down this pipe (if blank, will listen to STDIN)
+        payload: Option<String>,
+
+        #[clap(short, long, value_parser, display_order(2))]
+        /// The args of the pipe
+        args: Option<PluginUserConfiguration>, // TODO: we might want to not re-use
+        // PluginUserConfiguration
+        /// The plugin url (eg. file:/tmp/my-plugin.wasm) to direct this pipe to, if not specified,
+        /// will be sent to all plugins, if specified and is not running, the plugin will be launched
+        #[clap(short, long, value_parser, display_order(3))]
+        plugin: Option<String>,
+        /// The plugin configuration (note: the same plugin with different configuration is
+        /// considered a different plugin for the purposes of determining the pipe destination)
+        #[clap(short('c'), long, value_parser, display_order(4))]
+        plugin_configuration: Option<PluginUserConfiguration>,
+    },
 }
 
 #[derive(Debug, Subcommand, Clone, Serialize, Deserialize)]
@@ -548,5 +585,80 @@ pub enum CliAction {
     },
     RenameSession {
         name: String,
+    },
+    /// Send data to one or more plugins, launch them if they are not running.
+    #[clap(override_usage(
+r#"
+zellij action pipe [OPTIONS] [--] <PAYLOAD>
+
+* Send data to a specific plugin:
+
+zellij action pipe --plugin file:/path/to/my/plugin.wasm --name my_pipe_name -- my_arbitrary_data
+
+* To all running plugins (that are listening):
+
+zellij action pipe --name my_pipe_name -- my_arbitrary_data
+
+* Pipe data into this command's STDIN and get output from the plugin on this command's STDOUT
+
+tail -f /tmp/my-live-logfile | zellij action pipe --name logs --plugin https://example.com/my-plugin.wasm | wc -l
+"#))]
+    Pipe {
+        /// The name of the pipe
+        #[clap(short, long, value_parser, display_order(1))]
+        name: Option<String>,
+        /// The data to send down this pipe (if blank, will listen to STDIN)
+        payload: Option<String>,
+
+        #[clap(short, long, value_parser, display_order(2))]
+        /// The args of the pipe
+        args: Option<PluginUserConfiguration>, // TODO: we might want to not re-use
+        // PluginUserConfiguration
+        /// The plugin url (eg. file:/tmp/my-plugin.wasm) to direct this pipe to, if not specified,
+        /// will be sent to all plugins, if specified and is not running, the plugin will be launched
+        #[clap(short, long, value_parser, display_order(3))]
+        plugin: Option<String>,
+        /// The plugin configuration (note: the same plugin with different configuration is
+        /// considered a different plugin for the purposes of determining the pipe destination)
+        #[clap(short('c'), long, value_parser, display_order(4))]
+        plugin_configuration: Option<PluginUserConfiguration>,
+        /// Launch a new plugin even if one is already running
+        #[clap(
+            short('l'),
+            long,
+            value_parser,
+            takes_value(false),
+            default_value("false"),
+            display_order(5)
+        )]
+        force_launch_plugin: bool,
+        /// If launching a new plugin, skip cache and force-compile the plugin
+        #[clap(
+            short('s'),
+            long,
+            value_parser,
+            takes_value(false),
+            default_value("false"),
+            display_order(6)
+        )]
+        skip_plugin_cache: bool,
+        /// If launching a plugin, should it be floating or not, defaults to floating
+        #[clap(short('f'), long, value_parser, display_order(7))]
+        floating_plugin: Option<bool>,
+        /// If launching a plugin, launch it in-place (on top of the current pane)
+        #[clap(
+            short('i'),
+            long,
+            value_parser,
+            conflicts_with("floating-plugin"),
+            display_order(8)
+        )]
+        in_place_plugin: Option<bool>,
+        /// If launching a plugin, specify its working directory
+        #[clap(short('w'), long, value_parser, display_order(9))]
+        plugin_cwd: Option<PathBuf>,
+        /// If launching a plugin, specify its pane title
+        #[clap(short('t'), long, value_parser, display_order(10))]
+        plugin_title: Option<String>,
     },
 }

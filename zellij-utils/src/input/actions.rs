@@ -13,6 +13,8 @@ use crate::input::config::{Config, ConfigError, KdlError};
 use crate::input::options::OnForceClose;
 use miette::{NamedSource, Report};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
+use uuid::Uuid;
 
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -257,6 +259,20 @@ pub enum Action {
     BreakPaneRight,
     BreakPaneLeft,
     RenameSession(String),
+    CliPipe {
+        pipe_id: String,
+        name: Option<String>,
+        payload: Option<String>,
+        args: Option<BTreeMap<String, String>>,
+        plugin: Option<String>,
+        configuration: Option<BTreeMap<String, String>>,
+        launch_new: bool,
+        skip_cache: bool,
+        floating: Option<bool>,
+        in_place: Option<bool>,
+        cwd: Option<PathBuf>,
+        pane_title: Option<String>,
+    },
 }
 
 impl Action {
@@ -583,6 +599,41 @@ impl Action {
                 )])
             },
             CliAction::RenameSession { name } => Ok(vec![Action::RenameSession(name)]),
+            CliAction::Pipe {
+                name,
+                payload,
+                args,
+                plugin,
+                plugin_configuration,
+                force_launch_plugin,
+                skip_plugin_cache,
+                floating_plugin,
+                in_place_plugin,
+                plugin_cwd,
+                plugin_title,
+            } => {
+                let current_dir = get_current_dir();
+                let cwd = plugin_cwd
+                    .map(|cwd| current_dir.join(cwd))
+                    .or_else(|| Some(current_dir));
+                let skip_cache = skip_plugin_cache;
+                let pipe_id = Uuid::new_v4().to_string();
+                Ok(vec![Action::CliPipe {
+                    pipe_id,
+                    name,
+                    payload,
+                    args: args.map(|a| a.inner().clone()), // TODO: no clone somehow
+                    plugin,
+                    configuration: plugin_configuration.map(|a| a.inner().clone()), // TODO: no clone
+                    // somehow
+                    launch_new: force_launch_plugin,
+                    floating: floating_plugin,
+                    in_place: in_place_plugin,
+                    cwd,
+                    pane_title: plugin_title,
+                    skip_cache,
+                }])
+            },
         }
     }
 }

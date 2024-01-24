@@ -111,6 +111,31 @@ fn main() {
             commands::convert_old_theme_file(old_theme_file);
             std::process::exit(0);
         }
+        if let Some(Command::Sessions(Sessions::Pipe {
+            name,
+            payload,
+            args,
+            plugin,
+            plugin_configuration,
+        })) = opts.command
+        {
+            let command_cli_action = CliAction::Pipe {
+                name,
+                payload,
+                args,
+                plugin,
+                plugin_configuration,
+
+                force_launch_plugin: false,
+                skip_plugin_cache: false,
+                floating_plugin: None,
+                in_place_plugin: None,
+                plugin_cwd: None,
+                plugin_title: None,
+            };
+            commands::send_action_to_session(command_cli_action, opts.session, config);
+            std::process::exit(0);
+        }
     }
 
     if let Some(Command::Sessions(Sessions::ListSessions {

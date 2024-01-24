@@ -5,7 +5,7 @@ pub struct Action {
     pub name: i32,
     #[prost(
         oneof = "action::OptionalPayload",
-        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47"
+        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48"
     )]
     pub optional_payload: ::core::option::Option<action::OptionalPayload>,
 }
@@ -104,9 +104,23 @@ pub mod action {
         RenameSessionPayload(::prost::alloc::string::String),
         #[prost(message, tag = "46")]
         LaunchPluginPayload(super::LaunchOrFocusPluginPayload),
-        #[prost(enumeration = "super::MoveTabDirection", tag = "47")]
+        #[prost(message, tag = "47")]
+        MessagePayload(super::CliPipePayload),
+        #[prost(enumeration = "super::MoveTabDirection", tag = "48")]
         MoveTabPayload(i32),
     }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CliPipePayload {
+    #[prost(string, optional, tag = "1")]
+    pub name: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, tag = "2")]
+    pub payload: ::prost::alloc::string::String,
+    #[prost(message, repeated, tag = "3")]
+    pub args: ::prost::alloc::vec::Vec<NameAndValue>,
+    #[prost(string, optional, tag = "4")]
+    pub plugin: ::core::option::Option<::prost::alloc::string::String>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -412,7 +426,8 @@ pub enum ActionName {
     BreakPaneLeft = 79,
     RenameSession = 80,
     LaunchPlugin = 81,
-    MoveTab = 82,
+    CliPipe = 82,
+    MoveTab = 83,
 }
 impl ActionName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -503,6 +518,7 @@ impl ActionName {
             ActionName::BreakPaneLeft => "BreakPaneLeft",
             ActionName::RenameSession => "RenameSession",
             ActionName::LaunchPlugin => "LaunchPlugin",
+            ActionName::CliPipe => "CliPipe",
             ActionName::MoveTab => "MoveTab",
         }
     }
@@ -591,6 +607,7 @@ impl ActionName {
             "BreakPaneLeft" => Some(Self::BreakPaneLeft),
             "RenameSession" => Some(Self::RenameSession),
             "LaunchPlugin" => Some(Self::LaunchPlugin),
+            "CliPipe" => Some(Self::CliPipe),
             "MoveTab" => Some(Self::MoveTab),
             _ => None,
         }

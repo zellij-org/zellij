@@ -16,7 +16,7 @@ use std::time::{self, Instant};
 use zellij_utils::input::command::RunCommand;
 use zellij_utils::pane_size::Offset;
 use zellij_utils::{
-    data::{InputMode, Palette, PaletteColor, Style},
+    data::{InputMode, Palette, PaletteColor, PaneId as ZellijUtilsPaneId, Style},
     errors::prelude::*,
     input::layout::Run,
     pane_size::PaneGeom,
@@ -83,6 +83,16 @@ impl AnsiEncoding {
 pub enum PaneId {
     Terminal(u32),
     Plugin(u32), // FIXME: Drop the trait object, make this a wrapper for the struct?
+}
+
+// because crate architecture and reasons...
+impl From<ZellijUtilsPaneId> for PaneId {
+    fn from(zellij_utils_pane_id: ZellijUtilsPaneId) -> Self {
+        match zellij_utils_pane_id {
+            ZellijUtilsPaneId::Terminal(id) => PaneId::Terminal(id),
+            ZellijUtilsPaneId::Plugin(id) => PaneId::Plugin(id),
+        }
+    }
 }
 
 type IsFirstRun = bool;
@@ -427,8 +437,10 @@ impl Pane for TerminalPane {
                 .grid
                 .get_character_under_cursor()
                 .unwrap_or(EMPTY_TERMINAL_CHARACTER);
-            character_under_cursor.styles.background = Some(cursor_color.into());
-            character_under_cursor.styles.foreground = Some(text_color.into());
+            character_under_cursor.styles.update(|styles| {
+                styles.background = Some(cursor_color.into());
+                styles.foreground = Some(text_color.into());
+            });
             // we keep track of these so that we can clear them up later (see render function)
             self.fake_cursor_locations.insert((cursor_y, cursor_x));
             let mut fake_cursor = format!(

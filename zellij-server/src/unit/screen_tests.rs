@@ -125,6 +125,7 @@ fn send_cli_action_to_server(
             client_attributes.clone(),
             default_shell.clone(),
             default_layout.clone(),
+            None,
         )
         .unwrap();
     }

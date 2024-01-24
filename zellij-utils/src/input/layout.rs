@@ -265,6 +265,9 @@ impl PluginUserConfiguration {
     pub fn inner(&self) -> &BTreeMap<String, String> {
         &self.0
     }
+    pub fn insert(&mut self, config_key: impl Into<String>, config_value: impl Into<String>) {
+        self.0.insert(config_key.into(), config_value.into());
+    }
 }
 
 impl FromStr for PluginUserConfiguration {
@@ -883,7 +886,7 @@ impl Layout {
             None => {
                 let home = find_default_config_dir();
                 let Some(home) = home else {
-                    return Layout::stringified_from_default_assets(layout)
+                    return Layout::stringified_from_default_assets(layout);
                 };
 
                 let layout_path = &home.join(layout);

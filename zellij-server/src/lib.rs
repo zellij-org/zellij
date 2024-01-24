@@ -85,14 +85,21 @@ pub enum ServerInstruction {
     ConnStatus(ClientId),
     ActiveClients(ClientId),
     Log(Vec<String>, ClientId),
+    LogError(Vec<String>, ClientId),
     SwitchSession(ConnectToSession, ClientId),
+    UnblockCliPipeInput(String),   // String -> Pipe name
+    CliPipeOutput(String, String), // String -> Pipe name, String -> Output
+    AssociatePipeWithClient {
+        pipe_id: String,
+        client_id: ClientId,
+    },
 }
 
 impl From<&ServerInstruction> for ServerContext {
     fn from(server_instruction: &ServerInstruction) -> Self {
         match *server_instruction {
             ServerInstruction::NewClient(..) => ServerContext::NewClient,
-            ServerInstruction::Render(_) => ServerContext::Render,
+            ServerInstruction::Render(..) => ServerContext::Render,
             ServerInstruction::UnblockInputThread => ServerContext::UnblockInputThread,
             ServerInstruction::ClientExit(..) => ServerContext::ClientExit,
             ServerInstruction::RemoveClient(..) => ServerContext::RemoveClient,
@@ -103,7 +110,13 @@ impl From<&ServerInstruction> for ServerContext {
             ServerInstruction::ConnStatus(..) => ServerContext::ConnStatus,
             ServerInstruction::ActiveClients(_) => ServerContext::ActiveClients,
             ServerInstruction::Log(..) => ServerContext::Log,
+            ServerInstruction::LogError(..) => ServerContext::LogError,
             ServerInstruction::SwitchSession(..) => ServerContext::SwitchSession,
+            ServerInstruction::UnblockCliPipeInput(..) => ServerContext::UnblockCliPipeInput,
+            ServerInstruction::CliPipeOutput(..) => ServerContext::CliPipeOutput,
+            ServerInstruction::AssociatePipeWithClient { .. } => {
+                ServerContext::AssociatePipeWithClient
+            },
         }
     }
 }
@@ -186,12 +199,14 @@ macro_rules! send_to_client {
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct SessionState {
     clients: HashMap<ClientId, Option<Size>>,
+    pipes: HashMap<String, ClientId>, // String => pipe_id
 }
 
 impl SessionState {
     pub fn new() -> Self {
         SessionState {
             clients: HashMap::new(),
+            pipes: HashMap::new(),
         }
     }
     pub fn new_client(&mut self) -> ClientId {
@@ -207,8 +222,12 @@ impl SessionState {
         self.clients.insert(next_client_id, None);
         next_client_id
     }
+    pub fn associate_pipe_with_client(&mut self, pipe_id: String, client_id: ClientId) {
+        self.pipes.insert(pipe_id, client_id);
+    }
     pub fn remove_client(&mut self, client_id: ClientId) {
         self.clients.remove(&client_id);
+        self.pipes.retain(|_p_id, c_id| c_id != &client_id);
     }
     pub fn set_client_size(&mut self, client_id: ClientId, size: Size) {
         self.clients.insert(client_id, Some(size));
@@ -239,6 +258,17 @@ impl SessionState {
     }
     pub fn client_ids(&self) -> Vec<ClientId> {
         self.clients.keys().copied().collect()
+    }
+    pub fn active_clients_are_connected(&self) -> bool {
+        let ids_of_pipe_clients: HashSet<ClientId> = self.pipes.values().copied().collect();
+        let mut active_clients_connected = false;
+        for client_id in self.clients.keys() {
+            if ids_of_pipe_clients.contains(client_id) {
+                continue;
+            }
+            active_clients_connected = true;
+        }
+        active_clients_connected
     }
 }
 
@@ -490,6 +520,52 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     );
                 }
             },
+            ServerInstruction::UnblockCliPipeInput(pipe_name) => {
+                match session_state.read().unwrap().pipes.get(&pipe_name) {
+                    Some(client_id) => {
+                        send_to_client!(
+                            *client_id,
+                            os_input,
+                            ServerToClientMsg::UnblockCliPipeInput(pipe_name.clone()),
+                            session_state
+                        );
+                    },
+                    None => {
+                        // send to all clients, this pipe might not have been associated yet
+                        for client_id in session_state.read().unwrap().clients.keys() {
+                            send_to_client!(
+                                *client_id,
+                                os_input,
+                                ServerToClientMsg::UnblockCliPipeInput(pipe_name.clone()),
+                                session_state
+                            );
+                        }
+                    },
+                }
+            },
+            ServerInstruction::CliPipeOutput(pipe_name, output) => {
+                match session_state.read().unwrap().pipes.get(&pipe_name) {
+                    Some(client_id) => {
+                        send_to_client!(
+                            *client_id,
+                            os_input,
+                            ServerToClientMsg::CliPipeOutput(pipe_name.clone(), output.clone()),
+                            session_state
+                        );
+                    },
+                    None => {
+                        // send to all clients, this pipe might not have been associated yet
+                        for client_id in session_state.read().unwrap().clients.keys() {
+                            send_to_client!(
+                                *client_id,
+                                os_input,
+                                ServerToClientMsg::CliPipeOutput(pipe_name.clone(), output.clone()),
+                                session_state
+                            );
+                        }
+                    },
+                }
+            },
             ServerInstruction::ClientExit(client_id) => {
                 let _ =
                     os_input.send_to_client(client_id, ServerToClientMsg::Exit(ExitReason::Normal));
@@ -520,8 +596,19 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .senders
                     .send_to_plugin(PluginInstruction::RemoveClient(client_id))
                     .unwrap();
-                if session_state.read().unwrap().clients.is_empty() {
+                if !session_state.read().unwrap().active_clients_are_connected() {
                     *session_data.write().unwrap() = None;
+                    let client_ids_to_cleanup: Vec<ClientId> = session_state
+                        .read()
+                        .unwrap()
+                        .clients
+                        .keys()
+                        .copied()
+                        .collect();
+                    // these are just the pipes
+                    for client_id in client_ids_to_cleanup {
+                        remove_client!(client_id, os_input, session_state);
+                    }
                     break;
                 }
             },
@@ -654,6 +741,14 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     session_state
                 );
             },
+            ServerInstruction::LogError(lines_to_log, client_id) => {
+                send_to_client!(
+                    client_id,
+                    os_input,
+                    ServerToClientMsg::LogError(lines_to_log),
+                    session_state
+                );
+            },
             ServerInstruction::SwitchSession(connect_to_session, client_id) => {
                 if let Some(min_size) = session_state.read().unwrap().min_client_terminal_size() {
                     session_data
@@ -688,6 +783,12 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     session_state
                 );
                 remove_client!(client_id, os_input, session_state);
+            },
+            ServerInstruction::AssociatePipeWithClient { pipe_id, client_id } => {
+                session_state
+                    .write()
+                    .unwrap()
+                    .associate_pipe_with_client(pipe_id, client_id);
             },
         }
     }
@@ -825,7 +926,7 @@ fn init_session(
         .spawn({
             let plugin_bus = Bus::new(
                 vec![plugin_receiver],
-                Some(&to_screen),
+                Some(&to_screen_bounded),
                 Some(&to_pty),
                 Some(&to_plugin),
                 Some(&to_server),
