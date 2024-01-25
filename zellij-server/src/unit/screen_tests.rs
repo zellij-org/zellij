@@ -245,6 +245,7 @@ fn create_new_screen(size: Size) -> Screen {
     let session_serialization = true;
     let serialize_pane_viewport = false;
     let scrollback_lines_to_serialize = None;
+    let layout_dir = None;
 
     let debug = false;
     let styled_underlines = true;
@@ -266,6 +267,7 @@ fn create_new_screen(size: Size) -> Screen {
         scrollback_lines_to_serialize,
         styled_underlines,
         arrow_fonts,
+        layout_dir,
     );
     screen
 }
@@ -425,6 +427,7 @@ impl MockScreen {
             plugin_thread: None,
             pty_writer_thread: None,
             background_jobs_thread: None,
+            config_options: Default::default(),
             layout,
         }
     }
@@ -481,6 +484,7 @@ impl MockScreen {
             plugin_thread: None,
             pty_writer_thread: None,
             background_jobs_thread: None,
+            config_options: Default::default(),
             layout,
         };
 

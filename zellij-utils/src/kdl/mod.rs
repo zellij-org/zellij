@@ -2520,6 +2520,7 @@ fn serialize_and_deserialize_session_info_with_data() {
         panes: PaneManifest { panes },
         connected_clients: 2,
         is_current_session: false,
+        available_layout_names: vec!["layout1".to_owned(), "layout2".to_owned(), "layout3".to_owned()],
     };
     let serialized = session_info.to_string();
     let deserealized = SessionInfo::from_string(&serialized, "not this session").unwrap();

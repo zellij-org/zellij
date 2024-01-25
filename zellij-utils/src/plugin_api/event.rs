@@ -1385,6 +1385,7 @@ fn serialize_session_update_event_with_non_default_values() {
         panes: PaneManifest { panes },
         connected_clients: 2,
         is_current_session: true,
+        available_layout_names: vec!["layout 1".to_owned(), "layout2".to_owned(), "layout3".to_owned()],
     };
     let session_info_2 = SessionInfo {
         name: "session 2".to_owned(),
@@ -1394,6 +1395,7 @@ fn serialize_session_update_event_with_non_default_values() {
         },
         connected_clients: 0,
         is_current_session: false,
+        available_layout_names: vec!["layout 1".to_owned(), "layout2".to_owned(), "layout3".to_owned()],
     };
     let session_infos = vec![session_info_1, session_info_2];
     let resurrectable_sessions = vec![];
