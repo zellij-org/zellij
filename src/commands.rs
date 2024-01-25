@@ -433,15 +433,13 @@ pub(crate) fn start_client(opts: CliArgs) {
             // TODO: make sure this work with a specific layout_dir from the cli or a differnt one
             // in the config
             // TODO: CONTINUE HERE: get this from the plugin
-//             let layout_name = "foo"; // TODO: removeme
-//             let layout_name = "/tmp/foolayout.kdl"; // TODO: removeme
             if let Some(layout_name) = &reconnect_to_session.layout {
                 let layout_dir = config.options.layout_dir.clone()
                     .or_else(|| {
                         get_layout_dir(opts.config_dir.clone().or_else(find_default_config_dir))
                     });
                 let new_session_layout = Layout::from_path_or_default(
-                    Some(&PathBuf::from(layout_name)),
+                    Some(layout_name),
                     layout_dir.clone(),
                     config.clone()
                 );

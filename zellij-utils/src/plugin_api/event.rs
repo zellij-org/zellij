@@ -453,6 +453,7 @@ impl TryFrom<SessionInfo> for ProtobufSessionManifest {
                 .collect(),
             connected_clients: session_info.connected_clients as u32,
             is_current_session: session_info.is_current_session,
+            available_layout_names: session_info.available_layout_names,
         })
     }
 }
@@ -485,6 +486,7 @@ impl TryFrom<ProtobufSessionManifest> for SessionInfo {
             panes,
             connected_clients: protobuf_session_manifest.connected_clients as usize,
             is_current_session: protobuf_session_manifest.is_current_session,
+            available_layout_names: protobuf_session_manifest.available_layout_names,
         })
     }
 }

@@ -90,7 +90,12 @@ struct LayoutInfo {
 
 impl LayoutInfo {
     pub fn update_layout_list(&mut self, layout_list: Vec<impl Into<String>>) {
+        let old_layout_length = self.layout_list.len();
         self.layout_list = layout_list.into_iter().map(|l| l.into()).collect();
+        if old_layout_length != self.layout_list.len() {
+            // honestly, this is just the UX choice that sucks the least...
+            self.selected_layout_index = None;
+        }
     }
     pub fn selected_layout_name(&mut self) -> Option<String> {
         self.selected_layout_index.and_then(|i| self.layout_list.get(i).cloned())

@@ -172,6 +172,8 @@ pub struct SessionManifest {
     pub connected_clients: u32,
     #[prost(bool, tag = "5")]
     pub is_current_session: bool,
+    #[prost(string, repeated, tag = "6")]
+    pub available_layout_names: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

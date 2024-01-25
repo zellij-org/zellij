@@ -765,6 +765,7 @@ pub struct SessionInfo {
     pub panes: PaneManifest,
     pub connected_clients: usize,
     pub is_current_session: bool,
+    pub available_layout_names: Vec<String>,
 }
 
 use std::hash::{Hash, Hasher};
@@ -1066,8 +1067,16 @@ pub struct ConnectToSession {
     pub name: Option<String>,
     pub tab_position: Option<usize>,
     pub pane_id: Option<(u32, bool)>, // (id, is_plugin)
-    pub layout: Option<String>, // the layout name or a path to the layout to load for the new
+    pub layout: Option<PathBuf>, // the layout name or a path to the layout to load for the new
                                 // session
+}
+
+impl ConnectToSession {
+    pub fn apply_layout_dir(&mut self, layout_dir: &PathBuf) {
+        if let Some(layout) = self.layout.as_mut() {
+            *layout = Path::join(layout_dir, &layout);
+        }
+    }
 }
 
 #[derive(Debug, Default, Clone)]

@@ -1986,6 +1986,11 @@ impl SessionInfo {
             .and_then(|p| p.children())
             .map(|p| PaneManifest::decode_from_kdl(p))
             .ok_or("Failed to parse panes")?;
+        let available_layout_names: Vec<String> = kdl_document
+            .get("available_layout_names")
+            .and_then(|p| p.children())
+            .map(|e| e.nodes().iter().map(|n| n.name().value().to_owned()).collect())
+            .ok_or("Failed to parse available_layout_names")?;
         let is_current_session = name == current_session_name;
         Ok(SessionInfo {
             name,
@@ -1993,6 +1998,7 @@ impl SessionInfo {
             panes,
             connected_clients,
             is_current_session,
+            available_layout_names,
         })
     }
     pub fn to_string(&self) -> String {
@@ -2017,10 +2023,18 @@ impl SessionInfo {
         let mut panes = KdlNode::new("panes");
         panes.set_children(self.panes.encode_to_kdl());
 
+        let mut available_layout_names = KdlNode::new("available_layout_names");
+        let mut available_layout_names_children = KdlDocument::new();
+        for layout_name in &self.available_layout_names {
+            available_layout_names_children.nodes_mut().push(KdlNode::new(layout_name.as_str()));
+        }
+        available_layout_names.set_children(available_layout_names_children);
+
         kdl_document.nodes_mut().push(name);
         kdl_document.nodes_mut().push(tabs);
         kdl_document.nodes_mut().push(panes);
         kdl_document.nodes_mut().push(connected_clients);
+        kdl_document.nodes_mut().push(available_layout_names);
         kdl_document.fmt();
         kdl_document.to_string()
     }

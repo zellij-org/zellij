@@ -44,7 +44,7 @@ use zellij_utils::{
     consts::{DEFAULT_SCROLL_BUFFER_SIZE, SCROLL_BUFFER_SIZE},
     data::{ConnectToSession, Event, PluginCapabilities},
     errors::{prelude::*, ContextType, ErrorInstruction, FatalError, ServerContext},
-    home::get_default_data_dir,
+    home::{get_default_data_dir, default_layout_dir},
     input::{
         command::{RunCommand, TerminalAction},
         get_mode_info,
@@ -133,6 +133,7 @@ pub(crate) struct SessionMetaData {
     pub client_attributes: ClientAttributes,
     pub default_shell: Option<TerminalAction>,
     pub layout: Box<Layout>,
+    pub config_options: Box<Options>,
     screen_thread: Option<thread::JoinHandle<()>>,
     pty_thread: Option<thread::JoinHandle<()>>,
     plugin_thread: Option<thread::JoinHandle<()>>,
@@ -749,7 +750,16 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     session_state
                 );
             },
-            ServerInstruction::SwitchSession(connect_to_session, client_id) => {
+            ServerInstruction::SwitchSession(mut connect_to_session, client_id) => {
+                let layout_dir = session_data
+                    .read()
+                    .unwrap()
+                    .as_ref()
+                    .and_then(|c| c.config_options.layout_dir.clone())
+                    .or_else(|| default_layout_dir());
+                if let Some(layout_dir) = layout_dir {
+                    connect_to_session.apply_layout_dir(&layout_dir);
+                }
                 if let Some(min_size) = session_state.read().unwrap().min_client_terminal_size() {
                     session_data
                         .write()
@@ -906,6 +916,7 @@ fn init_session(
             let client_attributes_clone = client_attributes.clone();
             let debug = opts.debug;
             let layout = layout.clone();
+            let config_options = config_options.clone();
             move || {
                 screen_thread_main(
                     screen_bus,
@@ -1006,6 +1017,7 @@ fn init_session(
         default_shell,
         client_attributes,
         layout,
+        config_options: config_options.clone(),
         screen_thread: Some(screen_thread),
         pty_thread: Some(pty_thread),
         plugin_thread: Some(plugin_thread),

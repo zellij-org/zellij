@@ -577,6 +577,7 @@ pub(crate) struct Screen {
     default_shell: Option<PathBuf>,
     styled_underlines: bool,
     arrow_fonts: bool,
+    layout_dir: Option<PathBuf>,
 }
 
 impl Screen {
@@ -598,6 +599,7 @@ impl Screen {
         scrollback_lines_to_serialize: Option<usize>,
         styled_underlines: bool,
         arrow_fonts: bool,
+        layout_dir: Option<PathBuf>,
     ) -> Self {
         let session_name = mode_info.session_name.clone().unwrap_or_default();
         let session_info = SessionInfo::new(session_name.clone());
@@ -636,6 +638,7 @@ impl Screen {
             styled_underlines,
             arrow_fonts,
             resurrectable_sessions,
+            layout_dir,
         }
     }
 
@@ -1412,12 +1415,14 @@ impl Screen {
         // generate own session info
         let pane_manifest = self.generate_and_report_pane_state()?;
         let tab_infos = self.generate_and_report_tab_state()?;
+        let available_layout_names = Layout::list_available_layouts(self.layout_dir.clone());
         let session_info = SessionInfo {
             name: self.session_name.clone(),
             tabs: tab_infos,
             panes: pane_manifest,
             connected_clients: self.active_tab_indices.keys().len(),
             is_current_session: true,
+            available_layout_names,
         };
         self.bus
             .senders
@@ -2101,6 +2106,7 @@ pub(crate) fn screen_thread_main(
     let serialize_pane_viewport = config_options.serialize_pane_viewport.unwrap_or(false);
     let scrollback_lines_to_serialize = config_options.scrollback_lines_to_serialize;
     let session_is_mirrored = config_options.mirror_session.unwrap_or(false);
+    let layout_dir = config_options.layout_dir;
     let default_shell = config_options.default_shell;
     let copy_options = CopyOptions::new(
         config_options.copy_command,
@@ -2134,6 +2140,7 @@ pub(crate) fn screen_thread_main(
         scrollback_lines_to_serialize,
         styled_underlines,
         arrow_fonts,
+        layout_dir,
     );
 
     let mut pending_tab_ids: HashSet<usize> = HashSet::new();

@@ -10,7 +10,7 @@
 //  then [`zellij-utils`] could be a proper place.
 use crate::{
     data::Direction,
-    home::find_default_config_dir,
+    home::{find_default_config_dir, default_layout_dir},
     input::{
         command::RunCommand,
         config::{Config, ConfigError},
@@ -819,6 +819,32 @@ impl Default for LayoutParts {
 }
 
 impl Layout {
+    pub fn list_available_layouts(layout_dir: Option<PathBuf>) -> Vec<String> {
+        layout_dir
+            .clone()
+            .or_else(|| default_layout_dir())
+            .and_then(|layout_dir| match std::fs::read_dir(layout_dir) {
+                Ok(layout_files) => Some(layout_files),
+                Err(e) => {
+                    log::error!("Failed to read layout dir: {:?}", e);
+                    None
+                }
+            })
+            .map(|layout_files| {
+                let mut available_layouts = vec![];
+                for file in layout_files {
+                    if let Ok(file) = file {
+                        if Layout::from_path_or_default_without_config(Some(&file.path()), layout_dir.clone()).is_ok() {
+                            if let Some(file_name) = file.path().file_stem() {
+                                available_layouts.push(file_name.to_string_lossy().to_string());
+                            }
+                        }
+                    }
+                }
+                available_layouts
+            })
+            .unwrap_or_else(Default::default)
+    }
     pub fn stringified_from_path_or_default(
         layout_path: Option<&PathBuf>,
         layout_dir: Option<PathBuf>,
@@ -860,6 +886,22 @@ impl Layout {
         )?;
         let config = Config::from_kdl(&raw_layout, Some(config))?; // this merges the two config, with
         Ok((layout, config))
+    }
+    pub fn from_path_or_default_without_config(
+        layout_path: Option<&PathBuf>,
+        layout_dir: Option<PathBuf>,
+    ) -> Result<Layout, ConfigError> {
+        let (path_to_raw_layout, raw_layout, raw_swap_layouts) =
+            Layout::stringified_from_path_or_default(layout_path, layout_dir)?;
+        let layout = Layout::from_kdl(
+            &raw_layout,
+            path_to_raw_layout,
+            raw_swap_layouts
+                .as_ref()
+                .map(|(r, f)| (r.as_str(), f.as_str())),
+            None,
+        )?;
+        Ok(layout)
     }
     pub fn from_str(
         raw: &str,

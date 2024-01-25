@@ -35,16 +35,6 @@ register_plugin!(State);
 
 impl ZellijPlugin for State {
     fn load(&mut self, _configuration: BTreeMap<String, String>) {
-        self.new_session_info.update_layout_list(vec![
-            "default-rust",
-            "foo",
-            "supermode",
-            "test",
-            "test1",
-            "zellij-add-screen-action",
-            "zellij-e2e",
-            "zjstatus",
-        ]);
         subscribe(&[
             EventType::ModeUpdate,
             EventType::SessionUpdate,
@@ -67,6 +57,11 @@ impl ZellijPlugin for State {
                 should_render = true;
             },
             Event::SessionUpdate(session_infos, resurrectable_session_list) => {
+                for session_info in &session_infos {
+                    if session_info.is_current_session {
+                        self.new_session_info.update_layout_list(session_info.available_layout_names.iter().map(|l| l.as_str()).collect());
+                    }
+                }
                 self.resurrectable_sessions
                     .update(resurrectable_session_list);
                 self.update_session_infos(session_infos);

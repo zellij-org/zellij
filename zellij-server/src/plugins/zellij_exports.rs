@@ -901,7 +901,7 @@ fn switch_session(
     session_name: Option<String>,
     tab_position: Option<usize>,
     pane_id: Option<(u32, bool)>,
-    layout: Option<String>,
+    layout: Option<PathBuf>,
 ) -> Result<()> {
     // pane_id is (id, is_plugin)
     let err_context = || format!("Failed to switch session");

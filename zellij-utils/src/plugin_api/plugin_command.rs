@@ -574,7 +574,7 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                         name: payload.name,
                         tab_position: payload.tab_position.map(|p| p as usize),
                         pane_id,
-                        layout: payload.layout,
+                        layout: payload.layout.map(|l| PathBuf::from(l)),
                     }))
                 },
                 _ => Err("Mismatched payload for SwitchSession"),
@@ -1083,7 +1083,7 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     tab_position: switch_to_session.tab_position.map(|t| t as u32),
                     pane_id: switch_to_session.pane_id.map(|p| p.0),
                     pane_id_is_plugin: switch_to_session.pane_id.map(|p| p.1),
-                    layout: switch_to_session.layout,
+                    layout: switch_to_session.layout.map(|l| l.display().to_string()),
                 })),
             }),
             PluginCommand::OpenTerminalInPlace(cwd) => Ok(ProtobufPluginCommand {
