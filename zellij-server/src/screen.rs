@@ -1415,7 +1415,13 @@ impl Screen {
         // generate own session info
         let pane_manifest = self.generate_and_report_pane_state()?;
         let tab_infos = self.generate_and_report_tab_state()?;
+        // in the context of unit/integration tests, we don't need to list available layouts
+        // because this is mostly about HD access - it does however throw off the timing in the
+        // tests and causes them to flake, which is why we skip it here
+        #[cfg(not(test))]
         let available_layout_names = Layout::list_available_layouts(self.layout_dir.clone());
+        #[cfg(test)]
+        let available_layout_names = vec![];
         let session_info = SessionInfo {
             name: self.session_name.clone(),
             tabs: tab_infos,

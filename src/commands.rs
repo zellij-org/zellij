@@ -430,9 +430,6 @@ pub(crate) fn start_client(opts: CliArgs) {
             //
             // *** integration code for switching to a new session with a specific layout
             //
-            // TODO: make sure this work with a specific layout_dir from the cli or a differnt one
-            // in the config
-            // TODO: CONTINUE HERE: get this from the plugin
             if let Some(layout_name) = &reconnect_to_session.layout {
                 let layout_dir = config.options.layout_dir.clone()
                     .or_else(|| {

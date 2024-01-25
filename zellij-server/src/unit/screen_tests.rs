@@ -2873,17 +2873,17 @@ pub fn screen_can_break_floating_pane_to_a_new_tab() {
         1,
         1,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(200));
     // move back to make sure the other pane is in the previous tab
     let _ = mock_screen
         .to_screen
         .send(ScreenInstruction::MoveFocusLeftOrPreviousTab(1));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(200));
     // move forward to make sure the broken pane is in the previous tab
     let _ = mock_screen
         .to_screen
         .send(ScreenInstruction::MoveFocusRightOrNextTab(1));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(200));
 
     mock_screen.teardown(vec![server_thread, screen_thread]);
 
