@@ -555,18 +555,24 @@ pub fn render_new_session_block(new_session_info: &NewSessionInfo, colors: Color
 }
 
 pub fn render_layout_selection_list(new_session_info: &NewSessionInfo, max_size_of_new_session_block: usize) {
-    let selection_list: Vec<NestedListItem> = new_session_info.layout_info().into_iter().enumerate().filter_map(|(i, (layout_name, is_selected))| {
-        if i > max_size_of_new_session_block {
-            None
+    print_text(Text::new("     New session layout:"));
+    println!();
+    let mut table = Table::new();
+    if new_session_info.has_selection() {
+        table = table.add_styled_row(vec![Text::new("     - DEFAULT").color_range(0, 5..)]);
+    } else {
+        table = table.add_styled_row(vec![Text::new("<↓↑> - DEFAULT").selected().color_range(3, 0..4).color_range(0, 5..)]);
+    }
+    for (i, (layout_name, is_selected)) in new_session_info.layout_info().into_iter().enumerate() {
+        if i >= max_size_of_new_session_block {
+            break;
         } else if is_selected {
-            Some(NestedListItem::new(layout_name).selected().indent(1).color_range(1, ..))
+            table = table.add_styled_row(vec![Text::new(format!("<↓↑> - {}", layout_name)).selected().color_range(3, 0..4).color_range(1, 7..)]);
         } else {
-            Some(NestedListItem::new(layout_name).indent(1).color_range(1, ..))
+            table = table.add_styled_row(vec![Text::new(format!("     - {}", layout_name)).color_range(1, 7..)]);
         }
-    }).collect();
-    print_text(Text::new("   Layout: <↓↑>").color_range(3, 11..15));
-    println!("");
-    print_nested_list(selection_list);
+    }
+    print_table(table);
 }
 
 pub fn render_error(error_text: &str, rows: usize, columns: usize) {

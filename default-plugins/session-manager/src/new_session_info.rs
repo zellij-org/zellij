@@ -72,6 +72,12 @@ impl NewSessionInfo {
     pub fn layout_count(&self) -> usize {
         self.layout_info.layout_list.len()
     }
+    pub fn selected_layout_name(&self) -> Option<String> {
+        self.layout_info.selected_layout_name()
+    }
+    pub fn has_selection(&self) -> bool {
+        self.layout_info.has_selection()
+    }
     fn move_selection_up(&mut self) {
         self.layout_info.move_selection_up();
     }
@@ -97,18 +103,21 @@ impl LayoutInfo {
             self.selected_layout_index = None;
         }
     }
-    pub fn selected_layout_name(&mut self) -> Option<String> {
+    pub fn selected_layout_name(&self) -> Option<String> {
         self.selected_layout_index.and_then(|i| self.layout_list.get(i).cloned())
     }
     pub fn clear_selection(&mut self) {
         self.selected_layout_index = None;
+    }
+    pub fn has_selection(&self) -> bool {
+        self.selected_layout_index.is_some()
     }
     fn move_selection_up(&mut self) {
         if self.selected_layout_index.is_none() && !self.layout_list.is_empty() {
             self.selected_layout_index = Some(self.layout_list.len().saturating_sub(1));
         } else if let Some(selected_layout_index) = self.selected_layout_index.as_mut() {
             if *selected_layout_index == 0 {
-                *selected_layout_index = self.layout_list.len().saturating_sub(1);
+                self.selected_layout_index = None;
             } else {
                 *selected_layout_index = selected_layout_index.saturating_sub(1);
             }
@@ -119,7 +128,7 @@ impl LayoutInfo {
             self.selected_layout_index = Some(0);
         } else if let Some(selected_layout_index) = self.selected_layout_index.as_mut() {
             if *selected_layout_index == self.layout_list.len().saturating_sub(1) {
-                *selected_layout_index = 0;
+                self.selected_layout_index = None;
             } else {
                 *selected_layout_index += 1;
             }
