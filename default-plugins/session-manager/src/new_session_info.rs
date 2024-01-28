@@ -3,7 +3,7 @@ use zellij_tile::prelude::*;
 #[derive(Default)]
 pub struct NewSessionInfo {
     name: String,
-    layout_info: LayoutInfo,
+    layout_list: LayoutList,
     entering_new_session_info: bool,
 }
 
@@ -48,7 +48,7 @@ impl NewSessionInfo {
         }
     }
     pub fn handle_selection(&mut self, current_session_name: &Option<String>) {
-        let new_session_layout: Option<String> = self.layout_info.selected_layout_name();
+        let new_session_layout: Option<LayoutInfo> = self.layout_list.selected_layout_info();
         let new_session_name = if self.name.is_empty() { None } else { Some(self.name.as_str()) };
         if new_session_name != current_session_name.as_ref().map(|s| s.as_str()) {
             match new_session_layout {
@@ -61,49 +61,49 @@ impl NewSessionInfo {
             }
         }
         self.name.clear();
-        self.layout_info.clear_selection();
+        self.layout_list.clear_selection();
     }
-    pub fn update_layout_list(&mut self, layout_list: Vec<impl Into<String>>) {
-        self.layout_info.update_layout_list(layout_list);
+    pub fn update_layout_list(&mut self, layout_info: Vec<LayoutInfo>) {
+        self.layout_list.update_layout_list(layout_info);
     }
-    pub fn layout_info(&self) -> Vec<(String, bool)> { // bool - is_selected
-        self.layout_info.layout_list.iter().enumerate().map(|(i, l)| (l.clone(), Some(i) == self.layout_info.selected_layout_index)).collect()
+    pub fn layout_list(&self) -> Vec<(LayoutInfo, bool)> { // bool - is_selected
+        self.layout_list.layout_list.iter().enumerate().map(|(i, l)| (l.clone(), Some(i) == self.layout_list.selected_layout_index)).collect()
     }
     pub fn layout_count(&self) -> usize {
-        self.layout_info.layout_list.len()
+        self.layout_list.layout_list.len()
     }
-    pub fn selected_layout_name(&self) -> Option<String> {
-        self.layout_info.selected_layout_name()
+    pub fn selected_layout_info(&self) -> Option<LayoutInfo> {
+        self.layout_list.selected_layout_info()
     }
     pub fn has_selection(&self) -> bool {
-        self.layout_info.has_selection()
+        self.layout_list.has_selection()
     }
     fn move_selection_up(&mut self) {
-        self.layout_info.move_selection_up();
+        self.layout_list.move_selection_up();
     }
     fn move_selection_down(&mut self) {
-        self.layout_info.move_selection_down();
+        self.layout_list.move_selection_down();
 
     }
 
 }
 
 #[derive(Default)]
-struct LayoutInfo {
-    layout_list: Vec<String>,
+struct LayoutList {
+    layout_list: Vec<LayoutInfo>,
     selected_layout_index: Option<usize>,
 }
 
-impl LayoutInfo {
-    pub fn update_layout_list(&mut self, layout_list: Vec<impl Into<String>>) {
+impl LayoutList {
+    pub fn update_layout_list(&mut self, layout_list: Vec<LayoutInfo>) {
         let old_layout_length = self.layout_list.len();
-        self.layout_list = layout_list.into_iter().map(|l| l.into()).collect();
+        self.layout_list = layout_list;
         if old_layout_length != self.layout_list.len() {
             // honestly, this is just the UX choice that sucks the least...
             self.selected_layout_index = None;
         }
     }
-    pub fn selected_layout_name(&self) -> Option<String> {
+    pub fn selected_layout_info(&self) -> Option<LayoutInfo> {
         self.selected_layout_index.and_then(|i| self.layout_list.get(i).cloned())
     }
     pub fn clear_selection(&mut self) {

@@ -1419,16 +1419,16 @@ impl Screen {
         // because this is mostly about HD access - it does however throw off the timing in the
         // tests and causes them to flake, which is why we skip it here
         #[cfg(not(test))]
-        let available_layout_names = Layout::list_available_layouts(self.layout_dir.clone());
+        let available_layouts = Layout::list_available_layouts(self.layout_dir.clone());
         #[cfg(test)]
-        let available_layout_names = vec![];
+        let available_layouts = vec![];
         let session_info = SessionInfo {
             name: self.session_name.clone(),
             tabs: tab_infos,
             panes: pane_manifest,
             connected_clients: self.active_tab_indices.keys().len(),
             is_current_session: true,
-            available_layout_names,
+            available_layouts,
         };
         self.bus
             .senders

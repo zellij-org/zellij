@@ -19,7 +19,7 @@ use wasmer::{imports, AsStoreMut, Function, FunctionEnv, FunctionEnvMut, Imports
 use wasmer_wasi::WasiEnv;
 use zellij_utils::data::{
     CommandType, ConnectToSession, HttpVerb, MessageToPlugin, PermissionStatus, PermissionType,
-    PluginPermission,
+    PluginPermission, LayoutInfo
 };
 use zellij_utils::input::permission::PermissionCache;
 
@@ -901,7 +901,7 @@ fn switch_session(
     session_name: Option<String>,
     tab_position: Option<usize>,
     pane_id: Option<(u32, bool)>,
-    layout: Option<PathBuf>,
+    layout: Option<LayoutInfo>,
 ) -> Result<()> {
     // pane_id is (id, is_plugin)
     let err_context = || format!("Failed to switch session");

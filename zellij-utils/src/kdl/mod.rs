@@ -1,7 +1,7 @@
 mod kdl_layout_parser;
 use crate::data::{
     Direction, InputMode, Key, Palette, PaletteColor, PaneInfo, PaneManifest, PermissionType,
-    Resize, SessionInfo, TabInfo,
+    Resize, SessionInfo, TabInfo, LayoutInfo
 };
 use crate::envs::EnvironmentVariables;
 use crate::home::{find_default_config_dir, get_layout_dir};
@@ -1986,11 +1986,28 @@ impl SessionInfo {
             .and_then(|p| p.children())
             .map(|p| PaneManifest::decode_from_kdl(p))
             .ok_or("Failed to parse panes")?;
-        let available_layout_names: Vec<String> = kdl_document
-            .get("available_layout_names")
+        let available_layouts: Vec<LayoutInfo> = kdl_document
+            .get("available_layouts")
             .and_then(|p| p.children())
-            .map(|e| e.nodes().iter().map(|n| n.name().value().to_owned()).collect())
-            .ok_or("Failed to parse available_layout_names")?;
+            .map(|e| e.nodes().iter().filter_map(|n| {
+                let layout_name = n.name().value().to_owned();
+                let layout_source = n
+                    .entries()
+                    .iter()
+                    .find(|e| e.name().map(|n| n.value()) == Some("source"))
+                    .and_then(|e| e.value().as_string());
+                match layout_source {
+                    Some(layout_source) => {
+                        match layout_source {
+                            "built-in" => Some(LayoutInfo::BuiltIn(layout_name)),
+                            "file" => Some(LayoutInfo::File(layout_name)),
+                            _ => None
+                        }
+                    },
+                    None => None
+                }}).collect()
+            )
+            .ok_or("Failed to parse available_layouts")?;
         let is_current_session = name == current_session_name;
         Ok(SessionInfo {
             name,
@@ -1998,7 +2015,7 @@ impl SessionInfo {
             panes,
             connected_clients,
             is_current_session,
-            available_layout_names,
+            available_layouts,
         })
     }
     pub fn to_string(&self) -> String {
@@ -2023,18 +2040,25 @@ impl SessionInfo {
         let mut panes = KdlNode::new("panes");
         panes.set_children(self.panes.encode_to_kdl());
 
-        let mut available_layout_names = KdlNode::new("available_layout_names");
-        let mut available_layout_names_children = KdlDocument::new();
-        for layout_name in &self.available_layout_names {
-            available_layout_names_children.nodes_mut().push(KdlNode::new(layout_name.as_str()));
+        let mut available_layouts = KdlNode::new("available_layouts");
+        let mut available_layouts_children = KdlDocument::new();
+        for layout_info in &self.available_layouts {
+            let (layout_name, layout_source) = match layout_info {
+                LayoutInfo::File(name) => (name.clone(), "file"),
+                LayoutInfo::BuiltIn(name) => (name.clone(), "built-in"),
+            };
+            let mut layout_node = KdlNode::new(format!("{}", layout_name));
+            let layout_source = KdlEntry::new_prop("source", layout_source);
+            layout_node.entries_mut().push(layout_source);
+            available_layouts_children.nodes_mut().push(layout_node);
         }
-        available_layout_names.set_children(available_layout_names_children);
+        available_layouts.set_children(available_layouts_children);
 
         kdl_document.nodes_mut().push(name);
         kdl_document.nodes_mut().push(tabs);
         kdl_document.nodes_mut().push(panes);
         kdl_document.nodes_mut().push(connected_clients);
-        kdl_document.nodes_mut().push(available_layout_names);
+        kdl_document.nodes_mut().push(available_layouts);
         kdl_document.fmt();
         kdl_document.to_string()
     }
@@ -2520,7 +2544,7 @@ fn serialize_and_deserialize_session_info_with_data() {
         panes: PaneManifest { panes },
         connected_clients: 2,
         is_current_session: false,
-        available_layout_names: vec!["layout1".to_owned(), "layout2".to_owned(), "layout3".to_owned()],
+        available_layouts: vec![LayoutInfo::File("layout1".to_owned()), LayoutInfo::BuiltIn("layout2".to_owned()), LayoutInfo::File("layout3".to_owned())],
     };
     let serialized = session_info.to_string();
     let deserealized = SessionInfo::from_string(&serialized, "not this session").unwrap();

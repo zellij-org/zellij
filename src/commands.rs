@@ -18,7 +18,7 @@ use zellij_client::{
 use zellij_server::{os_input_output::get_server_os_input, start_server as start_server_impl};
 use zellij_utils::{
     cli::{CliArgs, Command, SessionCommand, Sessions},
-    data::ConnectToSession,
+    data::{ConnectToSession, LayoutInfo},
     envs,
     input::{
         layout::Layout,
@@ -430,16 +430,29 @@ pub(crate) fn start_client(opts: CliArgs) {
             //
             // *** integration code for switching to a new session with a specific layout
             //
-            if let Some(layout_name) = &reconnect_to_session.layout {
+            log::info!("start of integration bloc, checking for layout?");
+            if let Some(reconnect_layout) = &reconnect_to_session.layout {
+                log::info!("reconnect_layout: {:?}", reconnect_layout);
                 let layout_dir = config.options.layout_dir.clone()
                     .or_else(|| {
                         get_layout_dir(opts.config_dir.clone().or_else(find_default_config_dir))
                     });
-                let new_session_layout = Layout::from_path_or_default(
-                    Some(layout_name),
-                    layout_dir.clone(),
-                    config.clone()
-                );
+                let new_session_layout = match reconnect_layout {
+                    LayoutInfo::BuiltIn(layout_name) => {
+                        Layout::from_default_assets(
+                            &PathBuf::from(layout_name),
+                            layout_dir.clone(),
+                            config.clone()
+                        )
+                    },
+                    LayoutInfo::File(layout_name) => {
+                        Layout::from_path_or_default(
+                            Some(&PathBuf::from(layout_name)),
+                            layout_dir.clone(),
+                            config.clone()
+                        )
+                    }
+                };
                 if let Ok(new_session_layout) = new_session_layout {
                     // TODO: handle error
                     layout = new_session_layout.0; // TODO: also merge config (the .1)

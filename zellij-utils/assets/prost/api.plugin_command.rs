@@ -171,8 +171,8 @@ pub struct SwitchSessionPayload {
     pub pane_id: ::core::option::Option<u32>,
     #[prost(bool, optional, tag = "4")]
     pub pane_id_is_plugin: ::core::option::Option<bool>,
-    #[prost(string, optional, tag = "5")]
-    pub layout: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(message, optional, tag = "5")]
+    pub layout: ::core::option::Option<super::event::LayoutInfo>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

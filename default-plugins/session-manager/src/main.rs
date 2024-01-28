@@ -59,7 +59,7 @@ impl ZellijPlugin for State {
             Event::SessionUpdate(session_infos, resurrectable_session_list) => {
                 for session_info in &session_infos {
                     if session_info.is_current_session {
-                        self.new_session_info.update_layout_list(session_info.available_layout_names.iter().map(|l| l.as_str()).collect());
+                        self.new_session_info.update_layout_list(session_info.available_layouts.clone());
                     }
                 }
                 self.resurrectable_sessions

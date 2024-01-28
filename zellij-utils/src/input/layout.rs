@@ -9,7 +9,7 @@
 //  If plugins should be able to depend on the layout system
 //  then [`zellij-utils`] could be a proper place.
 use crate::{
-    data::Direction,
+    data::{Direction, LayoutInfo},
     home::{find_default_config_dir, default_layout_dir},
     input::{
         command::RunCommand,
@@ -819,8 +819,8 @@ impl Default for LayoutParts {
 }
 
 impl Layout {
-    pub fn list_available_layouts(layout_dir: Option<PathBuf>) -> Vec<String> {
-        layout_dir
+    pub fn list_available_layouts(layout_dir: Option<PathBuf>) -> Vec<LayoutInfo> {
+        let mut available_layouts = layout_dir
             .clone()
             .or_else(|| default_layout_dir())
             .and_then(|layout_dir| match std::fs::read_dir(layout_dir) {
@@ -836,14 +836,22 @@ impl Layout {
                     if let Ok(file) = file {
                         if Layout::from_path_or_default_without_config(Some(&file.path()), layout_dir.clone()).is_ok() {
                             if let Some(file_name) = file.path().file_stem() {
-                                available_layouts.push(file_name.to_string_lossy().to_string());
+                                available_layouts.push(
+                                    LayoutInfo::File(file_name.to_string_lossy().to_string())
+                                )
                             }
                         }
                     }
                 }
                 available_layouts
             })
-            .unwrap_or_else(Default::default)
+            .unwrap_or_else(Default::default);
+        available_layouts.push(LayoutInfo::BuiltIn("default".to_owned()));
+        available_layouts.push(LayoutInfo::BuiltIn("strider".to_owned()));
+        available_layouts.push(LayoutInfo::BuiltIn("disable-status-bar".to_owned()));
+        available_layouts.push(LayoutInfo::BuiltIn("compact".to_owned()));
+        log::info!("available_layouts: {:#?}", available_layouts);
+        available_layouts
     }
     pub fn stringified_from_path_or_default(
         layout_path: Option<&PathBuf>,
@@ -902,6 +910,24 @@ impl Layout {
             None,
         )?;
         Ok(layout)
+    }
+    pub fn from_default_assets(
+        layout_name: &Path,
+        layout_dir: Option<PathBuf>,
+        config: Config,
+    ) -> Result<(Layout, Config), ConfigError> {
+        let (path_to_raw_layout, raw_layout, raw_swap_layouts) =
+            Layout::stringified_from_default_assets(layout_name)?;
+        let layout = Layout::from_kdl(
+            &raw_layout,
+            path_to_raw_layout,
+            raw_swap_layouts
+                .as_ref()
+                .map(|(r, f)| (r.as_str(), f.as_str())),
+            None,
+        )?;
+        let config = Config::from_kdl(&raw_layout, Some(config))?; // this merges the two config, with
+        Ok((layout, config))
     }
     pub fn from_str(
         raw: &str,

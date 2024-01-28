@@ -185,7 +185,7 @@ message SwitchSessionPayload {
   optional uint32 tab_position = 2;
   optional uint32 pane_id = 3;
   optional bool pane_id_is_plugin = 4;
-  optional string layout = 5;
+  optional event.LayoutInfo layout = 5;
 }
 
 message RequestPluginPermissionPayload {

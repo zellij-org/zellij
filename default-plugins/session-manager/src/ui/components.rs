@@ -563,7 +563,11 @@ pub fn render_layout_selection_list(new_session_info: &NewSessionInfo, max_size_
     } else {
         table = table.add_styled_row(vec![Text::new("<↓↑> - DEFAULT").selected().color_range(3, 0..4).color_range(0, 5..)]);
     }
-    for (i, (layout_name, is_selected)) in new_session_info.layout_info().into_iter().enumerate() {
+    for (i, (layout_info, is_selected)) in new_session_info.layout_list().into_iter().enumerate() {
+        let layout_name = match layout_info {
+            LayoutInfo::File(name) => name.clone(),
+            LayoutInfo::BuiltIn(name) => name.clone()
+        };
         if i >= max_size_of_new_session_block {
             break;
         } else if is_selected {
