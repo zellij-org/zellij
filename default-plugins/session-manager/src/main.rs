@@ -79,6 +79,14 @@ impl ZellijPlugin for State {
         } else if let Some(new_session_name) = self.renaming_session_name.as_ref() {
             render_renaming_session_screen(&new_session_name, rows, cols);
             return;
+        } else if self.new_session_info.entering_new_session_info() {
+            let max_size_of_new_session_block = rows;
+            render_new_session_block(
+                &self.new_session_info,
+                self.colors,
+                max_size_of_new_session_block
+            );
+            return;
         }
         render_resurrection_toggle(cols, false);
         render_prompt(
@@ -256,18 +264,19 @@ impl State {
             }
         } else if self.new_session_info.entering_new_session_info() {
             self.new_session_info.handle_selection(&self.session_name);
+            return; // so that we don't hide self
         } else if let Some(renaming_session_name) = &self.renaming_session_name.take() {
             if renaming_session_name.is_empty() {
                 // TODO: implement these, then implement the error UI, then implement the renaming
                 // session screen, then test it
                 self.show_error("New name must not be empty.");
-                return; // s that we don't hide self
+                return; // so that we don't hide self
             } else if self.session_name.as_ref() == Some(renaming_session_name) {
                 // noop - we're already called that!
-                return; // s that we don't hide self
+                return; // so that we don't hide self
             } else if self.sessions.has_session(&renaming_session_name) {
                 self.show_error("A session by this name already exists.");
-                return; // s that we don't hide self
+                return; // so that we don't hide self
             } else if self
                 .resurrectable_sessions
                 .has_session(&renaming_session_name)

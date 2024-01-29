@@ -541,39 +541,65 @@ pub fn render_new_session_block(new_session_info: &NewSessionInfo, colors: Color
     let new_session_shortcut = colors.magenta(new_session_shortcut_text);
     let new_session = colors.bold("New session");
     let enter = colors.magenta("<ENTER>");
-    if new_session_info.entering_new_session_info() {
+    if new_session_info.entering_new_session_name() {
         println!(
-            "\u{1b}[m > {}_ ({}, {} when done)",
+            "\u{1b}[m{}: {}_ ({} when done, blank for random)",
+            colors.bold("New session name"),
             colors.orange(&new_session_info.name()),
-            colors.bold("Type optional name"),
             enter
         );
-        render_layout_selection_list(new_session_info, max_size_of_new_session_block);
+    } else if new_session_info.entering_layout_search_term() {
+        let new_session_name = if new_session_info.name().is_empty() {
+            "<RANDOM>"
+        } else {
+            new_session_info.name()
+        };
+        let esc = colors.magenta("<ESC>");
+        println!(
+            "\u{1b}[m{}: {} ({} to correct)",
+            colors.bold("New session name"),
+            colors.orange(new_session_name),
+            esc,
+        );
+        render_layout_selection_list(new_session_info, max_size_of_new_session_block.saturating_sub(1));
     } else {
         println!("\u{1b}[m > {new_session_shortcut} - {new_session}");
     }
 }
 
 pub fn render_layout_selection_list(new_session_info: &NewSessionInfo, max_size_of_new_session_block: usize) {
-    print_text(Text::new("     New session layout:"));
+    let layout_search_term = new_session_info.layout_search_term();
+    let search_term_len = layout_search_term.width();
+    print_text(Text::new(format!("New session layout: {}_ (Search and select from list, <ENTER> when done)", layout_search_term)).color_range(3, 20..20 + search_term_len).color_range(3, 52 + search_term_len..59 + search_term_len));
     println!();
     let mut table = Table::new();
-    if new_session_info.has_selection() {
-        table = table.add_styled_row(vec![Text::new("     - DEFAULT").color_range(0, 5..)]);
-    } else {
-        table = table.add_styled_row(vec![Text::new("<↓↑> - DEFAULT").selected().color_range(3, 0..4).color_range(0, 5..)]);
-    }
-    for (i, (layout_info, is_selected)) in new_session_info.layout_list().into_iter().enumerate() {
-        let layout_name = match layout_info {
-            LayoutInfo::File(name) => name.clone(),
-            LayoutInfo::BuiltIn(name) => name.clone()
-        };
-        if i >= max_size_of_new_session_block {
+    for (i, (layout_info, indices, is_selected)) in new_session_info.layouts_to_render().into_iter().enumerate() {
+        let layout_name = layout_info.name();
+        let layout_name_len = layout_name.width();
+        let is_builtin = layout_info.is_builtin();
+        if i > max_size_of_new_session_block {
             break;
-        } else if is_selected {
-            table = table.add_styled_row(vec![Text::new(format!("<↓↑> - {}", layout_name)).selected().color_range(3, 0..4).color_range(1, 7..)]);
         } else {
-            table = table.add_styled_row(vec![Text::new(format!("     - {}", layout_name)).color_range(1, 7..)]);
+            let mut layout_cell = if is_builtin {
+                Text::new(format!("{} (built-in)", layout_name))
+                    .color_range(1, 0..layout_name_len)
+                    .color_range(0, layout_name_len + 1..)
+                    .color_indices(3, indices)
+            } else {
+                Text::new(format!("{}", layout_name)).color_range(1, ..).color_indices(3, indices)
+            };
+            if is_selected {
+                layout_cell = layout_cell.selected();
+            }
+            let arrow_cell = if is_selected {
+                Text::new(format!("<↓↑>")).selected().color_range(3, ..)
+            } else {
+                Text::new(format!("    ")).color_range(3, ..)
+            };
+            table = table.add_styled_row(vec![
+                arrow_cell,
+                layout_cell,
+            ]);
         }
     }
     print_table(table);

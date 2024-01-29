@@ -774,6 +774,21 @@ pub enum LayoutInfo {
     File(String),
 }
 
+impl LayoutInfo {
+    pub fn name(&self) -> &str {
+        match self {
+            LayoutInfo::BuiltIn(name) => &name,
+            LayoutInfo::File(name) => &name,
+        }
+    }
+    pub fn is_builtin(&self) -> bool {
+        match self {
+            LayoutInfo::BuiltIn(_name) => true,
+            LayoutInfo::File(_name) => false
+        }
+    }
+}
+
 use std::hash::{Hash, Hasher};
 
 #[allow(clippy::derive_hash_xor_eq)]

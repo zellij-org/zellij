@@ -430,7 +430,6 @@ pub(crate) fn start_client(opts: CliArgs) {
             //
             // *** integration code for switching to a new session with a specific layout
             //
-            log::info!("start of integration bloc, checking for layout?");
             if let Some(reconnect_layout) = &reconnect_to_session.layout {
                 log::info!("reconnect_layout: {:?}", reconnect_layout);
                 let layout_dir = config.options.layout_dir.clone()

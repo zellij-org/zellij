@@ -53,7 +53,6 @@ pub(crate) fn get_resurrectable_sessions() -> Vec<(String, Duration, Layout)> {
                     let raw_layout = match std::fs::read_to_string(&layout_file_name) {
                         Ok(raw_layout) => raw_layout,
                         Err(e) => {
-                            log::error!("Failed to read resurrection layout file: {:?}", e);
                             return None;
                         },
                     };
@@ -62,10 +61,6 @@ pub(crate) fn get_resurrectable_sessions() -> Vec<(String, Duration, Layout)> {
                     {
                         Ok(created) => Some(created),
                         Err(e) => {
-                            log::error!(
-                                "Failed to read created stamp of resurrection file: {:?}",
-                                e
-                            );
                             None
                         },
                     };

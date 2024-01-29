@@ -850,7 +850,6 @@ impl Layout {
         available_layouts.push(LayoutInfo::BuiltIn("strider".to_owned()));
         available_layouts.push(LayoutInfo::BuiltIn("disable-status-bar".to_owned()));
         available_layouts.push(LayoutInfo::BuiltIn("compact".to_owned()));
-        log::info!("available_layouts: {:#?}", available_layouts);
         available_layouts
     }
     pub fn stringified_from_path_or_default(
@@ -1093,21 +1092,11 @@ impl Layout {
                         swap_kdl_layout,
                     )),
                     Err(e) => {
-                        log::warn!(
-                            "Failed to read swap layout file: {}. Error: {:?}",
-                            swap_layout_path.as_os_str().to_string_lossy(),
-                            e
-                        );
                         None
                     },
                 }
             },
             Err(e) => {
-                log::warn!(
-                    "Failed to read swap layout file: {}. Error: {:?}",
-                    swap_layout_path.as_os_str().to_string_lossy(),
-                    e
-                );
                 None
             },
         }
