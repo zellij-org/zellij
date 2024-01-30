@@ -46,8 +46,7 @@ pub(crate) struct TerminalBytes {
 
 impl TerminalBytes {
     pub fn new(
-        #[cfg(unix)]
-        pid: RawFd,
+        #[cfg(unix)] pid: RawFd,
         senders: ThreadSenders,
         os_input: Box<dyn ServerOsApi>,
         debug: bool,
@@ -56,7 +55,7 @@ impl TerminalBytes {
         #[cfg(unix)]
         let async_reader = os_input.async_file_reader(pid);
         #[cfg(windows)]
-        let async_reader = os_input.async_file_reader();
+        let async_reader = os_input.async_file_reader(terminal_id);
 
         TerminalBytes {
             #[cfg(unix)]

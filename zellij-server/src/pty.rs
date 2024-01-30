@@ -10,11 +10,11 @@ use crate::{
     ClientId, ServerInstruction,
 };
 use async_std::task::{self, JoinHandle};
-#[cfg(windows)]
-use sysinfo::Pid;
-use std::{collections::HashMap, path::PathBuf};
 #[cfg(unix)]
 use std::os::unix::io::RawFd;
+use std::{collections::HashMap, path::PathBuf};
+#[cfg(windows)]
+use sysinfo::Pid;
 #[cfg(unix)]
 use zellij_utils::nix::unistd::Pid;
 use zellij_utils::{
@@ -746,34 +746,34 @@ impl Pty {
     fn fill_cwd(&self, terminal_action: &mut TerminalAction, client_id: ClientId) {
         if let TerminalAction::RunCommand(run_command) = terminal_action {
             if run_command.cwd.is_none() {
-                run_command.cwd = self
-                    .active_panes
-                    .get(&client_id)
-                    .and_then(|pane| match pane {
-                        PaneId::Plugin(..) => None,
-                        PaneId::Terminal(id) => self.id_to_child_pid.get(id),
-                    })
-                    .and_then(|winptyreference| {
-                        #[cfg(windows)]
-                        {
-                            let pty = winptyreference.pty.lock().unwrap();
-                            self.bus
-                            .os_input
-                            .as_ref()
-                            .and_then(|input| input.get_cwd((pty.get_pid() as usize).into()))
-                        }
-                        #[cfg(unix)]
-                        {let pid = Pid::from_raw(id);
-                        self.bus
-                            .os_input
-                            .as_ref()
-                            .and_then(|input| input.get_cwd(pid))
-                        }
-                    });
+                run_command.cwd =
+                    self.active_panes
+                        .get(&client_id)
+                        .and_then(|pane| match pane {
+                            PaneId::Plugin(..) => None,
+                            PaneId::Terminal(id) => self.id_to_child_pid.get(id),
+                        })
+                        .and_then(|winptyreference| {
+                            #[cfg(windows)]
+                            {
+                                let pty = winptyreference.pty.lock().unwrap();
+                                self.bus.os_input.as_ref().and_then(|input| {
+                                    input.get_cwd((pty.get_pid() as usize).into())
+                                })
+                            }
+                            #[cfg(unix)]
+                            {
+                                let pid = Pid::from_raw(id);
+                                self.bus
+                                    .os_input
+                                    .as_ref()
+                                    .and_then(|input| input.get_cwd(pid))
+                            }
+                        });
             };
         };
     }
-    
+
     #[cfg(unix)]
     fn fill_cwd_from_pane_id(&self, terminal_action: &mut TerminalAction, pane_id: &u32) {
         if let TerminalAction::RunCommand(run_command) = terminal_action {
@@ -891,7 +891,7 @@ impl Pty {
     pub fn spawn_terminal(
         &mut self,
         terminal_action: Option<TerminalAction>,
-        client_or_tab_index: ClientTabIndexOrPaneId
+        client_or_tab_index: ClientTabIndexOrPaneId,
     ) -> Result<(u32, bool)> {
         todo!()
     }
@@ -1052,19 +1052,29 @@ impl Pty {
             .iter()
             .filter(|f| !f.already_running)
             .map(|f| f.run.clone());
-        let mut new_pane_pids: Vec<(u32, bool, Option<RunCommand>, Result<WinPtyReference>)> = vec![]; // (terminal_id,
-                                                                                             // starts_held,
-                                                                                             // run_command,
-                                                                                             // file_descriptor)
-        let mut new_floating_panes_pids: Vec<(u32, bool, Option<RunCommand>, Result<WinPtyReference>)> =
-            vec![]; // same
-                    // as
-                    // new_pane_pids
+        let mut new_pane_pids: Vec<(u32, bool, Option<RunCommand>, Result<WinPtyReference>)> =
+            vec![]; // (terminal_id,
+                    // starts_held,
+                    // run_command,
+                    // file_descriptor)
+        let mut new_floating_panes_pids: Vec<(
+            u32,
+            bool,
+            Option<RunCommand>,
+            Result<WinPtyReference>,
+        )> = vec![]; // same
+                     // as
+                     // new_pane_pids
         for run_instruction in extracted_run_instructions {
             if let Some(new_pane_data) =
                 self.apply_run_instruction(run_instruction, default_shell.clone(), tab_index)?
             {
-                let pd = (new_pane_data.0, new_pane_data.1, new_pane_data.2, new_pane_data.3);
+                let pd = (
+                    new_pane_data.0,
+                    new_pane_data.1,
+                    new_pane_data.2,
+                    new_pane_data.3,
+                );
                 new_pane_pids.push(pd);
             }
         }
@@ -1072,7 +1082,12 @@ impl Pty {
             if let Some(new_pane_data) =
                 self.apply_run_instruction(run_instruction, default_shell.clone(), tab_index)?
             {
-                let pd = (new_pane_data.0, new_pane_data.1, new_pane_data.2, new_pane_data.3);
+                let pd = (
+                    new_pane_data.0,
+                    new_pane_data.1,
+                    new_pane_data.2,
+                    new_pane_data.3,
+                );
                 new_floating_panes_pids.push(pd);
             }
         }
@@ -1129,16 +1144,11 @@ impl Pty {
                             .clone();
                         let debug_to_file = self.debug_to_file;
                         async move {
-                            TerminalBytes::new(
-                                senders,
-                                os_input,
-                                debug_to_file,
-                                terminal_id,
-                            )
-                            .listen()
-                            .await
-                            .context("failed to spawn terminals for layout")
-                            .fatal();
+                            TerminalBytes::new(senders, os_input, debug_to_file, terminal_id)
+                                .listen()
+                                .await
+                                .context("failed to spawn terminals for layout")
+                                .fatal();
                         }
                     });
                     self.task_handles.insert(terminal_id, terminal_bytes);
@@ -1445,7 +1455,7 @@ impl Pty {
                                 starts_held,
                                 Some(command.clone()),
                                 Ok(terminal_id), // this is not actually correct but gets
-                                                        // stripped later
+                                                 // stripped later
                             )))
                         },
                         Err(e) => Err(e),
@@ -1586,10 +1596,11 @@ impl Pty {
             Some(Run::Plugin(_)) => Ok(None),
         }
     }
-    
-    
+
     #[cfg(windows)]
-    pub fn close_pane(&mut self, id: PaneId) -> Result<()> {todo!()}
+    pub fn close_pane(&mut self, id: PaneId) -> Result<()> {
+        todo!()
+    }
 
     #[cfg(unix)]
     pub fn close_pane(&mut self, id: PaneId) -> Result<()> {
@@ -1705,15 +1716,16 @@ impl Pty {
             _ => Err(anyhow!("cannot respawn plugin panes")).with_context(err_context),
         }
     }
-    
+
     #[cfg(windows)]
     pub fn rerun_command_in_pane(
         &mut self,
         pane_id: PaneId,
         run_command: RunCommand,
-    ) -> Result<()> {todo!()}
-    
-    
+    ) -> Result<()> {
+        todo!()
+    }
+
     pub fn populate_session_layout_metadata(
         &self,
         session_layout_metadata: &mut SessionLayoutMetadata,
@@ -1774,8 +1786,7 @@ impl Pty {
         pane_id_to_replace: Option<PaneId>, // pane id to replace if this is to be opened "in-place"
         client_id: ClientId,
         size: Size,
-    ) -> Result<()>
-    {
+    ) -> Result<()> {
         let cwd = self
             .active_panes
             .get(&client_id)
@@ -1859,6 +1870,6 @@ pub fn get_default_shell() -> PathBuf {
     #[cfg(windows)]
     PathBuf::from(std::env::var("SHELL").unwrap_or_else(|_| {
         log::warn!("Cannot read SHELL env, falling back to use cmd");
-        "cmd".to_string()
+        "c:\\windows\\system32\\cmd.exe".to_string()
     }))
 }

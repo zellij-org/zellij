@@ -291,17 +291,10 @@ fn handle_terminal(
 fn handle_terminal(
     cmd: RunCommand,
     failover_cmd: Option<RunCommand>,
-    orig_pty: Arc<Mutex<PTY>>,
     quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
     terminal_id: u32,
 ) -> Result<PTY> {
     let err_context = || "failed to spawn terminal";
-
-    let orig_pty = orig_pty
-        .lock()
-        .to_anyhow()
-        .with_context(err_context)
-        .map_err(|err| anyhow!(err))?;
 
     let pty_args = PTYArgs {
         cols: 80,
@@ -312,8 +305,8 @@ fn handle_terminal(
     };
 
     let mut pty = PTY::new(&pty_args).map_err(|err| anyhow!("{:?}", err))?;
-    let command = &cmd.command.clone();
-    pty.spawn(cmd.command.into(), None, None, None)
+    let command: OsString = cmd.command.clone().into();
+    pty.spawn(command.clone(), None, None, None)
         .map_err(move |err| {
             anyhow!(
                 "Could not spawn terminal with command '{:?}': {:?}",
@@ -435,7 +428,6 @@ fn spawn_terminal(
 #[cfg(windows)]
 fn spawn_terminal(
     terminal_action: TerminalAction,
-    orig_pty: Arc<Mutex<PTY>>,
     quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>, // u32 is the exit_status
     default_editor: Option<PathBuf>,
     terminal_id: u32,
@@ -505,7 +497,7 @@ fn spawn_terminal(
         None
     };
 
-    handle_terminal(cmd, failover_cmd, orig_pty, quit_cb, terminal_id)
+    handle_terminal(cmd, failover_cmd,  quit_cb, terminal_id)
 }
 
 // The ClientSender is in charge of sending messages to the client on a special thread
@@ -584,8 +576,6 @@ impl WinPtyReference {}
 pub struct ServerOsInputOutput {
     #[cfg(unix)]
     orig_termios: Arc<Mutex<termios::Termios>>,
-    #[cfg(windows)]
-    orig_pty: Arc<Mutex<PTY>>,
     client_senders: Arc<Mutex<HashMap<ClientId, ClientSender>>>,
     #[cfg(unix)]
     terminal_id_to_raw_fd: Arc<Mutex<BTreeMap<u32, Option<RawFd>>>>, // A value of None means the
@@ -635,11 +625,14 @@ struct WinPtyReader {
 impl AsyncReader for WinPtyReader {
     async fn read(&mut self, mut buf: &mut [u8]) -> Result<usize, std::io::Error> {
         let len = buf.len();
+        log::info!("{len}");
         let pty = self.pty.lock().unwrap();
+        log::info!("Trying to read from windows pty with fd: {}", pty.get_fd());
         let read_chars = pty
             .read(len as u32, false)
             .map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err.to_str().unwrap()))?;
-        buf.write(read_chars.as_os_str().as_encoded_bytes())
+        log::info!("Read some bytes from windows pty: '{:?}'", read_chars);
+        buf.write(read_chars.as_encoded_bytes())
     }
 }
 
@@ -682,7 +675,7 @@ pub trait ServerOsApi: Send + Sync {
     #[cfg(unix)]
     fn async_file_reader(&self, fd: RawFd) -> Box<dyn AsyncReader>;
     #[cfg(windows)]
-    fn async_file_reader(&self) -> Box<dyn AsyncReader>;
+    fn async_file_reader(&self, terminal_id: u32) -> Box<dyn AsyncReader>;
 
     /// Write bytes to the standard input of the virtual terminal referred to by `fd`.
     fn write_to_tty_stdin(&self, terminal_id: u32, buf: &[u8]) -> Result<usize>;
@@ -860,7 +853,6 @@ impl ServerOsApi for ServerOsInputOutput {
                     .insert(terminal_id, None);
                 spawn_terminal(
                     terminal_action,
-                    self.orig_pty.clone(),
                     quit_cb,
                     default_editor,
                     terminal_id,
@@ -918,8 +910,9 @@ impl ServerOsApi for ServerOsInputOutput {
         Box::new(RawFdAsyncReader::new(fd))
     }
     #[cfg(windows)]
-    fn async_file_reader(&self) -> Box<dyn AsyncReader> {
-        let pty = self.orig_pty.clone();
+    fn async_file_reader(&self, terminal_id: u32) -> Box<dyn AsyncReader> {
+        let terminal_id_to_reference = self.terminal_id_to_reference.lock().unwrap();
+        let pty = terminal_id_to_reference.get(&terminal_id).unwrap().as_ref().unwrap().pty.clone();
         Box::new(WinPtyReader { pty })
     }
 
@@ -1198,20 +1191,10 @@ pub fn get_server_os_input() -> Result<ServerOsInputOutput, nix::Error> {
 }
 #[cfg(windows)]
 pub fn get_server_os_input() -> Result<ServerOsInputOutput, ()> {
-    use winptyrs::MouseMode;
 
-    let pty_args = PTYArgs {
-        cols: 80,
-        rows: 25,
-        mouse_mode: MouseMode::WINPTY_MOUSE_MODE_NONE,
-        timeout: 10000,
-        agent_config: AgentConfig::WINPTY_FLAG_COLOR_ESCAPES,
-    };
-    let pty = PTY::new(&pty_args).unwrap();
     Ok(ServerOsInputOutput {
         client_senders: Arc::new(Mutex::new(HashMap::new())),
         cached_resizes: Arc::new(Mutex::new(None)),
-        orig_pty: Arc::new(Mutex::new(pty)),
         terminal_id_to_reference: Arc::new(Mutex::new(BTreeMap::new())),
     })
 }
