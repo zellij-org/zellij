@@ -427,11 +427,7 @@ pub(crate) fn start_client(opts: CliArgs) {
                 config_options.attach_to_session = None;
             }
 
-            //
-            // *** integration code for switching to a new session with a specific layout
-            //
             if let Some(reconnect_layout) = &reconnect_to_session.layout {
-                log::info!("reconnect_layout: {:?}", reconnect_layout);
                 let layout_dir = config.options.layout_dir.clone()
                     .or_else(|| {
                         get_layout_dir(opts.config_dir.clone().or_else(find_default_config_dir))
@@ -452,14 +448,15 @@ pub(crate) fn start_client(opts: CliArgs) {
                         )
                     }
                 };
-                if let Ok(new_session_layout) = new_session_layout {
-                    // TODO: handle error
-                    layout = new_session_layout.0; // TODO: also merge config (the .1)
+                match new_session_layout {
+                    Ok(new_session_layout) => {
+                        layout = new_session_layout.0;
+                    },
+                    Err(e) => {
+                        log::error!("Failed to parse new session layout: {:?}", e);
+                    }
                 }
             }
-            //
-            // *** end of integration code for switching to a new session with a specific layout
-            //
 
             is_a_reconnect = true;
         }

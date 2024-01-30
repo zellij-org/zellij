@@ -453,7 +453,6 @@ impl TryFrom<SessionInfo> for ProtobufSessionManifest {
                 .collect(),
             connected_clients: session_info.connected_clients as u32,
             is_current_session: session_info.is_current_session,
-            // TODO: CONTINUE HERE - make this work
             available_layouts: session_info.available_layouts.into_iter().filter_map(|l| ProtobufLayoutInfo::try_from(l).ok()).collect(),
         })
     }
