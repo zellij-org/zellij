@@ -1,11 +1,12 @@
+mod new_session_info;
 mod resurrectable_sessions;
 mod session_list;
 mod ui;
-mod new_session_info;
 use zellij_tile::prelude::*;
 
 use std::collections::BTreeMap;
 
+use new_session_info::NewSessionInfo;
 use ui::{
     components::{
         render_controls_line, render_error, render_new_session_block, render_prompt,
@@ -13,7 +14,6 @@ use ui::{
     },
     SessionUiInfo,
 };
-use new_session_info::NewSessionInfo;
 
 use resurrectable_sessions::ResurrectableSessions;
 use session_list::SessionList;
@@ -59,7 +59,8 @@ impl ZellijPlugin for State {
             Event::SessionUpdate(session_infos, resurrectable_session_list) => {
                 for session_info in &session_infos {
                     if session_info.is_current_session {
-                        self.new_session_info.update_layout_list(session_info.available_layouts.clone());
+                        self.new_session_info
+                            .update_layout_list(session_info.available_layouts.clone());
                     }
                 }
                 self.resurrectable_sessions
@@ -84,7 +85,7 @@ impl ZellijPlugin for State {
             render_new_session_block(
                 &self.new_session_info,
                 self.colors,
-                max_size_of_new_session_block
+                max_size_of_new_session_block,
             );
             return;
         }
@@ -99,7 +100,8 @@ impl ZellijPlugin for State {
             rows.saturating_sub(layout_count)
         } else {
             rows
-        }.saturating_sub(5); // search line and controls;
+        }
+        .saturating_sub(5); // search line and controls;
         self.sessions.update_rows(room_for_list);
         let list = self
             .sessions
@@ -112,7 +114,7 @@ impl ZellijPlugin for State {
             render_new_session_block(
                 &self.new_session_info,
                 self.colors,
-                max_size_of_new_session_block
+                max_size_of_new_session_block,
             );
         }
         if let Some(error) = self.error.as_ref() {
@@ -146,7 +148,9 @@ impl State {
         } else if let Key::Down = key {
             if self.browsing_resurrection_sessions {
                 self.resurrectable_sessions.move_selection_down();
-            } else if !self.new_session_info.entering_new_session_info() && self.renaming_session_name.is_none() {
+            } else if !self.new_session_info.entering_new_session_info()
+                && self.renaming_session_name.is_none()
+            {
                 self.sessions.move_selection_down();
             } else if self.new_session_info.entering_new_session_info() {
                 self.new_session_info.handle_key(key);
@@ -155,7 +159,9 @@ impl State {
         } else if let Key::Up = key {
             if self.browsing_resurrection_sessions {
                 self.resurrectable_sessions.move_selection_up();
-            } else if !self.new_session_info.entering_new_session_info() && self.renaming_session_name.is_none() {
+            } else if !self.new_session_info.entering_new_session_info()
+                && self.renaming_session_name.is_none()
+            {
                 self.sessions.move_selection_up();
             } else if self.new_session_info.entering_new_session_info() {
                 self.new_session_info.handle_key(key);

@@ -44,7 +44,7 @@ use zellij_utils::{
     consts::{DEFAULT_SCROLL_BUFFER_SIZE, SCROLL_BUFFER_SIZE},
     data::{ConnectToSession, Event, PluginCapabilities},
     errors::{prelude::*, ContextType, ErrorInstruction, FatalError, ServerContext},
-    home::{get_default_data_dir, default_layout_dir},
+    home::{default_layout_dir, get_default_data_dir},
     input::{
         command::{RunCommand, TerminalAction},
         get_mode_info,

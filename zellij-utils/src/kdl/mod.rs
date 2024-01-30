@@ -1,7 +1,7 @@
 mod kdl_layout_parser;
 use crate::data::{
-    Direction, InputMode, Key, Palette, PaletteColor, PaneInfo, PaneManifest, PermissionType,
-    Resize, SessionInfo, TabInfo, LayoutInfo
+    Direction, InputMode, Key, LayoutInfo, Palette, PaletteColor, PaneInfo, PaneManifest,
+    PermissionType, Resize, SessionInfo, TabInfo,
 };
 use crate::envs::EnvironmentVariables;
 use crate::home::{find_default_config_dir, get_layout_dir};
@@ -1989,24 +1989,27 @@ impl SessionInfo {
         let available_layouts: Vec<LayoutInfo> = kdl_document
             .get("available_layouts")
             .and_then(|p| p.children())
-            .map(|e| e.nodes().iter().filter_map(|n| {
-                let layout_name = n.name().value().to_owned();
-                let layout_source = n
-                    .entries()
+            .map(|e| {
+                e.nodes()
                     .iter()
-                    .find(|e| e.name().map(|n| n.value()) == Some("source"))
-                    .and_then(|e| e.value().as_string());
-                match layout_source {
-                    Some(layout_source) => {
+                    .filter_map(|n| {
+                        let layout_name = n.name().value().to_owned();
+                        let layout_source = n
+                            .entries()
+                            .iter()
+                            .find(|e| e.name().map(|n| n.value()) == Some("source"))
+                            .and_then(|e| e.value().as_string());
                         match layout_source {
-                            "built-in" => Some(LayoutInfo::BuiltIn(layout_name)),
-                            "file" => Some(LayoutInfo::File(layout_name)),
-                            _ => None
+                            Some(layout_source) => match layout_source {
+                                "built-in" => Some(LayoutInfo::BuiltIn(layout_name)),
+                                "file" => Some(LayoutInfo::File(layout_name)),
+                                _ => None,
+                            },
+                            None => None,
                         }
-                    },
-                    None => None
-                }}).collect()
-            )
+                    })
+                    .collect()
+            })
             .ok_or("Failed to parse available_layouts")?;
         let is_current_session = name == current_session_name;
         Ok(SessionInfo {
@@ -2544,7 +2547,11 @@ fn serialize_and_deserialize_session_info_with_data() {
         panes: PaneManifest { panes },
         connected_clients: 2,
         is_current_session: false,
-        available_layouts: vec![LayoutInfo::File("layout1".to_owned()), LayoutInfo::BuiltIn("layout2".to_owned()), LayoutInfo::File("layout3".to_owned())],
+        available_layouts: vec![
+            LayoutInfo::File("layout1".to_owned()),
+            LayoutInfo::BuiltIn("layout2".to_owned()),
+            LayoutInfo::File("layout3".to_owned()),
+        ],
     };
     let serialized = session_info.to_string();
     let deserealized = SessionInfo::from_string(&serialized, "not this session").unwrap();

@@ -10,7 +10,7 @@
 //  then [`zellij-utils`] could be a proper place.
 use crate::{
     data::{Direction, LayoutInfo},
-    home::{find_default_config_dir, default_layout_dir},
+    home::{default_layout_dir, find_default_config_dir},
     input::{
         command::RunCommand,
         config::{Config, ConfigError},
@@ -828,17 +828,21 @@ impl Layout {
                 Err(e) => {
                     log::error!("Failed to read layout dir: {:?}", e);
                     None
-                }
+                },
             })
             .map(|layout_files| {
                 let mut available_layouts = vec![];
                 for file in layout_files {
                     if let Ok(file) = file {
-                        if Layout::from_path_or_default_without_config(Some(&file.path()), layout_dir.clone()).is_ok() {
+                        if Layout::from_path_or_default_without_config(
+                            Some(&file.path()),
+                            layout_dir.clone(),
+                        )
+                        .is_ok()
+                        {
                             if let Some(file_name) = file.path().file_stem() {
-                                available_layouts.push(
-                                    LayoutInfo::File(file_name.to_string_lossy().to_string())
-                                )
+                                available_layouts
+                                    .push(LayoutInfo::File(file_name.to_string_lossy().to_string()))
                             }
                         }
                     }
@@ -1091,14 +1095,10 @@ impl Layout {
                         swap_layout_path.as_os_str().to_string_lossy().into(),
                         swap_kdl_layout,
                     )),
-                    Err(e) => {
-                        None
-                    },
+                    Err(e) => None,
                 }
             },
-            Err(e) => {
-                None
-            },
+            Err(e) => None,
         }
     }
 }

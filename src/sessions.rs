@@ -60,9 +60,7 @@ pub(crate) fn get_resurrectable_sessions() -> Vec<(String, Duration, Layout)> {
                         .and_then(|metadata| metadata.created())
                     {
                         Ok(created) => Some(created),
-                        Err(e) => {
-                            None
-                        },
+                        Err(e) => None,
                     };
                     let layout = match Layout::from_kdl(
                         &raw_layout,

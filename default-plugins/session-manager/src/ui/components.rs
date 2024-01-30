@@ -536,7 +536,11 @@ pub fn render_resurrection_toggle(cols: usize, resurrection_screen_is_active: bo
     }
 }
 
-pub fn render_new_session_block(new_session_info: &NewSessionInfo, colors: Colors, max_size_of_new_session_block: usize) {
+pub fn render_new_session_block(
+    new_session_info: &NewSessionInfo,
+    colors: Colors,
+    max_size_of_new_session_block: usize,
+) {
     let new_session_shortcut_text = "<Ctrl w>";
     let new_session_shortcut = colors.magenta(new_session_shortcut_text);
     let new_session = colors.bold("New session");
@@ -561,19 +565,34 @@ pub fn render_new_session_block(new_session_info: &NewSessionInfo, colors: Color
             colors.orange(new_session_name),
             esc,
         );
-        render_layout_selection_list(new_session_info, max_size_of_new_session_block.saturating_sub(1));
+        render_layout_selection_list(
+            new_session_info,
+            max_size_of_new_session_block.saturating_sub(1),
+        );
     } else {
         println!("\u{1b}[m > {new_session_shortcut} - {new_session}");
     }
 }
 
-pub fn render_layout_selection_list(new_session_info: &NewSessionInfo, max_size_of_new_session_block: usize) {
+pub fn render_layout_selection_list(
+    new_session_info: &NewSessionInfo,
+    max_size_of_new_session_block: usize,
+) {
     let layout_search_term = new_session_info.layout_search_term();
     let search_term_len = layout_search_term.width();
-    print_text(Text::new(format!("New session layout: {}_ (Search and select from list, <ENTER> when done)", layout_search_term)).color_range(3, 20..20 + search_term_len).color_range(3, 52 + search_term_len..59 + search_term_len));
+    print_text(
+        Text::new(format!(
+            "New session layout: {}_ (Search and select from list, <ENTER> when done)",
+            layout_search_term
+        ))
+        .color_range(3, 20..20 + search_term_len)
+        .color_range(3, 52 + search_term_len..59 + search_term_len),
+    );
     println!();
     let mut table = Table::new();
-    for (i, (layout_info, indices, is_selected)) in new_session_info.layouts_to_render().into_iter().enumerate() {
+    for (i, (layout_info, indices, is_selected)) in
+        new_session_info.layouts_to_render().into_iter().enumerate()
+    {
         let layout_name = layout_info.name();
         let layout_name_len = layout_name.width();
         let is_builtin = layout_info.is_builtin();
@@ -586,7 +605,9 @@ pub fn render_layout_selection_list(new_session_info: &NewSessionInfo, max_size_
                     .color_range(0, layout_name_len + 1..)
                     .color_indices(3, indices)
             } else {
-                Text::new(format!("{}", layout_name)).color_range(1, ..).color_indices(3, indices)
+                Text::new(format!("{}", layout_name))
+                    .color_range(1, ..)
+                    .color_indices(3, indices)
             };
             if is_selected {
                 layout_cell = layout_cell.selected();
@@ -596,10 +617,7 @@ pub fn render_layout_selection_list(new_session_info: &NewSessionInfo, max_size_
             } else {
                 Text::new(format!("    ")).color_range(3, ..)
             };
-            table = table.add_styled_row(vec![
-                arrow_cell,
-                layout_cell,
-            ]);
+            table = table.add_styled_row(vec![arrow_cell, layout_cell]);
         }
     }
     print_table(table);

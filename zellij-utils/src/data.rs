@@ -784,7 +784,7 @@ impl LayoutInfo {
     pub fn is_builtin(&self) -> bool {
         match self {
             LayoutInfo::BuiltIn(_name) => true,
-            LayoutInfo::File(_name) => false
+            LayoutInfo::File(_name) => false,
         }
     }
 }
@@ -1094,7 +1094,9 @@ pub struct ConnectToSession {
 impl ConnectToSession {
     pub fn apply_layout_dir(&mut self, layout_dir: &PathBuf) {
         if let Some(LayoutInfo::File(file_path)) = self.layout.as_mut() {
-            *file_path = Path::join(layout_dir, &file_path).to_string_lossy().to_string();
+            *file_path = Path::join(layout_dir, &file_path)
+                .to_string_lossy()
+                .to_string();
         }
     }
 }

@@ -21,14 +21,14 @@ use zellij_utils::{
     data::{ConnectToSession, LayoutInfo},
     envs,
     input::{
-        layout::Layout,
         actions::Action,
         config::{Config, ConfigError},
+        layout::Layout,
         options::Options,
     },
     miette::{Report, Result},
     nix,
-    setup::{Setup, get_layout_dir, find_default_config_dir},
+    setup::{find_default_config_dir, get_layout_dir, Setup},
 };
 
 pub(crate) use crate::sessions::list_sessions;
@@ -412,8 +412,6 @@ pub(crate) fn start_client(opts: CliArgs) {
             //
             // ideally, we should write tests for this whole function and refctor it
             if reconnect_to_session.name.is_some() {
-
-
                 opts.command = Some(Command::Sessions(Sessions::Attach {
                     session_name: reconnect_to_session.name.clone(),
                     create: true,
@@ -428,25 +426,20 @@ pub(crate) fn start_client(opts: CliArgs) {
             }
 
             if let Some(reconnect_layout) = &reconnect_to_session.layout {
-                let layout_dir = config.options.layout_dir.clone()
-                    .or_else(|| {
-                        get_layout_dir(opts.config_dir.clone().or_else(find_default_config_dir))
-                    });
+                let layout_dir = config.options.layout_dir.clone().or_else(|| {
+                    get_layout_dir(opts.config_dir.clone().or_else(find_default_config_dir))
+                });
                 let new_session_layout = match reconnect_layout {
-                    LayoutInfo::BuiltIn(layout_name) => {
-                        Layout::from_default_assets(
-                            &PathBuf::from(layout_name),
-                            layout_dir.clone(),
-                            config.clone()
-                        )
-                    },
-                    LayoutInfo::File(layout_name) => {
-                        Layout::from_path_or_default(
-                            Some(&PathBuf::from(layout_name)),
-                            layout_dir.clone(),
-                            config.clone()
-                        )
-                    }
+                    LayoutInfo::BuiltIn(layout_name) => Layout::from_default_assets(
+                        &PathBuf::from(layout_name),
+                        layout_dir.clone(),
+                        config.clone(),
+                    ),
+                    LayoutInfo::File(layout_name) => Layout::from_path_or_default(
+                        Some(&PathBuf::from(layout_name)),
+                        layout_dir.clone(),
+                        config.clone(),
+                    ),
                 };
                 match new_session_layout {
                     Ok(new_session_layout) => {
@@ -454,7 +447,7 @@ pub(crate) fn start_client(opts: CliArgs) {
                     },
                     Err(e) => {
                         log::error!("Failed to parse new session layout: {:?}", e);
-                    }
+                    },
                 }
             }
 

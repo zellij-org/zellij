@@ -18,8 +18,8 @@ use std::{
 use wasmer::{imports, AsStoreMut, Function, FunctionEnv, FunctionEnvMut, Imports};
 use wasmer_wasi::WasiEnv;
 use zellij_utils::data::{
-    CommandType, ConnectToSession, HttpVerb, MessageToPlugin, PermissionStatus, PermissionType,
-    PluginPermission, LayoutInfo
+    CommandType, ConnectToSession, HttpVerb, LayoutInfo, MessageToPlugin, PermissionStatus,
+    PermissionType, PluginPermission,
 };
 use zellij_utils::input::permission::PermissionCache;
 
