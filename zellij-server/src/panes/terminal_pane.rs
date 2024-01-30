@@ -437,8 +437,10 @@ impl Pane for TerminalPane {
                 .grid
                 .get_character_under_cursor()
                 .unwrap_or(EMPTY_TERMINAL_CHARACTER);
-            character_under_cursor.styles.background = Some(cursor_color.into());
-            character_under_cursor.styles.foreground = Some(text_color.into());
+            character_under_cursor.styles.update(|styles| {
+                styles.background = Some(cursor_color.into());
+                styles.foreground = Some(text_color.into());
+            });
             // we keep track of these so that we can clear them up later (see render function)
             self.fake_cursor_locations.insert((cursor_y, cursor_x));
             let mut fake_cursor = format!(
