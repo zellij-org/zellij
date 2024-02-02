@@ -1,4 +1,5 @@
 use super::input_loop;
+use crate::os_input_output::HandleType;
 use crate::stdin_ansi_parser::StdinAnsiParser;
 use crate::stdin_loop;
 use zellij_utils::anyhow::Result;
@@ -138,7 +139,7 @@ impl FakeClientOsApi {
 }
 
 impl ClientOsApi for FakeClientOsApi {
-    fn get_terminal_size_using_fd(&self, _fd: RawFd) -> Size {
+    fn get_terminal_size(&self, _handle_type: HandleType) -> Size {
         unimplemented!()
     }
     fn set_raw_mode(&mut self, _fd: RawFd) {

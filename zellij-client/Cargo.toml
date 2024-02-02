@@ -17,6 +17,10 @@ serde_json = "1.0"
 zellij-utils = { path = "../zellij-utils/", version = "0.40.0" }
 log = "0.4.17"
 
+[target.'cfg(windows)'.dependencies.windows-sys]
+version = "0.52.0"
+features = [ "Win32_Foundation", "Win32_System_Console" ]
+
 [dev-dependencies]
 insta = "1.6.0"
 

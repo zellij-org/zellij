@@ -198,12 +198,8 @@ pub fn start_client(
         .theme_config(&config_options)
         .unwrap_or_else(|| os_input.load_palette());
 
-    #[cfg(unix)]
-    let full_screen_ws = os_input.get_terminal_size_using_fd(0);
-    #[cfg(windows)]
-    let full_screen_ws = {
-        Size { rows: 30, cols: 80 } // TODO Windows implementation
-    };
+    let full_screen_ws = os_input.get_terminal_size(os_input_output::HandleType::Stdin);
+
     let client_attributes = ClientAttributes {
         size: full_screen_ws,
         style: Style {
@@ -335,11 +331,9 @@ pub fn start_client(
                     Box::new({
                         let os_api = os_input.clone();
                         move || {
-                            #[cfg(unix)]
                             os_api.send_to_server(ClientToServerMsg::TerminalResize(
-                                os_api.get_terminal_size_using_fd(0),
+                                os_api.get_terminal_size(os_input_output::HandleType::Stdin),
                             ));
-                            // TODO Windows
                         }
                     }),
                     Box::new({

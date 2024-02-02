@@ -9,7 +9,7 @@ use zellij_utils::{libc, nix};
 use interprocess::local_socket::LocalSocketStream;
 #[cfg(not(windows))]
 use mio::unix::SourceFd;
-use mio::{ Events, Interest, Poll, Token};
+use mio::{Events, Interest, Poll, Token};
 #[cfg(not(windows))]
 use nix::pty::Winsize;
 #[cfg(not(windows))]
@@ -23,7 +23,7 @@ use std::io::prelude::*;
 use std::os::unix::io::RawFd;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use std::{io, thread, time, process};
+use std::{io, process, thread, time};
 use zellij_utils::{
     data::Palette,
     errors::ErrorContext,
@@ -51,8 +51,20 @@ fn unset_raw_mode(pid: RawFd, orig_termios: termios::Termios) -> Result<(), nix:
     termios::tcsetattr(pid, termios::SetArg::TCSANOW, &orig_termios)
 }
 
+pub enum HandleType {
+    Stdin,
+    Stdout,
+    Stderr,
+}
+
 #[cfg(unix)]
-pub(crate) fn get_terminal_size_using_fd(fd: RawFd) -> Size {
+pub(crate) fn get_terminal_size(handle_type: HandleType) -> Size {
+    let fd = match handle_type {
+        HandleType::Stdin => 0,
+        HandleType::Stdout => 1,
+        HandleType::Stderr => 2,
+    };
+
     // TODO: do this with the nix ioctl
     use libc::ioctl;
     use libc::TIOCGWINSZ;
@@ -88,6 +100,60 @@ pub(crate) fn get_terminal_size_using_fd(fd: RawFd) -> Size {
     Size { rows, cols }
 }
 
+#[cfg(windows)]
+pub(crate) fn get_terminal_size(handle_type: HandleType) -> Size {
+    use std::os::windows::io::RawHandle;
+    use windows_sys::Win32::{
+        Foundation::INVALID_HANDLE_VALUE,
+        System::Console::{
+            GetConsoleScreenBufferInfo, GetStdHandle, CONSOLE_SCREEN_BUFFER_INFO, COORD, SMALL_RECT,
+        },
+    };
+
+    // TODO: handle other handle types, only stdout is supported for now
+    let handle_type = match handle_type {
+        // HandleType::Stdin => windows_sys::Win32::System::Console::STD_INPUT_HANDLE,
+        // HandleType::Stdout => windows_sys::Win32::System::Console::STD_OUTPUT_HANDLE,
+        // HandleType::Stderr => windows_sys::Win32::System::Console::STD_ERROR_HANDLE,
+        _ => windows_sys::Win32::System::Console::STD_OUTPUT_HANDLE,
+    };
+
+    let default_size = Size { rows: 24, cols: 80 };
+
+    // get raw windows handle
+    let handle = unsafe { GetStdHandle(handle_type) as RawHandle };
+
+    // convert between windows_sys::Win32::Foundation::HANDLE and std::os::windows::raw::HANDLE
+    let handle = handle as windows_sys::Win32::Foundation::HANDLE;
+
+    if handle == INVALID_HANDLE_VALUE {
+        return default_size;
+    }
+
+    let zc = COORD { X: 0, Y: 0 };
+    let mut csbi = CONSOLE_SCREEN_BUFFER_INFO {
+        dwSize: zc,
+        dwCursorPosition: zc,
+        wAttributes: 0,
+        srWindow: SMALL_RECT {
+            Left: 0,
+            Top: 0,
+            Right: 0,
+            Bottom: 0,
+        },
+        dwMaximumWindowSize: zc,
+    };
+
+    if unsafe { GetConsoleScreenBufferInfo(handle, &mut csbi) } == 0 {
+        return default_size;
+    }
+
+    let cols = (csbi.srWindow.Right - csbi.srWindow.Left + 1) as usize;
+    let rows = (csbi.srWindow.Bottom - csbi.srWindow.Top + 1) as usize;
+
+    return Size { rows, cols };
+}
+
 #[derive(Clone)]
 pub struct ClientOsInputOutput {
     #[cfg(unix)]
@@ -102,8 +168,7 @@ pub struct ClientOsInputOutput {
 /// Zellij client requires.
 pub trait ClientOsApi: Send + Sync {
     /// Returns the size of the terminal associated to file descriptor `fd`.
-    #[cfg(unix)]
-    fn get_terminal_size_using_fd(&self, fd: RawFd) -> Size;
+    fn get_terminal_size(&self, handle_type: HandleType) -> Size;
     /// Set the terminal associated to file descriptor `fd` to
     /// [raw mode](https://en.wikipedia.org/wiki/Terminal_mode).
     #[cfg(unix)]
@@ -139,9 +204,8 @@ pub trait ClientOsApi: Send + Sync {
 }
 
 impl ClientOsApi for ClientOsInputOutput {
-    #[cfg(unix)]
-    fn get_terminal_size_using_fd(&self, fd: RawFd) -> Size {
-        get_terminal_size_using_fd(fd)
+    fn get_terminal_size(&self, handle_type: HandleType) -> Size {
+        get_terminal_size(handle_type)
     }
     #[cfg(unix)]
     fn set_raw_mode(&mut self, fd: RawFd) {
@@ -245,11 +309,11 @@ impl ClientOsApi for ClientOsInputOutput {
                         }
                         sigwinch_cb_timestamp = time::Instant::now();
                         sigwinch_cb();
-                    }
+                    },
                     SIGTERM | SIGINT | SIGQUIT | SIGHUP => {
                         quit_cb();
                         break;
-                    }
+                    },
                     _ => unreachable!(),
                 }
             }
@@ -270,7 +334,8 @@ impl ClientOsApi for ClientOsInputOutput {
         }
         let socket2;
         loop {
-            let listener_path = PathBuf::from(format!("{}{}", path.to_string_lossy(), process::id()));
+            let listener_path =
+                PathBuf::from(format!("{}{}", path.to_string_lossy(), process::id()));
             match LocalSocketListener::bind(listener_path) {
                 Ok(listener) => {
                     socket2 = listener.accept().unwrap();
