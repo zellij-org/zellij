@@ -75,15 +75,15 @@ impl FromStr for Key {
             }
         }
         match (modifier, main_key) {
-            (Some("Ctrl"), Some(main_key)) => {
-                let mut key_chars = main_key.chars();
-                let key_count = main_key.chars().count();
-                if key_count == 1 {
-                    let key_char = key_chars.next().unwrap();
-                    Ok(Key::Ctrl(key_char))
-                } else {
-                    Err(format!("Failed to parse key: {}", key_str).into())
-                }
+            (Some("Ctrl"), Some(main_key)) => match main_key {
+                "@" | "Space" => Ok(Key::Char('\x00')),
+                _ => {
+                    let mut key_chars = main_key.chars();
+                    match key_chars.next() {
+                        Some(key_char) if key_chars.next().is_none() => Ok(Key::Ctrl(key_char)),
+                        _ => Err(format!("Failed to parse key: {}", key_str).into()),
+                    }
+                },
             },
             (Some("Alt"), Some(main_key)) => {
                 match main_key {
@@ -171,6 +171,7 @@ impl fmt::Display for Key {
                 '\n' => write!(f, "ENTER"),
                 '\t' => write!(f, "TAB"),
                 ' ' => write!(f, "SPACE"),
+                '\x00' => write!(f, "Ctrl+@"),
                 _ => write!(f, "{}", c),
             },
             Key::Alt(c) => write!(f, "Alt+{}", c),
