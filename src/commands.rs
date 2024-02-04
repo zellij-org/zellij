@@ -384,7 +384,7 @@ fn attach_with_session_name(
 pub(crate) fn start_client(opts: CliArgs) {
     // look for old YAML config/layout/theme files and convert them to KDL
     convert_old_yaml_files(&opts);
-    let (config, layout, config_options) = match Setup::from_cli_args(&opts) {
+    let (config, layout, config_options, config_without_layout, config_options_without_layout) = match Setup::from_cli_args(&opts) {
         Ok(results) => results,
         Err(e) => {
             if let ConfigError::KdlError(error) = e {
@@ -400,7 +400,7 @@ pub(crate) fn start_client(opts: CliArgs) {
     let os_input = get_os_input(get_client_os_input);
     loop {
         let os_input = os_input.clone();
-        let config = config.clone();
+        let mut config = config.clone();
         let mut layout = layout.clone();
         let mut config_options = config_options.clone();
         let mut opts = opts.clone();
@@ -433,17 +433,26 @@ pub(crate) fn start_client(opts: CliArgs) {
                     LayoutInfo::BuiltIn(layout_name) => Layout::from_default_assets(
                         &PathBuf::from(layout_name),
                         layout_dir.clone(),
-                        config.clone(),
+                        config_without_layout.clone(),
                     ),
                     LayoutInfo::File(layout_name) => Layout::from_path_or_default(
                         Some(&PathBuf::from(layout_name)),
                         layout_dir.clone(),
-                        config.clone(),
+                        config_without_layout.clone(),
                     ),
                 };
                 match new_session_layout {
                     Ok(new_session_layout) => {
-                        layout = new_session_layout.0;
+                        // here we make sure to override both the layout and the config, but we do
+                        // this with an instance of the config before it was merged with the
+                        // layout configuration of the previous iteration of the loop, since we do
+                        // not want it to mix with the config of this session
+                        let (new_layout, new_layout_config) = new_session_layout;
+                        layout = new_layout;
+                        let mut new_config = config_without_layout.clone();
+                        let _ = new_config.merge(new_layout_config.clone());
+                        config = new_config;
+                        config_options = config_options_without_layout.merge(new_layout_config.options);
                     },
                     Err(e) => {
                         log::error!("Failed to parse new session layout: {:?}", e);

@@ -345,7 +345,7 @@ impl Setup {
     /// 2. layout options
     ///    (`layout.kdl` / `zellij --layout`)
     /// 3. config options (`config.kdl`)
-    pub fn from_cli_args(cli_args: &CliArgs) -> Result<(Config, Layout, Options), ConfigError> {
+    pub fn from_cli_args(cli_args: &CliArgs) -> Result<(Config, Layout, Options, Config, Options), ConfigError> {
         // note that this can potentially exit the process
         Setup::handle_setup_commands(cli_args);
         let config = Config::try_from(cli_args)?;
@@ -355,21 +355,28 @@ impl Setup {
             } else {
                 None
             };
+        let mut config_without_layout = config.clone();
         let (layout, mut config) =
             Setup::parse_layout_and_override_config(cli_config_options.as_ref(), config, cli_args)?;
-        let config_options = match cli_config_options {
-            Some(cli_config_options) => config.options.merge(cli_config_options),
-            None => config.options.clone(),
-        };
 
-        config.themes = config.themes.merge(get_default_themes());
+        let config_options = apply_themes_to_config(&mut config, cli_config_options.clone(), cli_args)?;
+        let config_options_without_layout = apply_themes_to_config(&mut config_without_layout, cli_config_options, cli_args)?;
+        fn apply_themes_to_config(config: &mut Config, cli_config_options: Option<Options>, cli_args: &CliArgs) -> Result<Options, ConfigError> {
+            let config_options = match cli_config_options {
+                Some(cli_config_options) => config.options.merge(cli_config_options),
+                None => config.options.clone(),
+            };
 
-        let user_theme_dir = config_options.theme_dir.clone().or_else(|| {
-            get_theme_dir(cli_args.config_dir.clone().or_else(find_default_config_dir))
-                .filter(|dir| dir.exists())
-        });
-        if let Some(user_theme_dir) = user_theme_dir {
-            config.themes = config.themes.merge(Themes::from_dir(user_theme_dir)?);
+            config.themes = config.themes.merge(get_default_themes());
+
+            let user_theme_dir = config_options.theme_dir.clone().or_else(|| {
+                get_theme_dir(cli_args.config_dir.clone().or_else(find_default_config_dir))
+                    .filter(|dir| dir.exists())
+            });
+            if let Some(user_theme_dir) = user_theme_dir {
+                config.themes = config.themes.merge(Themes::from_dir(user_theme_dir)?);
+            }
+            Ok(config_options)
         }
 
         if let Some(Command::Setup(ref setup)) = &cli_args.command {
@@ -383,7 +390,7 @@ impl Setup {
                     |_| {},
                 );
         };
-        Ok((config, layout, config_options))
+        Ok((config, layout, config_options, config_without_layout, config_options_without_layout))
     }
 
     /// General setup helpers
@@ -667,7 +674,7 @@ mod setup_test {
     #[test]
     fn default_config_with_no_cli_arguments() {
         let cli_args = CliArgs::default();
-        let (config, layout, options) = Setup::from_cli_args(&cli_args).unwrap();
+        let (config, layout, options, _, _) = Setup::from_cli_args(&cli_args).unwrap();
         assert_snapshot!(format!("{:#?}", config));
         assert_snapshot!(format!("{:#?}", layout));
         assert_snapshot!(format!("{:#?}", options));
@@ -682,7 +689,7 @@ mod setup_test {
             },
             ..Default::default()
         }));
-        let (_config, _layout, options) = Setup::from_cli_args(&cli_args).unwrap();
+        let (_config, _layout, options, _, _) = Setup::from_cli_args(&cli_args).unwrap();
         assert_snapshot!(format!("{:#?}", options));
     }
     #[test]
@@ -692,7 +699,7 @@ mod setup_test {
             "{}/src/test-fixtures/layout-with-options.kdl",
             env!("CARGO_MANIFEST_DIR")
         )));
-        let (_config, layout, options) = Setup::from_cli_args(&cli_args).unwrap();
+        let (_config, layout, options, _, _) = Setup::from_cli_args(&cli_args).unwrap();
         assert_snapshot!(format!("{:#?}", options));
         assert_snapshot!(format!("{:#?}", layout));
     }
@@ -710,7 +717,7 @@ mod setup_test {
             },
             ..Default::default()
         }));
-        let (_config, layout, options) = Setup::from_cli_args(&cli_args).unwrap();
+        let (_config, layout, options, _, _) = Setup::from_cli_args(&cli_args).unwrap();
         assert_snapshot!(format!("{:#?}", options));
         assert_snapshot!(format!("{:#?}", layout));
     }
@@ -725,7 +732,7 @@ mod setup_test {
             "{}/src/test-fixtures/layout-with-env-vars.kdl",
             env!("CARGO_MANIFEST_DIR")
         )));
-        let (config, _layout, _options) = Setup::from_cli_args(&cli_args).unwrap();
+        let (config, _layout, _options, _, _) = Setup::from_cli_args(&cli_args).unwrap();
         assert_snapshot!(format!("{:#?}", config));
     }
     #[test]
@@ -739,7 +746,7 @@ mod setup_test {
             "{}/src/test-fixtures/layout-with-ui-config.kdl",
             env!("CARGO_MANIFEST_DIR")
         )));
-        let (config, _layout, _options) = Setup::from_cli_args(&cli_args).unwrap();
+        let (config, _layout, _options, _, _) = Setup::from_cli_args(&cli_args).unwrap();
         assert_snapshot!(format!("{:#?}", config));
     }
     #[test]
@@ -753,7 +760,7 @@ mod setup_test {
             "{}/src/test-fixtures/layout-with-plugins-config.kdl",
             env!("CARGO_MANIFEST_DIR")
         )));
-        let (config, _layout, _options) = Setup::from_cli_args(&cli_args).unwrap();
+        let (config, _layout, _options, _, _) = Setup::from_cli_args(&cli_args).unwrap();
         assert_snapshot!(format!("{:#?}", config));
     }
     #[test]
@@ -767,7 +774,7 @@ mod setup_test {
             "{}/src/test-fixtures/layout-with-themes-config.kdl",
             env!("CARGO_MANIFEST_DIR")
         )));
-        let (config, _layout, _options) = Setup::from_cli_args(&cli_args).unwrap();
+        let (config, _layout, _options, _, _) = Setup::from_cli_args(&cli_args).unwrap();
         assert_snapshot!(format!("{:#?}", config));
     }
     #[test]
@@ -781,7 +788,7 @@ mod setup_test {
             "{}/src/test-fixtures/layout-with-keybindings-config.kdl",
             env!("CARGO_MANIFEST_DIR")
         )));
-        let (config, _layout, _options) = Setup::from_cli_args(&cli_args).unwrap();
+        let (config, _layout, _options, _, _) = Setup::from_cli_args(&cli_args).unwrap();
         assert_snapshot!(format!("{:#?}", config));
     }
 }
