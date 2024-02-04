@@ -1588,8 +1588,14 @@ impl Screen {
         }
 
         // NOTE: Can `expect` here, because we checked that the keys exist above
-        let mut active_tab = self.tabs.remove(&active_tab_idx).expect("active tab not found");
-        let mut other_tab = self.tabs.remove(&other_tab_idx).expect("other tab not found");
+        let mut active_tab = self
+            .tabs
+            .remove(&active_tab_idx)
+            .expect("active tab not found");
+        let mut other_tab = self
+            .tabs
+            .remove(&other_tab_idx)
+            .expect("other tab not found");
 
         std::mem::swap(&mut active_tab.index, &mut other_tab.index);
         std::mem::swap(&mut active_tab.position, &mut other_tab.position);

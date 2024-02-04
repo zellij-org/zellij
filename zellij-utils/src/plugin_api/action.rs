@@ -356,10 +356,9 @@ impl TryFrom<ProtobufAction> for Action {
             },
             Some(ProtobufActionName::MoveTab) => match protobuf_action.optional_payload {
                 Some(OptionalPayload::MoveTabPayload(move_tab_payload)) => {
-                    let direction: Direction =
-                        ProtobufMoveTabDirection::from_i32(move_tab_payload)
-                            .ok_or("Malformed move tab direction for Action::MoveTab")?
-                            .try_into()?;
+                    let direction: Direction = ProtobufMoveTabDirection::from_i32(move_tab_payload)
+                        .ok_or("Malformed move tab direction for Action::MoveTab")?
+                        .try_into()?;
                     Ok(Action::MoveTab(direction))
                 },
                 _ => Err("Wrong payload for Action::MoveTab"),
