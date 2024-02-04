@@ -12,14 +12,13 @@ pub struct NewSessionInfo {
 
 #[derive(Eq, PartialEq)]
 enum EnteringState {
-    NotEntering,
     EnteringName,
     EnteringLayoutSearch,
 }
 
 impl Default for EnteringState {
     fn default() -> Self {
-        EnteringState::NotEntering
+        EnteringState::EnteringName
     }
 }
 
@@ -31,7 +30,7 @@ impl NewSessionInfo {
         &self.layout_list.layout_search_term
     }
     pub fn entering_new_session_info(&self) -> bool {
-        self.entering_new_session_info != EnteringState::NotEntering
+        true
     }
     pub fn entering_new_session_name(&self) -> bool {
         self.entering_new_session_info == EnteringState::EnteringName
@@ -48,7 +47,6 @@ impl NewSessionInfo {
                 self.layout_list.layout_search_term.push(character);
                 self.update_layout_search_term();
             },
-            EnteringState::NotEntering => {}, // no-op
         }
     }
     pub fn handle_backspace(&mut self) {
@@ -60,28 +58,18 @@ impl NewSessionInfo {
                 self.layout_list.layout_search_term.pop();
                 self.update_layout_search_term();
             },
-            EnteringState::NotEntering => {}, // no-op
-        }
-    }
-    pub fn toggle_entering_info(&mut self) {
-        if self.entering_new_session_info == EnteringState::NotEntering {
-            self.entering_new_session_info = EnteringState::EnteringName;
-        } else {
-            self.entering_new_session_info = EnteringState::NotEntering;
         }
     }
     pub fn handle_break(&mut self) {
         match self.entering_new_session_info {
             EnteringState::EnteringName => {
                 self.name.clear();
-                self.entering_new_session_info = EnteringState::NotEntering;
             },
             EnteringState::EnteringLayoutSearch => {
                 self.layout_list.layout_search_term.clear();
                 self.entering_new_session_info = EnteringState::EnteringName;
                 self.update_layout_search_term();
             },
-            _ => {}, // no-op
         }
     }
     pub fn handle_key(&mut self, key: Key) {
@@ -108,7 +96,6 @@ impl NewSessionInfo {
         match self.entering_new_session_info {
             EnteringState::EnteringLayoutSearch => {
                 let new_session_layout: Option<LayoutInfo> = self.selected_layout_info();
-                eprintln!("new_session_layout: {:?}", new_session_layout);
                 let new_session_name = if self.name.is_empty() {
                     None
                 } else {
@@ -131,7 +118,6 @@ impl NewSessionInfo {
             EnteringState::EnteringName => {
                 self.entering_new_session_info = EnteringState::EnteringLayoutSearch;
             },
-            _ => {}, // no-op
         }
     }
     pub fn update_layout_list(&mut self, layout_info: Vec<LayoutInfo>) {

@@ -1,4 +1,5 @@
 pub mod components;
+pub mod welcome_screen;
 use zellij_tile::prelude::*;
 
 use crate::session_list::{SelectedIndex, SessionList};

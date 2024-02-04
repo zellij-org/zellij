@@ -10,13 +10,27 @@ use new_session_info::NewSessionInfo;
 use ui::{
     components::{
         render_controls_line, render_error, render_new_session_block, render_prompt,
-        render_renaming_session_screen, render_resurrection_toggle, Colors,
+        render_renaming_session_screen, render_screen_toggle, Colors,
     },
+    welcome_screen::{render_banner, render_welcome_boundaries},
     SessionUiInfo,
 };
 
 use resurrectable_sessions::ResurrectableSessions;
 use session_list::SessionList;
+
+#[derive(Clone, Debug, Copy)]
+enum ActiveScreen {
+    NewSession,
+    AttachToSession,
+    ResurrectSession,
+}
+
+impl Default for ActiveScreen {
+    fn default() -> Self {
+        ActiveScreen::AttachToSession
+    }
+}
 
 #[derive(Default)]
 struct State {
@@ -27,14 +41,22 @@ struct State {
     new_session_info: NewSessionInfo,
     renaming_session_name: Option<String>,
     error: Option<String>,
-    browsing_resurrection_sessions: bool,
+    active_screen: ActiveScreen,
     colors: Colors,
+    is_welcome_screen: bool,
 }
 
 register_plugin!(State);
 
 impl ZellijPlugin for State {
-    fn load(&mut self, _configuration: BTreeMap<String, String>) {
+    fn load(&mut self, configuration: BTreeMap<String, String>) {
+        self.is_welcome_screen = configuration
+            .get("welcome_screen")
+            .map(|v| v == "true")
+            .unwrap_or(false);
+        if self.is_welcome_screen {
+            self.active_screen = ActiveScreen::NewSession;
+        }
         subscribe(&[
             EventType::ModeUpdate,
             EventType::SessionUpdate,
@@ -74,53 +96,51 @@ impl ZellijPlugin for State {
     }
 
     fn render(&mut self, rows: usize, cols: usize) {
-        if self.browsing_resurrection_sessions {
-            self.resurrectable_sessions.render(rows, cols);
-            return;
-        } else if let Some(new_session_name) = self.renaming_session_name.as_ref() {
-            render_renaming_session_screen(&new_session_name, rows, cols);
-            return;
-        } else if self.new_session_info.entering_new_session_info() {
-            let max_size_of_new_session_block = rows;
-            render_new_session_block(
-                &self.new_session_info,
-                self.colors,
-                max_size_of_new_session_block,
-            );
-            return;
+        let (x, y, width, height) = self.main_menu_size(rows, cols);
+
+        if self.is_welcome_screen {
+            render_banner(x, 0, rows.saturating_sub(height), width);
         }
-        render_resurrection_toggle(cols, false);
-        render_prompt(
-            self.new_session_info.entering_new_session_info(),
-            &self.search_term,
-            self.colors,
-        );
-        let room_for_list = if self.new_session_info.entering_new_session_info() {
-            let layout_count = self.new_session_info.layout_count();
-            rows.saturating_sub(layout_count)
-        } else {
-            rows
-        }
-        .saturating_sub(5); // search line and controls;
-        self.sessions.update_rows(room_for_list);
-        let list = self
-            .sessions
-            .render(room_for_list, cols.saturating_sub(7), self.colors); // 7 for various ui
-        for line in list {
-            println!("{}", line.render());
-        }
-        if !self.sessions.is_searching {
-            let max_size_of_new_session_block = rows.saturating_sub(5); // search line and controls
-            render_new_session_block(
-                &self.new_session_info,
-                self.colors,
-                max_size_of_new_session_block,
-            );
+        render_screen_toggle(self.active_screen, x, y, width.saturating_sub(2));
+
+        match self.active_screen {
+            ActiveScreen::NewSession => {
+                render_new_session_block(
+                    &self.new_session_info,
+                    self.colors,
+                    height,
+                    width,
+                    x,
+                    y + 2,
+                );
+            },
+            ActiveScreen::AttachToSession => {
+                if let Some(new_session_name) = self.renaming_session_name.as_ref() {
+                    render_renaming_session_screen(&new_session_name, height, width, x, y + 2);
+                } else {
+                    render_prompt(&self.search_term, self.colors, x, y + 2);
+                    let room_for_list = height.saturating_sub(6); // search line and controls;
+                    self.sessions.update_rows(room_for_list);
+                    let list =
+                        self.sessions
+                            .render(room_for_list, width.saturating_sub(7), self.colors); // 7 for various ui
+                    for (i, line) in list.iter().enumerate() {
+                        print!("\u{1b}[{};{}H{}", y + i + 5, x, line.render());
+                    }
+                }
+            },
+            ActiveScreen::ResurrectSession => {
+                self.resurrectable_sessions.render(height, width, x, y);
+            },
         }
         if let Some(error) = self.error.as_ref() {
-            render_error(&error, rows, cols);
+            render_error(&error, height, width, x, y);
         } else {
-            render_controls_line(self.sessions.is_searching, rows, cols, self.colors);
+            render_controls_line(self.active_screen, width, self.colors, x + 1, rows);
+        }
+        if self.is_welcome_screen {
+            render_welcome_boundaries(rows, cols); // explicitly done in the end to override some
+                                                   // stuff, see comment in function
         }
     }
 }
@@ -134,48 +154,64 @@ impl State {
             self.error = None;
             return true;
         }
+        match self.active_screen {
+            ActiveScreen::NewSession => self.handle_new_session_key(key),
+            ActiveScreen::AttachToSession => self.handle_attach_to_session(key),
+            ActiveScreen::ResurrectSession => self.handle_resurrect_session_key(key),
+        }
+    }
+    fn handle_new_session_key(&mut self, key: Key) -> bool {
         let mut should_render = false;
-        if let Key::Right = key {
-            if !self.new_session_info.entering_new_session_info() {
-                self.sessions.result_expand();
-            }
-            should_render = true;
-        } else if let Key::Left = key {
-            if !self.new_session_info.entering_new_session_info() {
-                self.sessions.result_shrink();
-            }
-            should_render = true;
-        } else if let Key::Down = key {
-            if self.browsing_resurrection_sessions {
-                self.resurrectable_sessions.move_selection_down();
-            } else if !self.new_session_info.entering_new_session_info()
-                && self.renaming_session_name.is_none()
-            {
-                self.sessions.move_selection_down();
-            } else if self.new_session_info.entering_new_session_info() {
-                self.new_session_info.handle_key(key);
-            }
+        if let Key::Down = key {
+            self.new_session_info.handle_key(key);
             should_render = true;
         } else if let Key::Up = key {
-            if self.browsing_resurrection_sessions {
-                self.resurrectable_sessions.move_selection_up();
-            } else if !self.new_session_info.entering_new_session_info()
-                && self.renaming_session_name.is_none()
-            {
-                self.sessions.move_selection_up();
-            } else if self.new_session_info.entering_new_session_info() {
-                self.new_session_info.handle_key(key);
-            }
+            self.new_session_info.handle_key(key);
             should_render = true;
         } else if let Key::Char(character) = key {
             if character == '\n' {
                 self.handle_selection();
-            } else if self.new_session_info.entering_new_session_info() {
+            } else {
                 self.new_session_info.handle_key(key);
-            } else if let Some(renaming_session_name) = self.renaming_session_name.as_mut() {
-                renaming_session_name.push(character);
-            } else if self.browsing_resurrection_sessions {
-                self.resurrectable_sessions.handle_character(character);
+            }
+            should_render = true;
+        } else if let Key::Backspace = key {
+            self.new_session_info.handle_key(key);
+            should_render = true;
+        } else if let Key::Ctrl('w') = key {
+            self.active_screen = ActiveScreen::NewSession;
+            should_render = true;
+        } else if let Key::Ctrl('c') = key {
+            self.new_session_info.handle_key(key);
+            should_render = true;
+        } else if let Key::BackTab = key {
+            self.toggle_active_screen();
+            should_render = true;
+        } else if let Key::Esc = key {
+            self.new_session_info.handle_key(key);
+            should_render = true;
+        }
+        should_render
+    }
+    fn handle_attach_to_session(&mut self, key: Key) -> bool {
+        let mut should_render = false;
+        if let Key::Right = key {
+            self.sessions.result_expand();
+            should_render = true;
+        } else if let Key::Left = key {
+            self.sessions.result_shrink();
+            should_render = true;
+        } else if let Key::Down = key {
+            self.sessions.move_selection_down();
+            should_render = true;
+        } else if let Key::Up = key {
+            self.sessions.move_selection_up();
+            should_render = true;
+        } else if let Key::Char(character) = key {
+            if character == '\n' {
+                self.handle_selection();
+            } else if let Some(new_session_name) = self.renaming_session_name.as_mut() {
+                new_session_name.push(character);
             } else {
                 self.search_term.push(character);
                 self.sessions
@@ -183,16 +219,12 @@ impl State {
             }
             should_render = true;
         } else if let Key::Backspace = key {
-            if self.new_session_info.entering_new_session_info() {
-                self.new_session_info.handle_key(key);
-            } else if let Some(renaming_session_name) = self.renaming_session_name.as_mut() {
-                if renaming_session_name.is_empty() {
+            if let Some(new_session_name) = self.renaming_session_name.as_mut() {
+                if new_session_name.is_empty() {
                     self.renaming_session_name = None;
                 } else {
-                    renaming_session_name.pop();
+                    new_session_name.pop();
                 }
-            } else if self.browsing_resurrection_sessions {
-                self.resurrectable_sessions.handle_backspace();
             } else {
                 self.search_term.pop();
                 self.sessions
@@ -200,31 +232,13 @@ impl State {
             }
             should_render = true;
         } else if let Key::Ctrl('w') = key {
-            if self.sessions.is_searching || self.browsing_resurrection_sessions {
-                // no-op
-            } else {
-                self.new_session_info.toggle_entering_info();
-            }
+            self.active_screen = ActiveScreen::NewSession;
             should_render = true;
         } else if let Key::Ctrl('r') = key {
-            if self.sessions.is_searching || self.browsing_resurrection_sessions {
-                // no-op
-            } else if self.renaming_session_name.is_some() {
-                self.renaming_session_name = None;
-            } else {
-                self.renaming_session_name = Some(String::new());
-            }
+            self.renaming_session_name = Some(String::new());
             should_render = true;
         } else if let Key::Ctrl('c') = key {
-            if self.new_session_info.entering_new_session_info() {
-                self.new_session_info.handle_key(key);
-            } else if let Some(renaming_session_name) = self.renaming_session_name.as_mut() {
-                if renaming_session_name.is_empty() {
-                    self.renaming_session_name = None;
-                } else {
-                    renaming_session_name.clear()
-                }
-            } else if !self.search_term.is_empty() {
+            if !self.search_term.is_empty() {
                 self.search_term.clear();
                 self.sessions
                     .update_search_term(&self.search_term, &self.colors);
@@ -235,25 +249,11 @@ impl State {
             }
             should_render = true;
         } else if let Key::BackTab = key {
-            self.browsing_resurrection_sessions = !self.browsing_resurrection_sessions;
+            self.toggle_active_screen();
             should_render = true;
-        } else if let Key::Delete = key {
-            if self.browsing_resurrection_sessions {
-                self.resurrectable_sessions.delete_selected_session();
-                should_render = true;
-            }
-        } else if let Key::Ctrl('d') = key {
-            if self.browsing_resurrection_sessions {
-                self.resurrectable_sessions
-                    .show_delete_all_sessions_warning();
-                should_render = true;
-            }
         } else if let Key::Esc = key {
             if self.renaming_session_name.is_some() {
                 self.renaming_session_name = None;
-                should_render = true;
-            } else if self.new_session_info.entering_new_session_info() {
-                self.new_session_info.handle_key(key);
                 should_render = true;
             } else {
                 hide_self();
@@ -261,62 +261,113 @@ impl State {
         }
         should_render
     }
-    fn handle_selection(&mut self) {
-        if self.browsing_resurrection_sessions {
-            if let Some(session_name_to_resurrect) =
-                self.resurrectable_sessions.get_selected_session_name()
-            {
-                switch_session(Some(&session_name_to_resurrect));
-            }
-        } else if self.new_session_info.entering_new_session_info() {
-            self.new_session_info.handle_selection(&self.session_name);
-            return; // so that we don't hide self
-        } else if let Some(renaming_session_name) = &self.renaming_session_name.take() {
-            if renaming_session_name.is_empty() {
-                // TODO: implement these, then implement the error UI, then implement the renaming
-                // session screen, then test it
-                self.show_error("New name must not be empty.");
-                return; // so that we don't hide self
-            } else if self.session_name.as_ref() == Some(renaming_session_name) {
-                // noop - we're already called that!
-                return; // so that we don't hide self
-            } else if self.sessions.has_session(&renaming_session_name) {
-                self.show_error("A session by this name already exists.");
-                return; // so that we don't hide self
-            } else if self
-                .resurrectable_sessions
-                .has_session(&renaming_session_name)
-            {
-                self.show_error("A resurrectable session by this name already exists.");
-                return; // s that we don't hide self
+    fn handle_resurrect_session_key(&mut self, key: Key) -> bool {
+        let mut should_render = false;
+        if let Key::Down = key {
+            self.resurrectable_sessions.move_selection_down();
+            should_render = true;
+        } else if let Key::Up = key {
+            self.resurrectable_sessions.move_selection_up();
+            should_render = true;
+        } else if let Key::Char(character) = key {
+            if character == '\n' {
+                self.handle_selection();
             } else {
-                self.update_current_session_name_in_ui(&renaming_session_name);
-                rename_session(&renaming_session_name);
-                return; // s that we don't hide self
+                self.resurrectable_sessions.handle_character(character);
             }
-        } else if let Some(selected_session_name) = self.sessions.get_selected_session_name() {
-            let selected_tab = self.sessions.get_selected_tab_position();
-            let selected_pane = self.sessions.get_selected_pane_id();
-            let is_current_session = self.sessions.selected_is_current_session();
-            if is_current_session {
-                if let Some((pane_id, is_plugin)) = selected_pane {
-                    if is_plugin {
-                        focus_plugin_pane(pane_id, true);
-                    } else {
-                        focus_terminal_pane(pane_id, true);
-                    }
-                } else if let Some(tab_position) = selected_tab {
-                    go_to_tab(tab_position as u32);
-                }
-            } else {
-                switch_session_with_focus(&selected_session_name, selected_tab, selected_pane);
-            }
+            should_render = true;
+        } else if let Key::Backspace = key {
+            self.resurrectable_sessions.handle_backspace();
+            should_render = true;
+        } else if let Key::Ctrl('w') = key {
+            self.active_screen = ActiveScreen::NewSession;
+            should_render = true;
+        } else if let Key::BackTab = key {
+            self.toggle_active_screen();
+            should_render = true;
+        } else if let Key::Delete = key {
+            self.resurrectable_sessions.delete_selected_session();
+            should_render = true;
+        } else if let Key::Ctrl('d') = key {
+            self.resurrectable_sessions
+                .show_delete_all_sessions_warning();
+            should_render = true;
+        } else if let Key::Esc = key {
+            hide_self();
         }
-        self.reset_selected_index();
-        self.search_term.clear();
-        self.sessions
-            .update_search_term(&self.search_term, &self.colors);
-        hide_self();
+        should_render
+    }
+    fn handle_selection(&mut self) {
+        match self.active_screen {
+            ActiveScreen::NewSession => {
+                self.new_session_info.handle_selection(&self.session_name);
+            },
+            ActiveScreen::AttachToSession => {
+                if let Some(renaming_session_name) = &self.renaming_session_name.take() {
+                    if renaming_session_name.is_empty() {
+                        self.show_error("New name must not be empty.");
+                        return; // so that we don't hide self
+                    } else if self.session_name.as_ref() == Some(renaming_session_name) {
+                        // noop - we're already called that!
+                        return; // so that we don't hide self
+                    } else if self.sessions.has_session(&renaming_session_name) {
+                        self.show_error("A session by this name already exists.");
+                        return; // so that we don't hide self
+                    } else if self
+                        .resurrectable_sessions
+                        .has_session(&renaming_session_name)
+                    {
+                        self.show_error("A resurrectable session by this name already exists.");
+                        return; // s that we don't hide self
+                    } else {
+                        self.update_current_session_name_in_ui(&renaming_session_name);
+                        rename_session(&renaming_session_name);
+                        return; // s that we don't hide self
+                    }
+                }
+                if let Some(selected_session_name) = self.sessions.get_selected_session_name() {
+                    let selected_tab = self.sessions.get_selected_tab_position();
+                    let selected_pane = self.sessions.get_selected_pane_id();
+                    let is_current_session = self.sessions.selected_is_current_session();
+                    if is_current_session {
+                        if let Some((pane_id, is_plugin)) = selected_pane {
+                            if is_plugin {
+                                focus_plugin_pane(pane_id, true);
+                            } else {
+                                focus_terminal_pane(pane_id, true);
+                            }
+                        } else if let Some(tab_position) = selected_tab {
+                            go_to_tab(tab_position as u32);
+                        }
+                    } else {
+                        switch_session_with_focus(
+                            &selected_session_name,
+                            selected_tab,
+                            selected_pane,
+                        );
+                    }
+                }
+                self.reset_selected_index();
+                self.search_term.clear();
+                self.sessions
+                    .update_search_term(&self.search_term, &self.colors);
+                hide_self();
+            },
+            ActiveScreen::ResurrectSession => {
+                if let Some(session_name_to_resurrect) =
+                    self.resurrectable_sessions.get_selected_session_name()
+                {
+                    switch_session(Some(&session_name_to_resurrect));
+                }
+            },
+        }
+    }
+    fn toggle_active_screen(&mut self) {
+        self.active_screen = match self.active_screen {
+            ActiveScreen::NewSession => ActiveScreen::AttachToSession,
+            ActiveScreen::AttachToSession => ActiveScreen::ResurrectSession,
+            ActiveScreen::ResurrectSession => ActiveScreen::NewSession,
+        };
     }
     fn show_error(&mut self, error_text: &str) {
         self.error = Some(error_text.to_owned());
@@ -344,5 +395,25 @@ impl State {
             self.session_name = Some(current_session_name);
         }
         self.sessions.set_sessions(session_infos);
+    }
+    fn main_menu_size(&self, rows: usize, cols: usize) -> (usize, usize, usize, usize) {
+        // x, y, width, height
+        let width = if self.is_welcome_screen {
+            std::cmp::min(cols, 101)
+        } else {
+            cols
+        };
+        let x = if self.is_welcome_screen {
+            (cols.saturating_sub(width) as f64 / 2.0).floor() as usize + 2
+        } else {
+            0
+        };
+        let y = if self.is_welcome_screen {
+            (rows.saturating_sub(15) as f64 / 2.0).floor() as usize
+        } else {
+            0
+        };
+        let height = rows.saturating_sub(y);
+        (x, y, width, height)
     }
 }
