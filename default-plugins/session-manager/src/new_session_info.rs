@@ -219,15 +219,6 @@ impl LayoutList {
             // honestly, this is just the UX choice that sucks the least...
             self.clear_selection();
         }
-        self.layout_list.sort_by(|a, b| {
-            if a.name() == "default" && a.is_builtin() {
-                Ordering::Less
-            } else if b.name() == "default" && b.is_builtin() {
-                Ordering::Greater
-            } else {
-                a.name().cmp(&b.name())
-            }
-        });
     }
     pub fn selected_layout_info(&self) -> Option<LayoutInfo> {
         if !self.layout_search_term.is_empty() {

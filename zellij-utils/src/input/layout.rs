@@ -20,6 +20,7 @@ use crate::{
 };
 
 use std::fmt::{Display, Formatter};
+use std::cmp::Ordering;
 use std::str::FromStr;
 
 use super::plugins::{PluginTag, PluginsConfigError};
@@ -819,7 +820,8 @@ impl Default for LayoutParts {
 }
 
 impl Layout {
-    pub fn list_available_layouts(layout_dir: Option<PathBuf>) -> Vec<LayoutInfo> {
+    // the first layout will either be the default one
+    pub fn list_available_layouts(layout_dir: Option<PathBuf>, default_layout_name: &Option<String>) -> Vec<LayoutInfo> {
         let mut available_layouts = layout_dir
             .clone()
             .or_else(|| default_layout_dir())
@@ -850,10 +852,22 @@ impl Layout {
                 available_layouts
             })
             .unwrap_or_else(Default::default);
+        let default_layout_name = default_layout_name.as_ref().map(|d| d.as_str()).unwrap_or("default");
         available_layouts.push(LayoutInfo::BuiltIn("default".to_owned()));
         available_layouts.push(LayoutInfo::BuiltIn("strider".to_owned()));
         available_layouts.push(LayoutInfo::BuiltIn("disable-status-bar".to_owned()));
         available_layouts.push(LayoutInfo::BuiltIn("compact".to_owned()));
+        available_layouts.sort_by(|a, b| {
+            let a_name = a.name();
+            let b_name = b.name();
+            if a_name == default_layout_name {
+                return Ordering::Less;
+            } else if b_name == default_layout_name {
+                return Ordering::Greater;
+            } else {
+                a_name.cmp(&b_name)
+            }
+        });
         available_layouts
     }
     pub fn stringified_from_path_or_default(

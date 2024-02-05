@@ -578,6 +578,7 @@ pub(crate) struct Screen {
     styled_underlines: bool,
     arrow_fonts: bool,
     layout_dir: Option<PathBuf>,
+    default_layout_name: Option<String>,
 }
 
 impl Screen {
@@ -593,6 +594,7 @@ impl Screen {
         copy_options: CopyOptions,
         debug: bool,
         default_layout: Box<Layout>,
+        default_layout_name: Option<String>,
         default_shell: Option<PathBuf>,
         session_serialization: bool,
         serialize_pane_viewport: bool,
@@ -631,6 +633,7 @@ impl Screen {
             session_name,
             session_infos_on_machine,
             default_layout,
+            default_layout_name,
             default_shell,
             session_serialization,
             serialize_pane_viewport,
@@ -1419,7 +1422,7 @@ impl Screen {
         // because this is mostly about HD access - it does however throw off the timing in the
         // tests and causes them to flake, which is why we skip it here
         #[cfg(not(test))]
-        let available_layouts = Layout::list_available_layouts(self.layout_dir.clone());
+        let available_layouts = Layout::list_available_layouts(self.layout_dir.clone(), &self.default_layout_name);
         #[cfg(test)]
         let available_layouts = vec![];
         let session_info = SessionInfo {
@@ -2114,6 +2117,7 @@ pub(crate) fn screen_thread_main(
     let session_is_mirrored = config_options.mirror_session.unwrap_or(false);
     let layout_dir = config_options.layout_dir;
     let default_shell = config_options.default_shell;
+    let default_layout_name = config_options.default_layout.map(|l| format!("{}", l.display()));
     let copy_options = CopyOptions::new(
         config_options.copy_command,
         config_options.copy_clipboard.unwrap_or_default(),
@@ -2140,6 +2144,7 @@ pub(crate) fn screen_thread_main(
         copy_options,
         debug,
         default_layout,
+        default_layout_name,
         default_shell,
         session_serialization,
         serialize_pane_viewport,
