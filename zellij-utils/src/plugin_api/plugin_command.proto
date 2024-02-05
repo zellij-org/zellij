@@ -91,6 +91,8 @@ enum CommandName {
   BlockCliPipeInput = 77;
   CliPipeOutput = 78;
   MessageToPlugin = 79;
+  DisconnectOtherClients = 80;
+  KillSessions = 81;
 }
 
 message PluginCommand {
@@ -145,7 +147,12 @@ message PluginCommand {
     string block_cli_pipe_input_payload = 48;
     CliPipeOutputPayload cli_pipe_output_payload = 49;
     MessageToPluginPayload message_to_plugin_payload = 50;
+    KillSessionsPayload kill_sessions_payload = 60;
   }
+}
+
+message KillSessionsPayload {
+  repeated string session_names = 1;
 }
 
 message CliPipeOutputPayload {

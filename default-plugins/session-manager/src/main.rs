@@ -44,6 +44,7 @@ struct State {
     active_screen: ActiveScreen,
     colors: Colors,
     is_welcome_screen: bool,
+    show_kill_all_sessions_warning: bool,
 }
 
 register_plugin!(State);
@@ -117,6 +118,8 @@ impl ZellijPlugin for State {
             ActiveScreen::AttachToSession => {
                 if let Some(new_session_name) = self.renaming_session_name.as_ref() {
                     render_renaming_session_screen(&new_session_name, height, width, x, y + 2);
+                } else if self.show_kill_all_sessions_warning {
+                    self.render_kill_all_sessions_warning(height, width, x, y);
                 } else {
                     render_prompt(&self.search_term, self.colors, x, y + 2);
                     let room_for_list = height.saturating_sub(6); // search line and controls;
@@ -195,7 +198,20 @@ impl State {
     }
     fn handle_attach_to_session(&mut self, key: Key) -> bool {
         let mut should_render = false;
-        if let Key::Right = key {
+        if self.show_kill_all_sessions_warning {
+            if let Key::Char('y') = key {
+                let all_other_sessions = self.sessions.all_other_sessions();
+                kill_sessions(&all_other_sessions);
+                self.reset_selected_index();
+                self.search_term.clear();
+                self.sessions
+                    .update_search_term(&self.search_term, &self.colors);
+                self.show_kill_all_sessions_warning = false
+            } else if let Key::Char('n') | Key::Esc | Key::Ctrl('c') = key {
+                self.show_kill_all_sessions_warning = false
+            }
+            should_render = true;
+        } else if let Key::Right = key {
             self.sessions.result_expand();
             should_render = true;
         } else if let Key::Left = key {
@@ -237,6 +253,27 @@ impl State {
         } else if let Key::Ctrl('r') = key {
             self.renaming_session_name = Some(String::new());
             should_render = true;
+        } else if let Key::Delete = key {
+            if let Some(selected_session_name) = self.sessions.get_selected_session_name() {
+                kill_sessions(&[selected_session_name]);
+                self.reset_selected_index();
+                self.search_term.clear();
+                self.sessions
+                    .update_search_term(&self.search_term, &self.colors);
+            } else {
+                self.show_error("Must select session before killing it.");
+            }
+            should_render = true;
+        } else if let Key::Ctrl('d') = key {
+            let all_other_sessions = self.sessions.all_other_sessions();
+            if all_other_sessions.is_empty() {
+                self.show_error("No other sessions to kill. Quit to kill the current one.");
+            } else {
+                self.show_kill_all_sessions_warning = true;
+            }
+            should_render = true;
+        } else if let Key::Ctrl('x') = key {
+            disconnect_other_clients();
         } else if let Key::Ctrl('c') = key {
             if !self.search_term.is_empty() {
                 self.search_term.clear();
@@ -415,5 +452,35 @@ impl State {
         };
         let height = rows.saturating_sub(y);
         (x, y, width, height)
+    }
+    fn render_kill_all_sessions_warning(&self, rows: usize, columns: usize, x: usize, y: usize) {
+        if rows == 0 || columns == 0 {
+            return;
+        }
+        let session_count = self.sessions.all_other_sessions().len();
+        let session_count_len = session_count.to_string().chars().count();
+        let warning_description_text =
+            format!("This will kill {} active sessions", session_count);
+        let confirmation_text = "Are you sure? (y/n)";
+        let warning_y_location = y + (rows / 2).saturating_sub(1);
+        let confirmation_y_location = y + (rows / 2) + 1;
+        let warning_x_location =
+            x + columns.saturating_sub(warning_description_text.chars().count()) / 2;
+        let confirmation_x_location =
+            x + columns.saturating_sub(confirmation_text.chars().count()) / 2;
+        print_text_with_coordinates(
+            Text::new(warning_description_text).color_range(0, 15..16 + session_count_len),
+            warning_x_location,
+            warning_y_location,
+            None,
+            None,
+        );
+        print_text_with_coordinates(
+            Text::new(confirmation_text).color_indices(2, vec![15, 17]),
+            confirmation_x_location,
+            confirmation_y_location,
+            None,
+            None,
+        );
     }
 }

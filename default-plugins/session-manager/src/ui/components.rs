@@ -293,18 +293,45 @@ impl LineToRender {
     pub fn append(&mut self, to_append: &str) {
         self.line.push_str(to_append)
     }
-    pub fn make_selected(&mut self) {
+    pub fn make_selected_as_search(&mut self, add_arrows: bool) {
         self.is_selected = true;
+        let arrows = if add_arrows {
+            self.colors.magenta(" <↓↑> ")
+        } else {
+            "      ".to_owned()
+        };
         match self.colors.palette.bg {
             PaletteColor::EightBit(byte) => {
                 self.line = format!(
-                    "\u{1b}[48;5;{byte}m\u{1b}[K\u{1b}[48;5;{byte}m{}",
+                    "\u{1b}[48;5;{byte}m\u{1b}[K\u{1b}[48;5;{byte}m{arrows}{}",
                     self.line
                 );
             },
             PaletteColor::Rgb((r, g, b)) => {
                 self.line = format!(
-                    "\u{1b}[48;2;{};{};{}m\u{1b}[K\u{1b}[48;2;{};{};{}m{}",
+                    "\u{1b}[48;2;{};{};{}m\u{1b}[K\u{1b}[48;2;{};{};{}m{arrows}{}",
+                    r, g, b, r, g, b, self.line
+                );
+            },
+        }
+    }
+    pub fn make_selected(&mut self, add_arrows: bool) {
+        self.is_selected = true;
+        let arrows = if add_arrows {
+            self.colors.magenta("<←↓↑→>")
+        } else {
+            "      ".to_owned()
+        };
+        match self.colors.palette.bg {
+            PaletteColor::EightBit(byte) => {
+                self.line = format!(
+                    "\u{1b}[48;5;{byte}m\u{1b}[K\u{1b}[48;5;{byte}m{arrows}{}",
+                    self.line
+                );
+            },
+            PaletteColor::Rgb((r, g, b)) => {
+                self.line = format!(
+                    "\u{1b}[48;2;{};{};{}m\u{1b}[K\u{1b}[48;2;{};{};{}m{arrows}{}",
                     r, g, b, r, g, b, self.line
                 );
             },
@@ -324,7 +351,7 @@ impl LineToRender {
         if self.is_selected {
             self.line.clone()
         } else {
-            format!("\u{1b}[49m{}", line)
+            format!("\u{1b}[49m      {}", line)
         }
     }
     pub fn add_truncated_results(&mut self, result_count: usize) {
@@ -708,17 +735,23 @@ pub fn render_controls_line(
         ActiveScreen::AttachToSession => {
             let arrows = colors.magenta("<←↓↑→>");
             let navigate = colors.bold("Navigate");
-            let rename = colors.magenta("<Ctrl r>");
-            let rename_text = colors.bold("Rename current session");
             let enter = colors.magenta("<ENTER>");
             let select = colors.bold("Attach");
+            let rename = colors.magenta("<Ctrl r>");
+            let rename_text = colors.bold("Rename");
+            let disconnect = colors.magenta("<Ctrl x>");
+            let disconnect_text = colors.bold("Disconnect others");
+            let kill = colors.magenta("<Del>");
+            let kill_text = colors.bold("Kill");
+            let kill_all = colors.magenta("<Ctrl d>");
+            let kill_all_text = colors.bold("Kill all");
 
-            if max_cols > 83 {
+            if max_cols > 90 {
                 print!(
-                    "\u{1b}[m\u{1b}[{y};{x}HHelp: {arrows} - {navigate}, {enter} - {select}, {rename} - {rename_text}"
+                    "\u{1b}[m\u{1b}[{y};{x}HHelp: {rename} - {rename_text}, {disconnect} - {disconnect_text}, {kill} - {kill_text}, {kill_all} - {kill_all_text}"
                 );
             } else if max_cols >= 28 {
-                print!("\u{1b}[m\u{1b}[{y};{x}H{arrows}/{enter}/{rename}");
+                print!("\u{1b}[m\u{1b}[{y};{x}H{rename}/{disconnect}/{kill}/{kill_all}");
             }
         },
         ActiveScreen::ResurrectSession => {
@@ -727,7 +760,7 @@ pub fn render_controls_line(
             let enter = colors.magenta("<ENTER>");
             let select = colors.bold("Resurrect");
             let del = colors.magenta("<DEL>");
-            let del_text = "Delete";
+            let del_text = colors.bold("Delete");
             let del_all = colors.magenta("<Ctrl d>");
             let del_all_text = colors.bold("Delete all");
 

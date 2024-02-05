@@ -22,6 +22,10 @@ use zellij_utils::data::{
     PermissionType, PluginPermission,
 };
 use zellij_utils::input::permission::PermissionCache;
+use zellij_utils::{
+    interprocess::local_socket::LocalSocketStream,
+    ipc::{ClientToServerMsg, IpcSenderWithContext},
+};
 
 use url::Url;
 
@@ -253,6 +257,8 @@ fn host_run_plugin_command(env: FunctionEnvMut<ForeignFunctionEnv>) {
                         cli_pipe_output(env, pipe_name, output)?
                     },
                     PluginCommand::MessageToPlugin(message) => message_to_plugin(env, message)?,
+                    PluginCommand::DisconnectOtherClients => disconnect_other_clients(env),
+                    PluginCommand::KillSessions(session_list)=> kill_sessions(session_list),
                 },
                 (PermissionStatus::Denied, permission) => {
                     log::error!(
@@ -1281,6 +1287,27 @@ fn rename_session(env: &ForeignFunctionEnv, new_session_name: String) {
     apply_action!(action, error_msg, env);
 }
 
+fn disconnect_other_clients(env: &ForeignFunctionEnv) {
+    let _ = env.plugin_env
+        .senders
+        .send_to_server(ServerInstruction::DisconnectAllClientsExcept(env.plugin_env.client_id))
+        .context("failed to send disconnect other clients instruction");
+}
+
+fn kill_sessions(session_names: Vec<String>) {
+    for session_name in session_names {
+        let path = &*ZELLIJ_SOCK_DIR.join(&session_name);
+        match LocalSocketStream::connect(path) {
+            Ok(stream) => {
+                let _ = IpcSenderWithContext::new(stream).send(ClientToServerMsg::KillSession);
+            },
+            Err(e) => {
+                log::error!("Failed to kill session {}: {:?}", session_name, e);
+            },
+        };
+    }
+}
+
 // Custom panic handler for plugins.
 //
 // This is called when a panic occurs in a plugin. Since most panics will likely originate in the
@@ -1409,7 +1436,8 @@ fn check_command_permission(
         | PluginCommand::DeleteDeadSession(..)
         | PluginCommand::DeleteAllDeadSessions
         | PluginCommand::RenameSession(..)
-        | PluginCommand::RenameTab(..) => PermissionType::ChangeApplicationState,
+        | PluginCommand::RenameTab(..)
+        | PluginCommand::DisconnectOtherClients => PermissionType::ChangeApplicationState,
         PluginCommand::UnblockCliPipeInput(..)
         | PluginCommand::BlockCliPipeInput(..)
         | PluginCommand::CliPipeOutput(..) => PermissionType::ReadCliPipes,

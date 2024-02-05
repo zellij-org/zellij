@@ -10,7 +10,7 @@ pub use super::generated_api::api::{
         PluginCommand as ProtobufPluginCommand, PluginMessagePayload,
         RequestPluginPermissionPayload, ResizePayload, RunCommandPayload, SetTimeoutPayload,
         SubscribePayload, SwitchSessionPayload, SwitchTabToPayload, UnsubscribePayload,
-        WebRequestPayload,
+        WebRequestPayload, KillSessionsPayload
     },
     plugin_permission::PermissionType as ProtobufPermissionType,
     resize::ResizeAction as ProtobufResizeAction,
@@ -728,6 +728,16 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                         }),
                     }))
                 },
+                _ => Err("Mismatched payload for MessageToPlugin"),
+            },
+            Some(CommandName::DisconnectOtherClients) => match protobuf_plugin_command.payload {
+                None => Ok(PluginCommand::DisconnectOtherClients),
+                _ => Err("Mismatched payload for DisconnectOtherClients"),
+            },
+            Some(CommandName::KillSessions) => match protobuf_plugin_command.payload {
+                Some(Payload::KillSessionsPayload(KillSessionsPayload { session_names })) => {
+                    Ok(PluginCommand::KillSessions(session_names))
+                },
                 _ => Err("Mismatched payload for PipeOutput"),
             },
             None => Err("Unrecognized plugin command"),
@@ -1207,6 +1217,16 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     })),
                 })
             },
+            PluginCommand::DisconnectOtherClients  => Ok(ProtobufPluginCommand {
+                name: CommandName::DisconnectOtherClients as i32,
+                payload: None,
+            }),
+            PluginCommand::KillSessions(session_names) => Ok(ProtobufPluginCommand {
+                name: CommandName::KillSessions as i32,
+                payload: Some(Payload::KillSessionsPayload(KillSessionsPayload {
+                    session_names
+                })),
+            }),
         }
     }
 }

@@ -30,7 +30,7 @@ macro_rules! render_assets {
             if $selected_index.is_some() && !$has_deeper_selected_assets {
                 let mut selected_asset: LineToRender =
                     selected_asset.as_line_to_render(current_index, $max_cols, $colors);
-                selected_asset.make_selected();
+                selected_asset.make_selected(true);
                 selected_asset.add_truncated_results(truncated_result_count_above);
                 if anchor_asset_index + 1 >= end_index {
                     // no more results below, let's add the more indication if we need to
@@ -77,8 +77,10 @@ impl SessionList {
             if lines_to_render.len() + result.lines_to_render() <= max_rows {
                 let mut result_lines = result.render(max_cols);
                 if Some(i) == self.selected_search_index {
+                    let mut render_arrows = true;
                     for line_to_render in result_lines.iter_mut() {
-                        line_to_render.make_selected();
+                        line_to_render.make_selected_as_search(render_arrows);
+                        render_arrows = false; // only render arrows on the first search result
                     }
                 }
                 lines_to_render.append(&mut result_lines);

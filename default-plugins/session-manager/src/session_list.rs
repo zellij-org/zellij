@@ -323,6 +323,15 @@ impl SessionList {
             .find(|s| s.name == old_name)
             .map(|s| s.name = new_name.to_owned());
     }
+    pub fn all_other_sessions(&self) -> Vec<String> {
+        self.session_ui_infos.iter().filter_map(|s| {
+            if !s.is_current_session {
+                Some(s.name.clone())
+            } else {
+                None
+            }
+        }).collect()
+    }
 }
 
 #[derive(Debug, Clone, Default)]

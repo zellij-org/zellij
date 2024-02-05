@@ -93,6 +93,7 @@ pub enum ServerInstruction {
         pipe_id: String,
         client_id: ClientId,
     },
+    DisconnectAllClientsExcept(ClientId),
 }
 
 impl From<&ServerInstruction> for ServerContext {
@@ -117,6 +118,7 @@ impl From<&ServerInstruction> for ServerContext {
             ServerInstruction::AssociatePipeWithClient { .. } => {
                 ServerContext::AssociatePipeWithClient
             },
+            ServerInstruction::DisconnectAllClientsExcept(..) => ServerContext::DisconnectAllClientsExcept,
         }
     }
 }
@@ -650,6 +652,14 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     remove_client!(client_id, os_input, session_state);
                 }
                 break;
+            },
+            ServerInstruction::DisconnectAllClientsExcept(client_id)=> {
+                let client_ids: Vec<ClientId> = session_state.read().unwrap().client_ids().iter().copied().filter(|c| c != &client_id).collect();
+                for client_id in client_ids {
+                    let _ = os_input
+                        .send_to_client(client_id, ServerToClientMsg::Exit(ExitReason::Normal));
+                    remove_client!(client_id, os_input, session_state);
+                }
             },
             ServerInstruction::DetachSession(client_ids) => {
                 for client_id in client_ids {

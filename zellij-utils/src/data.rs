@@ -1261,4 +1261,6 @@ pub enum PluginCommand {
     BlockCliPipeInput(String),     // String => pipe name
     CliPipeOutput(String, String), // String => pipe name, String => output
     MessageToPlugin(MessageToPlugin),
+    DisconnectOtherClients,
+    KillSessions(Vec<String>), // one or more session names
 }
