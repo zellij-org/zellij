@@ -241,6 +241,7 @@ fn create_new_screen(size: Size) -> Screen {
     let session_is_mirrored = true;
     let copy_options = CopyOptions::default();
     let default_layout = Box::new(Layout::default());
+    let default_layout_name = None;
     let default_shell = None;
     let session_serialization = true;
     let serialize_pane_viewport = false;
@@ -261,6 +262,7 @@ fn create_new_screen(size: Size) -> Screen {
         copy_options,
         debug,
         default_layout,
+        default_layout_name,
         default_shell,
         session_serialization,
         serialize_pane_viewport,
