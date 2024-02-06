@@ -280,7 +280,7 @@ impl State {
                 self.sessions
                     .update_search_term(&self.search_term, &self.colors);
                 self.reset_selected_index();
-            } else {
+            } else if !self.is_welcome_screen {
                 self.reset_selected_index();
                 hide_self();
             }
@@ -292,7 +292,7 @@ impl State {
             if self.renaming_session_name.is_some() {
                 self.renaming_session_name = None;
                 should_render = true;
-            } else {
+            } else if !self.is_welcome_screen {
                 hide_self();
             }
         }
@@ -330,7 +330,9 @@ impl State {
                 .show_delete_all_sessions_warning();
             should_render = true;
         } else if let Key::Esc = key {
-            hide_self();
+            if !self.is_welcome_screen {
+                hide_self();
+            }
         }
         should_render
     }
