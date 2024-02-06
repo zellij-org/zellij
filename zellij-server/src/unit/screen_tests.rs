@@ -241,10 +241,12 @@ fn create_new_screen(size: Size) -> Screen {
     let session_is_mirrored = true;
     let copy_options = CopyOptions::default();
     let default_layout = Box::new(Layout::default());
+    let default_layout_name = None;
     let default_shell = None;
     let session_serialization = true;
     let serialize_pane_viewport = false;
     let scrollback_lines_to_serialize = None;
+    let layout_dir = None;
 
     let debug = false;
     let styled_underlines = true;
@@ -260,12 +262,14 @@ fn create_new_screen(size: Size) -> Screen {
         copy_options,
         debug,
         default_layout,
+        default_layout_name,
         default_shell,
         session_serialization,
         serialize_pane_viewport,
         scrollback_lines_to_serialize,
         styled_underlines,
         arrow_fonts,
+        layout_dir,
     );
     screen
 }
@@ -425,6 +429,7 @@ impl MockScreen {
             plugin_thread: None,
             pty_writer_thread: None,
             background_jobs_thread: None,
+            config_options: Default::default(),
             layout,
         }
     }
@@ -481,6 +486,7 @@ impl MockScreen {
             plugin_thread: None,
             pty_writer_thread: None,
             background_jobs_thread: None,
+            config_options: Default::default(),
             layout,
         };
 
@@ -2869,17 +2875,17 @@ pub fn screen_can_break_floating_pane_to_a_new_tab() {
         1,
         1,
     ));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(200));
     // move back to make sure the other pane is in the previous tab
     let _ = mock_screen
         .to_screen
         .send(ScreenInstruction::MoveFocusLeftOrPreviousTab(1));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(200));
     // move forward to make sure the broken pane is in the previous tab
     let _ = mock_screen
         .to_screen
         .send(ScreenInstruction::MoveFocusRightOrNextTab(1));
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(200));
 
     mock_screen.teardown(vec![server_thread, screen_thread]);
 

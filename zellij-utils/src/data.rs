@@ -765,6 +765,28 @@ pub struct SessionInfo {
     pub panes: PaneManifest,
     pub connected_clients: usize,
     pub is_current_session: bool,
+    pub available_layouts: Vec<LayoutInfo>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub enum LayoutInfo {
+    BuiltIn(String),
+    File(String),
+}
+
+impl LayoutInfo {
+    pub fn name(&self) -> &str {
+        match self {
+            LayoutInfo::BuiltIn(name) => &name,
+            LayoutInfo::File(name) => &name,
+        }
+    }
+    pub fn is_builtin(&self) -> bool {
+        match self {
+            LayoutInfo::BuiltIn(_name) => true,
+            LayoutInfo::File(_name) => false,
+        }
+    }
 }
 
 use std::hash::{Hash, Hasher};
@@ -1032,12 +1054,12 @@ impl MessageToPlugin {
         self
     }
     pub fn new_plugin_instance_should_float(mut self, should_float: bool) -> Self {
-        let mut new_plugin_args = self.new_plugin_args.get_or_insert_with(Default::default);
+        let new_plugin_args = self.new_plugin_args.get_or_insert_with(Default::default);
         new_plugin_args.should_float = Some(should_float);
         self
     }
     pub fn new_plugin_instance_should_replace_pane(mut self, pane_id: PaneId) -> Self {
-        let mut new_plugin_args = self.new_plugin_args.get_or_insert_with(Default::default);
+        let new_plugin_args = self.new_plugin_args.get_or_insert_with(Default::default);
         new_plugin_args.pane_id_to_replace = Some(pane_id);
         self
     }
@@ -1045,17 +1067,17 @@ impl MessageToPlugin {
         mut self,
         pane_title: impl Into<String>,
     ) -> Self {
-        let mut new_plugin_args = self.new_plugin_args.get_or_insert_with(Default::default);
+        let new_plugin_args = self.new_plugin_args.get_or_insert_with(Default::default);
         new_plugin_args.pane_title = Some(pane_title.into());
         self
     }
     pub fn new_plugin_instance_should_have_cwd(mut self, cwd: PathBuf) -> Self {
-        let mut new_plugin_args = self.new_plugin_args.get_or_insert_with(Default::default);
+        let new_plugin_args = self.new_plugin_args.get_or_insert_with(Default::default);
         new_plugin_args.cwd = Some(cwd);
         self
     }
     pub fn new_plugin_instance_should_skip_cache(mut self) -> Self {
-        let mut new_plugin_args = self.new_plugin_args.get_or_insert_with(Default::default);
+        let new_plugin_args = self.new_plugin_args.get_or_insert_with(Default::default);
         new_plugin_args.skip_cache = true;
         self
     }
@@ -1066,6 +1088,17 @@ pub struct ConnectToSession {
     pub name: Option<String>,
     pub tab_position: Option<usize>,
     pub pane_id: Option<(u32, bool)>, // (id, is_plugin)
+    pub layout: Option<LayoutInfo>,
+}
+
+impl ConnectToSession {
+    pub fn apply_layout_dir(&mut self, layout_dir: &PathBuf) {
+        if let Some(LayoutInfo::File(file_path)) = self.layout.as_mut() {
+            *file_path = Path::join(layout_dir, &file_path)
+                .to_string_lossy()
+                .to_string();
+        }
+    }
 }
 
 #[derive(Debug, Default, Clone)]
@@ -1228,4 +1261,6 @@ pub enum PluginCommand {
     BlockCliPipeInput(String),     // String => pipe name
     CliPipeOutput(String, String), // String => pipe name, String => output
     MessageToPlugin(MessageToPlugin),
+    DisconnectOtherClients,
+    KillSessions(Vec<String>), // one or more session names
 }

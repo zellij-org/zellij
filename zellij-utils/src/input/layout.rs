@@ -9,8 +9,8 @@
 //  If plugins should be able to depend on the layout system
 //  then [`zellij-utils`] could be a proper place.
 use crate::{
-    data::Direction,
-    home::find_default_config_dir,
+    data::{Direction, LayoutInfo},
+    home::{default_layout_dir, find_default_config_dir},
     input::{
         command::RunCommand,
         config::{Config, ConfigError},
@@ -19,6 +19,7 @@ use crate::{
     setup::{self},
 };
 
+use std::cmp::Ordering;
 use std::fmt::{Display, Formatter};
 use std::str::FromStr;
 
@@ -819,6 +820,62 @@ impl Default for LayoutParts {
 }
 
 impl Layout {
+    // the first layout will either be the default one
+    pub fn list_available_layouts(
+        layout_dir: Option<PathBuf>,
+        default_layout_name: &Option<String>,
+    ) -> Vec<LayoutInfo> {
+        let mut available_layouts = layout_dir
+            .clone()
+            .or_else(|| default_layout_dir())
+            .and_then(|layout_dir| match std::fs::read_dir(layout_dir) {
+                Ok(layout_files) => Some(layout_files),
+                Err(e) => {
+                    log::error!("Failed to read layout dir: {:?}", e);
+                    None
+                },
+            })
+            .map(|layout_files| {
+                let mut available_layouts = vec![];
+                for file in layout_files {
+                    if let Ok(file) = file {
+                        if Layout::from_path_or_default_without_config(
+                            Some(&file.path()),
+                            layout_dir.clone(),
+                        )
+                        .is_ok()
+                        {
+                            if let Some(file_name) = file.path().file_stem() {
+                                available_layouts
+                                    .push(LayoutInfo::File(file_name.to_string_lossy().to_string()))
+                            }
+                        }
+                    }
+                }
+                available_layouts
+            })
+            .unwrap_or_else(Default::default);
+        let default_layout_name = default_layout_name
+            .as_ref()
+            .map(|d| d.as_str())
+            .unwrap_or("default");
+        available_layouts.push(LayoutInfo::BuiltIn("default".to_owned()));
+        available_layouts.push(LayoutInfo::BuiltIn("strider".to_owned()));
+        available_layouts.push(LayoutInfo::BuiltIn("disable-status-bar".to_owned()));
+        available_layouts.push(LayoutInfo::BuiltIn("compact".to_owned()));
+        available_layouts.sort_by(|a, b| {
+            let a_name = a.name();
+            let b_name = b.name();
+            if a_name == default_layout_name {
+                return Ordering::Less;
+            } else if b_name == default_layout_name {
+                return Ordering::Greater;
+            } else {
+                a_name.cmp(&b_name)
+            }
+        });
+        available_layouts
+    }
     pub fn stringified_from_path_or_default(
         layout_path: Option<&PathBuf>,
         layout_dir: Option<PathBuf>,
@@ -850,6 +907,40 @@ impl Layout {
     ) -> Result<(Layout, Config), ConfigError> {
         let (path_to_raw_layout, raw_layout, raw_swap_layouts) =
             Layout::stringified_from_path_or_default(layout_path, layout_dir)?;
+        let layout = Layout::from_kdl(
+            &raw_layout,
+            path_to_raw_layout,
+            raw_swap_layouts
+                .as_ref()
+                .map(|(r, f)| (r.as_str(), f.as_str())),
+            None,
+        )?;
+        let config = Config::from_kdl(&raw_layout, Some(config))?; // this merges the two config, with
+        Ok((layout, config))
+    }
+    pub fn from_path_or_default_without_config(
+        layout_path: Option<&PathBuf>,
+        layout_dir: Option<PathBuf>,
+    ) -> Result<Layout, ConfigError> {
+        let (path_to_raw_layout, raw_layout, raw_swap_layouts) =
+            Layout::stringified_from_path_or_default(layout_path, layout_dir)?;
+        let layout = Layout::from_kdl(
+            &raw_layout,
+            path_to_raw_layout,
+            raw_swap_layouts
+                .as_ref()
+                .map(|(r, f)| (r.as_str(), f.as_str())),
+            None,
+        )?;
+        Ok(layout)
+    }
+    pub fn from_default_assets(
+        layout_name: &Path,
+        _layout_dir: Option<PathBuf>,
+        config: Config,
+    ) -> Result<(Layout, Config), ConfigError> {
+        let (path_to_raw_layout, raw_layout, raw_swap_layouts) =
+            Layout::stringified_from_default_assets(layout_name)?;
         let layout = Layout::from_kdl(
             &raw_layout,
             path_to_raw_layout,
@@ -951,6 +1042,11 @@ impl Layout {
                     Self::stringified_compact_swap_from_assets()?,
                 )),
             )),
+            Some("welcome") => Ok((
+                "Welcome screen layout".into(),
+                Self::stringified_welcome_from_assets()?,
+                None,
+            )),
             None | Some(_) => Err(ConfigError::IoPath(
                 std::io::Error::new(std::io::ErrorKind::Other, "The layout was not found"),
                 path.into(),
@@ -980,6 +1076,10 @@ impl Layout {
 
     pub fn stringified_compact_swap_from_assets() -> Result<String, ConfigError> {
         Ok(String::from_utf8(setup::COMPACT_BAR_SWAP_LAYOUT.to_vec())?)
+    }
+
+    pub fn stringified_welcome_from_assets() -> Result<String, ConfigError> {
+        Ok(String::from_utf8(setup::WELCOME_LAYOUT.to_vec())?)
     }
 
     pub fn new_tab(&self) -> (TiledPaneLayout, Vec<FloatingPaneLayout>) {
@@ -1024,24 +1124,10 @@ impl Layout {
                         swap_layout_path.as_os_str().to_string_lossy().into(),
                         swap_kdl_layout,
                     )),
-                    Err(e) => {
-                        log::warn!(
-                            "Failed to read swap layout file: {}. Error: {:?}",
-                            swap_layout_path.as_os_str().to_string_lossy(),
-                            e
-                        );
-                        None
-                    },
+                    Err(_e) => None,
                 }
             },
-            Err(e) => {
-                log::warn!(
-                    "Failed to read swap layout file: {}. Error: {:?}",
-                    swap_layout_path.as_os_str().to_string_lossy(),
-                    e
-                );
-                None
-            },
+            Err(_e) => None,
         }
     }
 }

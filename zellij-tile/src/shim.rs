@@ -653,6 +653,18 @@ pub fn switch_session(name: Option<&str>) {
     unsafe { host_run_plugin_command() };
 }
 
+/// Switch to a session with the given name, create one if no name is given
+pub fn switch_session_with_layout(name: Option<&str>, layout: LayoutInfo) {
+    let plugin_command = PluginCommand::SwitchSession(ConnectToSession {
+        name: name.map(|n| n.to_string()),
+        layout: Some(layout),
+        ..Default::default()
+    });
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 /// Switch to a session with the given name, focusing either the provided pane_id or the provided
 /// tab position (in that order)
 pub fn switch_session_with_focus(
@@ -664,6 +676,7 @@ pub fn switch_session_with_focus(
         name: Some(name.to_owned()),
         tab_position,
         pane_id,
+        ..Default::default()
     });
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
@@ -721,6 +734,26 @@ pub fn cli_pipe_output(pipe_name: &str, output: &str) {
 /// Send a message to a plugin, it will be launched if it is not already running
 pub fn pipe_message_to_plugin(message_to_plugin: MessageToPlugin) {
     let plugin_command = PluginCommand::MessageToPlugin(message_to_plugin);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+/// Disconnect all other clients from the current session
+pub fn disconnect_other_clients() {
+    let plugin_command = PluginCommand::DisconnectOtherClients;
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+/// Kill all Zellij sessions in the list
+pub fn kill_sessions<S: AsRef<str>>(session_names: &[S])
+where
+    S: ToString,
+{
+    let plugin_command =
+        PluginCommand::KillSessions(session_names.into_iter().map(|s| s.to_string()).collect());
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };

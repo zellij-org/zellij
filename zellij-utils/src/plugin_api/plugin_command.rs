@@ -4,10 +4,10 @@ pub use super::generated_api::api::{
     input_mode::InputMode as ProtobufInputMode,
     plugin_command::{
         plugin_command::Payload, CliPipeOutputPayload, CommandName, ContextItem, EnvVariable,
-        ExecCmdPayload, HttpVerb as ProtobufHttpVerb, IdAndNewName, MessageToPluginPayload,
-        MovePayload, NewPluginArgs as ProtobufNewPluginArgs, OpenCommandPanePayload,
-        OpenFilePayload, PaneId as ProtobufPaneId, PaneType as ProtobufPaneType,
-        PluginCommand as ProtobufPluginCommand, PluginMessagePayload,
+        ExecCmdPayload, HttpVerb as ProtobufHttpVerb, IdAndNewName, KillSessionsPayload,
+        MessageToPluginPayload, MovePayload, NewPluginArgs as ProtobufNewPluginArgs,
+        OpenCommandPanePayload, OpenFilePayload, PaneId as ProtobufPaneId,
+        PaneType as ProtobufPaneType, PluginCommand as ProtobufPluginCommand, PluginMessagePayload,
         RequestPluginPermissionPayload, ResizePayload, RunCommandPayload, SetTimeoutPayload,
         SubscribePayload, SwitchSessionPayload, SwitchTabToPayload, UnsubscribePayload,
         WebRequestPayload,
@@ -574,6 +574,7 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                         name: payload.name,
                         tab_position: payload.tab_position.map(|p| p as usize),
                         pane_id,
+                        layout: payload.layout.and_then(|l| l.try_into().ok()),
                     }))
                 },
                 _ => Err("Mismatched payload for SwitchSession"),
@@ -726,6 +727,16 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                             })
                         }),
                     }))
+                },
+                _ => Err("Mismatched payload for MessageToPlugin"),
+            },
+            Some(CommandName::DisconnectOtherClients) => match protobuf_plugin_command.payload {
+                None => Ok(PluginCommand::DisconnectOtherClients),
+                _ => Err("Mismatched payload for DisconnectOtherClients"),
+            },
+            Some(CommandName::KillSessions) => match protobuf_plugin_command.payload {
+                Some(Payload::KillSessionsPayload(KillSessionsPayload { session_names })) => {
+                    Ok(PluginCommand::KillSessions(session_names))
                 },
                 _ => Err("Mismatched payload for PipeOutput"),
             },
@@ -1082,6 +1093,7 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     tab_position: switch_to_session.tab_position.map(|t| t as u32),
                     pane_id: switch_to_session.pane_id.map(|p| p.0),
                     pane_id_is_plugin: switch_to_session.pane_id.map(|p| p.1),
+                    layout: switch_to_session.layout.and_then(|l| l.try_into().ok()),
                 })),
             }),
             PluginCommand::OpenTerminalInPlace(cwd) => Ok(ProtobufPluginCommand {
@@ -1205,6 +1217,16 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     })),
                 })
             },
+            PluginCommand::DisconnectOtherClients => Ok(ProtobufPluginCommand {
+                name: CommandName::DisconnectOtherClients as i32,
+                payload: None,
+            }),
+            PluginCommand::KillSessions(session_names) => Ok(ProtobufPluginCommand {
+                name: CommandName::KillSessions as i32,
+                payload: Some(Payload::KillSessionsPayload(KillSessionsPayload {
+                    session_names,
+                })),
+            }),
         }
     }
 }

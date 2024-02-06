@@ -5,7 +5,7 @@ pub struct PluginCommand {
     pub name: i32,
     #[prost(
         oneof = "plugin_command::Payload",
-        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50"
+        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 60"
     )]
     pub payload: ::core::option::Option<plugin_command::Payload>,
 }
@@ -112,7 +112,15 @@ pub mod plugin_command {
         CliPipeOutputPayload(super::CliPipeOutputPayload),
         #[prost(message, tag = "50")]
         MessageToPluginPayload(super::MessageToPluginPayload),
+        #[prost(message, tag = "60")]
+        KillSessionsPayload(super::KillSessionsPayload),
     }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct KillSessionsPayload {
+    #[prost(string, repeated, tag = "1")]
+    pub session_names: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -171,6 +179,8 @@ pub struct SwitchSessionPayload {
     pub pane_id: ::core::option::Option<u32>,
     #[prost(bool, optional, tag = "4")]
     pub pane_id_is_plugin: ::core::option::Option<bool>,
+    #[prost(message, optional, tag = "5")]
+    pub layout: ::core::option::Option<super::event::LayoutInfo>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -376,6 +386,8 @@ pub enum CommandName {
     BlockCliPipeInput = 77,
     CliPipeOutput = 78,
     MessageToPlugin = 79,
+    DisconnectOtherClients = 80,
+    KillSessions = 81,
 }
 impl CommandName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -464,6 +476,8 @@ impl CommandName {
             CommandName::BlockCliPipeInput => "BlockCliPipeInput",
             CommandName::CliPipeOutput => "CliPipeOutput",
             CommandName::MessageToPlugin => "MessageToPlugin",
+            CommandName::DisconnectOtherClients => "DisconnectOtherClients",
+            CommandName::KillSessions => "KillSessions",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -549,6 +563,8 @@ impl CommandName {
             "BlockCliPipeInput" => Some(Self::BlockCliPipeInput),
             "CliPipeOutput" => Some(Self::CliPipeOutput),
             "MessageToPlugin" => Some(Self::MessageToPlugin),
+            "DisconnectOtherClients" => Some(Self::DisconnectOtherClients),
+            "KillSessions" => Some(Self::KillSessions),
             _ => None,
         }
     }
