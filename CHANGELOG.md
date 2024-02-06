@@ -15,6 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat(plugins): introduce pipes to control data flow to plugins from the command line (https://github.com/zellij-org/zellij/pull/3066)
 * feat(xtask): allow publishing without pushing changes (https://github.com/zellij-org/zellij/pull/3040)
 * fix(terminal): improve reflow performance as well as resource utilization and some misc ancient bugs (https://github.com/zellij-org/zellij/pull/3045, https://github.com/zellij-org/zellij/pull/3032 and https://github.com/zellij-org/zellij/pull/3043)
+* feat(sessions): add welcome screen (https://github.com/zellij-org/zellij/pull/3112)
 
 ## [0.39.2] - 2023-11-29
 * fix(cli): typo in cli help (https://github.com/zellij-org/zellij/pull/2906)
