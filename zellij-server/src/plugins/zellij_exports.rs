@@ -1437,7 +1437,8 @@ fn check_command_permission(
         | PluginCommand::DeleteAllDeadSessions
         | PluginCommand::RenameSession(..)
         | PluginCommand::RenameTab(..)
-        | PluginCommand::DisconnectOtherClients => PermissionType::ChangeApplicationState,
+        | PluginCommand::DisconnectOtherClients
+        | PluginCommand::KillSessions(..) => PermissionType::ChangeApplicationState,
         PluginCommand::UnblockCliPipeInput(..)
         | PluginCommand::BlockCliPipeInput(..)
         | PluginCommand::CliPipeOutput(..) => PermissionType::ReadCliPipes,
