@@ -1054,12 +1054,12 @@ impl MessageToPlugin {
         self
     }
     pub fn new_plugin_instance_should_float(mut self, should_float: bool) -> Self {
-        let mut new_plugin_args = self.new_plugin_args.get_or_insert_with(Default::default);
+        let new_plugin_args = self.new_plugin_args.get_or_insert_with(Default::default);
         new_plugin_args.should_float = Some(should_float);
         self
     }
     pub fn new_plugin_instance_should_replace_pane(mut self, pane_id: PaneId) -> Self {
-        let mut new_plugin_args = self.new_plugin_args.get_or_insert_with(Default::default);
+        let new_plugin_args = self.new_plugin_args.get_or_insert_with(Default::default);
         new_plugin_args.pane_id_to_replace = Some(pane_id);
         self
     }
@@ -1067,17 +1067,17 @@ impl MessageToPlugin {
         mut self,
         pane_title: impl Into<String>,
     ) -> Self {
-        let mut new_plugin_args = self.new_plugin_args.get_or_insert_with(Default::default);
+        let new_plugin_args = self.new_plugin_args.get_or_insert_with(Default::default);
         new_plugin_args.pane_title = Some(pane_title.into());
         self
     }
     pub fn new_plugin_instance_should_have_cwd(mut self, cwd: PathBuf) -> Self {
-        let mut new_plugin_args = self.new_plugin_args.get_or_insert_with(Default::default);
+        let new_plugin_args = self.new_plugin_args.get_or_insert_with(Default::default);
         new_plugin_args.cwd = Some(cwd);
         self
     }
     pub fn new_plugin_instance_should_skip_cache(mut self) -> Self {
-        let mut new_plugin_args = self.new_plugin_args.get_or_insert_with(Default::default);
+        let new_plugin_args = self.new_plugin_args.get_or_insert_with(Default::default);
         new_plugin_args.skip_cache = true;
         self
     }

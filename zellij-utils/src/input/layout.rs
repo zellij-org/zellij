@@ -936,7 +936,7 @@ impl Layout {
     }
     pub fn from_default_assets(
         layout_name: &Path,
-        layout_dir: Option<PathBuf>,
+        _layout_dir: Option<PathBuf>,
         config: Config,
     ) -> Result<(Layout, Config), ConfigError> {
         let (path_to_raw_layout, raw_layout, raw_swap_layouts) =
@@ -1124,10 +1124,10 @@ impl Layout {
                         swap_layout_path.as_os_str().to_string_lossy().into(),
                         swap_kdl_layout,
                     )),
-                    Err(e) => None,
+                    Err(_e) => None,
                 }
             },
-            Err(e) => None,
+            Err(_e) => None,
         }
     }
 }

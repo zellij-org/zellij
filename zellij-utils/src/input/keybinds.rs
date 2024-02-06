@@ -67,7 +67,7 @@ impl Keybinds {
     }
     pub fn merge(&mut self, mut other: Keybinds) {
         for (other_input_mode, mut other_input_mode_keybinds) in other.0.drain() {
-            let mut input_mode_keybinds = self
+            let input_mode_keybinds = self
                 .0
                 .entry(other_input_mode)
                 .or_insert_with(|| Default::default());
