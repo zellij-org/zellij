@@ -282,13 +282,14 @@ impl ZellijPlugin for State {
                 },
                 Key::Ctrl('5') => {
                     switch_session(Some("my_new_session"));
-                }
-                Key::Ctrl('6') => {
-                    disconnect_other_clients()
-                }
+                },
+                Key::Ctrl('6') => disconnect_other_clients(),
                 Key::Ctrl('7') => {
-                    switch_session_with_layout(Some("my_other_new_session"), LayoutInfo::BuiltIn("compact".to_owned()));
-                }
+                    switch_session_with_layout(
+                        Some("my_other_new_session"),
+                        LayoutInfo::BuiltIn("compact".to_owned()),
+                    );
+                },
                 _ => {},
             },
             Event::CustomMessage(message, payload) => {

@@ -750,9 +750,10 @@ pub fn disconnect_other_clients() {
 /// Kill all Zellij sessions in the list
 pub fn kill_sessions<S: AsRef<str>>(session_names: &[S])
 where
-    S: ToString
+    S: ToString,
 {
-    let plugin_command = PluginCommand::KillSessions(session_names.into_iter().map(|s| s.to_string()).collect());
+    let plugin_command =
+        PluginCommand::KillSessions(session_names.into_iter().map(|s| s.to_string()).collect());
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };

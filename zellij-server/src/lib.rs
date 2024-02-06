@@ -118,7 +118,9 @@ impl From<&ServerInstruction> for ServerContext {
             ServerInstruction::AssociatePipeWithClient { .. } => {
                 ServerContext::AssociatePipeWithClient
             },
-            ServerInstruction::DisconnectAllClientsExcept(..) => ServerContext::DisconnectAllClientsExcept,
+            ServerInstruction::DisconnectAllClientsExcept(..) => {
+                ServerContext::DisconnectAllClientsExcept
+            },
         }
     }
 }
@@ -653,8 +655,15 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 }
                 break;
             },
-            ServerInstruction::DisconnectAllClientsExcept(client_id)=> {
-                let client_ids: Vec<ClientId> = session_state.read().unwrap().client_ids().iter().copied().filter(|c| c != &client_id).collect();
+            ServerInstruction::DisconnectAllClientsExcept(client_id) => {
+                let client_ids: Vec<ClientId> = session_state
+                    .read()
+                    .unwrap()
+                    .client_ids()
+                    .iter()
+                    .copied()
+                    .filter(|c| c != &client_id)
+                    .collect();
                 for client_id in client_ids {
                     let _ = os_input
                         .send_to_client(client_id, ServerToClientMsg::Exit(ExitReason::Normal));

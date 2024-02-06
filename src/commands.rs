@@ -384,18 +384,19 @@ fn attach_with_session_name(
 pub(crate) fn start_client(opts: CliArgs) {
     // look for old YAML config/layout/theme files and convert them to KDL
     convert_old_yaml_files(&opts);
-    let (config, layout, config_options, config_without_layout, config_options_without_layout) = match Setup::from_cli_args(&opts) {
-        Ok(results) => results,
-        Err(e) => {
-            if let ConfigError::KdlError(error) = e {
-                let report: Report = error.into();
-                eprintln!("{:?}", report);
-            } else {
-                eprintln!("{}", e);
-            }
-            process::exit(1);
-        },
-    };
+    let (config, layout, config_options, config_without_layout, config_options_without_layout) =
+        match Setup::from_cli_args(&opts) {
+            Ok(results) => results,
+            Err(e) => {
+                if let ConfigError::KdlError(error) = e {
+                    let report: Report = error.into();
+                    eprintln!("{:?}", report);
+                } else {
+                    eprintln!("{}", e);
+                }
+                process::exit(1);
+            },
+        };
     let mut reconnect_to_session: Option<ConnectToSession> = None;
     let os_input = get_os_input(get_client_os_input);
     loop {
@@ -452,7 +453,8 @@ pub(crate) fn start_client(opts: CliArgs) {
                         let mut new_config = config_without_layout.clone();
                         let _ = new_config.merge(new_layout_config.clone());
                         config = new_config;
-                        config_options = config_options_without_layout.merge(new_layout_config.options);
+                        config_options =
+                            config_options_without_layout.merge(new_layout_config.options);
                     },
                     Err(e) => {
                         log::error!("Failed to parse new session layout: {:?}", e);

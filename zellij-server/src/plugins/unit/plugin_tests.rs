@@ -6035,7 +6035,7 @@ pub fn switch_session_plugin_command() {
     std::thread::sleep(std::time::Duration::from_millis(500));
     teardown();
     server_thread.join().unwrap(); // this might take a while if the cache is cold
-    let switch_session_event= received_server_instruction
+    let switch_session_event = received_server_instruction
         .lock()
         .unwrap()
         .iter()
@@ -6115,7 +6115,7 @@ pub fn switch_session_with_layout_plugin_command() {
     std::thread::sleep(std::time::Duration::from_millis(500));
     teardown();
     server_thread.join().unwrap(); // this might take a while if the cache is cold
-    let switch_session_event= received_server_instruction
+    let switch_session_event = received_server_instruction
         .lock()
         .unwrap()
         .iter()
@@ -6195,7 +6195,7 @@ pub fn disconnect_other_clients_plugins_command() {
     std::thread::sleep(std::time::Duration::from_millis(500));
     teardown();
     server_thread.join().unwrap(); // this might take a while if the cache is cold
-    let switch_session_event= received_server_instruction
+    let switch_session_event = received_server_instruction
         .lock()
         .unwrap()
         .iter()

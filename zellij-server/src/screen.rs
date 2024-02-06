@@ -1422,7 +1422,8 @@ impl Screen {
         // because this is mostly about HD access - it does however throw off the timing in the
         // tests and causes them to flake, which is why we skip it here
         #[cfg(not(test))]
-        let available_layouts = Layout::list_available_layouts(self.layout_dir.clone(), &self.default_layout_name);
+        let available_layouts =
+            Layout::list_available_layouts(self.layout_dir.clone(), &self.default_layout_name);
         #[cfg(test)]
         let available_layouts = vec![];
         let session_info = SessionInfo {
@@ -2117,7 +2118,9 @@ pub(crate) fn screen_thread_main(
     let session_is_mirrored = config_options.mirror_session.unwrap_or(false);
     let layout_dir = config_options.layout_dir;
     let default_shell = config_options.default_shell;
-    let default_layout_name = config_options.default_layout.map(|l| format!("{}", l.display()));
+    let default_layout_name = config_options
+        .default_layout
+        .map(|l| format!("{}", l.display()));
     let copy_options = CopyOptions::new(
         config_options.copy_command,
         config_options.copy_clipboard.unwrap_or_default(),

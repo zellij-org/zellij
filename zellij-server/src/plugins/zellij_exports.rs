@@ -258,7 +258,7 @@ fn host_run_plugin_command(env: FunctionEnvMut<ForeignFunctionEnv>) {
                     },
                     PluginCommand::MessageToPlugin(message) => message_to_plugin(env, message)?,
                     PluginCommand::DisconnectOtherClients => disconnect_other_clients(env),
-                    PluginCommand::KillSessions(session_list)=> kill_sessions(session_list),
+                    PluginCommand::KillSessions(session_list) => kill_sessions(session_list),
                 },
                 (PermissionStatus::Denied, permission) => {
                     log::error!(
@@ -1288,9 +1288,12 @@ fn rename_session(env: &ForeignFunctionEnv, new_session_name: String) {
 }
 
 fn disconnect_other_clients(env: &ForeignFunctionEnv) {
-    let _ = env.plugin_env
+    let _ = env
+        .plugin_env
         .senders
-        .send_to_server(ServerInstruction::DisconnectAllClientsExcept(env.plugin_env.client_id))
+        .send_to_server(ServerInstruction::DisconnectAllClientsExcept(
+            env.plugin_env.client_id,
+        ))
         .context("failed to send disconnect other clients instruction");
 }
 

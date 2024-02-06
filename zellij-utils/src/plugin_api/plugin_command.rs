@@ -4,13 +4,13 @@ pub use super::generated_api::api::{
     input_mode::InputMode as ProtobufInputMode,
     plugin_command::{
         plugin_command::Payload, CliPipeOutputPayload, CommandName, ContextItem, EnvVariable,
-        ExecCmdPayload, HttpVerb as ProtobufHttpVerb, IdAndNewName, MessageToPluginPayload,
-        MovePayload, NewPluginArgs as ProtobufNewPluginArgs, OpenCommandPanePayload,
-        OpenFilePayload, PaneId as ProtobufPaneId, PaneType as ProtobufPaneType,
-        PluginCommand as ProtobufPluginCommand, PluginMessagePayload,
+        ExecCmdPayload, HttpVerb as ProtobufHttpVerb, IdAndNewName, KillSessionsPayload,
+        MessageToPluginPayload, MovePayload, NewPluginArgs as ProtobufNewPluginArgs,
+        OpenCommandPanePayload, OpenFilePayload, PaneId as ProtobufPaneId,
+        PaneType as ProtobufPaneType, PluginCommand as ProtobufPluginCommand, PluginMessagePayload,
         RequestPluginPermissionPayload, ResizePayload, RunCommandPayload, SetTimeoutPayload,
         SubscribePayload, SwitchSessionPayload, SwitchTabToPayload, UnsubscribePayload,
-        WebRequestPayload, KillSessionsPayload
+        WebRequestPayload,
     },
     plugin_permission::PermissionType as ProtobufPermissionType,
     resize::ResizeAction as ProtobufResizeAction,
@@ -1217,14 +1217,14 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     })),
                 })
             },
-            PluginCommand::DisconnectOtherClients  => Ok(ProtobufPluginCommand {
+            PluginCommand::DisconnectOtherClients => Ok(ProtobufPluginCommand {
                 name: CommandName::DisconnectOtherClients as i32,
                 payload: None,
             }),
             PluginCommand::KillSessions(session_names) => Ok(ProtobufPluginCommand {
                 name: CommandName::KillSessions as i32,
                 payload: Some(Payload::KillSessionsPayload(KillSessionsPayload {
-                    session_names
+                    session_names,
                 })),
             }),
         }

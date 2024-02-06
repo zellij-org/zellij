@@ -461,8 +461,7 @@ impl State {
         }
         let session_count = self.sessions.all_other_sessions().len();
         let session_count_len = session_count.to_string().chars().count();
-        let warning_description_text =
-            format!("This will kill {} active sessions", session_count);
+        let warning_description_text = format!("This will kill {} active sessions", session_count);
         let confirmation_text = "Are you sure? (y/n)";
         let warning_y_location = y + (rows / 2).saturating_sub(1);
         let confirmation_y_location = y + (rows / 2) + 1;
