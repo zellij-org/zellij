@@ -659,17 +659,17 @@ pub(crate) fn route_action(
                 .send_to_screen(ScreenInstruction::QueryTabNames(client_id))
                 .with_context(err_context)?;
         },
-        Action::NewTiledPluginPane(run_plugin, name, skip_cache) => {
+        Action::NewTiledPluginPane(run_plugin, name, skip_cache, cwd) => {
             senders
                 .send_to_screen(ScreenInstruction::NewTiledPluginPane(
-                    run_plugin, name, skip_cache, client_id,
+                    run_plugin, name, skip_cache, cwd, client_id,
                 ))
                 .with_context(err_context)?;
         },
-        Action::NewFloatingPluginPane(run_plugin, name, skip_cache) => {
+        Action::NewFloatingPluginPane(run_plugin, name, skip_cache, cwd) => {
             senders
                 .send_to_screen(ScreenInstruction::NewFloatingPluginPane(
-                    run_plugin, name, skip_cache, client_id,
+                    run_plugin, name, skip_cache, cwd, client_id,
                 ))
                 .with_context(err_context)?;
         },
@@ -708,7 +708,7 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
         },
-        Action::LaunchPlugin(run_plugin, should_float, should_open_in_place, skip_cache) => {
+        Action::LaunchPlugin(run_plugin, should_float, should_open_in_place, skip_cache, cwd) => {
             senders
                 .send_to_screen(ScreenInstruction::LaunchPlugin(
                     run_plugin,
@@ -716,6 +716,7 @@ pub(crate) fn route_action(
                     should_open_in_place,
                     pane_id,
                     skip_cache,
+                    cwd,
                     client_id,
                 ))
                 .with_context(err_context)?;

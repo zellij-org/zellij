@@ -89,6 +89,7 @@ pub enum PtyInstruction {
         ClientId,
         Size,
         bool, // skip cache
+        Option<PathBuf>, // if Some, will not fill cwd but just forward the message
     ),
     Exit,
 }
@@ -655,6 +656,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                 client_id,
                 size,
                 skip_cache,
+                cwd,
             ) => {
                 pty.fill_plugin_cwd(
                     should_float,
@@ -666,6 +668,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     client_id,
                     size,
                     skip_cache,
+                    cwd,
                 )?;
             },
             PtyInstruction::Exit => break,
@@ -1332,8 +1335,9 @@ impl Pty {
         client_id: ClientId,
         size: Size,
         skip_cache: bool,
+        cwd: Option<PathBuf>,
     ) -> Result<()> {
-        let cwd = self
+        let cwd = cwd.or_else(|| self
             .active_panes
             .get(&client_id)
             .and_then(|pane| match pane {
@@ -1345,7 +1349,7 @@ impl Pty {
                     .os_input
                     .as_ref()
                     .and_then(|input| input.get_cwd(Pid::from_raw(id)))
-            });
+            }));
 
         self.bus.senders.send_to_plugin(PluginInstruction::Load(
             should_float,

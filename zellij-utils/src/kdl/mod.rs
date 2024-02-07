@@ -992,6 +992,8 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                     should_float,
                     should_open_in_place,
                     skip_plugin_cache,
+                    None, // we explicitly do not send the current dir here so that it will be
+                          // filled from the active pane == better UX
                 ))
             },
             "PreviousSwapLayout" => Ok(Action::PreviousSwapLayout),

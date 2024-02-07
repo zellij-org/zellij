@@ -439,6 +439,7 @@ impl TryFrom<ProtobufAction> for Action {
                         should_float,
                         should_open_in_place,
                         skip_plugin_cache,
+                        None,
                     ))
                 },
                 _ => Err("Wrong payload for Action::LaunchOrFocusPlugin"),
@@ -548,6 +549,7 @@ impl TryFrom<ProtobufAction> for Action {
                             run_plugin,
                             pane_name,
                             skip_plugin_cache,
+                            None,
                         ))
                     },
                     _ => Err("Wrong payload for Action::NewTiledPluginPane"),
@@ -570,6 +572,7 @@ impl TryFrom<ProtobufAction> for Action {
                             run_plugin,
                             pane_name,
                             skip_plugin_cache,
+                            None,
                         ))
                     },
                     _ => Err("Wrong payload for Action::MiddleClick"),
@@ -1043,6 +1046,7 @@ impl TryFrom<Action> for ProtobufAction {
                 should_float,
                 should_open_in_place,
                 skip_plugin_cache,
+                cwd,
             ) => {
                 let url: Url = Url::from(&run_plugin.location);
                 Ok(ProtobufAction {
@@ -1137,7 +1141,7 @@ impl TryFrom<Action> for ProtobufAction {
                 name: ProtobufActionName::QueryTabNames as i32,
                 optional_payload: None,
             }),
-            Action::NewTiledPluginPane(run_plugin, pane_name, skip_plugin_cache) => {
+            Action::NewTiledPluginPane(run_plugin, pane_name, skip_plugin_cache, _cwd) => {
                 let plugin_url: Url = Url::from(&run_plugin.location);
                 Ok(ProtobufAction {
                     name: ProtobufActionName::NewTiledPluginPane as i32,
@@ -1150,7 +1154,7 @@ impl TryFrom<Action> for ProtobufAction {
                     )),
                 })
             },
-            Action::NewFloatingPluginPane(run_plugin, pane_name, skip_plugin_cache) => {
+            Action::NewFloatingPluginPane(run_plugin, pane_name, skip_plugin_cache, _cwd) => {
                 let plugin_url: Url = Url::from(&run_plugin.location);
                 Ok(ProtobufAction {
                     name: ProtobufActionName::NewFloatingPluginPane as i32,
