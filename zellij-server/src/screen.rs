@@ -296,9 +296,17 @@ pub enum ScreenInstruction {
     ProgressPluginLoadingOffset(u32),                 // u32 - plugin id
     RequestStateUpdateForPlugins,
     LaunchOrFocusPlugin(RunPlugin, bool, bool, bool, Option<PaneId>, bool, ClientId), // bools are: should_float, move_to_focused_tab, should_open_in_place, Option<PaneId> is the pane id to replace, bool following it is skip_cache
-    LaunchPlugin(RunPlugin, bool, bool, Option<PaneId>, bool, Option<PathBuf>, ClientId), // bools are: should_float, should_open_in_place Option<PaneId> is the pane id to replace, Option<PathBuf> is an optional cwd, bool after is skip_cache
-    SuppressPane(PaneId, ClientId),                                      // bool is should_float
-    FocusPaneWithId(PaneId, bool, ClientId),                             // bool is should_float
+    LaunchPlugin(
+        RunPlugin,
+        bool,
+        bool,
+        Option<PaneId>,
+        bool,
+        Option<PathBuf>,
+        ClientId,
+    ), // bools are: should_float, should_open_in_place Option<PaneId> is the pane id to replace, Option<PathBuf> is an optional cwd, bool after is skip_cache
+    SuppressPane(PaneId, ClientId),          // bool is should_float
+    FocusPaneWithId(PaneId, bool, ClientId), // bool is should_float
     RenamePane(PaneId, Vec<u8>),
     RenameTab(usize, Vec<u8>),
     RequestPluginPermissions(

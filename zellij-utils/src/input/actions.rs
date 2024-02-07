@@ -585,8 +585,9 @@ impl Action {
                 skip_plugin_cache,
             } => {
                 let current_dir = get_current_dir();
-                let run_plugin_location = RunPluginLocation::parse(url.as_str(), Some(current_dir.clone()))
-                    .map_err(|e| format!("Failed to parse plugin location: {}", e))?;
+                let run_plugin_location =
+                    RunPluginLocation::parse(url.as_str(), Some(current_dir.clone()))
+                        .map_err(|e| format!("Failed to parse plugin location: {}", e))?;
                 let run_plugin = RunPlugin {
                     location: run_plugin_location,
                     _allow_exec_host_cmd: false,

@@ -88,7 +88,7 @@ pub enum PtyInstruction {
         Option<PaneId>, // pane id to replace if this is to be opened "in-place"
         ClientId,
         Size,
-        bool, // skip cache
+        bool,            // skip cache
         Option<PathBuf>, // if Some, will not fill cwd but just forward the message
     ),
     Exit,
@@ -1337,19 +1337,20 @@ impl Pty {
         skip_cache: bool,
         cwd: Option<PathBuf>,
     ) -> Result<()> {
-        let cwd = cwd.or_else(|| self
-            .active_panes
-            .get(&client_id)
-            .and_then(|pane| match pane {
-                PaneId::Plugin(..) => None,
-                PaneId::Terminal(id) => self.id_to_child_pid.get(id),
-            })
-            .and_then(|&id| {
-                self.bus
-                    .os_input
-                    .as_ref()
-                    .and_then(|input| input.get_cwd(Pid::from_raw(id)))
-            }));
+        let cwd = cwd.or_else(|| {
+            self.active_panes
+                .get(&client_id)
+                .and_then(|pane| match pane {
+                    PaneId::Plugin(..) => None,
+                    PaneId::Terminal(id) => self.id_to_child_pid.get(id),
+                })
+                .and_then(|&id| {
+                    self.bus
+                        .os_input
+                        .as_ref()
+                        .and_then(|input| input.get_cwd(Pid::from_raw(id)))
+                })
+        });
 
         self.bus.senders.send_to_plugin(PluginInstruction::Load(
             should_float,
