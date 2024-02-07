@@ -12,10 +12,10 @@ use std::path::PathBuf;
 use zellij_utils::cli::CliAction;
 use zellij_utils::data::{Event, Resize, Style};
 use zellij_utils::errors::{prelude::*, ErrorContext};
-use zellij_utils::input::actions::Action;
+use zellij_utils::input::actions::{Action, FloatingPaneCoordinates};
 use zellij_utils::input::command::{RunCommand, TerminalAction};
 use zellij_utils::input::layout::{
-    FloatingPaneLayout, Layout, Run, RunPlugin, RunPluginLocation, SplitDirection, TiledPaneLayout,
+    FloatingPaneLayout, Layout, Run, RunPlugin, RunPluginLocation, SplitDirection, TiledPaneLayout, SplitSize,
 };
 use zellij_utils::input::options::Options;
 use zellij_utils::ipc::IpcReceiverWithContext;
@@ -1049,6 +1049,32 @@ fn attach_after_first_tab_closed() {
     screen.add_client(1).expect("TEST");
 }
 
+#[test]
+fn open_new_floating_pane_with_custom_coordinates() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size);
+
+    new_tab(&mut screen, 1, 0);
+    let active_tab = screen.get_active_tab_mut(1).unwrap();
+    let should_float = Some(true);
+    active_tab
+        .new_pane(PaneId::Terminal(2), None, should_float, None, Some(FloatingPaneCoordinates {
+            x: Some(SplitSize::Percent(10)),
+            y: Some(SplitSize::Fixed(5)),
+            width: Some(SplitSize::Percent(1)),
+            height: Some(SplitSize::Fixed(2)),
+        }), Some(1))
+        .unwrap();
+    let active_pane = active_tab.get_active_pane(1).unwrap();
+    assert_eq!(active_pane.x(), 12, "x coordinates set properly");
+    assert_eq!(active_pane.y(), 5, "y coordinates set properly");
+    assert_eq!(active_pane.rows(), 2, "rows set properly");
+    assert_eq!(active_pane.cols(), 1, "columns set properly");
+}
+
 // Following are tests for sending CLI actions
 // these tests are only partially relevant to Screen
 // and are included here for two reasons:
@@ -1989,6 +2015,49 @@ pub fn send_cli_new_pane_action_with_command_and_cwd() {
         x: None,
         y: None,
         width: None,
+        height: None,
+    };
+    send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
+    mock_screen.teardown(vec![pty_thread, screen_thread]);
+    assert_snapshot!(format!("{:?}", *received_pty_instructions.lock().unwrap()));
+}
+
+#[test]
+pub fn send_cli_new_pane_action_with_floating_pane_and_coordinates() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 10; // fake client id should not appear in the screen's state
+    let mut mock_screen = MockScreen::new(size);
+    let pty_receiver = mock_screen.pty_receiver.take().unwrap();
+    let session_metadata = mock_screen.clone_session_metadata();
+    let mut initial_layout = TiledPaneLayout::default();
+    initial_layout.children_split_direction = SplitDirection::Vertical;
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
+    let received_pty_instructions = Arc::new(Mutex::new(vec![]));
+    let pty_thread = log_actions_in_thread!(
+        received_pty_instructions,
+        PtyInstruction::Exit,
+        pty_receiver
+    );
+    let cli_new_pane_action = CliAction::NewPane {
+        direction: Some(Direction::Right),
+        command: vec!["htop".into()],
+        plugin: None,
+        cwd: Some("/some/folder".into()),
+        floating: true,
+        in_place: false,
+        name: None,
+        close_on_exit: false,
+        start_suspended: false,
+        configuration: None,
+        skip_plugin_cache: false,
+        x: Some("10".to_owned()),
+        y: None,
+        width: Some("20%".to_owned()),
         height: None,
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
