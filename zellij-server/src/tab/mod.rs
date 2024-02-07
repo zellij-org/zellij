@@ -15,6 +15,7 @@ use zellij_utils::data::{
 };
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
+use zellij_utils::input::actions::FloatingPaneCoordinates;
 use zellij_utils::position::{Column, Line};
 use zellij_utils::{position::Position, serde};
 
@@ -991,7 +992,7 @@ impl Tab {
                 self.close_pane(focused_pane_id, true, Some(client_id))
             {
                 self.show_floating_panes();
-                self.add_floating_pane(embedded_pane_to_float, focused_pane_id, Some(client_id))?;
+                self.add_floating_pane(embedded_pane_to_float, focused_pane_id, None, Some(client_id))?;
             }
         }
         Ok(())
@@ -1030,6 +1031,7 @@ impl Tab {
                         default_shell,
                         Some(should_float),
                         name,
+                        None,
                         client_id_or_tab_index,
                     );
                     self.senders
@@ -1048,6 +1050,7 @@ impl Tab {
         initial_pane_title: Option<String>,
         should_float: Option<bool>,
         invoked_with: Option<Run>,
+        floating_pane_coordinates: Option<FloatingPaneCoordinates>,
         client_id: Option<ClientId>,
     ) -> Result<()> {
         let err_context = || format!("failed to create new pane with id {pid:?}");
@@ -1105,7 +1108,7 @@ impl Tab {
             },
         };
         if self.floating_panes.panes_are_visible() {
-            self.add_floating_pane(new_pane, pid, client_id)
+            self.add_floating_pane(new_pane, pid, floating_pane_coordinates, client_id)
         } else {
             self.add_tiled_pane(new_pane, pid, client_id)
         }
@@ -3615,7 +3618,7 @@ impl Tab {
                 Some(pane) => {
                     if should_float {
                         self.show_floating_panes();
-                        self.add_floating_pane(pane.1, pane_id, Some(client_id))
+                        self.add_floating_pane(pane.1, pane_id, None, Some(client_id))
                     } else {
                         self.hide_floating_panes();
                         self.add_tiled_pane(pane.1, pane_id, Some(client_id))
@@ -3655,10 +3658,25 @@ impl Tab {
         &mut self,
         mut pane: Box<dyn Pane>,
         pane_id: PaneId,
+        floating_pane_coordinates: Option<FloatingPaneCoordinates>,
         client_id: Option<ClientId>,
     ) -> Result<()> {
         let err_context = || format!("failed to add floating pane");
-        if let Some(new_pane_geom) = self.floating_panes.find_room_for_new_pane() {
+        if let Some(mut new_pane_geom) = self.floating_panes.find_room_for_new_pane() {
+            if let Some(floating_pane_coordinates) = floating_pane_coordinates {
+                let viewport = self.viewport.borrow();
+                log::info!("floating_pane_coordinates: {:?}", floating_pane_coordinates);
+                log::info!("new_pane_geom before: {:?}", new_pane_geom);
+                new_pane_geom.adjust_coordinates(floating_pane_coordinates, viewport.cols, viewport.rows);
+                if new_pane_geom.x < viewport.x {
+                    new_pane_geom.x = viewport.x;
+                }
+                if new_pane_geom.y < viewport.y {
+                    new_pane_geom.y = viewport.y;
+                }
+                log::info!("new_pane_geom after: {:?}", new_pane_geom);
+                self.swap_layouts.set_is_floating_damaged();
+            }
             pane.set_active_at(Instant::now());
             pane.set_geom(new_pane_geom);
             pane.set_content_offset(Offset::frame(1)); // floating panes always have a frame

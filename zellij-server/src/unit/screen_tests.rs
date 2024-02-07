@@ -923,7 +923,7 @@ fn switch_to_tab_with_fullscreen() {
     {
         let active_tab = screen.get_active_tab_mut(1).unwrap();
         active_tab
-            .new_pane(PaneId::Terminal(2), None, None, None, Some(1))
+            .new_pane(PaneId::Terminal(2), None, None, None, None, Some(1))
             .unwrap();
         active_tab.toggle_active_pane_fullscreen(1);
     }
@@ -1038,7 +1038,7 @@ fn attach_after_first_tab_closed() {
     {
         let active_tab = screen.get_active_tab_mut(1).unwrap();
         active_tab
-            .new_pane(PaneId::Terminal(2), None, None, None, Some(1))
+            .new_pane(PaneId::Terminal(2), None, None, None, None, Some(1))
             .unwrap();
         active_tab.toggle_active_pane_fullscreen(1);
     }
@@ -1900,6 +1900,10 @@ pub fn send_cli_new_pane_action_with_default_parameters() {
         start_suspended: false,
         configuration: None,
         skip_plugin_cache: false,
+        x: None,
+        y: None,
+        width: None,
+        height: None,
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -1939,6 +1943,10 @@ pub fn send_cli_new_pane_action_with_split_direction() {
         start_suspended: false,
         configuration: None,
         skip_plugin_cache: false,
+        x: None,
+        y: None,
+        width: None,
+        height: None,
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -1978,6 +1986,10 @@ pub fn send_cli_new_pane_action_with_command_and_cwd() {
         start_suspended: false,
         configuration: None,
         skip_plugin_cache: false,
+        x: None,
+        y: None,
+        width: None,
+        height: None,
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be

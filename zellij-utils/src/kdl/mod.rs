@@ -23,7 +23,7 @@ use kdl::{KdlDocument, KdlEntry, KdlNode};
 use std::path::PathBuf;
 use std::str::FromStr;
 
-use crate::input::actions::{Action, SearchDirection, SearchOption};
+use crate::input::actions::{Action, SearchDirection, SearchOption, FloatingPaneCoordinates};
 use crate::input::command::RunCommandAction;
 
 #[macro_export]
@@ -904,8 +904,16 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                     hold_on_close,
                     hold_on_start,
                 };
+                let x = command_metadata
+                    .and_then(|c_m| kdl_child_string_value_for_entry(c_m, "x")).map(|s| s.to_owned());
+                let y = command_metadata
+                    .and_then(|c_m| kdl_child_string_value_for_entry(c_m, "y")).map(|s| s.to_owned());
+                let width = command_metadata
+                    .and_then(|c_m| kdl_child_string_value_for_entry(c_m, "width")).map(|s| s.to_owned());
+                let height = command_metadata
+                    .and_then(|c_m| kdl_child_string_value_for_entry(c_m, "height")).map(|s| s.to_owned());
                 if floating {
-                    Ok(Action::NewFloatingPane(Some(run_command_action), name))
+                    Ok(Action::NewFloatingPane(Some(run_command_action), name, FloatingPaneCoordinates::new(x, y, width, height)))
                 } else if in_place {
                     Ok(Action::NewInPlacePane(Some(run_command_action), name))
                 } else {

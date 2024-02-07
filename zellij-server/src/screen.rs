@@ -12,6 +12,7 @@ use zellij_utils::data::{
 };
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
+use zellij_utils::input::actions::FloatingPaneCoordinates;
 use zellij_utils::input::options::Clipboard;
 use zellij_utils::pane_size::{Size, SizeInPixels};
 use zellij_utils::{
@@ -146,6 +147,7 @@ pub enum ScreenInstruction {
         Option<ShouldFloat>,
         HoldForCommand,
         Option<Run>, // invoked with
+        Option<FloatingPaneCoordinates>,
         ClientTabIndexOrPaneId,
     ),
     OpenInPlaceEditor(PaneId, ClientId),
@@ -274,7 +276,7 @@ pub enum ScreenInstruction {
     QueryTabNames(ClientId),
     NewTiledPluginPane(RunPlugin, Option<String>, bool, Option<PathBuf>, ClientId), // Option<String> is
     // optional pane title, bool is skip cache, Option<PathBuf> is an optional cwd
-    NewFloatingPluginPane(RunPlugin, Option<String>, bool, Option<PathBuf>, ClientId), // Option<String> is an
+    NewFloatingPluginPane(RunPlugin, Option<String>, bool, Option<PathBuf>, Option<FloatingPaneCoordinates>, ClientId), // Option<String> is an
     // optional pane title, bool
     // is skip cache, Option<PathBuf> is an optional cwd
     NewInPlacePluginPane(RunPlugin, Option<String>, PaneId, bool, ClientId), // Option<String> is an
@@ -1760,6 +1762,7 @@ impl Screen {
                 new_active_tab.add_floating_pane(
                     plugin_pane_to_move_to_active_tab,
                     pane_id,
+                    None,
                     Some(client_id),
                 )?;
             } else {
@@ -1844,7 +1847,7 @@ impl Screen {
             let (mut tiled_panes_layout, mut floating_panes_layout) = default_layout.new_tab();
             if pane_to_break_is_floating {
                 tab.show_floating_panes();
-                tab.add_floating_pane(active_pane, active_pane_id, Some(client_id))?;
+                tab.add_floating_pane(active_pane, active_pane_id, None, Some(client_id))?;
                 if let Some(already_running_layout) = floating_panes_layout
                     .iter_mut()
                     .find(|i| i.run == active_pane_run_instruction)
@@ -1909,7 +1912,7 @@ impl Screen {
 
             if pane_to_break_is_floating {
                 new_active_tab.show_floating_panes();
-                new_active_tab.add_floating_pane(active_pane, active_pane_id, Some(client_id))?;
+                new_active_tab.add_floating_pane(active_pane, active_pane_id, None, Some(client_id))?;
             } else {
                 new_active_tab.hide_floating_panes();
                 new_active_tab.add_tiled_pane(active_pane, active_pane_id, Some(client_id))?;
@@ -2217,6 +2220,7 @@ pub(crate) fn screen_thread_main(
                 should_float,
                 hold_for_command,
                 invoked_with,
+                floating_pane_coordinates,
                 client_or_tab_index,
             ) => {
                 match client_or_tab_index {
@@ -2226,6 +2230,7 @@ pub(crate) fn screen_thread_main(
                                initial_pane_title,
                                should_float,
                                invoked_with,
+                               floating_pane_coordinates,
                                Some(client_id)
                            )
                         }, ?);
@@ -2250,6 +2255,7 @@ pub(crate) fn screen_thread_main(
                                 initial_pane_title,
                                 should_float,
                                 invoked_with,
+                                floating_pane_coordinates,
                                 None,
                             )?;
                             if let Some(hold_for_command) = hold_for_command {
@@ -3241,6 +3247,7 @@ pub(crate) fn screen_thread_main(
                         size,
                         skip_cache,
                         cwd,
+                        None,
                     ))?;
             },
             ScreenInstruction::NewFloatingPluginPane(
@@ -3248,6 +3255,7 @@ pub(crate) fn screen_thread_main(
                 pane_title,
                 skip_cache,
                 cwd,
+                floating_pane_coordinates,
                 client_id,
             ) => match screen.active_tab_indices.values().next() {
                 Some(tab_index) => {
@@ -3268,6 +3276,7 @@ pub(crate) fn screen_thread_main(
                             size,
                             skip_cache,
                             cwd,
+                            floating_pane_coordinates,
                         ))?;
                 },
                 None => {
@@ -3300,6 +3309,7 @@ pub(crate) fn screen_thread_main(
                             client_id,
                             size,
                             skip_cache,
+                            None,
                             None,
                         ))?;
                 },
@@ -3378,6 +3388,7 @@ pub(crate) fn screen_thread_main(
                             should_float,
                             Some(run_plugin),
                             None,
+                            None,
                         )
                     }, ?);
                 } else if let Some(active_tab) =
@@ -3388,6 +3399,7 @@ pub(crate) fn screen_thread_main(
                         Some(pane_title),
                         should_float,
                         Some(run_plugin),
+                        None,
                         None,
                     )?;
                 } else {
@@ -3462,6 +3474,7 @@ pub(crate) fn screen_thread_main(
                                 size,
                                 skip_cache,
                                 None,
+                                None,
                             ))?;
                     },
                     None => {
@@ -3507,6 +3520,7 @@ pub(crate) fn screen_thread_main(
                                         Size::default(),
                                         skip_cache,
                                         None,
+                                        None,
                                     ))?;
                             }
                         },
@@ -3542,6 +3556,7 @@ pub(crate) fn screen_thread_main(
                                 size,
                                 skip_cache,
                                 cwd,
+                                None,
                             ))?;
                     },
                     None => {
@@ -3578,6 +3593,7 @@ pub(crate) fn screen_thread_main(
                                     Size::default(),
                                     skip_cache,
                                     cwd,
+                                    None,
                                 ))?;
                         },
                         None => {

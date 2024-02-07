@@ -4,7 +4,8 @@ use std::{
     hash::{Hash, Hasher},
 };
 
-use crate::input::layout::SplitDirection;
+use crate::input::layout::{SplitDirection, SplitSize};
+use crate::input::actions::FloatingPaneCoordinates;
 use crate::position::Position;
 
 /// Contains the position and size of a [`Pane`], or more generally of any terminal, measured
@@ -130,6 +131,18 @@ impl Dimension {
     pub fn is_percent(&self) -> bool {
         matches!(self.constraint, Constraint::Percent(_))
     }
+    pub fn from_split_size(split_size: SplitSize, full_size: usize) -> Self {
+        match split_size {
+            SplitSize::Fixed(fixed) => Dimension {
+                constraint: Constraint::Fixed(fixed),
+                inner: fixed
+            },
+            SplitSize::Percent(percent) => Dimension {
+                constraint: Constraint::Percent(percent as f64),
+                inner: ((percent as f64 / 100.0) * full_size as f64).floor() as usize,
+            }
+        }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
@@ -180,6 +193,21 @@ impl PaneGeom {
             SplitDirection::Vertical => self.cols.is_percent(),
             SplitDirection::Horizontal => self.rows.is_percent(),
         }
+    }
+    pub fn adjust_coordinates(&mut self, floating_pane_coordinates: FloatingPaneCoordinates, viewport_width: usize, viewport_height: usize) {
+        if let Some(x) = floating_pane_coordinates.x {
+            self.x = x.to_fixed(viewport_width);
+        }
+        if let Some(y) = floating_pane_coordinates.y {
+            self.y = y.to_fixed(viewport_height);
+        }
+        if let Some(height) = floating_pane_coordinates.height {
+            self.rows = Dimension::from_split_size(height, viewport_height);
+        }
+        if let Some(width) = floating_pane_coordinates.width {
+            self.cols = Dimension::from_split_size(width, viewport_width);
+        }
+
     }
 }
 

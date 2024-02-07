@@ -45,6 +45,10 @@ fn main() {
                 start_suspended,
                 configuration: None,
                 skip_plugin_cache,
+                x: None, // TODO: support coordinates
+                y: None,
+                width: None,
+                height: None,
             };
             commands::send_action_to_session(command_cli_action, opts.session, config);
             std::process::exit(0);
@@ -70,6 +74,10 @@ fn main() {
                 start_suspended: false,
                 configuration,
                 skip_plugin_cache,
+                x: None, // TODO: support coordinates
+                y: None,
+                width: None,
+                height: None,
             };
             commands::send_action_to_session(command_cli_action, opts.session, config);
             std::process::exit(0);

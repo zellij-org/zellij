@@ -522,7 +522,8 @@ fn open_terminal_floating(env: &ForeignFunctionEnv, cwd: PathBuf) {
         TerminalAction::RunCommand(run_command) => Some(run_command.into()),
         _ => None,
     };
-    let action = Action::NewFloatingPane(run_command_action, None);
+    let action = Action::NewFloatingPane(run_command_action, None, None); // TODO: support
+                                                                          // coordinates
     apply_action!(action, error_msg, env);
 }
 
@@ -585,7 +586,8 @@ fn open_command_pane_floating(env: &ForeignFunctionEnv, command_to_run: CommandT
         hold_on_close,
         hold_on_start,
     };
-    let action = Action::NewFloatingPane(Some(run_command_action), name);
+    let action = Action::NewFloatingPane(Some(run_command_action), name, None); // TODO: support
+                                                                                // coordinates
     apply_action!(action, error_msg, env);
 }
 

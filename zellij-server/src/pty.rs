@@ -17,6 +17,7 @@ use zellij_utils::{
     errors::{ContextType, PtyContext},
     input::{
         command::{RunCommand, TerminalAction},
+        actions::FloatingPaneCoordinates,
         layout::{
             FloatingPaneLayout, Layout, PluginUserConfiguration, Run, RunPlugin, RunPluginLocation,
             TiledPaneLayout,
@@ -43,6 +44,7 @@ pub enum PtyInstruction {
         Option<TerminalAction>,
         Option<bool>,
         Option<String>,
+        Option<FloatingPaneCoordinates>,
         ClientTabIndexOrPaneId,
     ), // bool (if Some) is
     // should_float, String is an optional pane name
@@ -90,6 +92,7 @@ pub enum PtyInstruction {
         Size,
         bool,            // skip cache
         Option<PathBuf>, // if Some, will not fill cwd but just forward the message
+        Option<FloatingPaneCoordinates>,
     ),
     Exit,
 }
@@ -135,6 +138,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                 terminal_action,
                 should_float,
                 name,
+                floating_pane_coordinates,
                 client_or_tab_index,
             ) => {
                 let err_context =
@@ -176,6 +180,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                                 should_float,
                                 hold_for_command,
                                 invoked_with,
+                                floating_pane_coordinates,
                                 client_or_tab_index,
                             ))
                             .with_context(err_context)?;
@@ -192,6 +197,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                                         should_float,
                                         hold_for_command,
                                         invoked_with,
+                                        floating_pane_coordinates,
                                         client_or_tab_index,
                                     ))
                                     .with_context(err_context)?;
@@ -657,6 +663,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                 size,
                 skip_cache,
                 cwd,
+                floating_pane_coordinates,
             ) => {
                 pty.fill_plugin_cwd(
                     should_float,
@@ -669,6 +676,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     size,
                     skip_cache,
                     cwd,
+                    floating_pane_coordinates,
                 )?;
             },
             PtyInstruction::Exit => break,
@@ -1336,6 +1344,7 @@ impl Pty {
         size: Size,
         skip_cache: bool,
         cwd: Option<PathBuf>,
+        floating_pane_coordinates: Option<FloatingPaneCoordinates>,
     ) -> Result<()> {
         let cwd = cwd.or_else(|| {
             self.active_panes

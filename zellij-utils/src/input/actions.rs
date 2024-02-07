@@ -3,7 +3,7 @@
 use super::command::RunCommandAction;
 use super::layout::{
     FloatingPaneLayout, Layout, RunPlugin, RunPluginLocation, SwapFloatingLayout, SwapTiledLayout,
-    TiledPaneLayout,
+    TiledPaneLayout, SplitSize,
 };
 use crate::cli::CliAction;
 use crate::data::InputMode;
@@ -92,6 +92,33 @@ impl FromStr for SearchOption {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+pub struct FloatingPaneCoordinates {
+    pub x: Option<SplitSize>,
+    pub y: Option<SplitSize>,
+    pub width: Option<SplitSize>,
+    pub height: Option<SplitSize>,
+}
+
+impl FloatingPaneCoordinates {
+    pub fn new(x: Option<String>, y: Option<String>, width: Option<String>, height: Option<String>) -> Option<Self> {
+        let x = x.and_then(|x| SplitSize::from_str(&x).ok());
+        let y = y.and_then(|y| SplitSize::from_str(&y).ok());
+        let width = width.and_then(|width| SplitSize::from_str(&width).ok());
+        let height = height.and_then(|height| SplitSize::from_str(&height).ok());
+        if x.is_none() && y.is_none() && width.is_none() && height.is_none() {
+            None
+        } else {
+            Some(FloatingPaneCoordinates {
+                x,
+                y,
+                width,
+                height
+            })
+        }
+    }
+}
+
 // As these actions are bound to the default config, please
 // do take care when refactoring - or renaming.
 // They might need to be adjusted in the default config
@@ -168,7 +195,7 @@ pub enum Action {
         bool,
     ), // usize is an optional line number, Option<PathBuf> is an optional cwd, bool is floating true/false, second bool is in_place
     /// Open a new floating pane
-    NewFloatingPane(Option<RunCommandAction>, Option<String>), // String is an optional pane name
+    NewFloatingPane(Option<RunCommandAction>, Option<String>, Option<FloatingPaneCoordinates>), // String is an optional pane name
     /// Open a new tiled (embedded, non-floating) pane
     NewTiledPane(Option<Direction>, Option<RunCommandAction>, Option<String>), // String is an
     /// Open a new pane in place of the focused one, suppressing it instead
@@ -242,7 +269,7 @@ pub enum Action {
     /// Open a new tiled (embedded, non-floating) plugin pane
     NewTiledPluginPane(RunPlugin, Option<String>, bool, Option<PathBuf>), // String is an optional name, bool is
     // skip_cache, Option<PathBuf> is cwd
-    NewFloatingPluginPane(RunPlugin, Option<String>, bool, Option<PathBuf>), // String is an optional name, bool is
+    NewFloatingPluginPane(RunPlugin, Option<String>, bool, Option<PathBuf>, Option<FloatingPaneCoordinates>), // String is an optional name, bool is
     // skip_cache, Option<PathBuf> is cwd
     NewInPlacePluginPane(RunPlugin, Option<String>, bool), // String is an optional name, bool is
     // skip_cache
@@ -330,6 +357,10 @@ impl Action {
                 start_suspended,
                 configuration,
                 skip_plugin_cache,
+                x,
+                y,
+                width,
+                height
             } => {
                 let current_dir = get_current_dir();
                 let cwd = cwd
@@ -350,6 +381,7 @@ impl Action {
                             name,
                             skip_plugin_cache,
                             cwd,
+                            FloatingPaneCoordinates::new(x, y, width, height),
                         )])
                     } else if in_place {
                         Ok(vec![Action::NewInPlacePluginPane(
@@ -390,6 +422,7 @@ impl Action {
                         Ok(vec![Action::NewFloatingPane(
                             Some(run_command_action),
                             name,
+                            FloatingPaneCoordinates::new(x, y, width, height),
                         )])
                     } else if in_place {
                         Ok(vec![Action::NewInPlacePane(Some(run_command_action), name)])
@@ -402,7 +435,7 @@ impl Action {
                     }
                 } else {
                     if floating {
-                        Ok(vec![Action::NewFloatingPane(None, name)])
+                        Ok(vec![Action::NewFloatingPane(None, name, FloatingPaneCoordinates::new(x, y, width, height))])
                     } else if in_place {
                         Ok(vec![Action::NewInPlacePane(None, name)])
                     } else {

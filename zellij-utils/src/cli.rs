@@ -458,8 +458,20 @@ pub enum CliAction {
         start_suspended: bool,
         #[clap(long, value_parser)]
         configuration: Option<PluginUserConfiguration>,
-        #[clap(short, long, value_parser)]
+        #[clap(long, value_parser)]
         skip_plugin_cache: bool,
+        /// The x coordinates if the pane is floating as a bare integer (eg. 1) or percent (eg. 10%)
+        #[clap(long, conflicts_with("direction"))]
+        x: Option<String>,
+        /// The y coordinates if the pane is floating as a bare integer (eg. 1) or percent (eg. 10%)
+        #[clap(long, conflicts_with("direction"))]
+        y: Option<String>,
+        /// The width if the pane is floating as a bare integer (eg. 1) or percent (eg. 10%)
+        #[clap(long, conflicts_with("direction"))]
+        width: Option<String>,
+        /// The height if the pane is floating as a bare integer (eg. 1) or percent (eg. 10%)
+        #[clap(long, conflicts_with("direction"))]
+        height: Option<String>,
     },
     /// Open the specified file in a new zellij pane with your default EDITOR
     Edit {
