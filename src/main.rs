@@ -31,6 +31,7 @@ fn main() {
             start_suspended,
         })) = opts.command
         {
+            let cwd = cwd.or_else(|| std::env::current_dir().ok());
             let skip_plugin_cache = false; // N/A for this action
             let command_cli_action = CliAction::NewPane {
                 command,
@@ -56,11 +57,12 @@ fn main() {
             skip_plugin_cache,
         })) = opts.command
         {
+            let cwd = std::env::current_dir().ok();
             let command_cli_action = CliAction::NewPane {
                 command: vec![],
                 plugin: Some(url),
                 direction: None,
-                cwd: None,
+                cwd,
                 floating,
                 in_place,
                 name: None,

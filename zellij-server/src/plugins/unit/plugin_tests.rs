@@ -3841,7 +3841,11 @@ pub fn open_file_floating_plugin_command() {
             }
         })
         .clone();
-    assert_snapshot!(format!("{:#?}", new_tab_event));
+    // we do the replace below to avoid the randomness of the temporary folder in the snapshot
+    // while still testing it
+    assert_snapshot!(
+        format!("{:#?}", new_tab_event).replace(&format!("{:?}", temp_folder.path()), "\"CWD\"")
+    );
 }
 
 #[test]
@@ -3918,7 +3922,11 @@ pub fn open_file_plugin_command() {
             }
         })
         .clone();
-    assert_snapshot!(format!("{:#?}", new_tab_event));
+    // we do the replace below to avoid the randomness of the temporary folder in the snapshot
+    // while still testing it
+    assert_snapshot!(
+        format!("{:#?}", new_tab_event).replace(&format!("{:?}", temp_folder.path()), "\"CWD\"")
+    );
 }
 
 #[test]
@@ -3996,7 +4004,11 @@ pub fn open_file_with_line_plugin_command() {
             }
         })
         .clone();
-    assert_snapshot!(format!("{:#?}", new_tab_event));
+    // we do the replace below to avoid the randomness of the temporary folder in the snapshot
+    // while still testing it
+    assert_snapshot!(
+        format!("{:#?}", new_tab_event).replace(&format!("{:?}", temp_folder.path()), "\"CWD\"")
+    );
 }
 
 #[test]
@@ -4073,7 +4085,11 @@ pub fn open_file_with_line_floating_plugin_command() {
             }
         })
         .clone();
-    assert_snapshot!(format!("{:#?}", new_tab_event));
+    // we do the replace below to avoid the randomness of the temporary folder in the snapshot
+    // while still testing it
+    assert_snapshot!(
+        format!("{:#?}", new_tab_event).replace(&format!("{:?}", temp_folder.path()), "\"CWD\"")
+    );
 }
 
 #[test]

@@ -213,8 +213,8 @@ pub enum Action {
     MiddleClick(Position),
     LaunchOrFocusPlugin(RunPlugin, bool, bool, bool, bool), // bools => should float,
     // move_to_focused_tab, should_open_in_place, skip_cache
-    LaunchPlugin(RunPlugin, bool, bool, bool), // bools => should float,
-    // should_open_in_place, skip_cache
+    LaunchPlugin(RunPlugin, bool, bool, bool, Option<PathBuf>), // bools => should float,
+    // should_open_in_place, skip_cache, Option<PathBuf> is cwd
     LeftMouseRelease(Position),
     RightMouseRelease(Position),
     MiddleMouseRelease(Position),
@@ -240,10 +240,10 @@ pub enum Action {
     /// Query all tab names
     QueryTabNames,
     /// Open a new tiled (embedded, non-floating) plugin pane
-    NewTiledPluginPane(RunPlugin, Option<String>, bool), // String is an optional name, bool is
-    // skip_cache
-    NewFloatingPluginPane(RunPlugin, Option<String>, bool), // String is an optional name, bool is
-    // skip_cache
+    NewTiledPluginPane(RunPlugin, Option<String>, bool, Option<PathBuf>), // String is an optional name, bool is
+    // skip_cache, Option<PathBuf> is cwd
+    NewFloatingPluginPane(RunPlugin, Option<String>, bool, Option<PathBuf>), // String is an optional name, bool is
+    // skip_cache, Option<PathBuf> is cwd
     NewInPlacePluginPane(RunPlugin, Option<String>, bool), // String is an optional name, bool is
     // skip_cache
     StartOrReloadPlugin(RunPlugin),
@@ -337,7 +337,7 @@ impl Action {
                     .or_else(|| Some(current_dir));
                 let user_configuration = configuration.unwrap_or_default();
                 if let Some(plugin) = plugin {
-                    let location = RunPluginLocation::parse(&plugin, cwd)
+                    let location = RunPluginLocation::parse(&plugin, cwd.clone())
                         .map_err(|e| format!("Failed to parse plugin loction {plugin}: {}", e))?;
                     let plugin = RunPlugin {
                         _allow_exec_host_cmd: false,
@@ -349,6 +349,7 @@ impl Action {
                             plugin,
                             name,
                             skip_plugin_cache,
+                            cwd,
                         )])
                     } else if in_place {
                         Ok(vec![Action::NewInPlacePluginPane(
@@ -369,6 +370,7 @@ impl Action {
                             plugin,
                             name,
                             skip_plugin_cache,
+                            cwd,
                         )])
                     }
                 } else if !command.is_empty() {
@@ -583,8 +585,9 @@ impl Action {
                 skip_plugin_cache,
             } => {
                 let current_dir = get_current_dir();
-                let run_plugin_location = RunPluginLocation::parse(url.as_str(), Some(current_dir))
-                    .map_err(|e| format!("Failed to parse plugin location: {}", e))?;
+                let run_plugin_location =
+                    RunPluginLocation::parse(url.as_str(), Some(current_dir.clone()))
+                        .map_err(|e| format!("Failed to parse plugin location: {}", e))?;
                 let run_plugin = RunPlugin {
                     location: run_plugin_location,
                     _allow_exec_host_cmd: false,
@@ -595,6 +598,7 @@ impl Action {
                     floating,
                     in_place,
                     skip_plugin_cache,
+                    Some(current_dir),
                 )])
             },
             CliAction::RenameSession { name } => Ok(vec![Action::RenameSession(name)]),

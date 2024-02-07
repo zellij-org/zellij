@@ -272,11 +272,11 @@ pub enum ScreenInstruction {
     PreviousSwapLayout(ClientId),
     NextSwapLayout(ClientId),
     QueryTabNames(ClientId),
-    NewTiledPluginPane(RunPlugin, Option<String>, bool, ClientId), // Option<String> is
-    // optional pane title, bool is skip cache
-    NewFloatingPluginPane(RunPlugin, Option<String>, bool, ClientId), // Option<String> is an
+    NewTiledPluginPane(RunPlugin, Option<String>, bool, Option<PathBuf>, ClientId), // Option<String> is
+    // optional pane title, bool is skip cache, Option<PathBuf> is an optional cwd
+    NewFloatingPluginPane(RunPlugin, Option<String>, bool, Option<PathBuf>, ClientId), // Option<String> is an
     // optional pane title, bool
-    // is skip cache
+    // is skip cache, Option<PathBuf> is an optional cwd
     NewInPlacePluginPane(RunPlugin, Option<String>, PaneId, bool, ClientId), // Option<String> is an
     // optional pane title, bool is skip cache
     StartOrReloadPluginPane(RunPlugin, Option<String>),
@@ -296,9 +296,17 @@ pub enum ScreenInstruction {
     ProgressPluginLoadingOffset(u32),                 // u32 - plugin id
     RequestStateUpdateForPlugins,
     LaunchOrFocusPlugin(RunPlugin, bool, bool, bool, Option<PaneId>, bool, ClientId), // bools are: should_float, move_to_focused_tab, should_open_in_place, Option<PaneId> is the pane id to replace, bool following it is skip_cache
-    LaunchPlugin(RunPlugin, bool, bool, Option<PaneId>, bool, ClientId), // bools are: should_float, should_open_in_place Option<PaneId> is the pane id to replace, bool after is skip_cache
-    SuppressPane(PaneId, ClientId),                                      // bool is should_float
-    FocusPaneWithId(PaneId, bool, ClientId),                             // bool is should_float
+    LaunchPlugin(
+        RunPlugin,
+        bool,
+        bool,
+        Option<PaneId>,
+        bool,
+        Option<PathBuf>,
+        ClientId,
+    ), // bools are: should_float, should_open_in_place Option<PaneId> is the pane id to replace, Option<PathBuf> is an optional cwd, bool after is skip_cache
+    SuppressPane(PaneId, ClientId),          // bool is should_float
+    FocusPaneWithId(PaneId, bool, ClientId), // bool is should_float
     RenamePane(PaneId, Vec<u8>),
     RenameTab(usize, Vec<u8>),
     RequestPluginPermissions(
@@ -3212,6 +3220,7 @@ pub(crate) fn screen_thread_main(
                 run_plugin,
                 pane_title,
                 skip_cache,
+                cwd,
                 client_id,
             ) => {
                 let tab_index = screen.active_tab_indices.values().next().unwrap_or(&1);
@@ -3231,12 +3240,14 @@ pub(crate) fn screen_thread_main(
                         client_id,
                         size,
                         skip_cache,
+                        cwd,
                     ))?;
             },
             ScreenInstruction::NewFloatingPluginPane(
                 run_plugin,
                 pane_title,
                 skip_cache,
+                cwd,
                 client_id,
             ) => match screen.active_tab_indices.values().next() {
                 Some(tab_index) => {
@@ -3256,6 +3267,7 @@ pub(crate) fn screen_thread_main(
                             client_id,
                             size,
                             skip_cache,
+                            cwd,
                         ))?;
                 },
                 None => {
@@ -3288,6 +3300,7 @@ pub(crate) fn screen_thread_main(
                             client_id,
                             size,
                             skip_cache,
+                            None,
                         ))?;
                 },
                 None => {
@@ -3358,7 +3371,7 @@ pub(crate) fn screen_thread_main(
                         log::error!("Must have pane id to replace or connected client_id if replacing a pane");
                     }
                 } else if let Some(client_id) = client_id {
-                    active_tab!(screen, client_id, |active_tab: &mut Tab| {
+                    active_tab_and_connected_client_id!(screen, client_id, |active_tab: &mut Tab, _client_id: ClientId| {
                         active_tab.new_pane(
                             PaneId::Plugin(plugin_id),
                             Some(pane_title),
@@ -3448,6 +3461,7 @@ pub(crate) fn screen_thread_main(
                                 client_id,
                                 size,
                                 skip_cache,
+                                None,
                             ))?;
                     },
                     None => {
@@ -3492,6 +3506,7 @@ pub(crate) fn screen_thread_main(
                                         client_id,
                                         Size::default(),
                                         skip_cache,
+                                        None,
                                     ))?;
                             }
                         },
@@ -3507,6 +3522,7 @@ pub(crate) fn screen_thread_main(
                 should_open_in_place,
                 pane_id_to_replace,
                 skip_cache,
+                cwd,
                 client_id,
             ) => match pane_id_to_replace {
                 Some(pane_id_to_replace) => match screen.active_tab_indices.values().next() {
@@ -3525,6 +3541,7 @@ pub(crate) fn screen_thread_main(
                                 client_id,
                                 size,
                                 skip_cache,
+                                cwd,
                             ))?;
                     },
                     None => {
@@ -3560,6 +3577,7 @@ pub(crate) fn screen_thread_main(
                                     client_id,
                                     Size::default(),
                                     skip_cache,
+                                    cwd,
                                 ))?;
                         },
                         None => {

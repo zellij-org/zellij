@@ -438,7 +438,8 @@ fn open_file(env: &ForeignFunctionEnv, file_to_open: FileToOpen) {
     let path = env.plugin_env.plugin_cwd.join(file_to_open.path);
     let cwd = file_to_open
         .cwd
-        .map(|cwd| env.plugin_env.plugin_cwd.join(cwd));
+        .map(|cwd| env.plugin_env.plugin_cwd.join(cwd))
+        .or_else(|| Some(env.plugin_env.plugin_cwd.clone()));
     let action = Action::EditFile(
         path,
         file_to_open.line_number,
@@ -457,7 +458,8 @@ fn open_file_floating(env: &ForeignFunctionEnv, file_to_open: FileToOpen) {
     let path = env.plugin_env.plugin_cwd.join(file_to_open.path);
     let cwd = file_to_open
         .cwd
-        .map(|cwd| env.plugin_env.plugin_cwd.join(cwd));
+        .map(|cwd| env.plugin_env.plugin_cwd.join(cwd))
+        .or_else(|| Some(env.plugin_env.plugin_cwd.clone()));
     let action = Action::EditFile(
         path,
         file_to_open.line_number,
@@ -476,7 +478,9 @@ fn open_file_in_place(env: &ForeignFunctionEnv, file_to_open: FileToOpen) {
     let path = env.plugin_env.plugin_cwd.join(file_to_open.path);
     let cwd = file_to_open
         .cwd
-        .map(|cwd| env.plugin_env.plugin_cwd.join(cwd));
+        .map(|cwd| env.plugin_env.plugin_cwd.join(cwd))
+        .or_else(|| Some(env.plugin_env.plugin_cwd.clone()));
+
     let action = Action::EditFile(
         path,
         file_to_open.line_number,
