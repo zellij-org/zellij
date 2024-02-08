@@ -240,6 +240,7 @@ impl TryFrom<ProtobufAction> for Action {
                         direction,
                         should_float,
                         should_be_in_place,
+                        None,
                     ))
                 },
                 _ => Err("Wrong payload for Action::NewPane"),
@@ -875,6 +876,7 @@ impl TryFrom<Action> for ProtobufAction {
                 direction,
                 should_float,
                 _should_be_in_place,
+                _floating_pane_coordinates,
             ) => {
                 let file_to_edit = path_to_file.display().to_string();
                 let cwd = cwd.map(|cwd| cwd.display().to_string());

@@ -9,6 +9,8 @@ use std::str::FromStr;
 use std::time::Duration;
 use strum_macros::{Display, EnumDiscriminants, EnumIter, EnumString, ToString};
 
+pub use crate::input::actions::FloatingPaneCoordinates; // TODO move it here
+
 pub type ClientId = u16; // TODO: merge with crate type?
 
 pub fn client_id_to_colors(
@@ -1176,11 +1178,11 @@ pub enum PluginCommand {
     GetPluginIds,
     GetZellijVersion,
     OpenFile(FileToOpen),
-    OpenFileFloating(FileToOpen),
+    OpenFileFloating(FileToOpen, Option<FloatingPaneCoordinates>),
     OpenTerminal(FileToOpen),         // only used for the path as cwd
-    OpenTerminalFloating(FileToOpen), // only used for the path as cwd
+    OpenTerminalFloating(FileToOpen, Option<FloatingPaneCoordinates>), // only used for the path as cwd
     OpenCommandPane(CommandToRun),
-    OpenCommandPaneFloating(CommandToRun),
+    OpenCommandPaneFloating(CommandToRun, Option<FloatingPaneCoordinates>),
     SwitchTabTo(u32), // tab index
     SetTimeout(f64),  // seconds
     ExecCmd(Vec<String>),

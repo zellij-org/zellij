@@ -92,7 +92,7 @@ impl FromStr for SearchOption {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize, Default)]
 pub struct FloatingPaneCoordinates {
     pub x: Option<SplitSize>,
     pub y: Option<SplitSize>,
@@ -116,6 +116,54 @@ impl FloatingPaneCoordinates {
                 height
             })
         }
+    }
+    pub fn with_x_fixed(mut self, x: usize) -> Self {
+        self.x = Some(SplitSize::Fixed(x));
+        self
+    }
+    pub fn with_x_percent(mut self, x: usize) -> Self {
+        if x > 100 {
+            eprintln!("x must be between 0 and 100");
+            return self;
+        }
+        self.x = Some(SplitSize::Percent(x));
+        self
+    }
+    pub fn with_y_fixed(mut self, y: usize) -> Self {
+        self.y = Some(SplitSize::Fixed(y));
+        self
+    }
+    pub fn with_y_percent(mut self, y: usize) -> Self {
+        if y > 100 {
+            eprintln!("y must be between 0 and 100");
+            return self;
+        }
+        self.y = Some(SplitSize::Percent(y));
+        self
+    }
+    pub fn with_width_fixed(mut self, width: usize) -> Self {
+        self.width = Some(SplitSize::Fixed(width));
+        self
+    }
+    pub fn with_width_percent(mut self, width: usize) -> Self {
+        if width > 100 {
+            eprintln!("width must be between 0 and 100");
+            return self;
+        }
+        self.width = Some(SplitSize::Percent(width));
+        self
+    }
+    pub fn with_height_fixed(mut self, height: usize) -> Self {
+        self.height = Some(SplitSize::Fixed(height));
+        self
+    }
+    pub fn with_height_percent(mut self, height: usize) -> Self {
+        if height > 100 {
+            eprintln!("height must be between 0 and 100");
+            return self;
+        }
+        self.height = Some(SplitSize::Percent(height));
+        self
     }
 }
 
@@ -193,6 +241,7 @@ pub enum Action {
         Option<Direction>,
         bool,
         bool,
+        Option<FloatingPaneCoordinates>,
     ), // usize is an optional line number, Option<PathBuf> is an optional cwd, bool is floating true/false, second bool is in_place
     /// Open a new floating pane
     NewFloatingPane(Option<RunCommandAction>, Option<String>, Option<FloatingPaneCoordinates>), // String is an optional pane name
@@ -450,6 +499,10 @@ impl Action {
                 floating,
                 in_place,
                 cwd,
+                x,
+                y,
+                width,
+                height,
             } => {
                 let mut file = file;
                 let current_dir = get_current_dir();
@@ -468,6 +521,7 @@ impl Action {
                     direction,
                     floating,
                     in_place,
+                    FloatingPaneCoordinates::new(x, y, width, height),
                 )])
             },
             CliAction::SwitchMode { input_mode } => {

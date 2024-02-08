@@ -29,6 +29,10 @@ fn main() {
             name,
             close_on_exit,
             start_suspended,
+            x,
+            y,
+            width,
+            height,
         })) = opts.command
         {
             let cwd = cwd.or_else(|| std::env::current_dir().ok());
@@ -45,10 +49,10 @@ fn main() {
                 start_suspended,
                 configuration: None,
                 skip_plugin_cache,
-                x: None, // TODO: support coordinates
-                y: None,
-                width: None,
-                height: None,
+                x,
+                y,
+                width,
+                height,
             };
             commands::send_action_to_session(command_cli_action, opts.session, config);
             std::process::exit(0);
@@ -59,6 +63,10 @@ fn main() {
             in_place,
             configuration,
             skip_plugin_cache,
+            x,
+            y,
+            width,
+            height,
         })) = opts.command
         {
             let cwd = std::env::current_dir().ok();
@@ -74,10 +82,10 @@ fn main() {
                 start_suspended: false,
                 configuration,
                 skip_plugin_cache,
-                x: None, // TODO: support coordinates
-                y: None,
-                width: None,
-                height: None,
+                x,
+                y,
+                width,
+                height,
             };
             commands::send_action_to_session(command_cli_action, opts.session, config);
             std::process::exit(0);
@@ -89,6 +97,10 @@ fn main() {
             floating,
             in_place,
             cwd,
+            x,
+            y,
+            width,
+            height,
         })) = opts.command
         {
             let mut file = file;
@@ -105,6 +117,10 @@ fn main() {
                 floating,
                 in_place,
                 cwd,
+                x,
+                y,
+                width,
+                height,
             };
             commands::send_action_to_session(command_cli_action, opts.session, config);
             std::process::exit(0);

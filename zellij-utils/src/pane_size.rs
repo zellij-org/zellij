@@ -194,18 +194,36 @@ impl PaneGeom {
             SplitDirection::Horizontal => self.rows.is_percent(),
         }
     }
-    pub fn adjust_coordinates(&mut self, floating_pane_coordinates: FloatingPaneCoordinates, viewport_width: usize, viewport_height: usize) {
+    pub fn adjust_coordinates(&mut self, floating_pane_coordinates: FloatingPaneCoordinates, viewport: Viewport) {
         if let Some(x) = floating_pane_coordinates.x {
-            self.x = x.to_fixed(viewport_width);
+            self.x = x.to_fixed(viewport.cols);
         }
         if let Some(y) = floating_pane_coordinates.y {
-            self.y = y.to_fixed(viewport_height);
+            self.y = y.to_fixed(viewport.rows);
         }
         if let Some(height) = floating_pane_coordinates.height {
-            self.rows = Dimension::from_split_size(height, viewport_height);
+            self.rows = Dimension::from_split_size(height, viewport.rows);
         }
         if let Some(width) = floating_pane_coordinates.width {
-            self.cols = Dimension::from_split_size(width, viewport_width);
+            self.cols = Dimension::from_split_size(width, viewport.cols);
+        }
+        if self.x < viewport.x {
+            self.x = viewport.x;
+        } else if self.x > viewport.x + viewport.cols {
+            self.x = (viewport.x + viewport.cols).saturating_sub(self.cols.as_usize());
+        }
+        if self.y < viewport.y {
+            self.y = viewport.y;
+        } else if self.y > viewport.y + viewport.rows {
+            self.y = (viewport.y + viewport.rows).saturating_sub(self.rows.as_usize());
+        }
+        if self.x + self.cols.as_usize() > viewport.x + viewport.cols {
+            let new_cols = (viewport.x + viewport.cols).saturating_sub(self.x);
+            self.cols.set_inner(new_cols);
+        }
+        if self.y + self.rows.as_usize() > viewport.y + viewport.rows {
+            let new_rows = (viewport.y + viewport.rows).saturating_sub(self.y);
+            self.rows.set_inner(new_rows);
         }
 
     }

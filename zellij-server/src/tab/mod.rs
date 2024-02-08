@@ -3665,16 +3665,7 @@ impl Tab {
         if let Some(mut new_pane_geom) = self.floating_panes.find_room_for_new_pane() {
             if let Some(floating_pane_coordinates) = floating_pane_coordinates {
                 let viewport = self.viewport.borrow();
-                log::info!("floating_pane_coordinates: {:?}", floating_pane_coordinates);
-                log::info!("new_pane_geom before: {:?}", new_pane_geom);
-                new_pane_geom.adjust_coordinates(floating_pane_coordinates, viewport.cols, viewport.rows);
-                if new_pane_geom.x < viewport.x {
-                    new_pane_geom.x = viewport.x;
-                }
-                if new_pane_geom.y < viewport.y {
-                    new_pane_geom.y = viewport.y;
-                }
-                log::info!("new_pane_geom after: {:?}", new_pane_geom);
+                new_pane_geom.adjust_coordinates(floating_pane_coordinates, *viewport);
                 self.swap_layouts.set_is_floating_damaged();
             }
             pane.set_active_at(Instant::now());

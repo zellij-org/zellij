@@ -1075,6 +1075,32 @@ fn open_new_floating_pane_with_custom_coordinates() {
     assert_eq!(active_pane.cols(), 1, "columns set properly");
 }
 
+#[test]
+fn open_new_floating_pane_with_custom_coordinates_exceeding_viewport() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size);
+
+    new_tab(&mut screen, 1, 0);
+    let active_tab = screen.get_active_tab_mut(1).unwrap();
+    let should_float = Some(true);
+    active_tab
+        .new_pane(PaneId::Terminal(2), None, should_float, None, Some(FloatingPaneCoordinates {
+            x: Some(SplitSize::Fixed(122)),
+            y: Some(SplitSize::Fixed(21)),
+            width: Some(SplitSize::Fixed(10)),
+            height: Some(SplitSize::Fixed(10)),
+        }), Some(1))
+        .unwrap();
+    let active_pane = active_tab.get_active_pane(1).unwrap();
+    assert_eq!(active_pane.x(), 111, "x coordinates set properly");
+    assert_eq!(active_pane.y(), 10, "y coordinates set properly");
+    assert_eq!(active_pane.rows(), 10, "rows set properly");
+    assert_eq!(active_pane.cols(), 10, "columns set properly");
+}
+
 // Following are tests for sending CLI actions
 // these tests are only partially relevant to Screen
 // and are included here for two reasons:
@@ -2093,6 +2119,10 @@ pub fn send_cli_edit_action_with_default_parameters() {
         floating: false,
         in_place: false,
         cwd: None,
+        x: None,
+        y: None,
+        width: None,
+        height: None,
     };
     send_cli_action_to_server(&session_metadata, cli_edit_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -2127,6 +2157,10 @@ pub fn send_cli_edit_action_with_line_number() {
         floating: false,
         in_place: false,
         cwd: None,
+        x: None,
+        y: None,
+        width: None,
+        height: None,
     };
     send_cli_action_to_server(&session_metadata, cli_edit_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -2161,6 +2195,10 @@ pub fn send_cli_edit_action_with_split_direction() {
         floating: false,
         in_place: false,
         cwd: None,
+        x: None,
+        y: None,
+        width: None,
+        height: None,
     };
     send_cli_action_to_server(&session_metadata, cli_edit_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be

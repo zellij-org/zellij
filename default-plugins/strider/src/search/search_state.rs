@@ -91,7 +91,7 @@ impl SearchState {
                     open_file_floating(FileToOpen {
                         path: PathBuf::from(path),
                         ..Default::default()
-                    });
+                    }, None);
                 } else {
                     open_file(FileToOpen {
                         path: PathBuf::from(path),
@@ -107,7 +107,7 @@ impl SearchState {
                         path: PathBuf::from(path),
                         line_number: Some(line_number),
                         ..Default::default()
-                    });
+                    }, None);
                 } else {
                     open_file(FileToOpen {
                         path: PathBuf::from(path),
@@ -132,7 +132,7 @@ impl SearchState {
         {
             let dir_path = dir_path_of_result(&path);
             if self.should_open_floating {
-                open_terminal_floating(&dir_path);
+                open_terminal_floating(&dir_path, None);
             } else {
                 open_terminal(&dir_path);
             }

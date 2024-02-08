@@ -84,8 +84,8 @@ pub fn open_file(file_to_open: FileToOpen) {
 }
 
 /// Open a file in the user's default `$EDITOR` in a new floating pane
-pub fn open_file_floating(file_to_open: FileToOpen) {
-    let plugin_command = PluginCommand::OpenFileFloating(file_to_open);
+pub fn open_file_floating(file_to_open: FileToOpen, coordinates: Option<FloatingPaneCoordinates>) {
+    let plugin_command = PluginCommand::OpenFileFloating(file_to_open, coordinates);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
@@ -109,9 +109,9 @@ pub fn open_terminal<P: AsRef<Path>>(path: P) {
 }
 
 /// Open a new floating terminal pane to the specified location on the host filesystem
-pub fn open_terminal_floating<P: AsRef<Path>>(path: P) {
+pub fn open_terminal_floating<P: AsRef<Path>>(path: P, coordinates: Option<FloatingPaneCoordinates>) {
     let file_to_open = FileToOpen::new(path.as_ref().to_path_buf());
-    let plugin_command = PluginCommand::OpenTerminalFloating(file_to_open);
+    let plugin_command = PluginCommand::OpenTerminalFloating(file_to_open, coordinates);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
@@ -136,14 +136,14 @@ pub fn open_command_pane(command_to_run: CommandToRun) {
 }
 
 /// Open a new floating command pane with the specified command and args (this sort of pane allows the user to control the command, re-run it and see its exit status through the Zellij UI).
-pub fn open_command_pane_floating(command_to_run: CommandToRun) {
-    let plugin_command = PluginCommand::OpenCommandPaneFloating(command_to_run);
+pub fn open_command_pane_floating(command_to_run: CommandToRun, coordinates: Option<FloatingPaneCoordinates>) {
+    let plugin_command = PluginCommand::OpenCommandPaneFloating(command_to_run, coordinates);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
 }
 
-/// Open a new floating command pane with the specified command and args (this sort of pane allows the user to control the command, re-run it and see its exit status through the Zellij UI).
+/// Open a new in place command pane with the specified command and args (this sort of pane allows the user to control the command, re-run it and see its exit status through the Zellij UI).
 pub fn open_command_pane_in_place(command_to_run: CommandToRun) {
     let plugin_command = PluginCommand::OpenCommandPaneInPlace(command_to_run);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
