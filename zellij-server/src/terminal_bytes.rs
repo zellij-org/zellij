@@ -88,9 +88,16 @@ impl TerminalBytes {
         let mut err_ctx = get_current_ctx();
         err_ctx.add_call(ContextType::AsyncTask);
         let mut buf = [0u8; 65536];
+        log::info!("starting read");
         loop {
             match self.deadline_read(&mut buf).await {
-                ReadResult::Ok(0) | ReadResult::Err(_) => break, // EOF or error
+                ReadResult::Ok(0) => {
+                    continue
+                },
+                ReadResult::Err(_) => {
+                    log::info!("reached EoF");
+                    break
+                }, // EOF or error
                 ReadResult::Timeout => {
                     let time_to_send_render = self
                         .async_send_to_screen(ScreenInstruction::Render)
