@@ -88,10 +88,13 @@ impl SearchState {
         match self.selected_search_result_entry() {
             Some(SearchResult::File { path, .. }) => {
                 if self.should_open_floating {
-                    open_file_floating(FileToOpen {
-                        path: PathBuf::from(path),
-                        ..Default::default()
-                    }, None);
+                    open_file_floating(
+                        FileToOpen {
+                            path: PathBuf::from(path),
+                            ..Default::default()
+                        },
+                        None,
+                    );
                 } else {
                     open_file(FileToOpen {
                         path: PathBuf::from(path),
@@ -103,11 +106,14 @@ impl SearchState {
                 path, line_number, ..
             }) => {
                 if self.should_open_floating {
-                    open_file_floating(FileToOpen {
-                        path: PathBuf::from(path),
-                        line_number: Some(line_number),
-                        ..Default::default()
-                    }, None);
+                    open_file_floating(
+                        FileToOpen {
+                            path: PathBuf::from(path),
+                            line_number: Some(line_number),
+                            ..Default::default()
+                        },
+                        None,
+                    );
                 } else {
                     open_file(FileToOpen {
                         path: PathBuf::from(path),

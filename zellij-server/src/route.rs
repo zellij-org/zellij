@@ -672,10 +672,21 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
         },
-        Action::NewFloatingPluginPane(run_plugin, name, skip_cache, cwd, floating_pane_coordinates) => {
+        Action::NewFloatingPluginPane(
+            run_plugin,
+            name,
+            skip_cache,
+            cwd,
+            floating_pane_coordinates,
+        ) => {
             senders
                 .send_to_screen(ScreenInstruction::NewFloatingPluginPane(
-                    run_plugin, name, skip_cache, cwd, floating_pane_coordinates, client_id,
+                    run_plugin,
+                    name,
+                    skip_cache,
+                    cwd,
+                    floating_pane_coordinates,
+                    client_id,
                 ))
                 .with_context(err_context)?;
         },

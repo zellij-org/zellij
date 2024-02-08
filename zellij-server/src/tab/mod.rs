@@ -46,7 +46,7 @@ use std::{
     str,
 };
 use zellij_utils::{
-    data::{Event, InputMode, ModeInfo, Palette, PaletteColor, Style, FloatingPaneCoordinates},
+    data::{Event, FloatingPaneCoordinates, InputMode, ModeInfo, Palette, PaletteColor, Style},
     input::{
         command::TerminalAction,
         layout::{
@@ -991,7 +991,12 @@ impl Tab {
                 self.close_pane(focused_pane_id, true, Some(client_id))
             {
                 self.show_floating_panes();
-                self.add_floating_pane(embedded_pane_to_float, focused_pane_id, None, Some(client_id))?;
+                self.add_floating_pane(
+                    embedded_pane_to_float,
+                    focused_pane_id,
+                    None,
+                    Some(client_id),
+                )?;
             }
         }
         Ok(())

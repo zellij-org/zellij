@@ -46,7 +46,10 @@ use crate::{
     ClientId, ServerInstruction,
 };
 use zellij_utils::{
-    data::{Event, InputMode, ModeInfo, Palette, PaletteColor, PluginCapabilities, Style, TabInfo, FloatingPaneCoordinates},
+    data::{
+        Event, FloatingPaneCoordinates, InputMode, ModeInfo, Palette, PaletteColor,
+        PluginCapabilities, Style, TabInfo,
+    },
     errors::{ContextType, ScreenContext},
     input::{get_mode_info, options::Options},
     ipc::{ClientAttributes, PixelDimensions, ServerToClientMsg},
@@ -275,7 +278,14 @@ pub enum ScreenInstruction {
     QueryTabNames(ClientId),
     NewTiledPluginPane(RunPlugin, Option<String>, bool, Option<PathBuf>, ClientId), // Option<String> is
     // optional pane title, bool is skip cache, Option<PathBuf> is an optional cwd
-    NewFloatingPluginPane(RunPlugin, Option<String>, bool, Option<PathBuf>, Option<FloatingPaneCoordinates>, ClientId), // Option<String> is an
+    NewFloatingPluginPane(
+        RunPlugin,
+        Option<String>,
+        bool,
+        Option<PathBuf>,
+        Option<FloatingPaneCoordinates>,
+        ClientId,
+    ), // Option<String> is an
     // optional pane title, bool
     // is skip cache, Option<PathBuf> is an optional cwd
     NewInPlacePluginPane(RunPlugin, Option<String>, PaneId, bool, ClientId), // Option<String> is an
@@ -1911,7 +1921,12 @@ impl Screen {
 
             if pane_to_break_is_floating {
                 new_active_tab.show_floating_panes();
-                new_active_tab.add_floating_pane(active_pane, active_pane_id, None, Some(client_id))?;
+                new_active_tab.add_floating_pane(
+                    active_pane,
+                    active_pane_id,
+                    None,
+                    Some(client_id),
+                )?;
             } else {
                 new_active_tab.hide_floating_panes();
                 new_active_tab.add_tiled_pane(active_pane, active_pane_id, Some(client_id))?;

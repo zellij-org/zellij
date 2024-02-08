@@ -4,9 +4,9 @@ use std::{
     hash::{Hash, Hasher},
 };
 
+use crate::data::FloatingPaneCoordinates;
 use crate::input::layout::{SplitDirection, SplitSize};
 use crate::position::Position;
-use crate::data::FloatingPaneCoordinates;
 
 /// Contains the position and size of a [`Pane`], or more generally of any terminal, measured
 /// in character rows and columns.
@@ -135,12 +135,12 @@ impl Dimension {
         match split_size {
             SplitSize::Fixed(fixed) => Dimension {
                 constraint: Constraint::Fixed(fixed),
-                inner: fixed
+                inner: fixed,
             },
             SplitSize::Percent(percent) => Dimension {
                 constraint: Constraint::Percent(percent as f64),
                 inner: ((percent as f64 / 100.0) * full_size as f64).floor() as usize,
-            }
+            },
         }
     }
 }
@@ -194,7 +194,11 @@ impl PaneGeom {
             SplitDirection::Horizontal => self.rows.is_percent(),
         }
     }
-    pub fn adjust_coordinates(&mut self, floating_pane_coordinates: FloatingPaneCoordinates, viewport: Viewport) {
+    pub fn adjust_coordinates(
+        &mut self,
+        floating_pane_coordinates: FloatingPaneCoordinates,
+        viewport: Viewport,
+    ) {
         if let Some(x) = floating_pane_coordinates.x {
             self.x = x.to_fixed(viewport.cols);
         }
@@ -225,7 +229,6 @@ impl PaneGeom {
             let new_rows = (viewport.y + viewport.rows).saturating_sub(self.y);
             self.rows.set_inner(new_rows);
         }
-
     }
 }
 

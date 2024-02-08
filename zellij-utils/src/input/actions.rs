@@ -3,11 +3,11 @@
 use super::command::RunCommandAction;
 use super::layout::{
     FloatingPaneLayout, Layout, RunPlugin, RunPluginLocation, SwapFloatingLayout, SwapTiledLayout,
-    TiledPaneLayout
+    TiledPaneLayout,
 };
 use crate::cli::CliAction;
-use crate::data::{InputMode, FloatingPaneCoordinates};
 use crate::data::{Direction, Resize};
+use crate::data::{FloatingPaneCoordinates, InputMode};
 use crate::home::{find_default_config_dir, get_layout_dir};
 use crate::input::config::{Config, ConfigError, KdlError};
 use crate::input::options::OnForceClose;
@@ -169,7 +169,11 @@ pub enum Action {
         Option<FloatingPaneCoordinates>,
     ), // usize is an optional line number, Option<PathBuf> is an optional cwd, bool is floating true/false, second bool is in_place
     /// Open a new floating pane
-    NewFloatingPane(Option<RunCommandAction>, Option<String>, Option<FloatingPaneCoordinates>), // String is an optional pane name
+    NewFloatingPane(
+        Option<RunCommandAction>,
+        Option<String>,
+        Option<FloatingPaneCoordinates>,
+    ), // String is an optional pane name
     /// Open a new tiled (embedded, non-floating) pane
     NewTiledPane(Option<Direction>, Option<RunCommandAction>, Option<String>), // String is an
     /// Open a new pane in place of the focused one, suppressing it instead
@@ -243,7 +247,13 @@ pub enum Action {
     /// Open a new tiled (embedded, non-floating) plugin pane
     NewTiledPluginPane(RunPlugin, Option<String>, bool, Option<PathBuf>), // String is an optional name, bool is
     // skip_cache, Option<PathBuf> is cwd
-    NewFloatingPluginPane(RunPlugin, Option<String>, bool, Option<PathBuf>, Option<FloatingPaneCoordinates>), // String is an optional name, bool is
+    NewFloatingPluginPane(
+        RunPlugin,
+        Option<String>,
+        bool,
+        Option<PathBuf>,
+        Option<FloatingPaneCoordinates>,
+    ), // String is an optional name, bool is
     // skip_cache, Option<PathBuf> is cwd
     NewInPlacePluginPane(RunPlugin, Option<String>, bool), // String is an optional name, bool is
     // skip_cache
@@ -334,7 +344,7 @@ impl Action {
                 x,
                 y,
                 width,
-                height
+                height,
             } => {
                 let current_dir = get_current_dir();
                 let cwd = cwd
@@ -409,7 +419,11 @@ impl Action {
                     }
                 } else {
                     if floating {
-                        Ok(vec![Action::NewFloatingPane(None, name, FloatingPaneCoordinates::new(x, y, width, height))])
+                        Ok(vec![Action::NewFloatingPane(
+                            None,
+                            name,
+                            FloatingPaneCoordinates::new(x, y, width, height),
+                        )])
                     } else if in_place {
                         Ok(vec![Action::NewInPlacePane(None, name)])
                     } else {

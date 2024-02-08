@@ -15,7 +15,8 @@ use zellij_utils::errors::{prelude::*, ErrorContext};
 use zellij_utils::input::actions::Action;
 use zellij_utils::input::command::{RunCommand, TerminalAction};
 use zellij_utils::input::layout::{
-    FloatingPaneLayout, Layout, Run, RunPlugin, RunPluginLocation, SplitDirection, TiledPaneLayout, SplitSize,
+    FloatingPaneLayout, Layout, Run, RunPlugin, RunPluginLocation, SplitDirection, SplitSize,
+    TiledPaneLayout,
 };
 use zellij_utils::input::options::Options;
 use zellij_utils::ipc::IpcReceiverWithContext;
@@ -32,7 +33,7 @@ use zellij_utils::ipc::PixelDimensions;
 
 use zellij_utils::{
     channels::{self, ChannelWithContext, Receiver},
-    data::{Direction, InputMode, ModeInfo, Palette, PluginCapabilities, FloatingPaneCoordinates},
+    data::{Direction, FloatingPaneCoordinates, InputMode, ModeInfo, Palette, PluginCapabilities},
     interprocess::local_socket::LocalSocketStream,
     ipc::{ClientAttributes, ClientToServerMsg, ServerToClientMsg},
 };
@@ -1061,12 +1062,19 @@ fn open_new_floating_pane_with_custom_coordinates() {
     let active_tab = screen.get_active_tab_mut(1).unwrap();
     let should_float = Some(true);
     active_tab
-        .new_pane(PaneId::Terminal(2), None, should_float, None, Some(FloatingPaneCoordinates {
-            x: Some(SplitSize::Percent(10)),
-            y: Some(SplitSize::Fixed(5)),
-            width: Some(SplitSize::Percent(1)),
-            height: Some(SplitSize::Fixed(2)),
-        }), Some(1))
+        .new_pane(
+            PaneId::Terminal(2),
+            None,
+            should_float,
+            None,
+            Some(FloatingPaneCoordinates {
+                x: Some(SplitSize::Percent(10)),
+                y: Some(SplitSize::Fixed(5)),
+                width: Some(SplitSize::Percent(1)),
+                height: Some(SplitSize::Fixed(2)),
+            }),
+            Some(1),
+        )
         .unwrap();
     let active_pane = active_tab.get_active_pane(1).unwrap();
     assert_eq!(active_pane.x(), 12, "x coordinates set properly");
@@ -1087,12 +1095,19 @@ fn open_new_floating_pane_with_custom_coordinates_exceeding_viewport() {
     let active_tab = screen.get_active_tab_mut(1).unwrap();
     let should_float = Some(true);
     active_tab
-        .new_pane(PaneId::Terminal(2), None, should_float, None, Some(FloatingPaneCoordinates {
-            x: Some(SplitSize::Fixed(122)),
-            y: Some(SplitSize::Fixed(21)),
-            width: Some(SplitSize::Fixed(10)),
-            height: Some(SplitSize::Fixed(10)),
-        }), Some(1))
+        .new_pane(
+            PaneId::Terminal(2),
+            None,
+            should_float,
+            None,
+            Some(FloatingPaneCoordinates {
+                x: Some(SplitSize::Fixed(122)),
+                y: Some(SplitSize::Fixed(21)),
+                width: Some(SplitSize::Fixed(10)),
+                height: Some(SplitSize::Fixed(10)),
+            }),
+            Some(1),
+        )
         .unwrap();
     let active_pane = active_tab.get_active_pane(1).unwrap();
     assert_eq!(active_pane.x(), 111, "x coordinates set properly");

@@ -250,7 +250,11 @@ impl TryFrom<ProtobufAction> for Action {
                     if let Some(payload) = payload.command {
                         let pane_name = payload.pane_name.clone();
                         let run_command_action: RunCommandAction = payload.try_into()?;
-                        Ok(Action::NewFloatingPane(Some(run_command_action), pane_name, None))
+                        Ok(Action::NewFloatingPane(
+                            Some(run_command_action),
+                            pane_name,
+                            None,
+                        ))
                     } else {
                         Ok(Action::NewFloatingPane(None, None, None))
                     }
@@ -1157,7 +1161,13 @@ impl TryFrom<Action> for ProtobufAction {
                     )),
                 })
             },
-            Action::NewFloatingPluginPane(run_plugin, pane_name, skip_plugin_cache, _cwd, _coordinates) => {
+            Action::NewFloatingPluginPane(
+                run_plugin,
+                pane_name,
+                skip_plugin_cache,
+                _cwd,
+                _coordinates,
+            ) => {
                 let plugin_url: Url = Url::from(&run_plugin.location);
                 Ok(ProtobufAction {
                     name: ProtobufActionName::NewFloatingPluginPane as i32,

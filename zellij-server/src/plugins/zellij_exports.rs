@@ -18,8 +18,8 @@ use std::{
 use wasmer::{imports, AsStoreMut, Function, FunctionEnv, FunctionEnvMut, Imports};
 use wasmer_wasi::WasiEnv;
 use zellij_utils::data::{
-    CommandType, ConnectToSession, HttpVerb, LayoutInfo, MessageToPlugin, PermissionStatus,
-    PermissionType, PluginPermission, FloatingPaneCoordinates,
+    CommandType, ConnectToSession, FloatingPaneCoordinates, HttpVerb, LayoutInfo, MessageToPlugin,
+    PermissionStatus, PermissionType, PluginPermission,
 };
 use zellij_utils::input::permission::PermissionCache;
 use zellij_utils::{
@@ -127,9 +127,10 @@ fn host_run_plugin_command(env: FunctionEnvMut<ForeignFunctionEnv>) {
                     PluginCommand::OpenCommandPane(command_to_run) => {
                         open_command_pane(env, command_to_run)
                     },
-                    PluginCommand::OpenCommandPaneFloating(command_to_run, floating_pane_coordinates) => {
-                        open_command_pane_floating(env, command_to_run, floating_pane_coordinates)
-                    },
+                    PluginCommand::OpenCommandPaneFloating(
+                        command_to_run,
+                        floating_pane_coordinates,
+                    ) => open_command_pane_floating(env, command_to_run, floating_pane_coordinates),
                     PluginCommand::SwitchTabTo(tab_index) => switch_tab_to(env, tab_index),
                     PluginCommand::SetTimeout(seconds) => set_timeout(env, seconds),
                     PluginCommand::ExecCmd(command_line) => exec_cmd(env, command_line),
@@ -452,7 +453,11 @@ fn open_file(env: &ForeignFunctionEnv, file_to_open: FileToOpen) {
     apply_action!(action, error_msg, env);
 }
 
-fn open_file_floating(env: &ForeignFunctionEnv, file_to_open: FileToOpen, floating_pane_coordinates: Option<FloatingPaneCoordinates>) {
+fn open_file_floating(
+    env: &ForeignFunctionEnv,
+    file_to_open: FileToOpen,
+    floating_pane_coordinates: Option<FloatingPaneCoordinates>,
+) {
     let error_msg = || format!("failed to open file in plugin {}", env.plugin_env.name());
     let floating = true;
     let in_place = false;
@@ -512,7 +517,11 @@ fn open_terminal(env: &ForeignFunctionEnv, cwd: PathBuf) {
     apply_action!(action, error_msg, env);
 }
 
-fn open_terminal_floating(env: &ForeignFunctionEnv, cwd: PathBuf, floating_pane_coordinates: Option<FloatingPaneCoordinates>) {
+fn open_terminal_floating(
+    env: &ForeignFunctionEnv,
+    cwd: PathBuf,
+    floating_pane_coordinates: Option<FloatingPaneCoordinates>,
+) {
     let error_msg = || format!("failed to open file in plugin {}", env.plugin_env.name());
     let cwd = env.plugin_env.plugin_cwd.join(cwd);
     let mut default_shell = env
@@ -526,7 +535,7 @@ fn open_terminal_floating(env: &ForeignFunctionEnv, cwd: PathBuf, floating_pane_
         _ => None,
     };
     let action = Action::NewFloatingPane(run_command_action, None, floating_pane_coordinates); // TODO: support
-                                                                          // coordinates
+                                                                                               // coordinates
     apply_action!(action, error_msg, env);
 }
 
@@ -570,7 +579,11 @@ fn open_command_pane(env: &ForeignFunctionEnv, command_to_run: CommandToRun) {
     apply_action!(action, error_msg, env);
 }
 
-fn open_command_pane_floating(env: &ForeignFunctionEnv, command_to_run: CommandToRun, floating_pane_coordinates: Option<FloatingPaneCoordinates>) {
+fn open_command_pane_floating(
+    env: &ForeignFunctionEnv,
+    command_to_run: CommandToRun,
+    floating_pane_coordinates: Option<FloatingPaneCoordinates>,
+) {
     let error_msg = || format!("failed to open command in plugin {}", env.plugin_env.name());
     let command = command_to_run.path;
     let cwd = command_to_run

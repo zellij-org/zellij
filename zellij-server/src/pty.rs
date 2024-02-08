@@ -12,8 +12,8 @@ use async_std::task::{self, JoinHandle};
 use std::{collections::HashMap, os::unix::io::RawFd, path::PathBuf};
 use zellij_utils::nix::unistd::Pid;
 use zellij_utils::{
-    data::FloatingPaneCoordinates,
     async_std,
+    data::FloatingPaneCoordinates,
     errors::prelude::*,
     errors::{ContextType, PtyContext},
     input::{

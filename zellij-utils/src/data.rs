@@ -1,6 +1,6 @@
 use crate::input::actions::Action;
-use crate::input::layout::SplitSize;
 use crate::input::config::ConversionError;
+use crate::input::layout::SplitSize;
 use clap::ArgEnum;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -1176,7 +1176,12 @@ pub struct FloatingPaneCoordinates {
 }
 
 impl FloatingPaneCoordinates {
-    pub fn new(x: Option<String>, y: Option<String>, width: Option<String>, height: Option<String>) -> Option<Self> {
+    pub fn new(
+        x: Option<String>,
+        y: Option<String>,
+        width: Option<String>,
+        height: Option<String>,
+    ) -> Option<Self> {
         let x = x.and_then(|x| SplitSize::from_str(&x).ok());
         let y = y.and_then(|y| SplitSize::from_str(&y).ok());
         let width = width.and_then(|width| SplitSize::from_str(&width).ok());
@@ -1188,7 +1193,7 @@ impl FloatingPaneCoordinates {
                 x,
                 y,
                 width,
-                height
+                height,
             })
         }
     }
@@ -1242,7 +1247,6 @@ impl FloatingPaneCoordinates {
     }
 }
 
-
 #[derive(Debug, Clone, EnumDiscriminants, ToString)]
 #[strum_discriminants(derive(EnumString, Hash, Serialize, Deserialize))]
 #[strum_discriminants(name(CommandType))]
@@ -1254,7 +1258,7 @@ pub enum PluginCommand {
     GetZellijVersion,
     OpenFile(FileToOpen),
     OpenFileFloating(FileToOpen, Option<FloatingPaneCoordinates>),
-    OpenTerminal(FileToOpen),         // only used for the path as cwd
+    OpenTerminal(FileToOpen), // only used for the path as cwd
     OpenTerminalFloating(FileToOpen, Option<FloatingPaneCoordinates>), // only used for the path as cwd
     OpenCommandPane(CommandToRun),
     OpenCommandPaneFloating(CommandToRun, Option<FloatingPaneCoordinates>),
