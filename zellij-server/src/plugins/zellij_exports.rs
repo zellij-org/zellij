@@ -534,8 +534,7 @@ fn open_terminal_floating(
         TerminalAction::RunCommand(run_command) => Some(run_command.into()),
         _ => None,
     };
-    let action = Action::NewFloatingPane(run_command_action, None, floating_pane_coordinates); // TODO: support
-                                                                                               // coordinates
+    let action = Action::NewFloatingPane(run_command_action, None, floating_pane_coordinates);
     apply_action!(action, error_msg, env);
 }
 

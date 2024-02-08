@@ -72,7 +72,6 @@ pub enum SplitSize {
 impl SplitSize {
     pub fn to_fixed(&self, full_size: usize) -> usize {
         match self {
-            // SplitSize::Percent(percent) => (full_size as f64 / 100.0).floor() as usize * percent,
             SplitSize::Percent(percent) => {
                 ((*percent as f64 / 100.0) * full_size as f64).floor() as usize
             },
