@@ -268,6 +268,7 @@ pub(crate) fn route_action(
                     shell,
                     None,
                     name,
+                    None,
                     ClientTabIndexOrPaneId::ClientId(client_id),
                 ),
             };
@@ -280,6 +281,7 @@ pub(crate) fn route_action(
             split_direction,
             should_float,
             should_open_in_place,
+            floating_pane_coordinates,
         ) => {
             let title = format!("Editing: {}", path_to_file.display());
             let open_file = TerminalAction::OpenFile(path_to_file, line_number, cwd);
@@ -319,6 +321,7 @@ pub(crate) fn route_action(
                     Some(open_file),
                     Some(should_float),
                     Some(title),
+                    floating_pane_coordinates,
                     ClientTabIndexOrPaneId::ClientId(client_id),
                 ),
             };
@@ -341,7 +344,7 @@ pub(crate) fn route_action(
                 )))
                 .with_context(err_context)?;
         },
-        Action::NewFloatingPane(run_command, name) => {
+        Action::NewFloatingPane(run_command, name, floating_pane_coordinates) => {
             let should_float = true;
             let run_cmd = run_command
                 .map(|cmd| TerminalAction::RunCommand(cmd.into()))
@@ -351,6 +354,7 @@ pub(crate) fn route_action(
                     run_cmd,
                     Some(should_float),
                     name,
+                    floating_pane_coordinates,
                     ClientTabIndexOrPaneId::ClientId(client_id),
                 ))
                 .with_context(err_context)?;
@@ -403,6 +407,7 @@ pub(crate) fn route_action(
                     run_cmd,
                     Some(should_float),
                     name,
+                    None,
                     ClientTabIndexOrPaneId::ClientId(client_id),
                 ),
             };
@@ -449,6 +454,7 @@ pub(crate) fn route_action(
                 // No direction specified - try to put it in the biggest available spot
                 None => PtyInstruction::SpawnTerminal(
                     run_cmd,
+                    None,
                     None,
                     None,
                     ClientTabIndexOrPaneId::ClientId(client_id),
@@ -666,10 +672,21 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
         },
-        Action::NewFloatingPluginPane(run_plugin, name, skip_cache, cwd) => {
+        Action::NewFloatingPluginPane(
+            run_plugin,
+            name,
+            skip_cache,
+            cwd,
+            floating_pane_coordinates,
+        ) => {
             senders
                 .send_to_screen(ScreenInstruction::NewFloatingPluginPane(
-                    run_plugin, name, skip_cache, cwd, client_id,
+                    run_plugin,
+                    name,
+                    skip_cache,
+                    cwd,
+                    floating_pane_coordinates,
+                    client_id,
                 ))
                 .with_context(err_context)?;
         },

@@ -209,12 +209,16 @@ pub struct UnsubscribePayload {
 pub struct OpenFilePayload {
     #[prost(message, optional, tag = "1")]
     pub file_to_open: ::core::option::Option<super::file::File>,
+    #[prost(message, optional, tag = "2")]
+    pub floating_pane_coordinates: ::core::option::Option<FloatingPaneCoordinates>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct OpenCommandPanePayload {
     #[prost(message, optional, tag = "1")]
     pub command_to_run: ::core::option::Option<super::command::Command>,
+    #[prost(message, optional, tag = "2")]
+    pub floating_pane_coordinates: ::core::option::Option<FloatingPaneCoordinates>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -302,6 +306,26 @@ pub struct IdAndNewName {
     pub id: u32,
     #[prost(string, tag = "2")]
     pub new_name: ::prost::alloc::string::String,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct FloatingPaneCoordinates {
+    #[prost(message, optional, tag = "1")]
+    pub x: ::core::option::Option<FixedOrPercentValue>,
+    #[prost(message, optional, tag = "2")]
+    pub y: ::core::option::Option<FixedOrPercentValue>,
+    #[prost(message, optional, tag = "3")]
+    pub width: ::core::option::Option<FixedOrPercentValue>,
+    #[prost(message, optional, tag = "4")]
+    pub height: ::core::option::Option<FixedOrPercentValue>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct FixedOrPercentValue {
+    #[prost(enumeration = "FixedOrPercent", tag = "1")]
+    pub r#type: i32,
+    #[prost(uint32, tag = "2")]
+    pub value: u32,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
@@ -623,6 +647,32 @@ impl HttpVerb {
             "Post" => Some(Self::Post),
             "Put" => Some(Self::Put),
             "Delete" => Some(Self::Delete),
+            _ => None,
+        }
+    }
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum FixedOrPercent {
+    Fixed = 0,
+    Percent = 1,
+}
+impl FixedOrPercent {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            FixedOrPercent::Fixed => "Fixed",
+            FixedOrPercent::Percent => "Percent",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "Fixed" => Some(Self::Fixed),
+            "Percent" => Some(Self::Percent),
             _ => None,
         }
     }

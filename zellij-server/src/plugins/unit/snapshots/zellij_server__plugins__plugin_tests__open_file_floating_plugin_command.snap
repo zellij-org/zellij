@@ -20,6 +20,7 @@ Some(
         Some(
             "Editing: /path/to/my/file.rs",
         ),
+        None,
         ClientId(
             1,
         ),

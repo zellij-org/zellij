@@ -1,5 +1,6 @@
 use crate::input::actions::Action;
 use crate::input::config::ConversionError;
+use crate::input::layout::SplitSize;
 use clap::ArgEnum;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -1166,6 +1167,86 @@ impl PipeMessage {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize, Default)]
+pub struct FloatingPaneCoordinates {
+    pub x: Option<SplitSize>,
+    pub y: Option<SplitSize>,
+    pub width: Option<SplitSize>,
+    pub height: Option<SplitSize>,
+}
+
+impl FloatingPaneCoordinates {
+    pub fn new(
+        x: Option<String>,
+        y: Option<String>,
+        width: Option<String>,
+        height: Option<String>,
+    ) -> Option<Self> {
+        let x = x.and_then(|x| SplitSize::from_str(&x).ok());
+        let y = y.and_then(|y| SplitSize::from_str(&y).ok());
+        let width = width.and_then(|width| SplitSize::from_str(&width).ok());
+        let height = height.and_then(|height| SplitSize::from_str(&height).ok());
+        if x.is_none() && y.is_none() && width.is_none() && height.is_none() {
+            None
+        } else {
+            Some(FloatingPaneCoordinates {
+                x,
+                y,
+                width,
+                height,
+            })
+        }
+    }
+    pub fn with_x_fixed(mut self, x: usize) -> Self {
+        self.x = Some(SplitSize::Fixed(x));
+        self
+    }
+    pub fn with_x_percent(mut self, x: usize) -> Self {
+        if x > 100 {
+            eprintln!("x must be between 0 and 100");
+            return self;
+        }
+        self.x = Some(SplitSize::Percent(x));
+        self
+    }
+    pub fn with_y_fixed(mut self, y: usize) -> Self {
+        self.y = Some(SplitSize::Fixed(y));
+        self
+    }
+    pub fn with_y_percent(mut self, y: usize) -> Self {
+        if y > 100 {
+            eprintln!("y must be between 0 and 100");
+            return self;
+        }
+        self.y = Some(SplitSize::Percent(y));
+        self
+    }
+    pub fn with_width_fixed(mut self, width: usize) -> Self {
+        self.width = Some(SplitSize::Fixed(width));
+        self
+    }
+    pub fn with_width_percent(mut self, width: usize) -> Self {
+        if width > 100 {
+            eprintln!("width must be between 0 and 100");
+            return self;
+        }
+        self.width = Some(SplitSize::Percent(width));
+        self
+    }
+    pub fn with_height_fixed(mut self, height: usize) -> Self {
+        self.height = Some(SplitSize::Fixed(height));
+        self
+    }
+    pub fn with_height_percent(mut self, height: usize) -> Self {
+        if height > 100 {
+            eprintln!("height must be between 0 and 100");
+            return self;
+        }
+        self.height = Some(SplitSize::Percent(height));
+        self
+    }
+}
+
 #[derive(Debug, Clone, EnumDiscriminants, ToString)]
 #[strum_discriminants(derive(EnumString, Hash, Serialize, Deserialize))]
 #[strum_discriminants(name(CommandType))]
@@ -1176,11 +1257,11 @@ pub enum PluginCommand {
     GetPluginIds,
     GetZellijVersion,
     OpenFile(FileToOpen),
-    OpenFileFloating(FileToOpen),
-    OpenTerminal(FileToOpen),         // only used for the path as cwd
-    OpenTerminalFloating(FileToOpen), // only used for the path as cwd
+    OpenFileFloating(FileToOpen, Option<FloatingPaneCoordinates>),
+    OpenTerminal(FileToOpen), // only used for the path as cwd
+    OpenTerminalFloating(FileToOpen, Option<FloatingPaneCoordinates>), // only used for the path as cwd
     OpenCommandPane(CommandToRun),
-    OpenCommandPaneFloating(CommandToRun),
+    OpenCommandPaneFloating(CommandToRun, Option<FloatingPaneCoordinates>),
     SwitchTabTo(u32), // tab index
     SetTimeout(f64),  // seconds
     ExecCmd(Vec<String>),

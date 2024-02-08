@@ -167,10 +167,13 @@ impl ZellijPlugin for State {
                     });
                 },
                 Key::Ctrl('h') => {
-                    open_file_floating(FileToOpen {
-                        path: std::path::PathBuf::from("/path/to/my/file.rs"),
-                        ..Default::default()
-                    });
+                    open_file_floating(
+                        FileToOpen {
+                            path: std::path::PathBuf::from("/path/to/my/file.rs"),
+                            ..Default::default()
+                        },
+                        None,
+                    );
                 },
                 Key::Ctrl('i') => {
                     open_file(FileToOpen {
@@ -180,11 +183,14 @@ impl ZellijPlugin for State {
                     });
                 },
                 Key::Ctrl('j') => {
-                    open_file_floating(FileToOpen {
-                        path: std::path::PathBuf::from("/path/to/my/file.rs"),
-                        line_number: Some(42),
-                        ..Default::default()
-                    });
+                    open_file_floating(
+                        FileToOpen {
+                            path: std::path::PathBuf::from("/path/to/my/file.rs"),
+                            line_number: Some(42),
+                            ..Default::default()
+                        },
+                        None,
+                    );
                 },
                 Key::Ctrl('k') => {
                     open_terminal(std::path::PathBuf::from("/path/to/my/file.rs").as_path());
@@ -192,6 +198,7 @@ impl ZellijPlugin for State {
                 Key::Ctrl('l') => {
                     open_terminal_floating(
                         std::path::PathBuf::from("/path/to/my/file.rs").as_path(),
+                        None,
                     );
                 },
                 Key::Ctrl('m') => {
@@ -202,11 +209,14 @@ impl ZellijPlugin for State {
                     });
                 },
                 Key::Ctrl('n') => {
-                    open_command_pane_floating(CommandToRun {
-                        path: std::path::PathBuf::from("/path/to/my/file.rs"),
-                        args: vec!["arg1".to_owned(), "arg2".to_owned()],
-                        ..Default::default()
-                    });
+                    open_command_pane_floating(
+                        CommandToRun {
+                            path: std::path::PathBuf::from("/path/to/my/file.rs"),
+                            args: vec!["arg1".to_owned(), "arg2".to_owned()],
+                            ..Default::default()
+                        },
+                        None,
+                    );
                 },
                 Key::Ctrl('o') => {
                     switch_tab_to(1);

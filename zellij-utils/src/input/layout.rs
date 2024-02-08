@@ -69,6 +69,17 @@ pub enum SplitSize {
     Fixed(usize), // An absolute number of columns or rows
 }
 
+impl SplitSize {
+    pub fn to_fixed(&self, full_size: usize) -> usize {
+        match self {
+            SplitSize::Percent(percent) => {
+                ((*percent as f64 / 100.0) * full_size as f64).floor() as usize
+            },
+            SplitSize::Fixed(fixed) => *fixed,
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub enum Run {
     #[serde(rename = "plugin")]
