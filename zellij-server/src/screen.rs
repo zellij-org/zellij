@@ -12,7 +12,6 @@ use zellij_utils::data::{
 };
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
-use zellij_utils::input::actions::FloatingPaneCoordinates;
 use zellij_utils::input::options::Clipboard;
 use zellij_utils::pane_size::{Size, SizeInPixels};
 use zellij_utils::{
@@ -47,7 +46,7 @@ use crate::{
     ClientId, ServerInstruction,
 };
 use zellij_utils::{
-    data::{Event, InputMode, ModeInfo, Palette, PaletteColor, PluginCapabilities, Style, TabInfo},
+    data::{Event, InputMode, ModeInfo, Palette, PaletteColor, PluginCapabilities, Style, TabInfo, FloatingPaneCoordinates},
     errors::{ContextType, ScreenContext},
     input::{get_mode_info, options::Options},
     ipc::{ClientAttributes, PixelDimensions, ServerToClientMsg},

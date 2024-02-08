@@ -3,10 +3,10 @@
 use super::command::RunCommandAction;
 use super::layout::{
     FloatingPaneLayout, Layout, RunPlugin, RunPluginLocation, SwapFloatingLayout, SwapTiledLayout,
-    TiledPaneLayout, SplitSize,
+    TiledPaneLayout
 };
 use crate::cli::CliAction;
-use crate::data::InputMode;
+use crate::data::{InputMode, FloatingPaneCoordinates};
 use crate::data::{Direction, Resize};
 use crate::home::{find_default_config_dir, get_layout_dir};
 use crate::input::config::{Config, ConfigError, KdlError};
@@ -89,81 +89,6 @@ impl FromStr for SearchOption {
                 s
             )),
         }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize, Default)]
-pub struct FloatingPaneCoordinates {
-    pub x: Option<SplitSize>,
-    pub y: Option<SplitSize>,
-    pub width: Option<SplitSize>,
-    pub height: Option<SplitSize>,
-}
-
-impl FloatingPaneCoordinates {
-    pub fn new(x: Option<String>, y: Option<String>, width: Option<String>, height: Option<String>) -> Option<Self> {
-        let x = x.and_then(|x| SplitSize::from_str(&x).ok());
-        let y = y.and_then(|y| SplitSize::from_str(&y).ok());
-        let width = width.and_then(|width| SplitSize::from_str(&width).ok());
-        let height = height.and_then(|height| SplitSize::from_str(&height).ok());
-        if x.is_none() && y.is_none() && width.is_none() && height.is_none() {
-            None
-        } else {
-            Some(FloatingPaneCoordinates {
-                x,
-                y,
-                width,
-                height
-            })
-        }
-    }
-    pub fn with_x_fixed(mut self, x: usize) -> Self {
-        self.x = Some(SplitSize::Fixed(x));
-        self
-    }
-    pub fn with_x_percent(mut self, x: usize) -> Self {
-        if x > 100 {
-            eprintln!("x must be between 0 and 100");
-            return self;
-        }
-        self.x = Some(SplitSize::Percent(x));
-        self
-    }
-    pub fn with_y_fixed(mut self, y: usize) -> Self {
-        self.y = Some(SplitSize::Fixed(y));
-        self
-    }
-    pub fn with_y_percent(mut self, y: usize) -> Self {
-        if y > 100 {
-            eprintln!("y must be between 0 and 100");
-            return self;
-        }
-        self.y = Some(SplitSize::Percent(y));
-        self
-    }
-    pub fn with_width_fixed(mut self, width: usize) -> Self {
-        self.width = Some(SplitSize::Fixed(width));
-        self
-    }
-    pub fn with_width_percent(mut self, width: usize) -> Self {
-        if width > 100 {
-            eprintln!("width must be between 0 and 100");
-            return self;
-        }
-        self.width = Some(SplitSize::Percent(width));
-        self
-    }
-    pub fn with_height_fixed(mut self, height: usize) -> Self {
-        self.height = Some(SplitSize::Fixed(height));
-        self
-    }
-    pub fn with_height_percent(mut self, height: usize) -> Self {
-        if height > 100 {
-            eprintln!("height must be between 0 and 100");
-            return self;
-        }
-        self.height = Some(SplitSize::Percent(height));
-        self
     }
 }
 

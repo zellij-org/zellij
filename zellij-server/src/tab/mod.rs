@@ -15,7 +15,6 @@ use zellij_utils::data::{
 };
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
-use zellij_utils::input::actions::FloatingPaneCoordinates;
 use zellij_utils::position::{Column, Line};
 use zellij_utils::{position::Position, serde};
 
@@ -47,7 +46,7 @@ use std::{
     str,
 };
 use zellij_utils::{
-    data::{Event, InputMode, ModeInfo, Palette, PaletteColor, Style},
+    data::{Event, InputMode, ModeInfo, Palette, PaletteColor, Style, FloatingPaneCoordinates},
     input::{
         command::TerminalAction,
         layout::{

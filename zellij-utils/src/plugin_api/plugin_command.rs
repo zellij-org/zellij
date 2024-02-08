@@ -18,9 +18,8 @@ pub use super::generated_api::api::{
 
 use crate::data::{
     ConnectToSession, HttpVerb, MessageToPlugin, NewPluginArgs, PaneId, PermissionType,
-    PluginCommand
+    PluginCommand, FloatingPaneCoordinates
 };
-use crate::input::actions::FloatingPaneCoordinates;
 use crate::input::layout::SplitSize;
 
 use std::collections::BTreeMap;

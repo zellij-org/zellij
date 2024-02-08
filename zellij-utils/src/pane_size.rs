@@ -5,8 +5,8 @@ use std::{
 };
 
 use crate::input::layout::{SplitDirection, SplitSize};
-use crate::input::actions::FloatingPaneCoordinates;
 use crate::position::Position;
+use crate::data::FloatingPaneCoordinates;
 
 /// Contains the position and size of a [`Pane`], or more generally of any terminal, measured
 /// in character rows and columns.

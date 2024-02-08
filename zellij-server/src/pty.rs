@@ -12,12 +12,12 @@ use async_std::task::{self, JoinHandle};
 use std::{collections::HashMap, os::unix::io::RawFd, path::PathBuf};
 use zellij_utils::nix::unistd::Pid;
 use zellij_utils::{
+    data::FloatingPaneCoordinates,
     async_std,
     errors::prelude::*,
     errors::{ContextType, PtyContext},
     input::{
         command::{RunCommand, TerminalAction},
-        actions::FloatingPaneCoordinates,
         layout::{
             FloatingPaneLayout, Layout, PluginUserConfiguration, Run, RunPlugin, RunPluginLocation,
             TiledPaneLayout,

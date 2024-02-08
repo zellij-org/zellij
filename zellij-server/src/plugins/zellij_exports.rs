@@ -19,7 +19,7 @@ use wasmer::{imports, AsStoreMut, Function, FunctionEnv, FunctionEnvMut, Imports
 use wasmer_wasi::WasiEnv;
 use zellij_utils::data::{
     CommandType, ConnectToSession, HttpVerb, LayoutInfo, MessageToPlugin, PermissionStatus,
-    PermissionType, PluginPermission,
+    PermissionType, PluginPermission, FloatingPaneCoordinates,
 };
 use zellij_utils::input::permission::PermissionCache;
 use zellij_utils::{
@@ -39,7 +39,7 @@ use zellij_utils::{
     },
     errors::prelude::*,
     input::{
-        actions::{Action, FloatingPaneCoordinates},
+        actions::Action,
         command::{RunCommand, RunCommandAction, TerminalAction},
         layout::{Layout, PluginUserConfiguration, RunPlugin, RunPluginLocation},
         plugins::PluginType,

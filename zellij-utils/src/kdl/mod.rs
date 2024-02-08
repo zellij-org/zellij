@@ -1,7 +1,7 @@
 mod kdl_layout_parser;
 use crate::data::{
     Direction, InputMode, Key, LayoutInfo, Palette, PaletteColor, PaneInfo, PaneManifest,
-    PermissionType, Resize, SessionInfo, TabInfo,
+    PermissionType, Resize, SessionInfo, TabInfo, FloatingPaneCoordinates
 };
 use crate::envs::EnvironmentVariables;
 use crate::home::{find_default_config_dir, get_layout_dir};
@@ -23,7 +23,7 @@ use kdl::{KdlDocument, KdlEntry, KdlNode};
 use std::path::PathBuf;
 use std::str::FromStr;
 
-use crate::input::actions::{Action, SearchDirection, SearchOption, FloatingPaneCoordinates};
+use crate::input::actions::{Action, SearchDirection, SearchOption};
 use crate::input::command::RunCommandAction;
 
 #[macro_export]

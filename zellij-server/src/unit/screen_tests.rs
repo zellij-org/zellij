@@ -12,7 +12,7 @@ use std::path::PathBuf;
 use zellij_utils::cli::CliAction;
 use zellij_utils::data::{Event, Resize, Style};
 use zellij_utils::errors::{prelude::*, ErrorContext};
-use zellij_utils::input::actions::{Action, FloatingPaneCoordinates};
+use zellij_utils::input::actions::Action;
 use zellij_utils::input::command::{RunCommand, TerminalAction};
 use zellij_utils::input::layout::{
     FloatingPaneLayout, Layout, Run, RunPlugin, RunPluginLocation, SplitDirection, TiledPaneLayout, SplitSize,
@@ -32,7 +32,7 @@ use zellij_utils::ipc::PixelDimensions;
 
 use zellij_utils::{
     channels::{self, ChannelWithContext, Receiver},
-    data::{Direction, InputMode, ModeInfo, Palette, PluginCapabilities},
+    data::{Direction, InputMode, ModeInfo, Palette, PluginCapabilities, FloatingPaneCoordinates},
     interprocess::local_socket::LocalSocketStream,
     ipc::{ClientAttributes, ClientToServerMsg, ServerToClientMsg},
 };
