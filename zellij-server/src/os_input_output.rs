@@ -20,6 +20,12 @@ use std::ffi::OsString;
 use windows::Win32::System::Console::HPCON;
 #[cfg(windows)]
 use winptyrs::{AgentConfig, PTYArgs, PTY};
+#[cfg(windows)]
+use std::future::Future;
+#[cfg(windows)]
+use std::task::Poll;
+#[cfg(windows)]
+use std::pin::Pin;
 
 use signal_hook::consts::*;
 use sysinfo::{ProcessExt, ProcessRefreshKind, System, SystemExt};
@@ -300,7 +306,7 @@ fn handle_terminal(
         cols: 80,
         rows: 25,
         mouse_mode: winptyrs::MouseMode::WINPTY_MOUSE_MODE_NONE,
-        timeout: 300,
+        timeout: 10000,
         agent_config: AgentConfig::WINPTY_FLAG_COLOR_ESCAPES,
     };
 
@@ -624,15 +630,53 @@ struct WinPtyReader {
 #[async_trait]
 impl AsyncReader for WinPtyReader {
     async fn read(&mut self, mut buf: &mut [u8]) -> Result<usize, std::io::Error> {
-        let len = buf.len();
-        log::info!("{len}");
-        let pty = self.pty.lock().unwrap();
-        log::info!("Trying to read from windows pty with fd: {}", pty.get_fd());
-        let read_chars = pty
-            .read(len as u32, false)
-            .map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err.to_str().unwrap()))?;
+        let futureReader = FutureWinPtyReader { pty: Arc::clone(&self.pty), len: buf.len() };
+        let read_chars = futureReader.await?;
         log::info!("Read some bytes from windows pty: '{:?}'", read_chars);
         buf.write(read_chars.as_encoded_bytes())
+        // let len = buf.len();
+        // log::info!("{len}");
+        // let pty = self.pty.lock().unwrap();
+        // log::info!("Trying to read from windows pty with fd: {}", pty.get_fd());
+        // let read_chars = pty
+        //     .read(len as u32, false)
+        //     .map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err.to_str().unwrap()))?;
+        // log::info!("Read some bytes from windows pty: '{:?}'", read_chars);
+        // if read_chars.len() > 0 {
+        //     buf.write(read_chars.as_encoded_bytes())
+        // } else {
+        //     Ok(0)
+        // }
+    }
+}
+
+struct FutureWinPtyReader {
+    len: usize,
+    pty: Arc<Mutex<PTY>>,
+}
+
+impl Future for FutureWinPtyReader {
+    type Output = Result<OsString, std::io::Error>;
+    fn poll (
+        self: Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>
+        ) -> Poll<Self::Output> {
+        let pty = self.pty.lock().unwrap();
+        let read_chars = pty.read(self.len as u32, false)
+            .map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err.to_str().unwrap()));
+        match read_chars {
+            Ok(rc) => if rc.len() > 0 {
+                log::info!("Read some bytes in future '{:?}'", rc);
+                Poll::Ready(Ok(rc))
+            } else {
+                log::info!("Pending some bytes in future");
+                Poll::Pending
+            },
+            Err(e) => {
+                log::info!("Error some bytes in future");
+                Poll::Ready(Err(e))
+            }
+        }
     }
 }
 
@@ -936,6 +980,12 @@ impl ServerOsApi for ServerOsInputOutput {
         let s = unsafe { std::ffi::OsStr::from_encoded_bytes_unchecked(buf) };
         let err_context = || format!("failed to write to stdin of TTY ID {}", terminal_id);
 
+        log::info!("writing bytes {:?}", unsafe { OsString::from_encoded_bytes_unchecked(buf.to_vec()) }.to_str());
+
+        if(buf.len() == 0) {
+            return Ok(0);
+        }
+
         match self
             .terminal_id_to_reference
             .lock()
@@ -948,8 +998,11 @@ impl ServerOsApi for ServerOsInputOutput {
                 .lock()
                 .to_anyhow()
                 .with_context(|| format!("Could not lock writer of TTY with ID: {}", &terminal_id))?
-                .write(s.into())
-                .map(|written| written as usize)
+                .write("ls\r\n".into())
+                .map(|written| {
+                    log::info!("written bytes {:?}", written);
+                    written as usize
+                })
                 .map_err(|e| anyhow!("{:?}", e)),
             _ => Err(anyhow!("could not find pty reference")).with_context(err_context),
         }
@@ -974,6 +1027,27 @@ impl ServerOsApi for ServerOsInputOutput {
     #[cfg(windows)]
     fn tcdrain(&self, terminal_id: u32) -> Result<()> {
         Ok(())
+        // let err_context = || format!("failed to tcdrain to TTY ID {}", terminal_id);
+
+        // match self
+        //     .terminal_id_to_reference
+        //     .lock()
+        //     .to_anyhow()
+        //     .with_context(err_context)?
+        //     .get(&terminal_id)
+        // {
+        //     Some(Some(r)) => {
+        //         loop {
+        //             match r.pty.lock().to_anyhow().with_context(|| anyhow!("failed to get reference for draining"))?.is_eof() {
+        //                 Ok(_) => {
+        //                     break Ok(())
+        //                 },
+        //                 Err(e) => continue
+        //             }
+        //         }
+        //     },
+        //     _ => Err(anyhow!("could not find raw file descriptor")).with_context(err_context),
+        // }
     }
 
     fn box_clone(&self) -> Box<dyn ServerOsApi> {

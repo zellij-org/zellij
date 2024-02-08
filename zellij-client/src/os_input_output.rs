@@ -9,6 +9,11 @@ use zellij_utils::{libc, nix};
 use interprocess::local_socket::LocalSocketStream;
 #[cfg(not(windows))]
 use mio::unix::SourceFd;
+
+#[cfg(windows)]
+use mio::windows::NamedPipe;
+#[cfg(windows)]
+use std::os::windows::io::FromRawHandle;
 use mio::{Events, Interest, Poll, Token};
 #[cfg(not(windows))]
 use nix::pty::Winsize;
@@ -29,6 +34,14 @@ use zellij_utils::{
     errors::ErrorContext,
     ipc::{ClientToServerMsg, IpcReceiverWithContext, IpcSenderWithContext, ServerToClientMsg},
     shared::default_palette,
+};
+#[cfg(windows)]
+use std::os::windows::io::RawHandle;
+use windows_sys::Win32::{
+    Foundation::INVALID_HANDLE_VALUE,
+    System::Console::{
+        GetConsoleScreenBufferInfo, GetStdHandle, CONSOLE_SCREEN_BUFFER_INFO, COORD, SMALL_RECT,
+    },
 };
 
 const SIGWINCH_CB_THROTTLE_DURATION: time::Duration = time::Duration::from_millis(50);
@@ -102,19 +115,12 @@ pub(crate) fn get_terminal_size(handle_type: HandleType) -> Size {
 
 #[cfg(windows)]
 pub(crate) fn get_terminal_size(handle_type: HandleType) -> Size {
-    use std::os::windows::io::RawHandle;
-    use windows_sys::Win32::{
-        Foundation::INVALID_HANDLE_VALUE,
-        System::Console::{
-            GetConsoleScreenBufferInfo, GetStdHandle, CONSOLE_SCREEN_BUFFER_INFO, COORD, SMALL_RECT,
-        },
-    };
 
     // TODO: handle other handle types, only stdout is supported for now
     let handle_type = match handle_type {
-        // HandleType::Stdin => windows_sys::Win32::System::Console::STD_INPUT_HANDLE,
-        // HandleType::Stdout => windows_sys::Win32::System::Console::STD_OUTPUT_HANDLE,
-        // HandleType::Stderr => windows_sys::Win32::System::Console::STD_ERROR_HANDLE,
+        HandleType::Stdin => windows_sys::Win32::System::Console::STD_INPUT_HANDLE,
+        HandleType::Stdout => windows_sys::Win32::System::Console::STD_OUTPUT_HANDLE,
+        HandleType::Stderr => windows_sys::Win32::System::Console::STD_ERROR_HANDLE,
         _ => windows_sys::Win32::System::Console::STD_OUTPUT_HANDLE,
     };
 
@@ -486,6 +492,20 @@ impl Default for StdinPoller {
 
     #[cfg(windows)]
     fn default() -> Self {
-        todo!()
+        let stdin = windows_sys::Win32::System::Console::STD_INPUT_HANDLE;
+        let mut stdin_fd = unsafe { NamedPipe::from_raw_handle(GetStdHandle(stdin) as RawHandle ) };
+        let events = Events::with_capacity(128);
+        let poll = Poll::new().unwrap();
+        poll.registry()
+            .register(&mut stdin_fd, Token(0), Interest::READABLE)
+            .expect("could not create stdin poll");
+
+        let timeout = time::Duration::from_millis(DEFAULT_STDIN_POLL_TIMEOUT_MS);
+
+        Self {
+            poll,
+            events,
+            timeout,
+        }
     }
 }
