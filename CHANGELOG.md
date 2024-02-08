@@ -17,6 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix(terminal): improve reflow performance as well as resource utilization and some misc ancient bugs (https://github.com/zellij-org/zellij/pull/3045, https://github.com/zellij-org/zellij/pull/3032 and https://github.com/zellij-org/zellij/pull/3043)
 * feat(sessions): add welcome screen (https://github.com/zellij-org/zellij/pull/3112)
 * fix(cli): respect cwd in `zellij run` and `zellij plugin` commands (https://github.com/zellij-org/zellij/pull/3116)
+* feat(panes): allow specifying floating pane coordinates when opening from cli/plugin/keybinding (https://github.com/zellij-org/zellij/pull/3122)
 
 ## [0.39.2] - 2023-11-29
 * fix(cli): typo in cli help (https://github.com/zellij-org/zellij/pull/2906)
