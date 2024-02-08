@@ -23,6 +23,13 @@ use winptyrs::{AgentConfig, PTYArgs, PTY};
 #[cfg(windows)]
 use std::future::Future;
 #[cfg(windows)]
+use std::thread;
+// #[cfg(windows)]
+// use futures::{
+//     executor::{self, ThreadPool},
+//     task::{SpawnError, SpawnExt},
+// };
+#[cfg(windows)]
 use std::task::Poll;
 #[cfg(windows)]
 use std::pin::Pin;
@@ -630,53 +637,17 @@ struct WinPtyReader {
 #[async_trait]
 impl AsyncReader for WinPtyReader {
     async fn read(&mut self, mut buf: &mut [u8]) -> Result<usize, std::io::Error> {
-        let futureReader = FutureWinPtyReader { pty: Arc::clone(&self.pty), len: buf.len() };
-        let read_chars = futureReader.await?;
+        let len = buf.len();
+        let pty = Arc::clone(&self.pty);
+        let read_chars = thread::spawn(move || {
+            let read_chars = pty.lock().unwrap().read(len as u32, false)
+                .map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err.to_str().unwrap()));
+            read_chars
+        }).join().expect("Thread has panicked")?;
+
         log::info!("Read some bytes from windows pty: '{:?}'", read_chars);
+
         buf.write(read_chars.as_encoded_bytes())
-        // let len = buf.len();
-        // log::info!("{len}");
-        // let pty = self.pty.lock().unwrap();
-        // log::info!("Trying to read from windows pty with fd: {}", pty.get_fd());
-        // let read_chars = pty
-        //     .read(len as u32, false)
-        //     .map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err.to_str().unwrap()))?;
-        // log::info!("Read some bytes from windows pty: '{:?}'", read_chars);
-        // if read_chars.len() > 0 {
-        //     buf.write(read_chars.as_encoded_bytes())
-        // } else {
-        //     Ok(0)
-        // }
-    }
-}
-
-struct FutureWinPtyReader {
-    len: usize,
-    pty: Arc<Mutex<PTY>>,
-}
-
-impl Future for FutureWinPtyReader {
-    type Output = Result<OsString, std::io::Error>;
-    fn poll (
-        self: Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>
-        ) -> Poll<Self::Output> {
-        let pty = self.pty.lock().unwrap();
-        let read_chars = pty.read(self.len as u32, false)
-            .map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err.to_str().unwrap()));
-        match read_chars {
-            Ok(rc) => if rc.len() > 0 {
-                log::info!("Read some bytes in future '{:?}'", rc);
-                Poll::Ready(Ok(rc))
-            } else {
-                log::info!("Pending some bytes in future");
-                Poll::Pending
-            },
-            Err(e) => {
-                log::info!("Error some bytes in future");
-                Poll::Ready(Err(e))
-            }
-        }
     }
 }
 
@@ -998,7 +969,7 @@ impl ServerOsApi for ServerOsInputOutput {
                 .lock()
                 .to_anyhow()
                 .with_context(|| format!("Could not lock writer of TTY with ID: {}", &terminal_id))?
-                .write("ls\r\n".into())
+                .write(s.into())
                 .map(|written| {
                     log::info!("written bytes {:?}", written);
                     written as usize
