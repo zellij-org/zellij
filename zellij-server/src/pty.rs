@@ -756,7 +756,7 @@ impl Pty {
                         .and_then(|winptyreference| {
                             #[cfg(windows)]
                             {
-                                let pty = winptyreference.pty.lock().unwrap();
+                                let pty = winptyreference.pty.read().unwrap();
                                 self.bus.os_input.as_ref().and_then(|input| {
                                     input.get_cwd((pty.get_pid() as usize).into())
                                 })
@@ -1449,7 +1449,7 @@ impl Pty {
                     {
                         Ok(terminal_id) => {
                             let tid = terminal_id.clone();
-                            let pty = tid.pty.lock().unwrap();
+                            let pty = tid.pty.read().unwrap();
                             Ok(Some((
                                 pty.get_pid(),
                                 starts_held,

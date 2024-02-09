@@ -62,7 +62,7 @@ use std::{
     io::Write,
     path::PathBuf,
     process::{Child, Command},
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, RwLock},
 };
 
 #[cfg(unix)]
@@ -580,7 +580,7 @@ impl ClientSender {
 #[cfg(windows)]
 #[derive(Clone)]
 pub struct WinPtyReference {
-    pub pty: Arc<Mutex<PTY>>,
+    pub pty: Arc<RwLock<PTY>>,
 }
 
 impl WinPtyReference {}
@@ -631,7 +631,7 @@ impl AsyncReader for RawFdAsyncReader {
 }
 
 struct WinPtyReader {
-    pty: Arc<Mutex<PTY>>,
+    pty: Arc<RwLock<PTY>>,
 }
 
 #[async_trait]
@@ -640,7 +640,7 @@ impl AsyncReader for WinPtyReader {
         let len = buf.len();
         let pty = Arc::clone(&self.pty);
         let read_chars = thread::spawn(move || {
-            let read_chars = pty.lock().unwrap().read(len as u32, false)
+            let read_chars = pty.read().unwrap().read(len as u32, true)
                 .map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err.to_str().unwrap()));
             read_chars
         }).join().expect("Thread has panicked")?;
@@ -873,7 +873,7 @@ impl ServerOsApi for ServerOsInputOutput {
                     terminal_id,
                 )
                 .and_then(|thing| {
-                    let pty = Arc::new(Mutex::new(thing));
+                    let pty = Arc::new(RwLock::new(thing));
                     let reference = WinPtyReference { pty };
                     self.terminal_id_to_reference
                         .lock()
@@ -966,7 +966,7 @@ impl ServerOsApi for ServerOsInputOutput {
         {
             Some(Some(r)) => r
                 .pty
-                .lock()
+                .read()
                 .to_anyhow()
                 .with_context(|| format!("Could not lock writer of TTY with ID: {}", &terminal_id))?
                 .write(s.into())
