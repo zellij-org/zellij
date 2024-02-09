@@ -261,8 +261,7 @@ pub fn start_client(
 
     let mut command_is_executing = CommandIsExecuting::new();
 
-    #[cfg(unix)]
-    os_input.set_raw_mode(0);
+    os_input.set_raw_mode(windows_sys::Win32::System::Console::STD_INPUT_HANDLE);
     let _ = os_input
         .get_stdout_writer()
         .write(bracketed_paste.as_bytes())

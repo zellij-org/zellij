@@ -38,9 +38,10 @@ use zellij_utils::{
 #[cfg(windows)]
 use std::os::windows::io::RawHandle;
 use windows_sys::Win32::{
-    Foundation::INVALID_HANDLE_VALUE,
+    Foundation::{INVALID_HANDLE_VALUE, HANDLE},
     System::Console::{
         GetConsoleScreenBufferInfo, GetStdHandle, CONSOLE_SCREEN_BUFFER_INFO, COORD, SMALL_RECT,
+GetConsoleMode, SetConsoleMode, ENABLE_ECHO_INPUT, ENABLE_LINE_INPUT
     },
 };
 
@@ -179,6 +180,8 @@ pub trait ClientOsApi: Send + Sync {
     /// [raw mode](https://en.wikipedia.org/wiki/Terminal_mode).
     #[cfg(unix)]
     fn set_raw_mode(&mut self, fd: RawFd);
+    #[cfg(windows)]
+    fn set_raw_mode(&mut self, handle_type: u32);
     /// Set the terminal associated to file descriptor `fd` to
     /// [cooked mode](https://en.wikipedia.org/wiki/Terminal_mode).
     #[cfg(unix)]
@@ -217,6 +220,16 @@ impl ClientOsApi for ClientOsInputOutput {
     fn set_raw_mode(&mut self, fd: RawFd) {
         into_raw_mode(fd);
     }
+
+    #[cfg(windows)]
+    fn set_raw_mode(&mut self, handle: u32) {
+        let mut consolemode = 0 as u32;
+        let fd = unsafe { GetStdHandle(handle) };
+        unsafe { GetConsoleMode(fd, &mut consolemode) };
+        consolemode = consolemode & !(ENABLE_LINE_INPUT | ENABLE_ECHO_INPUT);
+        unsafe { SetConsoleMode(fd, consolemode) };
+    }
+
     #[cfg(unix)]
     fn unset_raw_mode(&self, fd: RawFd) -> Result<(), nix::Error> {
         match &self.orig_termios {
@@ -444,7 +457,12 @@ pub fn get_cli_client_os_input() -> Result<ClientOsInputOutput, nix::Error> {
 
 #[cfg(windows)]
 pub fn get_cli_client_os_input() -> Result<ClientOsInputOutput, ()> {
-    todo!()
+    Ok(ClientOsInputOutput {
+        send_instructions_to_server: Arc::new(Mutex::new(None)),
+        receive_instructions_from_server: Arc::new(Mutex::new(None)),
+        reading_from_stdin: Arc::new(Mutex::new(None)),
+        session_name: Arc::new(Mutex::new(None)),
+    })
 }
 
 pub const DEFAULT_STDIN_POLL_TIMEOUT_MS: u64 = 10;
