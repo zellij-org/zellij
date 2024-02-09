@@ -406,9 +406,6 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     ),
                     _ => (false, None, name),
                 };
-                #[cfg(windows)]
-                todo!();
-                #[cfg(unix)]
                 match pty
                     .spawn_terminal(terminal_action, ClientTabIndexOrPaneId::ClientId(client_id))
                     .with_context(err_context)
@@ -787,6 +784,19 @@ impl Pty {
             };
         };
     }
+    #[cfg(windows)]
+    fn fill_cwd_from_pane_id(&self, terminal_action: &mut TerminalAction, pane_id: &u32) {
+        if let TerminalAction::RunCommand(run_command) = terminal_action {
+            if run_command.cwd.is_none() {
+                run_command.cwd = self.id_to_child_pid.get(pane_id).and_then(|winpty| {
+                    self.bus
+                        .os_input
+                        .as_ref()
+                        .and_then(|input| input.get_cwd(Pid::from(winpty.pty.read().unwrap().get_pid() as usize)))
+                });
+            };
+        };
+    }
     #[cfg(unix)]
     pub fn spawn_terminal(
         &mut self,
@@ -893,7 +903,99 @@ impl Pty {
         terminal_action: Option<TerminalAction>,
         client_or_tab_index: ClientTabIndexOrPaneId,
     ) -> Result<(u32, bool)> {
-        todo!()
+        // bool is starts_held
+        let err_context = || format!("failed to spawn terminal for {:?}", client_or_tab_index);
+
+        // returns the terminal id
+        let terminal_action = match client_or_tab_index {
+            ClientTabIndexOrPaneId::ClientId(client_id) => {
+                let mut terminal_action =
+                    terminal_action.unwrap_or_else(|| self.get_default_terminal(None, None));
+                self.fill_cwd(&mut terminal_action, client_id);
+                terminal_action
+            },
+            ClientTabIndexOrPaneId::TabIndex(_) => {
+                terminal_action.unwrap_or_else(|| self.get_default_terminal(None, None))
+            },
+            ClientTabIndexOrPaneId::PaneId(pane_id) => {
+                let mut terminal_action =
+                    terminal_action.unwrap_or_else(|| self.get_default_terminal(None, None));
+                if let PaneId::Terminal(terminal_pane_id) = pane_id {
+                    self.fill_cwd_from_pane_id(&mut terminal_action, &terminal_pane_id);
+                }
+                terminal_action
+            },
+        };
+        let (hold_on_start, hold_on_close) = match &terminal_action {
+            TerminalAction::RunCommand(run_command) => {
+                (run_command.hold_on_start, run_command.hold_on_close)
+            },
+            _ => (false, false),
+        };
+
+        if hold_on_start {
+            // we don't actually open a terminal in this case, just wait for the user to run it
+            let starts_held = hold_on_start;
+            let terminal_id = self
+                .bus
+                .os_input
+                .as_mut()
+                .context("couldn't get mutable reference to OS interface")
+                .and_then(|os_input| os_input.reserve_terminal_id())
+                .with_context(err_context)?;
+            return Ok((terminal_id, starts_held));
+        }
+
+        let quit_cb = Box::new({
+            let senders = self.bus.senders.clone();
+            move |pane_id, exit_status, command| {
+                if hold_on_close {
+                    let _ = senders.send_to_screen(ScreenInstruction::HoldPane(
+                        pane_id,
+                        exit_status,
+                        command,
+                        None,
+                        None,
+                    ));
+                } else {
+                    let _ = senders.send_to_screen(ScreenInstruction::ClosePane(pane_id, None));
+                }
+            }
+        });
+        let (terminal_id, pty_reference): (u32, WinPtyReference) = self
+            .bus
+            .os_input
+            .as_mut()
+            .context("no OS I/O interface found")
+            .and_then(|os_input| {
+                os_input.spawn_terminal(terminal_action, quit_cb, self.default_editor.clone())
+            })
+            .with_context(err_context)?;
+        let terminal_bytes = task::spawn({
+            let err_context =
+                |terminal_id: u32| format!("failed to run async task for terminal {terminal_id}");
+            let senders = self.bus.senders.clone();
+            let os_input = self
+                .bus
+                .os_input
+                .as_ref()
+                .with_context(|| err_context(terminal_id))
+                .fatal()
+                .clone();
+            let debug_to_file = self.debug_to_file;
+            async move {
+                TerminalBytes::new(senders, os_input, debug_to_file, terminal_id)
+                    .listen()
+                    .await
+                    .with_context(|| err_context(terminal_id))
+                    .fatal();
+            }
+        });
+
+        self.task_handles.insert(terminal_id, terminal_bytes);
+        self.id_to_child_pid.insert(terminal_id, pty_reference);
+        let starts_held = false;
+        Ok((terminal_id, starts_held))
     }
 
     #[cfg(unix)]
@@ -1052,7 +1154,7 @@ impl Pty {
             .iter()
             .filter(|f| !f.already_running)
             .map(|f| f.run.clone());
-        let mut new_pane_pids: Vec<(u32, bool, Option<RunCommand>, Result<WinPtyReference>)> =
+        let mut new_pane_pids: Vec<(u32, bool, Option<RunCommand>, Result<u32>)> =
             vec![]; // (terminal_id,
                     // starts_held,
                     // run_command,
@@ -1061,7 +1163,7 @@ impl Pty {
             u32,
             bool,
             Option<RunCommand>,
-            Result<WinPtyReference>,
+            Result<u32>,
         )> = vec![]; // same
                      // as
                      // new_pane_pids
@@ -1396,7 +1498,7 @@ impl Pty {
         run_instruction: Option<Run>,
         default_shell: TerminalAction,
         tab_index: usize,
-    ) -> Result<Option<(u32, bool, Option<RunCommand>, Result<WinPtyReference>)>> {
+    ) -> Result<Option<(u32, bool, Option<RunCommand>, Result<u32>)>> {
         // terminal_id,
         // starts_held,
         // command
@@ -1449,9 +1551,8 @@ impl Pty {
                     {
                         Ok(terminal_id) => {
                             let tid = terminal_id.clone();
-                            let pty = tid.pty.read().unwrap();
                             Ok(Some((
-                                pty.get_pid(),
+                                terminal_id,
                                 starts_held,
                                 Some(command.clone()),
                                 Ok(terminal_id), // this is not actually correct but gets
@@ -1476,7 +1577,7 @@ impl Pty {
                                 terminal_id,
                                 starts_held,
                                 Some(command.clone()),
-                                Ok(reference),
+                                Ok(reference.pty.read().unwrap().get_pid()),
                             )))
                         },
                         Err(err) => {
@@ -1582,7 +1683,7 @@ impl Pty {
                 {
                     Ok((terminal_id, reference)) => {
                         self.id_to_child_pid.insert(terminal_id, reference.clone());
-                        Ok(Some((terminal_id, starts_held, None, Ok(reference))))
+                        Ok(Some((terminal_id, starts_held, None, Ok(reference.pty.read().unwrap().get_pid()))))
                     },
                     Err(err) => match err.downcast_ref::<ZellijError>() {
                         Some(ZellijError::CommandNotFound { terminal_id, .. }) => {
@@ -1600,6 +1701,37 @@ impl Pty {
     #[cfg(windows)]
     pub fn close_pane(&mut self, id: PaneId) -> Result<()> {
         todo!()
+        // let err_context = || format!("failed to close for pane {id:?}");
+        // match id {
+        //     PaneId::Terminal(id) => {
+        //         self.task_handles.remove(&id);
+        //         if let Some(child_fd) = self.id_to_child_pid.remove(&id) {
+        //             task::block_on(async {
+        //                 let err_context = || format!("failed to run async task for pane {id}");
+        //                 self.bus
+        //                     .os_input
+        //                     .as_mut()
+        //                     .with_context(err_context)
+        //                     .fatal()
+        //                     .kill(Pid::from_raw(child_fd))
+        //                     .with_context(err_context)
+        //                     .fatal();
+        //             });
+        //         }
+        //         self.bus
+        //             .os_input
+        //             .as_ref()
+        //             .context("no OS I/O interface found")
+        //             .and_then(|os_input| os_input.clear_terminal_id(id))
+        //             .with_context(err_context)?;
+        //     },
+        //     PaneId::Plugin(pid) => drop(
+        //         self.bus
+        //             .senders
+        //             .send_to_plugin(PluginInstruction::Unload(pid)),
+        //     ),
+        // }
+        // Ok(())
     }
 
     #[cfg(unix)]
@@ -1829,7 +1961,12 @@ impl Drop for Pty {
 
     #[cfg(windows)]
     fn drop(&mut self) {
-        // todo!()
+        let child_ids: Vec<u32> = self.id_to_child_pid.keys().copied().collect();
+        for id in child_ids {
+            self.close_pane(PaneId::Terminal(id))
+                .with_context(|| format!("failed to close pane for pid {id}"))
+                .fatal();
+        }
     }
 }
 
