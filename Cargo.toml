@@ -1,3 +1,5 @@
+#![allow(warnings)]
+
 [package]
 name = "zellij"
 version = "0.40.0"
@@ -85,3 +87,4 @@ singlepass = ["zellij-server/singlepass"]
 # uncomment this when developing plugins in the Zellij UI to make plugin compilation faster
 # [profile.dev.package."*"]
 # opt-level = 3
+

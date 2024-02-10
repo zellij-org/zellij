@@ -1700,38 +1700,37 @@ impl Pty {
 
     #[cfg(windows)]
     pub fn close_pane(&mut self, id: PaneId) -> Result<()> {
-        todo!()
-        // let err_context = || format!("failed to close for pane {id:?}");
-        // match id {
-        //     PaneId::Terminal(id) => {
-        //         self.task_handles.remove(&id);
-        //         if let Some(child_fd) = self.id_to_child_pid.remove(&id) {
-        //             task::block_on(async {
-        //                 let err_context = || format!("failed to run async task for pane {id}");
-        //                 self.bus
-        //                     .os_input
-        //                     .as_mut()
-        //                     .with_context(err_context)
-        //                     .fatal()
-        //                     .kill(Pid::from_raw(child_fd))
-        //                     .with_context(err_context)
-        //                     .fatal();
-        //             });
-        //         }
-        //         self.bus
-        //             .os_input
-        //             .as_ref()
-        //             .context("no OS I/O interface found")
-        //             .and_then(|os_input| os_input.clear_terminal_id(id))
-        //             .with_context(err_context)?;
-        //     },
-        //     PaneId::Plugin(pid) => drop(
-        //         self.bus
-        //             .senders
-        //             .send_to_plugin(PluginInstruction::Unload(pid)),
-        //     ),
-        // }
-        // Ok(())
+        let err_context = || format!("failed to close for pane {id:?}");
+        match id {
+            PaneId::Terminal(id) => {
+                self.task_handles.remove(&id);
+                if let Some(child_fd) = self.id_to_child_pid.remove(&id) {
+                    task::block_on(async {
+                        let err_context = || format!("failed to run async task for pane {id}");
+                        self.bus
+                            .os_input
+                            .as_mut()
+                            .with_context(err_context)
+                            .fatal()
+                            .kill(Pid::from(child_fd.pty.read().unwrap().get_pid() as usize))
+                            .with_context(err_context)
+                            .fatal();
+                    });
+                }
+                self.bus
+                    .os_input
+                    .as_ref()
+                    .context("no OS I/O interface found")
+                    .and_then(|os_input| os_input.clear_terminal_id(id))
+                    .with_context(err_context)?;
+            },
+            PaneId::Plugin(pid) => drop(
+                self.bus
+                    .senders
+                    .send_to_plugin(PluginInstruction::Unload(pid)),
+            ),
+        }
+        Ok(())
     }
 
     #[cfg(unix)]

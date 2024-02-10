@@ -24,6 +24,7 @@ use winptyrs::{AgentConfig, PTYArgs, PTY};
 use std::future::Future;
 #[cfg(windows)]
 use std::thread;
+use std::io::Error;
 // #[cfg(windows)]
 // use futures::{
 //     executor::{self, ThreadPool},
@@ -35,7 +36,7 @@ use std::task::Poll;
 use std::pin::Pin;
 
 use signal_hook::consts::*;
-use sysinfo::{ProcessExt, ProcessRefreshKind, System, SystemExt};
+use sysinfo::{ProcessExt, ProcessRefreshKind, SystemExt};
 use zellij_utils::{
     async_std, channels,
     channels::TrySendError,
@@ -72,7 +73,7 @@ pub use async_trait::async_trait;
 #[cfg(unix)]
 pub use nix::unistd::Pid;
 #[cfg(windows)]
-pub use sysinfo::Pid;
+pub use sysinfo::{Pid, System, Signal};
 
 #[cfg(unix)]
 fn set_terminal_size_using_fd(
@@ -167,7 +168,8 @@ fn handle_command_exit(mut child: Child) -> Result<Option<i32>> {
             kill(Pid::from_raw(child.id() as i32), Some(Signal::SIGTERM))
                 .with_context(err_context)?;
             #[cfg(windows)]
-            todo!();
+            System::new_all().process(Pid::from(child.id() as usize))
+                .with_context(err_context)?.kill();
             continue;
         } else {
             // when I say whoa, I mean WHOA!
@@ -695,10 +697,8 @@ pub trait ServerOsApi: Send + Sync {
     /// Wait until all output written to the object referred to by `fd` has been transmitted.
     fn tcdrain(&self, terminal_id: u32) -> Result<()>;
     /// Terminate the process with process ID `pid`. (SIGTERM)
-    #[cfg(unix)]
     fn kill(&self, pid: Pid) -> Result<()>;
     /// Terminate the process with process ID `pid`. (SIGKILL)
-    #[cfg(unix)]
     fn force_kill(&self, pid: Pid) -> Result<()>;
     /// Returns a [`Box`] pointer to this [`ServerOsApi`] struct.
     fn box_clone(&self) -> Box<dyn ServerOsApi>;
@@ -1055,6 +1055,16 @@ impl ServerOsApi for ServerOsInputOutput {
     #[cfg(unix)]
     fn kill(&self, pid: Pid) -> Result<()> {
         let _ = kill(pid, Some(Signal::SIGHUP));
+        Ok(())
+    }
+    #[cfg(windows)]
+    fn kill(&self, pid: Pid) -> Result<()> {
+        let res = System::new_all().process(pid).ok_or(Error::other("Unable to get process"))?.kill_with(Signal::Hangup);
+        Ok(())
+    }
+    #[cfg(windows)]
+    fn force_kill(&self, pid: Pid) -> Result<()> {
+        let res = System::new_all().process(pid).ok_or(Error::other("Unable to get process"))?.kill_with(Signal::Kill);
         Ok(())
     }
     #[cfg(unix)]
