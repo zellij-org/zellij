@@ -630,8 +630,6 @@ impl AsyncReader for WinPtyReader {
             read_chars
         }).join().expect("Thread has panicked")?;
 
-        log::info!("Read some bytes from windows pty: '{:?}'", read_chars);
-
         buf.write(read_chars.as_encoded_bytes())
     }
 }
@@ -978,8 +976,6 @@ impl ServerOsApi for ServerOsInputOutput {
         let s = unsafe { std::ffi::OsStr::from_encoded_bytes_unchecked(buf) };
         let err_context = || format!("failed to write to stdin of TTY ID {}", terminal_id);
 
-        log::info!("writing bytes {:?}", unsafe { OsString::from_encoded_bytes_unchecked(buf.to_vec()) }.to_str());
-
         if(buf.len() == 0) {
             return Ok(0);
         }
@@ -997,10 +993,7 @@ impl ServerOsApi for ServerOsInputOutput {
                 .to_anyhow()
                 .with_context(|| format!("Could not lock writer of TTY with ID: {}", &terminal_id))?
                 .write(s.into())
-                .map(|written| {
-                    log::info!("written bytes {:?}", written);
-                    written as usize
-                })
+                .map(|written| written as usize)
                 .map_err(|e| anyhow!("{:?}", e)),
             _ => Err(anyhow!("could not find pty reference")).with_context(err_context),
         }

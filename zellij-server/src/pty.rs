@@ -144,7 +144,6 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                 name,
                 client_or_tab_index,
             ) => {
-                log::info!("Spawning a terminal");
                 let err_context =
                     || format!("failed to spawn terminal for {:?}", client_or_tab_index);
 
