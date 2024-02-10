@@ -104,23 +104,6 @@ fn set_terminal_size_using_fd(
     };
 }
 
-#[cfg(windows)]
-fn set_terminal_size_using_fd(
-    fd: HPCON,
-    columns: u16,
-    rows: u16,
-    width_in_pixels: Option<u16>,
-    height_in_pixels: Option<u16>,
-) {
-    use windows::Win32::System::Console::{ResizePseudoConsole, COORD};
-
-    let winsize = COORD {
-        X: columns as i16,
-        Y: rows as i16,
-    };
-    unsafe { ResizePseudoConsole(fd, winsize) };
-}
-
 /// Handle some signals for the child process. This will loop until the child
 /// process exits.
 fn handle_command_exit(mut child: Child) -> Result<Option<i32>> {
@@ -775,9 +758,25 @@ impl ServerOsApi for ServerOsInputOutput {
                     .non_fatal();
             },
         }
+
         #[cfg(windows)]
+        match self
+            .terminal_id_to_reference
+            .lock()
+            .to_anyhow()
+            .with_context(err_context)?
+            .get(&id)
         {
-            // TODO Windows implementation
+            Some(Some(pty)) => {
+                if cols > 0 && rows > 0 {
+                    pty.pty.read().unwrap().set_size(cols as i32, rows as i32).map_err(|err| anyhow!("failed to set size: {:?}", err));
+                }
+            },
+            _ => {
+                Err::<(), _>(anyhow!("failed to find terminal fd for id {id}"))
+                    .with_context(err_context)
+                    .non_fatal();
+            },
         }
 
         Ok(())

@@ -198,7 +198,7 @@ pub fn start_client(
         .theme_config(&config_options)
         .unwrap_or_else(|| os_input.load_palette());
 
-    let full_screen_ws = os_input.get_terminal_size(os_input_output::HandleType::Stdin);
+    let full_screen_ws = os_input.get_terminal_size(os_input_output::HandleType::Stdout);
 
     let client_attributes = ClientAttributes {
         size: full_screen_ws,
