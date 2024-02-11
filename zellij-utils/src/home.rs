@@ -60,7 +60,7 @@ pub fn xdg_data_dir() -> PathBuf {
 
 pub fn home_config_dir() -> Option<PathBuf> {
     if let Some(user_dirs) = BaseDirs::new() {
-        let config_dir = user_dirs.home_dir().join(CONFIG_LOCATION);
+        let config_dir = user_dirs.home_dir().join(Path::new(CONFIG_LOCATION));
         Some(config_dir)
     } else {
         None
