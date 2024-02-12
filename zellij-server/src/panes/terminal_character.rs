@@ -375,7 +375,7 @@ impl CharacterStyles {
         }
 
         // apply new styles
-        *self = *new_styles;
+        *self = new_styles.enable_styled_underlines(self.styled_underlines_enabled);
 
         if let Some(changed_colors) = changed_colors {
             if let Some(AnsiCode::ColorIndex(color_index)) = diff.foreground {
