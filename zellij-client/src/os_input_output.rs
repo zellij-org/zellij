@@ -41,7 +41,7 @@ use windows_sys::Win32::{
     Foundation::{INVALID_HANDLE_VALUE, HANDLE},
     System::Console::{
         GetConsoleScreenBufferInfo, GetStdHandle, CONSOLE_SCREEN_BUFFER_INFO, COORD, SMALL_RECT,
-GetConsoleMode, SetConsoleMode, ENABLE_ECHO_INPUT, ENABLE_LINE_INPUT
+GetConsoleMode, SetConsoleMode
     },
 };
 
@@ -181,7 +181,7 @@ pub trait ClientOsApi: Send + Sync {
     #[cfg(unix)]
     fn set_raw_mode(&mut self, fd: RawFd);
     #[cfg(windows)]
-    fn set_raw_mode(&mut self, handle_type: u32);
+    fn set_raw_mode(&mut self, handle_type: u32, enable_mode: u32, disable_mode: u32);
     /// Set the terminal associated to file descriptor `fd` to
     /// [cooked mode](https://en.wikipedia.org/wiki/Terminal_mode).
     #[cfg(unix)]
@@ -222,11 +222,11 @@ impl ClientOsApi for ClientOsInputOutput {
     }
 
     #[cfg(windows)]
-    fn set_raw_mode(&mut self, handle: u32) {
+    fn set_raw_mode(&mut self, handle: u32, enable_mode: u32, disable_mode: u32) {
         let mut consolemode = 0 as u32;
         let fd = unsafe { GetStdHandle(handle) };
         unsafe { GetConsoleMode(fd, &mut consolemode) };
-        consolemode = consolemode & !(ENABLE_LINE_INPUT | ENABLE_ECHO_INPUT);
+        consolemode = (consolemode & !disable_mode) | enable_mode;
         unsafe { SetConsoleMode(fd, consolemode) };
     }
 
