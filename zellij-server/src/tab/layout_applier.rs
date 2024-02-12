@@ -214,9 +214,8 @@ impl<'a> LayoutApplier<'a> {
         let err_context = || format!("failed to apply tiled panes layout");
         let free_space = self.total_space_for_tiled_panes();
         match layout.position_panes_in_space(&free_space, None) {
-            Ok(positions_in_layout) => {
+            Ok(mut positions_in_layout) => {
                 let mut run_instructions_to_ignore = layout.run_instructions_to_ignore.clone();
-                let positions_and_size = positions_in_layout.iter();
                 let mut new_terminal_ids = new_terminal_ids.iter();
 
                 let mut focus_pane_id: Option<PaneId> = None;
@@ -226,18 +225,44 @@ impl<'a> LayoutApplier<'a> {
                     }
                 };
 
-                for (layout, position_and_size) in positions_and_size {
-                    if let Some(position) = run_instructions_to_ignore
+                // first, try to find rooms for the panes that are already running (represented by
+                // run_instructions_to_ignore), we try to either find an explicit position (the new
+                // layout has a pane with the exact run instruction) or an otherwise free position
+                // (the new layout has a pane with None as its run instruction)
+                for run_instruction in run_instructions_to_ignore.drain(..) {
+                    if let Some(position) = positions_in_layout
                         .iter()
-                        .position(|r| r == &layout.run)
+                        .position(|(layout, _position_and_size)| &layout.run == &run_instruction)
                     {
-                        let run = run_instructions_to_ignore.remove(position);
+                        let (layout, position_and_size) = positions_in_layout.remove(position);
                         self.tiled_panes.set_geom_for_pane_with_run(
-                            run,
-                            *position_and_size,
+                            layout.run,
+                            position_and_size,
                             layout.borderless,
                         );
-                    } else if let Some(Run::Plugin(run)) = layout.run.clone() {
+                    } else if let Some(position) = positions_in_layout
+                        .iter()
+                        .position(|(layout, _position_and_size)| layout.run.is_none())
+                    {
+                        let (layout, position_and_size) = positions_in_layout.remove(position);
+                        self.tiled_panes.set_geom_for_pane_with_run(
+                            run_instruction,
+                            position_and_size,
+                            layout.borderless,
+                        );
+                    } else {
+                        log::error!(
+                            "Failed to find room for run instruction: {:?}",
+                            run_instruction
+                        );
+                    }
+                }
+
+                // then, we open new panes for each run instruction in the layout with the details
+                // we got from the plugin thread and pty thread
+                let positions_and_size = positions_in_layout.iter();
+                for (layout, position_and_size) in positions_and_size {
+                    if let Some(Run::Plugin(run)) = layout.run.clone() {
                         let pane_title = run.location.to_string();
                         let pid = new_plugin_ids
                             .get_mut(&(run.location, run.configuration))
