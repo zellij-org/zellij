@@ -1,10 +1,7 @@
-use super::{
-    emphasis_variants_for_ribbon, emphasis_variants_for_selected_ribbon, is_too_wide,
-    parse_indices, parse_opaque, parse_selected, Coordinates,
-};
-use crate::panes::terminal_character::{AnsiCode, CharacterStyles, RESET_STYLES};
+use super::{is_too_wide, parse_indices, parse_opaque, parse_selected, Coordinates};
+use crate::panes::terminal_character::CharacterStyles;
 use zellij_utils::{
-    data::{PaletteColor, Style},
+    data::{PaletteColor, Style, StyleDeclaration},
     shared::ansi_len,
 };
 
@@ -12,28 +9,26 @@ use unicode_width::UnicodeWidthChar;
 use zellij_utils::errors::prelude::*;
 
 pub fn text(content: Text, style: &Style, component_coordinates: Option<Coordinates>) -> Vec<u8> {
-    let mut text_style = RESET_STYLES
-        .bold(Some(AnsiCode::On))
-        .foreground(Some(style.colors.white.into()));
-
-    if content.selected {
-        text_style = text_style.background(Some(style.colors.bg.into()));
-    } else if content.opaque {
-        text_style = text_style.background(Some(style.colors.black.into()));
-    }
+    let declaration = if content.selected {
+        style.colors.text_selected
+    } else {
+        style.colors.text_unselected
+    };
+    let base_text_style = CharacterStyles::from(declaration);
     let (text, _text_width) = stringify_text(
         &content,
         None,
         &component_coordinates,
-        style,
-        text_style,
-        content.selected,
+        &declaration,
+        base_text_style,
     );
     match component_coordinates {
-        Some(component_coordinates) => format!("{}{}{}", component_coordinates, text_style, text)
-            .as_bytes()
-            .to_vec(),
-        None => format!("{}{}", text_style, text).as_bytes().to_vec(),
+        Some(component_coordinates) => {
+            format!("{}{}{}", component_coordinates, base_text_style, text)
+                .as_bytes()
+                .to_vec()
+        },
+        None => format!("{}{}", base_text_style, text).as_bytes().to_vec(),
     }
 }
 
@@ -41,9 +36,8 @@ pub fn stringify_text(
     text: &Text,
     left_padding: Option<usize>,
     coordinates: &Option<Coordinates>,
-    style: &Style,
-    text_style: CharacterStyles,
-    is_selected: bool,
+    style: &StyleDeclaration,
+    base_text_style: CharacterStyles,
 ) -> (String, usize) {
     let mut text_width = 0;
     let mut stringified = String::new();
@@ -59,7 +53,7 @@ pub fn stringify_text(
         text_width += character_width;
         if !text.indices.is_empty() {
             let character_with_styling =
-                color_index_character(character, i, &text, style, text_style, is_selected);
+                color_index_character(character, i, &text, style, base_text_style);
             stringified.push_str(&character_with_styling);
         } else {
             stringified.push(character);
@@ -91,30 +85,15 @@ pub fn color_index_character(
     character: char,
     index: usize,
     text: &Text,
-    style: &Style,
+    declaration: &StyleDeclaration,
     base_text_style: CharacterStyles,
     is_selected: bool,
 ) -> String {
     let character_style = text
-        .style_of_index(index, style)
-        .map(|foreground_style| {
-            let mut character_style = base_text_style.foreground(Some(foreground_style.into()));
-            if is_selected {
-                character_style = character_style.background(Some(style.colors.bg.into()));
-            };
-            character_style
-        })
+        .style_of_index(index, declaration)
+        .map(|foreground_style| base_text_style.foreground(Some(foreground_style.into())))
         .unwrap_or(base_text_style);
     format!("{}{}{}", character_style, character, base_text_style)
-}
-
-pub fn emphasis_variants(style: &Style) -> [PaletteColor; 4] {
-    [
-        style.colors.orange,
-        style.colors.cyan,
-        style.colors.green,
-        style.colors.magenta,
-    ]
 }
 
 pub fn parse_text_params<'a>(params_iter: impl Iterator<Item = &'a mut String>) -> Vec<Text> {
@@ -148,38 +127,14 @@ impl Text {
             self.text.push(' ');
         }
     }
-    pub fn style_of_index(&self, index: usize, style: &Style) -> Option<PaletteColor> {
-        let index_variant_styles = emphasis_variants(style);
-        for i in (0..=3).rev() {
-            // we do this in reverse to give precedence to the last applied
-            // style
-            if let Some(indices) = self.indices.get(i) {
-                if indices.contains(&index) {
-                    return Some(index_variant_styles[i]);
-                }
-            }
-        }
-        None
-    }
-    pub fn style_of_index_for_ribbon(&self, index: usize, style: &Style) -> Option<PaletteColor> {
-        let index_variant_styles = emphasis_variants_for_ribbon(style);
-        for i in (0..=3).rev() {
-            // we do this in reverse to give precedence to the last applied
-            // style
-            if let Some(indices) = self.indices.get(i) {
-                if indices.contains(&index) {
-                    return Some(index_variant_styles[i]);
-                }
-            }
-        }
-        None
-    }
-    pub fn style_of_index_for_selected_ribbon(
-        &self,
-        index: usize,
-        style: &Style,
-    ) -> Option<PaletteColor> {
-        let index_variant_styles = emphasis_variants_for_selected_ribbon(style);
+
+    pub fn style_of_index(&self, index: usize, style: &StyleDeclaration) -> Option<PaletteColor> {
+        let index_variant_styles = [
+            style.emphasis_1,
+            style.emphasis_2,
+            style.emphasis_3,
+            style.emphasis_4,
+        ];
         for i in (0..=3).rev() {
             // we do this in reverse to give precedence to the last applied
             // style
