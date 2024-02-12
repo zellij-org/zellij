@@ -25,7 +25,7 @@ macro_rules! strings {
 pub fn move_tabs_full(help: &ModeInfo) -> LinePart {
     // Tip: Wrong order of tabs? You can move them to left and right with:
     // Alt + i (left) and Alt + o (right)
-    let green_color = palette_match!(help.style.colors.green);
+    let green_color = palette_match!(help.style.colors.text_unselected.emphasis_3);
 
     let bits = vec![
         Style::new().paint(" Tip: "),
@@ -41,7 +41,7 @@ pub fn move_tabs_full(help: &ModeInfo) -> LinePart {
 pub fn move_tabs_medium(help: &ModeInfo) -> LinePart {
     // Tip: You can move tabs to left and right with:
     // Alt + i (left) and Alt + o (right)
-    let green_color = palette_match!(help.style.colors.green);
+    let green_color = palette_match!(help.style.colors.text_unselected.emphasis_3);
 
     let bits = vec![
         Style::new().paint(" Tip: "),
@@ -56,7 +56,7 @@ pub fn move_tabs_medium(help: &ModeInfo) -> LinePart {
 
 pub fn move_tabs_short(help: &ModeInfo) -> LinePart {
     // Move tabs with: Alt + i (left) and Alt + o (right)
-    let green_color = palette_match!(help.style.colors.green);
+    let green_color = palette_match!(help.style.colors.text_unselected.emphasis_3);
 
     let bits = vec![
         Style::new().paint(" Move tabs with: "),
