@@ -1,6 +1,5 @@
 ---
 source: zellij-utils/src/setup.rs
-assertion_line: 840
 expression: "format!(\"{:#?}\", config)"
 ---
 Config {
@@ -119,16 +118,6 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Char(
-                    'f',
-                ),
-                key_modifiers: {
-                    Alt,
-                },
-            }: [
-                ToggleFloatingPanes,
-            ],
-            KeyWithModifier {
-                bare_key: Char(
                     'g',
                 ),
                 key_modifiers: {
@@ -234,7 +223,6 @@ Config {
                 NewPane(
                     None,
                     None,
-                    false,
                 ),
             ],
             KeyWithModifier {
@@ -565,16 +553,6 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Char(
-                    'f',
-                ),
-                key_modifiers: {
-                    Alt,
-                },
-            }: [
-                ToggleFloatingPanes,
-            ],
-            KeyWithModifier {
-                bare_key: Char(
                     'g',
                 ),
                 key_modifiers: {
@@ -732,7 +710,6 @@ Config {
                 NewPane(
                     None,
                     None,
-                    false,
                 ),
             ],
             KeyWithModifier {
@@ -992,7 +969,6 @@ Config {
                         Down,
                     ),
                     None,
-                    false,
                 ),
                 SwitchToMode(
                     Normal,
@@ -1019,16 +995,6 @@ Config {
                 SwitchToMode(
                     Normal,
                 ),
-            ],
-            KeyWithModifier {
-                bare_key: Char(
-                    'f',
-                ),
-                key_modifiers: {
-                    Alt,
-                },
-            }: [
-                ToggleFloatingPanes,
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -1163,7 +1129,6 @@ Config {
                 NewPane(
                     None,
                     None,
-                    false,
                 ),
                 SwitchToMode(
                     Normal,
@@ -1192,7 +1157,6 @@ Config {
                 NewPane(
                     None,
                     None,
-                    false,
                 ),
             ],
             KeyWithModifier {
@@ -1260,7 +1224,6 @@ Config {
                         Right,
                     ),
                     None,
-                    false,
                 ),
                 SwitchToMode(
                     Normal,
@@ -1628,16 +1591,6 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Char(
-                    'f',
-                ),
-                key_modifiers: {
-                    Alt,
-                },
-            }: [
-                ToggleFloatingPanes,
-            ],
-            KeyWithModifier {
-                bare_key: Char(
                     'g',
                 ),
                 key_modifiers: {
@@ -1793,7 +1746,6 @@ Config {
                 NewPane(
                     None,
                     None,
-                    false,
                 ),
             ],
             KeyWithModifier {
@@ -2116,16 +2068,6 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Char(
-                    'f',
-                ),
-                key_modifiers: {
-                    Alt,
-                },
-            }: [
-                ToggleFloatingPanes,
-            ],
-            KeyWithModifier {
-                bare_key: Char(
                     'g',
                 ),
                 key_modifiers: {
@@ -2263,7 +2205,6 @@ Config {
                 NewPane(
                     None,
                     None,
-                    false,
                 ),
             ],
             KeyWithModifier {
@@ -2502,16 +2443,6 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Char(
-                    'f',
-                ),
-                key_modifiers: {
-                    Alt,
-                },
-            }: [
-                ToggleFloatingPanes,
-            ],
-            KeyWithModifier {
-                bare_key: Char(
                     'g',
                 ),
                 key_modifiers: {
@@ -2617,7 +2548,6 @@ Config {
                 NewPane(
                     None,
                     None,
-                    false,
                 ),
             ],
             KeyWithModifier {
@@ -2896,16 +2826,6 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Char(
-                    'f',
-                ),
-                key_modifiers: {
-                    Alt,
-                },
-            }: [
-                ToggleFloatingPanes,
-            ],
-            KeyWithModifier {
-                bare_key: Char(
                     'g',
                 ),
                 key_modifiers: {
@@ -3053,7 +2973,6 @@ Config {
                 NewPane(
                     None,
                     None,
-                    false,
                 ),
             ],
             KeyWithModifier {
@@ -3307,16 +3226,6 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Char(
-                    'f',
-                ),
-                key_modifiers: {
-                    Alt,
-                },
-            }: [
-                ToggleFloatingPanes,
-            ],
-            KeyWithModifier {
-                bare_key: Char(
                     'g',
                 ),
                 key_modifiers: {
@@ -3422,7 +3331,6 @@ Config {
                 NewPane(
                     None,
                     None,
-                    false,
                 ),
             ],
             KeyWithModifier {
@@ -3639,16 +3547,6 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Char(
-                    'f',
-                ),
-                key_modifiers: {
-                    Alt,
-                },
-            }: [
-                ToggleFloatingPanes,
-            ],
-            KeyWithModifier {
-                bare_key: Char(
                     'g',
                 ),
                 key_modifiers: {
@@ -3754,7 +3652,6 @@ Config {
                 NewPane(
                     None,
                     None,
-                    false,
                 ),
             ],
             KeyWithModifier {
@@ -3959,49 +3856,11 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Char(
-                    'c',
-                ),
-                key_modifiers: {},
-            }: [
-                LaunchOrFocusPlugin(
-                    Alias(
-                        PluginAlias {
-                            name: "configuration",
-                            configuration: Some(
-                                PluginUserConfiguration(
-                                    {},
-                                ),
-                            ),
-                            initial_cwd: None,
-                            run_plugin: None,
-                        },
-                    ),
-                    true,
-                    true,
-                    false,
-                    false,
-                ),
-                SwitchToMode(
-                    Normal,
-                ),
-            ],
-            KeyWithModifier {
-                bare_key: Char(
                     'd',
                 ),
                 key_modifiers: {},
             }: [
                 Detach,
-            ],
-            KeyWithModifier {
-                bare_key: Char(
-                    'f',
-                ),
-                key_modifiers: {
-                    Alt,
-                },
-            }: [
-                ToggleFloatingPanes,
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -4110,7 +3969,6 @@ Config {
                 NewPane(
                     None,
                     None,
-                    false,
                 ),
             ],
             KeyWithModifier {
@@ -4410,16 +4268,6 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Char(
-                    'f',
-                ),
-                key_modifiers: {
-                    Alt,
-                },
-            }: [
-                ToggleFloatingPanes,
-            ],
-            KeyWithModifier {
-                bare_key: Char(
                     'g',
                 ),
                 key_modifiers: {
@@ -4583,7 +4431,6 @@ Config {
                 NewPane(
                     None,
                     None,
-                    false,
                 ),
             ],
             KeyWithModifier {
@@ -4803,16 +4650,6 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Char(
-                    'f',
-                ),
-                key_modifiers: {
-                    Alt,
-                },
-            }: [
-                ToggleFloatingPanes,
-            ],
-            KeyWithModifier {
-                bare_key: Char(
                     'g',
                 ),
                 key_modifiers: {
@@ -4918,7 +4755,6 @@ Config {
                 NewPane(
                     None,
                     None,
-                    false,
                 ),
             ],
             KeyWithModifier {
@@ -5112,7 +4948,6 @@ Config {
                         Down,
                     ),
                     None,
-                    false,
                 ),
                 SwitchToMode(
                     Normal,
@@ -5129,7 +4964,6 @@ Config {
                         Right,
                     ),
                     None,
-                    false,
                 ),
                 SwitchToMode(
                     Normal,
@@ -5258,16 +5092,6 @@ Config {
                 key_modifiers: {},
             }: [
                 Detach,
-            ],
-            KeyWithModifier {
-                bare_key: Char(
-                    'f',
-                ),
-                key_modifiers: {
-                    Alt,
-                },
-            }: [
-                ToggleFloatingPanes,
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -5439,7 +5263,6 @@ Config {
                 NewPane(
                     None,
                     None,
-                    false,
                 ),
             ],
             KeyWithModifier {
@@ -5602,310 +5425,1864 @@ Config {
     },
     themes: {
         "other-theme-from-config": Theme {
-            palette: Palette {
-                source: Default,
-                theme_hue: Dark,
-                fg: Rgb(
-                    (
-                        2,
-                        2,
-                        2,
+            palette: Styling {
+                text_unselected: StyleDeclaration {
+                    base: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
                     ),
-                ),
-                bg: Rgb(
-                    (
-                        2,
-                        2,
-                        2,
+                    background: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
                     ),
-                ),
-                black: Rgb(
-                    (
-                        2,
-                        2,
-                        2,
+                    emphasis_1: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
                     ),
-                ),
-                red: Rgb(
-                    (
-                        2,
-                        2,
-                        2,
+                    emphasis_2: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
                     ),
-                ),
-                green: Rgb(
-                    (
-                        2,
-                        2,
-                        2,
+                    emphasis_3: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
                     ),
-                ),
-                yellow: Rgb(
-                    (
-                        2,
-                        2,
-                        2,
+                    emphasis_4: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
                     ),
-                ),
-                blue: Rgb(
-                    (
-                        2,
-                        2,
-                        2,
+                },
+                text_selected: StyleDeclaration {
+                    base: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
                     ),
-                ),
-                magenta: Rgb(
-                    (
-                        2,
-                        2,
-                        2,
+                    background: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
                     ),
-                ),
-                cyan: Rgb(
-                    (
-                        2,
-                        2,
-                        2,
+                    emphasis_1: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
                     ),
-                ),
-                white: Rgb(
-                    (
-                        2,
-                        2,
-                        2,
+                    emphasis_2: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
                     ),
-                ),
-                orange: Rgb(
-                    (
-                        2,
-                        2,
-                        2,
+                    emphasis_3: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
                     ),
-                ),
-                gray: EightBit(
-                    0,
-                ),
-                purple: EightBit(
-                    0,
-                ),
-                gold: EightBit(
-                    0,
-                ),
-                silver: EightBit(
-                    0,
-                ),
-                pink: EightBit(
-                    0,
-                ),
-                brown: EightBit(
-                    0,
-                ),
+                    emphasis_4: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
+                },
+                ribbon_unselected: StyleDeclaration {
+                    base: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
+                    background: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
+                    emphasis_1: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
+                    emphasis_2: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
+                    emphasis_3: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
+                    emphasis_4: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
+                },
+                ribbon_selected: StyleDeclaration {
+                    base: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
+                    background: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
+                    emphasis_1: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
+                    emphasis_2: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
+                    emphasis_3: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
+                    emphasis_4: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
+                },
+                table_title: StyleDeclaration {
+                    base: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
+                    background: EightBit(
+                        0,
+                    ),
+                    emphasis_1: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
+                    emphasis_2: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
+                    emphasis_3: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
+                    emphasis_4: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
+                },
+                table_cell_unselected: StyleDeclaration {
+                    base: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
+                    background: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
+                    emphasis_1: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
+                    emphasis_2: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
+                    emphasis_3: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
+                    emphasis_4: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
+                },
+                table_cell_selected: StyleDeclaration {
+                    base: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
+                    background: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
+                    emphasis_1: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
+                    emphasis_2: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
+                    emphasis_3: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
+                    emphasis_4: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
+                },
+                list_unselected: StyleDeclaration {
+                    base: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
+                    background: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
+                    emphasis_1: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
+                    emphasis_2: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
+                    emphasis_3: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
+                    emphasis_4: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
+                },
+                list_selected: StyleDeclaration {
+                    base: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
+                    background: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
+                    emphasis_1: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
+                    emphasis_2: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
+                    emphasis_3: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
+                    emphasis_4: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
+                },
+                frame_unselected: StyleDeclaration {
+                    base: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
+                    background: EightBit(
+                        0,
+                    ),
+                    emphasis_1: EightBit(
+                        0,
+                    ),
+                    emphasis_2: EightBit(
+                        0,
+                    ),
+                    emphasis_3: EightBit(
+                        0,
+                    ),
+                    emphasis_4: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
+                },
+                frame_selected: StyleDeclaration {
+                    base: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
+                    background: EightBit(
+                        0,
+                    ),
+                    emphasis_1: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
+                    emphasis_2: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
+                    emphasis_3: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
+                    emphasis_4: EightBit(
+                        0,
+                    ),
+                },
+                frame_highlight: StyleDeclaration {
+                    base: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
+                    background: EightBit(
+                        0,
+                    ),
+                    emphasis_1: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
+                    emphasis_2: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
+                    emphasis_3: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
+                    emphasis_4: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
+                },
+                exit_code_success: StyleDeclaration {
+                    base: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
+                    background: EightBit(
+                        0,
+                    ),
+                    emphasis_1: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
+                    emphasis_2: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
+                    emphasis_3: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
+                    emphasis_4: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
+                },
+                exit_code_error: StyleDeclaration {
+                    base: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
+                    background: EightBit(
+                        0,
+                    ),
+                    emphasis_1: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
+                    emphasis_2: EightBit(
+                        0,
+                    ),
+                    emphasis_3: EightBit(
+                        0,
+                    ),
+                    emphasis_4: EightBit(
+                        0,
+                    ),
+                },
+                multiplayer_user_colors: MultiplayerColors {
+                    player_1: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
+                    player_2: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
+                    player_3: EightBit(
+                        0,
+                    ),
+                    player_4: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
+                    player_5: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
+                    player_6: EightBit(
+                        0,
+                    ),
+                    player_7: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
+                    player_8: EightBit(
+                        0,
+                    ),
+                    player_9: EightBit(
+                        0,
+                    ),
+                    player_10: EightBit(
+                        0,
+                    ),
+                },
             },
-            sourced_from_external_file: false,
         },
         "theme-from-config": Theme {
-            palette: Palette {
-                source: Default,
-                theme_hue: Dark,
-                fg: Rgb(
-                    (
-                        1,
-                        1,
-                        1,
+            palette: Styling {
+                text_unselected: StyleDeclaration {
+                    base: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
                     ),
-                ),
-                bg: Rgb(
-                    (
-                        1,
-                        1,
-                        1,
+                    background: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
                     ),
-                ),
-                black: Rgb(
-                    (
-                        1,
-                        1,
-                        1,
+                    emphasis_1: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
                     ),
-                ),
-                red: Rgb(
-                    (
-                        1,
-                        1,
-                        1,
+                    emphasis_2: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
                     ),
-                ),
-                green: Rgb(
-                    (
-                        1,
-                        1,
-                        1,
+                    emphasis_3: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
                     ),
-                ),
-                yellow: Rgb(
-                    (
-                        1,
-                        1,
-                        1,
+                    emphasis_4: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
                     ),
-                ),
-                blue: Rgb(
-                    (
-                        1,
-                        1,
-                        1,
+                },
+                text_selected: StyleDeclaration {
+                    base: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
                     ),
-                ),
-                magenta: Rgb(
-                    (
-                        1,
-                        1,
-                        1,
+                    background: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
                     ),
-                ),
-                cyan: Rgb(
-                    (
-                        1,
-                        1,
-                        1,
+                    emphasis_1: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
                     ),
-                ),
-                white: Rgb(
-                    (
-                        1,
-                        1,
-                        1,
+                    emphasis_2: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
                     ),
-                ),
-                orange: Rgb(
-                    (
-                        1,
-                        1,
-                        1,
+                    emphasis_3: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
                     ),
-                ),
-                gray: EightBit(
-                    0,
-                ),
-                purple: EightBit(
-                    0,
-                ),
-                gold: EightBit(
-                    0,
-                ),
-                silver: EightBit(
-                    0,
-                ),
-                pink: EightBit(
-                    0,
-                ),
-                brown: EightBit(
-                    0,
-                ),
+                    emphasis_4: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                },
+                ribbon_unselected: StyleDeclaration {
+                    base: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    background: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_1: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_2: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_3: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_4: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                },
+                ribbon_selected: StyleDeclaration {
+                    base: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    background: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_1: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_2: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_3: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_4: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                },
+                table_title: StyleDeclaration {
+                    base: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    background: EightBit(
+                        0,
+                    ),
+                    emphasis_1: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_2: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_3: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_4: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                },
+                table_cell_unselected: StyleDeclaration {
+                    base: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    background: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_1: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_2: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_3: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_4: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                },
+                table_cell_selected: StyleDeclaration {
+                    base: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    background: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_1: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_2: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_3: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_4: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                },
+                list_unselected: StyleDeclaration {
+                    base: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    background: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_1: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_2: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_3: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_4: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                },
+                list_selected: StyleDeclaration {
+                    base: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    background: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_1: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_2: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_3: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_4: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                },
+                frame_unselected: StyleDeclaration {
+                    base: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    background: EightBit(
+                        0,
+                    ),
+                    emphasis_1: EightBit(
+                        0,
+                    ),
+                    emphasis_2: EightBit(
+                        0,
+                    ),
+                    emphasis_3: EightBit(
+                        0,
+                    ),
+                    emphasis_4: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                },
+                frame_selected: StyleDeclaration {
+                    base: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    background: EightBit(
+                        0,
+                    ),
+                    emphasis_1: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_2: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_3: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_4: EightBit(
+                        0,
+                    ),
+                },
+                frame_highlight: StyleDeclaration {
+                    base: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    background: EightBit(
+                        0,
+                    ),
+                    emphasis_1: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_2: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_3: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_4: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                },
+                exit_code_success: StyleDeclaration {
+                    base: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    background: EightBit(
+                        0,
+                    ),
+                    emphasis_1: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_2: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_3: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_4: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                },
+                exit_code_error: StyleDeclaration {
+                    base: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    background: EightBit(
+                        0,
+                    ),
+                    emphasis_1: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_2: EightBit(
+                        0,
+                    ),
+                    emphasis_3: EightBit(
+                        0,
+                    ),
+                    emphasis_4: EightBit(
+                        0,
+                    ),
+                },
+                multiplayer_user_colors: MultiplayerColors {
+                    player_1: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    player_2: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    player_3: EightBit(
+                        0,
+                    ),
+                    player_4: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    player_5: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    player_6: EightBit(
+                        0,
+                    ),
+                    player_7: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    player_8: EightBit(
+                        0,
+                    ),
+                    player_9: EightBit(
+                        0,
+                    ),
+                    player_10: EightBit(
+                        0,
+                    ),
+                },
             },
-            sourced_from_external_file: false,
         },
         "theme-from-layout": Theme {
-            palette: Palette {
-                source: Default,
-                theme_hue: Dark,
-                fg: Rgb(
-                    (
-                        1,
-                        1,
-                        1,
+            palette: Styling {
+                text_unselected: StyleDeclaration {
+                    base: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
                     ),
-                ),
-                bg: Rgb(
-                    (
-                        1,
-                        1,
-                        1,
+                    background: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
                     ),
-                ),
-                black: Rgb(
-                    (
-                        1,
-                        1,
-                        1,
+                    emphasis_1: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
                     ),
-                ),
-                red: Rgb(
-                    (
-                        1,
-                        1,
-                        1,
+                    emphasis_2: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
                     ),
-                ),
-                green: Rgb(
-                    (
-                        1,
-                        1,
-                        1,
+                    emphasis_3: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
                     ),
-                ),
-                yellow: Rgb(
-                    (
-                        1,
-                        1,
-                        1,
+                    emphasis_4: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
                     ),
-                ),
-                blue: Rgb(
-                    (
-                        1,
-                        1,
-                        1,
+                },
+                text_selected: StyleDeclaration {
+                    base: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
                     ),
-                ),
-                magenta: Rgb(
-                    (
-                        1,
-                        1,
-                        1,
+                    background: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
                     ),
-                ),
-                cyan: Rgb(
-                    (
-                        1,
-                        1,
-                        1,
+                    emphasis_1: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
                     ),
-                ),
-                white: Rgb(
-                    (
-                        1,
-                        1,
-                        1,
+                    emphasis_2: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
                     ),
-                ),
-                orange: Rgb(
-                    (
-                        1,
-                        1,
-                        1,
+                    emphasis_3: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
                     ),
-                ),
-                gray: EightBit(
-                    0,
-                ),
-                purple: EightBit(
-                    0,
-                ),
-                gold: EightBit(
-                    0,
-                ),
-                silver: EightBit(
-                    0,
-                ),
-                pink: EightBit(
-                    0,
-                ),
-                brown: EightBit(
-                    0,
-                ),
+                    emphasis_4: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                },
+                ribbon_unselected: StyleDeclaration {
+                    base: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    background: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_1: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_2: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_3: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_4: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                },
+                ribbon_selected: StyleDeclaration {
+                    base: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    background: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_1: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_2: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_3: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_4: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                },
+                table_title: StyleDeclaration {
+                    base: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    background: EightBit(
+                        0,
+                    ),
+                    emphasis_1: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_2: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_3: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_4: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                },
+                table_cell_unselected: StyleDeclaration {
+                    base: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    background: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_1: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_2: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_3: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_4: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                },
+                table_cell_selected: StyleDeclaration {
+                    base: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    background: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_1: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_2: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_3: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_4: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                },
+                list_unselected: StyleDeclaration {
+                    base: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    background: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_1: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_2: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_3: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_4: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                },
+                list_selected: StyleDeclaration {
+                    base: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    background: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_1: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_2: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_3: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_4: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                },
+                frame_unselected: StyleDeclaration {
+                    base: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    background: EightBit(
+                        0,
+                    ),
+                    emphasis_1: EightBit(
+                        0,
+                    ),
+                    emphasis_2: EightBit(
+                        0,
+                    ),
+                    emphasis_3: EightBit(
+                        0,
+                    ),
+                    emphasis_4: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                },
+                frame_selected: StyleDeclaration {
+                    base: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    background: EightBit(
+                        0,
+                    ),
+                    emphasis_1: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_2: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_3: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_4: EightBit(
+                        0,
+                    ),
+                },
+                frame_highlight: StyleDeclaration {
+                    base: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    background: EightBit(
+                        0,
+                    ),
+                    emphasis_1: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_2: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_3: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_4: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                },
+                exit_code_success: StyleDeclaration {
+                    base: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    background: EightBit(
+                        0,
+                    ),
+                    emphasis_1: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_2: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_3: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_4: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                },
+                exit_code_error: StyleDeclaration {
+                    base: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    background: EightBit(
+                        0,
+                    ),
+                    emphasis_1: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_2: EightBit(
+                        0,
+                    ),
+                    emphasis_3: EightBit(
+                        0,
+                    ),
+                    emphasis_4: EightBit(
+                        0,
+                    ),
+                },
+                multiplayer_user_colors: MultiplayerColors {
+                    player_1: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    player_2: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    player_3: EightBit(
+                        0,
+                    ),
+                    player_4: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    player_5: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    player_6: EightBit(
+                        0,
+                    ),
+                    player_7: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    player_8: EightBit(
+                        0,
+                    ),
+                    player_9: EightBit(
+                        0,
+                    ),
+                    player_10: EightBit(
+                        0,
+                    ),
+                },
             },
-            sourced_from_external_file: false,
         },
     },
     plugins: PluginAliases {
@@ -5915,18 +7292,6 @@ Config {
                 location: Zellij(
                     PluginTag(
                         "compact-bar",
-                    ),
-                ),
-                configuration: PluginUserConfiguration(
-                    {},
-                ),
-                initial_cwd: None,
-            },
-            "configuration": RunPlugin {
-                _allow_exec_host_cmd: false,
-                location: Zellij(
-                    PluginTag(
-                        "configuration",
                     ),
                 ),
                 configuration: PluginUserConfiguration(
@@ -6031,5 +7396,4 @@ Config {
         },
     },
     env: {},
-    background_plugins: {},
 }

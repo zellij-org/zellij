@@ -345,14 +345,17 @@ fn key_indicators(
     line_part
 }
 
-fn swap_layout_keycode(mode_info: &ModeInfo, palette: &Palette) -> LinePart {
+fn swap_layout_keycode(mode_info: &ModeInfo) -> LinePart {
     let mode_keybinds = mode_info.get_mode_keybinds();
     let prev_next_keys = action_key_group(
         &mode_keybinds,
         &[&[Action::PreviousSwapLayout], &[Action::NextSwapLayout]],
     );
-    let prev_next_keys_indicator =
-        style_key_with_modifier(&prev_next_keys, palette, Some(palette.black));
+    let prev_next_keys_indicator = style_key_with_modifier(
+        &prev_next_keys,
+        &mode_info.style.colors,
+        Some(mode_info.style.colors.text_unselected.background),
+    );
     let keycode = ANSIStrings(&prev_next_keys_indicator);
     let len = unstyled_len(&keycode);
     let part = keycode.to_string();
@@ -365,14 +368,13 @@ fn swap_layout_status(
     is_swap_layout_damaged: bool,
     mode_info: &ModeInfo,
     colored_elements: ColoredElements,
-    palette: &Palette,
     separator: &str,
 ) -> Option<LinePart> {
     match swap_layout_name {
         Some(swap_layout_name) => {
             let mut swap_layout_name = format!(" {} ", swap_layout_name);
             swap_layout_name.make_ascii_uppercase();
-            let keycode = swap_layout_keycode(mode_info, palette);
+            let keycode = swap_layout_keycode(mode_info);
             let swap_layout_name_len = swap_layout_name.len() + 3; // 2 for the arrow separators, one for the screen end buffer
                                                                    //
             macro_rules! style_swap_layout_indicator {
@@ -702,7 +704,6 @@ pub fn first_line(
                 tab_info.is_swap_layout_dirty,
                 help,
                 colored_elements,
-                &help.style.colors,
                 separator,
             ) {
                 remaining_space -= swap_layout_status.len;
@@ -731,7 +732,7 @@ mod tests {
     use super::*;
 
     fn colored_elements() -> ColoredElements {
-        let palette = Palette::default();
+        let palette = Styling::default();
         color_elements(palette, false)
     }
 

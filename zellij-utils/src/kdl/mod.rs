@@ -1,7 +1,8 @@
 mod kdl_layout_parser;
 use crate::data::{
-    BareKey, Direction, FloatingPaneCoordinates, InputMode, KeyWithModifier, LayoutInfo, Palette,
-    PaletteColor, PaneInfo, PaneManifest, PermissionType, Resize, SessionInfo, TabInfo,
+    BareKey, Direction, FloatingPaneCoordinates, InputMode, KeyWithModifier, LayoutInfo,
+    MultiplayerColors, Palette, PaletteColor, PaneInfo, PaneManifest, PermissionType, Resize,
+    SessionInfo, StyleDeclaration, Styling, TabInfo, DEFAULT_STYLES,
 };
 use crate::envs::EnvironmentVariables;
 use crate::home::{find_default_config_dir, get_layout_dir};
@@ -1240,6 +1241,41 @@ impl PaletteColor {
     }
 }
 
+impl StyleDeclaration {
+    pub fn to_kdl(&self, declaration_name: &str) -> KdlNode {
+        let mut node = KdlNode::new(declaration_name);
+        let mut doc = KdlDocument::new();
+
+        doc.nodes_mut().push(self.base.to_kdl("base"));
+        doc.nodes_mut().push(self.background.to_kdl("background"));
+        doc.nodes_mut().push(self.emphasis_1.to_kdl("emphasis_1"));
+        doc.nodes_mut().push(self.emphasis_2.to_kdl("emphasis_2"));
+        doc.nodes_mut().push(self.emphasis_3.to_kdl("emphasis_3"));
+        doc.nodes_mut().push(self.emphasis_4.to_kdl("emphasis_4"));
+        node.set_children(doc);
+        node
+    }
+}
+
+impl MultiplayerColors {
+    pub fn to_kdl(&self) -> KdlNode {
+        let mut node = KdlNode::new("multiplayer_user_colors");
+        let mut doc = KdlDocument::new();
+        doc.nodes_mut().push(self.player_1.to_kdl("player_1"));
+        doc.nodes_mut().push(self.player_2.to_kdl("player_2"));
+        doc.nodes_mut().push(self.player_3.to_kdl("player_3"));
+        doc.nodes_mut().push(self.player_4.to_kdl("player_4"));
+        doc.nodes_mut().push(self.player_5.to_kdl("player_5"));
+        doc.nodes_mut().push(self.player_6.to_kdl("player_6"));
+        doc.nodes_mut().push(self.player_7.to_kdl("player_7"));
+        doc.nodes_mut().push(self.player_8.to_kdl("player_8"));
+        doc.nodes_mut().push(self.player_9.to_kdl("player_9"));
+        doc.nodes_mut().push(self.player_10.to_kdl("player_10"));
+        node.set_children(doc);
+        node
+    }
+}
+
 impl TryFrom<(&KdlNode, &Options)> for Action {
     type Error = ConfigError;
     fn try_from((kdl_action, config_options): (&KdlNode, &Options)) -> Result<Self, Self::Error> {
@@ -2044,6 +2080,20 @@ macro_rules! kdl_child_with_name {
         $kdl_node
             .children()
             .and_then(|children| children.nodes().iter().find(|c| c.name().value() == $name))
+    }};
+}
+
+#[macro_export]
+macro_rules! kdl_child_with_name_or_error {
+    ( $kdl_node:expr, $name:expr) => {{
+        $kdl_node
+            .children()
+            .and_then(|children| children.nodes().iter().find(|c| c.name().value() == $name))
+            .ok_or(ConfigError::new_kdl_error(
+                format!("Missing node {}", $name).into(),
+                $kdl_node.span().offset(),
+                $kdl_node.span().len(),
+            ))
     }};
 }
 
@@ -3892,6 +3942,67 @@ impl UiConfig {
 }
 
 impl Themes {
+    fn style_declaration_from_node(
+        style_node: &KdlNode,
+        style_descriptor: &str,
+        default: StyleDeclaration,
+    ) -> Result<StyleDeclaration, ConfigError> {
+        let descriptor_node = kdl_child_with_name!(style_node, style_descriptor);
+
+        match descriptor_node {
+            Some(descriptor) => {
+                let colors = kdl_children_or_error!(
+                    descriptor,
+                    format!("Missing colors for {}", style_descriptor)
+                );
+                Ok(StyleDeclaration {
+                    base: PaletteColor::try_from(("base", colors))?,
+                    background: PaletteColor::try_from(("background", colors)).unwrap_or_default(),
+                    emphasis_1: PaletteColor::try_from(("emphasis_1", colors))?,
+                    emphasis_2: PaletteColor::try_from(("emphasis_2", colors))?,
+                    emphasis_3: PaletteColor::try_from(("emphasis_3", colors))?,
+                    emphasis_4: PaletteColor::try_from(("emphasis_4", colors))?,
+                })
+            },
+            None => Ok(default),
+        }
+    }
+
+    fn multiplayer_colors(style_node: &KdlNode) -> Result<MultiplayerColors, ConfigError> {
+        let descriptor_node = kdl_child_with_name!(style_node, "multiplayer_user_colors");
+        match descriptor_node {
+            Some(descriptor) => {
+                let colors = kdl_children_or_error!(
+                    descriptor,
+                    format!("Missing colors for {}", "multiplayer_user_colors")
+                );
+                Ok(MultiplayerColors {
+                    player_1: PaletteColor::try_from(("player_1", colors))
+                        .unwrap_or(DEFAULT_STYLES.multiplayer_user_colors.player_1),
+                    player_2: PaletteColor::try_from(("player_2", colors))
+                        .unwrap_or(DEFAULT_STYLES.multiplayer_user_colors.player_2),
+                    player_3: PaletteColor::try_from(("player_3", colors))
+                        .unwrap_or(DEFAULT_STYLES.multiplayer_user_colors.player_3),
+                    player_4: PaletteColor::try_from(("player_4", colors))
+                        .unwrap_or(DEFAULT_STYLES.multiplayer_user_colors.player_4),
+                    player_5: PaletteColor::try_from(("player_5", colors))
+                        .unwrap_or(DEFAULT_STYLES.multiplayer_user_colors.player_5),
+                    player_6: PaletteColor::try_from(("player_6", colors))
+                        .unwrap_or(DEFAULT_STYLES.multiplayer_user_colors.player_6),
+                    player_7: PaletteColor::try_from(("player_7", colors))
+                        .unwrap_or(DEFAULT_STYLES.multiplayer_user_colors.player_7),
+                    player_8: PaletteColor::try_from(("player_8", colors))
+                        .unwrap_or(DEFAULT_STYLES.multiplayer_user_colors.player_8),
+                    player_9: PaletteColor::try_from(("player_9", colors))
+                        .unwrap_or(DEFAULT_STYLES.multiplayer_user_colors.player_9),
+                    player_10: PaletteColor::try_from(("player_10", colors))
+                        .unwrap_or(DEFAULT_STYLES.multiplayer_user_colors.player_10),
+                })
+            },
+            None => Ok(DEFAULT_STYLES.multiplayer_user_colors),
+        }
+    }
+
     pub fn from_kdl(
         themes_from_kdl: &KdlNode,
         sourced_from_external_file: bool,
@@ -3900,22 +4011,111 @@ impl Themes {
         for theme_config in kdl_children_nodes_or_error!(themes_from_kdl, "no themes found") {
             let theme_name = kdl_name!(theme_config);
             let theme_colors = kdl_children_or_error!(theme_config, "empty theme");
-            let theme = Theme {
-                palette: Palette {
-                    fg: PaletteColor::try_from(("fg", theme_colors))?,
-                    bg: PaletteColor::try_from(("bg", theme_colors))?,
-                    red: PaletteColor::try_from(("red", theme_colors))?,
-                    green: PaletteColor::try_from(("green", theme_colors))?,
-                    yellow: PaletteColor::try_from(("yellow", theme_colors))?,
-                    blue: PaletteColor::try_from(("blue", theme_colors))?,
-                    magenta: PaletteColor::try_from(("magenta", theme_colors))?,
-                    orange: PaletteColor::try_from(("orange", theme_colors))?,
-                    cyan: PaletteColor::try_from(("cyan", theme_colors))?,
-                    black: PaletteColor::try_from(("black", theme_colors))?,
-                    white: PaletteColor::try_from(("white", theme_colors))?,
-                    ..Default::default()
+            let styling = kdl_child_with_name!(theme_config, "styling");
+            let theme = match styling {
+                // Newer theme definition with named styles
+                Some(style) => {
+                    let s = Styling {
+                        text_unselected: Themes::style_declaration_from_node(
+                            style,
+                            "text_unselected",
+                            DEFAULT_STYLES.text_unselected,
+                        )?,
+                        text_selected: Themes::style_declaration_from_node(
+                            style,
+                            "text_selected",
+                            DEFAULT_STYLES.text_selected,
+                        )?,
+                        ribbon_unselected: Themes::style_declaration_from_node(
+                            style,
+                            "ribbon_unselected",
+                            DEFAULT_STYLES.ribbon_unselected,
+                        )?,
+                        ribbon_selected: Themes::style_declaration_from_node(
+                            style,
+                            "ribbon_selected",
+                            DEFAULT_STYLES.ribbon_selected,
+                        )?,
+                        table_title: Themes::style_declaration_from_node(
+                            style,
+                            "table_title",
+                            DEFAULT_STYLES.table_title,
+                        )?,
+                        table_cell_unselected: Themes::style_declaration_from_node(
+                            style,
+                            "table_cell_unselected",
+                            DEFAULT_STYLES.table_cell_unselected,
+                        )?,
+                        table_cell_selected: Themes::style_declaration_from_node(
+                            style,
+                            "table_cell_selected",
+                            DEFAULT_STYLES.table_cell_selected,
+                        )?,
+                        list_unselected: Themes::style_declaration_from_node(
+                            style,
+                            "list_unselected",
+                            DEFAULT_STYLES.list_unselected,
+                        )?,
+                        list_selected: Themes::style_declaration_from_node(
+                            style,
+                            "list_selected",
+                            DEFAULT_STYLES.list_selected,
+                        )?,
+                        frame_unselected: Themes::style_declaration_from_node(
+                            style,
+                            "frame_unselected",
+                            DEFAULT_STYLES.frame_unselected,
+                        )?,
+                        frame_selected: Themes::style_declaration_from_node(
+                            style,
+                            "frame_selected",
+                            DEFAULT_STYLES.frame_selected,
+                        )?,
+                        frame_highlight: Themes::style_declaration_from_node(
+                            style,
+                            "frame_highlight",
+                            DEFAULT_STYLES.frame_highlight,
+                        )?,
+                        exit_code_success: Themes::style_declaration_from_node(
+                            style,
+                            "exit_code_success",
+                            DEFAULT_STYLES.exit_code_success,
+                        )?,
+                        exit_code_error: Themes::style_declaration_from_node(
+                            style,
+                            "exit_code_error",
+                            DEFAULT_STYLES.exit_code_error,
+                        )?,
+                        multiplayer_user_colors: Themes::multiplayer_colors(style)
+                            .unwrap_or_default(),
+                    };
+
+                    Theme {
+                        palette: s,
+                        sourced_from_external_file,
+                    }
                 },
-                sourced_from_external_file,
+                // Older palette based theme definition
+                None => {
+                    let palette = Palette {
+                        fg: PaletteColor::try_from(("fg", theme_colors))?,
+                        bg: PaletteColor::try_from(("bg", theme_colors))?,
+                        red: PaletteColor::try_from(("red", theme_colors))?,
+                        green: PaletteColor::try_from(("green", theme_colors))?,
+                        yellow: PaletteColor::try_from(("yellow", theme_colors))?,
+                        blue: PaletteColor::try_from(("blue", theme_colors))?,
+                        magenta: PaletteColor::try_from(("magenta", theme_colors))?,
+                        orange: PaletteColor::try_from(("orange", theme_colors))?,
+                        cyan: PaletteColor::try_from(("cyan", theme_colors))?,
+                        black: PaletteColor::try_from(("black", theme_colors))?,
+                        white: PaletteColor::try_from(("white", theme_colors))?,
+                        ..Default::default()
+                    };
+                    Theme {
+                        palette: palette.into(),
+                        sourced_from_external_file,
+                    }
+                },
             };
             themes.insert(theme_name.into(), theme);
         }
@@ -3981,37 +4181,52 @@ impl Themes {
             let mut current_theme_node_children = KdlDocument::new();
             current_theme_node_children
                 .nodes_mut()
-                .push(theme.palette.fg.to_kdl("fg"));
+                .push(theme.palette.text_unselected.to_kdl("text_unselected"));
             current_theme_node_children
                 .nodes_mut()
-                .push(theme.palette.bg.to_kdl("bg"));
+                .push(theme.palette.text_selected.to_kdl("text_selected"));
             current_theme_node_children
                 .nodes_mut()
-                .push(theme.palette.red.to_kdl("red"));
+                .push(theme.palette.ribbon_selected.to_kdl("ribbon_selected"));
             current_theme_node_children
                 .nodes_mut()
-                .push(theme.palette.green.to_kdl("green"));
+                .push(theme.palette.ribbon_unselected.to_kdl("ribbon_unselected"));
             current_theme_node_children
                 .nodes_mut()
-                .push(theme.palette.yellow.to_kdl("yellow"));
+                .push(theme.palette.table_title.to_kdl("table_title"));
+            current_theme_node_children.nodes_mut().push(
+                theme
+                    .palette
+                    .table_cell_selected
+                    .to_kdl("table_cell_selected"),
+            );
+            current_theme_node_children.nodes_mut().push(
+                theme
+                    .palette
+                    .table_cell_unselected
+                    .to_kdl("table_cell_unselected"),
+            );
             current_theme_node_children
                 .nodes_mut()
-                .push(theme.palette.blue.to_kdl("blue"));
+                .push(theme.palette.list_selected.to_kdl("list_selected"));
             current_theme_node_children
                 .nodes_mut()
-                .push(theme.palette.magenta.to_kdl("magenta"));
+                .push(theme.palette.list_unselected.to_kdl("list_unselected"));
             current_theme_node_children
                 .nodes_mut()
-                .push(theme.palette.orange.to_kdl("orange"));
+                .push(theme.palette.frame_selected.to_kdl("frame_selected"));
             current_theme_node_children
                 .nodes_mut()
-                .push(theme.palette.cyan.to_kdl("cyan"));
+                .push(theme.palette.frame_unselected.to_kdl("frame_unselected"));
             current_theme_node_children
                 .nodes_mut()
-                .push(theme.palette.black.to_kdl("black"));
+                .push(theme.palette.exit_code_success.to_kdl("exit_code_success"));
             current_theme_node_children
                 .nodes_mut()
-                .push(theme.palette.white.to_kdl("white"));
+                .push(theme.palette.exit_code_error.to_kdl("exit_code_error"));
+            current_theme_node_children
+                .nodes_mut()
+                .push(theme.palette.multiplayer_user_colors.to_kdl());
             current_theme_node.set_children(current_theme_node_children);
             themes.nodes_mut().push(current_theme_node);
         }
