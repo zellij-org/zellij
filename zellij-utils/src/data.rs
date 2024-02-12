@@ -1142,6 +1142,43 @@ pub struct Style {
     pub hide_session_name: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+pub struct Styling {
+    text_unselected: [PaletteColor; 6],
+    text_selected: [PaletteColor; 6],
+    ribbon_unselected: [PaletteColor; 6],
+    ribbon_selected: [PaletteColor; 6],
+    table_title: [PaletteColor; 6],
+    table_cell_unselected: [PaletteColor; 6],
+    table_cell_selected: [PaletteColor; 6],
+    list_unselected: [PaletteColor; 6],
+    list_selected: [PaletteColor; 6],
+    frame_unselected: [PaletteColor; 5],
+    frame_selected: [PaletteColor; 5],
+    exit_code_success: [PaletteColor; 5],
+    exit_code_error: [PaletteColor; 5],
+}
+
+impl Default for Styling {
+    fn default() -> Self {
+        Self {
+            text_unselected: Default::default(),
+            text_selected: Default::default(),
+            ribbon_unselected: Default::default(),
+            ribbon_selected: Default::default(),
+            table_title: Default::default(),
+            table_cell_unselected: Default::default(),
+            table_cell_selected: Default::default(),
+            list_unselected: Default::default(),
+            list_selected: Default::default(),
+            frame_unselected: Default::default(),
+            frame_selected: Default::default(),
+            exit_code_success: Default::default(),
+            exit_code_error: Default::default(),
+        }
+    }
+}
+
 // FIXME: Poor devs hashtable since HashTable can't derive `Default`...
 pub type KeybindsVec = Vec<(InputMode, Vec<(KeyWithModifier, Vec<Action>)>)>;
 
