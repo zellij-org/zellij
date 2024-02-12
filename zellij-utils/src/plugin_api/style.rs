@@ -1,9 +1,9 @@
 use super::generated_api::api::style::{
     color::Payload as ProtobufColorPayload, Color as ProtobufColor, ColorType as ProtobufColorType,
     Palette as ProtobufPalette, RgbColorPayload as ProtobufRgbColorPayload, Style as ProtobufStyle,
-    ThemeHue as ProtobufThemeHue,
+    Styling as ProtobufStyling, ThemeHue as ProtobufThemeHue,
 };
-use crate::data::{Palette, PaletteColor, Style, ThemeHue};
+use crate::data::{Palette, PaletteColor, Style, Styling, ThemeHue};
 use crate::errors::prelude::*;
 
 use std::convert::TryFrom;
@@ -14,6 +14,10 @@ impl TryFrom<ProtobufStyle> for Style {
         Ok(Style {
             colors: protobuf_style
                 .palette
+                .ok_or("malformed style payload")?
+                .try_into()?,
+            styling: protobuf_style
+                .styling
                 .ok_or("malformed style payload")?
                 .try_into()?,
             rounded_corners: protobuf_style.rounded_corners,
@@ -29,7 +33,24 @@ impl TryFrom<Style> for ProtobufStyle {
             palette: Some(style.colors.try_into()?),
             rounded_corners: style.rounded_corners,
             hide_session_name: style.hide_session_name,
+            styling: Some(style.styling.try_into()?),
         })
+    }
+}
+
+impl TryFrom<ProtobufStyling> for Styling {
+    type Error = &'static str;
+
+    fn try_from(_value: ProtobufStyling) -> std::result::Result<Self, Self::Error> {
+        todo!()
+    }
+}
+
+impl TryFrom<Styling> for ProtobufStyling {
+    type Error = &'static str;
+
+    fn try_from(_value: Styling) -> std::result::Result<Self, Self::Error> {
+        todo!()
     }
 }
 

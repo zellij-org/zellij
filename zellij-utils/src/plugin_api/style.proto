@@ -3,9 +3,10 @@ syntax = "proto3";
 package api.style;
 
 message Style {
-  Palette palette = 1;
+  Palette palette = 1 [deprecated = true];
   bool rounded_corners = 2;
   bool hide_session_name = 3;
+  Styling styling = 4;
 }
 
 message Palette {
@@ -51,4 +52,20 @@ enum ColorType {
 enum ThemeHue {
   Dark = 0;
   Light = 1;
+}
+
+message Styling {
+    repeated Color text_unselected = 1;
+    repeated Color text_selected = 2;
+    repeated Color ribbon_unselected = 3;
+    repeated Color ribbon_selected =4;
+    repeated Color table_title = 5;
+    repeated Color table_cell_unselected = 6;
+    repeated Color table_cell_selected = 7;
+    repeated Color list_unselected = 8;
+    repeated Color list_selected = 9;
+    repeated Color frame_unselected = 10;
+    repeated Color frame_selected = 11;
+    repeated Color exit_code_success = 12;
+    repeated Color exit_code_error = 13;
 }

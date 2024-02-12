@@ -1262,6 +1262,8 @@ fn serialize_mode_update_event_with_non_default_values() {
                 pink: PaletteColor::EightBit(2),
                 brown: PaletteColor::Rgb((222, 221, 220)),
             },
+            // TODO: replace default
+            styling: Default::default(),
             rounded_corners: true,
             hide_session_name: false,
         },

@@ -1136,44 +1136,39 @@ pub struct Palette {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
 pub struct Style {
     pub colors: Palette,
+    pub styling: Styling,
     pub rounded_corners: bool,
     pub hide_session_name: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Copy, Default, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub struct Styling {
-    text_unselected: [PaletteColor; 6],
-    text_selected: [PaletteColor; 6],
-    ribbon_unselected: [PaletteColor; 6],
-    ribbon_selected: [PaletteColor; 6],
-    table_title: [PaletteColor; 6],
-    table_cell_unselected: [PaletteColor; 6],
-    table_cell_selected: [PaletteColor; 6],
-    list_unselected: [PaletteColor; 6],
-    list_selected: [PaletteColor; 6],
-    frame_unselected: [PaletteColor; 5],
-    frame_selected: [PaletteColor; 5],
-    exit_code_success: [PaletteColor; 5],
-    exit_code_error: [PaletteColor; 5],
+    pub text_unselected: [PaletteColor; 6],
+    pub text_selected: [PaletteColor; 6],
+    pub ribbon_unselected: [PaletteColor; 6],
+    pub ribbon_selected: [PaletteColor; 6],
+    pub table_title: [PaletteColor; 6],
+    pub table_cell_unselected: [PaletteColor; 6],
+    pub table_cell_selected: [PaletteColor; 6],
+    pub list_unselected: [PaletteColor; 6],
+    pub list_selected: [PaletteColor; 6],
+    pub frame_unselected: [PaletteColor; 5],
+    pub frame_selected: [PaletteColor; 5],
+    pub exit_code_success: [PaletteColor; 5],
+    pub exit_code_error: [PaletteColor; 5],
 }
 
-impl Default for Styling {
-    fn default() -> Self {
-        Self {
-            text_unselected: Default::default(),
-            text_selected: Default::default(),
-            ribbon_unselected: Default::default(),
-            ribbon_selected: Default::default(),
-            table_title: Default::default(),
-            table_cell_unselected: Default::default(),
-            table_cell_selected: Default::default(),
-            list_unselected: Default::default(),
-            list_selected: Default::default(),
-            frame_unselected: Default::default(),
-            frame_selected: Default::default(),
-            exit_code_success: Default::default(),
-            exit_code_error: Default::default(),
-        }
+impl From<Palette> for Styling {
+    fn from(_value: Palette) -> Self {
+        // TODO: Implement mapping of old colors -> styling
+        todo!()
+    }
+}
+
+impl From<Styling> for Palette {
+    // TODO: Implement mapping of old colors -> styling
+    fn from(_value: Styling) -> Self {
+        todo!()
     }
 }
 

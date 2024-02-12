@@ -215,6 +215,7 @@ pub fn start_client(
         size: full_screen_ws,
         style: Style {
             colors: palette,
+            styling: palette.into(),
             rounded_corners: config.ui.pane_frames.rounded_corners,
             hide_session_name: config.ui.pane_frames.hide_session_name,
         },

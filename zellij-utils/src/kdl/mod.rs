@@ -1,7 +1,7 @@
 mod kdl_layout_parser;
 use crate::data::{
     Direction, FloatingPaneCoordinates, InputMode, KeyWithModifier, LayoutInfo, Palette,
-    PaletteColor, PaneInfo, PaneManifest, PermissionType, Resize, SessionInfo, TabInfo,
+    PaletteColor, PaneInfo, PaneManifest, PermissionType, Resize, SessionInfo, Styling, TabInfo,
 };
 use crate::envs::EnvironmentVariables;
 use crate::home::{find_default_config_dir, get_layout_dir};
@@ -1989,20 +1989,68 @@ impl Themes {
         for theme_config in kdl_children_nodes_or_error!(themes_from_kdl, "no themes found") {
             let theme_name = kdl_name!(theme_config);
             let theme_colors = kdl_children_or_error!(theme_config, "empty theme");
-            let theme = Theme {
-                palette: Palette {
-                    fg: PaletteColor::try_from(("fg", theme_colors))?,
-                    bg: PaletteColor::try_from(("bg", theme_colors))?,
-                    red: PaletteColor::try_from(("red", theme_colors))?,
-                    green: PaletteColor::try_from(("green", theme_colors))?,
-                    yellow: PaletteColor::try_from(("yellow", theme_colors))?,
-                    blue: PaletteColor::try_from(("blue", theme_colors))?,
-                    magenta: PaletteColor::try_from(("magenta", theme_colors))?,
-                    orange: PaletteColor::try_from(("orange", theme_colors))?,
-                    cyan: PaletteColor::try_from(("cyan", theme_colors))?,
-                    black: PaletteColor::try_from(("black", theme_colors))?,
-                    white: PaletteColor::try_from(("white", theme_colors))?,
-                    ..Default::default()
+            let styling = kdl_child_with_name!(theme_config, "styling");
+            /*
+            let styling_node =
+                kdl_child_with_name!(theme_config, "styling").ok_or(ConfigError::new_kdl_error(
+                    "Styling block invalid".into(),
+                    theme_config.span().offset(),
+                    theme_config.span().len(),
+                ))?;
+
+            let mut colors = BTreeMap::new();
+            let color_nodes = kdl_children_nodes_or_error!(theme_config, "Palette is empty").iter();
+            for color in color_nodes.filter(|n| n.name().value() != "styling") {
+                let color_name = kdl_name!(color);
+                let color = PaletteColor::try_from(color)?;
+                colors.insert(color_name.to_owned(), color);
+            }
+            */
+            let theme = match styling {
+                // Newer theme definition with named styles
+                Some(style) => {
+                    let s = Styling {
+                        text_unselected: todo!(),
+                        text_selected: todo!(),
+                        ribbon_unselected: todo!(),
+                        ribbon_selected: todo!(),
+                        table_title: todo!(),
+                        table_cell_unselected: todo!(),
+                        table_cell_selected: todo!(),
+                        list_unselected: todo!(),
+                        list_selected: todo!(),
+                        frame_unselected: todo!(),
+                        frame_selected: todo!(),
+                        exit_code_success: todo!(),
+                        exit_code_error: todo!(),
+                    };
+
+                    let t = Theme {
+                        palette: Default::default(),
+                        styling: Default::default(),
+                    };
+                    t
+                },
+                // Older palette based theme definition
+                None => {
+                    let palette = Palette {
+                        fg: PaletteColor::try_from(("fg", theme_colors))?,
+                        bg: PaletteColor::try_from(("bg", theme_colors))?,
+                        red: PaletteColor::try_from(("red", theme_colors))?,
+                        green: PaletteColor::try_from(("green", theme_colors))?,
+                        yellow: PaletteColor::try_from(("yellow", theme_colors))?,
+                        blue: PaletteColor::try_from(("blue", theme_colors))?,
+                        magenta: PaletteColor::try_from(("magenta", theme_colors))?,
+                        orange: PaletteColor::try_from(("orange", theme_colors))?,
+                        cyan: PaletteColor::try_from(("cyan", theme_colors))?,
+                        black: PaletteColor::try_from(("black", theme_colors))?,
+                        white: PaletteColor::try_from(("white", theme_colors))?,
+                        ..Default::default()
+                    };
+                    Theme {
+                        palette,
+                        styling: palette.into(),
+                    }
                 },
             };
             themes.insert(theme_name.into(), theme);

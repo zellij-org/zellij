@@ -1,12 +1,15 @@
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Style {
+    #[deprecated]
     #[prost(message, optional, tag = "1")]
     pub palette: ::core::option::Option<Palette>,
     #[prost(bool, tag = "2")]
     pub rounded_corners: bool,
     #[prost(bool, tag = "3")]
     pub hide_session_name: bool,
+    #[prost(message, optional, tag = "4")]
+    pub styling: ::core::option::Option<Styling>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -76,6 +79,36 @@ pub struct RgbColorPayload {
     pub green: u32,
     #[prost(uint32, tag = "3")]
     pub blue: u32,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Styling {
+    #[prost(message, repeated, tag = "1")]
+    pub text_unselected: ::prost::alloc::vec::Vec<Color>,
+    #[prost(message, repeated, tag = "2")]
+    pub text_selected: ::prost::alloc::vec::Vec<Color>,
+    #[prost(message, repeated, tag = "3")]
+    pub ribbon_unselected: ::prost::alloc::vec::Vec<Color>,
+    #[prost(message, repeated, tag = "4")]
+    pub ribbon_selected: ::prost::alloc::vec::Vec<Color>,
+    #[prost(message, repeated, tag = "5")]
+    pub table_title: ::prost::alloc::vec::Vec<Color>,
+    #[prost(message, repeated, tag = "6")]
+    pub table_cell_unselected: ::prost::alloc::vec::Vec<Color>,
+    #[prost(message, repeated, tag = "7")]
+    pub table_cell_selected: ::prost::alloc::vec::Vec<Color>,
+    #[prost(message, repeated, tag = "8")]
+    pub list_unselected: ::prost::alloc::vec::Vec<Color>,
+    #[prost(message, repeated, tag = "9")]
+    pub list_selected: ::prost::alloc::vec::Vec<Color>,
+    #[prost(message, repeated, tag = "10")]
+    pub frame_unselected: ::prost::alloc::vec::Vec<Color>,
+    #[prost(message, repeated, tag = "11")]
+    pub frame_selected: ::prost::alloc::vec::Vec<Color>,
+    #[prost(message, repeated, tag = "12")]
+    pub exit_code_success: ::prost::alloc::vec::Vec<Color>,
+    #[prost(message, repeated, tag = "13")]
+    pub exit_code_error: ::prost::alloc::vec::Vec<Color>,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]

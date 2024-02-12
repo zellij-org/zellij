@@ -238,7 +238,7 @@ impl Config {
 #[cfg(test)]
 mod config_test {
     use super::*;
-    use crate::data::{InputMode, Palette, PaletteColor, PluginTag};
+    use crate::data::{InputMode, Palette, PaletteColor, PluginTag, Styling};
     use crate::input::layout::{RunPlugin, RunPluginLocation};
     use crate::input::options::{Clipboard, OnForceClose};
     use crate::input::plugins::{PluginConfig, PluginType};
@@ -463,6 +463,7 @@ mod config_test {
                     white: PaletteColor::Rgb((255, 255, 255)),
                     ..Default::default()
                 },
+                styling: Default::default(),
             },
         );
         let expected_themes = Themes::from_data(expected_themes);
@@ -520,6 +521,7 @@ mod config_test {
                     white: PaletteColor::Rgb((255, 255, 255)),
                     ..Default::default()
                 },
+                styling: Default::default(),
             },
         );
         expected_themes.insert(
@@ -539,6 +541,7 @@ mod config_test {
                     orange: PaletteColor::Rgb((208, 135, 112)),
                     ..Default::default()
                 },
+                styling: Default::default(),
             },
         );
         let expected_themes = Themes::from_data(expected_themes);
@@ -583,10 +586,150 @@ mod config_test {
                     white: PaletteColor::EightBit(255),
                     ..Default::default()
                 },
+                styling: Default::default(),
             },
         );
         let expected_themes = Themes::from_data(expected_themes);
         assert_eq!(config.themes, expected_themes, "Theme defined in config");
+    }
+
+    #[test]
+    fn can_define_style_for_theme_with_hex() {
+        let config_contents = r##"
+            themes {
+                named_theme {
+                    styling {
+                        //                      base      emp1      emp2      emp3      emp4      bg
+                        text_unselected       "#DCD7BA" "#DCD7CD" "#DCD8DD" "#DCD899" "#ACD7CD" "#1F1F28"
+                        text_selected         "#16161D" "#16161D" "#16161D" "#16161D" "#16161D" "#9CABCA"
+                        ribbon_unselected     "#DCD7BA" "#7FB4CA" "#A3D4D5" "#7AA89F" "#DCD819" "#252535"
+                        ribbon_selected       "#16161D" "#181820" "#1A1A22" "#2A2A37" "#363646" "#76946A"
+                        table_title           "#DCD7BA" "#7FB4CA" "#A3D4D5" "#7AA89F" "#DCD819" "#252535"
+                        table_cell_unselected "#DCD7BA" "#DCD7CD" "#DCD8DD" "#DCD899" "#ACD7CD" "#1F1F28"
+                        table_cell_selected   "#16161D" "#181820" "#1A1A22" "#2A2A37" "#363646" "#76946A"
+                        list_unselected       "#DCD7BA" "#DCD7CD" "#DCD8DD" "#DCD899" "#ACD7CD" "#1F1F28"
+                        list_selected         "#16161D" "#181820" "#1A1A22" "#2A2A37" "#363646" "#76946A"
+                        frame_unselected      "#DCD8DD" "#7FB4CA" "#A3D4D5" "#7AA89F" "#DCD819"
+                        frame_selected        "#76946A" "#C34043" "#C8C093" "#ACD7CD" "#DCD819"
+                        exit_code_success     "#76946A" "#76946A" "#76946A" "#76946A" "#76946A"
+                        exit_code_error       "#C34043" "#C34043" "#C34043" "#C34043" "#C34043"
+                    }
+                }
+            }
+            "##;
+
+        let config = Config::from_kdl(config_contents, None).unwrap();
+        let mut expected_themes = HashMap::new();
+        expected_themes.insert(
+            "named_theme".into(),
+            Theme {
+                styling: Styling {
+                    text_unselected: [
+                        PaletteColor::Rgb((220, 215, 186)),
+                        PaletteColor::Rgb((220, 215, 205)),
+                        PaletteColor::Rgb((220, 216, 221)),
+                        PaletteColor::Rgb((220, 216, 153)),
+                        PaletteColor::Rgb((172, 215, 205)),
+                        PaletteColor::Rgb((31, 31, 40)),
+                    ],
+                    text_selected: [
+                        PaletteColor::Rgb((22, 22, 29)),
+                        PaletteColor::Rgb((22, 22, 29)),
+                        PaletteColor::Rgb((22, 22, 29)),
+                        PaletteColor::Rgb((22, 22, 29)),
+                        PaletteColor::Rgb((22, 22, 29)),
+                        PaletteColor::Rgb((156, 171, 202)),
+                    ],
+                    ribbon_unselected: [
+                        PaletteColor::Rgb((220, 215, 186)),
+                        PaletteColor::Rgb((127, 180, 202)),
+                        PaletteColor::Rgb((163, 212, 213)),
+                        PaletteColor::Rgb((122, 168, 159)),
+                        PaletteColor::Rgb((220, 216, 25)),
+                        PaletteColor::Rgb((37, 37, 53)),
+                    ],
+                    ribbon_selected: [
+                        PaletteColor::Rgb((22, 22, 29)),
+                        PaletteColor::Rgb((24, 24, 32)),
+                        PaletteColor::Rgb((26, 26, 34)),
+                        PaletteColor::Rgb((42, 42, 55)),
+                        PaletteColor::Rgb((54, 54, 70)),
+                        PaletteColor::Rgb((118, 148, 106)),
+                    ],
+                    table_title: [
+                        PaletteColor::Rgb((220, 215, 186)),
+                        PaletteColor::Rgb((127, 180, 202)),
+                        PaletteColor::Rgb((163, 212, 213)),
+                        PaletteColor::Rgb((122, 168, 159)),
+                        PaletteColor::Rgb((220, 216, 25)),
+                        PaletteColor::Rgb((37, 37, 53)),
+                    ],
+                    table_cell_unselected: [
+                        PaletteColor::Rgb((220, 215, 186)),
+                        PaletteColor::Rgb((220, 215, 205)),
+                        PaletteColor::Rgb((220, 216, 221)),
+                        PaletteColor::Rgb((220, 216, 153)),
+                        PaletteColor::Rgb((172, 215, 205)),
+                        PaletteColor::Rgb((31, 31, 40)),
+                    ],
+                    table_cell_selected: [
+                        PaletteColor::Rgb((22, 22, 29)),
+                        PaletteColor::Rgb((24, 24, 32)),
+                        PaletteColor::Rgb((26, 26, 34)),
+                        PaletteColor::Rgb((42, 42, 55)),
+                        PaletteColor::Rgb((54, 54, 70)),
+                        PaletteColor::Rgb((118, 148, 106)),
+                    ],
+                    list_unselected: [
+                        PaletteColor::Rgb((220, 215, 186)),
+                        PaletteColor::Rgb((220, 215, 205)),
+                        PaletteColor::Rgb((220, 216, 221)),
+                        PaletteColor::Rgb((220, 216, 153)),
+                        PaletteColor::Rgb((172, 215, 205)),
+                        PaletteColor::Rgb((31, 31, 40)),
+                    ],
+                    list_selected: [
+                        PaletteColor::Rgb((22, 22, 29)),
+                        PaletteColor::Rgb((22, 22, 29)),
+                        PaletteColor::Rgb((22, 22, 29)),
+                        PaletteColor::Rgb((22, 22, 29)),
+                        PaletteColor::Rgb((22, 22, 29)),
+                        PaletteColor::Rgb((156, 171, 202)),
+                    ],
+                    frame_unselected: [
+                        PaletteColor::Rgb((220, 216, 221)),
+                        PaletteColor::Rgb((127, 180, 202)),
+                        PaletteColor::Rgb((163, 212, 213)),
+                        PaletteColor::Rgb((122, 168, 159)),
+                        PaletteColor::Rgb((220, 216, 25)),
+                    ],
+                    frame_selected: [
+                        PaletteColor::Rgb((118, 148, 106)),
+                        PaletteColor::Rgb((195, 64, 67)),
+                        PaletteColor::Rgb((200, 192, 147)),
+                        PaletteColor::Rgb((172, 215, 205)),
+                        PaletteColor::Rgb((220, 216, 125)),
+                    ],
+                    exit_code_success: [
+                        PaletteColor::Rgb((118, 148, 106)),
+                        PaletteColor::Rgb((118, 148, 106)),
+                        PaletteColor::Rgb((118, 148, 106)),
+                        PaletteColor::Rgb((118, 148, 106)),
+                        PaletteColor::Rgb((118, 148, 106)),
+                    ],
+                    exit_code_error: [
+                        PaletteColor::Rgb((195, 64, 67)),
+                        PaletteColor::Rgb((195, 64, 67)),
+                        PaletteColor::Rgb((195, 64, 67)),
+                        PaletteColor::Rgb((195, 64, 67)),
+                        PaletteColor::Rgb((195, 64, 67)),
+                    ],
+                },
+                palette: Default::default(),
+            },
+        );
+        let expected_themes = Themes::from_data(expected_themes);
+        assert_eq!(config.themes, expected_themes, "Theme defined in config")
     }
 
     #[test]
