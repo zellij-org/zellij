@@ -1341,7 +1341,9 @@ fn serialize_mode_update_event_with_non_default_values() {
                 silver: PaletteColor::EightBit(2),
                 pink: PaletteColor::EightBit(2),
                 brown: PaletteColor::Rgb((222, 221, 220)),
-            },
+            }
+            .into(),
+            // TODO: replace default
             rounded_corners: true,
             hide_session_name: false,
         },

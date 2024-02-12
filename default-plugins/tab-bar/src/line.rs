@@ -21,7 +21,7 @@ fn populate_tabs_in_tab_line(
     tabs_after_active: &mut Vec<LinePart>,
     tabs_to_render: &mut Vec<LinePart>,
     cols: usize,
-    palette: Palette,
+    palette: Styling,
     capabilities: PluginCapabilities,
 ) {
     let mut middle_size = get_current_title_len(tabs_to_render);
@@ -113,7 +113,7 @@ fn populate_tabs_in_tab_line(
 
 fn left_more_message(
     tab_count_to_the_left: usize,
-    palette: Palette,
+    palette: Styling,
     separator: &str,
     tab_index: usize,
 ) -> LinePart {
@@ -128,13 +128,12 @@ fn left_more_message(
     // 238
     // chars length plus separator length on both sides
     let more_text_len = more_text.width() + 2 * separator.width();
-    let (text_color, sep_color) = match palette.theme_hue {
-        ThemeHue::Dark => (palette.white, palette.black),
-        ThemeHue::Light => (palette.black, palette.white),
-    };
-    let left_separator = style!(sep_color, palette.orange).paint(separator);
-    let more_styled_text = style!(text_color, palette.orange).bold().paint(more_text);
-    let right_separator = style!(palette.orange, sep_color).paint(separator);
+    let (text_color, sep_color) = (palette.text_unselected.base, palette.text_unselected.background);
+    let left_separator = style!(sep_color, palette.ribbon_unselected.background).paint(separator);
+    let more_styled_text = style!(text_color, palette.ribbon_unselected.background)
+        .bold()
+        .paint(more_text);
+    let right_separator = style!(palette.ribbon_unselected.background, sep_color).paint(separator);
     let more_styled_text =
         ANSIStrings(&[left_separator, more_styled_text, right_separator]).to_string();
     LinePart {
@@ -146,7 +145,7 @@ fn left_more_message(
 
 fn right_more_message(
     tab_count_to_the_right: usize,
-    palette: Palette,
+    palette: Styling,
     separator: &str,
     tab_index: usize,
 ) -> LinePart {
@@ -160,13 +159,12 @@ fn right_more_message(
     };
     // chars length plus separator length on both sides
     let more_text_len = more_text.width() + 2 * separator.width();
-    let (text_color, sep_color) = match palette.theme_hue {
-        ThemeHue::Dark => (palette.white, palette.black),
-        ThemeHue::Light => (palette.black, palette.white),
-    };
-    let left_separator = style!(sep_color, palette.orange).paint(separator);
-    let more_styled_text = style!(text_color, palette.orange).bold().paint(more_text);
-    let right_separator = style!(palette.orange, sep_color).paint(separator);
+    let (text_color, sep_color) = (palette.text_unselected.base, palette.text_unselected.background);
+    let left_separator = style!(sep_color, palette.ribbon_unselected.background).paint(separator);
+    let more_styled_text = style!(text_color, palette.ribbon_unselected.background)
+        .bold()
+        .paint(more_text);
+    let right_separator = style!(palette.ribbon_unselected.background, sep_color).paint(separator);
     let more_styled_text =
         ANSIStrings(&[left_separator, more_styled_text, right_separator]).to_string();
     LinePart {
@@ -176,18 +174,12 @@ fn right_more_message(
     }
 }
 
-fn tab_line_prefix(session_name: Option<&str>, palette: Palette, cols: usize) -> Vec<LinePart> {
+fn tab_line_prefix(session_name: Option<&str>, palette: Styling, cols: usize) -> Vec<LinePart> {
     let prefix_text = " Zellij ".to_string();
 
     let prefix_text_len = prefix_text.chars().count();
-    let text_color = match palette.theme_hue {
-        ThemeHue::Dark => palette.white,
-        ThemeHue::Light => palette.black,
-    };
-    let bg_color = match palette.theme_hue {
-        ThemeHue::Dark => palette.black,
-        ThemeHue::Light => palette.white,
-    };
+    let text_color = palette.text_unselected.base;
+    let bg_color = palette.text_unselected.background;
     let prefix_styled_text = style!(text_color, bg_color).bold().paint(prefix_text);
     let mut parts = vec![LinePart {
         part: prefix_styled_text.to_string(),
@@ -197,10 +189,7 @@ fn tab_line_prefix(session_name: Option<&str>, palette: Palette, cols: usize) ->
     if let Some(name) = session_name {
         let name_part = format!("({}) ", name);
         let name_part_len = name_part.width();
-        let text_color = match palette.theme_hue {
-            ThemeHue::Dark => palette.white,
-            ThemeHue::Light => palette.black,
-        };
+        let text_color = palette.text_unselected.base;
         let name_part_styled_text = style!(text_color, bg_color).bold().paint(name_part);
         if cols.saturating_sub(prefix_text_len) >= name_part_len {
             parts.push(LinePart {
@@ -226,7 +215,7 @@ pub fn tab_line(
     mut all_tabs: Vec<LinePart>,
     active_tab_index: usize,
     cols: usize,
-    palette: Palette,
+    palette: Styling,
     capabilities: PluginCapabilities,
     hide_session_name: bool,
     tab_info: Option<&TabInfo>,

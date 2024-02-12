@@ -7,7 +7,7 @@ use std::{
     fmt,
 };
 
-use crate::data::{Palette, Styling};
+use crate::data::Styling;
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Deserialize, Serialize)]
 pub struct UiConfig {
@@ -75,9 +75,8 @@ impl Themes {
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct Theme {
     #[serde(flatten)]
-    pub palette: Palette,
     pub sourced_from_external_file: bool,
-    pub styling: Styling,
+    pub palette: Styling,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]

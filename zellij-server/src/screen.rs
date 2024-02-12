@@ -9,7 +9,8 @@ use std::time::Duration;
 
 use log::{debug, warn};
 use zellij_utils::data::{
-    Direction, KeyWithModifier, PaneManifest, PluginPermission, Resize, ResizeStrategy, SessionInfo,
+    Direction, KeyWithModifier, PaneManifest, PluginPermission, Resize, ResizeStrategy,
+    SessionInfo, Styling,
 };
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
@@ -369,7 +370,7 @@ pub enum ScreenInstruction {
         client_id: ClientId,
         keybinds: Keybinds,
         default_mode: InputMode,
-        theme: Palette,
+        theme: Styling,
         simplified_ui: bool,
         default_shell: Option<PathBuf>,
         pane_frames: bool,

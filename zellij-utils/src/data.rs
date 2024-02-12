@@ -2,6 +2,7 @@ use crate::input::actions::Action;
 use crate::input::config::ConversionError;
 use crate::input::keybinds::Keybinds;
 use crate::input::layout::{RunPlugin, SplitSize};
+use crate::shared::colors as default_colors;
 use clap::ArgEnum;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
@@ -20,22 +21,20 @@ use termwiz::{
 
 pub type ClientId = u16; // TODO: merge with crate type?
 
-pub fn client_id_to_colors(
-    client_id: ClientId,
-    colors: Palette,
-) -> Option<(PaletteColor, PaletteColor)> {
+pub fn client_id_to_colors(client_id: ClientId) -> Option<(PaletteColor, PaletteColor)> {
     // (primary color, secondary color)
+    let black = PaletteColor::EightBit(default_colors::BLACK);
     match client_id {
-        1 => Some((colors.magenta, colors.black)),
-        2 => Some((colors.blue, colors.black)),
-        3 => Some((colors.purple, colors.black)),
-        4 => Some((colors.yellow, colors.black)),
-        5 => Some((colors.cyan, colors.black)),
-        6 => Some((colors.gold, colors.black)),
-        7 => Some((colors.red, colors.black)),
-        8 => Some((colors.silver, colors.black)),
-        9 => Some((colors.pink, colors.black)),
-        10 => Some((colors.brown, colors.black)),
+        1 => Some((PaletteColor::EightBit(default_colors::MAGENTA), black)),
+        2 => Some((PaletteColor::EightBit(default_colors::BLUE), black)),
+        3 => Some((PaletteColor::EightBit(default_colors::PURPLE), black)),
+        4 => Some((PaletteColor::EightBit(default_colors::YELLOW), black)),
+        5 => Some((PaletteColor::EightBit(default_colors::CYAN), black)),
+        6 => Some((PaletteColor::EightBit(default_colors::GOLD), black)),
+        7 => Some((PaletteColor::EightBit(default_colors::RED), black)),
+        8 => Some((PaletteColor::EightBit(default_colors::SILVER), black)),
+        9 => Some((PaletteColor::EightBit(default_colors::PINK), black)),
+        10 => Some((PaletteColor::EightBit(default_colors::BROWN), black)),
         _ => None,
     }
 }
@@ -1137,44 +1136,154 @@ pub struct Palette {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
 pub struct Style {
-    pub colors: Palette,
+    pub colors: Styling,
     pub rounded_corners: bool,
     pub hide_session_name: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Copy, Default, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub struct Styling {
-    text_unselected: [PaletteColor; 6],
-    text_selected: [PaletteColor; 6],
-    ribbon_unselected: [PaletteColor; 6],
-    ribbon_selected: [PaletteColor; 6],
-    table_title: [PaletteColor; 6],
-    table_cell_unselected: [PaletteColor; 6],
-    table_cell_selected: [PaletteColor; 6],
-    list_unselected: [PaletteColor; 6],
-    list_selected: [PaletteColor; 6],
-    frame_unselected: [PaletteColor; 5],
-    frame_selected: [PaletteColor; 5],
-    exit_code_success: [PaletteColor; 5],
-    exit_code_error: [PaletteColor; 5],
+    pub text_unselected: StyleDeclaration,
+    pub text_selected: StyleDeclaration,
+    pub ribbon_unselected: StyleDeclaration,
+    pub ribbon_selected: StyleDeclaration,
+    pub table_title: StyleDeclaration,
+    pub table_cell_unselected: StyleDeclaration,
+    pub table_cell_selected: StyleDeclaration,
+    pub list_unselected: StyleDeclaration,
+    pub list_selected: StyleDeclaration,
+    pub frame_unselected: StyleDeclaration,
+    pub frame_selected: StyleDeclaration,
+    pub exit_code_success: StyleDeclaration,
+    pub exit_code_error: StyleDeclaration,
+    pub multiplayer_user_colors: MultiplayerColors,
 }
 
-impl Default for Styling {
-    fn default() -> Self {
-        Self {
-            text_unselected: Default::default(),
-            text_selected: Default::default(),
-            ribbon_unselected: Default::default(),
-            ribbon_selected: Default::default(),
-            table_title: Default::default(),
-            table_cell_unselected: Default::default(),
-            table_cell_selected: Default::default(),
-            list_unselected: Default::default(),
-            list_selected: Default::default(),
-            frame_unselected: Default::default(),
-            frame_selected: Default::default(),
-            exit_code_success: Default::default(),
-            exit_code_error: Default::default(),
+#[derive(Debug, Copy, Default, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
+pub struct StyleDeclaration {
+    pub base: PaletteColor,
+    pub background: PaletteColor,
+    pub emphasis_1: PaletteColor,
+    pub emphasis_2: PaletteColor,
+    pub emphasis_3: PaletteColor,
+    pub emphasis_4: PaletteColor,
+}
+
+#[derive(Debug, Copy, Default, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
+pub struct MultiplayerColors {
+    pub player_1: PaletteColor,
+    pub player_2: PaletteColor,
+    pub player_3: PaletteColor,
+    pub player_4: PaletteColor,
+    pub player_5: PaletteColor,
+    pub player_6: PaletteColor,
+    pub player_7: PaletteColor,
+    pub player_8: PaletteColor,
+    pub player_9: PaletteColor,
+    pub player_10: PaletteColor,
+}
+
+impl From<Styling> for Palette {
+    fn from(styling: Styling) -> Self {
+        Palette {
+            fg: styling.ribbon_unselected.background,
+            bg: styling.text_unselected.background,
+            red: styling.exit_code_error.base,
+            green: styling.text_unselected.emphasis_3,
+            yellow: styling.exit_code_error.emphasis_1,
+            blue: styling.ribbon_unselected.emphasis_3,
+            magenta: styling.text_unselected.emphasis_4,
+            orange: styling.text_unselected.emphasis_1,
+            cyan: styling.text_unselected.emphasis_2,
+            black: styling.ribbon_unselected.base,
+            white: styling.ribbon_selected.emphasis_2,
+            ..Default::default()
+        }
+    }
+}
+
+impl From<Palette> for Styling {
+    fn from(palette: Palette) -> Self {
+        let (fg, bg) = match palette.theme_hue {
+            ThemeHue::Light => (palette.black, palette.white),
+            ThemeHue::Dark => (palette.white, palette.black),
+        };
+        Styling {
+            text_unselected: StyleDeclaration {
+                base: fg,
+                emphasis_1: palette.orange,
+                emphasis_2: palette.cyan,
+                emphasis_3: palette.green,
+                emphasis_4: palette.magenta,
+                background: bg,
+            },
+            text_selected: StyleDeclaration {
+                base: fg,
+                emphasis_1: palette.orange,
+                emphasis_2: palette.cyan,
+                emphasis_3: palette.green,
+                emphasis_4: palette.magenta,
+                background: palette.bg,
+            },
+            ribbon_unselected: StyleDeclaration {
+                base: palette.black,
+                emphasis_1: palette.red,
+                emphasis_2: palette.white,
+                emphasis_3: palette.blue,
+                emphasis_4: palette.magenta,
+                background: palette.fg,
+            },
+            ribbon_selected: StyleDeclaration {
+                base: palette.black,
+                emphasis_1: palette.red,
+                emphasis_2: palette.white,
+                emphasis_3: palette.blue,
+                emphasis_4: palette.magenta,
+                background: palette.green,
+            },
+            exit_code_success: StyleDeclaration {
+                base: palette.green,
+                emphasis_1: palette.cyan,
+                emphasis_2: palette.black,
+                emphasis_3: palette.magenta,
+                emphasis_4: palette.blue,
+                background: Default::default(),
+            },
+            exit_code_error: StyleDeclaration {
+                base: palette.red,
+                emphasis_1: palette.yellow,
+                emphasis_2: palette.gold,
+                emphasis_3: palette.silver,
+                emphasis_4: palette.purple,
+                background: Default::default(),
+            },
+            frame_unselected: StyleDeclaration {
+                base: palette.orange,
+                emphasis_1: palette.pink,
+                emphasis_2: palette.gray,
+                emphasis_3: palette.brown,
+                emphasis_4: palette.black,
+                background: Default::default(),
+            },
+            frame_selected: StyleDeclaration {
+                base: palette.green,
+                emphasis_1: palette.orange,
+                emphasis_2: palette.cyan,
+                emphasis_3: palette.magenta,
+                emphasis_4: palette.brown,
+                background: Default::default(),
+            },
+            ..Default::default() /*
+                                 table_title: (),
+                                 table_cell_unselected: (),
+                                 table_cell_selected: (),
+                                 list_unselected: (),
+                                 list_selected: (),
+                                 frame_unselected: (),
+                                 frame_selected: (),
+                                 exit_code_success: (),
+                                 exit_code_error: (),
+                                 */
         }
     }
 }
@@ -1213,7 +1322,7 @@ impl ModeInfo {
         self.base_mode = Some(new_default_mode);
     }
     pub fn update_theme(&mut self, theme: Palette) {
-        self.style.colors = theme;
+        self.style.colors = theme.into();
     }
     pub fn update_rounded_corners(&mut self, rounded_corners: bool) {
         self.style.rounded_corners = rounded_corners;

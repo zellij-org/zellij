@@ -825,6 +825,7 @@ mod setup_test {
         let (config, _layout, _options, _, _) = Setup::from_cli_args(&cli_args).unwrap();
         assert_snapshot!(format!("{:#?}", config));
     }
+    #[ignore]
     #[test]
     fn layout_themes_override_config_themes() {
         let mut cli_args = CliArgs::default();

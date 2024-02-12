@@ -12,17 +12,18 @@ pub fn ribbon(
     component_coordinates: Option<Coordinates>,
 ) -> Vec<u8> {
     let colors = style.colors;
+    let background = colors.text_unselected.background;
     let (first_arrow_styles, text_style, last_arrow_styles) = if content.selected {
         (
-            character_style(colors.black, colors.green),
-            character_style(colors.black, colors.green),
-            character_style(colors.green, colors.black),
+            character_style(background, colors.ribbon_selected.background),
+            character_style(colors.ribbon_selected.base, colors.ribbon_selected.background),
+            character_style(colors.ribbon_selected.background, background),
         )
     } else {
         (
-            character_style(colors.black, colors.fg),
-            character_style(colors.black, colors.fg),
-            character_style(colors.fg, colors.black),
+            character_style(background, colors.ribbon_unselected.background),
+            character_style(colors.ribbon_unselected.base, colors.ribbon_unselected.background),
+            character_style(colors.ribbon_unselected.background, background),
         )
     };
     let (text, _text_width) =
@@ -47,19 +48,19 @@ pub fn ribbon(
 
 pub fn emphasis_variants_for_ribbon(style: &Style) -> [PaletteColor; 4] {
     [
-        style.colors.red,
-        style.colors.white,
-        style.colors.blue,
-        style.colors.magenta,
+        style.colors.ribbon_unselected.emphasis_1,
+        style.colors.ribbon_unselected.emphasis_2,
+        style.colors.ribbon_unselected.emphasis_3,
+        style.colors.ribbon_unselected.emphasis_4,
     ]
 }
 
 pub fn emphasis_variants_for_selected_ribbon(style: &Style) -> [PaletteColor; 4] {
     [
-        style.colors.red,
-        style.colors.orange,
-        style.colors.magenta,
-        style.colors.blue,
+        style.colors.ribbon_selected.emphasis_1,
+        style.colors.ribbon_selected.emphasis_2,
+        style.colors.ribbon_selected.emphasis_3,
+        style.colors.ribbon_selected.emphasis_4,
     ]
 }
 

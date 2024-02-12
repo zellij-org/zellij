@@ -21,7 +21,10 @@ pub fn table(
     let title_styles = RESET_STYLES
         .foreground(title_color.map(|t| t.into()))
         .bold(Some(AnsiCode::On));
-    let cell_styles = RESET_STYLES.bold(Some(AnsiCode::On));
+    let cell_styles = RESET_STYLES
+        .bold(Some(AnsiCode::On))
+        .background(Some(style.colors.table_cell_unselected.background.into()))
+        .foreground(Some(style.colors.table_cell_unselected.base.into()));
     for (row_index, (_, row)) in stringified_rows.into_iter().enumerate() {
         let is_title_row = row_index == 0;
         if is_too_high(row_index + 1, &coordinates) {
@@ -36,7 +39,8 @@ pub fn table(
             };
             if cell.selected {
                 reset_styles_for_item.background = None;
-                text_style = text_style.background(Some(style.colors.bg.into()));
+                text_style =
+                    text_style.background(Some(style.colors.table_cell_selected.background.into()));
             }
             // here we intentionally don't pass our coordinates even if we have them, because
             // these cells have already been padded and truncated
