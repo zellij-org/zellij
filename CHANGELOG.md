@@ -14,7 +14,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * chore: bump Rust toolchain to 1.75.0 (https://github.com/zellij-org/zellij/pull/3039)
 * feat(plugins): introduce pipes to control data flow to plugins from the command line (https://github.com/zellij-org/zellij/pull/3066)
 * feat(xtask): allow publishing without pushing changes (https://github.com/zellij-org/zellij/pull/3040)
-* fix(terminal): improve reflow performance as well as resource utilization and some misc ancient bugs (https://github.com/zellij-org/zellij/pull/3045, https://github.com/zellij-org/zellij/pull/3032 and https://github.com/zellij-org/zellij/pull/3043)
+* fix(terminal): improve reflow performance as well as resource utilization and some misc ancient bugs (https://github.com/zellij-org/zellij/pull/3045, https://github.com/zellij-org/zellij/pull/3032, https://github.com/zellij-org/zellij/pull/3043 and https://github.com/zellij-org/zellij/pull/3125)
+* feat(sessions): add welcome screen (https://github.com/zellij-org/zellij/pull/3112)
+* fix(cli): respect cwd in `zellij run` and `zellij plugin` commands (https://github.com/zellij-org/zellij/pull/3116)
+* feat(panes): allow specifying floating pane coordinates when opening from cli/plugin/keybinding (https://github.com/zellij-org/zellij/pull/3122)
+* fix(plugins): avoid crash when attaching to a session with a since-deleted cwd (https://github.com/zellij-org/zellij/pull/3126)
+* fix(panes): break pane to new tab regression (https://github.com/zellij-org/zellij/pull/3130)
 
 ## [0.39.2] - 2023-11-29
 * fix(cli): typo in cli help (https://github.com/zellij-org/zellij/pull/2906)

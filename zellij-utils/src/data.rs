@@ -1,5 +1,6 @@
 use crate::input::actions::Action;
 use crate::input::config::ConversionError;
+use crate::input::layout::SplitSize;
 use clap::ArgEnum;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -765,6 +766,28 @@ pub struct SessionInfo {
     pub panes: PaneManifest,
     pub connected_clients: usize,
     pub is_current_session: bool,
+    pub available_layouts: Vec<LayoutInfo>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub enum LayoutInfo {
+    BuiltIn(String),
+    File(String),
+}
+
+impl LayoutInfo {
+    pub fn name(&self) -> &str {
+        match self {
+            LayoutInfo::BuiltIn(name) => &name,
+            LayoutInfo::File(name) => &name,
+        }
+    }
+    pub fn is_builtin(&self) -> bool {
+        match self {
+            LayoutInfo::BuiltIn(_name) => true,
+            LayoutInfo::File(_name) => false,
+        }
+    }
 }
 
 use std::hash::{Hash, Hasher};
@@ -1032,12 +1055,12 @@ impl MessageToPlugin {
         self
     }
     pub fn new_plugin_instance_should_float(mut self, should_float: bool) -> Self {
-        let mut new_plugin_args = self.new_plugin_args.get_or_insert_with(Default::default);
+        let new_plugin_args = self.new_plugin_args.get_or_insert_with(Default::default);
         new_plugin_args.should_float = Some(should_float);
         self
     }
     pub fn new_plugin_instance_should_replace_pane(mut self, pane_id: PaneId) -> Self {
-        let mut new_plugin_args = self.new_plugin_args.get_or_insert_with(Default::default);
+        let new_plugin_args = self.new_plugin_args.get_or_insert_with(Default::default);
         new_plugin_args.pane_id_to_replace = Some(pane_id);
         self
     }
@@ -1045,17 +1068,17 @@ impl MessageToPlugin {
         mut self,
         pane_title: impl Into<String>,
     ) -> Self {
-        let mut new_plugin_args = self.new_plugin_args.get_or_insert_with(Default::default);
+        let new_plugin_args = self.new_plugin_args.get_or_insert_with(Default::default);
         new_plugin_args.pane_title = Some(pane_title.into());
         self
     }
     pub fn new_plugin_instance_should_have_cwd(mut self, cwd: PathBuf) -> Self {
-        let mut new_plugin_args = self.new_plugin_args.get_or_insert_with(Default::default);
+        let new_plugin_args = self.new_plugin_args.get_or_insert_with(Default::default);
         new_plugin_args.cwd = Some(cwd);
         self
     }
     pub fn new_plugin_instance_should_skip_cache(mut self) -> Self {
-        let mut new_plugin_args = self.new_plugin_args.get_or_insert_with(Default::default);
+        let new_plugin_args = self.new_plugin_args.get_or_insert_with(Default::default);
         new_plugin_args.skip_cache = true;
         self
     }
@@ -1066,6 +1089,17 @@ pub struct ConnectToSession {
     pub name: Option<String>,
     pub tab_position: Option<usize>,
     pub pane_id: Option<(u32, bool)>, // (id, is_plugin)
+    pub layout: Option<LayoutInfo>,
+}
+
+impl ConnectToSession {
+    pub fn apply_layout_dir(&mut self, layout_dir: &PathBuf) {
+        if let Some(LayoutInfo::File(file_path)) = self.layout.as_mut() {
+            *file_path = Path::join(layout_dir, &file_path)
+                .to_string_lossy()
+                .to_string();
+        }
+    }
 }
 
 #[derive(Debug, Default, Clone)]
@@ -1133,6 +1167,86 @@ impl PipeMessage {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize, Default)]
+pub struct FloatingPaneCoordinates {
+    pub x: Option<SplitSize>,
+    pub y: Option<SplitSize>,
+    pub width: Option<SplitSize>,
+    pub height: Option<SplitSize>,
+}
+
+impl FloatingPaneCoordinates {
+    pub fn new(
+        x: Option<String>,
+        y: Option<String>,
+        width: Option<String>,
+        height: Option<String>,
+    ) -> Option<Self> {
+        let x = x.and_then(|x| SplitSize::from_str(&x).ok());
+        let y = y.and_then(|y| SplitSize::from_str(&y).ok());
+        let width = width.and_then(|width| SplitSize::from_str(&width).ok());
+        let height = height.and_then(|height| SplitSize::from_str(&height).ok());
+        if x.is_none() && y.is_none() && width.is_none() && height.is_none() {
+            None
+        } else {
+            Some(FloatingPaneCoordinates {
+                x,
+                y,
+                width,
+                height,
+            })
+        }
+    }
+    pub fn with_x_fixed(mut self, x: usize) -> Self {
+        self.x = Some(SplitSize::Fixed(x));
+        self
+    }
+    pub fn with_x_percent(mut self, x: usize) -> Self {
+        if x > 100 {
+            eprintln!("x must be between 0 and 100");
+            return self;
+        }
+        self.x = Some(SplitSize::Percent(x));
+        self
+    }
+    pub fn with_y_fixed(mut self, y: usize) -> Self {
+        self.y = Some(SplitSize::Fixed(y));
+        self
+    }
+    pub fn with_y_percent(mut self, y: usize) -> Self {
+        if y > 100 {
+            eprintln!("y must be between 0 and 100");
+            return self;
+        }
+        self.y = Some(SplitSize::Percent(y));
+        self
+    }
+    pub fn with_width_fixed(mut self, width: usize) -> Self {
+        self.width = Some(SplitSize::Fixed(width));
+        self
+    }
+    pub fn with_width_percent(mut self, width: usize) -> Self {
+        if width > 100 {
+            eprintln!("width must be between 0 and 100");
+            return self;
+        }
+        self.width = Some(SplitSize::Percent(width));
+        self
+    }
+    pub fn with_height_fixed(mut self, height: usize) -> Self {
+        self.height = Some(SplitSize::Fixed(height));
+        self
+    }
+    pub fn with_height_percent(mut self, height: usize) -> Self {
+        if height > 100 {
+            eprintln!("height must be between 0 and 100");
+            return self;
+        }
+        self.height = Some(SplitSize::Percent(height));
+        self
+    }
+}
+
 #[derive(Debug, Clone, EnumDiscriminants, ToString)]
 #[strum_discriminants(derive(EnumString, Hash, Serialize, Deserialize))]
 #[strum_discriminants(name(CommandType))]
@@ -1143,11 +1257,11 @@ pub enum PluginCommand {
     GetPluginIds,
     GetZellijVersion,
     OpenFile(FileToOpen),
-    OpenFileFloating(FileToOpen),
-    OpenTerminal(FileToOpen),         // only used for the path as cwd
-    OpenTerminalFloating(FileToOpen), // only used for the path as cwd
+    OpenFileFloating(FileToOpen, Option<FloatingPaneCoordinates>),
+    OpenTerminal(FileToOpen), // only used for the path as cwd
+    OpenTerminalFloating(FileToOpen, Option<FloatingPaneCoordinates>), // only used for the path as cwd
     OpenCommandPane(CommandToRun),
-    OpenCommandPaneFloating(CommandToRun),
+    OpenCommandPaneFloating(CommandToRun, Option<FloatingPaneCoordinates>),
     SwitchTabTo(u32), // tab index
     SetTimeout(f64),  // seconds
     ExecCmd(Vec<String>),
@@ -1228,4 +1342,6 @@ pub enum PluginCommand {
     BlockCliPipeInput(String),     // String => pipe name
     CliPipeOutput(String, String), // String => pipe name, String => output
     MessageToPlugin(MessageToPlugin),
+    DisconnectOtherClients,
+    KillSessions(Vec<String>), // one or more session names
 }

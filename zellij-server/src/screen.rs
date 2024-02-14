@@ -47,7 +47,10 @@ use crate::{
     ClientId, ServerInstruction,
 };
 use zellij_utils::{
-    data::{Event, InputMode, ModeInfo, Palette, PaletteColor, PluginCapabilities, Style, TabInfo},
+    data::{
+        Event, FloatingPaneCoordinates, InputMode, ModeInfo, Palette, PaletteColor,
+        PluginCapabilities, Style, TabInfo,
+    },
     errors::{ContextType, ScreenContext},
     input::{get_mode_info, options::Options},
     ipc::{ClientAttributes, PixelDimensions, ServerToClientMsg},
@@ -147,6 +150,7 @@ pub enum ScreenInstruction {
         Option<ShouldFloat>,
         HoldForCommand,
         Option<Run>, // invoked with
+        Option<FloatingPaneCoordinates>,
         ClientTabIndexOrPaneId,
     ),
     OpenInPlaceEditor(PaneId, ClientId),
@@ -275,11 +279,18 @@ pub enum ScreenInstruction {
     PreviousSwapLayout(ClientId),
     NextSwapLayout(ClientId),
     QueryTabNames(ClientId),
-    NewTiledPluginPane(RunPlugin, Option<String>, bool, ClientId), // Option<String> is
-    // optional pane title, bool is skip cache
-    NewFloatingPluginPane(RunPlugin, Option<String>, bool, ClientId), // Option<String> is an
+    NewTiledPluginPane(RunPlugin, Option<String>, bool, Option<PathBuf>, ClientId), // Option<String> is
+    // optional pane title, bool is skip cache, Option<PathBuf> is an optional cwd
+    NewFloatingPluginPane(
+        RunPlugin,
+        Option<String>,
+        bool,
+        Option<PathBuf>,
+        Option<FloatingPaneCoordinates>,
+        ClientId,
+    ), // Option<String> is an
     // optional pane title, bool
-    // is skip cache
+    // is skip cache, Option<PathBuf> is an optional cwd
     NewInPlacePluginPane(RunPlugin, Option<String>, PaneId, bool, ClientId), // Option<String> is an
     // optional pane title, bool is skip cache
     StartOrReloadPluginPane(RunPlugin, Option<String>),
@@ -299,9 +310,17 @@ pub enum ScreenInstruction {
     ProgressPluginLoadingOffset(u32),                 // u32 - plugin id
     RequestStateUpdateForPlugins,
     LaunchOrFocusPlugin(RunPlugin, bool, bool, bool, Option<PaneId>, bool, ClientId), // bools are: should_float, move_to_focused_tab, should_open_in_place, Option<PaneId> is the pane id to replace, bool following it is skip_cache
-    LaunchPlugin(RunPlugin, bool, bool, Option<PaneId>, bool, ClientId), // bools are: should_float, should_open_in_place Option<PaneId> is the pane id to replace, bool after is skip_cache
-    SuppressPane(PaneId, ClientId),                                      // bool is should_float
-    FocusPaneWithId(PaneId, bool, ClientId),                             // bool is should_float
+    LaunchPlugin(
+        RunPlugin,
+        bool,
+        bool,
+        Option<PaneId>,
+        bool,
+        Option<PathBuf>,
+        ClientId,
+    ), // bools are: should_float, should_open_in_place Option<PaneId> is the pane id to replace, Option<PathBuf> is an optional cwd, bool after is skip_cache
+    SuppressPane(PaneId, ClientId),          // bool is should_float
+    FocusPaneWithId(PaneId, bool, ClientId), // bool is should_float
     RenamePane(PaneId, Vec<u8>),
     RenameTab(usize, Vec<u8>),
     RequestPluginPermissions(
@@ -582,6 +601,8 @@ pub(crate) struct Screen {
     default_shell: Option<PathBuf>,
     styled_underlines: bool,
     arrow_fonts: bool,
+    layout_dir: Option<PathBuf>,
+    default_layout_name: Option<String>,
 }
 
 impl Screen {
@@ -597,12 +618,14 @@ impl Screen {
         copy_options: CopyOptions,
         debug: bool,
         default_layout: Box<Layout>,
+        default_layout_name: Option<String>,
         default_shell: Option<PathBuf>,
         session_serialization: bool,
         serialize_pane_viewport: bool,
         scrollback_lines_to_serialize: Option<usize>,
         styled_underlines: bool,
         arrow_fonts: bool,
+        layout_dir: Option<PathBuf>,
     ) -> Self {
         let session_name = mode_info.session_name.clone().unwrap_or_default();
         let session_info = SessionInfo::new(session_name.clone());
@@ -634,6 +657,7 @@ impl Screen {
             session_name,
             session_infos_on_machine,
             default_layout,
+            default_layout_name,
             default_shell,
             session_serialization,
             serialize_pane_viewport,
@@ -641,6 +665,7 @@ impl Screen {
             styled_underlines,
             arrow_fonts,
             resurrectable_sessions,
+            layout_dir,
         }
     }
 
@@ -1417,12 +1442,21 @@ impl Screen {
         // generate own session info
         let pane_manifest = self.generate_and_report_pane_state()?;
         let tab_infos = self.generate_and_report_tab_state()?;
+        // in the context of unit/integration tests, we don't need to list available layouts
+        // because this is mostly about HD access - it does however throw off the timing in the
+        // tests and causes them to flake, which is why we skip it here
+        #[cfg(not(test))]
+        let available_layouts =
+            Layout::list_available_layouts(self.layout_dir.clone(), &self.default_layout_name);
+        #[cfg(test)]
+        let available_layouts = vec![];
         let session_info = SessionInfo {
             name: self.session_name.clone(),
             tabs: tab_infos,
             panes: pane_manifest,
             connected_clients: self.active_tab_indices.keys().len(),
             is_current_session: true,
+            available_layouts,
         };
         self.bus
             .senders
@@ -1833,6 +1867,7 @@ impl Screen {
                 new_active_tab.add_floating_pane(
                     plugin_pane_to_move_to_active_tab,
                     pane_id,
+                    None,
                     Some(client_id),
                 )?;
             } else {
@@ -1917,7 +1952,7 @@ impl Screen {
             let (mut tiled_panes_layout, mut floating_panes_layout) = default_layout.new_tab();
             if pane_to_break_is_floating {
                 tab.show_floating_panes();
-                tab.add_floating_pane(active_pane, active_pane_id, Some(client_id))?;
+                tab.add_floating_pane(active_pane, active_pane_id, None, Some(client_id))?;
                 if let Some(already_running_layout) = floating_panes_layout
                     .iter_mut()
                     .find(|i| i.run == active_pane_run_instruction)
@@ -1982,7 +2017,12 @@ impl Screen {
 
             if pane_to_break_is_floating {
                 new_active_tab.show_floating_panes();
-                new_active_tab.add_floating_pane(active_pane, active_pane_id, Some(client_id))?;
+                new_active_tab.add_floating_pane(
+                    active_pane,
+                    active_pane_id,
+                    None,
+                    Some(client_id),
+                )?;
             } else {
                 new_active_tab.hide_floating_panes();
                 new_active_tab.add_tiled_pane(active_pane, active_pane_id, Some(client_id))?;
@@ -2197,7 +2237,11 @@ pub(crate) fn screen_thread_main(
     let serialize_pane_viewport = config_options.serialize_pane_viewport.unwrap_or(false);
     let scrollback_lines_to_serialize = config_options.scrollback_lines_to_serialize;
     let session_is_mirrored = config_options.mirror_session.unwrap_or(false);
+    let layout_dir = config_options.layout_dir;
     let default_shell = config_options.default_shell;
+    let default_layout_name = config_options
+        .default_layout
+        .map(|l| format!("{}", l.display()));
     let copy_options = CopyOptions::new(
         config_options.copy_command,
         config_options.copy_clipboard.unwrap_or_default(),
@@ -2224,12 +2268,14 @@ pub(crate) fn screen_thread_main(
         copy_options,
         debug,
         default_layout,
+        default_layout_name,
         default_shell,
         session_serialization,
         serialize_pane_viewport,
         scrollback_lines_to_serialize,
         styled_underlines,
         arrow_fonts,
+        layout_dir,
     );
 
     let mut pending_tab_ids: HashSet<usize> = HashSet::new();
@@ -2284,6 +2330,7 @@ pub(crate) fn screen_thread_main(
                 should_float,
                 hold_for_command,
                 invoked_with,
+                floating_pane_coordinates,
                 client_or_tab_index,
             ) => {
                 match client_or_tab_index {
@@ -2293,6 +2340,7 @@ pub(crate) fn screen_thread_main(
                                initial_pane_title,
                                should_float,
                                invoked_with,
+                               floating_pane_coordinates,
                                Some(client_id)
                            )
                         }, ?);
@@ -2317,6 +2365,7 @@ pub(crate) fn screen_thread_main(
                                 initial_pane_title,
                                 should_float,
                                 invoked_with,
+                                floating_pane_coordinates,
                                 None,
                             )?;
                             if let Some(hold_for_command) = hold_for_command {
@@ -3297,6 +3346,7 @@ pub(crate) fn screen_thread_main(
                 run_plugin,
                 pane_title,
                 skip_cache,
+                cwd,
                 client_id,
             ) => {
                 let tab_index = screen.active_tab_indices.values().next().unwrap_or(&1);
@@ -3316,12 +3366,16 @@ pub(crate) fn screen_thread_main(
                         client_id,
                         size,
                         skip_cache,
+                        cwd,
+                        None,
                     ))?;
             },
             ScreenInstruction::NewFloatingPluginPane(
                 run_plugin,
                 pane_title,
                 skip_cache,
+                cwd,
+                floating_pane_coordinates,
                 client_id,
             ) => match screen.active_tab_indices.values().next() {
                 Some(tab_index) => {
@@ -3341,6 +3395,8 @@ pub(crate) fn screen_thread_main(
                             client_id,
                             size,
                             skip_cache,
+                            cwd,
+                            floating_pane_coordinates,
                         ))?;
                 },
                 None => {
@@ -3373,6 +3429,8 @@ pub(crate) fn screen_thread_main(
                             client_id,
                             size,
                             skip_cache,
+                            None,
+                            None,
                         ))?;
                 },
                 None => {
@@ -3443,12 +3501,13 @@ pub(crate) fn screen_thread_main(
                         log::error!("Must have pane id to replace or connected client_id if replacing a pane");
                     }
                 } else if let Some(client_id) = client_id {
-                    active_tab!(screen, client_id, |active_tab: &mut Tab| {
+                    active_tab_and_connected_client_id!(screen, client_id, |active_tab: &mut Tab, _client_id: ClientId| {
                         active_tab.new_pane(
                             PaneId::Plugin(plugin_id),
                             Some(pane_title),
                             should_float,
                             Some(run_plugin),
+                            None,
                             None,
                         )
                     }, ?);
@@ -3460,6 +3519,7 @@ pub(crate) fn screen_thread_main(
                         Some(pane_title),
                         should_float,
                         Some(run_plugin),
+                        None,
                         None,
                     )?;
                 } else {
@@ -3533,6 +3593,8 @@ pub(crate) fn screen_thread_main(
                                 client_id,
                                 size,
                                 skip_cache,
+                                None,
+                                None,
                             ))?;
                     },
                     None => {
@@ -3577,6 +3639,8 @@ pub(crate) fn screen_thread_main(
                                         client_id,
                                         Size::default(),
                                         skip_cache,
+                                        None,
+                                        None,
                                     ))?;
                             }
                         },
@@ -3592,6 +3656,7 @@ pub(crate) fn screen_thread_main(
                 should_open_in_place,
                 pane_id_to_replace,
                 skip_cache,
+                cwd,
                 client_id,
             ) => match pane_id_to_replace {
                 Some(pane_id_to_replace) => match screen.active_tab_indices.values().next() {
@@ -3610,6 +3675,8 @@ pub(crate) fn screen_thread_main(
                                 client_id,
                                 size,
                                 skip_cache,
+                                cwd,
+                                None,
                             ))?;
                     },
                     None => {
@@ -3645,6 +3712,8 @@ pub(crate) fn screen_thread_main(
                                     client_id,
                                     Size::default(),
                                     skip_cache,
+                                    cwd,
+                                    None,
                                 ))?;
                         },
                         None => {

@@ -444,6 +444,7 @@ pub enum ServerContext {
     UnblockCliPipeInput,
     CliPipeOutput,
     AssociatePipeWithClient,
+    DisconnectAllClientsExcept,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]

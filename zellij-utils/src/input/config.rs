@@ -222,6 +222,15 @@ impl Config {
             Err(e) => Err(ConfigError::IoPath(e, path.into())),
         }
     }
+    pub fn merge(&mut self, other: Config) -> Result<(), ConfigError> {
+        self.options = self.options.merge(other.options);
+        self.keybinds.merge(other.keybinds.clone());
+        self.themes = self.themes.merge(other.themes);
+        self.plugins = self.plugins.merge(other.plugins);
+        self.ui = self.ui.merge(other.ui);
+        self.env = self.env.merge(other.env);
+        Ok(())
+    }
 }
 
 #[cfg(test)]

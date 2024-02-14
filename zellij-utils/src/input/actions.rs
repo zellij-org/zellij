@@ -6,8 +6,8 @@ use super::layout::{
     TiledPaneLayout,
 };
 use crate::cli::CliAction;
-use crate::data::InputMode;
 use crate::data::{Direction, Resize};
+use crate::data::{FloatingPaneCoordinates, InputMode};
 use crate::home::{find_default_config_dir, get_layout_dir};
 use crate::input::config::{Config, ConfigError, KdlError};
 use crate::input::options::OnForceClose;
@@ -166,9 +166,14 @@ pub enum Action {
         Option<Direction>,
         bool,
         bool,
+        Option<FloatingPaneCoordinates>,
     ), // usize is an optional line number, Option<PathBuf> is an optional cwd, bool is floating true/false, second bool is in_place
     /// Open a new floating pane
-    NewFloatingPane(Option<RunCommandAction>, Option<String>), // String is an optional pane name
+    NewFloatingPane(
+        Option<RunCommandAction>,
+        Option<String>,
+        Option<FloatingPaneCoordinates>,
+    ), // String is an optional pane name
     /// Open a new tiled (embedded, non-floating) pane
     NewTiledPane(Option<Direction>, Option<RunCommandAction>, Option<String>), // String is an
     /// Open a new pane in place of the focused one, suppressing it instead
@@ -214,8 +219,8 @@ pub enum Action {
     MiddleClick(Position),
     LaunchOrFocusPlugin(RunPlugin, bool, bool, bool, bool), // bools => should float,
     // move_to_focused_tab, should_open_in_place, skip_cache
-    LaunchPlugin(RunPlugin, bool, bool, bool), // bools => should float,
-    // should_open_in_place, skip_cache
+    LaunchPlugin(RunPlugin, bool, bool, bool, Option<PathBuf>), // bools => should float,
+    // should_open_in_place, skip_cache, Option<PathBuf> is cwd
     LeftMouseRelease(Position),
     RightMouseRelease(Position),
     MiddleMouseRelease(Position),
@@ -241,10 +246,16 @@ pub enum Action {
     /// Query all tab names
     QueryTabNames,
     /// Open a new tiled (embedded, non-floating) plugin pane
-    NewTiledPluginPane(RunPlugin, Option<String>, bool), // String is an optional name, bool is
-    // skip_cache
-    NewFloatingPluginPane(RunPlugin, Option<String>, bool), // String is an optional name, bool is
-    // skip_cache
+    NewTiledPluginPane(RunPlugin, Option<String>, bool, Option<PathBuf>), // String is an optional name, bool is
+    // skip_cache, Option<PathBuf> is cwd
+    NewFloatingPluginPane(
+        RunPlugin,
+        Option<String>,
+        bool,
+        Option<PathBuf>,
+        Option<FloatingPaneCoordinates>,
+    ), // String is an optional name, bool is
+    // skip_cache, Option<PathBuf> is cwd
     NewInPlacePluginPane(RunPlugin, Option<String>, bool), // String is an optional name, bool is
     // skip_cache
     StartOrReloadPlugin(RunPlugin),
@@ -331,6 +342,10 @@ impl Action {
                 start_suspended,
                 configuration,
                 skip_plugin_cache,
+                x,
+                y,
+                width,
+                height,
             } => {
                 let current_dir = get_current_dir();
                 let cwd = cwd
@@ -338,7 +353,7 @@ impl Action {
                     .or_else(|| Some(current_dir));
                 let user_configuration = configuration.unwrap_or_default();
                 if let Some(plugin) = plugin {
-                    let location = RunPluginLocation::parse(&plugin, cwd)
+                    let location = RunPluginLocation::parse(&plugin, cwd.clone())
                         .map_err(|e| format!("Failed to parse plugin loction {plugin}: {}", e))?;
                     let plugin = RunPlugin {
                         _allow_exec_host_cmd: false,
@@ -350,6 +365,8 @@ impl Action {
                             plugin,
                             name,
                             skip_plugin_cache,
+                            cwd,
+                            FloatingPaneCoordinates::new(x, y, width, height),
                         )])
                     } else if in_place {
                         Ok(vec![Action::NewInPlacePluginPane(
@@ -370,6 +387,7 @@ impl Action {
                             plugin,
                             name,
                             skip_plugin_cache,
+                            cwd,
                         )])
                     }
                 } else if !command.is_empty() {
@@ -389,6 +407,7 @@ impl Action {
                         Ok(vec![Action::NewFloatingPane(
                             Some(run_command_action),
                             name,
+                            FloatingPaneCoordinates::new(x, y, width, height),
                         )])
                     } else if in_place {
                         Ok(vec![Action::NewInPlacePane(Some(run_command_action), name)])
@@ -401,7 +420,11 @@ impl Action {
                     }
                 } else {
                     if floating {
-                        Ok(vec![Action::NewFloatingPane(None, name)])
+                        Ok(vec![Action::NewFloatingPane(
+                            None,
+                            name,
+                            FloatingPaneCoordinates::new(x, y, width, height),
+                        )])
                     } else if in_place {
                         Ok(vec![Action::NewInPlacePane(None, name)])
                     } else {
@@ -416,6 +439,10 @@ impl Action {
                 floating,
                 in_place,
                 cwd,
+                x,
+                y,
+                width,
+                height,
             } => {
                 let mut file = file;
                 let current_dir = get_current_dir();
@@ -434,6 +461,7 @@ impl Action {
                     direction,
                     floating,
                     in_place,
+                    FloatingPaneCoordinates::new(x, y, width, height),
                 )])
             },
             CliAction::SwitchMode { input_mode } => {
@@ -584,8 +612,9 @@ impl Action {
                 skip_plugin_cache,
             } => {
                 let current_dir = get_current_dir();
-                let run_plugin_location = RunPluginLocation::parse(url.as_str(), Some(current_dir))
-                    .map_err(|e| format!("Failed to parse plugin location: {}", e))?;
+                let run_plugin_location =
+                    RunPluginLocation::parse(url.as_str(), Some(current_dir.clone()))
+                        .map_err(|e| format!("Failed to parse plugin location: {}", e))?;
                 let run_plugin = RunPlugin {
                     location: run_plugin_location,
                     _allow_exec_host_cmd: false,
@@ -596,6 +625,7 @@ impl Action {
                     floating,
                     in_place,
                     skip_plugin_cache,
+                    Some(current_dir),
                 )])
             },
             CliAction::RenameSession { name } => Ok(vec![Action::RenameSession(name)]),

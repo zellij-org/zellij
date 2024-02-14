@@ -4,9 +4,9 @@ pub use super::generated_api::api::{
         event::Payload as ProtobufEventPayload, CopyDestination as ProtobufCopyDestination,
         Event as ProtobufEvent, EventNameList as ProtobufEventNameList,
         EventType as ProtobufEventType, InputModeKeybinds as ProtobufInputModeKeybinds,
-        KeyBind as ProtobufKeyBind, ModeUpdatePayload as ProtobufModeUpdatePayload,
-        PaneInfo as ProtobufPaneInfo, PaneManifest as ProtobufPaneManifest,
-        ResurrectableSession as ProtobufResurrectableSession,
+        KeyBind as ProtobufKeyBind, LayoutInfo as ProtobufLayoutInfo,
+        ModeUpdatePayload as ProtobufModeUpdatePayload, PaneInfo as ProtobufPaneInfo,
+        PaneManifest as ProtobufPaneManifest, ResurrectableSession as ProtobufResurrectableSession,
         SessionManifest as ProtobufSessionManifest, TabInfo as ProtobufTabInfo, *,
     },
     input_mode::InputMode as ProtobufInputMode,
@@ -14,8 +14,8 @@ pub use super::generated_api::api::{
     style::Style as ProtobufStyle,
 };
 use crate::data::{
-    CopyDestination, Event, EventType, InputMode, Key, ModeInfo, Mouse, PaneInfo, PaneManifest,
-    PermissionStatus, PluginCapabilities, SessionInfo, Style, TabInfo,
+    CopyDestination, Event, EventType, InputMode, Key, LayoutInfo, ModeInfo, Mouse, PaneInfo,
+    PaneManifest, PermissionStatus, PluginCapabilities, SessionInfo, Style, TabInfo,
 };
 
 use crate::errors::prelude::*;
@@ -453,6 +453,11 @@ impl TryFrom<SessionInfo> for ProtobufSessionManifest {
                 .collect(),
             connected_clients: session_info.connected_clients as u32,
             is_current_session: session_info.is_current_session,
+            available_layouts: session_info
+                .available_layouts
+                .into_iter()
+                .filter_map(|l| ProtobufLayoutInfo::try_from(l).ok())
+                .collect(),
         })
     }
 }
@@ -485,7 +490,39 @@ impl TryFrom<ProtobufSessionManifest> for SessionInfo {
             panes,
             connected_clients: protobuf_session_manifest.connected_clients as usize,
             is_current_session: protobuf_session_manifest.is_current_session,
+            available_layouts: protobuf_session_manifest
+                .available_layouts
+                .into_iter()
+                .filter_map(|l| LayoutInfo::try_from(l).ok())
+                .collect(),
         })
+    }
+}
+
+impl TryFrom<LayoutInfo> for ProtobufLayoutInfo {
+    type Error = &'static str;
+    fn try_from(layout_info: LayoutInfo) -> Result<Self, &'static str> {
+        match layout_info {
+            LayoutInfo::File(name) => Ok(ProtobufLayoutInfo {
+                source: "file".to_owned(),
+                name,
+            }),
+            LayoutInfo::BuiltIn(name) => Ok(ProtobufLayoutInfo {
+                source: "built-in".to_owned(),
+                name,
+            }),
+        }
+    }
+}
+
+impl TryFrom<ProtobufLayoutInfo> for LayoutInfo {
+    type Error = &'static str;
+    fn try_from(protobuf_layout_info: ProtobufLayoutInfo) -> Result<Self, &'static str> {
+        match protobuf_layout_info.source.as_str() {
+            "file" => Ok(LayoutInfo::File(protobuf_layout_info.name)),
+            "built-in" => Ok(LayoutInfo::BuiltIn(protobuf_layout_info.name)),
+            _ => Err("Unknown source for layout"),
+        }
     }
 }
 
@@ -1383,6 +1420,11 @@ fn serialize_session_update_event_with_non_default_values() {
         panes: PaneManifest { panes },
         connected_clients: 2,
         is_current_session: true,
+        available_layouts: vec![
+            LayoutInfo::File("layout 1".to_owned()),
+            LayoutInfo::BuiltIn("layout2".to_owned()),
+            LayoutInfo::File("layout3".to_owned()),
+        ],
     };
     let session_info_2 = SessionInfo {
         name: "session 2".to_owned(),
@@ -1392,6 +1434,11 @@ fn serialize_session_update_event_with_non_default_values() {
         },
         connected_clients: 0,
         is_current_session: false,
+        available_layouts: vec![
+            LayoutInfo::File("layout 1".to_owned()),
+            LayoutInfo::BuiltIn("layout2".to_owned()),
+            LayoutInfo::File("layout3".to_owned()),
+        ],
     };
     let session_infos = vec![session_info_1, session_info_2];
     let resurrectable_sessions = vec![];

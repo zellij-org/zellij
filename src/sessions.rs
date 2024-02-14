@@ -52,8 +52,7 @@ pub(crate) fn get_resurrectable_sessions() -> Vec<(String, Duration, Layout)> {
                         session_layout_cache_file_name(&folder_name.display().to_string());
                     let raw_layout = match std::fs::read_to_string(&layout_file_name) {
                         Ok(raw_layout) => raw_layout,
-                        Err(e) => {
-                            log::error!("Failed to read resurrection layout file: {:?}", e);
+                        Err(_e) => {
                             return None;
                         },
                     };
@@ -61,13 +60,7 @@ pub(crate) fn get_resurrectable_sessions() -> Vec<(String, Duration, Layout)> {
                         .and_then(|metadata| metadata.created())
                     {
                         Ok(created) => Some(created),
-                        Err(e) => {
-                            log::error!(
-                                "Failed to read created stamp of resurrection file: {:?}",
-                                e
-                            );
-                            None
-                        },
+                        Err(_e) => None,
                     };
                     let layout = match Layout::from_kdl(
                         &raw_layout,

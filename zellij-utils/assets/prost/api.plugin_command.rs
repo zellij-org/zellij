@@ -5,7 +5,7 @@ pub struct PluginCommand {
     pub name: i32,
     #[prost(
         oneof = "plugin_command::Payload",
-        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50"
+        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 60"
     )]
     pub payload: ::core::option::Option<plugin_command::Payload>,
 }
@@ -112,7 +112,15 @@ pub mod plugin_command {
         CliPipeOutputPayload(super::CliPipeOutputPayload),
         #[prost(message, tag = "50")]
         MessageToPluginPayload(super::MessageToPluginPayload),
+        #[prost(message, tag = "60")]
+        KillSessionsPayload(super::KillSessionsPayload),
     }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct KillSessionsPayload {
+    #[prost(string, repeated, tag = "1")]
+    pub session_names: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -171,6 +179,8 @@ pub struct SwitchSessionPayload {
     pub pane_id: ::core::option::Option<u32>,
     #[prost(bool, optional, tag = "4")]
     pub pane_id_is_plugin: ::core::option::Option<bool>,
+    #[prost(message, optional, tag = "5")]
+    pub layout: ::core::option::Option<super::event::LayoutInfo>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -199,12 +209,16 @@ pub struct UnsubscribePayload {
 pub struct OpenFilePayload {
     #[prost(message, optional, tag = "1")]
     pub file_to_open: ::core::option::Option<super::file::File>,
+    #[prost(message, optional, tag = "2")]
+    pub floating_pane_coordinates: ::core::option::Option<FloatingPaneCoordinates>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct OpenCommandPanePayload {
     #[prost(message, optional, tag = "1")]
     pub command_to_run: ::core::option::Option<super::command::Command>,
+    #[prost(message, optional, tag = "2")]
+    pub floating_pane_coordinates: ::core::option::Option<FloatingPaneCoordinates>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -293,6 +307,26 @@ pub struct IdAndNewName {
     #[prost(string, tag = "2")]
     pub new_name: ::prost::alloc::string::String,
 }
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct FloatingPaneCoordinates {
+    #[prost(message, optional, tag = "1")]
+    pub x: ::core::option::Option<FixedOrPercentValue>,
+    #[prost(message, optional, tag = "2")]
+    pub y: ::core::option::Option<FixedOrPercentValue>,
+    #[prost(message, optional, tag = "3")]
+    pub width: ::core::option::Option<FixedOrPercentValue>,
+    #[prost(message, optional, tag = "4")]
+    pub height: ::core::option::Option<FixedOrPercentValue>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct FixedOrPercentValue {
+    #[prost(enumeration = "FixedOrPercent", tag = "1")]
+    pub r#type: i32,
+    #[prost(uint32, tag = "2")]
+    pub value: u32,
+}
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
 pub enum CommandName {
@@ -376,6 +410,8 @@ pub enum CommandName {
     BlockCliPipeInput = 77,
     CliPipeOutput = 78,
     MessageToPlugin = 79,
+    DisconnectOtherClients = 80,
+    KillSessions = 81,
 }
 impl CommandName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -464,6 +500,8 @@ impl CommandName {
             CommandName::BlockCliPipeInput => "BlockCliPipeInput",
             CommandName::CliPipeOutput => "CliPipeOutput",
             CommandName::MessageToPlugin => "MessageToPlugin",
+            CommandName::DisconnectOtherClients => "DisconnectOtherClients",
+            CommandName::KillSessions => "KillSessions",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -549,6 +587,8 @@ impl CommandName {
             "BlockCliPipeInput" => Some(Self::BlockCliPipeInput),
             "CliPipeOutput" => Some(Self::CliPipeOutput),
             "MessageToPlugin" => Some(Self::MessageToPlugin),
+            "DisconnectOtherClients" => Some(Self::DisconnectOtherClients),
+            "KillSessions" => Some(Self::KillSessions),
             _ => None,
         }
     }
@@ -607,6 +647,32 @@ impl HttpVerb {
             "Post" => Some(Self::Post),
             "Put" => Some(Self::Put),
             "Delete" => Some(Self::Delete),
+            _ => None,
+        }
+    }
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum FixedOrPercent {
+    Fixed = 0,
+    Percent = 1,
+}
+impl FixedOrPercent {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            FixedOrPercent::Fixed => "Fixed",
+            FixedOrPercent::Percent => "Percent",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "Fixed" => Some(Self::Fixed),
+            "Percent" => Some(Self::Percent),
             _ => None,
         }
     }

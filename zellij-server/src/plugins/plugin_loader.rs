@@ -795,11 +795,22 @@ impl<'a> PluginLoader<'a> {
         };
         let mut store = get_store();
         let store_mut = &mut store;
+        let dirs = vec![
+            ("/host".to_owned(), self.zellij_cwd.clone()),
+            ("/data".to_owned(), self.plugin_own_data_dir.clone()),
+            ("/tmp".to_owned(), ZELLIJ_TMP_DIR.clone()),
+        ];
+        let dirs = dirs.into_iter().filter(|(_dir_name, dir)| {
+            // note that this does not protect against TOCTOU errors
+            // eg. if one or more of these folders existed at the time of check but was deleted
+            // before we mounted in in the wasi environment, we'll crash
+            // when we move to a new wasi environment, we should address this with locking if
+            // there's no built-in solution
+            dir.try_exists().ok().unwrap_or(false)
+        });
         let mut wasi_env = WasiState::new("Zellij")
             .env("CLICOLOR_FORCE", "1")
-            .map_dir("/host", self.zellij_cwd.clone())
-            .and_then(|wasi| wasi.map_dir("/data", &self.plugin_own_data_dir))
-            .and_then(|wasi| wasi.map_dir("/tmp", ZELLIJ_TMP_DIR.as_path()))
+            .map_dirs(dirs)
             .and_then(|wasi| {
                 wasi.stdin(Box::new(Pipe::new()))
                     .stdout(Box::new(Pipe::new()))

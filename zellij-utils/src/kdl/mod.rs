@@ -1,7 +1,7 @@
 mod kdl_layout_parser;
 use crate::data::{
-    Direction, InputMode, Key, Palette, PaletteColor, PaneInfo, PaneManifest, PermissionType,
-    Resize, SessionInfo, TabInfo,
+    Direction, FloatingPaneCoordinates, InputMode, Key, LayoutInfo, Palette, PaletteColor,
+    PaneInfo, PaneManifest, PermissionType, Resize, SessionInfo, TabInfo,
 };
 use crate::envs::EnvironmentVariables;
 use crate::home::{find_default_config_dir, get_layout_dir};
@@ -919,8 +919,24 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                     hold_on_close,
                     hold_on_start,
                 };
+                let x = command_metadata
+                    .and_then(|c_m| kdl_child_string_value_for_entry(c_m, "x"))
+                    .map(|s| s.to_owned());
+                let y = command_metadata
+                    .and_then(|c_m| kdl_child_string_value_for_entry(c_m, "y"))
+                    .map(|s| s.to_owned());
+                let width = command_metadata
+                    .and_then(|c_m| kdl_child_string_value_for_entry(c_m, "width"))
+                    .map(|s| s.to_owned());
+                let height = command_metadata
+                    .and_then(|c_m| kdl_child_string_value_for_entry(c_m, "height"))
+                    .map(|s| s.to_owned());
                 if floating {
-                    Ok(Action::NewFloatingPane(Some(run_command_action), name))
+                    Ok(Action::NewFloatingPane(
+                        Some(run_command_action),
+                        name,
+                        FloatingPaneCoordinates::new(x, y, width, height),
+                    ))
                 } else if in_place {
                     Ok(Action::NewInPlacePane(Some(run_command_action), name))
                 } else {
@@ -1007,6 +1023,8 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                     should_float,
                     should_open_in_place,
                     skip_plugin_cache,
+                    None, // we explicitly do not send the current dir here so that it will be
+                          // filled from the active pane == better UX
                 ))
             },
             "PreviousSwapLayout" => Ok(Action::PreviousSwapLayout),
@@ -2001,6 +2019,31 @@ impl SessionInfo {
             .and_then(|p| p.children())
             .map(|p| PaneManifest::decode_from_kdl(p))
             .ok_or("Failed to parse panes")?;
+        let available_layouts: Vec<LayoutInfo> = kdl_document
+            .get("available_layouts")
+            .and_then(|p| p.children())
+            .map(|e| {
+                e.nodes()
+                    .iter()
+                    .filter_map(|n| {
+                        let layout_name = n.name().value().to_owned();
+                        let layout_source = n
+                            .entries()
+                            .iter()
+                            .find(|e| e.name().map(|n| n.value()) == Some("source"))
+                            .and_then(|e| e.value().as_string());
+                        match layout_source {
+                            Some(layout_source) => match layout_source {
+                                "built-in" => Some(LayoutInfo::BuiltIn(layout_name)),
+                                "file" => Some(LayoutInfo::File(layout_name)),
+                                _ => None,
+                            },
+                            None => None,
+                        }
+                    })
+                    .collect()
+            })
+            .ok_or("Failed to parse available_layouts")?;
         let is_current_session = name == current_session_name;
         Ok(SessionInfo {
             name,
@@ -2008,6 +2051,7 @@ impl SessionInfo {
             panes,
             connected_clients,
             is_current_session,
+            available_layouts,
         })
     }
     pub fn to_string(&self) -> String {
@@ -2032,10 +2076,25 @@ impl SessionInfo {
         let mut panes = KdlNode::new("panes");
         panes.set_children(self.panes.encode_to_kdl());
 
+        let mut available_layouts = KdlNode::new("available_layouts");
+        let mut available_layouts_children = KdlDocument::new();
+        for layout_info in &self.available_layouts {
+            let (layout_name, layout_source) = match layout_info {
+                LayoutInfo::File(name) => (name.clone(), "file"),
+                LayoutInfo::BuiltIn(name) => (name.clone(), "built-in"),
+            };
+            let mut layout_node = KdlNode::new(format!("{}", layout_name));
+            let layout_source = KdlEntry::new_prop("source", layout_source);
+            layout_node.entries_mut().push(layout_source);
+            available_layouts_children.nodes_mut().push(layout_node);
+        }
+        available_layouts.set_children(available_layouts_children);
+
         kdl_document.nodes_mut().push(name);
         kdl_document.nodes_mut().push(tabs);
         kdl_document.nodes_mut().push(panes);
         kdl_document.nodes_mut().push(connected_clients);
+        kdl_document.nodes_mut().push(available_layouts);
         kdl_document.fmt();
         kdl_document.to_string()
     }
@@ -2521,6 +2580,11 @@ fn serialize_and_deserialize_session_info_with_data() {
         panes: PaneManifest { panes },
         connected_clients: 2,
         is_current_session: false,
+        available_layouts: vec![
+            LayoutInfo::File("layout1".to_owned()),
+            LayoutInfo::BuiltIn("layout2".to_owned()),
+            LayoutInfo::File("layout3".to_owned()),
+        ],
     };
     let serialized = session_info.to_string();
     let deserealized = SessionInfo::from_string(&serialized, "not this session").unwrap();
