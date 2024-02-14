@@ -109,7 +109,6 @@ fn spawn_server(socket_path: &Path, debug: bool) -> io::Result<()> {
     if debug {
         cmd.arg("--debug");
     }
-    println!("Spawning server!");
     #[cfg(unix)]
     {
         let status = cmd.status()?;
@@ -127,8 +126,7 @@ fn spawn_server(socket_path: &Path, debug: bool) -> io::Result<()> {
     }
     #[cfg(windows)]
     {
-        cmd.arg("--debug");
-        let status = cmd.spawn()?;
+        let _status = cmd.spawn()?;
         Ok(())
     }
 }

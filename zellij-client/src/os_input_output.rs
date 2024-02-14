@@ -3,29 +3,12 @@ use zellij_utils::interprocess::local_socket::LocalSocketListener;
 use zellij_utils::pane_size::Size;
 use zellij_utils::{interprocess, signal_hook};
 
-#[cfg(not(windows))]
-use zellij_utils::{libc, nix};
 
 use interprocess::local_socket::LocalSocketStream;
-#[cfg(not(windows))]
-use mio::unix::SourceFd;
 
-#[cfg(windows)]
-use mio::windows::NamedPipe;
-#[cfg(windows)]
-use std::os::windows::io::FromRawHandle;
 use mio::{Events, Interest, Poll, Token};
-#[cfg(not(windows))]
-use nix::pty::Winsize;
-#[cfg(not(windows))]
-use nix::sys::termios;
 
-use signal_hook::consts::signal::*;
-#[cfg(unix)]
-use signal_hook::iterator::Signals;
 use std::io::prelude::*;
-#[cfg(not(windows))]
-use std::os::unix::io::RawFd;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::{io, process, thread, time};
@@ -35,8 +18,19 @@ use zellij_utils::{
     ipc::{ClientToServerMsg, IpcReceiverWithContext, IpcSenderWithContext, ServerToClientMsg},
     shared::default_palette,
 };
+#[cfg(not(windows))]
+use zellij_utils::{libc, nix};
+#[cfg(not(windows))]
+use nix::{pty::Winsize, sys::termios};
+#[cfg(not(windows))]
+use std::os::unix::io::RawFd;
+#[cfg(not(windows))]
+use mio::unix::SourceFd;
+#[cfg(unix)]
+use signal_hook::{iterator::Signals, consts::signal::*};
 #[cfg(windows)]
-use std::os::windows::io::RawHandle;
+use std::os::windows::io::{RawHandle ,FromRawHandle};
+#[cfg(windows)]
 use windows_sys::Win32::{
     Foundation::{INVALID_HANDLE_VALUE, HANDLE},
     System::Console::{
@@ -44,6 +38,8 @@ use windows_sys::Win32::{
 GetConsoleMode, SetConsoleMode
     },
 };
+#[cfg(windows)]
+use mio::windows::NamedPipe;
 
 const SIGWINCH_CB_THROTTLE_DURATION: time::Duration = time::Duration::from_millis(50);
 
@@ -489,28 +485,15 @@ impl StdinPoller {
 }
 
 impl Default for StdinPoller {
-    #[cfg(unix)]
     fn default() -> Self {
+        #[cfg(unix)]
         let stdin = 0;
-        let mut stdin_fd = SourceFd(&stdin);
-        let events = Events::with_capacity(128);
-        let poll = Poll::new().unwrap();
-        poll.registry()
-            .register(&mut stdin_fd, Token(0), Interest::READABLE)
-            .expect("could not create stdin poll");
-
-        let timeout = time::Duration::from_millis(DEFAULT_STDIN_POLL_TIMEOUT_MS);
-
-        Self {
-            poll,
-            events,
-            timeout,
-        }
-    }
-
-    #[cfg(windows)]
-    fn default() -> Self {
+        #[cfg(windows)]
         let stdin = windows_sys::Win32::System::Console::STD_INPUT_HANDLE;
+
+        #[cfg(unix)]
+        let mut stdin_fd = SourceFd(&stdin);
+        #[cfg(windows)]
         let mut stdin_fd = unsafe { NamedPipe::from_raw_handle(GetStdHandle(stdin) as RawHandle ) };
         let events = Events::with_capacity(128);
         let poll = Poll::new().unwrap();
