@@ -44,6 +44,9 @@ pub fn render_tab(
     };
     let left_separator = style!(foreground_color, background_color).paint(separator);
     let mut tab_text_len = text.width() + (separator_width * 2) + 2; // +2 for padding
+    let position_text = style!(foreground_color, background_color)
+        .bold()
+        .paint(format!(" {}", tab.position + 1));
     let tab_styled_text = style!(foreground_color, background_color)
         .bold()
         .paint(format!(" {} ", text));
@@ -70,7 +73,13 @@ pub fn render_tab(
         s.push_str(&right_separator.to_string());
         s
     } else {
-        ANSIStrings(&[left_separator, tab_styled_text, right_separator]).to_string()
+        ANSIStrings(&[
+            left_separator,
+            position_text,
+            tab_styled_text,
+            right_separator,
+        ])
+        .to_string()
     };
 
     LinePart {

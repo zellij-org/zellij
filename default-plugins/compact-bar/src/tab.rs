@@ -49,6 +49,9 @@ pub fn render_tab(
         .bold()
         .paint(format!(" {} ", text));
 
+    let position_text = style!(foreground_color, background_color)
+        .bold()
+        .paint(format!(" {}", tab.position + 1));
     let right_separator = style!(background_color, foreground_color).paint(separator);
     let tab_styled_text = if !focused_clients.is_empty() {
         let (cursor_section, extra_length) = cursors(focused_clients, palette);
@@ -71,7 +74,13 @@ pub fn render_tab(
         s.push_str(&right_separator.to_string());
         s
     } else {
-        ANSIStrings(&[left_separator, tab_styled_text, right_separator]).to_string()
+        ANSIStrings(&[
+            left_separator,
+            position_text,
+            tab_styled_text,
+            right_separator,
+        ])
+        .to_string()
     };
 
     LinePart {
