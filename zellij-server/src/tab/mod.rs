@@ -50,7 +50,7 @@ use zellij_utils::{
     input::{
         command::TerminalAction,
         layout::{
-            FloatingPaneLayout, PluginUserConfiguration, Run, RunPlugin, RunPluginLocation,
+            FloatingPaneLayout, PluginUserConfiguration, Run, RunPlugin, RunPluginOrAlias, RunPluginLocation,
             SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,
         },
         parse_keys,
@@ -636,7 +636,7 @@ impl Tab {
         floating_panes_layout: Vec<FloatingPaneLayout>,
         new_terminal_ids: Vec<(u32, HoldForCommand)>,
         new_floating_terminal_ids: Vec<(u32, HoldForCommand)>,
-        new_plugin_ids: HashMap<(RunPluginLocation, PluginUserConfiguration), Vec<u32>>,
+        new_plugin_ids: HashMap<RunPluginOrAlias, Vec<u32>>,
         client_id: ClientId,
     ) -> Result<()> {
         self.swap_layouts
@@ -3587,16 +3587,42 @@ impl Tab {
         self.set_force_render();
     }
 
-    pub fn find_plugin(&self, run_plugin: &RunPlugin) -> Option<PaneId> {
+    pub fn find_plugin(&self, run_plugin_or_alias: &RunPluginOrAlias) -> Option<PaneId> {
+        // let run = Some(Run::Plugin(run_plugin_or_alias.clone()));
         self.tiled_panes
-            .get_plugin_pane_id(run_plugin)
-            .or_else(|| self.floating_panes.get_plugin_pane_id(run_plugin))
+            .get_plugin_pane_id(run_plugin_or_alias)
+            .or_else(|| self.floating_panes.get_plugin_pane_id(run_plugin_or_alias))
             .or_else(|| {
-                let run = Some(Run::Plugin(run_plugin.clone()));
-                self.suppressed_panes
-                    .iter()
-                    .find(|(_id, s_p)| s_p.1.invoked_with() == &run)
-                    .map(|(id, _)| *id)
+
+                // TODO: can we somehow outsource this piece of code?
+                match run_plugin_or_alias {
+                    RunPluginOrAlias::RunPlugin(..) => {
+                        let run = Some(Run::Plugin(run_plugin_or_alias.clone()));
+                        self.suppressed_panes
+                            .iter()
+                            .find(|(_id, (_, s_p))| s_p.invoked_with() == &run)
+                            .map(|(id, _)| *id)
+                    }
+                    RunPluginOrAlias::Alias(plugin_alias) => {
+                        self.suppressed_panes
+                            .iter()
+                            .find(|(_id, (_, s_p))| {
+                                match s_p.invoked_with() {
+                                    Some(Run::Plugin(RunPluginOrAlias::Alias(pane_alias))) => pane_alias.name == plugin_alias.name && pane_alias.configuration == plugin_alias.configuration,
+                                    _ => false
+                                }
+                            })
+                            .map(|(id, _)| *id)
+                    }
+                }
+
+
+
+//                 self.suppressed_panes
+//                     .iter()
+//                     // TODO: compare properly like in tiled_panes/floating_panes
+//                     .find(|(_id, s_p)| s_p.1.invoked_with() == &run)
+//                     .map(|(id, _)| *id)
             })
     }
 
@@ -3769,7 +3795,18 @@ pub fn pane_info_for_pane(pane_id: &PaneId, pane: &Box<dyn Pane>) -> PaneInfo {
             pane_info.id = *plugin_id;
             pane_info.is_plugin = true;
             pane_info.plugin_url = pane.invoked_with().as_ref().and_then(|c| match c {
-                Run::Plugin(run_plugin) => Some(run_plugin.location.to_string()),
+                Run::Plugin(run_plugin_or_alias) => {
+                    Some(run_plugin_or_alias.location_string())
+//                     match run_plugin_or_alias {
+//                         RunPluginOrAlias::RunPlugin(run_plugin) => {
+//                             Some(run_plugin.location.to_string())
+//                         }
+//                         RunPluginOrAlias::Alias(alias) => {
+//                             // TODO: handle alias
+//                             unimplemented!()
+//                         }
+//                     }
+                }
                 _ => None,
             });
         },

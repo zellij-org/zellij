@@ -19,7 +19,7 @@ use zellij_utils::{
     input::{
         command::{RunCommand, TerminalAction},
         layout::{
-            FloatingPaneLayout, Layout, PluginUserConfiguration, Run, RunPlugin, RunPluginLocation,
+            FloatingPaneLayout, Layout, PluginUserConfiguration, Run, RunPluginOrAlias, RunPluginLocation,
             TiledPaneLayout,
         },
     },
@@ -63,7 +63,7 @@ pub enum PtyInstruction {
         Option<TiledPaneLayout>,
         Vec<FloatingPaneLayout>,
         usize,                                                           // tab_index
-        HashMap<(RunPluginLocation, PluginUserConfiguration), Vec<u32>>, // plugin_ids
+        HashMap<RunPluginOrAlias, Vec<u32>>, // plugin_ids
         ClientId,
     ), // the String is the tab name
     ClosePane(PaneId),
@@ -85,7 +85,7 @@ pub enum PtyInstruction {
         Option<bool>,   // should float
         bool,           // should be opened in place
         Option<String>, // pane title
-        RunPlugin,
+        RunPluginOrAlias,
         usize,          // tab index
         Option<PaneId>, // pane id to replace if this is to be opened "in-place"
         ClientId,
@@ -874,7 +874,7 @@ impl Pty {
         layout: TiledPaneLayout,
         floating_panes_layout: Vec<FloatingPaneLayout>,
         default_shell: Option<TerminalAction>,
-        plugin_ids: HashMap<(RunPluginLocation, PluginUserConfiguration), Vec<u32>>,
+        plugin_ids: HashMap<RunPluginOrAlias, Vec<u32>>,
         tab_index: usize,
         client_id: ClientId,
     ) -> Result<()> {
@@ -1337,7 +1337,7 @@ impl Pty {
         should_float: Option<bool>,
         should_open_in_place: bool, // should be opened in place
         pane_title: Option<String>, // pane title
-        run: RunPlugin,
+        run: RunPluginOrAlias,
         tab_index: usize,                   // tab index
         pane_id_to_replace: Option<PaneId>, // pane id to replace if this is to be opened "in-place"
         client_id: ClientId,

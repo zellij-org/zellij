@@ -37,7 +37,7 @@ use zellij_utils::{
     errors::prelude::*,
     input::{
         command::TerminalAction,
-        layout::{Layout, PluginUserConfiguration, RunPlugin, RunPluginLocation},
+        layout::{Layout, PluginUserConfiguration, RunPlugin, RunPluginOrAlias, RunPluginLocation},
         plugins::PluginsConfig,
     },
     ipc::ClientAttributes,
@@ -150,7 +150,7 @@ impl WasmBridge {
     }
     pub fn load_plugin(
         &mut self,
-        run: &RunPlugin,
+        run: &Option<RunPlugin>,
         tab_index: Option<usize>,
         size: Size,
         cwd: Option<PathBuf>,
@@ -176,95 +176,110 @@ impl WasmBridge {
 
         let plugin_id = self.next_plugin_id;
 
-        let mut plugin = self
-            .plugins
-            .get(run)
-            .with_context(|| format!("failed to resolve plugin {run:?}"))
-            .with_context(err_context)?;
-        let plugin_name = run.location.to_string();
+        match run {
+            Some(run) => {
+                let mut plugin = self
+                    .plugins
+                    .get(run)
+                    .with_context(|| format!("failed to resolve plugin {run:?}"))
+                    .with_context(err_context)?;
+                let plugin_name = run.location.to_string();
 
-        self.cached_events_for_pending_plugins
-            .insert(plugin_id, vec![]);
-        self.cached_resizes_for_pending_plugins
-            .insert(plugin_id, (size.rows, size.cols));
+                self.cached_events_for_pending_plugins
+                    .insert(plugin_id, vec![]);
+                self.cached_resizes_for_pending_plugins
+                    .insert(plugin_id, (size.rows, size.cols));
 
-        let load_plugin_task = task::spawn({
-            let plugin_dir = self.plugin_dir.clone();
-            let plugin_cache = self.plugin_cache.clone();
-            let senders = self.senders.clone();
-            let store = self.store.clone();
-            let plugin_map = self.plugin_map.clone();
-            let connected_clients = self.connected_clients.clone();
-            let path_to_default_shell = self.path_to_default_shell.clone();
-            let zellij_cwd = cwd.unwrap_or_else(|| self.zellij_cwd.clone());
-            let capabilities = self.capabilities.clone();
-            let client_attributes = self.client_attributes.clone();
-            let default_shell = self.default_shell.clone();
-            let default_layout = self.default_layout.clone();
-            async move {
-                let _ =
-                    senders.send_to_background_jobs(BackgroundJob::AnimatePluginLoading(plugin_id));
-                let mut loading_indication = LoadingIndication::new(plugin_name.clone());
+                let load_plugin_task = task::spawn({
+                    let plugin_dir = self.plugin_dir.clone();
+                    let plugin_cache = self.plugin_cache.clone();
+                    let senders = self.senders.clone();
+                    let store = self.store.clone();
+                    let plugin_map = self.plugin_map.clone();
+                    let connected_clients = self.connected_clients.clone();
+                    let path_to_default_shell = self.path_to_default_shell.clone();
+                    let zellij_cwd = cwd.unwrap_or_else(|| self.zellij_cwd.clone());
+                    let capabilities = self.capabilities.clone();
+                    let client_attributes = self.client_attributes.clone();
+                    let default_shell = self.default_shell.clone();
+                    let default_layout = self.default_layout.clone();
+                    async move {
+                        let _ =
+                            senders.send_to_background_jobs(BackgroundJob::AnimatePluginLoading(plugin_id));
+                        let mut loading_indication = LoadingIndication::new(plugin_name.clone());
 
-                if let RunPluginLocation::Remote(url) = &plugin.location {
-                    let file_name: String = PortableHash::default()
-                        .hash128(url.as_bytes())
-                        .iter()
-                        .map(ToString::to_string)
-                        .collect();
+                        if let RunPluginLocation::Remote(url) = &plugin.location {
+                            let file_name: String = PortableHash::default()
+                                .hash128(url.as_bytes())
+                                .iter()
+                                .map(ToString::to_string)
+                                .collect();
 
-                    let downloader = Downloader::new(ZELLIJ_CACHE_DIR.to_path_buf());
-                    match downloader.download(url, Some(&file_name)).await {
-                        Ok(_) => plugin.path = ZELLIJ_CACHE_DIR.join(&file_name),
-                        Err(e) => handle_plugin_loading_failure(
-                            &senders,
+                            let downloader = Downloader::new(ZELLIJ_CACHE_DIR.to_path_buf());
+                            match downloader.download(url, Some(&file_name)).await {
+                                Ok(_) => plugin.path = ZELLIJ_CACHE_DIR.join(&file_name),
+                                Err(e) => handle_plugin_loading_failure(
+                                    &senders,
+                                    plugin_id,
+                                    &mut loading_indication,
+                                    e,
+                                    cli_client_id,
+                                ),
+                            }
+                        }
+
+                        match PluginLoader::start_plugin(
                             plugin_id,
+                            client_id,
+                            &plugin,
+                            tab_index,
+                            plugin_dir,
+                            plugin_cache,
+                            senders.clone(),
+                            store,
+                            plugin_map,
+                            size,
+                            connected_clients.clone(),
                             &mut loading_indication,
-                            e,
-                            cli_client_id,
-                        ),
+                            path_to_default_shell,
+                            zellij_cwd.clone(),
+                            capabilities,
+                            client_attributes,
+                            default_shell,
+                            default_layout,
+                            skip_cache,
+                        ) {
+                            Ok(_) => handle_plugin_successful_loading(&senders, plugin_id),
+                            Err(e) => handle_plugin_loading_failure(
+                                &senders,
+                                plugin_id,
+                                &mut loading_indication,
+                                e,
+                                cli_client_id,
+                            ),
+                        }
+                        let _ = senders.send_to_plugin(PluginInstruction::ApplyCachedEvents {
+                            plugin_ids: vec![plugin_id],
+                            done_receiving_permissions: false,
+                        });
                     }
-                }
-
-                match PluginLoader::start_plugin(
-                    plugin_id,
-                    client_id,
-                    &plugin,
-                    tab_index,
-                    plugin_dir,
-                    plugin_cache,
-                    senders.clone(),
-                    store,
-                    plugin_map,
-                    size,
-                    connected_clients.clone(),
-                    &mut loading_indication,
-                    path_to_default_shell,
-                    zellij_cwd.clone(),
-                    capabilities,
-                    client_attributes,
-                    default_shell,
-                    default_layout,
-                    skip_cache,
-                ) {
-                    Ok(_) => handle_plugin_successful_loading(&senders, plugin_id),
-                    Err(e) => handle_plugin_loading_failure(
-                        &senders,
-                        plugin_id,
-                        &mut loading_indication,
-                        e,
-                        cli_client_id,
-                    ),
-                }
-                let _ = senders.send_to_plugin(PluginInstruction::ApplyCachedEvents {
-                    plugin_ids: vec![plugin_id],
-                    done_receiving_permissions: false,
                 });
+                self.loading_plugins
+                    .insert((plugin_id, run.clone()), load_plugin_task);
+                self.next_plugin_id += 1;
+            },
+            None => {
+                self.next_plugin_id += 1;
+                let mut loading_indication = LoadingIndication::new(format!("{}", plugin_id));
+                handle_plugin_loading_failure(
+                    &self.senders,
+                    plugin_id,
+                    &mut loading_indication,
+                    "Failed to resolve plugin alias",
+                    None,
+                );
             }
-        });
-        self.loading_plugins
-            .insert((plugin_id, run.clone()), load_plugin_task);
-        self.next_plugin_id += 1;
+        }
         Ok((plugin_id, client_id))
     }
     pub fn unload_plugin(&mut self, pid: PluginId) -> Result<()> {
@@ -1076,7 +1091,7 @@ impl WasmBridge {
     // returns its details
     pub fn get_or_load_plugins(
         &mut self,
-        run_plugin: RunPlugin,
+        run_plugin_or_alias: RunPluginOrAlias,
         size: Size,
         cwd: Option<PathBuf>,
         skip_cache: bool,
@@ -1086,52 +1101,61 @@ impl WasmBridge {
         pane_id_to_replace: Option<PaneId>,
         cli_client_id: Option<ClientId>,
     ) -> Vec<(PluginId, Option<ClientId>)> {
-        let all_plugin_ids = self.all_plugin_and_client_ids_for_plugin_location(
-            &run_plugin.location,
-            &run_plugin.configuration,
-        );
-        if all_plugin_ids.is_empty() {
-            if let Some(loading_plugin_id) =
-                self.plugin_id_of_loading_plugin(&run_plugin.location, &run_plugin.configuration)
-            {
-                return vec![(loading_plugin_id, None)];
-            }
-            match self.load_plugin(
-                &run_plugin,
-                None,
-                size,
-                cwd.clone(),
-                skip_cache,
-                None,
-                cli_client_id,
-            ) {
-                Ok((plugin_id, client_id)) => {
-                    drop(self.senders.send_to_screen(ScreenInstruction::AddPlugin(
-                        Some(should_float),
-                        should_be_open_in_place,
-                        run_plugin,
-                        pane_title,
-                        None,
-                        plugin_id,
-                        pane_id_to_replace,
-                        cwd,
-                        Some(client_id),
-                    )));
-                    vec![(plugin_id, Some(client_id))]
-                },
-                Err(e) => {
-                    log::error!("Failed to load plugin: {e}");
-                    if let Some(cli_client_id) = cli_client_id {
-                        let _ = self.senders.send_to_server(ServerInstruction::LogError(
-                            vec![format!("Failed to log plugin: {e}")],
-                            cli_client_id,
-                        ));
+        let run_plugin = run_plugin_or_alias.get_run_plugin();
+        match run_plugin {
+            Some(run_plugin) => {
+                let all_plugin_ids = self.all_plugin_and_client_ids_for_plugin_location(
+                    &run_plugin.location,
+                    &run_plugin.configuration,
+                );
+                if all_plugin_ids.is_empty() {
+                    if let Some(loading_plugin_id) =
+                        self.plugin_id_of_loading_plugin(&run_plugin.location, &run_plugin.configuration)
+                    {
+                        return vec![(loading_plugin_id, None)];
                     }
-                    vec![]
-                },
+                    match self.load_plugin(
+                        &Some(run_plugin),
+                        None,
+                        size,
+                        cwd.clone(),
+                        skip_cache,
+                        None,
+                        cli_client_id,
+                    ) {
+                        Ok((plugin_id, client_id)) => {
+                            drop(self.senders.send_to_screen(ScreenInstruction::AddPlugin(
+                                Some(should_float),
+                                should_be_open_in_place,
+                                run_plugin_or_alias,
+                                pane_title,
+                                None,
+                                plugin_id,
+                                pane_id_to_replace,
+                                cwd,
+                                Some(client_id),
+                            )));
+                            vec![(plugin_id, Some(client_id))]
+                        },
+                        Err(e) => {
+                            log::error!("Failed to load plugin: {e}");
+                            if let Some(cli_client_id) = cli_client_id {
+                                let _ = self.senders.send_to_server(ServerInstruction::LogError(
+                                    vec![format!("Failed to log plugin: {e}")],
+                                    cli_client_id,
+                                ));
+                            }
+                            vec![]
+                        },
+                    }
+                } else {
+                    all_plugin_ids
+                }
+            },
+            None => {
+                log::error!("Plugin not found for alias");
+                vec![]
             }
-        } else {
-            all_plugin_ids
         }
     }
     pub fn clear_plugin_map_cache(&mut self) {

@@ -19,7 +19,7 @@ use zellij_utils::{
     envs::set_session_name,
     input::command::TerminalAction,
     input::layout::{
-        FloatingPaneLayout, Layout, PluginUserConfiguration, Run, RunPlugin, RunPluginLocation,
+        FloatingPaneLayout, Layout, PluginUserConfiguration, Run, RunPlugin, RunPluginOrAlias, RunPluginLocation,
         SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,
     },
     position::Position,
@@ -219,7 +219,7 @@ pub enum ScreenInstruction {
         Vec<FloatingPaneLayout>,
         Vec<(u32, HoldForCommand)>, // new pane pids
         Vec<(u32, HoldForCommand)>, // new floating pane pids
-        HashMap<(RunPluginLocation, PluginUserConfiguration), Vec<u32>>,
+        HashMap<RunPluginOrAlias, Vec<u32>>,
         usize, // tab_index
         ClientId,
     ),
@@ -276,10 +276,10 @@ pub enum ScreenInstruction {
     PreviousSwapLayout(ClientId),
     NextSwapLayout(ClientId),
     QueryTabNames(ClientId),
-    NewTiledPluginPane(RunPlugin, Option<String>, bool, Option<PathBuf>, ClientId), // Option<String> is
+    NewTiledPluginPane(RunPluginOrAlias, Option<String>, bool, Option<PathBuf>, ClientId), // Option<String> is
     // optional pane title, bool is skip cache, Option<PathBuf> is an optional cwd
     NewFloatingPluginPane(
-        RunPlugin,
+        RunPluginOrAlias,
         Option<String>,
         bool,
         Option<PathBuf>,
@@ -288,13 +288,13 @@ pub enum ScreenInstruction {
     ), // Option<String> is an
     // optional pane title, bool
     // is skip cache, Option<PathBuf> is an optional cwd
-    NewInPlacePluginPane(RunPlugin, Option<String>, PaneId, bool, ClientId), // Option<String> is an
+    NewInPlacePluginPane(RunPluginOrAlias, Option<String>, PaneId, bool, ClientId), // Option<String> is an
     // optional pane title, bool is skip cache
-    StartOrReloadPluginPane(RunPlugin, Option<String>),
+    StartOrReloadPluginPane(RunPluginOrAlias, Option<String>),
     AddPlugin(
         Option<bool>, // should_float
         bool,         // should be opened in place
-        RunPlugin,
+        RunPluginOrAlias,
         Option<String>, // pane title
         Option<usize>,  // tab index
         u32,            // plugin id
@@ -306,9 +306,9 @@ pub enum ScreenInstruction {
     StartPluginLoadingIndication(u32, LoadingIndication), // u32 - plugin_id
     ProgressPluginLoadingOffset(u32),                 // u32 - plugin id
     RequestStateUpdateForPlugins,
-    LaunchOrFocusPlugin(RunPlugin, bool, bool, bool, Option<PaneId>, bool, ClientId), // bools are: should_float, move_to_focused_tab, should_open_in_place, Option<PaneId> is the pane id to replace, bool following it is skip_cache
+    LaunchOrFocusPlugin(RunPluginOrAlias, bool, bool, bool, Option<PaneId>, bool, ClientId), // bools are: should_float, move_to_focused_tab, should_open_in_place, Option<PaneId> is the pane id to replace, bool following it is skip_cache
     LaunchPlugin(
-        RunPlugin,
+        RunPluginOrAlias,
         bool,
         bool,
         Option<PaneId>,
@@ -1219,7 +1219,7 @@ impl Screen {
         floating_panes_layout: Vec<FloatingPaneLayout>,
         new_terminal_ids: Vec<(u32, HoldForCommand)>,
         new_floating_terminal_ids: Vec<(u32, HoldForCommand)>,
-        new_plugin_ids: HashMap<(RunPluginLocation, PluginUserConfiguration), Vec<u32>>,
+        new_plugin_ids: HashMap<RunPluginOrAlias, Vec<u32>>,
         tab_index: usize,
         client_id: ClientId,
     ) -> Result<()> {
@@ -1269,6 +1269,7 @@ impl Screen {
         };
 
         // apply the layout to the new tab
+        eprintln!("here, right?");
         self.tabs
             .get_mut(&tab_index)
             .context("couldn't find tab with index {tab_index}")
@@ -1740,7 +1741,7 @@ impl Screen {
 
     pub fn focus_plugin_pane(
         &mut self,
-        run_plugin: &RunPlugin,
+        run_plugin: &RunPluginOrAlias,
         should_float: bool,
         move_to_focused_tab: bool,
         client_id: ClientId,
@@ -2843,6 +2844,7 @@ pub(crate) fn screen_thread_main(
                 swap_layouts,
                 client_id,
             ) => {
+                log::info!("ScreenInstruction::NewTab");
                 let tab_index = screen.get_new_tab_index();
                 pending_tab_ids.insert(tab_index);
                 screen.new_tab(tab_index, swap_layouts, tab_name.clone(), client_id)?;
@@ -2867,6 +2869,7 @@ pub(crate) fn screen_thread_main(
                 tab_index,
                 client_id,
             ) => {
+                eprintln!("ScreenInstruction::ApplyLayout: {:?}", new_plugin_ids);
                 screen.apply_layout(
                     layout,
                     floating_panes_layout,
@@ -3352,7 +3355,7 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::AddPlugin(
                 should_float,
                 should_be_in_place,
-                run_plugin_location,
+                run_plugin_or_alias,
                 pane_title,
                 tab_index,
                 plugin_id,
@@ -3365,10 +3368,10 @@ pub(crate) fn screen_thread_main(
                         "({}) - {}",
                         cwd.map(|cwd| cwd.display().to_string())
                             .unwrap_or(".".to_owned()),
-                        run_plugin_location.location
+                        run_plugin_or_alias.location_string()
                     )
                 });
-                let run_plugin = Run::Plugin(run_plugin_location);
+                let run_plugin = Run::Plugin(run_plugin_or_alias);
 
                 if should_be_in_place {
                     if let Some(pane_id_to_replace) = pane_id_to_replace {
@@ -3498,6 +3501,7 @@ pub(crate) fn screen_thread_main(
                     },
                 },
                 None => {
+                    log::info!("run_plugin: {:?}", run_plugin);
                     let client_id = if screen.active_tab_indices.contains_key(&client_id) {
                         Some(client_id)
                     } else {

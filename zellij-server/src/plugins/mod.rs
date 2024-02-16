@@ -33,7 +33,7 @@ use zellij_utils::{
     input::{
         command::TerminalAction,
         layout::{
-            FloatingPaneLayout, Layout, PluginUserConfiguration, Run, RunPlugin, RunPluginLocation,
+            FloatingPaneLayout, Layout, Run, RunPlugin, RunPluginOrAlias,
             TiledPaneLayout,
         },
         plugins::PluginsConfig,
@@ -50,7 +50,7 @@ pub enum PluginInstruction {
         Option<bool>,   // should float
         bool,           // should be opened in place
         Option<String>, // pane title
-        RunPlugin,
+        RunPluginOrAlias,
         usize,          // tab index
         Option<PaneId>, // pane id to replace if this is to be opened "in-place"
         ClientId,
@@ -63,7 +63,7 @@ pub enum PluginInstruction {
     Reload(
         Option<bool>,   // should float
         Option<String>, // pane title
-        RunPlugin,
+        RunPluginOrAlias,
         usize, // tab index
         Size,
     ),
@@ -174,7 +174,7 @@ pub(crate) fn plugin_thread_main(
     store: Store,
     data_dir: PathBuf,
     plugins: PluginsConfig,
-    layout: Box<Layout>,
+    mut layout: Box<Layout>,
     path_to_default_shell: PathBuf,
     zellij_cwd: PathBuf,
     capabilities: PluginCapabilities,
@@ -185,6 +185,18 @@ pub(crate) fn plugin_thread_main(
 
     let plugin_dir = data_dir.join("plugins/");
     let plugin_global_data_dir = plugin_dir.join("data");
+
+    // TODO: better, not hard coded here, etc.
+    let mut plugin_aliases = HashMap::new();
+    let mut filter_configuration = BTreeMap::new();
+    filter_configuration.insert("key_from_dict".to_owned(), "value_from_dict".to_owned());
+    plugin_aliases.insert("session-manager-alias", RunPlugin::from_url("zellij:session-manager").unwrap());
+    plugin_aliases.insert("filepicker", RunPlugin::from_url("zellij:strider").unwrap());
+    plugin_aliases.insert(
+        "filter",
+        RunPlugin::from_url("file:/home/aram/code/rust-plugin-example/target/wasm32-wasi/debug/rust-plugin-example.wasm").unwrap().with_configuration(filter_configuration)
+    );
+    layout.populate_plugin_aliases_in_layout(&plugin_aliases);
 
     let store = Arc::new(Mutex::new(store));
 
@@ -213,90 +225,103 @@ pub(crate) fn plugin_thread_main(
                 should_float,
                 should_be_open_in_place,
                 pane_title,
-                run,
+                mut run_plugin_or_alias,
                 tab_index,
                 pane_id_to_replace,
                 client_id,
                 size,
                 cwd,
                 skip_cache,
-            ) => match wasm_bridge.load_plugin(
-                &run,
-                Some(tab_index),
-                size,
-                cwd.clone(),
-                skip_cache,
-                Some(client_id),
-                None,
-            ) {
-                Ok((plugin_id, client_id)) => {
-                    drop(bus.senders.send_to_screen(ScreenInstruction::AddPlugin(
-                        should_float,
-                        should_be_open_in_place,
-                        run,
-                        pane_title,
-                        Some(tab_index),
-                        plugin_id,
-                        pane_id_to_replace,
-                        cwd,
-                        Some(client_id),
-                    )));
-                },
-                Err(e) => {
-                    log::error!("Failed to load plugin: {e}");
-                },
-            },
+            ) => {
+                log::info!("run_plugin_or_alias: {:?}", run_plugin_or_alias);
+                run_plugin_or_alias.populate_run_plugin_if_needed(&plugin_aliases);
+                let run_plugin = run_plugin_or_alias.get_run_plugin();
+                match wasm_bridge.load_plugin(
+                    &run_plugin,
+                    Some(tab_index),
+                    size,
+                    cwd.clone(),
+                    skip_cache,
+                    Some(client_id),
+                    None,
+                ) {
+                    Ok((plugin_id, client_id)) => {
+                        drop(bus.senders.send_to_screen(ScreenInstruction::AddPlugin(
+                            should_float,
+                            should_be_open_in_place,
+                            run_plugin_or_alias,
+                            pane_title,
+                            Some(tab_index),
+                            plugin_id,
+                            pane_id_to_replace,
+                            cwd,
+                            Some(client_id),
+                        )));
+                    },
+                    Err(e) => {
+                        log::error!("Failed to load plugin: {e}");
+                    },
+                }
+            }
             PluginInstruction::Update(updates) => {
                 wasm_bridge.update_plugins(updates, shutdown_send.clone())?;
             },
             PluginInstruction::Unload(pid) => {
                 wasm_bridge.unload_plugin(pid)?;
             },
-            PluginInstruction::Reload(should_float, pane_title, run, tab_index, size) => {
-                match wasm_bridge.reload_plugin(&run) {
-                    Ok(_) => {
-                        let _ = bus
-                            .senders
-                            .send_to_server(ServerInstruction::UnblockInputThread);
-                    },
-                    Err(err) => match err.downcast_ref::<ZellijError>() {
-                        Some(ZellijError::PluginDoesNotExist) => {
-                            log::warn!("Plugin {} not found, starting it instead", run.location);
-                            // we intentionally do not provide the client_id here because it belongs to
-                            // the cli who spawned the command and is not an existing client_id
-                            let skip_cache = true; // when reloading we always skip cache
-                            match wasm_bridge.load_plugin(
-                                &run,
-                                Some(tab_index),
-                                size,
-                                None,
-                                skip_cache,
-                                None,
-                                None,
-                            ) {
-                                Ok((plugin_id, _client_id)) => {
-                                    let should_be_open_in_place = false;
-                                    drop(bus.senders.send_to_screen(ScreenInstruction::AddPlugin(
-                                        should_float,
-                                        should_be_open_in_place,
-                                        run,
-                                        pane_title,
+            PluginInstruction::Reload(should_float, pane_title, mut run_plugin_or_alias, tab_index, size) => {
+                run_plugin_or_alias.populate_run_plugin_if_needed(&plugin_aliases);
+                match run_plugin_or_alias.get_run_plugin() {
+                    Some(run_plugin) => {
+                        match wasm_bridge.reload_plugin(&run_plugin) {
+                            Ok(_) => {
+                                let _ = bus
+                                    .senders
+                                    .send_to_server(ServerInstruction::UnblockInputThread);
+                            },
+                            Err(err) => match err.downcast_ref::<ZellijError>() {
+                                Some(ZellijError::PluginDoesNotExist) => {
+                                    log::warn!("Plugin {} not found, starting it instead", run_plugin.location);
+                                    // we intentionally do not provide the client_id here because it belongs to
+                                    // the cli who spawned the command and is not an existing client_id
+                                    let skip_cache = true; // when reloading we always skip cache
+                                    match wasm_bridge.load_plugin(
+                                        &Some(run_plugin),
                                         Some(tab_index),
-                                        plugin_id,
+                                        size,
+                                        None,
+                                        skip_cache,
                                         None,
                                         None,
-                                        None,
-                                    )));
+                                    ) {
+                                        Ok((plugin_id, _client_id)) => {
+                                            let should_be_open_in_place = false;
+                                            drop(bus.senders.send_to_screen(ScreenInstruction::AddPlugin(
+                                                should_float,
+                                                should_be_open_in_place,
+                                                run_plugin_or_alias,
+                                                pane_title,
+                                                Some(tab_index),
+                                                plugin_id,
+                                                None,
+                                                None,
+                                                None,
+                                            )));
+                                        },
+                                        Err(e) => {
+                                            log::error!("Failed to load plugin: {e}");
+                                        },
+                                    };
                                 },
-                                Err(e) => {
-                                    log::error!("Failed to load plugin: {e}");
+                                _ => {
+                                    return Err(err);
                                 },
-                            };
-                        },
-                        _ => {
-                            return Err(err);
-                        },
+                            },
+                        }
                     },
+                    None => {
+                        log::error!("Failed to find plugin info for: {:?}", run_plugin_or_alias)
+                    }
                 }
             },
             PluginInstruction::Resize(pid, new_columns, new_rows) => {
@@ -311,15 +336,22 @@ pub(crate) fn plugin_thread_main(
             PluginInstruction::NewTab(
                 cwd,
                 terminal_action,
-                tab_layout,
-                floating_panes_layout,
+                mut tab_layout,
+                mut floating_panes_layout,
                 tab_index,
                 client_id,
             ) => {
                 let mut plugin_ids: HashMap<
-                    (RunPluginLocation, PluginUserConfiguration),
+                    RunPluginOrAlias,
                     Vec<PluginId>,
                 > = HashMap::new();
+                tab_layout = tab_layout.or_else(|| Some(layout.new_tab().0)); // TODO: does this ruin the
+                                                                        // universe???
+                tab_layout.as_mut().map(|t| t.populate_plugin_aliases_in_layout(&plugin_aliases));
+                floating_panes_layout
+                    .iter_mut().for_each(|f| {
+                        f.run.as_mut().map(|f| f.populate_run_plugin_if_needed(&plugin_aliases));
+                    });
                 let mut extracted_run_instructions = tab_layout
                     .clone()
                     .unwrap_or_else(|| layout.new_tab().0)
@@ -337,10 +369,20 @@ pub(crate) fn plugin_thread_main(
                     .collect();
                 extracted_run_instructions.append(&mut extracted_floating_plugins);
                 for run_instruction in extracted_run_instructions {
-                    if let Some(Run::Plugin(run)) = run_instruction {
+                    // if let Some(Run::Plugin(run)) = run_instruction {
+                    // TODO: handle plugin alias
+                    // if let Some(Run::Plugin(RunPluginOrAlias::RunPlugin(run))) = run_instruction {
+                    if let Some(Run::Plugin(run_plugin_or_alias)) = run_instruction {
+                        // TODO: add the ability to add an alias to plugin_ids, then add the
+                        // alias here and get a new plugin id from wasm_bridge
+                        // (wasm_bridge.plugin_not_found(alias)?)
+                        // then when applying the layout get it from there if it is None
+                        // the above method should use the error capabilities to send a plugin
+                        // not found message to said pane
+                        let run_plugin = run_plugin_or_alias.get_run_plugin();
                         let skip_cache = false;
                         let (plugin_id, _client_id) = wasm_bridge.load_plugin(
-                            &run,
+                            &run_plugin,
                             Some(tab_index),
                             size,
                             None,
@@ -349,7 +391,7 @@ pub(crate) fn plugin_thread_main(
                             None,
                         )?;
                         plugin_ids
-                            .entry((run.location, run.configuration))
+                            .entry(run_plugin_or_alias.clone())
                             .or_default()
                             .push(plugin_id);
                     }
@@ -488,6 +530,7 @@ pub(crate) fn plugin_thread_main(
                             &args,
                             &bus,
                             &mut wasm_bridge,
+                            &plugin_aliases,
                         );
                     },
                     None => {
@@ -550,6 +593,7 @@ pub(crate) fn plugin_thread_main(
                             &Some(message.message_args),
                             &bus,
                             &mut wasm_bridge,
+                            &plugin_aliases,
                         );
                     },
                     None => {
@@ -660,16 +704,18 @@ fn pipe_to_specific_plugins(
     args: &Option<BTreeMap<String, String>>,
     bus: &Bus<PluginInstruction>,
     wasm_bridge: &mut WasmBridge,
+    plugin_aliases: &HashMap<&str, RunPlugin>,
 ) {
     let is_private = true;
     let size = Size::default();
-    match RunPlugin::from_url(&plugin_url) {
-        Ok(mut run_plugin) => {
-            if let Some(configuration) = configuration {
-                run_plugin.configuration = PluginUserConfiguration::new(configuration.clone());
-            }
+    match RunPluginOrAlias::from_url(&plugin_url, configuration, Some(plugin_aliases), cwd.clone()) {
+    // match RunPlugin::from_url(&plugin_url) {
+        Ok(run_plugin_or_alias) => {
+//             if let Some(configuration) = configuration {
+//                 run_plugin.configuration = PluginUserConfiguration::new(configuration.clone());
+//             }
             let all_plugin_ids = wasm_bridge.get_or_load_plugins(
-                run_plugin,
+                run_plugin_or_alias,
                 size,
                 cwd.clone(),
                 skip_cache,

@@ -22,7 +22,7 @@ use zellij_utils::{
     errors::prelude::*,
     input::{
         command::RunCommand,
-        layout::{Run, RunPlugin, SplitDirection},
+        layout::{Run, RunPlugin, RunPluginOrAlias, SplitDirection},
     },
     pane_size::{Offset, PaneGeom, Size, SizeInPixels, Viewport},
 };
@@ -1744,12 +1744,27 @@ impl TiledPanes {
     fn reset_boundaries(&mut self) {
         self.client_id_to_boundaries.clear();
     }
-    pub fn get_plugin_pane_id(&self, run_plugin: &RunPlugin) -> Option<PaneId> {
-        let run = Some(Run::Plugin(run_plugin.clone()));
-        self.panes
-            .iter()
-            .find(|(_id, s_p)| s_p.invoked_with() == &run)
-            .map(|(id, _)| *id)
+    pub fn get_plugin_pane_id(&self, run_plugin_or_alias: &RunPluginOrAlias) -> Option<PaneId> {
+        match run_plugin_or_alias {
+            RunPluginOrAlias::RunPlugin(..) => {
+                let run = Some(Run::Plugin(run_plugin_or_alias.clone()));
+                self.panes
+                    .iter()
+                    .find(|(_id, s_p)| s_p.invoked_with() == &run)
+                    .map(|(id, _)| *id)
+            }
+            RunPluginOrAlias::Alias(plugin_alias) => {
+                self.panes
+                    .iter()
+                    .find(|(_id, s_p)| {
+                        match s_p.invoked_with() {
+                            Some(Run::Plugin(RunPluginOrAlias::Alias(pane_alias))) => pane_alias.name == plugin_alias.name && pane_alias.configuration == plugin_alias.configuration,
+                            _ => false
+                        }
+                    })
+                    .map(|(id, _)| *id)
+            }
+        }
     }
     pub fn pane_info(&self) -> Vec<PaneInfo> {
         let mut pane_infos = vec![];

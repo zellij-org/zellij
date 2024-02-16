@@ -7,7 +7,7 @@ use crate::envs::EnvironmentVariables;
 use crate::home::{find_default_config_dir, get_layout_dir};
 use crate::input::config::{Config, ConfigError, KdlError};
 use crate::input::keybinds::Keybinds;
-use crate::input::layout::{Layout, PluginUserConfiguration, RunPlugin, RunPluginLocation};
+use crate::input::layout::{Layout, PluginUserConfiguration, RunPluginOrAlias, RunPluginLocation};
 use crate::input::options::{Clipboard, OnForceClose, Options};
 use crate::input::permission::{GrantedPermission, PermissionCache};
 use crate::input::plugins::{PluginConfig, PluginTag, PluginType, PluginsConfig};
@@ -958,15 +958,23 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                     .and_then(|c_m| kdl_child_bool_value_for_entry(c_m, "skip_plugin_cache"))
                     .unwrap_or(false);
                 let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-                let location = RunPluginLocation::parse(&plugin_path, Some(current_dir))?;
+                // let location = RunPluginLocation::parse(&plugin_path, Some(current_dir))?;
                 let configuration = KdlLayoutParser::parse_plugin_user_configuration(&kdl_action)?;
-                let run_plugin = RunPlugin {
-                    location,
-                    _allow_exec_host_cmd: false,
-                    configuration,
-                };
+                let run_plugin_or_alias = RunPluginOrAlias::from_url(&plugin_path, &Some(configuration.inner().clone()), None, Some(current_dir)).map_err(|e| {
+                    ConfigError::new_kdl_error(
+                        format!("Failed to parse plugin: {}", e),
+                        kdl_action.span().offset(),
+                        kdl_action.span().len(),
+                    )
+                })?;
+
+//                 let run_plugin = RunPlugin {
+//                     location,
+//                     _allow_exec_host_cmd: false,
+//                     configuration,
+//                 };
                 Ok(Action::LaunchOrFocusPlugin(
-                    run_plugin,
+                    run_plugin_or_alias,
                     should_float,
                     move_to_focused_tab,
                     should_open_in_place,
@@ -996,15 +1004,23 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                     .and_then(|c_m| kdl_child_bool_value_for_entry(c_m, "skip_plugin_cache"))
                     .unwrap_or(false);
                 let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-                let location = RunPluginLocation::parse(&plugin_path, Some(current_dir))?;
+//                let location = RunPluginLocation::parse(&plugin_path, Some(current_dir))?;
+//                 let configuration = KdlLayoutParser::parse_plugin_user_configuration(&kdl_action)?;
+//                 let run_plugin = RunPlugin {
+//                     location,
+//                     _allow_exec_host_cmd: false,
+//                     configuration,
+//                 };
                 let configuration = KdlLayoutParser::parse_plugin_user_configuration(&kdl_action)?;
-                let run_plugin = RunPlugin {
-                    location,
-                    _allow_exec_host_cmd: false,
-                    configuration,
-                };
+                let run_plugin_or_alias = RunPluginOrAlias::from_url(&plugin_path, &Some(configuration.inner().clone()), None, Some(current_dir)).map_err(|e| {
+                    ConfigError::new_kdl_error(
+                        format!("Failed to parse plugin: {}", e),
+                        kdl_action.span().offset(),
+                        kdl_action.span().len(),
+                    )
+                })?;
                 Ok(Action::LaunchPlugin(
-                    run_plugin,
+                    run_plugin_or_alias,
                     should_float,
                     should_open_in_place,
                     skip_plugin_cache,

@@ -1,6 +1,6 @@
 ---
 source: zellij-utils/src/setup.rs
-assertion_line: 771
+assertion_line: 798
 expression: "format!(\"{:#?}\", config)"
 ---
 Config {
@@ -2493,17 +2493,19 @@ Config {
                 'w',
             ): [
                 LaunchOrFocusPlugin(
-                    RunPlugin {
-                        _allow_exec_host_cmd: false,
-                        location: Zellij(
-                            PluginTag(
-                                "session-manager",
+                    RunPlugin(
+                        RunPlugin {
+                            _allow_exec_host_cmd: false,
+                            location: Zellij(
+                                PluginTag(
+                                    "session-manager",
+                                ),
                             ),
-                        ),
-                        configuration: PluginUserConfiguration(
-                            {},
-                        ),
-                    },
+                            configuration: PluginUserConfiguration(
+                                {},
+                            ),
+                        },
+                    ),
                     true,
                     true,
                     false,

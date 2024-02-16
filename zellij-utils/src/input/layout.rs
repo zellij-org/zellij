@@ -20,6 +20,7 @@ use crate::{
 };
 
 use std::cmp::Ordering;
+use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::str::FromStr;
 
@@ -80,10 +81,77 @@ impl SplitSize {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+pub enum RunPluginOrAlias {
+    RunPlugin(RunPlugin),
+    Alias(PluginAlias),
+}
+
+impl Default for RunPluginOrAlias {
+    fn default() -> Self {
+        RunPluginOrAlias::RunPlugin(Default::default())
+    }
+}
+
+impl RunPluginOrAlias {
+    pub fn location_string(&self) -> String {
+        match self {
+            RunPluginOrAlias::RunPlugin(run_plugin) => run_plugin.location.display(),
+            RunPluginOrAlias::Alias(plugin_alias) => plugin_alias.name.clone(),
+        }
+    }
+    pub fn populate_run_plugin_if_needed(&mut self, alias_dict: &HashMap<&str, RunPlugin>) {
+        if let RunPluginOrAlias::Alias(run_plugin_alias) = self {
+            if run_plugin_alias.run_plugin.is_some() {
+                log::warn!("Overriding plugin alias");
+            }
+            let merged_run_plugin = alias_dict
+                .get(run_plugin_alias.name.as_str())
+                .map(|r| r.clone().merge_configuration(&run_plugin_alias.configuration.as_ref().map(|c| c.inner().clone())));
+            run_plugin_alias.run_plugin = merged_run_plugin;
+        }
+    }
+    pub fn get_run_plugin(&self) -> Option<RunPlugin> {
+        match self {
+            RunPluginOrAlias::RunPlugin(run_plugin) => Some(run_plugin.clone()),
+            RunPluginOrAlias::Alias(plugin_alias) => plugin_alias.run_plugin.clone()
+        }
+    }
+    pub fn get_configuration(&self) -> Option<PluginUserConfiguration> {
+        self.get_run_plugin().map(|r| r.configuration.clone())
+    }
+    pub fn from_url(
+        url: &str,
+        configuration: &Option<BTreeMap<String, String>>,
+        alias_dict: Option<&HashMap<&str, RunPlugin>>,
+        cwd: Option<PathBuf>
+    ) -> Result<Self, String> {
+        match RunPluginLocation::parse(&url, cwd) {
+            Ok(location) => {
+                Ok(RunPluginOrAlias::RunPlugin(RunPlugin {
+                    _allow_exec_host_cmd: false,
+                    location,
+                    configuration: configuration.as_ref().map(|c| PluginUserConfiguration::new(c.clone())).unwrap_or_default(),
+                }))
+            },
+            Err(PluginsConfigError::InvalidUrlScheme(_)) | Err(PluginsConfigError::InvalidUrl(..))=> {
+                let mut plugin_alias = PluginAlias::new(&url, configuration);
+                if let Some(alias_dict) = alias_dict {
+                    plugin_alias.run_plugin = alias_dict.get(&url).map(|r| r.clone().merge_configuration(configuration));
+                }
+                Ok(RunPluginOrAlias::Alias(plugin_alias))
+            },
+            Err(e) => {
+                return Err(format!("Failed to parse plugin location {url}: {}", e));
+            }
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub enum Run {
     #[serde(rename = "plugin")]
-    Plugin(RunPlugin),
+    Plugin(RunPluginOrAlias),
     #[serde(rename = "command")]
     Command(RunCommand),
     EditFile(PathBuf, Option<usize>, Option<PathBuf>), // TODO: merge this with TerminalAction::OpenFile
@@ -227,6 +295,23 @@ impl Run {
             Run::Cwd(cwd) => Some(cwd.clone()),
         }
     }
+    pub fn get_run_plugin(&self) -> Option<RunPlugin> {
+        match self {
+            Run::Plugin(RunPluginOrAlias::RunPlugin(run_plugin)) => Some(run_plugin.clone()),
+            // Run::Plugin(RunPluginOrAlias::Alias(plugin_alias)) => plugin_alias.run_plugin.as_ref().map(|r| r.clone()),
+            Run::Plugin(RunPluginOrAlias::Alias(plugin_alias)) => {
+                log::info!("plugin_alias: {:?}", plugin_alias);
+                plugin_alias.run_plugin.as_ref().map(|r| r.clone())
+            }
+            _ => None
+        }
+    }
+    pub fn populate_run_plugin_if_needed(&mut self, alias_dict: &HashMap<&str, RunPlugin>) {
+        match self {
+            Run::Plugin(run_plugin_alias) => run_plugin_alias.populate_run_plugin_if_needed(alias_dict),
+            _ => {}
+        }
+    }
 }
 
 #[allow(clippy::derive_hash_xor_eq)]
@@ -245,6 +330,33 @@ impl RunPlugin {
             location,
             ..Default::default()
         })
+    }
+    pub fn with_configuration(mut self, configuration: BTreeMap<String, String>) -> Self {
+        self.configuration = PluginUserConfiguration::new(configuration);
+        self
+    }
+    pub fn merge_configuration(mut self, configuration: &Option<BTreeMap<String, String>>) -> Self {
+        if let Some(configuration) = configuration {
+            self.configuration.merge(configuration);
+        }
+        self
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Hash, Default, PartialEq, Eq)]
+pub struct PluginAlias {
+    pub name: String,
+    pub configuration: Option<PluginUserConfiguration>,
+    pub run_plugin: Option<RunPlugin>,
+}
+
+impl PluginAlias {
+    pub fn new(name: &str, configuration: &Option<BTreeMap<String, String>>) -> Self {
+        PluginAlias {
+            name: name.to_owned(),
+            configuration: configuration.as_ref().map(|c| PluginUserConfiguration::new(c.clone())),
+            ..Default::default()
+        }
     }
 }
 
@@ -279,6 +391,11 @@ impl PluginUserConfiguration {
     }
     pub fn insert(&mut self, config_key: impl Into<String>, config_value: impl Into<String>) {
         self.0.insert(config_key.into(), config_value.into());
+    }
+    pub fn merge(&mut self, other_config: &BTreeMap<String, String>) {
+        for (key, value) in other_config {
+            self.0.insert(key.to_owned(), value.clone());
+        }
     }
 }
 
@@ -704,6 +821,16 @@ impl TiledPaneLayout {
         }
         for child in self.children.iter_mut() {
             child.add_cwd_to_layout(cwd);
+        }
+    }
+    pub fn populate_plugin_aliases_in_layout(&mut self, plugin_aliases: &HashMap<&str, RunPlugin>) {
+        log::info!("populate_plugin_aliases_in_layout: {:?}", self.run);
+        match self.run.as_mut() {
+            Some(run) => run.populate_run_plugin_if_needed(plugin_aliases),
+            _ => {}
+        }
+        for child in self.children.iter_mut() {
+            child.populate_plugin_aliases_in_layout(plugin_aliases);
         }
     }
     pub fn deepest_depth(&self) -> usize {
@@ -1139,6 +1266,20 @@ impl Layout {
                 }
             },
             Err(_e) => None,
+        }
+    }
+    pub fn populate_plugin_aliases_in_layout(&mut self, plugin_aliases: &HashMap<&str, RunPlugin>) {
+        for tab in self.tabs.iter_mut() {
+            tab.1.populate_plugin_aliases_in_layout(plugin_aliases);
+            for floating_pane_layout in tab.2.iter_mut() {
+                floating_pane_layout.run.as_mut().map(|f| f.populate_run_plugin_if_needed(&plugin_aliases));
+            }
+        }
+        if let Some(template) = self.template.as_mut() {
+            template.0.populate_plugin_aliases_in_layout(plugin_aliases);
+            for floating_pane_layout in template.1.iter_mut() {
+                floating_pane_layout.run.as_mut().map(|f| f.populate_run_plugin_if_needed(&plugin_aliases));
+            }
         }
     }
 }
