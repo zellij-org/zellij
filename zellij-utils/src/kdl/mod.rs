@@ -456,12 +456,20 @@ impl Action {
             "MoveTab" => {
                 let direction = Direction::from_str(string.as_str()).map_err(|_| {
                     ConfigError::new_kdl_error(
-                        format!("Invalid horizontal direction: '{}'", string),
+                        format!("Invalid direction: '{}'", string),
                         action_node.span().offset(),
                         action_node.span().len(),
                     )
                 })?;
-                Ok(Action::MoveTab(direction))
+                if direction.is_vertical() {
+                    Err(ConfigError::new_kdl_error(
+                        format!("Invalid horizontal direction: '{}'", string),
+                        action_node.span().offset(),
+                        action_node.span().len(),
+                    ))
+                } else {
+                    Ok(Action::MoveTab(direction))
+                }
             },
             "MovePane" => {
                 if string.is_empty() {
