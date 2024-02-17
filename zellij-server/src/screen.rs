@@ -1587,7 +1587,12 @@ impl Screen {
         let Some(&active_tab_idx) = self.active_tab_indices.get(&client_id) else {
             return Ok(());
         };
-        let left_tab_idx = self.index_on_left_of(active_tab_idx);
+
+        // wraps around: [tab1, tab2, tab3] => [tab1, tab2, tab3]
+        //                 ^                                 ^
+        //          active_tab_idx                     left_tab_idx
+        let left_tab_idx = (active_tab_idx + self.tabs.len() - 1) % self.tabs.len();
+
         self.switch_tabs(active_tab_idx, left_tab_idx, client_id);
         self.log_and_report_session_state()
             .context("failed to move tab to left")?;
@@ -1600,14 +1605,6 @@ impl Screen {
         } else {
             self.get_first_client_id()
         }
-    }
-
-    fn index_on_left_of(&self, current_index: usize) -> usize {
-        // wraps around: [tab1, tab2, tab3] => [tab1, tab2, tab3]
-        //                 ^                                 ^
-        //            current_index               index_on_left_of(current_index)
-        let tabs_count = self.tabs.len();
-        (current_index + tabs_count - 1) % tabs_count
     }
 
     fn switch_tabs(&mut self, active_tab_idx: usize, other_tab_idx: usize, client_id: u16) {
@@ -1652,19 +1649,16 @@ impl Screen {
         let Some(&active_tab_idx) = self.active_tab_indices.get(&client_id) else {
             return Ok(());
         };
-        let right_tab_idx = self.index_on_right_of(active_tab_idx);
+
+        // wraps around: [tab1, tab2, tab3] => [tab1, tab2, tab3]
+        //                             ^          ^
+        //                     active_tab_idx   right_tab_idx
+        let right_tab_idx = (active_tab_idx + 1) % self.tabs.len();
+
         self.switch_tabs(active_tab_idx, right_tab_idx, client_id);
         self.log_and_report_session_state()
             .context("failed to move active tab to right")?;
         Ok(())
-    }
-
-    fn index_on_right_of(&self, current_index: usize) -> usize {
-        // wraps around: [tab1, tab2, tab3] => [tab1, tab2, tab3]
-        //                             ^          ^
-        //                     current_index index_on_right_of(current_index)
-        let tabs_count = self.tabs.len();
-        (current_index + 1) % tabs_count
     }
 
     pub fn change_mode(&mut self, mut mode_info: ModeInfo, client_id: ClientId) -> Result<()> {
