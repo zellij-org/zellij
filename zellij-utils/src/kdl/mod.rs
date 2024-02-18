@@ -453,6 +453,24 @@ impl Action {
                 })?;
                 Ok(Action::MoveFocusOrTab(direction))
             },
+            "MoveTab" => {
+                let direction = Direction::from_str(string.as_str()).map_err(|_| {
+                    ConfigError::new_kdl_error(
+                        format!("Invalid direction: '{}'", string),
+                        action_node.span().offset(),
+                        action_node.span().len(),
+                    )
+                })?;
+                if direction.is_vertical() {
+                    Err(ConfigError::new_kdl_error(
+                        format!("Invalid horizontal direction: '{}'", string),
+                        action_node.span().offset(),
+                        action_node.span().len(),
+                    ))
+                } else {
+                    Ok(Action::MoveTab(direction))
+                }
+            },
             "MovePane" => {
                 if string.is_empty() {
                     return Ok(Action::MovePane(None));
@@ -734,6 +752,11 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                 kdl_action
             ),
             "MoveFocus" => parse_kdl_action_char_or_string_arguments!(
+                action_name,
+                action_arguments,
+                kdl_action
+            ),
+            "MoveTab" => parse_kdl_action_char_or_string_arguments!(
                 action_name,
                 action_arguments,
                 kdl_action
