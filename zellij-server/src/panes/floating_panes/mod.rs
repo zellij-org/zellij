@@ -887,7 +887,8 @@ impl FloatingPanes {
                     .find(|(_id, s_p)| {
                         match s_p.invoked_with() {
                             // Some(Run::Plugin(RunPluginOrAlias::Alias(pane_alias))) => pane_alias.name == plugin_alias.name,
-                            Some(Run::Plugin(RunPluginOrAlias::Alias(pane_alias))) => pane_alias.name == plugin_alias.name && pane_alias.configuration == plugin_alias.configuration,
+                            Some(Run::Plugin(RunPluginOrAlias::Alias(pane_alias))) => pane_alias.name == plugin_alias.name &&
+                                pane_alias.configuration.as_ref().and_then(|c| if c.inner().is_empty() { None } else { Some(c)} ) == plugin_alias.configuration.as_ref().and_then(|c| if c.inner().is_empty() { None } else { Some(c) }),
                             _ => false
                         }
                     })

@@ -1754,11 +1754,15 @@ impl TiledPanes {
                     .map(|(id, _)| *id)
             }
             RunPluginOrAlias::Alias(plugin_alias) => {
+                eprintln!("plugin_alias: {:?}", plugin_alias);
                 self.panes
                     .iter()
                     .find(|(_id, s_p)| {
+                        eprintln!("comparing with: {:?}", s_p.invoked_with());
                         match s_p.invoked_with() {
-                            Some(Run::Plugin(RunPluginOrAlias::Alias(pane_alias))) => pane_alias.name == plugin_alias.name && pane_alias.configuration == plugin_alias.configuration,
+                            Some(Run::Plugin(RunPluginOrAlias::Alias(pane_alias))) => pane_alias.name == plugin_alias.name &&
+                                pane_alias.configuration.as_ref().and_then(|c| if c.inner().is_empty() { None } else { Some(c)} ) == plugin_alias.configuration.as_ref().and_then(|c| if c.inner().is_empty() { None } else { Some(c) }),
+                            // Some(Run::Plugin(RunPluginOrAlias::Alias(pane_alias))) => pane_alias.name == plugin_alias.name && pane_alias.configuration == plugin_alias.configuration,
                             _ => false
                         }
                     })

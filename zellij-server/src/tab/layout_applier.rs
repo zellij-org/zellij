@@ -269,11 +269,13 @@ impl<'a> LayoutApplier<'a> {
                     // if let Some(run_plugin) = layout.run.as_ref().and_then(|r| r.get_run_plugin()) {
                     if let Some(Run::Plugin(run)) = layout.run.clone() {
                         let pane_title = run.location_string();
+                        eprintln!("new_plugin_ids: {:#?}, \nrun: {:#?}", new_plugin_ids, run);
                         let pid = new_plugin_ids
                             // .get_mut(&(run_plugin.location, run_plugin.configuration))
                             .get_mut(&run)
                             .and_then(|ids| ids.pop())
                             .with_context(err_context)?;
+                        eprintln!("not here!");
                         let mut new_plugin = PluginPane::new(
                             pid,
                             *position_and_size,

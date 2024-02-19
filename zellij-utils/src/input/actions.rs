@@ -600,7 +600,8 @@ impl Action {
                 skip_plugin_cache,
             } => {
                 let current_dir = get_current_dir();
-                let run_plugin_or_alias = RunPluginOrAlias::from_url(&url.as_str(), &configuration.map(|c| c.inner().clone()), None, Some(current_dir))?;
+                let run_plugin_or_alias = RunPluginOrAlias::from_url(url.as_str(), &configuration.map(|c| c.inner().clone()), None, Some(current_dir))?;
+                // let run_plugin_or_alias = RunPluginOrAlias::from_url(&url.as_str(), &configuration.map(|c| c.inner().clone()), None, Some(current_dir))?;
 //                 let run_plugin_location = RunPluginLocation::parse(url.as_str(), Some(current_dir))
 //                     .map_err(|e| format!("Failed to parse plugin location: {}", e))?;
 //                 let run_plugin = RunPlugin {

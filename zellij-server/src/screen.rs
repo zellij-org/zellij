@@ -1747,13 +1747,16 @@ impl Screen {
         client_id: ClientId,
     ) -> Result<bool> {
         // true => found and focused, false => not
+        log::info!("focus_plugin_pane");
         let err_context = || format!("failed to focus_plugin_pane");
         let mut tab_index_and_plugin_pane_id = None;
         let mut plugin_pane_to_move_to_active_tab = None;
         let focused_tab_index = *self.active_tab_indices.get(&client_id).unwrap_or(&0);
         let all_tabs = self.get_tabs_mut();
         for (tab_index, tab) in all_tabs.iter_mut() {
+            log::info!("finding plugin...");
             if let Some(plugin_pane_id) = tab.find_plugin(&run_plugin) {
+                log::info!("found it!");
                 tab_index_and_plugin_pane_id = Some((*tab_index, plugin_pane_id));
                 if move_to_focused_tab && focused_tab_index != *tab_index {
                     plugin_pane_to_move_to_active_tab =
@@ -3474,7 +3477,7 @@ pub(crate) fn screen_thread_main(
                 skip_cache,
                 client_id,
             ) => match pane_id_to_replace {
-                Some(pane_id_to_replace) => match screen.active_tab_indices.values().next() {
+                Some(pane_id_to_replace) if should_open_in_place => match screen.active_tab_indices.values().next() {
                     Some(tab_index) => {
                         let size = Size::default();
                         screen
@@ -3500,8 +3503,7 @@ pub(crate) fn screen_thread_main(
                         );
                     },
                 },
-                None => {
-                    log::info!("run_plugin: {:?}", run_plugin);
+                _ => {
                     let client_id = if screen.active_tab_indices.contains_key(&client_id) {
                         Some(client_id)
                     } else {
@@ -3515,15 +3517,18 @@ pub(crate) fn screen_thread_main(
                     });
                     match client_id_and_focused_tab {
                         Some((tab_index, client_id)) => {
+                            eprintln!("focus plugin pane??: {:?}", run_plugin);
                             if screen.focus_plugin_pane(
                                 &run_plugin,
                                 should_float,
                                 move_to_focused_tab,
                                 client_id,
                             )? {
+                                eprintln!("can has focus plugin pane");
                                 screen.render(None)?;
                                 screen.log_and_report_session_state()?;
                             } else {
+                                eprintln!("no!!");
                                 screen
                                     .bus
                                     .senders

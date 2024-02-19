@@ -2079,6 +2079,9 @@ fn run_plugin_location_parsing() {
             pane {
                 plugin location="file:c:/absolute/windows/plugin.wasm"
             }
+            pane {
+                plugin location="filepicker"
+            }
         }
     "#;
     let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into(), None, None).unwrap();
@@ -2139,6 +2142,14 @@ fn run_plugin_location_parsing() {
                                 "c:/absolute/windows/plugin.wasm",
                             )),
                             configuration: Default::default(),
+                        }))),
+                        ..Default::default()
+                    },
+                    TiledPaneLayout {
+                        run: Some(Run::Plugin(RunPluginOrAlias::Alias(PluginAlias {
+                            name: "filepicker".to_owned(),
+                            configuration: Some(PluginUserConfiguration::default()),
+                            ..Default::default()
                         }))),
                         ..Default::default()
                     },

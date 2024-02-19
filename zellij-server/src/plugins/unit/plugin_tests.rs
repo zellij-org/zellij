@@ -8,7 +8,7 @@ use tempfile::tempdir;
 use wasmer::Store;
 use zellij_utils::data::{Event, Key, PermissionStatus, PermissionType, PluginCapabilities};
 use zellij_utils::errors::ErrorContext;
-use zellij_utils::input::layout::{Layout, PluginUserConfiguration, RunPlugin, RunPluginOrAlias, RunPluginLocation};
+use zellij_utils::input::layout::{Layout, PluginUserConfiguration, RunPlugin, RunPluginOrAlias, RunPluginLocation, PluginAlias};
 use zellij_utils::input::permission::PermissionCache;
 use zellij_utils::input::plugins::PluginsConfig;
 use zellij_utils::ipc::ClientAttributes;
@@ -558,6 +558,93 @@ pub fn load_new_plugin_from_hd() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+    });
+    let tab_index = 1;
+    let client_id = 1;
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let received_screen_instructions = Arc::new(Mutex::new(vec![]));
+    let screen_thread = grant_permissions_and_log_actions_in_thread!(
+        received_screen_instructions,
+        ScreenInstruction::PluginBytes,
+        screen_receiver,
+        1,
+        &PermissionType::ChangeApplicationState,
+        cache_path,
+        plugin_thread_sender,
+        client_id
+    );
+
+    let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
+    let _ = plugin_thread_sender.send(PluginInstruction::Load(
+        plugin_should_float,
+        false,
+        plugin_title,
+        run_plugin,
+        tab_index,
+        None,
+        client_id,
+        size,
+        None,
+        false,
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
+        None,
+        Some(client_id),
+        Event::InputReceived,
+    )])); // will be cached and sent to the plugin once it's loaded
+    screen_thread.join().unwrap(); // this might take a while if the cache is cold
+    teardown();
+    let plugin_bytes_event = received_screen_instructions
+        .lock()
+        .unwrap()
+        .iter()
+        .find_map(|i| {
+            if let ScreenInstruction::PluginBytes(plugin_render_assets) = i {
+                for plugin_render_asset in plugin_render_assets {
+                    let plugin_id = plugin_render_asset.plugin_id;
+                    let client_id = plugin_render_asset.client_id;
+                    let plugin_bytes = plugin_render_asset.bytes.clone();
+                    let plugin_bytes = String::from_utf8_lossy(plugin_bytes.as_slice()).to_string();
+                    if plugin_bytes.contains("InputReceived") {
+                        return Some((plugin_id, client_id, plugin_bytes));
+                    }
+                }
+            }
+            None
+        });
+    assert_snapshot!(format!("{:#?}", plugin_bytes_event));
+}
+
+#[test]
+#[ignore]
+pub fn load_new_plugin_with_plugin_alias() {
+    // here we load our fixture plugin into the plugin thread, and then send it an update message
+    // expecting tha thte plugin will log the received event and render it later after the update
+    // message (this is what the fixture plugin does)
+    // we then listen on our mock screen receiver to make sure we got a PluginBytes instruction
+    // that contains said render, and assert against it
+    let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
+    let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
+    let (plugin_thread_sender, screen_receiver, teardown) = create_plugin_thread(None);
+    let plugin_should_float = Some(false);
+    let plugin_title = Some("test_plugin".to_owned());
+    // TODO: CONTINUE HERE (16/2)
+    // - add an alias version of this test - DONE
+    // - then make a version of the layout_with_plugin_panes test that also includes aliases (or
+    // add it to that test?) - N/A
+    // - then look through this file to see what other tests we can add, then look at more tests
+    // in these files:
+    //     - plugin_tests
+    //     - screen_tests
+    let run_plugin = RunPluginOrAlias::Alias(PluginAlias {
+        name: "fixture_plugin_for_tests".to_owned(),
+        configuration: Default::default(),
+        run_plugin: None,
     });
     let tab_index = 1;
     let client_id = 1;
@@ -5324,7 +5411,7 @@ pub fn granted_permission_request_result() {
 
     let permission_cache = PermissionCache::from_path_or_default(Some(cache_path));
     let mut permissions = permission_cache
-        .get_permissions(run_plugin.location_string())
+        .get_permissions(PathBuf::from(&*PLUGIN_FIXTURE).display().to_string())
         .clone();
     let permissions = permissions.as_mut().map(|p| {
         let mut permissions = p.clone();
@@ -5413,7 +5500,7 @@ pub fn denied_permission_request_result() {
     teardown();
 
     let permission_cache = PermissionCache::from_path_or_default(Some(cache_path));
-    let permissions = permission_cache.get_permissions(run_plugin.location_string());
+    let permissions = permission_cache.get_permissions(PathBuf::from(&*PLUGIN_FIXTURE).display().to_string());
 
     assert_snapshot!(format!("{:#?}", permissions));
 }

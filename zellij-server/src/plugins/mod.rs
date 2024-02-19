@@ -190,12 +190,16 @@ pub(crate) fn plugin_thread_main(
     let mut plugin_aliases = HashMap::new();
     let mut filter_configuration = BTreeMap::new();
     filter_configuration.insert("key_from_dict".to_owned(), "value_from_dict".to_owned());
+
+    // TODO: from config
     plugin_aliases.insert("session-manager-alias", RunPlugin::from_url("zellij:session-manager").unwrap());
     plugin_aliases.insert("filepicker", RunPlugin::from_url("zellij:strider").unwrap());
+    plugin_aliases.insert("fixture_plugin_for_tests", RunPlugin::from_url(&format!("file:{}/../target/e2e-data/plugins/fixture-plugin-for-tests.wasm", std::env::var_os("CARGO_MANIFEST_DIR").unwrap().to_string_lossy())).unwrap());
     plugin_aliases.insert(
         "filter",
         RunPlugin::from_url("file:/home/aram/code/rust-plugin-example/target/wasm32-wasi/debug/rust-plugin-example.wasm").unwrap().with_configuration(filter_configuration)
     );
+
     layout.populate_plugin_aliases_in_layout(&plugin_aliases);
 
     let store = Arc::new(Mutex::new(store));
