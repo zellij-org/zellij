@@ -1,4 +1,4 @@
-use crate::data::Palette;
+use crate::data::{Palette, Styling};
 use miette::{Diagnostic, LabeledSpan, NamedSource, SourceCode};
 use std::fs::File;
 use std::io::{self, Read};
@@ -162,10 +162,16 @@ impl TryFrom<&CliArgs> for Config {
 }
 
 impl Config {
-    pub fn theme_config(&self, opts: &Options) -> Option<Palette> {
+    pub fn theme_config(&self, opts: &Options) -> Option<(Palette, Styling)> {
         match &opts.theme {
-            Some(theme_name) => self.themes.get_theme(theme_name).map(|theme| theme.palette),
-            None => self.themes.get_theme("default").map(|theme| theme.palette),
+            Some(theme_name) => self
+                .themes
+                .get_theme(theme_name)
+                .map(|theme| (theme.palette, theme.styling)),
+            None => self
+                .themes
+                .get_theme("default")
+                .map(|theme| (theme.palette, theme.styling)),
         }
     }
     /// Gets default configuration from assets
@@ -599,20 +605,106 @@ mod config_test {
             themes {
                 named_theme {
                     styling {
-                        //                      base      emp1      emp2      emp3      emp4      bg
-                        text_unselected       "#DCD7BA" "#DCD7CD" "#DCD8DD" "#DCD899" "#ACD7CD" "#1F1F28"
-                        text_selected         "#16161D" "#16161D" "#16161D" "#16161D" "#16161D" "#9CABCA"
-                        ribbon_unselected     "#DCD7BA" "#7FB4CA" "#A3D4D5" "#7AA89F" "#DCD819" "#252535"
-                        ribbon_selected       "#16161D" "#181820" "#1A1A22" "#2A2A37" "#363646" "#76946A"
-                        table_title           "#DCD7BA" "#7FB4CA" "#A3D4D5" "#7AA89F" "#DCD819" "#252535"
-                        table_cell_unselected "#DCD7BA" "#DCD7CD" "#DCD8DD" "#DCD899" "#ACD7CD" "#1F1F28"
-                        table_cell_selected   "#16161D" "#181820" "#1A1A22" "#2A2A37" "#363646" "#76946A"
-                        list_unselected       "#DCD7BA" "#DCD7CD" "#DCD8DD" "#DCD899" "#ACD7CD" "#1F1F28"
-                        list_selected         "#16161D" "#181820" "#1A1A22" "#2A2A37" "#363646" "#76946A"
-                        frame_unselected      "#DCD8DD" "#7FB4CA" "#A3D4D5" "#7AA89F" "#DCD819"
-                        frame_selected        "#76946A" "#C34043" "#C8C093" "#ACD7CD" "#DCD819"
-                        exit_code_success     "#76946A" "#76946A" "#76946A" "#76946A" "#76946A"
-                        exit_code_error       "#C34043" "#C34043" "#C34043" "#C34043" "#C34043"
+                        text_unselected {
+                            base "#DCD7BA"
+                            emp1 "#DCD7CD"
+                            emp2 "#DCD8DD"
+                            emp3 "#DCD899"
+                            emp4 "#ACD7CD"
+                            bg   "#1F1F28"
+                        }
+                        text_selected {
+                            base "#16161D"
+                            emp1 "#16161D"
+                            emp2 "#16161D"
+                            emp3 "#16161D"
+                            emp4 "#16161D"
+                            bg   "#9CABCA"
+                        }
+                        ribbon_unselected {
+                            base "#DCD7BA"
+                            emp1 "#7FB4CA"
+                            emp2 "#A3D4D5"
+                            emp3 "#7AA89F"
+                            emp4 "#DCD819"
+                            bg   "#252535"
+                        }
+                        ribbon_selected {
+                            base "#16161D"
+                            emp1 "#181820"
+                            emp2 "#1A1A22"
+                            emp3 "#2A2A37"
+                            emp4 "#363646"
+                            bg   "#76946A"
+                        }
+                        table_title {
+                            base "#DCD7BA"
+                            emp1 "#7FB4CA"
+                            emp2 "#A3D4D5"
+                            emp3 "#7AA89F"
+                            emp4 "#DCD819"
+                            bg   "#252535"
+                        }
+                        table_cell_unselected {
+                            base "#DCD7BA"
+                            emp1 "#DCD7CD"
+                            emp2 "#DCD8DD"
+                            emp3 "#DCD899"
+                            emp4 "#ACD7CD"
+                            bg   "#1F1F28"
+                        }
+                        table_cell_selected {
+                            base "#16161D"
+                            emp1 "#181820"
+                            emp2 "#1A1A22"
+                            emp3 "#2A2A37"
+                            emp4 "#363646"
+                            bg   "#76946A"
+                        }
+                        list_unselected {
+                            base "#DCD7BA"
+                            emp1 "#DCD7CD"
+                            emp2 "#DCD8DD"
+                            emp3 "#DCD899"
+                            emp4 "#ACD7CD"
+                            bg   "#1F1F28"
+                        }
+                        list_selected {
+                            base "#16161D"
+                            emp1 "#181820"
+                            emp2 "#1A1A22"
+                            emp3 "#2A2A37"
+                            emp4 "#363646"
+                            bg   "#76946A"
+                        }
+                        frame_unselected {
+                            base "#DCD8DD"
+                            emp1 "#7FB4CA"
+                            emp2 "#A3D4D5"
+                            emp3 "#7AA89F"
+                            emp4 "#DCD819"
+                        }
+                        frame_selected {
+                            base "#76946A"
+                            emp1 "#C34043"
+                            emp2 "#C8C093"
+                            emp3 "#ACD7CD"
+                            emp4 "#DCD819"
+                        }
+                        exit_code_success {
+                            base "#76946A"
+                            emp1 "#76946A"
+                            emp2 "#76946A"
+                            emp3 "#76946A"
+                            emp4 "#76946A"
+                        }
+                        exit_code_error {
+                            base "#C34043"
+                            emp1 "#C34043"
+                            emp2 "#C34043"
+                            emp3 "#C34043"
+                            emp4 "#C34043"
+                        }
                     }
                 }
             }
@@ -690,11 +782,11 @@ mod config_test {
                     ],
                     list_selected: [
                         PaletteColor::Rgb((22, 22, 29)),
-                        PaletteColor::Rgb((22, 22, 29)),
-                        PaletteColor::Rgb((22, 22, 29)),
-                        PaletteColor::Rgb((22, 22, 29)),
-                        PaletteColor::Rgb((22, 22, 29)),
-                        PaletteColor::Rgb((156, 171, 202)),
+                        PaletteColor::Rgb((24, 24, 32)),
+                        PaletteColor::Rgb((26, 26, 34)),
+                        PaletteColor::Rgb((42, 42, 55)),
+                        PaletteColor::Rgb((54, 54, 70)),
+                        PaletteColor::Rgb((118, 148, 106)),
                     ],
                     frame_unselected: [
                         PaletteColor::Rgb((220, 216, 221)),
@@ -708,7 +800,7 @@ mod config_test {
                         PaletteColor::Rgb((195, 64, 67)),
                         PaletteColor::Rgb((200, 192, 147)),
                         PaletteColor::Rgb((172, 215, 205)),
-                        PaletteColor::Rgb((220, 216, 125)),
+                        PaletteColor::Rgb((220, 216, 25)),
                     ],
                     exit_code_success: [
                         PaletteColor::Rgb((118, 148, 106)),

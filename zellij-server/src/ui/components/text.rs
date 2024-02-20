@@ -12,9 +12,14 @@ use unicode_width::UnicodeWidthChar;
 use zellij_utils::errors::prelude::*;
 
 pub fn text(content: Text, style: &Style, component_coordinates: Option<Coordinates>) -> Vec<u8> {
-    let mut text_style = RESET_STYLES.bold(Some(AnsiCode::On));
+    let mut text_style = RESET_STYLES
+        .bold(Some(AnsiCode::On))
+        .background(Some(style.styling.text_unselected[5].into()))
+        .foreground(Some(style.styling.text_unselected[0].into()));
     if content.selected {
-        text_style = text_style.background(Some(style.colors.bg.into()));
+        text_style = text_style
+            .background(Some(style.styling.text_selected[5].into()))
+            .foreground(Some(style.styling.text_selected[0].into()));
     }
     let (text, _text_width) =
         stringify_text(&content, None, &component_coordinates, style, text_style);
@@ -72,10 +77,10 @@ pub fn color_index_character(
 
 pub fn emphasis_variants(style: &Style) -> [PaletteColor; 4] {
     [
-        style.colors.orange,
-        style.colors.cyan,
-        style.colors.green,
-        style.colors.magenta,
+        style.styling.text_unselected[1],
+        style.styling.text_unselected[2],
+        style.styling.text_unselected[3],
+        style.styling.text_unselected[4],
     ]
 }
 

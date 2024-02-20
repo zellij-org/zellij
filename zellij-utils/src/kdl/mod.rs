@@ -12,6 +12,7 @@ use crate::input::options::{Clipboard, OnForceClose, Options};
 use crate::input::permission::{GrantedPermission, PermissionCache};
 use crate::input::plugins::PluginAliases;
 use crate::input::theme::{FrameConfig, Theme, Themes, UiConfig};
+use crate::shared::colors;
 use kdl_layout_parser::KdlLayoutParser;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use strum::IntoEnumIterator;
@@ -1431,6 +1432,20 @@ macro_rules! kdl_child_with_name {
 }
 
 #[macro_export]
+macro_rules! kdl_child_with_name_or_error {
+    ( $kdl_node:expr, $name:expr) => {{
+        $kdl_node
+            .children()
+            .and_then(|children| children.nodes().iter().find(|c| c.name().value() == $name))
+            .ok_or(ConfigError::new_kdl_error(
+                format!("Missing node {}", $name).into(),
+                $kdl_node.span().offset(),
+                $kdl_node.span().len(),
+            ))
+    }};
+}
+
+#[macro_export]
 macro_rules! kdl_get_string_property_or_child_value_with_error {
     ( $kdl_node:expr, $name:expr ) => {
         match $kdl_node.get($name) {
@@ -1984,6 +1999,42 @@ impl UiConfig {
 }
 
 impl Themes {
+    fn color_from_node(
+        style_node: &KdlNode,
+        style_descriptor: &str,
+    ) -> Result<[PaletteColor; 6], ConfigError> {
+        let colors = kdl_children_or_error!(
+            kdl_child_with_name_or_error!(style_node, style_descriptor)?,
+            "foo"
+        );
+        Ok([
+            PaletteColor::try_from(("base", colors))?,
+            PaletteColor::try_from(("emp1", colors))?,
+            PaletteColor::try_from(("emp2", colors))?,
+            PaletteColor::try_from(("emp3", colors))?,
+            PaletteColor::try_from(("emp4", colors))?,
+            PaletteColor::try_from(("bg", colors))?,
+        ])
+    }
+
+    // TODO: const generics etc?
+    fn color_from_node_2(
+        style_node: &KdlNode,
+        style_descriptor: &str,
+    ) -> Result<[PaletteColor; 5], ConfigError> {
+        let colors = kdl_children_or_error!(
+            kdl_child_with_name_or_error!(style_node, style_descriptor)?,
+            "foo"
+        );
+        Ok([
+            PaletteColor::try_from(("base", colors))?,
+            PaletteColor::try_from(("emp1", colors))?,
+            PaletteColor::try_from(("emp2", colors))?,
+            PaletteColor::try_from(("emp3", colors))?,
+            PaletteColor::try_from(("emp4", colors))?,
+        ])
+    }
+
     pub fn from_kdl(themes_from_kdl: &KdlNode) -> Result<Self, ConfigError> {
         let mut themes: HashMap<String, Theme> = HashMap::new();
         for theme_config in kdl_children_nodes_or_error!(themes_from_kdl, "no themes found") {
@@ -2010,26 +2061,28 @@ impl Themes {
                 // Newer theme definition with named styles
                 Some(style) => {
                     let s = Styling {
-                        text_unselected: todo!(),
-                        text_selected: todo!(),
-                        ribbon_unselected: todo!(),
-                        ribbon_selected: todo!(),
-                        table_title: todo!(),
-                        table_cell_unselected: todo!(),
-                        table_cell_selected: todo!(),
-                        list_unselected: todo!(),
-                        list_selected: todo!(),
-                        frame_unselected: todo!(),
-                        frame_selected: todo!(),
-                        exit_code_success: todo!(),
-                        exit_code_error: todo!(),
+                        text_unselected: Themes::color_from_node(style, "text_unselected")?,
+                        text_selected: Themes::color_from_node(style, "text_selected")?,
+                        ribbon_unselected: Themes::color_from_node(style, "ribbon_unselected")?,
+                        ribbon_selected: Themes::color_from_node(style, "ribbon_selected")?,
+                        table_title: Themes::color_from_node(style, "table_title")?,
+                        table_cell_unselected: Themes::color_from_node(
+                            style,
+                            "table_cell_unselected",
+                        )?,
+                        table_cell_selected: Themes::color_from_node(style, "table_cell_selected")?,
+                        list_unselected: Themes::color_from_node(style, "list_unselected")?,
+                        list_selected: Themes::color_from_node(style, "list_selected")?,
+                        frame_unselected: Themes::color_from_node_2(style, "frame_unselected")?,
+                        frame_selected: Themes::color_from_node_2(style, "frame_selected")?,
+                        exit_code_success: Themes::color_from_node_2(style, "exit_code_success")?,
+                        exit_code_error: Themes::color_from_node_2(style, "exit_code_error")?,
                     };
 
-                    let t = Theme {
-                        palette: Default::default(),
-                        styling: Default::default(),
-                    };
-                    t
+                    Theme {
+                        palette: s.into(),
+                        styling: s,
+                    }
                 },
                 // Older palette based theme definition
                 None => {
@@ -2049,7 +2102,18 @@ impl Themes {
                     };
                     Theme {
                         palette,
-                        styling: palette.into(),
+                        // TODO: inverse palette -> styling
+                        styling: Styling {
+                            ribbon_unselected: [
+                                PaletteColor::EightBit(colors::BLUE),
+                                PaletteColor::EightBit(colors::BLUE),
+                                PaletteColor::EightBit(colors::BLUE),
+                                PaletteColor::EightBit(colors::BLUE),
+                                PaletteColor::EightBit(colors::BLUE),
+                                PaletteColor::EightBit(colors::BLUE),
+                            ],
+                            ..Default::default()
+                        },
                     }
                 },
             };

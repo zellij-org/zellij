@@ -206,16 +206,16 @@ pub fn start_client(
     envs::set_zellij("0".to_string());
     config.env.set_vars();
 
-    let palette = config
+    let (palette, styling) = config
         .theme_config(&config_options)
-        .unwrap_or_else(|| os_input.load_palette());
+        .unwrap_or_else(|| (os_input.load_palette(), Default::default()));
 
     let full_screen_ws = os_input.get_terminal_size_using_fd(0);
     let client_attributes = ClientAttributes {
         size: full_screen_ws,
         style: Style {
             colors: palette,
-            styling: palette.into(),
+            styling: styling,
             rounded_corners: config.ui.pane_frames.rounded_corners,
             hide_session_name: config.ui.pane_frames.hide_session_name,
         },

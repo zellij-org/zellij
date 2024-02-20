@@ -2,6 +2,7 @@ use crate::input::actions::Action;
 use crate::input::config::ConversionError;
 use crate::input::keybinds::Keybinds;
 use crate::input::layout::SplitSize;
+use crate::shared::default_palette;
 use clap::ArgEnum;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
@@ -1158,17 +1159,17 @@ pub struct Styling {
     pub exit_code_error: [PaletteColor; 5],
 }
 
-impl From<Palette> for Styling {
-    fn from(_value: Palette) -> Self {
-        // TODO: Implement mapping of old colors -> styling
-        todo!()
-    }
+#[derive(Debug, Copy, Default, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
+pub struct StyleDeclaration {
+    pub base: PaletteColor,
+    pub emphasis: [PaletteColor; 4],
+    pub background: Option<PaletteColor>,
 }
 
 impl From<Styling> for Palette {
     // TODO: Implement mapping of old colors -> styling
     fn from(_value: Styling) -> Self {
-        todo!()
+        default_palette()
     }
 }
 

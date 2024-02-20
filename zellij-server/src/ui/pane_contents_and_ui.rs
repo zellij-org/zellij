@@ -259,8 +259,7 @@ impl<'a> PaneContentsAndUi<'a> {
             match mode {
                 InputMode::Normal | InputMode::Locked => {
                     if session_is_mirrored || !self.multiple_users_exist_in_session {
-                        let colors = single_client_color(self.style.colors); // mirrored sessions only have one focused color
-                        Some(colors.0)
+                        Some(self.style.styling.frame_selected[0])
                     } else {
                         let colors = client_id_to_colors(client_id, self.style.colors);
                         colors.map(|colors| colors.0)

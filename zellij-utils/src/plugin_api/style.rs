@@ -11,15 +11,13 @@ use std::convert::TryFrom;
 impl TryFrom<ProtobufStyle> for Style {
     type Error = &'static str;
     fn try_from(protobuf_style: ProtobufStyle) -> Result<Self, &'static str> {
+        let s = protobuf_style.styling.ok_or("malformed")?.try_into()?;
         Ok(Style {
             colors: protobuf_style
                 .palette
                 .ok_or("malformed style payload")?
                 .try_into()?,
-            styling: protobuf_style
-                .styling
-                .ok_or("malformed style payload")?
-                .try_into()?,
+            styling: s,
             rounded_corners: protobuf_style.rounded_corners,
             hide_session_name: protobuf_style.hide_session_name,
         })
@@ -29,28 +27,86 @@ impl TryFrom<ProtobufStyle> for Style {
 impl TryFrom<Style> for ProtobufStyle {
     type Error = &'static str;
     fn try_from(style: Style) -> Result<Self, &'static str> {
+        log::info!("{:?}", style.styling.ribbon_unselected);
+        let s = ProtobufStyling::try_from(style.styling)?;
+        log::info!("{:?}", s.ribbon_unselected);
         Ok(ProtobufStyle {
             palette: Some(style.colors.try_into()?),
             rounded_corners: style.rounded_corners,
             hide_session_name: style.hide_session_name,
-            styling: Some(style.styling.try_into()?),
+            styling: Some(s),
         })
     }
+}
+
+fn to_array<T, const N: usize>(v: Vec<T>) -> std::result::Result<[T; N], &'static str> {
+    v.try_into().map_err(|_| "darn")
+}
+
+#[macro_export]
+macro_rules! color_definitions {
+    ($proto:expr, $declaration:ident, $size:expr) => {
+        to_array::<PaletteColor, $size>(
+            $proto
+                .$declaration
+                .into_iter()
+                .map(PaletteColor::try_from)
+                .collect::<Result<Vec<PaletteColor>, _>>()?,
+        )?
+    };
 }
 
 impl TryFrom<ProtobufStyling> for Styling {
     type Error = &'static str;
 
-    fn try_from(_value: ProtobufStyling) -> std::result::Result<Self, Self::Error> {
-        todo!()
+    fn try_from(proto: ProtobufStyling) -> std::result::Result<Self, Self::Error> {
+        log::info!("{:?}", proto);
+        Ok(Styling {
+            text_unselected: color_definitions!(proto, text_unselected, 6),
+            text_selected: color_definitions!(proto, text_selected, 6),
+            ribbon_unselected: color_definitions!(proto, ribbon_unselected, 6),
+            ribbon_selected: color_definitions!(proto, ribbon_selected, 6),
+            table_title: color_definitions!(proto, table_title, 6),
+            table_cell_unselected: color_definitions!(proto, table_cell_unselected, 6),
+            table_cell_selected: color_definitions!(proto, table_cell_selected, 6),
+            list_unselected: color_definitions!(proto, list_unselected, 6),
+            list_selected: color_definitions!(proto, list_selected, 6),
+            frame_unselected: color_definitions!(proto, frame_unselected, 5),
+            frame_selected: color_definitions!(proto, frame_selected, 5),
+            exit_code_success: color_definitions!(proto, exit_code_success, 5),
+            exit_code_error: color_definitions!(proto, exit_code_error, 5),
+        })
     }
+}
+
+fn color_protos<const N: usize>(
+    colors: [PaletteColor; N],
+) -> Result<Vec<ProtobufColor>, &'static str> {
+    colors
+        .into_iter()
+        .map(ProtobufColor::try_from)
+        .collect::<Result<Vec<ProtobufColor>, _>>()
 }
 
 impl TryFrom<Styling> for ProtobufStyling {
     type Error = &'static str;
 
-    fn try_from(_value: Styling) -> std::result::Result<Self, Self::Error> {
-        todo!()
+    fn try_from(style: Styling) -> std::result::Result<Self, Self::Error> {
+        Ok(ProtobufStyling {
+            text_unselected: color_protos(style.text_unselected)?,
+            text_selected: color_protos(style.text_selected)?,
+            ribbon_unselected: color_protos(style.ribbon_unselected)?,
+            ribbon_selected: color_protos(style.ribbon_selected)?,
+            table_title: color_protos(style.table_title)?,
+            table_cell_unselected: color_protos(style.table_cell_unselected)?,
+            table_cell_selected: color_protos(style.table_cell_selected)?,
+            list_unselected: color_protos(style.list_unselected)?,
+            list_selected: color_protos(style.list_selected)?,
+            frame_unselected: color_protos(style.frame_unselected)?,
+            frame_selected: color_protos(style.frame_selected)?,
+            exit_code_success: color_protos(style.exit_code_success)?,
+            exit_code_error: color_protos(style.exit_code_error)?,
+        })
     }
 }
 
