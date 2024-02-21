@@ -5,7 +5,6 @@ use super::layout::{
     FloatingPaneLayout, Layout, RunPlugin, RunPluginLocation, PluginAlias, SwapFloatingLayout, SwapTiledLayout,
     TiledPaneLayout, RunPluginOrAlias
 };
-use super::plugins::PluginsConfigError;
 use crate::cli::CliAction;
 use crate::data::{Direction, Resize};
 use crate::data::{FloatingPaneCoordinates, InputMode};
@@ -581,14 +580,6 @@ impl Action {
             CliAction::StartOrReloadPlugin { url, configuration } => {
                 let current_dir = get_current_dir();
                 let run_plugin_or_alias = RunPluginOrAlias::from_url(&url, &configuration.map(|c| c.inner().clone()), None, Some(current_dir))?;
-//                 let run_plugin_location = RunPluginLocation::parse(&url, Some(current_dir))
-//                     .map_err(|e| format!("Failed to parse plugin location: {}", e))?;
-//                 let run_plugin = RunPlugin {
-//                     location: run_plugin_location,
-//                     _allow_exec_host_cmd: false,
-//                     configuration: configuration.unwrap_or_default(),
-//                 };
-//                Ok(vec![Action::StartOrReloadPlugin(run_plugin)])
                 Ok(vec![Action::StartOrReloadPlugin(run_plugin_or_alias)])
             },
             CliAction::LaunchOrFocusPlugin {
@@ -601,14 +592,6 @@ impl Action {
             } => {
                 let current_dir = get_current_dir();
                 let run_plugin_or_alias = RunPluginOrAlias::from_url(url.as_str(), &configuration.map(|c| c.inner().clone()), None, Some(current_dir))?;
-                // let run_plugin_or_alias = RunPluginOrAlias::from_url(&url.as_str(), &configuration.map(|c| c.inner().clone()), None, Some(current_dir))?;
-//                 let run_plugin_location = RunPluginLocation::parse(url.as_str(), Some(current_dir))
-//                     .map_err(|e| format!("Failed to parse plugin location: {}", e))?;
-//                 let run_plugin = RunPlugin {
-//                     location: run_plugin_location,
-//                     _allow_exec_host_cmd: false,
-//                     configuration: configuration.unwrap_or_default(),
-//                 };
                 Ok(vec![Action::LaunchOrFocusPlugin(
                     run_plugin_or_alias,
                     floating,
@@ -626,14 +609,6 @@ impl Action {
             } => {
                 let current_dir = get_current_dir();
                 let run_plugin_or_alias = RunPluginOrAlias::from_url(&url.as_str(), &configuration.map(|c| c.inner().clone()), None, Some(current_dir.clone()))?;
-//                 let run_plugin_location =
-//                     RunPluginLocation::parse(url.as_str(), Some(current_dir.clone()))
-//                         .map_err(|e| format!("Failed to parse plugin location: {}", e))?;
-//                 let run_plugin = RunPlugin {
-//                     location: run_plugin_location,
-//                     _allow_exec_host_cmd: false,
-//                     configuration: configuration.unwrap_or_default(),
-//                 };
                 Ok(vec![Action::LaunchPlugin(
                     run_plugin_or_alias,
                     floating,

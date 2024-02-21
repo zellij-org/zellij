@@ -1745,30 +1745,10 @@ impl TiledPanes {
         self.client_id_to_boundaries.clear();
     }
     pub fn get_plugin_pane_id(&self, run_plugin_or_alias: &RunPluginOrAlias) -> Option<PaneId> {
-        match run_plugin_or_alias {
-            RunPluginOrAlias::RunPlugin(..) => {
-                let run = Some(Run::Plugin(run_plugin_or_alias.clone()));
-                self.panes
-                    .iter()
-                    .find(|(_id, s_p)| s_p.invoked_with() == &run)
-                    .map(|(id, _)| *id)
-            }
-            RunPluginOrAlias::Alias(plugin_alias) => {
-                eprintln!("plugin_alias: {:?}", plugin_alias);
-                self.panes
-                    .iter()
-                    .find(|(_id, s_p)| {
-                        eprintln!("comparing with: {:?}", s_p.invoked_with());
-                        match s_p.invoked_with() {
-                            Some(Run::Plugin(RunPluginOrAlias::Alias(pane_alias))) => pane_alias.name == plugin_alias.name &&
-                                pane_alias.configuration.as_ref().and_then(|c| if c.inner().is_empty() { None } else { Some(c)} ) == plugin_alias.configuration.as_ref().and_then(|c| if c.inner().is_empty() { None } else { Some(c) }),
-                            // Some(Run::Plugin(RunPluginOrAlias::Alias(pane_alias))) => pane_alias.name == plugin_alias.name && pane_alias.configuration == plugin_alias.configuration,
-                            _ => false
-                        }
-                    })
-                    .map(|(id, _)| *id)
-            }
-        }
+        self.panes.iter()
+            .find(|(_id, pane)| run_plugin_or_alias.is_equivalent_to_run(pane.invoked_with()))
+            .map(|(id, _)| *id)
+
     }
     pub fn pane_info(&self) -> Vec<PaneInfo> {
         let mut pane_infos = vec![];

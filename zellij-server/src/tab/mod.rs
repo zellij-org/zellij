@@ -3588,41 +3588,13 @@ impl Tab {
     }
 
     pub fn find_plugin(&self, run_plugin_or_alias: &RunPluginOrAlias) -> Option<PaneId> {
-        // let run = Some(Run::Plugin(run_plugin_or_alias.clone()));
         self.tiled_panes
             .get_plugin_pane_id(run_plugin_or_alias)
             .or_else(|| self.floating_panes.get_plugin_pane_id(run_plugin_or_alias))
             .or_else(|| {
-
-                // TODO: can we somehow outsource this piece of code?
-                match run_plugin_or_alias {
-                    RunPluginOrAlias::RunPlugin(..) => {
-                        let run = Some(Run::Plugin(run_plugin_or_alias.clone()));
-                        self.suppressed_panes
-                            .iter()
-                            .find(|(_id, (_, s_p))| s_p.invoked_with() == &run)
-                            .map(|(id, _)| *id)
-                    }
-                    RunPluginOrAlias::Alias(plugin_alias) => {
-                        self.suppressed_panes
-                            .iter()
-                            .find(|(_id, (_, s_p))| {
-                                match s_p.invoked_with() {
-                                    Some(Run::Plugin(RunPluginOrAlias::Alias(pane_alias))) => pane_alias.name == plugin_alias.name && pane_alias.configuration == plugin_alias.configuration,
-                                    _ => false
-                                }
-                            })
-                            .map(|(id, _)| *id)
-                    }
-                }
-
-
-
-//                 self.suppressed_panes
-//                     .iter()
-//                     // TODO: compare properly like in tiled_panes/floating_panes
-//                     .find(|(_id, s_p)| s_p.1.invoked_with() == &run)
-//                     .map(|(id, _)| *id)
+                self.suppressed_panes.iter()
+                    .find(|(_id, (_, pane))| run_plugin_or_alias.is_equivalent_to_run(pane.invoked_with()))
+                    .map(|(id, _)| *id)
             })
     }
 
@@ -3797,15 +3769,6 @@ pub fn pane_info_for_pane(pane_id: &PaneId, pane: &Box<dyn Pane>) -> PaneInfo {
             pane_info.plugin_url = pane.invoked_with().as_ref().and_then(|c| match c {
                 Run::Plugin(run_plugin_or_alias) => {
                     Some(run_plugin_or_alias.location_string())
-//                     match run_plugin_or_alias {
-//                         RunPluginOrAlias::RunPlugin(run_plugin) => {
-//                             Some(run_plugin.location.to_string())
-//                         }
-//                         RunPluginOrAlias::Alias(alias) => {
-//                             // TODO: handle alias
-//                             unimplemented!()
-//                         }
-//                     }
                 }
                 _ => None,
             });

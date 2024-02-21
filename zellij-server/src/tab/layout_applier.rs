@@ -19,7 +19,7 @@ use std::rc::Rc;
 use zellij_utils::{
     data::{Palette, Style},
     input::layout::{
-        FloatingPaneLayout, PluginUserConfiguration, Run, RunPluginOrAlias, RunPluginLocation, TiledPaneLayout,
+        FloatingPaneLayout, Run, RunPluginOrAlias, TiledPaneLayout,
     },
     pane_size::{Offset, PaneGeom, Size, SizeInPixels, Viewport},
 };
@@ -107,19 +107,16 @@ impl<'a> LayoutApplier<'a> {
         mut new_plugin_ids: HashMap<RunPluginOrAlias, Vec<u32>>,
         client_id: ClientId,
     ) -> Result<bool> {
-        eprintln!("apply_layout 1: {:?}", new_plugin_ids);
         // true => should_show_floating_panes
         let layout_name = layout.name.clone();
         let hide_floating_panes = layout.hide_floating_panes;
         self.apply_tiled_panes_layout(layout, new_terminal_ids, &mut new_plugin_ids, client_id)?;
-        eprintln!("apply_layout 2");
         let layout_has_floating_panes = self.apply_floating_panes_layout(
             floating_panes_layout,
             new_floating_terminal_ids,
             &mut new_plugin_ids,
             layout_name,
         )?;
-        eprintln!("apply_layout 3");
         let should_show_floating_panes = layout_has_floating_panes && !hide_floating_panes;
         return Ok(should_show_floating_panes);
     }
@@ -265,17 +262,12 @@ impl<'a> LayoutApplier<'a> {
                 // we got from the plugin thread and pty thread
                 let positions_and_size = positions_in_layout.iter();
                 for (layout, position_and_size) in positions_and_size {
-                    // if let Some(Run::Plugin(run)) = layout.run.clone() {
-                    // if let Some(run_plugin) = layout.run.as_ref().and_then(|r| r.get_run_plugin()) {
                     if let Some(Run::Plugin(run)) = layout.run.clone() {
                         let pane_title = run.location_string();
-                        eprintln!("new_plugin_ids: {:#?}, \nrun: {:#?}", new_plugin_ids, run);
                         let pid = new_plugin_ids
-                            // .get_mut(&(run_plugin.location, run_plugin.configuration))
                             .get_mut(&run)
                             .and_then(|ids| ids.pop())
                             .with_context(err_context)?;
-                        eprintln!("not here!");
                         let mut new_plugin = PluginPane::new(
                             pid,
                             *position_and_size,
@@ -384,7 +376,6 @@ impl<'a> LayoutApplier<'a> {
         layout_name: Option<String>,
     ) -> Result<bool> {
         // true => has floating panes
-        eprintln!("apply_floating_panes_layout 1");
         let err_context = || format!("Failed to apply_floating_panes_layout");
         let mut layout_has_floating_panes = false;
         let floating_panes_layout = floating_panes_layout.iter();
@@ -401,14 +392,11 @@ impl<'a> LayoutApplier<'a> {
                     position_and_size,
                 );
             } else if let Some(Run::Plugin(run)) = floating_pane_layout.run.clone() {
-            // } else if let Some(run_plugin) = floating_pane_layout.run.as_ref().and_then(|r| r.get_run_plugin()) {
-                eprintln!("apply_floating_panes_layout 2: {:?}", new_plugin_ids);
                 let pane_title = run.location_string();
                 let pid = new_plugin_ids
                     .get_mut(&run)
                     .and_then(|ids| ids.pop())
                     .with_context(err_context)?;
-                eprintln!("apply_floating_panes_layout 3");
                 let mut new_pane = PluginPane::new(
                     pid,
                     position_and_size,
@@ -443,7 +431,6 @@ impl<'a> LayoutApplier<'a> {
                     self.senders,
                     self.character_cell_size
                 )?;
-                eprintln!("apply_floating_panes_layout 4");
                 self.floating_panes
                     .add_pane(PaneId::Plugin(pid), Box::new(new_pane));
                 if floating_pane_layout.focus.unwrap_or(false) {

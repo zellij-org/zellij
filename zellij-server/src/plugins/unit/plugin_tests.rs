@@ -633,14 +633,6 @@ pub fn load_new_plugin_with_plugin_alias() {
     let (plugin_thread_sender, screen_receiver, teardown) = create_plugin_thread(None);
     let plugin_should_float = Some(false);
     let plugin_title = Some("test_plugin".to_owned());
-    // TODO: CONTINUE HERE (16/2)
-    // - add an alias version of this test - DONE
-    // - then make a version of the layout_with_plugin_panes test that also includes aliases (or
-    // add it to that test?) - N/A
-    // - then look through this file to see what other tests we can add, then look at more tests
-    // in these files:
-    //     - plugin_tests
-    //     - screen_tests
     let run_plugin = RunPluginOrAlias::Alias(PluginAlias {
         name: "fixture_plugin_for_tests".to_owned(),
         configuration: Default::default(),

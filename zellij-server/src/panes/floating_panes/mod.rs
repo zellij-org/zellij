@@ -873,28 +873,9 @@ impl FloatingPanes {
         }
     }
     pub fn get_plugin_pane_id(&self, run_plugin_or_alias: &RunPluginOrAlias) -> Option<PaneId> {
-        match run_plugin_or_alias {
-            RunPluginOrAlias::RunPlugin(..) => {
-                let run = Some(Run::Plugin(run_plugin_or_alias.clone()));
-                self.panes
-                    .iter()
-                    .find(|(_id, s_p)| s_p.invoked_with() == &run)
-                    .map(|(id, _)| *id)
-            }
-            RunPluginOrAlias::Alias(plugin_alias) => {
-                self.panes
-                    .iter()
-                    .find(|(_id, s_p)| {
-                        match s_p.invoked_with() {
-                            // Some(Run::Plugin(RunPluginOrAlias::Alias(pane_alias))) => pane_alias.name == plugin_alias.name,
-                            Some(Run::Plugin(RunPluginOrAlias::Alias(pane_alias))) => pane_alias.name == plugin_alias.name &&
-                                pane_alias.configuration.as_ref().and_then(|c| if c.inner().is_empty() { None } else { Some(c)} ) == plugin_alias.configuration.as_ref().and_then(|c| if c.inner().is_empty() { None } else { Some(c) }),
-                            _ => false
-                        }
-                    })
-                    .map(|(id, _)| *id)
-            }
-        }
+        self.panes.iter()
+            .find(|(_id, pane)| run_plugin_or_alias.is_equivalent_to_run(pane.invoked_with()))
+            .map(|(id, _)| *id)
     }
     pub fn focus_pane_if_exists(&mut self, pane_id: PaneId, client_id: ClientId) -> Result<()> {
         if self.panes.get(&pane_id).is_some() {

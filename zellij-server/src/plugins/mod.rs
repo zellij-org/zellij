@@ -237,7 +237,6 @@ pub(crate) fn plugin_thread_main(
                 cwd,
                 skip_cache,
             ) => {
-                log::info!("run_plugin_or_alias: {:?}", run_plugin_or_alias);
                 run_plugin_or_alias.populate_run_plugin_if_needed(&plugin_aliases);
                 let run_plugin = run_plugin_or_alias.get_run_plugin();
                 match wasm_bridge.load_plugin(
@@ -349,8 +348,7 @@ pub(crate) fn plugin_thread_main(
                     RunPluginOrAlias,
                     Vec<PluginId>,
                 > = HashMap::new();
-                tab_layout = tab_layout.or_else(|| Some(layout.new_tab().0)); // TODO: does this ruin the
-                                                                        // universe???
+                tab_layout = tab_layout.or_else(|| Some(layout.new_tab().0));
                 tab_layout.as_mut().map(|t| t.populate_plugin_aliases_in_layout(&plugin_aliases));
                 floating_panes_layout
                     .iter_mut().for_each(|f| {
@@ -373,16 +371,7 @@ pub(crate) fn plugin_thread_main(
                     .collect();
                 extracted_run_instructions.append(&mut extracted_floating_plugins);
                 for run_instruction in extracted_run_instructions {
-                    // if let Some(Run::Plugin(run)) = run_instruction {
-                    // TODO: handle plugin alias
-                    // if let Some(Run::Plugin(RunPluginOrAlias::RunPlugin(run))) = run_instruction {
                     if let Some(Run::Plugin(run_plugin_or_alias)) = run_instruction {
-                        // TODO: add the ability to add an alias to plugin_ids, then add the
-                        // alias here and get a new plugin id from wasm_bridge
-                        // (wasm_bridge.plugin_not_found(alias)?)
-                        // then when applying the layout get it from there if it is None
-                        // the above method should use the error capabilities to send a plugin
-                        // not found message to said pane
                         let run_plugin = run_plugin_or_alias.get_run_plugin();
                         let skip_cache = false;
                         let (plugin_id, _client_id) = wasm_bridge.load_plugin(
@@ -713,11 +702,7 @@ fn pipe_to_specific_plugins(
     let is_private = true;
     let size = Size::default();
     match RunPluginOrAlias::from_url(&plugin_url, configuration, Some(plugin_aliases), cwd.clone()) {
-    // match RunPlugin::from_url(&plugin_url) {
         Ok(run_plugin_or_alias) => {
-//             if let Some(configuration) = configuration {
-//                 run_plugin.configuration = PluginUserConfiguration::new(configuration.clone());
-//             }
             let all_plugin_ids = wasm_bridge.get_or_load_plugins(
                 run_plugin_or_alias,
                 size,
@@ -733,7 +718,7 @@ fn pipe_to_specific_plugins(
                 pipe_messages.push((
                     Some(plugin_id),
                     client_id,
-                    PipeMessage::new(pipe_source.clone(), name, payload, args, is_private), // PipeMessage::new(PipeSource::Cli(pipe_id.clone()), &name, &payload, &args, is_private)
+                    PipeMessage::new(pipe_source.clone(), name, payload, args, is_private),
                 ));
             }
         },

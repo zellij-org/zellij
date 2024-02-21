@@ -27,8 +27,6 @@ use zellij_utils::{
     ipc::{ClientToServerMsg, IpcSenderWithContext},
 };
 
-use url::Url;
-
 use crate::{panes::PaneId, screen::ScreenInstruction};
 
 use zellij_utils::{
@@ -41,7 +39,7 @@ use zellij_utils::{
     input::{
         actions::Action,
         command::{RunCommand, RunCommandAction, TerminalAction},
-        layout::{Layout, PluginUserConfiguration, RunPlugin, RunPluginOrAlias, RunPluginLocation},
+        layout::{Layout, RunPluginOrAlias},
         plugins::PluginType,
     },
     plugin_api::{
@@ -1226,14 +1224,6 @@ fn start_or_reload_plugin(env: &ForeignFunctionEnv, url: &str) -> Result<()> {
         )
     };
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    // let url = Url::parse(&url).map_err(|e| anyhow!("Failed to parse url: {}", e))?;
-//     let run_plugin_location = RunPluginLocation::parse(url.as_str(), Some(cwd))
-//         .map_err(|e| anyhow!("Failed to parse plugin location: {}", e))?;
-//     let run_plugin = RunPlugin {
-//         location: run_plugin_location,
-//         _allow_exec_host_cmd: false,
-//         configuration: PluginUserConfiguration::new(BTreeMap::new()), // TODO: allow passing configuration
-//     };
     let run_plugin_or_alias = RunPluginOrAlias::from_url(url, &None, None, Some(cwd))
       .map_err(|e| anyhow!("Failed to parse plugin location: {}", e))?;
     let action = Action::StartOrReloadPlugin(run_plugin_or_alias);

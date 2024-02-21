@@ -146,6 +146,29 @@ impl RunPluginOrAlias {
             }
         }
     }
+    pub fn is_equivalent_to_run(&self, run: &Option<Run>) -> bool {
+        match (self, run) {
+            (RunPluginOrAlias::Alias(self_alias), Some(Run::Plugin(RunPluginOrAlias::Alias(run_alias)))) => {
+                self_alias.name == run_alias.name &&
+                    self_alias.configuration
+                    .as_ref()
+                    // we do the is_empty() checks because an empty configuration is the same as no
+                    // configuration (i.e. None)
+                    .and_then(|c| if c.inner().is_empty() { None } else { Some(c)} ) ==
+                        run_alias.configuration
+                        .as_ref()
+                        .and_then(|c| if c.inner().is_empty() { None } else { Some(c) })
+            }
+            (RunPluginOrAlias::Alias(self_alias), Some(Run::Plugin(RunPluginOrAlias::RunPlugin(other_run_plugin)))) => {
+                self_alias.run_plugin.as_ref() == Some(other_run_plugin)
+            }
+            (RunPluginOrAlias::RunPlugin(self_run_plugin), Some(Run::Plugin(RunPluginOrAlias::RunPlugin(other_run_plugin)))) => {
+                self_run_plugin == other_run_plugin
+
+            }
+            _ => false
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
@@ -298,9 +321,7 @@ impl Run {
     pub fn get_run_plugin(&self) -> Option<RunPlugin> {
         match self {
             Run::Plugin(RunPluginOrAlias::RunPlugin(run_plugin)) => Some(run_plugin.clone()),
-            // Run::Plugin(RunPluginOrAlias::Alias(plugin_alias)) => plugin_alias.run_plugin.as_ref().map(|r| r.clone()),
             Run::Plugin(RunPluginOrAlias::Alias(plugin_alias)) => {
-                log::info!("plugin_alias: {:?}", plugin_alias);
                 plugin_alias.run_plugin.as_ref().map(|r| r.clone())
             }
             _ => None
@@ -824,7 +845,6 @@ impl TiledPaneLayout {
         }
     }
     pub fn populate_plugin_aliases_in_layout(&mut self, plugin_aliases: &HashMap<&str, RunPlugin>) {
-        log::info!("populate_plugin_aliases_in_layout: {:?}", self.run);
         match self.run.as_mut() {
             Some(run) => run.populate_run_plugin_if_needed(plugin_aliases),
             _ => {}

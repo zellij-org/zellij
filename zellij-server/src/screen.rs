@@ -19,7 +19,7 @@ use zellij_utils::{
     envs::set_session_name,
     input::command::TerminalAction,
     input::layout::{
-        FloatingPaneLayout, Layout, PluginUserConfiguration, Run, RunPlugin, RunPluginOrAlias, RunPluginLocation,
+        FloatingPaneLayout, Layout, Run, RunPlugin, RunPluginOrAlias, RunPluginLocation,
         SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,
     },
     position::Position,
@@ -1269,7 +1269,6 @@ impl Screen {
         };
 
         // apply the layout to the new tab
-        eprintln!("here, right?");
         self.tabs
             .get_mut(&tab_index)
             .context("couldn't find tab with index {tab_index}")
@@ -1747,16 +1746,13 @@ impl Screen {
         client_id: ClientId,
     ) -> Result<bool> {
         // true => found and focused, false => not
-        log::info!("focus_plugin_pane");
         let err_context = || format!("failed to focus_plugin_pane");
         let mut tab_index_and_plugin_pane_id = None;
         let mut plugin_pane_to_move_to_active_tab = None;
         let focused_tab_index = *self.active_tab_indices.get(&client_id).unwrap_or(&0);
         let all_tabs = self.get_tabs_mut();
         for (tab_index, tab) in all_tabs.iter_mut() {
-            log::info!("finding plugin...");
             if let Some(plugin_pane_id) = tab.find_plugin(&run_plugin) {
-                log::info!("found it!");
                 tab_index_and_plugin_pane_id = Some((*tab_index, plugin_pane_id));
                 if move_to_focused_tab && focused_tab_index != *tab_index {
                     plugin_pane_to_move_to_active_tab =
@@ -2847,7 +2843,6 @@ pub(crate) fn screen_thread_main(
                 swap_layouts,
                 client_id,
             ) => {
-                log::info!("ScreenInstruction::NewTab");
                 let tab_index = screen.get_new_tab_index();
                 pending_tab_ids.insert(tab_index);
                 screen.new_tab(tab_index, swap_layouts, tab_name.clone(), client_id)?;
@@ -2872,7 +2867,6 @@ pub(crate) fn screen_thread_main(
                 tab_index,
                 client_id,
             ) => {
-                eprintln!("ScreenInstruction::ApplyLayout: {:?}", new_plugin_ids);
                 screen.apply_layout(
                     layout,
                     floating_panes_layout,
@@ -3517,18 +3511,15 @@ pub(crate) fn screen_thread_main(
                     });
                     match client_id_and_focused_tab {
                         Some((tab_index, client_id)) => {
-                            eprintln!("focus plugin pane??: {:?}", run_plugin);
                             if screen.focus_plugin_pane(
                                 &run_plugin,
                                 should_float,
                                 move_to_focused_tab,
                                 client_id,
                             )? {
-                                eprintln!("can has focus plugin pane");
                                 screen.render(None)?;
                                 screen.log_and_report_session_state()?;
                             } else {
-                                eprintln!("no!!");
                                 screen
                                     .bus
                                     .senders

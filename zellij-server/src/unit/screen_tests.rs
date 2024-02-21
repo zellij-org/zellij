@@ -355,7 +355,6 @@ impl MockScreen {
             default_shell,
             Some(pane_layout.clone()),
             initial_floating_panes_layout.clone(),
-            // vec![], // floating_panes_layout
             tab_name,
             (vec![], vec![]), // swap layouts
             self.main_client_id,
@@ -363,10 +362,8 @@ impl MockScreen {
         let _ = self.to_screen.send(ScreenInstruction::ApplyLayout(
             pane_layout,
             initial_floating_panes_layout,
-            // vec![], // floating panes layout
             pane_ids,
             floating_pane_ids,
-            // vec![], // floating pane ids
             plugin_ids,
             tab_index,
             self.main_client_id,
@@ -442,7 +439,6 @@ impl MockScreen {
             default_shell,
             Some(pane_layout.clone()),
             initial_floating_panes_layout.clone(),
-            // vec![], // floating_panes_layout
             tab_name,
             (vec![], vec![]), // swap layouts
             self.main_client_id,
@@ -450,10 +446,8 @@ impl MockScreen {
         let _ = self.to_screen.send(ScreenInstruction::ApplyLayout(
             pane_layout,
             initial_floating_panes_layout,
-            // vec![], // floating panes layout
             pane_ids,
             floating_pane_ids,
-            // vec![], // floating pane ids
             plugin_ids,
             tab_index,
             self.main_client_id,
@@ -2967,7 +2961,6 @@ pub fn send_cli_launch_or_focus_plugin_action_when_plugin_is_already_loaded_for_
         in_place: false,
         move_to_focused_tab: true,
         url: "fixture_plugin_for_tests".to_owned(),
-        // url: url::Url::parse("file:/path/to/fake/plugin").unwrap(),
         configuration: Default::default(),
         skip_plugin_cache: false,
     };
@@ -3335,7 +3328,6 @@ pub fn screen_can_break_floating_plugin_pane_to_a_new_tab() {
         size,
     );
     let snapshot_count = snapshots.len();
-    eprintln!("snapshots: {:#?}", snapshots);
     for (_cursor_coordinates, snapshot) in snapshots {
         assert_snapshot!(format!("{}", snapshot));
     }

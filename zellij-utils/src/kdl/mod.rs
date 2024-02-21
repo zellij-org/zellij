@@ -958,7 +958,6 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                     .and_then(|c_m| kdl_child_bool_value_for_entry(c_m, "skip_plugin_cache"))
                     .unwrap_or(false);
                 let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-                // let location = RunPluginLocation::parse(&plugin_path, Some(current_dir))?;
                 let configuration = KdlLayoutParser::parse_plugin_user_configuration(&kdl_action)?;
                 let run_plugin_or_alias = RunPluginOrAlias::from_url(&plugin_path, &Some(configuration.inner().clone()), None, Some(current_dir)).map_err(|e| {
                     ConfigError::new_kdl_error(
@@ -967,12 +966,6 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                         kdl_action.span().len(),
                     )
                 })?;
-
-//                 let run_plugin = RunPlugin {
-//                     location,
-//                     _allow_exec_host_cmd: false,
-//                     configuration,
-//                 };
                 Ok(Action::LaunchOrFocusPlugin(
                     run_plugin_or_alias,
                     should_float,
@@ -1004,13 +997,6 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                     .and_then(|c_m| kdl_child_bool_value_for_entry(c_m, "skip_plugin_cache"))
                     .unwrap_or(false);
                 let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-//                let location = RunPluginLocation::parse(&plugin_path, Some(current_dir))?;
-//                 let configuration = KdlLayoutParser::parse_plugin_user_configuration(&kdl_action)?;
-//                 let run_plugin = RunPlugin {
-//                     location,
-//                     _allow_exec_host_cmd: false,
-//                     configuration,
-//                 };
                 let configuration = KdlLayoutParser::parse_plugin_user_configuration(&kdl_action)?;
                 let run_plugin_or_alias = RunPluginOrAlias::from_url(&plugin_path, &Some(configuration.inner().clone()), None, Some(current_dir)).map_err(|e| {
                     ConfigError::new_kdl_error(

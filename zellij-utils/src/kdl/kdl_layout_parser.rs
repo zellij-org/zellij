@@ -3,7 +3,7 @@ use crate::input::{
     config::ConfigError,
     layout::{
         FloatingPaneLayout, Layout, LayoutConstraint, PercentOrFixed, PluginUserConfiguration, Run,
-        RunPlugin, RunPluginLocation, RunPluginOrAlias, SplitDirection, SplitSize, SwapFloatingLayout,
+        RunPluginOrAlias, SplitDirection, SplitSize, SwapFloatingLayout,
         SwapTiledLayout, TiledPaneLayout,
     },
 };
@@ -313,21 +313,6 @@ impl<'a> KdlLayoutParser<'a> {
                 plugin_block.span().len(),
             ),
         )?;
-
-        // let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-        // let location = RunPluginLocation::parse(&plugin_path, Some(current_dir))?;
-        // let configuration = KdlLayoutParser::parse_plugin_user_configuration(&kdl_action)?;
-
-
-
-//         let location =
-//             RunPluginLocation::parse(&string_url, self.cwd_prefix(None)?).map_err(|e| {
-//                 ConfigError::new_layout_kdl_error(
-//                     e.to_string(),
-//                     url_node.span().offset(),
-//                     url_node.span().len(),
-//                 )
-//             })?;
         let configuration = KdlLayoutParser::parse_plugin_user_configuration(&plugin_block)?;
         let run_plugin_or_alias = RunPluginOrAlias::from_url(&string_url, &Some(configuration.inner().clone()), None, self.cwd_prefix(None)?).map_err(|e| {
             ConfigError::new_kdl_error(
@@ -337,11 +322,6 @@ impl<'a> KdlLayoutParser<'a> {
             )
         })?;
         Ok(Some(Run::Plugin(run_plugin_or_alias)))
-//         Ok(Some(Run::Plugin(RunPluginOrAlias::RunPlugin(RunPlugin {
-//             _allow_exec_host_cmd,
-//             location,
-//             configuration,
-//         }))))
     }
     pub fn parse_plugin_user_configuration(
         plugin_block: &KdlNode,
