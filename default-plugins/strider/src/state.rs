@@ -1,6 +1,3 @@
-use crate::search::search_results::SearchResult;
-use crate::search::search_state::SearchState;
-use crate::search::search_state::SearchType;
 use pretty_bytes::converter as pb;
 use std::{
     collections::{HashMap, VecDeque},
@@ -11,7 +8,6 @@ use std::{
 use zellij_tile::prelude::*;
 
 pub const ROOT: &str = "/host";
-pub const CURRENT_SEARCH_TERM: &str = "/data/current_search_term";
 
 #[derive(Default)]
 pub struct State {
@@ -20,30 +16,12 @@ pub struct State {
     pub cursor_hist: HashMap<PathBuf, (usize, usize)>,
     pub hide_hidden_files: bool,
     pub ev_history: VecDeque<(Event, Instant)>, // stores last event, can be expanded in future
-    pub search_state: SearchState,
-    pub search_paths: Vec<String>,
-    pub search_term: Option<String>,
-    pub file_name_search_results: Vec<SearchResult>,
-    pub file_contents_search_results: Vec<SearchResult>,
     pub loading: bool,
     pub loading_animation_offset: u8,
-    pub typing_search_term: bool,
-    pub selected_search_result: usize,
-    pub processed_search_index: usize,
     pub should_open_floating: bool,
-    pub search_filter: SearchType,
 }
 
 impl State {
-    pub fn typing_search_term(&self) -> bool {
-        self.typing_search_term
-    }
-    pub fn start_typing_search_term(&mut self) {
-        self.typing_search_term = true;
-    }
-    pub fn stop_typing_search_term(&mut self) {
-        self.typing_search_term = false;
-    }
     pub fn selected_mut(&mut self) -> &mut usize {
         &mut self.cursor_hist.entry(self.path.clone()).or_default().0
     }
