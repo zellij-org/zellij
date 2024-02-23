@@ -50,11 +50,28 @@ impl PluginsConfig {
                 location: run.location.clone(),
                 userspace_configuration: run.configuration.clone(),
             }),
-            RunPluginLocation::Zellij(tag) => self.0.get(tag).cloned().map(|plugin| PluginConfig {
-                _allow_exec_host_cmd: run._allow_exec_host_cmd,
-                userspace_configuration: run.configuration.clone(),
-                ..plugin
-            }),
+//             RunPluginLocation::Zellij(tag) => self.0.get(tag).cloned().map(|plugin| PluginConfig {
+//                 _allow_exec_host_cmd: run._allow_exec_host_cmd,
+//                 userspace_configuration: run.configuration.clone(),
+//                 ..plugin
+//             }),
+            RunPluginLocation::Zellij(tag) => {
+                let tag = tag.to_string();
+                if tag == "status-bar" || tag == "tab-bar" || tag == "strider" || tag == "session-manager" {
+                    Some(PluginConfig {
+                        path: PathBuf::from(&tag),
+                        run: PluginType::Pane(None),
+                        _allow_exec_host_cmd: run._allow_exec_host_cmd,
+                        location: RunPluginLocation::parse(&format!("zellij:{}", tag), None).ok()?,
+                        userspace_configuration: PluginUserConfiguration::default(),
+                    })
+                } else {
+                    None
+                }
+//                 _allow_exec_host_cmd: run._allow_exec_host_cmd,
+//                 userspace_configuration: run.configuration.clone(),
+//                 ..plugin
+            },
             RunPluginLocation::Remote(_) => Some(PluginConfig {
                 path: PathBuf::new(),
                 run: PluginType::Pane(None),

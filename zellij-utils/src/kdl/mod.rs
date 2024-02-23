@@ -1789,10 +1789,10 @@ impl Config {
             let config_themes = Themes::from_kdl(kdl_themes)?;
             config.themes = config.themes.merge(config_themes);
         }
-        if let Some(kdl_plugin_config) = kdl_config.get("plugins") {
-            let config_plugins = PluginsConfig::from_kdl(kdl_plugin_config)?;
-            config.plugins = config.plugins.merge(config_plugins);
-        }
+//         if let Some(kdl_plugin_config) = kdl_config.get("plugins") {
+//             let config_plugins = PluginsConfig::from_kdl(kdl_plugin_config)?;
+//             config.plugins = config.plugins.merge(config_plugins);
+//         }
         if let Some(kdl_ui_config) = kdl_config.get("ui") {
             let config_ui = UiConfig::from_kdl(&kdl_ui_config)?;
             config.ui = config.ui.merge(config_ui);

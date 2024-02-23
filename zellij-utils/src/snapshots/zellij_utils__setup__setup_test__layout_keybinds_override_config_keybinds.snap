@@ -1,6 +1,6 @@
 ---
 source: zellij-utils/src/setup.rs
-assertion_line: 785
+assertion_line: 813
 expression: "format!(\"{:#?}\", config)"
 ---
 Config {
@@ -89,93 +89,7 @@ Config {
         serialization_interval: None,
     },
     themes: {},
-    plugins: {
-        PluginTag(
-            "compact-bar",
-        ): PluginConfig {
-            path: "compact-bar",
-            run: Pane(
-                None,
-            ),
-            _allow_exec_host_cmd: false,
-            location: Zellij(
-                PluginTag(
-                    "compact-bar",
-                ),
-            ),
-            userspace_configuration: PluginUserConfiguration(
-                {},
-            ),
-        },
-        PluginTag(
-            "session-manager",
-        ): PluginConfig {
-            path: "session-manager",
-            run: Pane(
-                None,
-            ),
-            _allow_exec_host_cmd: false,
-            location: Zellij(
-                PluginTag(
-                    "session-manager",
-                ),
-            ),
-            userspace_configuration: PluginUserConfiguration(
-                {},
-            ),
-        },
-        PluginTag(
-            "status-bar",
-        ): PluginConfig {
-            path: "status-bar",
-            run: Pane(
-                None,
-            ),
-            _allow_exec_host_cmd: false,
-            location: Zellij(
-                PluginTag(
-                    "status-bar",
-                ),
-            ),
-            userspace_configuration: PluginUserConfiguration(
-                {},
-            ),
-        },
-        PluginTag(
-            "strider",
-        ): PluginConfig {
-            path: "strider",
-            run: Pane(
-                None,
-            ),
-            _allow_exec_host_cmd: false,
-            location: Zellij(
-                PluginTag(
-                    "strider",
-                ),
-            ),
-            userspace_configuration: PluginUserConfiguration(
-                {},
-            ),
-        },
-        PluginTag(
-            "tab-bar",
-        ): PluginConfig {
-            path: "tab-bar",
-            run: Pane(
-                None,
-            ),
-            _allow_exec_host_cmd: false,
-            location: Zellij(
-                PluginTag(
-                    "tab-bar",
-                ),
-            ),
-            userspace_configuration: PluginUserConfiguration(
-                {},
-            ),
-        },
-    },
+    plugins: {},
     ui: UiConfig {
         pane_frames: FrameConfig {
             rounded_corners: false,
