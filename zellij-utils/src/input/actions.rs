@@ -360,13 +360,7 @@ impl Action {
                                 configuration: user_configuration,
                             })
                         },
-                        // Err(PluginsConfigError::InvalidUrlScheme(url)) => {
-                        Err(_) => { // TODO: more exact error
-                            RunPluginOrAlias::Alias(PluginAlias::new(&plugin, &configuration.map(|c| c.inner().clone())))
-                        },
-//                         Err(e) => {
-//                             return Err(format!("Failed to parse plugin location {plugin}: {}", e));
-//                         }
+                        Err(_) => RunPluginOrAlias::Alias(PluginAlias::new(&plugin, &configuration.map(|c| c.inner().clone()))),
                     };
                     if floating {
                         Ok(vec![Action::NewFloatingPluginPane(

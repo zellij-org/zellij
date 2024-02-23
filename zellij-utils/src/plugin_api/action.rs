@@ -1144,13 +1144,6 @@ impl TryFrom<Action> for ProtobufAction {
                 optional_payload: None,
             }),
             Action::NewTiledPluginPane(run_plugin, pane_name, skip_plugin_cache, _cwd) => {
-//                 let plugin_url: Url = match run_plugin {
-//                     RunPluginOrAlias::RunPlugin(run_plugin) => Url::from(&run_plugin.location),
-//                     RunPluginOrAlias::Alias(plugin_alias) => {
-//                         // TODO: support plugin alias
-//                         unimplemented!()
-//                     }
-//                 };
                 Ok(ProtobufAction {
                     name: ProtobufActionName::NewTiledPluginPane as i32,
                     optional_payload: Some(OptionalPayload::NewTiledPluginPanePayload(

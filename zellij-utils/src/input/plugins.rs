@@ -22,6 +22,11 @@ impl PluginAliases {
     pub fn merge(&mut self, other: Self) {
         self.aliases.extend(other.aliases);
     }
+    pub fn from_data(aliases: BTreeMap<String, RunPlugin>) -> Self {
+        PluginAliases {
+            aliases
+        }
+    }
 }
 
 /// Plugin metadata
