@@ -9,7 +9,7 @@ use std::convert::TryFrom;
 
 use super::keybinds::Keybinds;
 use super::options::Options;
-use super::plugins::{PluginsConfig, PluginsConfigError};
+use super::plugins::{PluginsConfigError, PluginAliases};
 use super::theme::{Themes, UiConfig};
 use crate::cli::{CliArgs, Command};
 use crate::envs::EnvironmentVariables;
@@ -25,7 +25,7 @@ pub struct Config {
     pub keybinds: Keybinds,
     pub options: Options,
     pub themes: Themes,
-    pub plugins: PluginsConfig,
+    pub plugins: PluginAliases,
     pub ui: UiConfig,
     pub env: EnvironmentVariables,
 }
@@ -226,7 +226,7 @@ impl Config {
         self.options = self.options.merge(other.options);
         self.keybinds.merge(other.keybinds.clone());
         self.themes = self.themes.merge(other.themes);
-        self.plugins = self.plugins.merge(other.plugins);
+        self.plugins.merge(other.plugins);
         self.ui = self.ui.merge(other.ui);
         self.env = self.env.merge(other.env);
         Ok(())
@@ -239,7 +239,7 @@ mod config_test {
     use crate::data::{InputMode, Palette, PaletteColor, PluginTag};
     use crate::input::layout::RunPluginLocation;
     use crate::input::options::{Clipboard, OnForceClose};
-    use crate::input::plugins::{PluginConfig, PluginType, PluginsConfig};
+    use crate::input::plugins::{PluginConfig, PluginType};
     use crate::input::theme::{FrameConfig, Theme, Themes, UiConfig};
     use std::collections::HashMap;
     use std::io::Write;

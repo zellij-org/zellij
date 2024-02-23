@@ -38,7 +38,7 @@ use zellij_utils::{
     input::{
         command::TerminalAction,
         layout::{Layout, PluginUserConfiguration, RunPlugin, RunPluginOrAlias, RunPluginLocation},
-        plugins::PluginsConfig,
+        plugins::PluginConfig,
     },
     ipc::ClientAttributes,
     pane_size::Size,
@@ -76,7 +76,6 @@ impl PluginRenderAsset {
 
 pub struct WasmBridge {
     connected_clients: Arc<Mutex<Vec<ClientId>>>,
-    plugins: PluginsConfig,
     senders: ThreadSenders,
     store: Arc<Mutex<Store>>,
     plugin_dir: PathBuf,
@@ -106,7 +105,6 @@ pub struct WasmBridge {
 
 impl WasmBridge {
     pub fn new(
-        plugins: PluginsConfig,
         senders: ThreadSenders,
         store: Arc<Mutex<Store>>,
         plugin_dir: PathBuf,
@@ -124,7 +122,6 @@ impl WasmBridge {
         let watcher = None;
         WasmBridge {
             connected_clients,
-            plugins,
             senders,
             store,
             plugin_dir,
@@ -178,9 +175,7 @@ impl WasmBridge {
 
         match run {
             Some(run) => {
-                let mut plugin = self
-                    .plugins
-                    .get(run)
+                let mut plugin = PluginConfig::from_run_plugin(run)
                     .with_context(|| format!("failed to resolve plugin {run:?}"))
                     .with_context(err_context)?;
                 let plugin_name = run.location.to_string();

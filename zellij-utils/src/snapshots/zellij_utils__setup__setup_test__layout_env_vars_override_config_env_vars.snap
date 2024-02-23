@@ -3599,7 +3599,89 @@ Config {
         serialization_interval: None,
     },
     themes: {},
-    plugins: {},
+    plugins: PluginAliases {
+        aliases: {
+            "compact-bar": RunPlugin {
+                _allow_exec_host_cmd: false,
+                location: Zellij(
+                    PluginTag(
+                        "compact-bar",
+                    ),
+                ),
+                configuration: PluginUserConfiguration(
+                    {},
+                ),
+            },
+            "filepicker": RunPlugin {
+                _allow_exec_host_cmd: false,
+                location: Zellij(
+                    PluginTag(
+                        "strider",
+                    ),
+                ),
+                configuration: PluginUserConfiguration(
+                    {},
+                ),
+            },
+            "session-manager": RunPlugin {
+                _allow_exec_host_cmd: false,
+                location: Zellij(
+                    PluginTag(
+                        "session-manager",
+                    ),
+                ),
+                configuration: PluginUserConfiguration(
+                    {},
+                ),
+            },
+            "status-bar": RunPlugin {
+                _allow_exec_host_cmd: false,
+                location: Zellij(
+                    PluginTag(
+                        "status-bar",
+                    ),
+                ),
+                configuration: PluginUserConfiguration(
+                    {},
+                ),
+            },
+            "strider": RunPlugin {
+                _allow_exec_host_cmd: false,
+                location: Zellij(
+                    PluginTag(
+                        "strider",
+                    ),
+                ),
+                configuration: PluginUserConfiguration(
+                    {},
+                ),
+            },
+            "tab-bar": RunPlugin {
+                _allow_exec_host_cmd: false,
+                location: Zellij(
+                    PluginTag(
+                        "tab-bar",
+                    ),
+                ),
+                configuration: PluginUserConfiguration(
+                    {},
+                ),
+            },
+            "welcome-screen": RunPlugin {
+                _allow_exec_host_cmd: false,
+                location: Zellij(
+                    PluginTag(
+                        "session-manager",
+                    ),
+                ),
+                configuration: PluginUserConfiguration(
+                    {
+                        "welcome_screen": "true",
+                    },
+                ),
+            },
+        },
+    },
     ui: UiConfig {
         pane_frames: FrameConfig {
             rounded_corners: false,

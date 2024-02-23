@@ -20,11 +20,10 @@ use crate::{
 };
 
 use std::cmp::Ordering;
-use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::str::FromStr;
 
-use super::plugins::{PluginTag, PluginsConfigError};
+use super::plugins::{PluginTag, PluginsConfigError, PluginAliases};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::vec::Vec;
@@ -100,12 +99,12 @@ impl RunPluginOrAlias {
             RunPluginOrAlias::Alias(plugin_alias) => plugin_alias.name.clone(),
         }
     }
-    pub fn populate_run_plugin_if_needed(&mut self, alias_dict: &HashMap<&str, RunPlugin>) {
+    pub fn populate_run_plugin_if_needed(&mut self, plugin_aliases: &PluginAliases) {
         if let RunPluginOrAlias::Alias(run_plugin_alias) = self {
             if run_plugin_alias.run_plugin.is_some() {
                 log::warn!("Overriding plugin alias");
             }
-            let merged_run_plugin = alias_dict
+            let merged_run_plugin = plugin_aliases.aliases
                 .get(run_plugin_alias.name.as_str())
                 .map(|r| r.clone().merge_configuration(&run_plugin_alias.configuration.as_ref().map(|c| c.inner().clone())));
             run_plugin_alias.run_plugin = merged_run_plugin;
@@ -123,7 +122,7 @@ impl RunPluginOrAlias {
     pub fn from_url(
         url: &str,
         configuration: &Option<BTreeMap<String, String>>,
-        alias_dict: Option<&HashMap<&str, RunPlugin>>,
+        alias_dict: Option<&PluginAliases>,
         cwd: Option<PathBuf>
     ) -> Result<Self, String> {
         match RunPluginLocation::parse(&url, cwd) {
@@ -137,7 +136,7 @@ impl RunPluginOrAlias {
             Err(PluginsConfigError::InvalidUrlScheme(_)) | Err(PluginsConfigError::InvalidUrl(..))=> {
                 let mut plugin_alias = PluginAlias::new(&url, configuration);
                 if let Some(alias_dict) = alias_dict {
-                    plugin_alias.run_plugin = alias_dict.get(&url).map(|r| r.clone().merge_configuration(configuration));
+                    plugin_alias.run_plugin = alias_dict.aliases.get(url).map(|r| r.clone().merge_configuration(configuration));
                 }
                 Ok(RunPluginOrAlias::Alias(plugin_alias))
             },
@@ -327,7 +326,7 @@ impl Run {
             _ => None
         }
     }
-    pub fn populate_run_plugin_if_needed(&mut self, alias_dict: &HashMap<&str, RunPlugin>) {
+    pub fn populate_run_plugin_if_needed(&mut self, alias_dict: &PluginAliases) {
         match self {
             Run::Plugin(run_plugin_alias) => run_plugin_alias.populate_run_plugin_if_needed(alias_dict),
             _ => {}
@@ -844,7 +843,7 @@ impl TiledPaneLayout {
             child.add_cwd_to_layout(cwd);
         }
     }
-    pub fn populate_plugin_aliases_in_layout(&mut self, plugin_aliases: &HashMap<&str, RunPlugin>) {
+    pub fn populate_plugin_aliases_in_layout(&mut self, plugin_aliases: &PluginAliases) {
         match self.run.as_mut() {
             Some(run) => run.populate_run_plugin_if_needed(plugin_aliases),
             _ => {}
@@ -1288,7 +1287,7 @@ impl Layout {
             Err(_e) => None,
         }
     }
-    pub fn populate_plugin_aliases_in_layout(&mut self, plugin_aliases: &HashMap<&str, RunPlugin>) {
+    pub fn populate_plugin_aliases_in_layout(&mut self, plugin_aliases: &PluginAliases) {
         for tab in self.tabs.iter_mut() {
             tab.1.populate_plugin_aliases_in_layout(plugin_aliases);
             for floating_pane_layout in tab.2.iter_mut() {

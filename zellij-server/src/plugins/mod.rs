@@ -34,9 +34,9 @@ use zellij_utils::{
         command::TerminalAction,
         layout::{
             FloatingPaneLayout, Layout, Run, RunPlugin, RunPluginOrAlias,
-            TiledPaneLayout,
+            TiledPaneLayout
         },
-        plugins::PluginsConfig,
+        plugins::PluginAliases,
     },
     ipc::ClientAttributes,
     pane_size::Size,
@@ -173,35 +173,18 @@ pub(crate) fn plugin_thread_main(
     bus: Bus<PluginInstruction>,
     store: Store,
     data_dir: PathBuf,
-    plugins: PluginsConfig,
     mut layout: Box<Layout>,
     path_to_default_shell: PathBuf,
     zellij_cwd: PathBuf,
     capabilities: PluginCapabilities,
     client_attributes: ClientAttributes,
     default_shell: Option<TerminalAction>,
+    plugin_aliases: Box<PluginAliases>,
 ) -> Result<()> {
     info!("Wasm main thread starts");
-
     let plugin_dir = data_dir.join("plugins/");
     let plugin_global_data_dir = plugin_dir.join("data");
-
-    // TODO: better, not hard coded here, etc.
-    let mut plugin_aliases = HashMap::new();
-    let mut filter_configuration = BTreeMap::new();
-    filter_configuration.insert("key_from_dict".to_owned(), "value_from_dict".to_owned());
-
-    // TODO: from config
-    plugin_aliases.insert("session-manager-alias", RunPlugin::from_url("zellij:session-manager").unwrap());
-    plugin_aliases.insert("filepicker", RunPlugin::from_url("zellij:strider").unwrap());
-    plugin_aliases.insert("fixture_plugin_for_tests", RunPlugin::from_url(&format!("file:{}/../target/e2e-data/plugins/fixture-plugin-for-tests.wasm", std::env::var_os("CARGO_MANIFEST_DIR").unwrap().to_string_lossy())).unwrap());
-    plugin_aliases.insert(
-        "filter",
-        RunPlugin::from_url("file:/home/aram/code/rust-plugin-example/target/wasm32-wasi/debug/rust-plugin-example.wasm").unwrap().with_configuration(filter_configuration)
-    );
-
     layout.populate_plugin_aliases_in_layout(&plugin_aliases);
-
     let store = Arc::new(Mutex::new(store));
 
     // use this channel to ensure that tasks spawned from this thread terminate before exiting
@@ -209,7 +192,6 @@ pub(crate) fn plugin_thread_main(
     let (shutdown_send, shutdown_receive) = channel::bounded::<()>(1);
 
     let mut wasm_bridge = WasmBridge::new(
-        plugins,
         bus.senders.clone(),
         store,
         plugin_dir,
@@ -697,7 +679,7 @@ fn pipe_to_specific_plugins(
     args: &Option<BTreeMap<String, String>>,
     bus: &Bus<PluginInstruction>,
     wasm_bridge: &mut WasmBridge,
-    plugin_aliases: &HashMap<&str, RunPlugin>,
+    plugin_aliases: &PluginAliases,
 ) {
     let is_private = true;
     let size = Size::default();

@@ -50,7 +50,7 @@ use zellij_utils::{
         get_mode_info,
         layout::Layout,
         options::Options,
-        plugins::PluginsConfig,
+        plugins::PluginAliases,
     },
     ipc::{ClientAttributes, ExitReason, ServerToClientMsg},
 };
@@ -65,8 +65,8 @@ pub enum ServerInstruction {
         Box<CliArgs>,
         Box<Options>,
         Box<Layout>,
+        Box<PluginAliases>,
         ClientId,
-        Option<PluginsConfig>,
     ),
     Render(Option<HashMap<ClientId, String>>),
     UnblockInputThread,
@@ -365,8 +365,8 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 opts,
                 config_options,
                 layout,
+                plugin_aliases,
                 client_id,
-                plugins,
             ) => {
                 let session = init_session(
                     os_input.clone(),
@@ -375,9 +375,9 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     SessionOptions {
                         opts,
                         layout: layout.clone(),
-                        plugins,
                         config_options: config_options.clone(),
                     },
+                    plugin_aliases,
                 );
                 *session_data.write().unwrap() = Some(session);
                 session_state
@@ -832,7 +832,6 @@ pub struct SessionOptions {
     pub opts: Box<CliArgs>,
     pub config_options: Box<Options>,
     pub layout: Box<Layout>,
-    pub plugins: Option<PluginsConfig>,
 }
 
 fn init_session(
@@ -840,12 +839,12 @@ fn init_session(
     to_server: SenderWithContext<ServerInstruction>,
     client_attributes: ClientAttributes,
     options: SessionOptions,
+    plugin_aliases: Box<PluginAliases>,
 ) -> SessionMetaData {
     let SessionOptions {
         opts,
         config_options,
         layout,
-        plugins,
     } = options;
 
     let _ = SCROLL_BUFFER_SIZE.set(
@@ -975,13 +974,13 @@ fn init_session(
                     plugin_bus,
                     store,
                     data_dir,
-                    plugins.unwrap_or_default(),
                     layout,
                     path_to_default_shell,
                     zellij_cwd,
                     capabilities,
                     client_attributes,
                     default_shell,
+                    plugin_aliases,
                 )
                 .fatal()
             }

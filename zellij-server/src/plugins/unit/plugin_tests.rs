@@ -10,7 +10,7 @@ use zellij_utils::data::{Event, Key, PermissionStatus, PermissionType, PluginCap
 use zellij_utils::errors::ErrorContext;
 use zellij_utils::input::layout::{Layout, PluginUserConfiguration, RunPlugin, RunPluginOrAlias, RunPluginLocation, PluginAlias};
 use zellij_utils::input::permission::PermissionCache;
-use zellij_utils::input::plugins::PluginsConfig;
+use zellij_utils::input::plugins::PluginAliases;
 use zellij_utils::ipc::ClientAttributes;
 use zellij_utils::lazy_static::lazy_static;
 use zellij_utils::pane_size::Size;
@@ -249,6 +249,13 @@ fn create_plugin_thread(
     let plugin_capabilities = PluginCapabilities::default();
     let client_attributes = ClientAttributes::default();
     let default_shell_action = None; // TODO: change me
+    let mut plugin_aliases = PluginAliases::default();
+    plugin_aliases.aliases.insert("fixture_plugin_for_tests".to_owned(),
+        RunPlugin::from_url(
+            &format!(
+                "file:{}/../target/e2e-data/plugins/fixture-plugin-for-tests.wasm",
+                std::env::var_os("CARGO_MANIFEST_DIR").unwrap().to_string_lossy())).unwrap()
+        );
     let plugin_thread = std::thread::Builder::new()
         .name("plugin_thread".to_string())
         .spawn(move || {
@@ -257,13 +264,13 @@ fn create_plugin_thread(
                 plugin_bus,
                 store,
                 data_dir,
-                PluginsConfig::default(),
                 Box::new(Layout::default()),
                 default_shell,
                 zellij_cwd,
                 plugin_capabilities,
                 client_attributes,
                 default_shell_action,
+                Box::new(plugin_aliases),
             )
             .expect("TEST")
         })
@@ -335,13 +342,13 @@ fn create_plugin_thread_with_server_receiver(
                 plugin_bus,
                 store,
                 data_dir,
-                PluginsConfig::default(),
                 Box::new(Layout::default()),
                 default_shell,
                 zellij_cwd,
                 plugin_capabilities,
                 client_attributes,
                 default_shell_action,
+                Box::new(PluginAliases::default()),
             )
             .expect("TEST");
         })
@@ -419,13 +426,13 @@ fn create_plugin_thread_with_pty_receiver(
                 plugin_bus,
                 store,
                 data_dir,
-                PluginsConfig::default(),
                 Box::new(Layout::default()),
                 default_shell,
                 zellij_cwd,
                 plugin_capabilities,
                 client_attributes,
                 default_shell_action,
+                Box::new(PluginAliases::default()),
             )
             .expect("TEST")
         })
@@ -498,13 +505,13 @@ fn create_plugin_thread_with_background_jobs_receiver(
                 plugin_bus,
                 store,
                 data_dir,
-                PluginsConfig::default(),
                 Box::new(Layout::default()),
                 default_shell,
                 zellij_cwd,
                 plugin_capabilities,
                 client_attributes,
                 default_shell_action,
+                Box::new(PluginAliases::default()),
             )
             .expect("TEST")
         })

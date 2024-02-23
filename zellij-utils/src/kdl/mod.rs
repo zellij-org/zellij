@@ -7,10 +7,10 @@ use crate::envs::EnvironmentVariables;
 use crate::home::{find_default_config_dir, get_layout_dir};
 use crate::input::config::{Config, ConfigError, KdlError};
 use crate::input::keybinds::Keybinds;
-use crate::input::layout::{Layout, PluginUserConfiguration, RunPluginOrAlias, RunPluginLocation};
+use crate::input::layout::{Layout, RunPluginOrAlias, RunPlugin};
 use crate::input::options::{Clipboard, OnForceClose, Options};
 use crate::input::permission::{GrantedPermission, PermissionCache};
-use crate::input::plugins::{PluginConfig, PluginTag, PluginType, PluginsConfig};
+use crate::input::plugins::PluginAliases;
 use crate::input::theme::{FrameConfig, Theme, Themes, UiConfig};
 use kdl_layout_parser::KdlLayoutParser;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -1789,10 +1789,10 @@ impl Config {
             let config_themes = Themes::from_kdl(kdl_themes)?;
             config.themes = config.themes.merge(config_themes);
         }
-//         if let Some(kdl_plugin_config) = kdl_config.get("plugins") {
-//             let config_plugins = PluginsConfig::from_kdl(kdl_plugin_config)?;
-//             config.plugins = config.plugins.merge(config_plugins);
-//         }
+        if let Some(kdl_plugin_aliases) = kdl_config.get("plugins") {
+            let config_plugins = PluginAliases::from_kdl(kdl_plugin_aliases)?;
+            config.plugins.merge(config_plugins);
+        }
         if let Some(kdl_ui_config) = kdl_config.get("ui") {
             let config_ui = UiConfig::from_kdl(&kdl_ui_config)?;
             config.ui = config.ui.merge(config_ui);
@@ -1805,38 +1805,23 @@ impl Config {
     }
 }
 
-impl PluginsConfig {
-    pub fn from_kdl(kdl_plugin_config: &KdlNode) -> Result<Self, ConfigError> {
-        let mut plugins: HashMap<PluginTag, PluginConfig> = HashMap::new();
-        for plugin_config in
-            kdl_children_nodes_or_error!(kdl_plugin_config, "no plugin config found")
-        {
-            let plugin_name = kdl_name!(plugin_config);
-            let plugin_tag = PluginTag::new(plugin_name);
-            let path = kdl_children_property_first_arg_as_string!(plugin_config, "path")
-                .map(|path| PathBuf::from(path))
-                .ok_or(ConfigError::new_kdl_error(
-                    "Plugin path not found or invalid".into(),
-                    plugin_config.span().offset(),
-                    plugin_config.span().len(),
-                ))?;
-            let allow_exec_host_cmd =
-                kdl_children_property_first_arg_as_bool!(plugin_config, "_allow_exec_host_cmd")
-                    .unwrap_or(false);
-            let plugin_config = PluginConfig {
-                path,
-                run: PluginType::Pane(None),
-                location: RunPluginLocation::Zellij(plugin_tag.clone()),
-                _allow_exec_host_cmd: allow_exec_host_cmd,
-                userspace_configuration: PluginUserConfiguration::new(BTreeMap::new()), // TODO: consider removing the whole
-                                                                                        // "plugins" section in the config
-                                                                                        // because it's not used???
-            };
-            plugins.insert(plugin_tag, plugin_config);
+impl PluginAliases {
+    pub fn from_kdl(kdl_plugin_aliases: &KdlNode) -> Result<PluginAliases, ConfigError> {
+        let mut aliases: BTreeMap<String, RunPlugin> = BTreeMap::new();
+        if let Some(kdl_plugin_aliases) = kdl_children_nodes!(kdl_plugin_aliases) {
+            for alias_definition in kdl_plugin_aliases {
+                let alias_name = kdl_name!(alias_definition);
+                if let Some(string_url) = kdl_get_string_property_or_child_value!(alias_definition, "location") {
+                    let configuration = KdlLayoutParser::parse_plugin_user_configuration(&alias_definition)?;
+                    let run_plugin = RunPlugin::from_url(string_url)?.with_configuration(configuration.inner().clone());
+                    aliases.insert(alias_name.to_owned(), run_plugin);
+                }
+            }
         }
-        Ok(PluginsConfig(plugins))
+        Ok(PluginAliases { aliases })
     }
 }
+
 impl UiConfig {
     pub fn from_kdl(kdl_ui_config: &KdlNode) -> Result<UiConfig, ConfigError> {
         let mut ui_config = UiConfig::default();

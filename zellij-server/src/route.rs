@@ -1013,15 +1013,15 @@ pub(crate) fn route_thread_main(
                             cli_args,
                             opts,
                             layout,
-                            plugin_config,
+                            plugin_aliases,
                         ) => {
                             let new_client_instruction = ServerInstruction::NewClient(
                                 client_attributes,
                                 cli_args,
                                 opts,
                                 layout,
+                                plugin_aliases,
                                 client_id,
-                                plugin_config,
                             );
                             to_server
                                 .send(new_client_instruction)
