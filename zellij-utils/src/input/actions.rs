@@ -209,6 +209,7 @@ pub enum Action {
     ToggleTab,
     TabNameInput(Vec<u8>),
     UndoRenameTab,
+    MoveTab(Direction),
     /// Run specified command in new pane.
     Run(RunCommandAction),
     /// Detach session and exit

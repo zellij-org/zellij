@@ -61,6 +61,15 @@ Config {
             ],
             Alt(
                 Char(
+                    'i',
+                ),
+            ): [
+                MoveTab(
+                    Left,
+                ),
+            ],
+            Alt(
+                Char(
                     'j',
                 ),
             ): [
@@ -94,6 +103,15 @@ Config {
                 NewPane(
                     None,
                     None,
+                ),
+            ],
+            Alt(
+                Char(
+                    'o',
+                ),
+            ): [
+                MoveTab(
+                    Right,
                 ),
             ],
             Alt(
@@ -402,6 +420,15 @@ Config {
             ],
             Alt(
                 Char(
+                    'i',
+                ),
+            ): [
+                MoveTab(
+                    Left,
+                ),
+            ],
+            Alt(
+                Char(
                     'j',
                 ),
             ): [
@@ -435,6 +462,15 @@ Config {
                 NewPane(
                     None,
                     None,
+                ),
+            ],
+            Alt(
+                Char(
+                    'o',
+                ),
+            ): [
+                MoveTab(
+                    Right,
                 ),
             ],
             Alt(
@@ -745,6 +781,15 @@ Config {
             ],
             Alt(
                 Char(
+                    'i',
+                ),
+            ): [
+                MoveTab(
+                    Left,
+                ),
+            ],
+            Alt(
+                Char(
                     'j',
                 ),
             ): [
@@ -778,6 +823,15 @@ Config {
                 NewPane(
                     None,
                     None,
+                ),
+            ],
+            Alt(
+                Char(
+                    'o',
+                ),
+            ): [
+                MoveTab(
+                    Right,
                 ),
             ],
             Alt(
@@ -1134,6 +1188,15 @@ Config {
             ],
             Alt(
                 Char(
+                    'i',
+                ),
+            ): [
+                MoveTab(
+                    Left,
+                ),
+            ],
+            Alt(
+                Char(
                     'j',
                 ),
             ): [
@@ -1167,6 +1230,15 @@ Config {
                 NewPane(
                     None,
                     None,
+                ),
+            ],
+            Alt(
+                Char(
+                    'o',
+                ),
+            ): [
+                MoveTab(
+                    Right,
                 ),
             ],
             Alt(
@@ -1406,6 +1478,15 @@ Config {
             ],
             Alt(
                 Char(
+                    'i',
+                ),
+            ): [
+                MoveTab(
+                    Left,
+                ),
+            ],
+            Alt(
+                Char(
                     'j',
                 ),
             ): [
@@ -1439,6 +1520,15 @@ Config {
                 NewPane(
                     None,
                     None,
+                ),
+            ],
+            Alt(
+                Char(
+                    'o',
+                ),
+            ): [
+                MoveTab(
+                    Right,
                 ),
             ],
             Alt(
@@ -1618,6 +1708,15 @@ Config {
             ],
             Alt(
                 Char(
+                    'i',
+                ),
+            ): [
+                MoveTab(
+                    Left,
+                ),
+            ],
+            Alt(
+                Char(
                     'j',
                 ),
             ): [
@@ -1651,6 +1750,15 @@ Config {
                 NewPane(
                     None,
                     None,
+                ),
+            ],
+            Alt(
+                Char(
+                    'o',
+                ),
+            ): [
+                MoveTab(
+                    Right,
                 ),
             ],
             Alt(
@@ -1909,6 +2017,15 @@ Config {
             ],
             Alt(
                 Char(
+                    'i',
+                ),
+            ): [
+                MoveTab(
+                    Left,
+                ),
+            ],
+            Alt(
+                Char(
                     'j',
                 ),
             ): [
@@ -1942,6 +2059,15 @@ Config {
                 NewPane(
                     None,
                     None,
+                ),
+            ],
+            Alt(
+                Char(
+                    'o',
+                ),
+            ): [
+                MoveTab(
+                    Right,
                 ),
             ],
             Alt(
@@ -2121,6 +2247,15 @@ Config {
             ],
             Alt(
                 Char(
+                    'i',
+                ),
+            ): [
+                MoveTab(
+                    Left,
+                ),
+            ],
+            Alt(
+                Char(
                     'j',
                 ),
             ): [
@@ -2154,6 +2289,15 @@ Config {
                 NewPane(
                     None,
                     None,
+                ),
+            ],
+            Alt(
+                Char(
+                    'o',
+                ),
+            ): [
+                MoveTab(
+                    Right,
                 ),
             ],
             Alt(
@@ -2330,6 +2474,15 @@ Config {
             ],
             Alt(
                 Char(
+                    'i',
+                ),
+            ): [
+                MoveTab(
+                    Left,
+                ),
+            ],
+            Alt(
+                Char(
                     'j',
                 ),
             ): [
@@ -2363,6 +2516,15 @@ Config {
                 NewPane(
                     None,
                     None,
+                ),
+            ],
+            Alt(
+                Char(
+                    'o',
+                ),
+            ): [
+                MoveTab(
+                    Right,
                 ),
             ],
             Alt(
@@ -2570,6 +2732,15 @@ Config {
             ],
             Alt(
                 Char(
+                    'i',
+                ),
+            ): [
+                MoveTab(
+                    Left,
+                ),
+            ],
+            Alt(
+                Char(
                     'j',
                 ),
             ): [
@@ -2603,6 +2774,15 @@ Config {
                 NewPane(
                     None,
                     None,
+                ),
+            ],
+            Alt(
+                Char(
+                    'o',
+                ),
+            ): [
+                MoveTab(
+                    Right,
                 ),
             ],
             Alt(
@@ -2847,6 +3027,15 @@ Config {
             ],
             Alt(
                 Char(
+                    'i',
+                ),
+            ): [
+                MoveTab(
+                    Left,
+                ),
+            ],
+            Alt(
+                Char(
                     'j',
                 ),
             ): [
@@ -2880,6 +3069,15 @@ Config {
                 NewPane(
                     None,
                     None,
+                ),
+            ],
+            Alt(
+                Char(
+                    'o',
+                ),
+            ): [
+                MoveTab(
+                    Right,
                 ),
             ],
             Alt(
@@ -3053,6 +3251,15 @@ Config {
             ],
             Alt(
                 Char(
+                    'i',
+                ),
+            ): [
+                MoveTab(
+                    Left,
+                ),
+            ],
+            Alt(
+                Char(
                     'j',
                 ),
             ): [
@@ -3086,6 +3293,15 @@ Config {
                 NewPane(
                     None,
                     None,
+                ),
+            ],
+            Alt(
+                Char(
+                    'o',
+                ),
+            ): [
+                MoveTab(
+                    Right,
                 ),
             ],
             Alt(
@@ -3427,6 +3643,15 @@ Config {
             ],
             Alt(
                 Char(
+                    'i',
+                ),
+            ): [
+                MoveTab(
+                    Left,
+                ),
+            ],
+            Alt(
+                Char(
                     'j',
                 ),
             ): [
@@ -3460,6 +3685,15 @@ Config {
                 NewPane(
                     None,
                     None,
+                ),
+            ],
+            Alt(
+                Char(
+                    'o',
+                ),
+            ): [
+                MoveTab(
+                    Right,
                 ),
             ],
             Alt(

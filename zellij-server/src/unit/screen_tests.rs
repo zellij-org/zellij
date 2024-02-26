@@ -796,6 +796,150 @@ fn move_focus_left_at_left_screen_edge_changes_tab() {
 }
 
 #[test]
+fn basic_move_of_active_tab_to_left() {
+    let mut screen = create_fixed_size_screen();
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 1);
+    assert_eq!(screen.get_active_tab(1).unwrap().position, 1);
+
+    screen.move_active_tab_to_left(1).expect("TEST");
+
+    assert_eq!(
+        screen.get_active_tab(1).unwrap().position,
+        0,
+        "Active tab moved to left"
+    );
+}
+
+fn create_fixed_size_screen() -> Screen {
+    create_new_screen(Size {
+        cols: 121,
+        rows: 20,
+    })
+}
+
+#[test]
+fn move_of_active_tab_to_left_when_there_is_only_one_tab() {
+    let mut screen = create_fixed_size_screen();
+    new_tab(&mut screen, 1, 0);
+    assert_eq!(screen.get_active_tab(1).unwrap().position, 0);
+
+    screen.move_active_tab_to_left(1).expect("TEST");
+
+    assert_eq!(
+        screen.get_active_tab(1).unwrap().position,
+        0,
+        "Active tab moved to left"
+    );
+}
+
+#[test]
+fn move_of_active_tab_to_left_multiple_times() {
+    let mut screen = create_fixed_size_screen();
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 1);
+    new_tab(&mut screen, 3, 2);
+    assert_eq!(screen.get_active_tab(1).unwrap().position, 2);
+
+    screen.move_active_tab_to_left(1).expect("TEST");
+    screen.move_active_tab_to_left(1).expect("TEST");
+
+    assert_eq!(
+        screen.get_active_tab(1).unwrap().position,
+        0,
+        "Active tab moved to left twice"
+    );
+}
+
+#[test]
+fn wrapping_move_of_active_tab_to_left() {
+    let mut screen = create_fixed_size_screen();
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 1);
+    new_tab(&mut screen, 3, 2);
+    screen.move_focus_left_or_previous_tab(1).expect("TEST");
+    screen.move_focus_left_or_previous_tab(1).expect("TEST");
+    assert_eq!(screen.get_active_tab(1).unwrap().position, 0);
+
+    screen.move_active_tab_to_left(1).expect("TEST");
+
+    assert_eq!(
+        screen.get_active_tab(1).unwrap().position,
+        2,
+        "Active tab moved to left until wrapped around"
+    );
+}
+
+#[test]
+fn basic_move_of_active_tab_to_right() {
+    let mut screen = create_fixed_size_screen();
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 1);
+    screen.move_focus_left_or_previous_tab(1).expect("TEST");
+    assert_eq!(screen.get_active_tab(1).unwrap().position, 0);
+
+    screen.move_active_tab_to_right(1).expect("TEST");
+
+    assert_eq!(
+        screen.get_active_tab(1).unwrap().position,
+        1,
+        "Active tab moved to right"
+    );
+}
+
+#[test]
+fn move_of_active_tab_to_right_when_there_is_only_one_tab() {
+    let mut screen = create_fixed_size_screen();
+    new_tab(&mut screen, 1, 0);
+    assert_eq!(screen.get_active_tab(1).unwrap().position, 0);
+
+    screen.move_active_tab_to_right(1).expect("TEST");
+
+    assert_eq!(
+        screen.get_active_tab(1).unwrap().position,
+        0,
+        "Active tab moved to left"
+    );
+}
+
+#[test]
+fn move_of_active_tab_to_right_multiple_times() {
+    let mut screen = create_fixed_size_screen();
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 1);
+    new_tab(&mut screen, 3, 2);
+    screen.move_focus_left_or_previous_tab(1).expect("TEST");
+    screen.move_focus_left_or_previous_tab(1).expect("TEST");
+    assert_eq!(screen.get_active_tab(1).unwrap().position, 0);
+
+    screen.move_active_tab_to_right(1).expect("TEST");
+    screen.move_active_tab_to_right(1).expect("TEST");
+
+    assert_eq!(
+        screen.get_active_tab(1).unwrap().position,
+        2,
+        "Active tab moved to right twice"
+    );
+}
+
+#[test]
+fn wrapping_move_of_active_tab_to_right() {
+    let mut screen = create_fixed_size_screen();
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 1);
+    new_tab(&mut screen, 3, 2);
+    assert_eq!(screen.get_active_tab(1).unwrap().position, 2);
+
+    screen.move_active_tab_to_right(1).expect("TEST");
+
+    assert_eq!(
+        screen.get_active_tab(1).unwrap().position,
+        0,
+        "Active tab moved to right until wrapped around"
+    );
+}
+
+#[test]
 fn move_focus_right_at_right_screen_edge_changes_tab() {
     let size = Size {
         cols: 121,

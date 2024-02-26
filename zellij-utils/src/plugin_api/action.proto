@@ -54,6 +54,7 @@ message Action {
     string rename_session_payload = 45;
     LaunchOrFocusPluginPayload launch_plugin_payload = 46;
     CliPipePayload message_payload = 47;
+    MoveTabDirection move_tab_payload = 48;
   }
 }
 
@@ -89,6 +90,11 @@ enum SearchOption {
   CaseSensitivity = 0;
   WholeWord = 1;
   Wrap = 2;
+}
+
+enum MoveTabDirection {
+  Left = 0;
+  Right = 1;
 }
 
 message LaunchOrFocusPluginPayload {
@@ -236,6 +242,7 @@ enum ActionName {
     RenameSession = 80;
     LaunchPlugin = 81;
     CliPipe = 82;
+    MoveTab = 83;
 }
 
 message Position {

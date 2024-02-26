@@ -318,6 +318,7 @@ impl InputHandler {
             | Action::GoToPreviousTab
             | Action::CloseTab
             | Action::GoToTab(_)
+            | Action::MoveTab(_)
             | Action::GoToTabName(_, _)
             | Action::ToggleTab
             | Action::MoveFocusOrTab(_) => {

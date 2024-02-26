@@ -2,12 +2,13 @@ pub use super::generated_api::api::{
     action::{
         action::OptionalPayload, Action as ProtobufAction, ActionName as ProtobufActionName,
         DumpScreenPayload, EditFilePayload, GoToTabNamePayload, IdAndName,
-        LaunchOrFocusPluginPayload, MovePanePayload, NameAndValue as ProtobufNameAndValue,
-        NewFloatingPanePayload, NewPanePayload, NewPluginPanePayload, NewTiledPanePayload,
-        PaneIdAndShouldFloat, PluginConfiguration as ProtobufPluginConfiguration,
-        Position as ProtobufPosition, RunCommandAction as ProtobufRunCommandAction,
-        ScrollAtPayload, SearchDirection as ProtobufSearchDirection,
-        SearchOption as ProtobufSearchOption, SwitchToModePayload, WriteCharsPayload, WritePayload,
+        LaunchOrFocusPluginPayload, MovePanePayload, MoveTabDirection as ProtobufMoveTabDirection,
+        NameAndValue as ProtobufNameAndValue, NewFloatingPanePayload, NewPanePayload,
+        NewPluginPanePayload, NewTiledPanePayload, PaneIdAndShouldFloat,
+        PluginConfiguration as ProtobufPluginConfiguration, Position as ProtobufPosition,
+        RunCommandAction as ProtobufRunCommandAction, ScrollAtPayload,
+        SearchDirection as ProtobufSearchDirection, SearchOption as ProtobufSearchOption,
+        SwitchToModePayload, WriteCharsPayload, WritePayload,
     },
     input_mode::InputMode as ProtobufInputMode,
     resize::{Resize as ProtobufResize, ResizeDirection as ProtobufResizeDirection},
@@ -358,6 +359,15 @@ impl TryFrom<ProtobufAction> for Action {
             Some(ProtobufActionName::UndoRenameTab) => match protobuf_action.optional_payload {
                 Some(_) => Err("UndoRenameTab should not have a payload"),
                 None => Ok(Action::UndoRenameTab),
+            },
+            Some(ProtobufActionName::MoveTab) => match protobuf_action.optional_payload {
+                Some(OptionalPayload::MoveTabPayload(move_tab_payload)) => {
+                    let direction: Direction = ProtobufMoveTabDirection::from_i32(move_tab_payload)
+                        .ok_or("Malformed move tab direction for Action::MoveTab")?
+                        .try_into()?;
+                    Ok(Action::MoveTab(direction))
+                },
+                _ => Err("Wrong payload for Action::MoveTab"),
             },
             Some(ProtobufActionName::Run) => match protobuf_action.optional_payload {
                 Some(OptionalPayload::RunPayload(run_command_action)) => {
@@ -990,6 +1000,13 @@ impl TryFrom<Action> for ProtobufAction {
                 name: ProtobufActionName::UndoRenameTab as i32,
                 optional_payload: None,
             }),
+            Action::MoveTab(direction) => {
+                let direction: ProtobufMoveTabDirection = direction.try_into()?;
+                Ok(ProtobufAction {
+                    name: ProtobufActionName::MoveTab as i32,
+                    optional_payload: Some(OptionalPayload::MoveTabPayload(direction as i32)),
+                })
+            },
             Action::Run(run_command_action) => {
                 let run_command_action: ProtobufRunCommandAction = run_command_action.try_into()?;
                 Ok(ProtobufAction {
@@ -1305,6 +1322,29 @@ impl TryFrom<SearchDirection> for ProtobufSearchDirection {
         match search_direction {
             SearchDirection::Up => Ok(ProtobufSearchDirection::Up),
             SearchDirection::Down => Ok(ProtobufSearchDirection::Down),
+        }
+    }
+}
+
+impl TryFrom<ProtobufMoveTabDirection> for Direction {
+    type Error = &'static str;
+    fn try_from(
+        protobuf_move_tab_direction: ProtobufMoveTabDirection,
+    ) -> Result<Self, &'static str> {
+        match protobuf_move_tab_direction {
+            ProtobufMoveTabDirection::Left => Ok(Direction::Left),
+            ProtobufMoveTabDirection::Right => Ok(Direction::Right),
+        }
+    }
+}
+
+impl TryFrom<Direction> for ProtobufMoveTabDirection {
+    type Error = &'static str;
+    fn try_from(direction: Direction) -> Result<Self, &'static str> {
+        match direction {
+            Direction::Left => Ok(ProtobufMoveTabDirection::Left),
+            Direction::Right => Ok(ProtobufMoveTabDirection::Right),
+            _ => Err("Wrong direction for ProtobufMoveTabDirection"),
         }
     }
 }
