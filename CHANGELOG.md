@@ -21,6 +21,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix(plugins): avoid crash when attaching to a session with a since-deleted cwd (https://github.com/zellij-org/zellij/pull/3126)
 * fix(panes): break pane to new tab regression (https://github.com/zellij-org/zellij/pull/3130)
 * feat: add moving tab to other position (https://github.com/zellij-org/zellij/pull/3047)
+* feat(plugins): introduce plugin aliases (https://github.com/zellij-org/zellij/pull/3157)
 
 ## [0.39.2] - 2023-11-29
 * fix(cli): typo in cli help (https://github.com/zellij-org/zellij/pull/2906)
