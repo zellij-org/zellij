@@ -22,7 +22,7 @@ use zellij_utils::{
     errors::prelude::*,
     input::{
         command::RunCommand,
-        layout::{Run, RunPlugin, SplitDirection},
+        layout::{Run, RunPlugin, RunPluginOrAlias, SplitDirection},
     },
     pane_size::{Offset, PaneGeom, Size, SizeInPixels, Viewport},
 };
@@ -1744,11 +1744,10 @@ impl TiledPanes {
     fn reset_boundaries(&mut self) {
         self.client_id_to_boundaries.clear();
     }
-    pub fn get_plugin_pane_id(&self, run_plugin: &RunPlugin) -> Option<PaneId> {
-        let run = Some(Run::Plugin(run_plugin.clone()));
+    pub fn get_plugin_pane_id(&self, run_plugin_or_alias: &RunPluginOrAlias) -> Option<PaneId> {
         self.panes
             .iter()
-            .find(|(_id, s_p)| s_p.invoked_with() == &run)
+            .find(|(_id, pane)| run_plugin_or_alias.is_equivalent_to_run(pane.invoked_with()))
             .map(|(id, _)| *id)
     }
     pub fn pane_info(&self) -> Vec<PaneInfo> {

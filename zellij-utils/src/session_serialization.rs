@@ -1,20 +1,11 @@
-//! # Persistence module
-//! !WIP! This module is holding the logic for all persistence sessions need
-//!
-//! # Examples
-//! ```rust,no_run
-//! fn main() {
-//! }
-//! ```
-//!
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use crate::{
     input::layout::PluginUserConfiguration,
     input::layout::{
-        FloatingPaneLayout, Layout, PercentOrFixed, Run, SplitDirection, SplitSize,
-        SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,
+        FloatingPaneLayout, Layout, PercentOrFixed, Run, RunPluginOrAlias, SplitDirection,
+        SplitSize, SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,
     },
     pane_size::{Constraint, PaneGeom},
 };
@@ -238,10 +229,20 @@ fn extract_plugin_and_config(
     layout_run: &Option<Run>,
 ) -> (Option<String>, Option<PluginUserConfiguration>) {
     match &layout_run {
-        Some(Run::Plugin(run_plugin)) => (
-            Some(run_plugin.location.display()),
-            Some(run_plugin.configuration.clone()),
-        ),
+        Some(Run::Plugin(run_plugin_or_alias)) => match run_plugin_or_alias {
+            RunPluginOrAlias::RunPlugin(run_plugin) => (
+                Some(run_plugin.location.display()),
+                Some(run_plugin.configuration.clone()),
+            ),
+            RunPluginOrAlias::Alias(plugin_alias) => {
+                let name = plugin_alias.name.clone();
+                let configuration = plugin_alias
+                    .run_plugin
+                    .as_ref()
+                    .map(|run_plugin| run_plugin.configuration.clone());
+                (Some(name), configuration)
+            },
+        },
         _ => (None, None),
     }
 }

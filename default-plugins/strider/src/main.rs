@@ -1,49 +1,22 @@
-mod search;
 mod state;
 
 use colored::*;
-use search::{FileContentsWorker, FileNameWorker, MessageToSearch, ResultsOfSearch};
-use serde::{Deserialize, Serialize};
-use serde_json;
 use state::{refresh_directory, FsEntry, State};
 use std::collections::BTreeMap;
 use std::{cmp::min, time::Instant};
 use zellij_tile::prelude::*;
 
 register_plugin!(State);
-register_worker!(FileNameWorker, file_name_search_worker, FILE_NAME_WORKER);
-register_worker!(
-    FileContentsWorker,
-    file_contents_search_worker,
-    FILE_CONTENTS_WORKER
-);
 
 impl ZellijPlugin for State {
     fn load(&mut self, _configuration: BTreeMap<String, String>) {
         refresh_directory(self);
-        self.search_state.loading = true;
         subscribe(&[
             EventType::Key,
             EventType::Mouse,
             EventType::CustomMessage,
             EventType::Timer,
-            EventType::FileSystemCreate,
-            EventType::FileSystemUpdate,
-            EventType::FileSystemDelete,
-            EventType::PermissionRequestResult,
         ]);
-        post_message_to(PluginMessage {
-            worker_name: Some("file_name_search".into()),
-            name: serde_json::to_string(&MessageToSearch::ScanFolder).unwrap(),
-            payload: "".into(),
-        });
-        post_message_to(PluginMessage {
-            worker_name: Some("file_contents_search".into()),
-            name: serde_json::to_string(&MessageToSearch::ScanFolder).unwrap(),
-            payload: "".into(),
-        });
-        self.search_state.loading = true;
-        set_timeout(0.5); // for displaying loading animation
     }
 
     fn update(&mut self, event: Event) -> bool {
@@ -55,58 +28,8 @@ impl ZellijPlugin for State {
         };
         self.ev_history.push_back((event.clone(), Instant::now()));
         match event {
-            Event::PermissionRequestResult(_) => {
-                should_render = true;
-            },
-            Event::Timer(_elapsed) => {
-                if self.search_state.loading {
-                    set_timeout(0.5);
-                    self.search_state.progress_animation();
-                    should_render = true;
-                }
-            },
-            Event::CustomMessage(message, payload) => match serde_json::from_str(&message) {
-                Ok(MessageToPlugin::UpdateFileNameSearchResults) => {
-                    if let Ok(results_of_search) = serde_json::from_str::<ResultsOfSearch>(&payload)
-                    {
-                        self.search_state
-                            .update_file_name_search_results(results_of_search);
-                        should_render = true;
-                    }
-                },
-                Ok(MessageToPlugin::UpdateFileContentsSearchResults) => {
-                    if let Ok(results_of_search) = serde_json::from_str::<ResultsOfSearch>(&payload)
-                    {
-                        self.search_state
-                            .update_file_contents_search_results(results_of_search);
-                        should_render = true;
-                    }
-                },
-                Ok(MessageToPlugin::DoneScanningFolder) => {
-                    self.search_state.loading = false;
-                    should_render = true;
-                },
-                Err(e) => eprintln!("Failed to deserialize custom message: {:?}", e),
-            },
             Event::Key(key) => match key {
-                Key::Esc if self.typing_search_term() => {
-                    if self.search_state.search_term.is_empty() {
-                        self.stop_typing_search_term();
-                    } else {
-                        self.search_state.handle_key(key);
-                    }
-                    should_render = true;
-                },
-                _ if self.typing_search_term() => {
-                    self.search_state.handle_key(key);
-                    should_render = true;
-                },
-                Key::Char('/') => {
-                    self.start_typing_search_term();
-                    should_render = true;
-                },
                 Key::Esc => {
-                    self.stop_typing_search_term();
                     hide_self();
                     should_render = true;
                 },
@@ -190,54 +113,6 @@ impl ZellijPlugin for State {
                 },
                 _ => {},
             },
-            Event::FileSystemCreate(paths) => {
-                let paths: Vec<String> = paths
-                    .iter()
-                    .map(|p| p.to_string_lossy().to_string())
-                    .collect();
-                post_message_to(PluginMessage {
-                    worker_name: Some("file_name_search".into()),
-                    name: serde_json::to_string(&MessageToSearch::FileSystemCreate).unwrap(),
-                    payload: serde_json::to_string(&paths).unwrap(),
-                });
-                post_message_to(PluginMessage {
-                    worker_name: Some("file_contents_search".into()),
-                    name: serde_json::to_string(&MessageToSearch::FileSystemCreate).unwrap(),
-                    payload: serde_json::to_string(&paths).unwrap(),
-                });
-            },
-            Event::FileSystemUpdate(paths) => {
-                let paths: Vec<String> = paths
-                    .iter()
-                    .map(|p| p.to_string_lossy().to_string())
-                    .collect();
-                post_message_to(PluginMessage {
-                    worker_name: Some("file_name_search".into()),
-                    name: serde_json::to_string(&MessageToSearch::FileSystemUpdate).unwrap(),
-                    payload: serde_json::to_string(&paths).unwrap(),
-                });
-                post_message_to(PluginMessage {
-                    worker_name: Some("file_contents_search".into()),
-                    name: serde_json::to_string(&MessageToSearch::FileSystemUpdate).unwrap(),
-                    payload: serde_json::to_string(&paths).unwrap(),
-                });
-            },
-            Event::FileSystemDelete(paths) => {
-                let paths: Vec<String> = paths
-                    .iter()
-                    .map(|p| p.to_string_lossy().to_string())
-                    .collect();
-                post_message_to(PluginMessage {
-                    worker_name: Some("file_name_search".into()),
-                    name: serde_json::to_string(&MessageToSearch::FileSystemDelete).unwrap(),
-                    payload: serde_json::to_string(&paths).unwrap(),
-                });
-                post_message_to(PluginMessage {
-                    worker_name: Some("file_contents_search".into()),
-                    name: serde_json::to_string(&MessageToSearch::FileSystemDelete).unwrap(),
-                    payload: serde_json::to_string(&paths).unwrap(),
-                });
-            },
             _ => {
                 dbg!("Unknown event {:?}", event);
             },
@@ -246,12 +121,6 @@ impl ZellijPlugin for State {
     }
 
     fn render(&mut self, rows: usize, cols: usize) {
-        if self.typing_search_term() {
-            self.search_state.change_size(rows, cols);
-            print!("{}", self.search_state);
-            return;
-        }
-
         for i in 0..rows {
             if self.selected() < self.scroll() {
                 *self.scroll_mut() = self.selected();
@@ -287,11 +156,4 @@ impl ZellijPlugin for State {
             }
         }
     }
-}
-
-#[derive(Serialize, Deserialize)]
-pub enum MessageToPlugin {
-    UpdateFileNameSearchResults,
-    UpdateFileContentsSearchResults,
-    DoneScanningFolder,
 }

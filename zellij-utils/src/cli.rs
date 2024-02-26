@@ -627,7 +627,7 @@ pub enum CliAction {
         in_place: bool,
         #[clap(short, long, value_parser)]
         move_to_focused_tab: bool,
-        url: Url,
+        url: String,
         #[clap(short, long, value_parser)]
         configuration: Option<PluginUserConfiguration>,
         #[clap(short, long, value_parser)]

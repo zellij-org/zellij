@@ -18,9 +18,10 @@ use crate::errors::prelude::*;
 use crate::input::actions::Action;
 use crate::input::actions::{SearchDirection, SearchOption};
 use crate::input::command::RunCommandAction;
-use crate::input::layout::{PluginUserConfiguration, RunPlugin, RunPluginLocation};
+use crate::input::layout::{
+    PluginUserConfiguration, RunPlugin, RunPluginLocation, RunPluginOrAlias,
+};
 use crate::position::Position;
-use url::Url;
 
 use std::collections::BTreeMap;
 use std::convert::TryFrom;
@@ -403,24 +404,23 @@ impl TryFrom<ProtobufAction> for Action {
             Some(ProtobufActionName::LaunchOrFocusPlugin) => {
                 match protobuf_action.optional_payload {
                     Some(OptionalPayload::LaunchOrFocusPluginPayload(payload)) => {
-                        let run_plugin_location =
-                            RunPluginLocation::parse(&payload.plugin_url, None)
-                                .map_err(|_| "Malformed LaunchOrFocusPlugin payload")?;
                         let configuration: PluginUserConfiguration = payload
                             .plugin_configuration
                             .and_then(|p| PluginUserConfiguration::try_from(p).ok())
                             .unwrap_or_default();
-                        let run_plugin = RunPlugin {
-                            _allow_exec_host_cmd: false,
-                            location: run_plugin_location,
-                            configuration,
-                        };
+                        let run_plugin_or_alias = RunPluginOrAlias::from_url(
+                            &payload.plugin_url.as_str(),
+                            &Some(configuration.inner().clone()),
+                            None,
+                            None,
+                        )
+                        .map_err(|_| "Malformed LaunchOrFocusPlugin payload")?;
                         let should_float = payload.should_float;
                         let move_to_focused_tab = payload.move_to_focused_tab;
                         let should_open_in_place = payload.should_open_in_place;
                         let skip_plugin_cache = payload.skip_plugin_cache;
                         Ok(Action::LaunchOrFocusPlugin(
-                            run_plugin,
+                            run_plugin_or_alias,
                             should_float,
                             move_to_focused_tab,
                             should_open_in_place,
@@ -432,25 +432,24 @@ impl TryFrom<ProtobufAction> for Action {
             },
             Some(ProtobufActionName::LaunchPlugin) => match protobuf_action.optional_payload {
                 Some(OptionalPayload::LaunchOrFocusPluginPayload(payload)) => {
-                    let run_plugin_location =
-                        RunPluginLocation::parse(&payload.plugin_url, None)
-                            .map_err(|_| "Malformed LaunchOrFocusPlugin payload")?;
                     let configuration: PluginUserConfiguration = payload
                         .plugin_configuration
                         .and_then(|p| PluginUserConfiguration::try_from(p).ok())
                         .unwrap_or_default();
-                    let run_plugin = RunPlugin {
-                        _allow_exec_host_cmd: false,
-                        location: run_plugin_location,
-                        configuration,
-                    };
+                    let run_plugin_or_alias = RunPluginOrAlias::from_url(
+                        &payload.plugin_url.as_str(),
+                        &Some(configuration.inner().clone()),
+                        None,
+                        None,
+                    )
+                    .map_err(|_| "Malformed LaunchOrFocusPlugin payload")?;
                     let should_float = payload.should_float;
                     let _move_to_focused_tab = payload.move_to_focused_tab; // not actually used in
                                                                             // this action
                     let should_open_in_place = payload.should_open_in_place;
                     let skip_plugin_cache = payload.skip_plugin_cache;
                     Ok(Action::LaunchPlugin(
-                        run_plugin,
+                        run_plugin_or_alias,
                         should_float,
                         should_open_in_place,
                         skip_plugin_cache,
@@ -553,11 +552,11 @@ impl TryFrom<ProtobufAction> for Action {
                         let run_plugin_location =
                             RunPluginLocation::parse(&payload.plugin_url, None)
                                 .map_err(|_| "Malformed NewTiledPluginPane payload")?;
-                        let run_plugin = RunPlugin {
+                        let run_plugin = RunPluginOrAlias::RunPlugin(RunPlugin {
                             location: run_plugin_location,
                             _allow_exec_host_cmd: false,
                             configuration: PluginUserConfiguration::default(),
-                        };
+                        });
                         let pane_name = payload.pane_name;
                         let skip_plugin_cache = payload.skip_plugin_cache;
                         Ok(Action::NewTiledPluginPane(
@@ -576,11 +575,11 @@ impl TryFrom<ProtobufAction> for Action {
                         let run_plugin_location =
                             RunPluginLocation::parse(&payload.plugin_url, None)
                                 .map_err(|_| "Malformed NewTiledPluginPane payload")?;
-                        let run_plugin = RunPlugin {
+                        let run_plugin = RunPluginOrAlias::RunPlugin(RunPlugin {
                             location: run_plugin_location,
                             _allow_exec_host_cmd: false,
                             configuration: PluginUserConfiguration::default(),
-                        };
+                        });
                         let pane_name = payload.pane_name;
                         let skip_plugin_cache = payload.skip_plugin_cache;
                         Ok(Action::NewFloatingPluginPane(
@@ -597,14 +596,11 @@ impl TryFrom<ProtobufAction> for Action {
             Some(ProtobufActionName::StartOrReloadPlugin) => {
                 match protobuf_action.optional_payload {
                     Some(OptionalPayload::StartOrReloadPluginPayload(payload)) => {
-                        let run_plugin_location = RunPluginLocation::parse(&payload, None)
-                            .map_err(|_| "Malformed StartOrReloadPluginPayload payload")?;
-                        let run_plugin = RunPlugin {
-                            _allow_exec_host_cmd: false,
-                            location: run_plugin_location,
-                            configuration: PluginUserConfiguration::default(),
-                        };
-                        Ok(Action::StartOrReloadPlugin(run_plugin))
+                        let run_plugin_or_alias =
+                            RunPluginOrAlias::from_url(&payload.as_str(), &None, None, None)
+                                .map_err(|_| "Malformed LaunchOrFocusPlugin payload")?;
+
+                        Ok(Action::StartOrReloadPlugin(run_plugin_or_alias))
                     },
                     _ => Err("Wrong payload for Action::StartOrReloadPlugin"),
                 }
@@ -1044,44 +1040,44 @@ impl TryFrom<Action> for ProtobufAction {
                 })
             },
             Action::LaunchOrFocusPlugin(
-                run_plugin,
+                run_plugin_or_alias,
                 should_float,
                 move_to_focused_tab,
                 should_open_in_place,
                 skip_plugin_cache,
             ) => {
-                let url: Url = Url::from(&run_plugin.location);
+                let configuration = run_plugin_or_alias.get_configuration().unwrap_or_default();
                 Ok(ProtobufAction {
                     name: ProtobufActionName::LaunchOrFocusPlugin as i32,
                     optional_payload: Some(OptionalPayload::LaunchOrFocusPluginPayload(
                         LaunchOrFocusPluginPayload {
-                            plugin_url: url.into(),
+                            plugin_url: run_plugin_or_alias.location_string(),
                             should_float,
                             move_to_focused_tab,
                             should_open_in_place,
-                            plugin_configuration: Some(run_plugin.configuration.try_into()?),
+                            plugin_configuration: Some(configuration.try_into()?),
                             skip_plugin_cache,
                         },
                     )),
                 })
             },
             Action::LaunchPlugin(
-                run_plugin,
+                run_plugin_or_alias,
                 should_float,
                 should_open_in_place,
                 skip_plugin_cache,
                 _cwd,
             ) => {
-                let url: Url = Url::from(&run_plugin.location);
+                let configuration = run_plugin_or_alias.get_configuration().unwrap_or_default();
                 Ok(ProtobufAction {
                     name: ProtobufActionName::LaunchPlugin as i32,
                     optional_payload: Some(OptionalPayload::LaunchOrFocusPluginPayload(
                         LaunchOrFocusPluginPayload {
-                            plugin_url: url.into(),
+                            plugin_url: run_plugin_or_alias.location_string(),
                             should_float,
                             move_to_focused_tab: false,
                             should_open_in_place,
-                            plugin_configuration: Some(run_plugin.configuration.try_into()?),
+                            plugin_configuration: Some(configuration.try_into()?),
                             skip_plugin_cache,
                         },
                     )),
@@ -1166,12 +1162,11 @@ impl TryFrom<Action> for ProtobufAction {
                 optional_payload: None,
             }),
             Action::NewTiledPluginPane(run_plugin, pane_name, skip_plugin_cache, _cwd) => {
-                let plugin_url: Url = Url::from(&run_plugin.location);
                 Ok(ProtobufAction {
                     name: ProtobufActionName::NewTiledPluginPane as i32,
                     optional_payload: Some(OptionalPayload::NewTiledPluginPanePayload(
                         NewPluginPanePayload {
-                            plugin_url: plugin_url.into(),
+                            plugin_url: run_plugin.location_string(),
                             pane_name,
                             skip_plugin_cache,
                         },
@@ -1185,27 +1180,30 @@ impl TryFrom<Action> for ProtobufAction {
                 _cwd,
                 _coordinates,
             ) => {
-                let plugin_url: Url = Url::from(&run_plugin.location);
+                //                 let plugin_url: Url = match run_plugin {
+                //                     RunPluginOrAlias::RunPlugin(run_plugin) => Url::from(&run_plugin.location),
+                //                     RunPluginOrAlias::Alias(plugin_alias) => {
+                //                         // TODO: support plugin alias
+                //                         unimplemented!()
+                //                     }
+                //                 };
                 Ok(ProtobufAction {
                     name: ProtobufActionName::NewFloatingPluginPane as i32,
                     optional_payload: Some(OptionalPayload::NewFloatingPluginPanePayload(
                         NewPluginPanePayload {
-                            plugin_url: plugin_url.into(),
+                            plugin_url: run_plugin.location_string(),
                             pane_name,
                             skip_plugin_cache,
                         },
                     )),
                 })
             },
-            Action::StartOrReloadPlugin(run_plugin) => {
-                let plugin_url: Url = Url::from(&run_plugin.location);
-                Ok(ProtobufAction {
-                    name: ProtobufActionName::StartOrReloadPlugin as i32,
-                    optional_payload: Some(OptionalPayload::StartOrReloadPluginPayload(
-                        plugin_url.into(),
-                    )),
-                })
-            },
+            Action::StartOrReloadPlugin(run_plugin) => Ok(ProtobufAction {
+                name: ProtobufActionName::StartOrReloadPlugin as i32,
+                optional_payload: Some(OptionalPayload::StartOrReloadPluginPayload(
+                    run_plugin.location_string(),
+                )),
+            }),
             Action::CloseTerminalPane(terminal_pane_id) => Ok(ProtobufAction {
                 name: ProtobufActionName::CloseTerminalPane as i32,
                 optional_payload: Some(OptionalPayload::CloseTerminalPanePayload(terminal_pane_id)),

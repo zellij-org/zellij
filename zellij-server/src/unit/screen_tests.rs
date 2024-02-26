@@ -15,8 +15,8 @@ use zellij_utils::errors::{prelude::*, ErrorContext};
 use zellij_utils::input::actions::Action;
 use zellij_utils::input::command::{RunCommand, TerminalAction};
 use zellij_utils::input::layout::{
-    FloatingPaneLayout, Layout, Run, RunPlugin, RunPluginLocation, SplitDirection, SplitSize,
-    TiledPaneLayout,
+    FloatingPaneLayout, Layout, PluginAlias, PluginUserConfiguration, Run, RunPlugin,
+    RunPluginLocation, RunPluginOrAlias, SplitDirection, SplitSize, TiledPaneLayout,
 };
 use zellij_utils::input::options::Options;
 use zellij_utils::ipc::IpcReceiverWithContext;
@@ -338,10 +338,7 @@ impl MockScreen {
         let mut floating_pane_ids = vec![];
         let mut plugin_ids = HashMap::new();
         plugin_ids.insert(
-            (
-                RunPluginLocation::File(PathBuf::from("/path/to/fake/plugin")),
-                Default::default(),
-            ),
+            RunPluginOrAlias::from_url("file:/path/to/fake/plugin", &None, None, None).unwrap(),
             vec![1],
         );
         for i in 0..pane_count {
@@ -358,7 +355,6 @@ impl MockScreen {
             default_shell,
             Some(pane_layout.clone()),
             initial_floating_panes_layout.clone(),
-            // vec![], // floating_panes_layout
             tab_name,
             (vec![], vec![]), // swap layouts
             self.main_client_id,
@@ -366,10 +362,92 @@ impl MockScreen {
         let _ = self.to_screen.send(ScreenInstruction::ApplyLayout(
             pane_layout,
             initial_floating_panes_layout,
-            // vec![], // floating panes layout
             pane_ids,
             floating_pane_ids,
-            // vec![], // floating pane ids
+            plugin_ids,
+            tab_index,
+            self.main_client_id,
+        ));
+        self.last_opened_tab_index = Some(tab_index);
+        screen_thread
+    }
+    // same as the above function, but starts a plugin with a plugin alias
+    pub fn run_with_alias(
+        &mut self,
+        initial_layout: Option<TiledPaneLayout>,
+        initial_floating_panes_layout: Vec<FloatingPaneLayout>,
+    ) -> std::thread::JoinHandle<()> {
+        let config_options = self.config_options.clone();
+        let client_attributes = self.client_attributes.clone();
+        let screen_bus = Bus::new(
+            vec![self.screen_receiver.take().unwrap()],
+            None,
+            Some(&self.to_pty.clone()),
+            Some(&self.to_plugin.clone()),
+            Some(&self.to_server.clone()),
+            Some(&self.to_pty_writer.clone()),
+            Some(&self.to_background_jobs.clone()),
+            Some(Box::new(self.os_input.clone())),
+        )
+        .should_silently_fail();
+        let debug = false;
+        let screen_thread = std::thread::Builder::new()
+            .name("screen_thread".to_string())
+            .spawn(move || {
+                set_var("ZELLIJ_SESSION_NAME", "zellij-test");
+                screen_thread_main(
+                    screen_bus,
+                    None,
+                    client_attributes,
+                    Box::new(config_options),
+                    debug,
+                    Box::new(Layout::default()),
+                )
+                .expect("TEST")
+            })
+            .unwrap();
+        let pane_layout = initial_layout.unwrap_or_default();
+        let pane_count = pane_layout.extract_run_instructions().len();
+        let floating_pane_count = initial_floating_panes_layout.len();
+        let mut pane_ids = vec![];
+        let mut floating_pane_ids = vec![];
+        let mut plugin_ids = HashMap::new();
+        plugin_ids.insert(
+            RunPluginOrAlias::Alias(PluginAlias {
+                name: "fixture_plugin_for_tests".to_owned(),
+                configuration: Some(Default::default()),
+                run_plugin: Some(RunPlugin {
+                    location: RunPluginLocation::parse("file:/path/to/fake/plugin", None).unwrap(),
+                    configuration: PluginUserConfiguration::default(),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }),
+            vec![1],
+        );
+        for i in 0..pane_count {
+            pane_ids.push((i as u32, None));
+        }
+        for i in 0..floating_pane_count {
+            floating_pane_ids.push((i as u32, None));
+        }
+        let default_shell = None;
+        let tab_name = None;
+        let tab_index = self.last_opened_tab_index.map(|l| l + 1).unwrap_or(0);
+        let _ = self.to_screen.send(ScreenInstruction::NewTab(
+            None,
+            default_shell,
+            Some(pane_layout.clone()),
+            initial_floating_panes_layout.clone(),
+            tab_name,
+            (vec![], vec![]), // swap layouts
+            self.main_client_id,
+        ));
+        let _ = self.to_screen.send(ScreenInstruction::ApplyLayout(
+            pane_layout,
+            initial_floating_panes_layout,
+            pane_ids,
+            floating_pane_ids,
             plugin_ids,
             tab_index,
             self.main_client_id,
@@ -2884,7 +2962,7 @@ pub fn send_cli_launch_or_focus_plugin_action() {
         floating: true,
         in_place: false,
         move_to_focused_tab: true,
-        url: url::Url::parse("file:/path/to/fake/plugin").unwrap(),
+        url: "file:/path/to/fake/plugin".to_owned(),
         configuration: Default::default(),
         skip_plugin_cache: false,
     };
@@ -2917,11 +2995,11 @@ pub fn send_cli_launch_or_focus_plugin_action_when_plugin_is_already_loaded() {
     let session_metadata = mock_screen.clone_session_metadata();
     let mut initial_layout = TiledPaneLayout::default();
     let existing_plugin_pane = TiledPaneLayout {
-        run: Some(Run::Plugin(RunPlugin {
+        run: Some(Run::Plugin(RunPluginOrAlias::RunPlugin(RunPlugin {
             _allow_exec_host_cmd: false,
             location: RunPluginLocation::File(PathBuf::from("/path/to/fake/plugin")),
             configuration: Default::default(),
-        })),
+        }))),
         ..Default::default()
     };
     initial_layout.children_split_direction = SplitDirection::Vertical;
@@ -2944,7 +3022,89 @@ pub fn send_cli_launch_or_focus_plugin_action_when_plugin_is_already_loaded() {
         floating: true,
         in_place: false,
         move_to_focused_tab: true,
-        url: url::Url::parse("file:/path/to/fake/plugin").unwrap(),
+        url: "file:/path/to/fake/plugin".to_owned(),
+        configuration: Default::default(),
+        skip_plugin_cache: false,
+    };
+    send_cli_action_to_server(&session_metadata, cli_action, client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
+    mock_screen.teardown(vec![plugin_thread, server_thread, screen_thread]);
+
+    let plugin_load_instruction_sent = received_plugin_instructions
+        .lock()
+        .unwrap()
+        .iter()
+        .find(|instruction| match instruction {
+            PluginInstruction::Load(..) => true,
+            _ => false,
+        })
+        .is_some();
+    assert!(
+        !plugin_load_instruction_sent,
+        "Plugin Load instruction should not be sent for an already loaded plugin"
+    );
+    let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
+        received_server_instructions.lock().unwrap().iter(),
+        size,
+    );
+    let snapshot_count = snapshots.len();
+    assert_eq!(
+        snapshot_count, 2,
+        "Another render was sent for focusing the already loaded plugin"
+    );
+    for (cursor_coordinates, _snapshot) in snapshots.iter().skip(1) {
+        assert!(
+            cursor_coordinates.is_none(),
+            "Cursor moved to existing plugin in final snapshot indicating focus changed"
+        );
+    }
+}
+
+#[test]
+pub fn send_cli_launch_or_focus_plugin_action_when_plugin_is_already_loaded_for_plugin_alias() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 10; // fake client id should not appear in the screen's state
+    let mut mock_screen = MockScreen::new(size);
+    let plugin_receiver = mock_screen.plugin_receiver.take().unwrap();
+    let session_metadata = mock_screen.clone_session_metadata();
+    let mut initial_layout = TiledPaneLayout::default();
+    let existing_plugin_pane = TiledPaneLayout {
+        run: Some(Run::Plugin(RunPluginOrAlias::Alias(PluginAlias {
+            name: "fixture_plugin_for_tests".to_owned(),
+            configuration: Some(Default::default()),
+            run_plugin: Some(RunPlugin {
+                _allow_exec_host_cmd: false,
+                location: RunPluginLocation::File(PathBuf::from("/path/to/fake/plugin")),
+                configuration: Default::default(),
+            }),
+            ..Default::default()
+        }))),
+        ..Default::default()
+    };
+    initial_layout.children_split_direction = SplitDirection::Vertical;
+    initial_layout.children = vec![TiledPaneLayout::default(), existing_plugin_pane];
+    let screen_thread = mock_screen.run_with_alias(Some(initial_layout), vec![]);
+    let received_plugin_instructions = Arc::new(Mutex::new(vec![]));
+    let plugin_thread = log_actions_in_thread!(
+        received_plugin_instructions,
+        PluginInstruction::Exit,
+        plugin_receiver
+    );
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+    let cli_action = CliAction::LaunchOrFocusPlugin {
+        floating: true,
+        in_place: false,
+        move_to_focused_tab: true,
+        url: "fixture_plugin_for_tests".to_owned(),
         configuration: Default::default(),
         skip_plugin_cache: false,
     };
@@ -3184,11 +3344,11 @@ pub fn screen_can_break_plugin_pane_to_a_new_tab() {
     let mut initial_layout = TiledPaneLayout::default();
     let mut pane_to_break_free = TiledPaneLayout::default();
     pane_to_break_free.name = Some("plugin_pane_to_break_free".to_owned());
-    pane_to_break_free.run = Some(Run::Plugin(RunPlugin {
+    pane_to_break_free.run = Some(Run::Plugin(RunPluginOrAlias::RunPlugin(RunPlugin {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from("/path/to/fake/plugin")),
         configuration: Default::default(),
-    }));
+    })));
     let mut pane_to_stay = TiledPaneLayout::default();
     pane_to_stay.name = Some("pane_to_stay".to_owned());
     initial_layout.children_split_direction = SplitDirection::Vertical;
@@ -3254,11 +3414,11 @@ pub fn screen_can_break_floating_plugin_pane_to_a_new_tab() {
     pane_to_break_free.name = Some("tiled_pane".to_owned());
     let mut floating_pane = FloatingPaneLayout::default();
     floating_pane.name = Some("floating_plugin_pane_to_eject".to_owned());
-    floating_pane.run = Some(Run::Plugin(RunPlugin {
+    floating_pane.run = Some(Run::Plugin(RunPluginOrAlias::RunPlugin(RunPlugin {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from("/path/to/fake/plugin")),
         configuration: Default::default(),
-    }));
+    })));
     let mut floating_panes_layout = vec![floating_pane];
     initial_layout.children_split_direction = SplitDirection::Vertical;
     initial_layout.children = vec![pane_to_break_free];

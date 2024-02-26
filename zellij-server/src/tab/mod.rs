@@ -51,7 +51,7 @@ use zellij_utils::{
         command::TerminalAction,
         layout::{
             FloatingPaneLayout, PluginUserConfiguration, Run, RunPlugin, RunPluginLocation,
-            SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,
+            RunPluginOrAlias, SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,
         },
         parse_keys,
     },
@@ -636,7 +636,7 @@ impl Tab {
         floating_panes_layout: Vec<FloatingPaneLayout>,
         new_terminal_ids: Vec<(u32, HoldForCommand)>,
         new_floating_terminal_ids: Vec<(u32, HoldForCommand)>,
-        new_plugin_ids: HashMap<(RunPluginLocation, PluginUserConfiguration), Vec<u32>>,
+        new_plugin_ids: HashMap<RunPluginOrAlias, Vec<u32>>,
         client_id: ClientId,
     ) -> Result<()> {
         self.swap_layouts
@@ -3587,15 +3587,16 @@ impl Tab {
         self.set_force_render();
     }
 
-    pub fn find_plugin(&self, run_plugin: &RunPlugin) -> Option<PaneId> {
+    pub fn find_plugin(&self, run_plugin_or_alias: &RunPluginOrAlias) -> Option<PaneId> {
         self.tiled_panes
-            .get_plugin_pane_id(run_plugin)
-            .or_else(|| self.floating_panes.get_plugin_pane_id(run_plugin))
+            .get_plugin_pane_id(run_plugin_or_alias)
+            .or_else(|| self.floating_panes.get_plugin_pane_id(run_plugin_or_alias))
             .or_else(|| {
-                let run = Some(Run::Plugin(run_plugin.clone()));
                 self.suppressed_panes
                     .iter()
-                    .find(|(_id, s_p)| s_p.1.invoked_with() == &run)
+                    .find(|(_id, (_, pane))| {
+                        run_plugin_or_alias.is_equivalent_to_run(pane.invoked_with())
+                    })
                     .map(|(id, _)| *id)
             })
     }
@@ -3769,7 +3770,7 @@ pub fn pane_info_for_pane(pane_id: &PaneId, pane: &Box<dyn Pane>) -> PaneInfo {
             pane_info.id = *plugin_id;
             pane_info.is_plugin = true;
             pane_info.plugin_url = pane.invoked_with().as_ref().and_then(|c| match c {
-                Run::Plugin(run_plugin) => Some(run_plugin.location.to_string()),
+                Run::Plugin(run_plugin_or_alias) => Some(run_plugin_or_alias.location_string()),
                 _ => None,
             });
         },

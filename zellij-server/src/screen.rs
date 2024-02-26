@@ -20,7 +20,7 @@ use zellij_utils::{
     envs::set_session_name,
     input::command::TerminalAction,
     input::layout::{
-        FloatingPaneLayout, Layout, PluginUserConfiguration, Run, RunPlugin, RunPluginLocation,
+        FloatingPaneLayout, Layout, Run, RunPlugin, RunPluginLocation, RunPluginOrAlias,
         SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,
     },
     position::Position,
@@ -220,7 +220,7 @@ pub enum ScreenInstruction {
         Vec<FloatingPaneLayout>,
         Vec<(u32, HoldForCommand)>, // new pane pids
         Vec<(u32, HoldForCommand)>, // new floating pane pids
-        HashMap<(RunPluginLocation, PluginUserConfiguration), Vec<u32>>,
+        HashMap<RunPluginOrAlias, Vec<u32>>,
         usize, // tab_index
         ClientId,
     ),
@@ -279,10 +279,16 @@ pub enum ScreenInstruction {
     PreviousSwapLayout(ClientId),
     NextSwapLayout(ClientId),
     QueryTabNames(ClientId),
-    NewTiledPluginPane(RunPlugin, Option<String>, bool, Option<PathBuf>, ClientId), // Option<String> is
+    NewTiledPluginPane(
+        RunPluginOrAlias,
+        Option<String>,
+        bool,
+        Option<PathBuf>,
+        ClientId,
+    ), // Option<String> is
     // optional pane title, bool is skip cache, Option<PathBuf> is an optional cwd
     NewFloatingPluginPane(
-        RunPlugin,
+        RunPluginOrAlias,
         Option<String>,
         bool,
         Option<PathBuf>,
@@ -291,13 +297,13 @@ pub enum ScreenInstruction {
     ), // Option<String> is an
     // optional pane title, bool
     // is skip cache, Option<PathBuf> is an optional cwd
-    NewInPlacePluginPane(RunPlugin, Option<String>, PaneId, bool, ClientId), // Option<String> is an
+    NewInPlacePluginPane(RunPluginOrAlias, Option<String>, PaneId, bool, ClientId), // Option<String> is an
     // optional pane title, bool is skip cache
-    StartOrReloadPluginPane(RunPlugin, Option<String>),
+    StartOrReloadPluginPane(RunPluginOrAlias, Option<String>),
     AddPlugin(
         Option<bool>, // should_float
         bool,         // should be opened in place
-        RunPlugin,
+        RunPluginOrAlias,
         Option<String>, // pane title
         Option<usize>,  // tab index
         u32,            // plugin id
@@ -309,9 +315,17 @@ pub enum ScreenInstruction {
     StartPluginLoadingIndication(u32, LoadingIndication), // u32 - plugin_id
     ProgressPluginLoadingOffset(u32),                 // u32 - plugin id
     RequestStateUpdateForPlugins,
-    LaunchOrFocusPlugin(RunPlugin, bool, bool, bool, Option<PaneId>, bool, ClientId), // bools are: should_float, move_to_focused_tab, should_open_in_place, Option<PaneId> is the pane id to replace, bool following it is skip_cache
+    LaunchOrFocusPlugin(
+        RunPluginOrAlias,
+        bool,
+        bool,
+        bool,
+        Option<PaneId>,
+        bool,
+        ClientId,
+    ), // bools are: should_float, move_to_focused_tab, should_open_in_place, Option<PaneId> is the pane id to replace, bool following it is skip_cache
     LaunchPlugin(
-        RunPlugin,
+        RunPluginOrAlias,
         bool,
         bool,
         Option<PaneId>,
@@ -1224,7 +1238,7 @@ impl Screen {
         floating_panes_layout: Vec<FloatingPaneLayout>,
         new_terminal_ids: Vec<(u32, HoldForCommand)>,
         new_floating_terminal_ids: Vec<(u32, HoldForCommand)>,
-        new_plugin_ids: HashMap<(RunPluginLocation, PluginUserConfiguration), Vec<u32>>,
+        new_plugin_ids: HashMap<RunPluginOrAlias, Vec<u32>>,
         tab_index: usize,
         client_id: ClientId,
     ) -> Result<()> {
@@ -1830,7 +1844,7 @@ impl Screen {
 
     pub fn focus_plugin_pane(
         &mut self,
-        run_plugin: &RunPlugin,
+        run_plugin: &RunPluginOrAlias,
         should_float: bool,
         move_to_focused_tab: bool,
         client_id: ClientId,
@@ -3452,7 +3466,7 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::AddPlugin(
                 should_float,
                 should_be_in_place,
-                run_plugin_location,
+                run_plugin_or_alias,
                 pane_title,
                 tab_index,
                 plugin_id,
@@ -3465,10 +3479,10 @@ pub(crate) fn screen_thread_main(
                         "({}) - {}",
                         cwd.map(|cwd| cwd.display().to_string())
                             .unwrap_or(".".to_owned()),
-                        run_plugin_location.location
+                        run_plugin_or_alias.location_string()
                     )
                 });
-                let run_plugin = Run::Plugin(run_plugin_location);
+                let run_plugin = Run::Plugin(run_plugin_or_alias);
 
                 if should_be_in_place {
                     if let Some(pane_id_to_replace) = pane_id_to_replace {
@@ -3571,33 +3585,35 @@ pub(crate) fn screen_thread_main(
                 skip_cache,
                 client_id,
             ) => match pane_id_to_replace {
-                Some(pane_id_to_replace) => match screen.active_tab_indices.values().next() {
-                    Some(tab_index) => {
-                        let size = Size::default();
-                        screen
-                            .bus
-                            .senders
-                            .send_to_pty(PtyInstruction::FillPluginCwd(
-                                Some(should_float),
-                                should_open_in_place,
-                                None,
-                                run_plugin,
-                                *tab_index,
-                                Some(pane_id_to_replace),
-                                client_id,
-                                size,
-                                skip_cache,
-                                None,
-                                None,
-                            ))?;
-                    },
-                    None => {
-                        log::error!(
+                Some(pane_id_to_replace) if should_open_in_place => {
+                    match screen.active_tab_indices.values().next() {
+                        Some(tab_index) => {
+                            let size = Size::default();
+                            screen
+                                .bus
+                                .senders
+                                .send_to_pty(PtyInstruction::FillPluginCwd(
+                                    Some(should_float),
+                                    should_open_in_place,
+                                    None,
+                                    run_plugin,
+                                    *tab_index,
+                                    Some(pane_id_to_replace),
+                                    client_id,
+                                    size,
+                                    skip_cache,
+                                    None,
+                                    None,
+                                ))?;
+                        },
+                        None => {
+                            log::error!(
                             "Could not find an active tab - is there at least 1 connected user?"
                         );
-                    },
+                        },
+                    }
                 },
-                None => {
+                _ => {
                     let client_id = if screen.active_tab_indices.contains_key(&client_id) {
                         Some(client_id)
                     } else {

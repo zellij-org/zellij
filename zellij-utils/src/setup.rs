@@ -770,20 +770,6 @@ mod setup_test {
         assert_snapshot!(format!("{:#?}", config));
     }
     #[test]
-    fn layout_plugins_override_config_plugins() {
-        let mut cli_args = CliArgs::default();
-        cli_args.config = Some(PathBuf::from(format!(
-            "{}/src/test-fixtures/config-with-plugins-config.kdl",
-            env!("CARGO_MANIFEST_DIR")
-        )));
-        cli_args.layout = Some(PathBuf::from(format!(
-            "{}/src/test-fixtures/layout-with-plugins-config.kdl",
-            env!("CARGO_MANIFEST_DIR")
-        )));
-        let (config, _layout, _options, _, _) = Setup::from_cli_args(&cli_args).unwrap();
-        assert_snapshot!(format!("{:#?}", config));
-    }
-    #[test]
     fn layout_themes_override_config_themes() {
         let mut cli_args = CliArgs::default();
         cli_args.config = Some(PathBuf::from(format!(

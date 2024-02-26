@@ -9,7 +9,7 @@ use std::convert::TryFrom;
 
 use super::keybinds::Keybinds;
 use super::options::Options;
-use super::plugins::{PluginsConfig, PluginsConfigError};
+use super::plugins::{PluginAliases, PluginsConfigError};
 use super::theme::{Themes, UiConfig};
 use crate::cli::{CliArgs, Command};
 use crate::envs::EnvironmentVariables;
@@ -25,7 +25,7 @@ pub struct Config {
     pub keybinds: Keybinds,
     pub options: Options,
     pub themes: Themes,
-    pub plugins: PluginsConfig,
+    pub plugins: PluginAliases,
     pub ui: UiConfig,
     pub env: EnvironmentVariables,
 }
@@ -226,7 +226,7 @@ impl Config {
         self.options = self.options.merge(other.options);
         self.keybinds.merge(other.keybinds.clone());
         self.themes = self.themes.merge(other.themes);
-        self.plugins = self.plugins.merge(other.plugins);
+        self.plugins.merge(other.plugins);
         self.ui = self.ui.merge(other.ui);
         self.env = self.env.merge(other.env);
         Ok(())
@@ -237,11 +237,11 @@ impl Config {
 mod config_test {
     use super::*;
     use crate::data::{InputMode, Palette, PaletteColor, PluginTag};
-    use crate::input::layout::RunPluginLocation;
+    use crate::input::layout::{RunPlugin, RunPluginLocation};
     use crate::input::options::{Clipboard, OnForceClose};
-    use crate::input::plugins::{PluginConfig, PluginType, PluginsConfig};
+    use crate::input::plugins::{PluginConfig, PluginType};
     use crate::input::theme::{FrameConfig, Theme, Themes, UiConfig};
-    use std::collections::HashMap;
+    use std::collections::{BTreeMap, HashMap};
     use std::io::Write;
     use tempfile::tempdir;
 
@@ -591,60 +591,54 @@ mod config_test {
     fn can_define_plugin_configuration_in_configfile() {
         let config_contents = r#"
             plugins {
-                tab-bar { path "tab-bar"; }
-                status-bar { path "status-bar"; }
-                strider {
-                    path "strider"
-                    _allow_exec_host_cmd true
+                tab-bar location="zellij:tab-bar"
+                status-bar location="zellij:status-bar"
+                strider location="zellij:strider"
+                compact-bar location="zellij:compact-bar"
+                session-manager location="zellij:session-manager"
+                welcome-screen location="zellij:session-manager" {
+                    welcome_screen true
                 }
-                compact-bar { path "compact-bar"; }
+                filepicker location="zellij:strider"
             }
         "#;
         let config = Config::from_kdl(config_contents, None).unwrap();
-        let mut expected_plugin_configuration = HashMap::new();
+        let mut expected_plugin_configuration = BTreeMap::new();
         expected_plugin_configuration.insert(
-            PluginTag::new("tab-bar"),
-            PluginConfig {
-                path: PathBuf::from("tab-bar"),
-                run: PluginType::Pane(None),
-                location: RunPluginLocation::Zellij(PluginTag::new("tab-bar")),
-                _allow_exec_host_cmd: false,
-                userspace_configuration: Default::default(),
-            },
+            "tab-bar".to_owned(),
+            RunPlugin::from_url("zellij:tab-bar").unwrap(),
         );
         expected_plugin_configuration.insert(
-            PluginTag::new("status-bar"),
-            PluginConfig {
-                path: PathBuf::from("status-bar"),
-                run: PluginType::Pane(None),
-                location: RunPluginLocation::Zellij(PluginTag::new("status-bar")),
-                _allow_exec_host_cmd: false,
-                userspace_configuration: Default::default(),
-            },
+            "status-bar".to_owned(),
+            RunPlugin::from_url("zellij:status-bar").unwrap(),
         );
         expected_plugin_configuration.insert(
-            PluginTag::new("strider"),
-            PluginConfig {
-                path: PathBuf::from("strider"),
-                run: PluginType::Pane(None),
-                location: RunPluginLocation::Zellij(PluginTag::new("strider")),
-                _allow_exec_host_cmd: true,
-                userspace_configuration: Default::default(),
-            },
+            "strider".to_owned(),
+            RunPlugin::from_url("zellij:strider").unwrap(),
         );
         expected_plugin_configuration.insert(
-            PluginTag::new("compact-bar"),
-            PluginConfig {
-                path: PathBuf::from("compact-bar"),
-                run: PluginType::Pane(None),
-                location: RunPluginLocation::Zellij(PluginTag::new("compact-bar")),
-                _allow_exec_host_cmd: false,
-                userspace_configuration: Default::default(),
-            },
+            "compact-bar".to_owned(),
+            RunPlugin::from_url("zellij:compact-bar").unwrap(),
+        );
+        expected_plugin_configuration.insert(
+            "session-manager".to_owned(),
+            RunPlugin::from_url("zellij:session-manager").unwrap(),
+        );
+        let mut welcome_screen_configuration = BTreeMap::new();
+        welcome_screen_configuration.insert("welcome_screen".to_owned(), "true".to_owned());
+        expected_plugin_configuration.insert(
+            "welcome-screen".to_owned(),
+            RunPlugin::from_url("zellij:session-manager")
+                .unwrap()
+                .with_configuration(welcome_screen_configuration),
+        );
+        expected_plugin_configuration.insert(
+            "filepicker".to_owned(),
+            RunPlugin::from_url("zellij:strider").unwrap(),
         );
         assert_eq!(
             config.plugins,
-            PluginsConfig::from_data(expected_plugin_configuration),
+            PluginAliases::from_data(expected_plugin_configuration),
             "Plugins defined in config"
         );
     }

@@ -1,6 +1,6 @@
 ---
 source: zellij-server/src/./unit/screen_tests.rs
-assertion_line: 2986
+assertion_line: 3171
 expression: "format!(\"{}\", snapshot)"
 ---
 00 (C): ┌ tiled_pane ──────────────────────────────────────────────────────────────────┐
@@ -8,8 +8,8 @@ expression: "format!(\"{}\", snapshot)"
 02 (C): │                                                                              │
 03 (C): │                                                                              │
 04 (C): │                                                                              │
-05 (C): │                   ┌ /path/to/fake/plugin ────────────────┐                   │
-06 (C): │                   │Loading /path/to/fake/plugin          │                   │
+05 (C): │                   ┌ file:/path/to/fake/plugin ───────────┐                   │
+06 (C): │                   │Loading file:/path/to/fake/plugin     │                   │
 07 (C): │                   │                                      │                   │
 08 (C): │                   │                                      │                   │
 09 (C): │                   │                                      │                   │

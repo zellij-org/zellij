@@ -242,7 +242,7 @@ pub fn start_client(
                     Box::new(opts),
                     Box::new(config_options.clone()),
                     Box::new(layout.unwrap()),
-                    Some(config.plugins.clone()),
+                    Box::new(config.plugins.clone()),
                 ),
                 ipc_pipe,
             )

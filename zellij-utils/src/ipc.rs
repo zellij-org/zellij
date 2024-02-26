@@ -4,7 +4,7 @@ use crate::{
     data::{ClientId, ConnectToSession, InputMode, Style},
     errors::{get_current_ctx, prelude::*, ErrorContext},
     input::keybinds::Keybinds,
-    input::{actions::Action, layout::Layout, options::Options, plugins::PluginsConfig},
+    input::{actions::Action, layout::Layout, options::Options, plugins::PluginAliases},
     pane_size::{Size, SizeInPixels},
 };
 use interprocess::local_socket::LocalSocketStream;
@@ -76,7 +76,7 @@ pub enum ClientToServerMsg {
         Box<CliArgs>,
         Box<Options>,
         Box<Layout>,
-        Option<PluginsConfig>,
+        Box<PluginAliases>,
     ),
     AttachClient(
         ClientAttributes,

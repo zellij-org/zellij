@@ -2,8 +2,8 @@
 
 use super::command::RunCommandAction;
 use super::layout::{
-    FloatingPaneLayout, Layout, RunPlugin, RunPluginLocation, SwapFloatingLayout, SwapTiledLayout,
-    TiledPaneLayout,
+    FloatingPaneLayout, Layout, PluginAlias, RunPlugin, RunPluginLocation, RunPluginOrAlias,
+    SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,
 };
 use crate::cli::CliAction;
 use crate::data::{Direction, Resize};
@@ -217,9 +217,9 @@ pub enum Action {
     LeftClick(Position),
     RightClick(Position),
     MiddleClick(Position),
-    LaunchOrFocusPlugin(RunPlugin, bool, bool, bool, bool), // bools => should float,
+    LaunchOrFocusPlugin(RunPluginOrAlias, bool, bool, bool, bool), // bools => should float,
     // move_to_focused_tab, should_open_in_place, skip_cache
-    LaunchPlugin(RunPlugin, bool, bool, bool, Option<PathBuf>), // bools => should float,
+    LaunchPlugin(RunPluginOrAlias, bool, bool, bool, Option<PathBuf>), // bools => should float,
     // should_open_in_place, skip_cache, Option<PathBuf> is cwd
     LeftMouseRelease(Position),
     RightMouseRelease(Position),
@@ -246,19 +246,19 @@ pub enum Action {
     /// Query all tab names
     QueryTabNames,
     /// Open a new tiled (embedded, non-floating) plugin pane
-    NewTiledPluginPane(RunPlugin, Option<String>, bool, Option<PathBuf>), // String is an optional name, bool is
+    NewTiledPluginPane(RunPluginOrAlias, Option<String>, bool, Option<PathBuf>), // String is an optional name, bool is
     // skip_cache, Option<PathBuf> is cwd
     NewFloatingPluginPane(
-        RunPlugin,
+        RunPluginOrAlias,
         Option<String>,
         bool,
         Option<PathBuf>,
         Option<FloatingPaneCoordinates>,
     ), // String is an optional name, bool is
     // skip_cache, Option<PathBuf> is cwd
-    NewInPlacePluginPane(RunPlugin, Option<String>, bool), // String is an optional name, bool is
+    NewInPlacePluginPane(RunPluginOrAlias, Option<String>, bool), // String is an optional name, bool is
     // skip_cache
-    StartOrReloadPlugin(RunPlugin),
+    StartOrReloadPlugin(RunPluginOrAlias),
     CloseTerminalPane(u32),
     ClosePluginPane(u32),
     FocusTerminalPaneWithId(u32, bool), // bool is should_float_if_hidden
@@ -351,14 +351,20 @@ impl Action {
                 let cwd = cwd
                     .map(|cwd| current_dir.join(cwd))
                     .or_else(|| Some(current_dir));
-                let user_configuration = configuration.unwrap_or_default();
                 if let Some(plugin) = plugin {
-                    let location = RunPluginLocation::parse(&plugin, cwd.clone())
-                        .map_err(|e| format!("Failed to parse plugin loction {plugin}: {}", e))?;
-                    let plugin = RunPlugin {
-                        _allow_exec_host_cmd: false,
-                        location,
-                        configuration: user_configuration,
+                    let plugin = match RunPluginLocation::parse(&plugin, cwd.clone()) {
+                        Ok(location) => {
+                            let user_configuration = configuration.unwrap_or_default();
+                            RunPluginOrAlias::RunPlugin(RunPlugin {
+                                _allow_exec_host_cmd: false,
+                                location,
+                                configuration: user_configuration,
+                            })
+                        },
+                        Err(_) => RunPluginOrAlias::Alias(PluginAlias::new(
+                            &plugin,
+                            &configuration.map(|c| c.inner().clone()),
+                        )),
                     };
                     if floating {
                         Ok(vec![Action::NewFloatingPluginPane(
@@ -571,14 +577,13 @@ impl Action {
             CliAction::QueryTabNames => Ok(vec![Action::QueryTabNames]),
             CliAction::StartOrReloadPlugin { url, configuration } => {
                 let current_dir = get_current_dir();
-                let run_plugin_location = RunPluginLocation::parse(&url, Some(current_dir))
-                    .map_err(|e| format!("Failed to parse plugin location: {}", e))?;
-                let run_plugin = RunPlugin {
-                    location: run_plugin_location,
-                    _allow_exec_host_cmd: false,
-                    configuration: configuration.unwrap_or_default(),
-                };
-                Ok(vec![Action::StartOrReloadPlugin(run_plugin)])
+                let run_plugin_or_alias = RunPluginOrAlias::from_url(
+                    &url,
+                    &configuration.map(|c| c.inner().clone()),
+                    None,
+                    Some(current_dir),
+                )?;
+                Ok(vec![Action::StartOrReloadPlugin(run_plugin_or_alias)])
             },
             CliAction::LaunchOrFocusPlugin {
                 url,
@@ -589,15 +594,14 @@ impl Action {
                 skip_plugin_cache,
             } => {
                 let current_dir = get_current_dir();
-                let run_plugin_location = RunPluginLocation::parse(url.as_str(), Some(current_dir))
-                    .map_err(|e| format!("Failed to parse plugin location: {}", e))?;
-                let run_plugin = RunPlugin {
-                    location: run_plugin_location,
-                    _allow_exec_host_cmd: false,
-                    configuration: configuration.unwrap_or_default(),
-                };
+                let run_plugin_or_alias = RunPluginOrAlias::from_url(
+                    url.as_str(),
+                    &configuration.map(|c| c.inner().clone()),
+                    None,
+                    Some(current_dir),
+                )?;
                 Ok(vec![Action::LaunchOrFocusPlugin(
-                    run_plugin,
+                    run_plugin_or_alias,
                     floating,
                     move_to_focused_tab,
                     in_place,
@@ -612,16 +616,14 @@ impl Action {
                 skip_plugin_cache,
             } => {
                 let current_dir = get_current_dir();
-                let run_plugin_location =
-                    RunPluginLocation::parse(url.as_str(), Some(current_dir.clone()))
-                        .map_err(|e| format!("Failed to parse plugin location: {}", e))?;
-                let run_plugin = RunPlugin {
-                    location: run_plugin_location,
-                    _allow_exec_host_cmd: false,
-                    configuration: configuration.unwrap_or_default(),
-                };
+                let run_plugin_or_alias = RunPluginOrAlias::from_url(
+                    &url.as_str(),
+                    &configuration.map(|c| c.inner().clone()),
+                    None,
+                    Some(current_dir.clone()),
+                )?;
                 Ok(vec![Action::LaunchPlugin(
-                    run_plugin,
+                    run_plugin_or_alias,
                     floating,
                     in_place,
                     skip_plugin_cache,
