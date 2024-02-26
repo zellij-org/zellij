@@ -1225,7 +1225,7 @@ fn start_or_reload_plugin(env: &ForeignFunctionEnv, url: &str) -> Result<()> {
     };
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     let run_plugin_or_alias = RunPluginOrAlias::from_url(url, &None, None, Some(cwd))
-      .map_err(|e| anyhow!("Failed to parse plugin location: {}", e))?;
+        .map_err(|e| anyhow!("Failed to parse plugin location: {}", e))?;
     let action = Action::StartOrReloadPlugin(run_plugin_or_alias);
     apply_action!(action, error_msg, env);
     Ok(())

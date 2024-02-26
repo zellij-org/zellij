@@ -2,8 +2,8 @@
 
 use super::command::RunCommandAction;
 use super::layout::{
-    FloatingPaneLayout, Layout, RunPlugin, RunPluginLocation, PluginAlias, SwapFloatingLayout, SwapTiledLayout,
-    TiledPaneLayout, RunPluginOrAlias
+    FloatingPaneLayout, Layout, PluginAlias, RunPlugin, RunPluginLocation, RunPluginOrAlias,
+    SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,
 };
 use crate::cli::CliAction;
 use crate::data::{Direction, Resize};
@@ -360,7 +360,10 @@ impl Action {
                                 configuration: user_configuration,
                             })
                         },
-                        Err(_) => RunPluginOrAlias::Alias(PluginAlias::new(&plugin, &configuration.map(|c| c.inner().clone()))),
+                        Err(_) => RunPluginOrAlias::Alias(PluginAlias::new(
+                            &plugin,
+                            &configuration.map(|c| c.inner().clone()),
+                        )),
                     };
                     if floating {
                         Ok(vec![Action::NewFloatingPluginPane(
@@ -573,7 +576,12 @@ impl Action {
             CliAction::QueryTabNames => Ok(vec![Action::QueryTabNames]),
             CliAction::StartOrReloadPlugin { url, configuration } => {
                 let current_dir = get_current_dir();
-                let run_plugin_or_alias = RunPluginOrAlias::from_url(&url, &configuration.map(|c| c.inner().clone()), None, Some(current_dir))?;
+                let run_plugin_or_alias = RunPluginOrAlias::from_url(
+                    &url,
+                    &configuration.map(|c| c.inner().clone()),
+                    None,
+                    Some(current_dir),
+                )?;
                 Ok(vec![Action::StartOrReloadPlugin(run_plugin_or_alias)])
             },
             CliAction::LaunchOrFocusPlugin {
@@ -585,7 +593,12 @@ impl Action {
                 skip_plugin_cache,
             } => {
                 let current_dir = get_current_dir();
-                let run_plugin_or_alias = RunPluginOrAlias::from_url(url.as_str(), &configuration.map(|c| c.inner().clone()), None, Some(current_dir))?;
+                let run_plugin_or_alias = RunPluginOrAlias::from_url(
+                    url.as_str(),
+                    &configuration.map(|c| c.inner().clone()),
+                    None,
+                    Some(current_dir),
+                )?;
                 Ok(vec![Action::LaunchOrFocusPlugin(
                     run_plugin_or_alias,
                     floating,
@@ -602,7 +615,12 @@ impl Action {
                 skip_plugin_cache,
             } => {
                 let current_dir = get_current_dir();
-                let run_plugin_or_alias = RunPluginOrAlias::from_url(&url.as_str(), &configuration.map(|c| c.inner().clone()), None, Some(current_dir.clone()))?;
+                let run_plugin_or_alias = RunPluginOrAlias::from_url(
+                    &url.as_str(),
+                    &configuration.map(|c| c.inner().clone()),
+                    None,
+                    Some(current_dir.clone()),
+                )?;
                 Ok(vec![Action::LaunchPlugin(
                     run_plugin_or_alias,
                     floating,

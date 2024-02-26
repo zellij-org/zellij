@@ -17,7 +17,9 @@ use crate::errors::prelude::*;
 use crate::input::actions::Action;
 use crate::input::actions::{SearchDirection, SearchOption};
 use crate::input::command::RunCommandAction;
-use crate::input::layout::{PluginUserConfiguration, RunPlugin, RunPluginOrAlias, RunPluginLocation};
+use crate::input::layout::{
+    PluginUserConfiguration, RunPlugin, RunPluginLocation, RunPluginOrAlias,
+};
 use crate::position::Position;
 
 use std::collections::BTreeMap;
@@ -401,7 +403,8 @@ impl TryFrom<ProtobufAction> for Action {
                             &Some(configuration.inner().clone()),
                             None,
                             None,
-                        ).map_err(|_| "Malformed LaunchOrFocusPlugin payload")?;
+                        )
+                        .map_err(|_| "Malformed LaunchOrFocusPlugin payload")?;
                         let should_float = payload.should_float;
                         let move_to_focused_tab = payload.move_to_focused_tab;
                         let should_open_in_place = payload.should_open_in_place;
@@ -428,7 +431,8 @@ impl TryFrom<ProtobufAction> for Action {
                         &Some(configuration.inner().clone()),
                         None,
                         None,
-                    ).map_err(|_| "Malformed LaunchOrFocusPlugin payload")?;
+                    )
+                    .map_err(|_| "Malformed LaunchOrFocusPlugin payload")?;
                     let should_float = payload.should_float;
                     let _move_to_focused_tab = payload.move_to_focused_tab; // not actually used in
                                                                             // this action
@@ -582,12 +586,9 @@ impl TryFrom<ProtobufAction> for Action {
             Some(ProtobufActionName::StartOrReloadPlugin) => {
                 match protobuf_action.optional_payload {
                     Some(OptionalPayload::StartOrReloadPluginPayload(payload)) => {
-                        let run_plugin_or_alias = RunPluginOrAlias::from_url(
-                            &payload.as_str(),
-                            &None,
-                            None,
-                            None,
-                        ).map_err(|_| "Malformed LaunchOrFocusPlugin payload")?;
+                        let run_plugin_or_alias =
+                            RunPluginOrAlias::from_url(&payload.as_str(), &None, None, None)
+                                .map_err(|_| "Malformed LaunchOrFocusPlugin payload")?;
 
                         Ok(Action::StartOrReloadPlugin(run_plugin_or_alias))
                     },
@@ -1162,13 +1163,13 @@ impl TryFrom<Action> for ProtobufAction {
                 _cwd,
                 _coordinates,
             ) => {
-//                 let plugin_url: Url = match run_plugin {
-//                     RunPluginOrAlias::RunPlugin(run_plugin) => Url::from(&run_plugin.location),
-//                     RunPluginOrAlias::Alias(plugin_alias) => {
-//                         // TODO: support plugin alias
-//                         unimplemented!()
-//                     }
-//                 };
+                //                 let plugin_url: Url = match run_plugin {
+                //                     RunPluginOrAlias::RunPlugin(run_plugin) => Url::from(&run_plugin.location),
+                //                     RunPluginOrAlias::Alias(plugin_alias) => {
+                //                         // TODO: support plugin alias
+                //                         unimplemented!()
+                //                     }
+                //                 };
                 Ok(ProtobufAction {
                     name: ProtobufActionName::NewFloatingPluginPane as i32,
                     optional_payload: Some(OptionalPayload::NewFloatingPluginPanePayload(
@@ -1180,14 +1181,12 @@ impl TryFrom<Action> for ProtobufAction {
                     )),
                 })
             },
-            Action::StartOrReloadPlugin(run_plugin) => {
-                Ok(ProtobufAction {
-                    name: ProtobufActionName::StartOrReloadPlugin as i32,
-                    optional_payload: Some(OptionalPayload::StartOrReloadPluginPayload(
-                        run_plugin.location_string()
-                    )),
-                })
-            },
+            Action::StartOrReloadPlugin(run_plugin) => Ok(ProtobufAction {
+                name: ProtobufActionName::StartOrReloadPlugin as i32,
+                optional_payload: Some(OptionalPayload::StartOrReloadPluginPayload(
+                    run_plugin.location_string(),
+                )),
+            }),
             Action::CloseTerminalPane(terminal_pane_id) => Ok(ProtobufAction {
                 name: ProtobufActionName::CloseTerminalPane as i32,
                 optional_payload: Some(OptionalPayload::CloseTerminalPanePayload(terminal_pane_id)),

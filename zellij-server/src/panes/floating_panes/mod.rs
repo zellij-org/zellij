@@ -873,7 +873,8 @@ impl FloatingPanes {
         }
     }
     pub fn get_plugin_pane_id(&self, run_plugin_or_alias: &RunPluginOrAlias) -> Option<PaneId> {
-        self.panes.iter()
+        self.panes
+            .iter()
             .find(|(_id, pane)| run_plugin_or_alias.is_equivalent_to_run(pane.invoked_with()))
             .map(|(id, _)| *id)
     }

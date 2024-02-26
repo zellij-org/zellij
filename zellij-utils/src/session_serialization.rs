@@ -4,8 +4,8 @@ use std::path::PathBuf;
 use crate::{
     input::layout::PluginUserConfiguration,
     input::layout::{
-        FloatingPaneLayout, Layout, PercentOrFixed, Run, RunPluginOrAlias, SplitDirection, SplitSize,
-        SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,
+        FloatingPaneLayout, Layout, PercentOrFixed, Run, RunPluginOrAlias, SplitDirection,
+        SplitSize, SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,
     },
     pane_size::{Constraint, PaneGeom},
 };
@@ -236,12 +236,12 @@ fn extract_plugin_and_config(
             ),
             RunPluginOrAlias::Alias(plugin_alias) => {
                 let name = plugin_alias.name.clone();
-                let configuration = plugin_alias.run_plugin.as_ref().map(|run_plugin| run_plugin.configuration.clone());
-                (
-                    Some(name),
-                    configuration,
-                )
-            }
+                let configuration = plugin_alias
+                    .run_plugin
+                    .as_ref()
+                    .map(|run_plugin| run_plugin.configuration.clone());
+                (Some(name), configuration)
+            },
         },
         _ => (None, None),
     }

@@ -15,7 +15,7 @@ use crate::errors::prelude::*;
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
 pub struct PluginAliases {
-    pub aliases: BTreeMap<String, RunPlugin>
+    pub aliases: BTreeMap<String, RunPlugin>,
 }
 
 impl PluginAliases {
@@ -23,9 +23,7 @@ impl PluginAliases {
         self.aliases.extend(other.aliases);
     }
     pub fn from_data(aliases: BTreeMap<String, RunPlugin>) -> Self {
-        PluginAliases {
-            aliases
-        }
+        PluginAliases { aliases }
     }
 }
 
@@ -56,16 +54,18 @@ impl PluginConfig {
             }),
             RunPluginLocation::Zellij(tag) => {
                 let tag = tag.to_string();
-                if tag == "status-bar" ||
-                    tag == "tab-bar" ||
-                    tag == "compact-bar" ||
-                    tag == "strider" ||
-                    tag == "session-manager" {
+                if tag == "status-bar"
+                    || tag == "tab-bar"
+                    || tag == "compact-bar"
+                    || tag == "strider"
+                    || tag == "session-manager"
+                {
                     Some(PluginConfig {
                         path: PathBuf::from(&tag),
                         run: PluginType::Pane(None),
                         _allow_exec_host_cmd: run_plugin._allow_exec_host_cmd,
-                        location: RunPluginLocation::parse(&format!("zellij:{}", tag), None).ok()?,
+                        location: RunPluginLocation::parse(&format!("zellij:{}", tag), None)
+                            .ok()?,
                         userspace_configuration: run_plugin.configuration.clone(),
                     })
                 } else {

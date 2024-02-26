@@ -15,8 +15,8 @@ use zellij_utils::errors::{prelude::*, ErrorContext};
 use zellij_utils::input::actions::Action;
 use zellij_utils::input::command::{RunCommand, TerminalAction};
 use zellij_utils::input::layout::{
-    FloatingPaneLayout, Layout, Run, RunPlugin, RunPluginOrAlias, RunPluginLocation, SplitDirection, SplitSize,
-    TiledPaneLayout, PluginAlias, PluginUserConfiguration,
+    FloatingPaneLayout, Layout, PluginAlias, PluginUserConfiguration, Run, RunPlugin,
+    RunPluginLocation, RunPluginOrAlias, SplitDirection, SplitSize, TiledPaneLayout,
 };
 use zellij_utils::input::options::Options;
 use zellij_utils::ipc::IpcReceiverWithContext;

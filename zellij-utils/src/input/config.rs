@@ -9,7 +9,7 @@ use std::convert::TryFrom;
 
 use super::keybinds::Keybinds;
 use super::options::Options;
-use super::plugins::{PluginsConfigError, PluginAliases};
+use super::plugins::{PluginAliases, PluginsConfigError};
 use super::theme::{Themes, UiConfig};
 use crate::cli::{CliArgs, Command};
 use crate::envs::EnvironmentVariables;
@@ -237,11 +237,11 @@ impl Config {
 mod config_test {
     use super::*;
     use crate::data::{InputMode, Palette, PaletteColor, PluginTag};
-    use crate::input::layout::{RunPluginLocation, RunPlugin};
+    use crate::input::layout::{RunPlugin, RunPluginLocation};
     use crate::input::options::{Clipboard, OnForceClose};
     use crate::input::plugins::{PluginConfig, PluginType};
     use crate::input::theme::{FrameConfig, Theme, Themes, UiConfig};
-    use std::collections::{HashMap, BTreeMap};
+    use std::collections::{BTreeMap, HashMap};
     use std::io::Write;
     use tempfile::tempdir;
 
@@ -628,7 +628,9 @@ mod config_test {
         welcome_screen_configuration.insert("welcome_screen".to_owned(), "true".to_owned());
         expected_plugin_configuration.insert(
             "welcome-screen".to_owned(),
-            RunPlugin::from_url("zellij:session-manager").unwrap().with_configuration(welcome_screen_configuration)
+            RunPlugin::from_url("zellij:session-manager")
+                .unwrap()
+                .with_configuration(welcome_screen_configuration),
         );
         expected_plugin_configuration.insert(
             "filepicker".to_owned(),

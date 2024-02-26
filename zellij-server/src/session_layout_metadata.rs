@@ -178,7 +178,8 @@ impl SessionLayoutMetadata {
         let mut update_cmd_in_pane_metadata = |pane_layout_metadata: &mut PaneLayoutMetadata| {
             if let PaneId::Plugin(id) = pane_layout_metadata.id {
                 if let Some(run_plugin) = plugin_ids_to_run_plugins.remove(&id) {
-                    pane_layout_metadata.run = Some(Run::Plugin(RunPluginOrAlias::RunPlugin(run_plugin)));
+                    pane_layout_metadata.run =
+                        Some(Run::Plugin(RunPluginOrAlias::RunPlugin(run_plugin)));
                 }
             }
         };

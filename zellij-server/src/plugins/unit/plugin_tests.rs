@@ -8,7 +8,9 @@ use tempfile::tempdir;
 use wasmer::Store;
 use zellij_utils::data::{Event, Key, PermissionStatus, PermissionType, PluginCapabilities};
 use zellij_utils::errors::ErrorContext;
-use zellij_utils::input::layout::{Layout, PluginUserConfiguration, RunPlugin, RunPluginOrAlias, RunPluginLocation, PluginAlias};
+use zellij_utils::input::layout::{
+    Layout, PluginAlias, PluginUserConfiguration, RunPlugin, RunPluginLocation, RunPluginOrAlias,
+};
 use zellij_utils::input::permission::PermissionCache;
 use zellij_utils::input::plugins::PluginAliases;
 use zellij_utils::ipc::ClientAttributes;
@@ -250,12 +252,16 @@ fn create_plugin_thread(
     let client_attributes = ClientAttributes::default();
     let default_shell_action = None; // TODO: change me
     let mut plugin_aliases = PluginAliases::default();
-    plugin_aliases.aliases.insert("fixture_plugin_for_tests".to_owned(),
-        RunPlugin::from_url(
-            &format!(
-                "file:{}/../target/e2e-data/plugins/fixture-plugin-for-tests.wasm",
-                std::env::var_os("CARGO_MANIFEST_DIR").unwrap().to_string_lossy())).unwrap()
-        );
+    plugin_aliases.aliases.insert(
+        "fixture_plugin_for_tests".to_owned(),
+        RunPlugin::from_url(&format!(
+            "file:{}/../target/e2e-data/plugins/fixture-plugin-for-tests.wasm",
+            std::env::var_os("CARGO_MANIFEST_DIR")
+                .unwrap()
+                .to_string_lossy()
+        ))
+        .unwrap(),
+    );
     let plugin_thread = std::thread::Builder::new()
         .name("plugin_thread".to_string())
         .spawn(move || {
@@ -5499,7 +5505,8 @@ pub fn denied_permission_request_result() {
     teardown();
 
     let permission_cache = PermissionCache::from_path_or_default(Some(cache_path));
-    let permissions = permission_cache.get_permissions(PathBuf::from(&*PLUGIN_FIXTURE).display().to_string());
+    let permissions =
+        permission_cache.get_permissions(PathBuf::from(&*PLUGIN_FIXTURE).display().to_string());
 
     assert_snapshot!(format!("{:#?}", permissions));
 }

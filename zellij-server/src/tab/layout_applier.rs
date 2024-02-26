@@ -18,9 +18,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::rc::Rc;
 use zellij_utils::{
     data::{Palette, Style},
-    input::layout::{
-        FloatingPaneLayout, Run, RunPluginOrAlias, TiledPaneLayout,
-    },
+    input::layout::{FloatingPaneLayout, Run, RunPluginOrAlias, TiledPaneLayout},
     pane_size::{Offset, PaneGeom, Size, SizeInPixels, Viewport},
 };
 

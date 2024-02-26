@@ -19,8 +19,8 @@ use zellij_utils::{
     input::{
         command::{RunCommand, TerminalAction},
         layout::{
-            FloatingPaneLayout, Layout, PluginUserConfiguration, Run, RunPluginOrAlias, RunPluginLocation,
-            TiledPaneLayout,
+            FloatingPaneLayout, Layout, PluginUserConfiguration, Run, RunPluginLocation,
+            RunPluginOrAlias, TiledPaneLayout,
         },
     },
     pane_size::Size,
@@ -62,7 +62,7 @@ pub enum PtyInstruction {
         Option<TerminalAction>,
         Option<TiledPaneLayout>,
         Vec<FloatingPaneLayout>,
-        usize,                                                           // tab_index
+        usize,                               // tab_index
         HashMap<RunPluginOrAlias, Vec<u32>>, // plugin_ids
         ClientId,
     ), // the String is the tab name

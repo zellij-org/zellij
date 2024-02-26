@@ -37,7 +37,7 @@ use zellij_utils::{
     errors::prelude::*,
     input::{
         command::TerminalAction,
-        layout::{Layout, PluginUserConfiguration, RunPlugin, RunPluginOrAlias, RunPluginLocation},
+        layout::{Layout, PluginUserConfiguration, RunPlugin, RunPluginLocation, RunPluginOrAlias},
         plugins::PluginConfig,
     },
     ipc::ClientAttributes,
@@ -199,8 +199,9 @@ impl WasmBridge {
                     let default_shell = self.default_shell.clone();
                     let default_layout = self.default_layout.clone();
                     async move {
-                        let _ =
-                            senders.send_to_background_jobs(BackgroundJob::AnimatePluginLoading(plugin_id));
+                        let _ = senders.send_to_background_jobs(
+                            BackgroundJob::AnimatePluginLoading(plugin_id),
+                        );
                         let mut loading_indication = LoadingIndication::new(plugin_name.clone());
 
                         if let RunPluginLocation::Remote(url) = &plugin.location {
@@ -273,7 +274,7 @@ impl WasmBridge {
                     "Failed to resolve plugin alias",
                     None,
                 );
-            }
+            },
         }
         Ok((plugin_id, client_id))
     }
@@ -1104,9 +1105,10 @@ impl WasmBridge {
                     &run_plugin.configuration,
                 );
                 if all_plugin_ids.is_empty() {
-                    if let Some(loading_plugin_id) =
-                        self.plugin_id_of_loading_plugin(&run_plugin.location, &run_plugin.configuration)
-                    {
+                    if let Some(loading_plugin_id) = self.plugin_id_of_loading_plugin(
+                        &run_plugin.location,
+                        &run_plugin.configuration,
+                    ) {
                         return vec![(loading_plugin_id, None)];
                     }
                     match self.load_plugin(
@@ -1150,7 +1152,7 @@ impl WasmBridge {
             None => {
                 log::error!("Plugin not found for alias");
                 vec![]
-            }
+            },
         }
     }
     pub fn clear_plugin_map_cache(&mut self) {

@@ -23,7 +23,7 @@ use std::cmp::Ordering;
 use std::fmt::{Display, Formatter};
 use std::str::FromStr;
 
-use super::plugins::{PluginTag, PluginsConfigError, PluginAliases};
+use super::plugins::{PluginAliases, PluginTag, PluginsConfigError};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::vec::Vec;
@@ -104,16 +104,24 @@ impl RunPluginOrAlias {
             if run_plugin_alias.run_plugin.is_some() {
                 log::warn!("Overriding plugin alias");
             }
-            let merged_run_plugin = plugin_aliases.aliases
+            let merged_run_plugin = plugin_aliases
+                .aliases
                 .get(run_plugin_alias.name.as_str())
-                .map(|r| r.clone().merge_configuration(&run_plugin_alias.configuration.as_ref().map(|c| c.inner().clone())));
+                .map(|r| {
+                    r.clone().merge_configuration(
+                        &run_plugin_alias
+                            .configuration
+                            .as_ref()
+                            .map(|c| c.inner().clone()),
+                    )
+                });
             run_plugin_alias.run_plugin = merged_run_plugin;
         }
     }
     pub fn get_run_plugin(&self) -> Option<RunPlugin> {
         match self {
             RunPluginOrAlias::RunPlugin(run_plugin) => Some(run_plugin.clone()),
-            RunPluginOrAlias::Alias(plugin_alias) => plugin_alias.run_plugin.clone()
+            RunPluginOrAlias::Alias(plugin_alias) => plugin_alias.run_plugin.clone(),
         }
     }
     pub fn get_configuration(&self) -> Option<PluginUserConfiguration> {
@@ -123,49 +131,63 @@ impl RunPluginOrAlias {
         url: &str,
         configuration: &Option<BTreeMap<String, String>>,
         alias_dict: Option<&PluginAliases>,
-        cwd: Option<PathBuf>
+        cwd: Option<PathBuf>,
     ) -> Result<Self, String> {
         match RunPluginLocation::parse(&url, cwd) {
-            Ok(location) => {
-                Ok(RunPluginOrAlias::RunPlugin(RunPlugin {
-                    _allow_exec_host_cmd: false,
-                    location,
-                    configuration: configuration.as_ref().map(|c| PluginUserConfiguration::new(c.clone())).unwrap_or_default(),
-                }))
-            },
-            Err(PluginsConfigError::InvalidUrlScheme(_)) | Err(PluginsConfigError::InvalidUrl(..))=> {
+            Ok(location) => Ok(RunPluginOrAlias::RunPlugin(RunPlugin {
+                _allow_exec_host_cmd: false,
+                location,
+                configuration: configuration
+                    .as_ref()
+                    .map(|c| PluginUserConfiguration::new(c.clone()))
+                    .unwrap_or_default(),
+            })),
+            Err(PluginsConfigError::InvalidUrlScheme(_))
+            | Err(PluginsConfigError::InvalidUrl(..)) => {
                 let mut plugin_alias = PluginAlias::new(&url, configuration);
                 if let Some(alias_dict) = alias_dict {
-                    plugin_alias.run_plugin = alias_dict.aliases.get(url).map(|r| r.clone().merge_configuration(configuration));
+                    plugin_alias.run_plugin = alias_dict
+                        .aliases
+                        .get(url)
+                        .map(|r| r.clone().merge_configuration(configuration));
                 }
                 Ok(RunPluginOrAlias::Alias(plugin_alias))
             },
             Err(e) => {
                 return Err(format!("Failed to parse plugin location {url}: {}", e));
-            }
+            },
         }
     }
     pub fn is_equivalent_to_run(&self, run: &Option<Run>) -> bool {
         match (self, run) {
-            (RunPluginOrAlias::Alias(self_alias), Some(Run::Plugin(RunPluginOrAlias::Alias(run_alias)))) => {
-                self_alias.name == run_alias.name &&
-                    self_alias.configuration
-                    .as_ref()
-                    // we do the is_empty() checks because an empty configuration is the same as no
-                    // configuration (i.e. None)
-                    .and_then(|c| if c.inner().is_empty() { None } else { Some(c)} ) ==
-                        run_alias.configuration
+            (
+                RunPluginOrAlias::Alias(self_alias),
+                Some(Run::Plugin(RunPluginOrAlias::Alias(run_alias))),
+            ) => {
+                self_alias.name == run_alias.name
+                    && self_alias
+                        .configuration
                         .as_ref()
+                        // we do the is_empty() checks because an empty configuration is the same as no
+                        // configuration (i.e. None)
                         .and_then(|c| if c.inner().is_empty() { None } else { Some(c) })
-            }
-            (RunPluginOrAlias::Alias(self_alias), Some(Run::Plugin(RunPluginOrAlias::RunPlugin(other_run_plugin)))) => {
-                self_alias.run_plugin.as_ref() == Some(other_run_plugin)
-            }
-            (RunPluginOrAlias::RunPlugin(self_run_plugin), Some(Run::Plugin(RunPluginOrAlias::RunPlugin(other_run_plugin)))) => {
-                self_run_plugin == other_run_plugin
-
-            }
-            _ => false
+                        == run_alias.configuration.as_ref().and_then(|c| {
+                            if c.inner().is_empty() {
+                                None
+                            } else {
+                                Some(c)
+                            }
+                        })
+            },
+            (
+                RunPluginOrAlias::Alias(self_alias),
+                Some(Run::Plugin(RunPluginOrAlias::RunPlugin(other_run_plugin))),
+            ) => self_alias.run_plugin.as_ref() == Some(other_run_plugin),
+            (
+                RunPluginOrAlias::RunPlugin(self_run_plugin),
+                Some(Run::Plugin(RunPluginOrAlias::RunPlugin(other_run_plugin))),
+            ) => self_run_plugin == other_run_plugin,
+            _ => false,
         }
     }
 }
@@ -322,14 +344,16 @@ impl Run {
             Run::Plugin(RunPluginOrAlias::RunPlugin(run_plugin)) => Some(run_plugin.clone()),
             Run::Plugin(RunPluginOrAlias::Alias(plugin_alias)) => {
                 plugin_alias.run_plugin.as_ref().map(|r| r.clone())
-            }
-            _ => None
+            },
+            _ => None,
         }
     }
     pub fn populate_run_plugin_if_needed(&mut self, alias_dict: &PluginAliases) {
         match self {
-            Run::Plugin(run_plugin_alias) => run_plugin_alias.populate_run_plugin_if_needed(alias_dict),
-            _ => {}
+            Run::Plugin(run_plugin_alias) => {
+                run_plugin_alias.populate_run_plugin_if_needed(alias_dict)
+            },
+            _ => {},
         }
     }
 }
@@ -374,7 +398,9 @@ impl PluginAlias {
     pub fn new(name: &str, configuration: &Option<BTreeMap<String, String>>) -> Self {
         PluginAlias {
             name: name.to_owned(),
-            configuration: configuration.as_ref().map(|c| PluginUserConfiguration::new(c.clone())),
+            configuration: configuration
+                .as_ref()
+                .map(|c| PluginUserConfiguration::new(c.clone())),
             ..Default::default()
         }
     }
@@ -846,7 +872,7 @@ impl TiledPaneLayout {
     pub fn populate_plugin_aliases_in_layout(&mut self, plugin_aliases: &PluginAliases) {
         match self.run.as_mut() {
             Some(run) => run.populate_run_plugin_if_needed(plugin_aliases),
-            _ => {}
+            _ => {},
         }
         for child in self.children.iter_mut() {
             child.populate_plugin_aliases_in_layout(plugin_aliases);
@@ -1291,13 +1317,19 @@ impl Layout {
         for tab in self.tabs.iter_mut() {
             tab.1.populate_plugin_aliases_in_layout(plugin_aliases);
             for floating_pane_layout in tab.2.iter_mut() {
-                floating_pane_layout.run.as_mut().map(|f| f.populate_run_plugin_if_needed(&plugin_aliases));
+                floating_pane_layout
+                    .run
+                    .as_mut()
+                    .map(|f| f.populate_run_plugin_if_needed(&plugin_aliases));
             }
         }
         if let Some(template) = self.template.as_mut() {
             template.0.populate_plugin_aliases_in_layout(plugin_aliases);
             for floating_pane_layout in template.1.iter_mut() {
-                floating_pane_layout.run.as_mut().map(|f| f.populate_run_plugin_if_needed(&plugin_aliases));
+                floating_pane_layout
+                    .run
+                    .as_mut()
+                    .map(|f| f.populate_run_plugin_if_needed(&plugin_aliases));
             }
         }
     }

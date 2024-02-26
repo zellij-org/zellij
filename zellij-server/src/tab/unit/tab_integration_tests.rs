@@ -20,8 +20,8 @@ use zellij_utils::data::ResizeStrategy;
 use zellij_utils::envs::set_session_name;
 use zellij_utils::errors::{prelude::*, ErrorContext};
 use zellij_utils::input::layout::{
-    FloatingPaneLayout, Layout, PluginUserConfiguration, RunPluginOrAlias, RunPluginLocation, SwapFloatingLayout,
-    SwapTiledLayout, TiledPaneLayout,
+    FloatingPaneLayout, Layout, PluginUserConfiguration, RunPluginLocation, RunPluginOrAlias,
+    SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,
 };
 use zellij_utils::input::plugins::PluginTag;
 use zellij_utils::ipc::IpcReceiverWithContext;

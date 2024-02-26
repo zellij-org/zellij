@@ -32,10 +32,7 @@ use zellij_utils::{
     errors::{prelude::*, ContextType, PluginContext},
     input::{
         command::TerminalAction,
-        layout::{
-            FloatingPaneLayout, Layout, Run, RunPlugin, RunPluginOrAlias,
-            TiledPaneLayout
-        },
+        layout::{FloatingPaneLayout, Layout, Run, RunPlugin, RunPluginOrAlias, TiledPaneLayout},
         plugins::PluginAliases,
     },
     ipc::ClientAttributes,
@@ -247,14 +244,20 @@ pub(crate) fn plugin_thread_main(
                         log::error!("Failed to load plugin: {e}");
                     },
                 }
-            }
+            },
             PluginInstruction::Update(updates) => {
                 wasm_bridge.update_plugins(updates, shutdown_send.clone())?;
             },
             PluginInstruction::Unload(pid) => {
                 wasm_bridge.unload_plugin(pid)?;
             },
-            PluginInstruction::Reload(should_float, pane_title, mut run_plugin_or_alias, tab_index, size) => {
+            PluginInstruction::Reload(
+                should_float,
+                pane_title,
+                mut run_plugin_or_alias,
+                tab_index,
+                size,
+            ) => {
                 run_plugin_or_alias.populate_run_plugin_if_needed(&plugin_aliases);
                 match run_plugin_or_alias.get_run_plugin() {
                     Some(run_plugin) => {
@@ -266,7 +269,10 @@ pub(crate) fn plugin_thread_main(
                             },
                             Err(err) => match err.downcast_ref::<ZellijError>() {
                                 Some(ZellijError::PluginDoesNotExist) => {
-                                    log::warn!("Plugin {} not found, starting it instead", run_plugin.location);
+                                    log::warn!(
+                                        "Plugin {} not found, starting it instead",
+                                        run_plugin.location
+                                    );
                                     // we intentionally do not provide the client_id here because it belongs to
                                     // the cli who spawned the command and is not an existing client_id
                                     let skip_cache = true; // when reloading we always skip cache
@@ -281,17 +287,19 @@ pub(crate) fn plugin_thread_main(
                                     ) {
                                         Ok((plugin_id, _client_id)) => {
                                             let should_be_open_in_place = false;
-                                            drop(bus.senders.send_to_screen(ScreenInstruction::AddPlugin(
-                                                should_float,
-                                                should_be_open_in_place,
-                                                run_plugin_or_alias,
-                                                pane_title,
-                                                Some(tab_index),
-                                                plugin_id,
-                                                None,
-                                                None,
-                                                None,
-                                            )));
+                                            drop(bus.senders.send_to_screen(
+                                                ScreenInstruction::AddPlugin(
+                                                    should_float,
+                                                    should_be_open_in_place,
+                                                    run_plugin_or_alias,
+                                                    pane_title,
+                                                    Some(tab_index),
+                                                    plugin_id,
+                                                    None,
+                                                    None,
+                                                    None,
+                                                ),
+                                            ));
                                         },
                                         Err(e) => {
                                             log::error!("Failed to load plugin: {e}");
@@ -306,7 +314,7 @@ pub(crate) fn plugin_thread_main(
                     },
                     None => {
                         log::error!("Failed to find plugin info for: {:?}", run_plugin_or_alias)
-                    }
+                    },
                 }
             },
             PluginInstruction::Resize(pid, new_columns, new_rows) => {
@@ -326,16 +334,16 @@ pub(crate) fn plugin_thread_main(
                 tab_index,
                 client_id,
             ) => {
-                let mut plugin_ids: HashMap<
-                    RunPluginOrAlias,
-                    Vec<PluginId>,
-                > = HashMap::new();
+                let mut plugin_ids: HashMap<RunPluginOrAlias, Vec<PluginId>> = HashMap::new();
                 tab_layout = tab_layout.or_else(|| Some(layout.new_tab().0));
-                tab_layout.as_mut().map(|t| t.populate_plugin_aliases_in_layout(&plugin_aliases));
-                floating_panes_layout
-                    .iter_mut().for_each(|f| {
-                        f.run.as_mut().map(|f| f.populate_run_plugin_if_needed(&plugin_aliases));
-                    });
+                tab_layout
+                    .as_mut()
+                    .map(|t| t.populate_plugin_aliases_in_layout(&plugin_aliases));
+                floating_panes_layout.iter_mut().for_each(|f| {
+                    f.run
+                        .as_mut()
+                        .map(|f| f.populate_run_plugin_if_needed(&plugin_aliases));
+                });
                 let mut extracted_run_instructions = tab_layout
                     .clone()
                     .unwrap_or_else(|| layout.new_tab().0)
@@ -683,7 +691,12 @@ fn pipe_to_specific_plugins(
 ) {
     let is_private = true;
     let size = Size::default();
-    match RunPluginOrAlias::from_url(&plugin_url, configuration, Some(plugin_aliases), cwd.clone()) {
+    match RunPluginOrAlias::from_url(
+        &plugin_url,
+        configuration,
+        Some(plugin_aliases),
+        cwd.clone(),
+    ) {
         Ok(run_plugin_or_alias) => {
             let all_plugin_ids = wasm_bridge.get_or_load_plugins(
                 run_plugin_or_alias,

@@ -3,8 +3,8 @@ use crate::input::{
     config::ConfigError,
     layout::{
         FloatingPaneLayout, Layout, LayoutConstraint, PercentOrFixed, PluginUserConfiguration, Run,
-        RunPluginOrAlias, SplitDirection, SplitSize, SwapFloatingLayout,
-        SwapTiledLayout, TiledPaneLayout,
+        RunPluginOrAlias, SplitDirection, SplitSize, SwapFloatingLayout, SwapTiledLayout,
+        TiledPaneLayout,
     },
 };
 
@@ -314,7 +314,13 @@ impl<'a> KdlLayoutParser<'a> {
             ),
         )?;
         let configuration = KdlLayoutParser::parse_plugin_user_configuration(&plugin_block)?;
-        let run_plugin_or_alias = RunPluginOrAlias::from_url(&string_url, &Some(configuration.inner().clone()), None, self.cwd_prefix(None)?).map_err(|e| {
+        let run_plugin_or_alias = RunPluginOrAlias::from_url(
+            &string_url,
+            &Some(configuration.inner().clone()),
+            None,
+            self.cwd_prefix(None)?,
+        )
+        .map_err(|e| {
             ConfigError::new_kdl_error(
                 format!("Failed to parse plugin: {}", e),
                 url_node.span().offset(),

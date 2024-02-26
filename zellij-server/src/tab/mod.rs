@@ -50,8 +50,8 @@ use zellij_utils::{
     input::{
         command::TerminalAction,
         layout::{
-            FloatingPaneLayout, PluginUserConfiguration, Run, RunPlugin, RunPluginOrAlias, RunPluginLocation,
-            SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,
+            FloatingPaneLayout, PluginUserConfiguration, Run, RunPlugin, RunPluginLocation,
+            RunPluginOrAlias, SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,
         },
         parse_keys,
     },
@@ -3592,8 +3592,11 @@ impl Tab {
             .get_plugin_pane_id(run_plugin_or_alias)
             .or_else(|| self.floating_panes.get_plugin_pane_id(run_plugin_or_alias))
             .or_else(|| {
-                self.suppressed_panes.iter()
-                    .find(|(_id, (_, pane))| run_plugin_or_alias.is_equivalent_to_run(pane.invoked_with()))
+                self.suppressed_panes
+                    .iter()
+                    .find(|(_id, (_, pane))| {
+                        run_plugin_or_alias.is_equivalent_to_run(pane.invoked_with())
+                    })
                     .map(|(id, _)| *id)
             })
     }
@@ -3767,9 +3770,7 @@ pub fn pane_info_for_pane(pane_id: &PaneId, pane: &Box<dyn Pane>) -> PaneInfo {
             pane_info.id = *plugin_id;
             pane_info.is_plugin = true;
             pane_info.plugin_url = pane.invoked_with().as_ref().and_then(|c| match c {
-                Run::Plugin(run_plugin_or_alias) => {
-                    Some(run_plugin_or_alias.location_string())
-                }
+                Run::Plugin(run_plugin_or_alias) => Some(run_plugin_or_alias.location_string()),
                 _ => None,
             });
         },

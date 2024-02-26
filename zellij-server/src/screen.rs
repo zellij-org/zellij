@@ -19,7 +19,7 @@ use zellij_utils::{
     envs::set_session_name,
     input::command::TerminalAction,
     input::layout::{
-        FloatingPaneLayout, Layout, Run, RunPlugin, RunPluginOrAlias, RunPluginLocation,
+        FloatingPaneLayout, Layout, Run, RunPlugin, RunPluginLocation, RunPluginOrAlias,
         SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,
     },
     position::Position,
@@ -276,7 +276,13 @@ pub enum ScreenInstruction {
     PreviousSwapLayout(ClientId),
     NextSwapLayout(ClientId),
     QueryTabNames(ClientId),
-    NewTiledPluginPane(RunPluginOrAlias, Option<String>, bool, Option<PathBuf>, ClientId), // Option<String> is
+    NewTiledPluginPane(
+        RunPluginOrAlias,
+        Option<String>,
+        bool,
+        Option<PathBuf>,
+        ClientId,
+    ), // Option<String> is
     // optional pane title, bool is skip cache, Option<PathBuf> is an optional cwd
     NewFloatingPluginPane(
         RunPluginOrAlias,
@@ -306,7 +312,15 @@ pub enum ScreenInstruction {
     StartPluginLoadingIndication(u32, LoadingIndication), // u32 - plugin_id
     ProgressPluginLoadingOffset(u32),                 // u32 - plugin id
     RequestStateUpdateForPlugins,
-    LaunchOrFocusPlugin(RunPluginOrAlias, bool, bool, bool, Option<PaneId>, bool, ClientId), // bools are: should_float, move_to_focused_tab, should_open_in_place, Option<PaneId> is the pane id to replace, bool following it is skip_cache
+    LaunchOrFocusPlugin(
+        RunPluginOrAlias,
+        bool,
+        bool,
+        bool,
+        Option<PaneId>,
+        bool,
+        ClientId,
+    ), // bools are: should_float, move_to_focused_tab, should_open_in_place, Option<PaneId> is the pane id to replace, bool following it is skip_cache
     LaunchPlugin(
         RunPluginOrAlias,
         bool,
@@ -3471,31 +3485,33 @@ pub(crate) fn screen_thread_main(
                 skip_cache,
                 client_id,
             ) => match pane_id_to_replace {
-                Some(pane_id_to_replace) if should_open_in_place => match screen.active_tab_indices.values().next() {
-                    Some(tab_index) => {
-                        let size = Size::default();
-                        screen
-                            .bus
-                            .senders
-                            .send_to_pty(PtyInstruction::FillPluginCwd(
-                                Some(should_float),
-                                should_open_in_place,
-                                None,
-                                run_plugin,
-                                *tab_index,
-                                Some(pane_id_to_replace),
-                                client_id,
-                                size,
-                                skip_cache,
-                                None,
-                                None,
-                            ))?;
-                    },
-                    None => {
-                        log::error!(
+                Some(pane_id_to_replace) if should_open_in_place => {
+                    match screen.active_tab_indices.values().next() {
+                        Some(tab_index) => {
+                            let size = Size::default();
+                            screen
+                                .bus
+                                .senders
+                                .send_to_pty(PtyInstruction::FillPluginCwd(
+                                    Some(should_float),
+                                    should_open_in_place,
+                                    None,
+                                    run_plugin,
+                                    *tab_index,
+                                    Some(pane_id_to_replace),
+                                    client_id,
+                                    size,
+                                    skip_cache,
+                                    None,
+                                    None,
+                                ))?;
+                        },
+                        None => {
+                            log::error!(
                             "Could not find an active tab - is there at least 1 connected user?"
                         );
-                    },
+                        },
+                    }
                 },
                 _ => {
                     let client_id = if screen.active_tab_indices.contains_key(&client_id) {

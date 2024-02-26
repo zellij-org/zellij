@@ -7,7 +7,7 @@ use crate::envs::EnvironmentVariables;
 use crate::home::{find_default_config_dir, get_layout_dir};
 use crate::input::config::{Config, ConfigError, KdlError};
 use crate::input::keybinds::Keybinds;
-use crate::input::layout::{Layout, RunPluginOrAlias, RunPlugin};
+use crate::input::layout::{Layout, RunPlugin, RunPluginOrAlias};
 use crate::input::options::{Clipboard, OnForceClose, Options};
 use crate::input::permission::{GrantedPermission, PermissionCache};
 use crate::input::plugins::PluginAliases;
@@ -959,7 +959,13 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                     .unwrap_or(false);
                 let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
                 let configuration = KdlLayoutParser::parse_plugin_user_configuration(&kdl_action)?;
-                let run_plugin_or_alias = RunPluginOrAlias::from_url(&plugin_path, &Some(configuration.inner().clone()), None, Some(current_dir)).map_err(|e| {
+                let run_plugin_or_alias = RunPluginOrAlias::from_url(
+                    &plugin_path,
+                    &Some(configuration.inner().clone()),
+                    None,
+                    Some(current_dir),
+                )
+                .map_err(|e| {
                     ConfigError::new_kdl_error(
                         format!("Failed to parse plugin: {}", e),
                         kdl_action.span().offset(),
@@ -998,7 +1004,13 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                     .unwrap_or(false);
                 let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
                 let configuration = KdlLayoutParser::parse_plugin_user_configuration(&kdl_action)?;
-                let run_plugin_or_alias = RunPluginOrAlias::from_url(&plugin_path, &Some(configuration.inner().clone()), None, Some(current_dir)).map_err(|e| {
+                let run_plugin_or_alias = RunPluginOrAlias::from_url(
+                    &plugin_path,
+                    &Some(configuration.inner().clone()),
+                    None,
+                    Some(current_dir),
+                )
+                .map_err(|e| {
                     ConfigError::new_kdl_error(
                         format!("Failed to parse plugin: {}", e),
                         kdl_action.span().offset(),
@@ -1811,9 +1823,13 @@ impl PluginAliases {
         if let Some(kdl_plugin_aliases) = kdl_children_nodes!(kdl_plugin_aliases) {
             for alias_definition in kdl_plugin_aliases {
                 let alias_name = kdl_name!(alias_definition);
-                if let Some(string_url) = kdl_get_string_property_or_child_value!(alias_definition, "location") {
-                    let configuration = KdlLayoutParser::parse_plugin_user_configuration(&alias_definition)?;
-                    let run_plugin = RunPlugin::from_url(string_url)?.with_configuration(configuration.inner().clone());
+                if let Some(string_url) =
+                    kdl_get_string_property_or_child_value!(alias_definition, "location")
+                {
+                    let configuration =
+                        KdlLayoutParser::parse_plugin_user_configuration(&alias_definition)?;
+                    let run_plugin = RunPlugin::from_url(string_url)?
+                        .with_configuration(configuration.inner().clone());
                     aliases.insert(alias_name.to_owned(), run_plugin);
                 }
             }
