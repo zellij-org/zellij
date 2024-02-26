@@ -56,7 +56,11 @@ impl PluginConfig {
             }),
             RunPluginLocation::Zellij(tag) => {
                 let tag = tag.to_string();
-                if tag == "status-bar" || tag == "tab-bar" || tag == "strider" || tag == "session-manager" {
+                if tag == "status-bar" ||
+                    tag == "tab-bar" ||
+                    tag == "compact-bar" ||
+                    tag == "strider" ||
+                    tag == "session-manager" {
                     Some(PluginConfig {
                         path: PathBuf::from(&tag),
                         run: PluginType::Pane(None),
