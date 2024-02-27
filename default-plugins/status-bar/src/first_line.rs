@@ -612,7 +612,7 @@ pub fn first_line(
     separator: &str,
 ) -> LinePart {
     let supports_arrow_fonts = !help.capabilities.arrow_fonts;
-    let colored_elements = color_elements(help.style.colors, !supports_arrow_fonts);
+    let colored_elements = color_elements(help.style.styling, !supports_arrow_fonts);
     let binds = &help.get_mode_keybinds();
     // Unselect all by default
     let mut default_keys = vec![
@@ -731,7 +731,7 @@ mod tests {
     use super::*;
 
     fn colored_elements() -> ColoredElements {
-        let palette = Palette::default();
+        let palette = Styling::default();
         color_elements(palette, false)
     }
 

@@ -20,9 +20,9 @@ pub fn ribbon(
         )
     } else {
         (
-            character_style(colors.ribbon_unselected[5], colors.ribbon_unselected[0]),
-            character_style(colors.ribbon_unselected[5], colors.ribbon_unselected[0]),
             character_style(colors.ribbon_unselected[0], colors.ribbon_unselected[5]),
+            character_style(colors.ribbon_unselected[0], colors.ribbon_unselected[5]),
+            character_style(colors.ribbon_unselected[5], colors.ribbon_unselected[0]),
         )
     };
     let (text, _text_width) =

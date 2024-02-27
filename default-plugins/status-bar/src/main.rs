@@ -87,96 +87,61 @@ pub struct SegmentStyle {
 // we need different colors from palette for the default theme
 // plus here we can add new sources in the future, like Theme
 // that can be defined in the config perhaps
-fn color_elements(palette: Palette, different_color_alternates: bool) -> ColoredElements {
-    let background = match palette.theme_hue {
-        ThemeHue::Dark => palette.black,
-        ThemeHue::Light => palette.white,
-    };
-    let foreground = match palette.theme_hue {
-        ThemeHue::Dark => palette.white,
-        ThemeHue::Light => palette.black,
-    };
-    let alternate_background_color = if different_color_alternates {
-        match palette.theme_hue {
-            ThemeHue::Dark => palette.white,
-            ThemeHue::Light => palette.black,
-        }
-    } else {
-        palette.fg
-    };
-    match palette.source {
-        PaletteSource::Default => ColoredElements {
-            selected: SegmentStyle {
-                prefix_separator: style!(background, palette.green),
-                char_left_separator: style!(background, palette.green).bold(),
-                char_shortcut: style!(palette.red, palette.green).bold(),
-                char_right_separator: style!(background, palette.green).bold(),
-                styled_text: style!(background, palette.green).bold(),
-                suffix_separator: style!(palette.green, background).bold(),
-            },
-            unselected: SegmentStyle {
-                prefix_separator: style!(background, palette.fg),
-                char_left_separator: style!(background, palette.fg).bold(),
-                char_shortcut: style!(palette.red, palette.fg).bold(),
-                char_right_separator: style!(background, palette.fg).bold(),
-                styled_text: style!(background, palette.fg).bold(),
-                suffix_separator: style!(palette.fg, background),
-            },
-            unselected_alternate: SegmentStyle {
-                prefix_separator: style!(background, alternate_background_color),
-                char_left_separator: style!(background, alternate_background_color).bold(),
-                char_shortcut: style!(palette.red, alternate_background_color).bold(),
-                char_right_separator: style!(background, alternate_background_color).bold(),
-                styled_text: style!(background, alternate_background_color).bold(),
-                suffix_separator: style!(alternate_background_color, background),
-            },
-            disabled: SegmentStyle {
-                prefix_separator: style!(background, palette.fg),
-                char_left_separator: style!(background, palette.fg).dimmed().italic(),
-                char_shortcut: style!(background, palette.fg).dimmed().italic(),
-                char_right_separator: style!(background, palette.fg).dimmed().italic(),
-                styled_text: style!(background, palette.fg).dimmed().italic(),
-                suffix_separator: style!(palette.fg, background),
-            },
-            superkey_prefix: style!(foreground, background).bold(),
-            superkey_suffix_separator: style!(background, background),
+fn color_elements(palette: Styling, different_color_alternates: bool) -> ColoredElements {
+    let background = palette.text_unselected[5];
+    let foreground = palette.text_unselected[0];
+    let alternate_background_color = palette.text_unselected[5];
+    ColoredElements {
+        selected: SegmentStyle {
+            prefix_separator: style!(background, palette.ribbon_selected[0]),
+            char_left_separator: style!(palette.ribbon_selected[0], palette.ribbon_selected[5])
+                .bold(),
+            char_shortcut: style!(palette.ribbon_selected[1], palette.ribbon_selected[5]).bold(),
+            char_right_separator: style!(palette.ribbon_selected[0], palette.ribbon_selected[5])
+                .bold(),
+            styled_text: style!(palette.ribbon_selected[0], palette.ribbon_selected[5]).bold(),
+            suffix_separator: style!(palette.ribbon_selected[5], palette.ribbon_selected[0]).bold(),
         },
-        PaletteSource::Xresources => ColoredElements {
-            selected: SegmentStyle {
-                prefix_separator: style!(background, palette.green),
-                char_left_separator: style!(palette.fg, palette.green).bold(),
-                char_shortcut: style!(palette.red, palette.green).bold(),
-                char_right_separator: style!(palette.fg, palette.green).bold(),
-                styled_text: style!(background, palette.green).bold(),
-                suffix_separator: style!(palette.green, background).bold(),
-            },
-            unselected: SegmentStyle {
-                prefix_separator: style!(background, palette.fg),
-                char_left_separator: style!(background, palette.fg).bold(),
-                char_shortcut: style!(palette.red, palette.fg).bold(),
-                char_right_separator: style!(background, palette.fg).bold(),
-                styled_text: style!(background, palette.fg).bold(),
-                suffix_separator: style!(palette.fg, background),
-            },
-            unselected_alternate: SegmentStyle {
-                prefix_separator: style!(background, alternate_background_color),
-                char_left_separator: style!(background, alternate_background_color).bold(),
-                char_shortcut: style!(palette.red, alternate_background_color).bold(),
-                char_right_separator: style!(background, alternate_background_color).bold(),
-                styled_text: style!(background, alternate_background_color).bold(),
-                suffix_separator: style!(alternate_background_color, background),
-            },
-            disabled: SegmentStyle {
-                prefix_separator: style!(background, palette.fg),
-                char_left_separator: style!(background, palette.fg).dimmed(),
-                char_shortcut: style!(background, palette.fg).dimmed(),
-                char_right_separator: style!(background, palette.fg).dimmed(),
-                styled_text: style!(background, palette.fg).dimmed(),
-                suffix_separator: style!(palette.fg, background),
-            },
-            superkey_prefix: style!(background, palette.fg).bold(),
-            superkey_suffix_separator: style!(palette.fg, background),
+        unselected: SegmentStyle {
+            prefix_separator: style!(palette.ribbon_unselected[0], palette.ribbon_unselected[5]),
+            char_left_separator: style!(palette.ribbon_unselected[0], palette.ribbon_unselected[5])
+                .bold(),
+            char_shortcut: style!(palette.ribbon_unselected[2], palette.ribbon_unselected[5])
+                .bold(),
+            char_right_separator: style!(
+                palette.ribbon_unselected[0],
+                palette.ribbon_unselected[5]
+            )
+            .bold(),
+            styled_text: style!(palette.ribbon_unselected[0], palette.ribbon_unselected[5]).bold(),
+            suffix_separator: style!(palette.ribbon_unselected[5], palette.ribbon_selected[0])
+                .bold(),
         },
+        unselected_alternate: SegmentStyle {
+            prefix_separator: style!(palette.ribbon_unselected[0], palette.ribbon_unselected[5]),
+            char_left_separator: style!(palette.ribbon_unselected[0], palette.ribbon_unselected[5])
+                .bold(),
+            char_shortcut: style!(palette.ribbon_unselected[1], palette.ribbon_unselected[5])
+                .bold(),
+            char_right_separator: style!(
+                palette.ribbon_unselected[0],
+                palette.ribbon_unselected[5]
+            )
+            .bold(),
+            styled_text: style!(palette.ribbon_unselected[0], palette.ribbon_unselected[5]).bold(),
+            suffix_separator: style!(palette.ribbon_unselected[5], palette.ribbon_selected[0])
+                .bold(),
+        },
+        disabled: SegmentStyle {
+            prefix_separator: style!(background, foreground),
+            char_left_separator: style!(background, foreground).dimmed().italic(),
+            char_shortcut: style!(background, foreground).dimmed().italic(),
+            char_right_separator: style!(background, foreground).dimmed().italic(),
+            styled_text: style!(background, foreground).dimmed().italic(),
+            suffix_separator: style!(foreground, background),
+        },
+        superkey_prefix: style!(foreground, background).bold(),
+        superkey_suffix_separator: style!(background, background),
     }
 }
 
@@ -272,11 +237,7 @@ impl ZellijPlugin for State {
         let first_line = first_line(&self.mode_info, active_tab, cols, separator);
         let second_line = self.second_line(cols);
 
-        let background = match self.mode_info.style.colors.theme_hue {
-            ThemeHue::Dark => self.mode_info.style.colors.black,
-            ThemeHue::Light => self.mode_info.style.colors.white,
-        };
-
+        let background = self.mode_info.style.styling.text_unselected[5];
         // [48;5;238m is white background, [0K is so that it fills the rest of the line
         // [m is background reset, [0K is so that it clears the rest of the line
         match background {
