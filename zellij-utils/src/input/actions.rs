@@ -359,11 +359,13 @@ impl Action {
                                 _allow_exec_host_cmd: false,
                                 location,
                                 configuration: user_configuration,
+                                initial_cwd: cwd.clone(),
                             })
                         },
                         Err(_) => RunPluginOrAlias::Alias(PluginAlias::new(
                             &plugin,
                             &configuration.map(|c| c.inner().clone()),
+                            cwd.clone(),
                         )),
                     };
                     if floating {

@@ -217,6 +217,7 @@ pub(crate) fn plugin_thread_main(
                 skip_cache,
             ) => {
                 run_plugin_or_alias.populate_run_plugin_if_needed(&plugin_aliases);
+                let cwd = run_plugin_or_alias.get_initial_cwd().or(cwd);
                 let run_plugin = run_plugin_or_alias.get_run_plugin();
                 match wasm_bridge.load_plugin(
                     &run_plugin,
@@ -363,12 +364,13 @@ pub(crate) fn plugin_thread_main(
                 for run_instruction in extracted_run_instructions {
                     if let Some(Run::Plugin(run_plugin_or_alias)) = run_instruction {
                         let run_plugin = run_plugin_or_alias.get_run_plugin();
+                        let cwd = run_plugin_or_alias.get_initial_cwd().or_else(|| cwd.clone());
                         let skip_cache = false;
                         let (plugin_id, _client_id) = wasm_bridge.load_plugin(
                             &run_plugin,
                             Some(tab_index),
                             size,
-                            None,
+                            cwd,
                             skip_cache,
                             Some(client_id),
                             None,
@@ -537,7 +539,6 @@ pub(crate) fn plugin_thread_main(
                 source_plugin_id,
                 message,
             } => {
-                let cwd = message.new_plugin_args.as_ref().and_then(|n| n.cwd.clone());
                 let mut pipe_messages = vec![];
                 let skip_cache = message
                     .new_plugin_args
@@ -564,7 +565,7 @@ pub(crate) fn plugin_thread_main(
                             PipeSource::Plugin(source_plugin_id),
                             &plugin_url,
                             &Some(message.plugin_config),
-                            &cwd,
+                            &None,
                             skip_cache,
                             should_float,
                             &pane_id_to_replace.map(|p| p.into()),
@@ -698,10 +699,11 @@ fn pipe_to_specific_plugins(
         cwd.clone(),
     ) {
         Ok(run_plugin_or_alias) => {
+            let initial_cwd = run_plugin_or_alias.get_initial_cwd();
             let all_plugin_ids = wasm_bridge.get_or_load_plugins(
                 run_plugin_or_alias,
                 size,
-                cwd.clone(),
+                initial_cwd.or_else(|| cwd.clone()),
                 skip_cache,
                 should_float,
                 pane_id_to_replace.is_some(),

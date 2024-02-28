@@ -248,6 +248,22 @@ macro_rules! kdl_children {
 }
 
 #[macro_export]
+macro_rules! kdl_get_string_property_or_child_value {
+    ( $kdl_node:expr, $name:expr ) => {
+        $kdl_node
+            .get($name)
+            .and_then(|e| e.value().as_string())
+            .or_else(|| {
+                $kdl_node
+                    .children()
+                    .and_then(|c| c.get($name))
+                    .and_then(|c| c.get(0))
+                    .and_then(|c| c.value().as_string())
+            })
+    };
+}
+
+#[macro_export]
 macro_rules! kdl_string_arguments {
     ( $kdl_node:expr ) => {{
         let res: Result<Vec<_>, _> = $kdl_node
@@ -982,6 +998,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                     .unwrap_or(false);
                 let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
                 let configuration = KdlLayoutParser::parse_plugin_user_configuration(&kdl_action)?;
+                let initial_cwd = kdl_get_string_property_or_child_value!(kdl_action, "cwd").map(|s| PathBuf::from(s));
                 let run_plugin_or_alias = RunPluginOrAlias::from_url(
                     &plugin_path,
                     &Some(configuration.inner().clone()),
@@ -994,7 +1011,8 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                         kdl_action.span().offset(),
                         kdl_action.span().len(),
                     )
-                })?;
+                })?
+                .with_initial_cwd(initial_cwd);
                 Ok(Action::LaunchOrFocusPlugin(
                     run_plugin_or_alias,
                     should_float,
@@ -1324,22 +1342,6 @@ macro_rules! kdl_get_bool_property_or_child_value_with_error {
                 }
             },
         }
-    };
-}
-
-#[macro_export]
-macro_rules! kdl_get_string_property_or_child_value {
-    ( $kdl_node:expr, $name:expr ) => {
-        $kdl_node
-            .get($name)
-            .and_then(|e| e.value().as_string())
-            .or_else(|| {
-                $kdl_node
-                    .children()
-                    .and_then(|c| c.get($name))
-                    .and_then(|c| c.get(0))
-                    .and_then(|c| c.value().as_string())
-            })
     };
 }
 
@@ -1851,8 +1853,10 @@ impl PluginAliases {
                 {
                     let configuration =
                         KdlLayoutParser::parse_plugin_user_configuration(&alias_definition)?;
+                    let mut initial_cwd = kdl_get_string_property_or_child_value!(alias_definition, "cwd").map(|s| PathBuf::from(s));
                     let run_plugin = RunPlugin::from_url(string_url)?
-                        .with_configuration(configuration.inner().clone());
+                        .with_configuration(configuration.inner().clone())
+                        .with_initial_cwd(initial_cwd);
                     aliases.insert(alias_name.to_owned(), run_plugin);
                 }
             }

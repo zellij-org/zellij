@@ -2666,6 +2666,7 @@ Config {
                             configuration: PluginUserConfiguration(
                                 {},
                             ),
+                            initial_cwd: None,
                         },
                     ),
                     true,
@@ -3845,6 +3846,7 @@ Config {
                 configuration: PluginUserConfiguration(
                     {},
                 ),
+                initial_cwd: None,
             },
             "filepicker": RunPlugin {
                 _allow_exec_host_cmd: false,
@@ -3855,6 +3857,9 @@ Config {
                 ),
                 configuration: PluginUserConfiguration(
                     {},
+                ),
+                initial_cwd: Some(
+                    "/",
                 ),
             },
             "session-manager": RunPlugin {
@@ -3867,6 +3872,7 @@ Config {
                 configuration: PluginUserConfiguration(
                     {},
                 ),
+                initial_cwd: None,
             },
             "status-bar": RunPlugin {
                 _allow_exec_host_cmd: false,
@@ -3878,6 +3884,7 @@ Config {
                 configuration: PluginUserConfiguration(
                     {},
                 ),
+                initial_cwd: None,
             },
             "strider": RunPlugin {
                 _allow_exec_host_cmd: false,
@@ -3889,6 +3896,7 @@ Config {
                 configuration: PluginUserConfiguration(
                     {},
                 ),
+                initial_cwd: None,
             },
             "tab-bar": RunPlugin {
                 _allow_exec_host_cmd: false,
@@ -3900,6 +3908,7 @@ Config {
                 configuration: PluginUserConfiguration(
                     {},
                 ),
+                initial_cwd: None,
             },
             "welcome-screen": RunPlugin {
                 _allow_exec_host_cmd: false,
@@ -3913,6 +3922,7 @@ Config {
                         "welcome_screen": "true",
                     },
                 ),
+                initial_cwd: None,
             },
         },
     },

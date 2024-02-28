@@ -2999,6 +2999,7 @@ pub fn send_cli_launch_or_focus_plugin_action_when_plugin_is_already_loaded() {
             _allow_exec_host_cmd: false,
             location: RunPluginLocation::File(PathBuf::from("/path/to/fake/plugin")),
             configuration: Default::default(),
+            ..Default::default()
         }))),
         ..Default::default()
     };
@@ -3079,6 +3080,7 @@ pub fn send_cli_launch_or_focus_plugin_action_when_plugin_is_already_loaded_for_
                 _allow_exec_host_cmd: false,
                 location: RunPluginLocation::File(PathBuf::from("/path/to/fake/plugin")),
                 configuration: Default::default(),
+                ..Default::default()
             }),
             ..Default::default()
         }))),
@@ -3348,6 +3350,7 @@ pub fn screen_can_break_plugin_pane_to_a_new_tab() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from("/path/to/fake/plugin")),
         configuration: Default::default(),
+        ..Default::default()
     })));
     let mut pane_to_stay = TiledPaneLayout::default();
     pane_to_stay.name = Some("pane_to_stay".to_owned());
@@ -3418,6 +3421,7 @@ pub fn screen_can_break_floating_plugin_pane_to_a_new_tab() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from("/path/to/fake/plugin")),
         configuration: Default::default(),
+        ..Default::default()
     })));
     let mut floating_panes_layout = vec![floating_pane];
     initial_layout.children_split_direction = SplitDirection::Vertical;

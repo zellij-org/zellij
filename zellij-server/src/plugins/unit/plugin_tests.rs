@@ -571,6 +571,7 @@ pub fn load_new_plugin_from_hd() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -650,6 +651,7 @@ pub fn load_new_plugin_with_plugin_alias() {
         name: "fixture_plugin_for_tests".to_owned(),
         configuration: Default::default(),
         run_plugin: None,
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -725,6 +727,7 @@ pub fn plugin_workers() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -804,6 +807,7 @@ pub fn plugin_workers_persist_state() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -893,6 +897,7 @@ pub fn can_subscribe_to_hd_events() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -970,6 +975,7 @@ pub fn switch_to_mode_plugin_command() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -1041,6 +1047,7 @@ pub fn switch_to_mode_plugin_command_permission_denied() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -1112,6 +1119,7 @@ pub fn new_tabs_with_layout_plugin_command() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -1197,6 +1205,7 @@ pub fn new_tab_plugin_command() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -1268,6 +1277,7 @@ pub fn go_to_next_tab_plugin_command() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -1338,6 +1348,7 @@ pub fn go_to_previous_tab_plugin_command() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -1408,6 +1419,7 @@ pub fn resize_focused_pane_plugin_command() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -1478,6 +1490,7 @@ pub fn resize_focused_pane_with_direction_plugin_command() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -1548,6 +1561,7 @@ pub fn focus_next_pane_plugin_command() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -1618,6 +1632,7 @@ pub fn focus_previous_pane_plugin_command() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -1688,6 +1703,7 @@ pub fn move_focus_plugin_command() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -1758,6 +1774,7 @@ pub fn move_focus_or_tab_plugin_command() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -1828,6 +1845,7 @@ pub fn edit_scrollback_plugin_command() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -1898,6 +1916,7 @@ pub fn write_plugin_command() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -1968,6 +1987,7 @@ pub fn write_chars_plugin_command() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -2038,6 +2058,7 @@ pub fn toggle_tab_plugin_command() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -2108,6 +2129,7 @@ pub fn move_pane_plugin_command() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -2178,6 +2200,7 @@ pub fn move_pane_with_direction_plugin_command() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -2248,6 +2271,7 @@ pub fn clear_screen_plugin_command() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -2319,6 +2343,7 @@ pub fn scroll_up_plugin_command() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -2390,6 +2415,7 @@ pub fn scroll_down_plugin_command() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -2460,6 +2486,7 @@ pub fn scroll_to_top_plugin_command() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -2530,6 +2557,7 @@ pub fn scroll_to_bottom_plugin_command() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -2600,6 +2628,7 @@ pub fn page_scroll_up_plugin_command() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -2670,6 +2699,7 @@ pub fn page_scroll_down_plugin_command() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -2740,6 +2770,7 @@ pub fn toggle_focus_fullscreen_plugin_command() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -2810,6 +2841,7 @@ pub fn toggle_pane_frames_plugin_command() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -2880,6 +2912,7 @@ pub fn toggle_pane_embed_or_eject_plugin_command() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -2950,6 +2983,7 @@ pub fn undo_rename_pane_plugin_command() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -3020,6 +3054,7 @@ pub fn close_focus_plugin_command() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -3090,6 +3125,7 @@ pub fn toggle_active_tab_sync_plugin_command() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -3160,6 +3196,7 @@ pub fn close_focused_tab_plugin_command() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -3230,6 +3267,7 @@ pub fn undo_rename_tab_plugin_command() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -3300,6 +3338,7 @@ pub fn previous_swap_layout_plugin_command() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -3370,6 +3409,7 @@ pub fn next_swap_layout_plugin_command() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -3440,6 +3480,7 @@ pub fn go_to_tab_name_plugin_command() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -3510,6 +3551,7 @@ pub fn focus_or_create_tab_plugin_command() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -3580,6 +3622,7 @@ pub fn go_to_tab() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -3650,6 +3693,7 @@ pub fn start_or_reload_plugin() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -3720,6 +3764,7 @@ pub fn quit_zellij_plugin_command() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -3797,6 +3842,7 @@ pub fn detach_plugin_command() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -3874,6 +3920,7 @@ pub fn open_file_floating_plugin_command() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -3955,6 +4002,7 @@ pub fn open_file_plugin_command() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -4036,6 +4084,7 @@ pub fn open_file_with_line_plugin_command() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -4118,6 +4167,7 @@ pub fn open_file_with_line_floating_plugin_command() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -4199,6 +4249,7 @@ pub fn open_terminal_plugin_command() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -4276,6 +4327,7 @@ pub fn open_terminal_floating_plugin_command() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -4353,6 +4405,7 @@ pub fn open_command_pane_plugin_command() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -4430,6 +4483,7 @@ pub fn open_command_pane_floating_plugin_command() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -4507,6 +4561,7 @@ pub fn switch_to_tab_plugin_command() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -4577,6 +4632,7 @@ pub fn hide_self_plugin_command() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -4647,6 +4703,7 @@ pub fn show_self_plugin_command() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -4716,6 +4773,7 @@ pub fn close_terminal_pane_plugin_command() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -4786,6 +4844,7 @@ pub fn close_plugin_pane_plugin_command() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -4856,6 +4915,7 @@ pub fn focus_terminal_pane_plugin_command() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -4926,6 +4986,7 @@ pub fn focus_plugin_pane_plugin_command() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -4996,6 +5057,7 @@ pub fn rename_terminal_pane_plugin_command() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -5066,6 +5128,7 @@ pub fn rename_plugin_pane_plugin_command() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -5136,6 +5199,7 @@ pub fn rename_tab_plugin_command() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -5215,6 +5279,7 @@ pub fn send_configuration_to_plugins() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: PluginUserConfiguration::new(configuration),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -5286,6 +5351,7 @@ pub fn request_plugin_permissions() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -5352,6 +5418,7 @@ pub fn granted_permission_request_result() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -5442,6 +5509,7 @@ pub fn denied_permission_request_result() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -5526,6 +5594,7 @@ pub fn run_command_plugin_command() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -5603,6 +5672,7 @@ pub fn run_command_with_env_vars_and_cwd_plugin_command() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -5680,6 +5750,7 @@ pub fn web_request_plugin_command() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -5757,6 +5828,7 @@ pub fn unblock_input_plugin_command() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -5838,6 +5910,7 @@ pub fn block_input_plugin_command() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -5920,6 +5993,7 @@ pub fn pipe_output_plugin_command() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -6009,6 +6083,7 @@ pub fn pipe_message_to_plugin_plugin_command() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -6095,6 +6170,7 @@ pub fn switch_session_plugin_command() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -6175,6 +6251,7 @@ pub fn switch_session_with_layout_plugin_command() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -6255,6 +6332,7 @@ pub fn disconnect_other_clients_plugins_command() {
         _allow_exec_host_cmd: false,
         location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
         configuration: Default::default(),
+        ..Default::default()
     });
     let tab_index = 1;
     let client_id = 1;
@@ -6318,4 +6396,81 @@ pub fn disconnect_other_clients_plugins_command() {
         })
         .clone();
     assert_snapshot!(format!("{:#?}", switch_session_event));
+}
+
+#[test]
+#[ignore]
+pub fn run_plugin_in_specific_cwd() {
+    // note that this test might sometimes fail when run alone without the rest of the suite due to
+    // timing issues
+    let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
+                                          // destructor removes the directory
+    let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
+    let (plugin_thread_sender, server_receiver, screen_receiver, teardown) =
+        create_plugin_thread_with_server_receiver(Some(plugin_host_folder.clone()));
+    let plugin_should_float = Some(false);
+    let plugin_title = Some("test_plugin".to_owned());
+    let plugin_initial_cwd = plugin_host_folder.join("custom_plugin_cwd");
+    let _ = std::fs::create_dir_all(&plugin_initial_cwd);
+    let run_plugin = RunPluginOrAlias::RunPlugin(RunPlugin {
+        _allow_exec_host_cmd: false,
+        location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
+        initial_cwd: Some(plugin_initial_cwd.clone()),
+    });
+    let tab_index = 1;
+    let client_id = 1;
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let received_screen_instructions = Arc::new(Mutex::new(vec![]));
+    let _screen_thread = grant_permissions_and_log_actions_in_thread_naked_variant!(
+        received_screen_instructions,
+        ScreenInstruction::Exit,
+        screen_receiver,
+        1,
+        &PermissionType::ChangeApplicationState,
+        cache_path,
+        plugin_thread_sender,
+        client_id
+    );
+    let received_server_instruction = Arc::new(Mutex::new(vec![]));
+    let server_thread = log_actions_in_thread!(
+        received_server_instruction,
+        ServerInstruction::ClientExit,
+        server_receiver,
+        1
+    );
+
+    let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
+    let _ = plugin_thread_sender.send(PluginInstruction::Load(
+        plugin_should_float,
+        false,
+        plugin_title,
+        run_plugin,
+        tab_index,
+        None,
+        client_id,
+        size,
+        None,
+        false,
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(500));
+
+    let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
+        None,
+        Some(client_id),
+        Event::Key(Key::Ctrl('8')), // this triggers the enent in the fixture plugin
+    )]));
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
+        None,
+        Some(client_id),
+        Event::Key(Key::Char('8')), // this sends this quit command so tha the test exits cleanly
+    )]));
+    teardown();
+    server_thread.join().unwrap(); // this might take a while if the cache is cold
+    assert!(std::fs::read_dir(plugin_initial_cwd).unwrap().map(|d| d.unwrap().path().to_string_lossy().to_string()).collect::<Vec<_>>().join(",").contains("hi-from-plugin.txt"), "File written into plugin initial cwd");
 }

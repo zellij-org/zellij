@@ -556,6 +556,7 @@ impl TryFrom<ProtobufAction> for Action {
                             location: run_plugin_location,
                             _allow_exec_host_cmd: false,
                             configuration: PluginUserConfiguration::default(),
+                            ..Default::default()
                         });
                         let pane_name = payload.pane_name;
                         let skip_plugin_cache = payload.skip_plugin_cache;
@@ -579,6 +580,7 @@ impl TryFrom<ProtobufAction> for Action {
                             location: run_plugin_location,
                             _allow_exec_host_cmd: false,
                             configuration: PluginUserConfiguration::default(),
+                            ..Default::default()
                         });
                         let pane_name = payload.pane_name;
                         let skip_plugin_cache = payload.skip_plugin_cache;

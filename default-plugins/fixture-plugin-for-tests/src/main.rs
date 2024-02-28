@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+use std::io::prelude::*;
 use zellij_tile::prelude::*;
 
 // This is a fixture plugin used only for tests in Zellij
@@ -299,6 +300,10 @@ impl ZellijPlugin for State {
                         Some("my_other_new_session"),
                         LayoutInfo::BuiltIn("compact".to_owned()),
                     );
+                },
+                Key::Ctrl('8') => {
+                    let mut file = std::fs::File::create("/host/hi-from-plugin.txt").unwrap();
+                    file.write_all(b"Hi there!").unwrap();
                 },
                 _ => {},
             },
