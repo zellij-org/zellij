@@ -314,7 +314,8 @@ impl<'a> KdlLayoutParser<'a> {
             ),
         )?;
         let configuration = KdlLayoutParser::parse_plugin_user_configuration(&plugin_block)?;
-        let initial_cwd = kdl_get_string_property_or_child_value!(&plugin_block, "cwd").map(|s| PathBuf::from(s));
+        let initial_cwd =
+            kdl_get_string_property_or_child_value!(&plugin_block, "cwd").map(|s| PathBuf::from(s));
         let cwd = self.cwd_prefix(initial_cwd.as_ref())?;
         let run_plugin_or_alias = RunPluginOrAlias::from_url(
             &string_url,

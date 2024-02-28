@@ -6472,5 +6472,13 @@ pub fn run_plugin_in_specific_cwd() {
     )]));
     teardown();
     server_thread.join().unwrap(); // this might take a while if the cache is cold
-    assert!(std::fs::read_dir(plugin_initial_cwd).unwrap().map(|d| d.unwrap().path().to_string_lossy().to_string()).collect::<Vec<_>>().join(",").contains("hi-from-plugin.txt"), "File written into plugin initial cwd");
+    assert!(
+        std::fs::read_dir(plugin_initial_cwd)
+            .unwrap()
+            .map(|d| d.unwrap().path().to_string_lossy().to_string())
+            .collect::<Vec<_>>()
+            .join(",")
+            .contains("hi-from-plugin.txt"),
+        "File written into plugin initial cwd"
+    );
 }

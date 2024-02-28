@@ -364,7 +364,9 @@ pub(crate) fn plugin_thread_main(
                 for run_instruction in extracted_run_instructions {
                     if let Some(Run::Plugin(run_plugin_or_alias)) = run_instruction {
                         let run_plugin = run_plugin_or_alias.get_run_plugin();
-                        let cwd = run_plugin_or_alias.get_initial_cwd().or_else(|| cwd.clone());
+                        let cwd = run_plugin_or_alias
+                            .get_initial_cwd()
+                            .or_else(|| cwd.clone());
                         let skip_cache = false;
                         let (plugin_id, _client_id) = wasm_bridge.load_plugin(
                             &run_plugin,

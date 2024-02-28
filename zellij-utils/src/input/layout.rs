@@ -204,10 +204,10 @@ impl RunPluginOrAlias {
         match self {
             RunPluginOrAlias::RunPlugin(ref mut run_plugin) => {
                 run_plugin.initial_cwd = initial_cwd;
-            }
+            },
             RunPluginOrAlias::Alias(ref mut alias) => {
                 alias.initial_cwd = initial_cwd;
-            }
+            },
         }
         self
     }
@@ -422,7 +422,11 @@ pub struct PluginAlias {
 }
 
 impl PluginAlias {
-    pub fn new(name: &str, configuration: &Option<BTreeMap<String, String>>, initial_cwd: Option<PathBuf>) -> Self {
+    pub fn new(
+        name: &str,
+        configuration: &Option<BTreeMap<String, String>>,
+        initial_cwd: Option<PathBuf>,
+    ) -> Self {
         PluginAlias {
             name: name.to_owned(),
             configuration: configuration

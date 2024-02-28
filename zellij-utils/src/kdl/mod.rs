@@ -998,7 +998,8 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                     .unwrap_or(false);
                 let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
                 let configuration = KdlLayoutParser::parse_plugin_user_configuration(&kdl_action)?;
-                let initial_cwd = kdl_get_string_property_or_child_value!(kdl_action, "cwd").map(|s| PathBuf::from(s));
+                let initial_cwd = kdl_get_string_property_or_child_value!(kdl_action, "cwd")
+                    .map(|s| PathBuf::from(s));
                 let run_plugin_or_alias = RunPluginOrAlias::from_url(
                     &plugin_path,
                     &Some(configuration.inner().clone()),
@@ -1853,7 +1854,9 @@ impl PluginAliases {
                 {
                     let configuration =
                         KdlLayoutParser::parse_plugin_user_configuration(&alias_definition)?;
-                    let mut initial_cwd = kdl_get_string_property_or_child_value!(alias_definition, "cwd").map(|s| PathBuf::from(s));
+                    let mut initial_cwd =
+                        kdl_get_string_property_or_child_value!(alias_definition, "cwd")
+                            .map(|s| PathBuf::from(s));
                     let run_plugin = RunPlugin::from_url(string_url)?
                         .with_configuration(configuration.inner().clone())
                         .with_initial_cwd(initial_cwd);
