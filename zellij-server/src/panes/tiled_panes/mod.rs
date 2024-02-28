@@ -1573,7 +1573,9 @@ impl TiledPanes {
                 let connected_clients = self.connected_clients.borrow();
                 connected_clients.iter().next().copied()
             };
-            if let Some(active_pane_id) = first_client_id.and_then(|first_client_id| self.get_active_pane_id(first_client_id)) {
+            if let Some(active_pane_id) =
+                first_client_id.and_then(|first_client_id| self.get_active_pane_id(first_client_id))
+            {
                 let panes_to_hide: Vec<_> = self.panes_to_hide.iter().copied().collect();
                 for pane_id in panes_to_hide {
                     let pane = self.get_pane_mut(pane_id).unwrap();
