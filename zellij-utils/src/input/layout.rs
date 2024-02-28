@@ -108,12 +108,18 @@ impl RunPluginOrAlias {
                 .aliases
                 .get(run_plugin_alias.name.as_str())
                 .map(|r| {
-                    r.clone().merge_configuration(
+                    let mut merged_run_plugin = r.clone().merge_configuration(
                         &run_plugin_alias
                             .configuration
                             .as_ref()
                             .map(|c| c.inner().clone()),
-                    )
+                    );
+                    // if the alias has its own cwd, it should always override the alias
+                    // value's cwd
+                    if run_plugin_alias.initial_cwd.is_some() {
+                        merged_run_plugin.initial_cwd = run_plugin_alias.initial_cwd.clone();
+                    }
+                    merged_run_plugin
                 });
             run_plugin_alias.run_plugin = merged_run_plugin;
         }
@@ -126,6 +132,9 @@ impl RunPluginOrAlias {
     }
     pub fn get_configuration(&self) -> Option<PluginUserConfiguration> {
         self.get_run_plugin().map(|r| r.configuration.clone())
+    }
+    pub fn get_initial_cwd(&self) -> Option<PathBuf> {
+        self.get_run_plugin().and_then(|r| r.initial_cwd.clone())
     }
     pub fn from_url(
         url: &str,
@@ -141,10 +150,11 @@ impl RunPluginOrAlias {
                     .as_ref()
                     .map(|c| PluginUserConfiguration::new(c.clone()))
                     .unwrap_or_default(),
+                ..Default::default()
             })),
             Err(PluginsConfigError::InvalidUrlScheme(_))
             | Err(PluginsConfigError::InvalidUrl(..)) => {
-                let mut plugin_alias = PluginAlias::new(&url, configuration);
+                let mut plugin_alias = PluginAlias::new(&url, configuration, None);
                 if let Some(alias_dict) = alias_dict {
                     plugin_alias.run_plugin = alias_dict
                         .aliases
@@ -189,6 +199,17 @@ impl RunPluginOrAlias {
             ) => self_run_plugin == other_run_plugin,
             _ => false,
         }
+    }
+    pub fn with_initial_cwd(mut self, initial_cwd: Option<PathBuf>) -> Self {
+        match self {
+            RunPluginOrAlias::RunPlugin(ref mut run_plugin) => {
+                run_plugin.initial_cwd = initial_cwd;
+            },
+            RunPluginOrAlias::Alias(ref mut alias) => {
+                alias.initial_cwd = initial_cwd;
+            },
+        }
+        self
     }
 }
 
@@ -365,6 +386,7 @@ pub struct RunPlugin {
     pub _allow_exec_host_cmd: bool,
     pub location: RunPluginLocation,
     pub configuration: PluginUserConfiguration,
+    pub initial_cwd: Option<PathBuf>,
 }
 
 impl RunPlugin {
@@ -379,6 +401,10 @@ impl RunPlugin {
         self.configuration = PluginUserConfiguration::new(configuration);
         self
     }
+    pub fn with_initial_cwd(mut self, initial_cwd: Option<PathBuf>) -> Self {
+        self.initial_cwd = initial_cwd;
+        self
+    }
     pub fn merge_configuration(mut self, configuration: &Option<BTreeMap<String, String>>) -> Self {
         if let Some(configuration) = configuration {
             self.configuration.merge(configuration);
@@ -391,16 +417,22 @@ impl RunPlugin {
 pub struct PluginAlias {
     pub name: String,
     pub configuration: Option<PluginUserConfiguration>,
+    pub initial_cwd: Option<PathBuf>,
     pub run_plugin: Option<RunPlugin>,
 }
 
 impl PluginAlias {
-    pub fn new(name: &str, configuration: &Option<BTreeMap<String, String>>) -> Self {
+    pub fn new(
+        name: &str,
+        configuration: &Option<BTreeMap<String, String>>,
+        initial_cwd: Option<PathBuf>,
+    ) -> Self {
         PluginAlias {
             name: name.to_owned(),
             configuration: configuration
                 .as_ref()
                 .map(|c| PluginUserConfiguration::new(c.clone())),
+            initial_cwd,
             ..Default::default()
         }
     }

@@ -348,6 +348,9 @@ impl Action {
                 height,
             } => {
                 let current_dir = get_current_dir();
+                // cwd should only be specified in a plugin alias if it was explicitly given to us,
+                // otherwise the current_dir might override a cwd defined in the alias itself
+                let alias_cwd = cwd.clone().map(|cwd| current_dir.join(cwd));
                 let cwd = cwd
                     .map(|cwd| current_dir.join(cwd))
                     .or_else(|| Some(current_dir));
@@ -359,11 +362,13 @@ impl Action {
                                 _allow_exec_host_cmd: false,
                                 location,
                                 configuration: user_configuration,
+                                initial_cwd: cwd.clone(),
                             })
                         },
                         Err(_) => RunPluginOrAlias::Alias(PluginAlias::new(
                             &plugin,
                             &configuration.map(|c| c.inner().clone()),
+                            alias_cwd,
                         )),
                     };
                     if floating {

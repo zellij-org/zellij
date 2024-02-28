@@ -1,6 +1,6 @@
 ---
 source: zellij-utils/src/input/./unit/layout_test.rs
-assertion_line: 1935
+assertion_line: 1938
 expression: "format!(\"{:#?}\", layout)"
 ---
 Layout {
@@ -76,6 +76,7 @@ Layout {
                                             configuration: PluginUserConfiguration(
                                                 {},
                                             ),
+                                            initial_cwd: None,
                                         },
                                     ),
                                 ),
@@ -180,6 +181,7 @@ Layout {
                                             configuration: PluginUserConfiguration(
                                                 {},
                                             ),
+                                            initial_cwd: None,
                                         },
                                     ),
                                 ),
@@ -235,6 +237,7 @@ Layout {
                                             configuration: PluginUserConfiguration(
                                                 {},
                                             ),
+                                            initial_cwd: None,
                                         },
                                     ),
                                 ),
@@ -404,6 +407,7 @@ Layout {
                                             configuration: PluginUserConfiguration(
                                                 {},
                                             ),
+                                            initial_cwd: None,
                                         },
                                     ),
                                 ),
@@ -459,6 +463,7 @@ Layout {
                                             configuration: PluginUserConfiguration(
                                                 {},
                                             ),
+                                            initial_cwd: None,
                                         },
                                     ),
                                 ),
@@ -709,6 +714,7 @@ Layout {
                                             configuration: PluginUserConfiguration(
                                                 {},
                                             ),
+                                            initial_cwd: None,
                                         },
                                     ),
                                 ),

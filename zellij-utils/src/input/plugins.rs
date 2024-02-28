@@ -40,6 +40,8 @@ pub struct PluginConfig {
     pub location: RunPluginLocation,
     /// Custom configuration for this plugin
     pub userspace_configuration: PluginUserConfiguration,
+    /// plugin initial working directory
+    pub initial_cwd: Option<PathBuf>,
 }
 
 impl PluginConfig {
@@ -51,6 +53,7 @@ impl PluginConfig {
                 _allow_exec_host_cmd: run_plugin._allow_exec_host_cmd,
                 location: run_plugin.location.clone(),
                 userspace_configuration: run_plugin.configuration.clone(),
+                initial_cwd: run_plugin.initial_cwd.clone(),
             }),
             RunPluginLocation::Zellij(tag) => {
                 let tag = tag.to_string();
@@ -67,6 +70,7 @@ impl PluginConfig {
                         location: RunPluginLocation::parse(&format!("zellij:{}", tag), None)
                             .ok()?,
                         userspace_configuration: run_plugin.configuration.clone(),
+                        initial_cwd: run_plugin.initial_cwd.clone(),
                     })
                 } else {
                     None
@@ -78,6 +82,7 @@ impl PluginConfig {
                 _allow_exec_host_cmd: run_plugin._allow_exec_host_cmd,
                 location: run_plugin.location.clone(),
                 userspace_configuration: run_plugin.configuration.clone(),
+                initial_cwd: run_plugin.initial_cwd.clone(),
             }),
         }
     }

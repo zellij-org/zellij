@@ -246,10 +246,12 @@ impl PluginMap {
                         .plugin
                         .userspace_configuration
                         .clone();
+                    let initial_cwd = running_plugin.plugin_env.plugin.initial_cwd.clone();
                     Some(RunPlugin {
                         _allow_exec_host_cmd: false,
                         location: run_plugin_location,
                         configuration: run_plugin_configuration,
+                        initial_cwd,
                     })
                 } else {
                     None

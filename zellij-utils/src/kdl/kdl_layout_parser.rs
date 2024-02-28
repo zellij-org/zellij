@@ -314,11 +314,14 @@ impl<'a> KdlLayoutParser<'a> {
             ),
         )?;
         let configuration = KdlLayoutParser::parse_plugin_user_configuration(&plugin_block)?;
+        let initial_cwd =
+            kdl_get_string_property_or_child_value!(&plugin_block, "cwd").map(|s| PathBuf::from(s));
+        let cwd = self.cwd_prefix(initial_cwd.as_ref())?;
         let run_plugin_or_alias = RunPluginOrAlias::from_url(
             &string_url,
             &Some(configuration.inner().clone()),
             None,
-            self.cwd_prefix(None)?,
+            cwd.clone(),
         )
         .map_err(|e| {
             ConfigError::new_kdl_error(
@@ -326,7 +329,8 @@ impl<'a> KdlLayoutParser<'a> {
                 url_node.span().offset(),
                 url_node.span().len(),
             )
-        })?;
+        })?
+        .with_initial_cwd(cwd);
         Ok(Some(Run::Plugin(run_plugin_or_alias)))
     }
     pub fn parse_plugin_user_configuration(
