@@ -432,16 +432,10 @@ fn find_resurrectable_sessions(
                         .and_then(|metadata| metadata.created())
                     {
                         Ok(created) => Some(created),
+                        // let's not spam the logs if serialization is disabled
+                        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return None,
                         Err(e) => {
-                            if e.kind() != std::io::ErrorKind::NotFound {
-                                // let's not spam the
-                                // logs if serialization
-                                // is disabled
-                                log::error!(
-                                    "Failed to read created stamp of resurrection file: {:?}",
-                                    e
-                                );
-                            }
+                            log::error!("Failed to read created stamp of resurrection file: {e:?}");
                             None
                         },
                     };
