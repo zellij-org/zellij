@@ -1571,35 +1571,38 @@ impl TiledPanes {
         if self.fullscreen_is_active {
             let first_client_id = {
                 let connected_clients = self.connected_clients.borrow();
-                *connected_clients.iter().next().unwrap()
+                connected_clients.iter().next().copied()
             };
-            let active_pane_id = self.get_active_pane_id(first_client_id).unwrap();
-            let panes_to_hide: Vec<_> = self.panes_to_hide.iter().copied().collect();
-            for pane_id in panes_to_hide {
-                let pane = self.get_pane_mut(pane_id).unwrap();
-                pane.set_should_render(true);
-                pane.set_should_render_boundaries(true);
+            if let Some(active_pane_id) =
+                first_client_id.and_then(|first_client_id| self.get_active_pane_id(first_client_id))
+            {
+                let panes_to_hide: Vec<_> = self.panes_to_hide.iter().copied().collect();
+                for pane_id in panes_to_hide {
+                    let pane = self.get_pane_mut(pane_id).unwrap();
+                    pane.set_should_render(true);
+                    pane.set_should_render_boundaries(true);
+                }
+                let viewport_pane_ids: Vec<_> = self
+                    .panes
+                    .keys()
+                    .copied()
+                    .into_iter()
+                    .filter(|id| {
+                        !is_inside_viewport(&*self.viewport.borrow(), self.get_pane(*id).unwrap())
+                    })
+                    .collect();
+                for pid in viewport_pane_ids {
+                    let viewport_pane = self.get_pane_mut(pid).unwrap();
+                    viewport_pane.reset_size_and_position_override();
+                }
+                self.panes_to_hide.clear();
+                let active_terminal = self.get_pane_mut(active_pane_id).unwrap();
+                active_terminal.reset_size_and_position_override();
+                self.set_force_render();
+                let display_area = *self.display_area.borrow();
+                self.resize(display_area);
+                self.fullscreen_is_active = false;
             }
-            let viewport_pane_ids: Vec<_> = self
-                .panes
-                .keys()
-                .copied()
-                .into_iter()
-                .filter(|id| {
-                    !is_inside_viewport(&*self.viewport.borrow(), self.get_pane(*id).unwrap())
-                })
-                .collect();
-            for pid in viewport_pane_ids {
-                let viewport_pane = self.get_pane_mut(pid).unwrap();
-                viewport_pane.reset_size_and_position_override();
-            }
-            self.panes_to_hide.clear();
-            let active_terminal = self.get_pane_mut(active_pane_id).unwrap();
-            active_terminal.reset_size_and_position_override();
-            self.set_force_render();
-            let display_area = *self.display_area.borrow();
-            self.resize(display_area);
-            self.fullscreen_is_active = false;
         }
     }
     pub fn toggle_active_pane_fullscreen(&mut self, client_id: ClientId) {
