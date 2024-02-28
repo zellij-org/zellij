@@ -43,6 +43,9 @@ impl ZellijPlugin for State {
                 Key::Down | Key::Char('j') => {
                     let currently_selected = self.selected();
                     let next = self.selected().saturating_add(1);
+                    if next >= self.files.len() {
+                        refresh_directory(self);
+                    }
                     *self.selected_mut() = min(self.files.len().saturating_sub(1), next);
                     if currently_selected != self.selected() {
                         should_render = true;
@@ -76,6 +79,9 @@ impl ZellijPlugin for State {
                 Mouse::ScrollDown(_) => {
                     let currently_selected = self.selected();
                     let next = self.selected().saturating_add(1);
+                    if next >= self.files.len() {
+                        refresh_directory(self);
+                    }
                     *self.selected_mut() = min(self.files.len().saturating_sub(1), next);
                     if currently_selected != self.selected() {
                         should_render = true;
@@ -121,6 +127,7 @@ impl ZellijPlugin for State {
     }
 
     fn render(&mut self, rows: usize, cols: usize) {
+        self.current_rows = Some(rows);
         for i in 0..rows {
             if self.selected() < self.scroll() {
                 *self.scroll_mut() = self.selected();
