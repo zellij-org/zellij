@@ -317,7 +317,7 @@ impl Run {
             },
             Run::Plugin(run_plugin_or_alias) => {
                 run_plugin_or_alias.add_initial_cwd(&cwd);
-            }
+            },
         }
     }
     pub fn add_args(&mut self, args: Option<Vec<String>>) {
