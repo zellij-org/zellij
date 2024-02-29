@@ -592,7 +592,7 @@ pub(crate) fn plugin_thread_main(
                                 message.message_name,
                                 &message.message_payload,
                                 &Some(message.message_args),
-                                is_private
+                                is_private,
                             ),
                         ));
                     },
@@ -607,7 +607,7 @@ pub(crate) fn plugin_thread_main(
                                 message.message_name,
                                 &message.message_payload,
                                 &Some(message.message_args),
-                                is_private
+                                is_private,
                             ),
                         ));
                     },
