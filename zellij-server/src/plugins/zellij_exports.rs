@@ -229,6 +229,7 @@ fn host_run_plugin_command(env: FunctionEnvMut<ForeignFunctionEnv>) {
                         connect_to_session.tab_position,
                         connect_to_session.pane_id,
                         connect_to_session.layout,
+                        connect_to_session.cwd,
                     )?,
                     PluginCommand::DeleteDeadSession(session_name) => {
                         delete_dead_session(session_name)?
@@ -926,6 +927,7 @@ fn switch_session(
     tab_position: Option<usize>,
     pane_id: Option<(u32, bool)>,
     layout: Option<LayoutInfo>,
+    cwd: Option<PathBuf>,
 ) -> Result<()> {
     // pane_id is (id, is_plugin)
     let err_context = || format!("Failed to switch session");
@@ -936,6 +938,7 @@ fn switch_session(
         tab_position,
         pane_id,
         layout,
+        cwd,
     };
     env.plugin_env
         .senders

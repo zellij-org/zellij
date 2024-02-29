@@ -1095,6 +1095,7 @@ pub struct ConnectToSession {
     pub tab_position: Option<usize>,
     pub pane_id: Option<(u32, bool)>, // (id, is_plugin)
     pub layout: Option<LayoutInfo>,
+    pub cwd: Option<PathBuf>,
 }
 
 impl ConnectToSession {

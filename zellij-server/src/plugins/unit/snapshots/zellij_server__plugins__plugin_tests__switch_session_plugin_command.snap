@@ -1,6 +1,6 @@
 ---
 source: zellij-server/src/plugins/./unit/plugin_tests.rs
-assertion_line: 6051
+assertion_line: 6236
 expression: "format!(\"{:#?}\", switch_session_event)"
 ---
 Some(
@@ -12,6 +12,7 @@ Some(
             tab_position: None,
             pane_id: None,
             layout: None,
+            cwd: None,
         },
         1,
     ),
