@@ -1007,6 +1007,7 @@ impl CommandToRun {
 #[derive(Debug, Default, Clone)]
 pub struct MessageToPlugin {
     pub plugin_url: Option<String>,
+    pub destination_plugin_id: Option<u32>,
     pub plugin_config: BTreeMap<String, String>,
     pub message_name: String,
     pub message_payload: Option<String>,
@@ -1040,6 +1041,10 @@ impl MessageToPlugin {
     }
     pub fn with_plugin_url(mut self, url: impl Into<String>) -> Self {
         self.plugin_url = Some(url.into());
+        self
+    }
+    pub fn with_destination_plugin_id(mut self, destination_plugin_id: u32) -> Self {
+        self.destination_plugin_id = Some(destination_plugin_id);
         self
     }
     pub fn with_plugin_config(mut self, plugin_config: BTreeMap<String, String>) -> Self {

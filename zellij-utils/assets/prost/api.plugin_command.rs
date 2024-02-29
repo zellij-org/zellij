@@ -145,6 +145,8 @@ pub struct MessageToPluginPayload {
     pub message_args: ::prost::alloc::vec::Vec<ContextItem>,
     #[prost(message, optional, tag = "6")]
     pub new_plugin_args: ::core::option::Option<NewPluginArgs>,
+    #[prost(uint32, optional, tag = "7")]
+    pub destination_plugin_id: ::core::option::Option<u32>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

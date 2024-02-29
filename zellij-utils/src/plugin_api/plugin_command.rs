@@ -814,6 +814,7 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                     message_payload,
                     message_args,
                     new_plugin_args,
+                    destination_plugin_id,
                 })) => {
                     let plugin_config: BTreeMap<String, String> = plugin_config
                         .into_iter()
@@ -840,6 +841,7 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                                 skip_cache: protobuf_new_plugin_args.skip_cache,
                             })
                         }),
+                        destination_plugin_id,
                     }))
                 },
                 _ => Err("Mismatched payload for MessageToPlugin"),
@@ -1343,6 +1345,7 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                                 skip_cache: m_t_p.skip_cache,
                             }
                         }),
+                        destination_plugin_id: message_to_plugin.destination_plugin_id,
                     })),
                 })
             },

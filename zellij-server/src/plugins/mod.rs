@@ -560,8 +560,8 @@ pub(crate) fn plugin_thread_main(
                     .new_plugin_args
                     .as_ref()
                     .and_then(|n| n.pane_id_to_replace);
-                match message.plugin_url {
-                    Some(plugin_url) => {
+                match (message.plugin_url, message.destination_plugin_id) {
+                    (Some(plugin_url), None) => {
                         // send to specific plugin(s)
                         pipe_to_specific_plugins(
                             PipeSource::Plugin(source_plugin_id),
@@ -582,7 +582,36 @@ pub(crate) fn plugin_thread_main(
                             &plugin_aliases,
                         );
                     },
-                    None => {
+                    (None, Some(destination_plugin_id)) => {
+                        let is_private = true;
+                        pipe_messages.push((
+                            Some(destination_plugin_id),
+                            None,
+                            PipeMessage::new(
+                                PipeSource::Plugin(source_plugin_id),
+                                message.message_name,
+                                &message.message_payload,
+                                &Some(message.message_args),
+                                is_private,
+                            ),
+                        ));
+                    },
+                    (Some(plugin_url), Some(destination_plugin_id)) => {
+                        log::warn!("Message contains both a destination plugin url: {plugin_url} and a destination plugin id: {destination_plugin_id}, ignoring the url and prioritizing the id");
+                        let is_private = true;
+                        pipe_messages.push((
+                            Some(destination_plugin_id),
+                            None,
+                            PipeMessage::new(
+                                PipeSource::Plugin(source_plugin_id),
+                                message.message_name,
+                                &message.message_payload,
+                                &Some(message.message_args),
+                                is_private,
+                            ),
+                        ));
+                    },
+                    (None, None) => {
                         // send to all plugins
                         pipe_to_all_plugins(
                             PipeSource::Plugin(source_plugin_id),
