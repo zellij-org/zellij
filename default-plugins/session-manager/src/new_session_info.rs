@@ -104,7 +104,7 @@ impl NewSessionInfo {
                 if new_session_name != current_session_name.as_ref().map(|s| s.as_str()) {
                     match new_session_layout {
                         Some(new_session_layout) => {
-                            switch_session_with_layout(new_session_name, new_session_layout)
+                            switch_session_with_layout(new_session_name, new_session_layout, None)
                         },
                         None => {
                             switch_session(new_session_name);

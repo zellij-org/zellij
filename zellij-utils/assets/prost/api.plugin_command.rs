@@ -183,6 +183,8 @@ pub struct SwitchSessionPayload {
     pub pane_id_is_plugin: ::core::option::Option<bool>,
     #[prost(message, optional, tag = "5")]
     pub layout: ::core::option::Option<super::event::LayoutInfo>,
+    #[prost(string, optional, tag = "6")]
+    pub cwd: ::core::option::Option<::prost::alloc::string::String>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

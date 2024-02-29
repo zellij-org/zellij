@@ -211,6 +211,16 @@ impl RunPluginOrAlias {
         }
         self
     }
+    pub fn add_initial_cwd(&mut self, initial_cwd: &PathBuf) {
+        match self {
+            RunPluginOrAlias::RunPlugin(ref mut run_plugin) => {
+                run_plugin.initial_cwd = Some(initial_cwd.clone());
+            },
+            RunPluginOrAlias::Alias(ref mut alias) => {
+                alias.initial_cwd = Some(initial_cwd.clone());
+            },
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
@@ -305,7 +315,9 @@ impl Run {
             Run::Cwd(path) => {
                 *path = cwd.join(&path);
             },
-            _ => {}, // plugins aren't yet supported
+            Run::Plugin(run_plugin_or_alias) => {
+                run_plugin_or_alias.add_initial_cwd(&cwd);
+            },
         }
     }
     pub fn add_args(&mut self, args: Option<Vec<String>>) {
@@ -1362,6 +1374,20 @@ impl Layout {
                     .run
                     .as_mut()
                     .map(|f| f.populate_run_plugin_if_needed(&plugin_aliases));
+            }
+        }
+    }
+    pub fn add_cwd_to_layout(&mut self, cwd: &PathBuf) {
+        for (_, tiled_pane_layout, floating_panes) in self.tabs.iter_mut() {
+            tiled_pane_layout.add_cwd_to_layout(&cwd);
+            for floating_pane in floating_panes {
+                floating_pane.add_cwd_to_layout(&cwd);
+            }
+        }
+        if let Some((tiled_pane_layout, floating_panes)) = self.template.as_mut() {
+            tiled_pane_layout.add_cwd_to_layout(&cwd);
+            for floating_pane in floating_panes {
+                floating_pane.add_cwd_to_layout(&cwd);
             }
         }
     }

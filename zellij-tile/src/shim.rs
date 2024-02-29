@@ -660,10 +660,11 @@ pub fn switch_session(name: Option<&str>) {
 }
 
 /// Switch to a session with the given name, create one if no name is given
-pub fn switch_session_with_layout(name: Option<&str>, layout: LayoutInfo) {
+pub fn switch_session_with_layout(name: Option<&str>, layout: LayoutInfo, cwd: Option<PathBuf>) {
     let plugin_command = PluginCommand::SwitchSession(ConnectToSession {
         name: name.map(|n| n.to_string()),
         layout: Some(layout),
+        cwd,
         ..Default::default()
     });
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();

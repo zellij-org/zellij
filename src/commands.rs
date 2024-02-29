@@ -450,6 +450,9 @@ pub(crate) fn start_client(opts: CliArgs) {
                         // not want it to mix with the config of this session
                         let (new_layout, new_layout_config) = new_session_layout;
                         layout = new_layout;
+                        if let Some(cwd) = reconnect_to_session.cwd.as_ref() {
+                            layout.add_cwd_to_layout(cwd);
+                        }
                         let mut new_config = config_without_layout.clone();
                         let _ = new_config.merge(new_layout_config.clone());
                         config = new_config;

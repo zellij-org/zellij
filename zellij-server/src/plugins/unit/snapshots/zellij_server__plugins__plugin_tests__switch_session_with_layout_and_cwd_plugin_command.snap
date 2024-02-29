@@ -1,13 +1,13 @@
 ---
 source: zellij-server/src/plugins/./unit/plugin_tests.rs
-assertion_line: 6317
+assertion_line: 6398
 expression: "format!(\"{:#?}\", switch_session_event)"
 ---
 Some(
     SwitchSession(
         ConnectToSession {
             name: Some(
-                "my_other_new_session",
+                "my_other_new_session_with_cwd",
             ),
             tab_position: None,
             pane_id: None,
@@ -16,7 +16,9 @@ Some(
                     "compact",
                 ),
             ),
-            cwd: None,
+            cwd: Some(
+                "/tmp",
+            ),
         },
         1,
     ),

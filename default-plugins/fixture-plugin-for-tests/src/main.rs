@@ -299,11 +299,19 @@ impl ZellijPlugin for State {
                     switch_session_with_layout(
                         Some("my_other_new_session"),
                         LayoutInfo::BuiltIn("compact".to_owned()),
+                        None,
                     );
                 },
                 Key::Ctrl('8') => {
                     let mut file = std::fs::File::create("/host/hi-from-plugin.txt").unwrap();
                     file.write_all(b"Hi there!").unwrap();
+                },
+                Key::Ctrl('9') => {
+                    switch_session_with_layout(
+                        Some("my_other_new_session_with_cwd"),
+                        LayoutInfo::BuiltIn("compact".to_owned()),
+                        Some(std::path::PathBuf::from("/tmp")),
+                    );
                 },
                 _ => {},
             },
