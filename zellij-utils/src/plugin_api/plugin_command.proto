@@ -167,6 +167,7 @@ message MessageToPluginPayload {
   optional string message_payload = 4;
   repeated ContextItem message_args = 5;
   optional NewPluginArgs new_plugin_args = 6;
+  optional uint32 destination_plugin_id = 7;
 }
 
 message NewPluginArgs {
