@@ -970,7 +970,7 @@ impl WasmBridge {
         self.plugin_map.lock().unwrap().all_plugin_ids()
     }
     fn size_of_plugin_id(&self, plugin_id: PluginId) -> Option<(usize, usize)> {
-        // (rows/colums)
+        // (rows/columns)
         self.plugin_map
             .lock()
             .unwrap()
