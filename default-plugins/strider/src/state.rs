@@ -1,6 +1,6 @@
 use pretty_bytes::converter as pb;
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::{HashMap, VecDeque, BTreeMap},
     fs::read_dir,
     path::{Path, PathBuf},
     time::Instant,
@@ -20,6 +20,8 @@ pub struct State {
     pub loading_animation_offset: u8,
     pub should_open_floating: bool,
     pub current_rows: Option<usize>,
+    pub handling_filepick_request_from: Option<(PipeSource, BTreeMap<String, String>)>,
+    pub initial_cwd: PathBuf, // TODO: get this from zellij
 }
 
 impl State {
@@ -68,6 +70,12 @@ impl FsEntry {
         };
         path.file_name().unwrap().to_string_lossy().into_owned()
     }
+    pub fn get_pathbuf(&self) -> PathBuf {
+        match self {
+            FsEntry::Dir(p) => p.clone(),
+            FsEntry::File(p, _) => p.clone(),
+        }
+    }
 
     pub fn as_line(&self, width: usize) -> String {
         let info = match self {
@@ -98,16 +106,18 @@ pub(crate) fn refresh_directory(state: &mut State) {
             if max_lines == 0 {
                 break;
             }
-            let entry_metadata = entry.metadata().unwrap();
-            let entry = if entry_metadata.is_dir() {
-                FsEntry::Dir(entry.path())
-            } else {
-                let size = entry_metadata.len();
-                FsEntry::File(entry.path(), size)
-            };
-            if !entry.is_hidden_file() || !state.hide_hidden_files {
-                max_lines = max_lines.saturating_sub(1);
-                files.push(entry);
+            eprintln!("entry: {:?}", entry);
+            if let Ok(entry_metadata) = entry.metadata() {
+                let entry = if entry_metadata.is_dir() {
+                    FsEntry::Dir(entry.path())
+                } else {
+                    let size = entry_metadata.len();
+                    FsEntry::File(entry.path(), size)
+                };
+                if !entry.is_hidden_file() || !state.hide_hidden_files {
+                    max_lines = max_lines.saturating_sub(1);
+                    files.push(entry);
+                }
             }
         }
     }

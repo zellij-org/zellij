@@ -5,6 +5,7 @@ package api.plugin_ids;
 message PluginIds {
   int32 plugin_id = 1;
   int32 zellij_pid = 2;
+  string initial_cwd = 3;
 }
 
 message ZellijVersion {

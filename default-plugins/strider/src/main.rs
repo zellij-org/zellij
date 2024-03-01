@@ -1,8 +1,9 @@
 mod state;
 
 use colored::*;
-use state::{refresh_directory, FsEntry, State};
+use state::{refresh_directory, FsEntry, State, ROOT};
 use std::collections::BTreeMap;
+use std::path::PathBuf;
 use std::{cmp::min, time::Instant};
 use zellij_tile::prelude::*;
 
@@ -10,6 +11,8 @@ register_plugin!(State);
 
 impl ZellijPlugin for State {
     fn load(&mut self, _configuration: BTreeMap<String, String>) {
+        let plugin_ids = get_plugin_ids();
+        self.initial_cwd = plugin_ids.initial_cwd;
         refresh_directory(self);
         subscribe(&[
             EventType::Key,
@@ -51,6 +54,26 @@ impl ZellijPlugin for State {
                         should_render = true;
                     }
                 },
+                Key::Char('\n') if self.handling_filepick_request_from.is_some() && !self.files.is_empty() => {
+                    if let Some(f) = self.files.get(self.selected()) {
+                        match &self.handling_filepick_request_from {
+                            Some((PipeSource::Plugin(plugin_id), args)) => {
+                                let selected_path = f.get_pathbuf();
+                                pipe_message_to_plugin(
+                                    MessageToPlugin::new("filepicker_result")
+                                        .with_destination_plugin_id(*plugin_id)
+                                        .with_args(args.clone())
+                                        .with_payload(self.initial_cwd.join(selected_path.strip_prefix(ROOT).unwrap()).display().to_string()) // TODO: no unwrap
+                                );
+                                close_focus();
+                            },
+                            Some((PipeSource::Cli(pipe_id), _args)) => {
+                                // TODO: implement this
+                            },
+                            _ => {}
+                        }
+                    }
+                }
                 Key::Right | Key::Char('\n') | Key::Char('l') if !self.files.is_empty() => {
                     self.traverse_dir_or_open_file();
                     self.ev_history.clear();
@@ -124,6 +147,10 @@ impl ZellijPlugin for State {
             },
         };
         should_render
+    }
+    fn pipe(&mut self, pipe_message: PipeMessage) -> bool {
+        self.handling_filepick_request_from = Some((pipe_message.source, pipe_message.args));
+        true
     }
 
     fn render(&mut self, rows: usize, cols: usize) {

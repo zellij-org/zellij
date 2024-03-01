@@ -904,10 +904,11 @@ pub struct PaneInfo {
     pub is_selectable: bool,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub struct PluginIds {
     pub plugin_id: u32,
     pub zellij_pid: u32,
+    pub initial_cwd: PathBuf,
 }
 
 /// Tag used to identify the plugin in layout and config kdl files

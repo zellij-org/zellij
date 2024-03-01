@@ -519,9 +519,6 @@ pub fn render_screen_toggle(active_screen: ActiveScreen, x: usize, y: usize, max
     let key_indication_len = key_indication_text.chars().count() + 1;
     let first_ribbon_length = new_session_text.chars().count() + 4;
     let second_ribbon_length = running_sessions_text.chars().count() + 4;
-    let third_ribbon_length = exited_sessions_text.chars().count() + 4;
-    let total_len =
-        key_indication_len + first_ribbon_length + second_ribbon_length + third_ribbon_length;
     let key_indication_x = x;
     let first_ribbon_x = key_indication_x + key_indication_len;
     let second_ribbon_x = first_ribbon_x + first_ribbon_length;
@@ -561,6 +558,18 @@ pub fn render_new_session_block(
     y: usize,
 ) {
     let enter = colors.magenta("<ENTER>");
+    let folder_prompt = "New session folder:";
+    let new_session_folder = new_session_info.new_session_folder.display().to_string();
+    let change_folder_shortcut = colors.magenta("<Ctrl f>");
+    let to_change = "to change";
+    println!(
+        "\u{1b}[m{}{} {} ({} {})",
+        format!("\u{1b}[{};{}H", y + 1, x + 1),
+        colors.green(folder_prompt),
+        colors.orange(&new_session_folder),
+        change_folder_shortcut,
+        to_change,
+    );
     if new_session_info.entering_new_session_name() {
         let prompt = "New session name:";
         let long_instruction = "when done, blank for random";
@@ -570,7 +579,7 @@ pub fn render_new_session_block(
         {
             println!(
                 "\u{1b}[m{}{} {}_ ({} {})",
-                format!("\u{1b}[{};{}H", y + 1, x + 1),
+                format!("\u{1b}[{};{}H", y + 3, x + 1),
                 colors.green(prompt),
                 colors.orange(&new_session_name),
                 enter,
@@ -579,7 +588,7 @@ pub fn render_new_session_block(
         } else {
             println!(
                 "\u{1b}[m{}{} {}_ {}",
-                format!("\u{1b}[{};{}H", y + 1, x + 1),
+                format!("\u{1b}[{};{}H", y + 3, x + 1),
                 colors.green(prompt),
                 colors.orange(&new_session_name),
                 enter,
@@ -599,7 +608,7 @@ pub fn render_new_session_block(
         {
             println!(
                 "\u{1b}[m{}{}: {} ({} to correct)",
-                format!("\u{1b}[{};{}H", y + 1, x + 1),
+                format!("\u{1b}[{};{}H", y + 3, x + 1),
                 colors.green("New session name"),
                 colors.orange(new_session_name),
                 esc,
@@ -607,7 +616,7 @@ pub fn render_new_session_block(
         } else {
             println!(
                 "\u{1b}[m{}{}: {} {}",
-                format!("\u{1b}[{};{}H", y + 1, x + 1),
+                format!("\u{1b}[{};{}H", y + 3, x + 1),
                 colors.green("New session name"),
                 colors.orange(new_session_name),
                 esc,
@@ -618,7 +627,7 @@ pub fn render_new_session_block(
             max_rows_of_new_session_block.saturating_sub(1),
             max_cols_of_new_session_block,
             x,
-            y + 1,
+            y + 3,
         );
     }
 }
@@ -733,10 +742,6 @@ pub fn render_controls_line(
             }
         },
         ActiveScreen::AttachToSession => {
-            let arrows = colors.magenta("<←↓↑→>");
-            let navigate = colors.bold("Navigate");
-            let enter = colors.magenta("<ENTER>");
-            let select = colors.bold("Attach");
             let rename = colors.magenta("<Ctrl r>");
             let rename_text = colors.bold("Rename");
             let disconnect = colors.magenta("<Ctrl x>");

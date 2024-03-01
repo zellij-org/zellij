@@ -398,6 +398,7 @@ fn get_plugin_ids(env: &ForeignFunctionEnv) {
     let ids = PluginIds {
         plugin_id: env.plugin_env.plugin_id,
         zellij_pid: process::id(),
+        initial_cwd: env.plugin_env.plugin_cwd.clone(),
     };
     ProtobufPluginIds::try_from(ids)
         .map_err(|e| anyhow!("Failed to serialized plugin ids: {}", e))

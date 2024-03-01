@@ -3,7 +3,7 @@ mod resurrectable_sessions;
 mod session_list;
 mod ui;
 use zellij_tile::prelude::*;
-
+use uuid::Uuid;
 use std::collections::BTreeMap;
 
 use new_session_info::NewSessionInfo;
@@ -45,12 +45,15 @@ struct State {
     colors: Colors,
     is_welcome_screen: bool,
     show_kill_all_sessions_warning: bool,
+    request_ids: Vec<String>,
 }
 
 register_plugin!(State);
 
 impl ZellijPlugin for State {
     fn load(&mut self, configuration: BTreeMap<String, String>) {
+        let plugin_ids = get_plugin_ids();
+        self.new_session_info.new_session_folder = plugin_ids.initial_cwd;
         self.is_welcome_screen = configuration
             .get("welcome_screen")
             .map(|v| v == "true")
@@ -66,6 +69,29 @@ impl ZellijPlugin for State {
         ]);
     }
 
+    fn pipe(&mut self, pipe_message: PipeMessage) -> bool {
+        // TODO: request-id!!
+        if pipe_message.name == "filepicker_result" {
+            match (pipe_message.payload, pipe_message.args.get("request_id")) {
+                (Some(payload), Some(request_id)) => {
+                    match self.request_ids.iter().position(|p| p == request_id) {
+                        Some(request_id_position) => {
+                            self.request_ids.remove(request_id_position);
+                            let new_session_folder = std::path::PathBuf::from(payload);
+                            self.new_session_info.new_session_folder = new_session_folder;
+                        },
+                        None => {
+                            eprintln!("request id not found");
+                        }
+                    }
+                },
+                _ => {}
+            }
+            true
+        } else {
+            false
+        }
+    }
     fn update(&mut self, event: Event) -> bool {
         let mut should_render = false;
         match event {
@@ -189,6 +215,25 @@ impl State {
             should_render = true;
         } else if let Key::BackTab = key {
             self.toggle_active_screen();
+            should_render = true;
+        } else if let Key::Ctrl('f') = key {
+            let request_id = Uuid::new_v4();
+            let mut config = BTreeMap::new();
+            let mut args = BTreeMap::new();
+            self.request_ids.push(request_id.to_string());
+            // we insert this into the config so that a new plugin will be opened (the plugin's
+            // uniqueness is determined by its name/url as well as its config)
+            config.insert("request_id".to_owned(), request_id.to_string());
+            // we also insert this into the args so that the plugin will have an easier access to
+            // it
+            args.insert("request_id".to_owned(), request_id.to_string());
+            pipe_message_to_plugin(
+                MessageToPlugin::new("filepicker")
+                    .with_plugin_url("filepicker")
+                    .with_plugin_config(config)
+                    .with_args(args)
+            );
+            // self.new_session_info.handle_key(key);
             should_render = true;
         } else if let Key::Esc = key {
             self.new_session_info.handle_key(key);

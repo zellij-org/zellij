@@ -1,6 +1,7 @@
 use fuzzy_matcher::skim::SkimMatcherV2;
 use fuzzy_matcher::FuzzyMatcher;
 use std::cmp::Ordering;
+use std::path::PathBuf;
 use zellij_tile::prelude::*;
 
 #[derive(Default)]
@@ -8,6 +9,7 @@ pub struct NewSessionInfo {
     name: String,
     layout_list: LayoutList,
     entering_new_session_info: EnteringState,
+    pub new_session_folder: PathBuf,
 }
 
 #[derive(Eq, PartialEq)]
@@ -104,7 +106,8 @@ impl NewSessionInfo {
                 if new_session_name != current_session_name.as_ref().map(|s| s.as_str()) {
                     match new_session_layout {
                         Some(new_session_layout) => {
-                            switch_session_with_layout(new_session_name, new_session_layout, None)
+                            let cwd = PathBuf::from(&self.new_session_folder);
+                            switch_session_with_layout(new_session_name, new_session_layout, Some(cwd))
                         },
                         None => {
                             switch_session(new_session_name);
