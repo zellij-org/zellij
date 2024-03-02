@@ -12,12 +12,21 @@ impl TryFrom<ProtobufKey> for Key {
         let key_modifier = parse_optional_modifier(&protobuf_key);
         match key_modifier {
             Some(KeyModifier::Ctrl) => {
-                let character = char_from_main_key(protobuf_key.main_key)?;
-                Ok(Key::Ctrl(character))
+                if let Ok(character) = char_from_main_key(protobuf_key.main_key.clone()) {
+                    Ok(Key::Ctrl(character))
+                } else {
+                    let index = fn_index_from_main_key(protobuf_key.main_key)?;
+                    Ok(Key::CtrlF(index))
+                }
             },
             Some(KeyModifier::Alt) => {
-                let char_or_arrow = CharOrArrow::from_main_key(protobuf_key.main_key)?;
-                Ok(Key::Alt(char_or_arrow))
+                if let Ok(char_or_arrow) = CharOrArrow::from_main_key(protobuf_key.main_key.clone())
+                {
+                    Ok(Key::Alt(char_or_arrow))
+                } else {
+                    let index = fn_index_from_main_key(protobuf_key.main_key)?;
+                    Ok(Key::AltF(index))
+                }
             },
             None => match protobuf_key.main_key.as_ref().ok_or("invalid key")? {
                 MainKey::Char(_key_index) => {
@@ -81,27 +90,18 @@ impl TryFrom<Key> for ProtobufKey {
                 modifier: None,
                 main_key: Some(MainKey::Key(NamedKey::Insert as i32)),
             }),
-            Key::F(index) => {
-                let main_key = match index {
-                    1 => Some(MainKey::Key(NamedKey::F1 as i32)),
-                    2 => Some(MainKey::Key(NamedKey::F2 as i32)),
-                    3 => Some(MainKey::Key(NamedKey::F3 as i32)),
-                    4 => Some(MainKey::Key(NamedKey::F4 as i32)),
-                    5 => Some(MainKey::Key(NamedKey::F5 as i32)),
-                    6 => Some(MainKey::Key(NamedKey::F6 as i32)),
-                    7 => Some(MainKey::Key(NamedKey::F7 as i32)),
-                    8 => Some(MainKey::Key(NamedKey::F8 as i32)),
-                    9 => Some(MainKey::Key(NamedKey::F9 as i32)),
-                    10 => Some(MainKey::Key(NamedKey::F10 as i32)),
-                    11 => Some(MainKey::Key(NamedKey::F11 as i32)),
-                    12 => Some(MainKey::Key(NamedKey::F12 as i32)),
-                    _ => return Err("Invalid key"),
-                };
-                Ok(ProtobufKey {
-                    modifier: None,
-                    main_key,
-                })
-            },
+            Key::F(index) => Ok(ProtobufKey {
+                modifier: None,
+                main_key: Some(fn_index_to_main_key(index)?),
+            }),
+            Key::CtrlF(index) => Ok(ProtobufKey {
+                modifier: Some(KeyModifier::Ctrl as i32),
+                main_key: Some(fn_index_to_main_key(index)?),
+            }),
+            Key::AltF(index) => Ok(ProtobufKey {
+                modifier: Some(KeyModifier::Alt as i32),
+                main_key: Some(fn_index_to_main_key(index)?),
+            }),
             Key::Char(character) => Ok(ProtobufKey {
                 modifier: None,
                 main_key: Some(MainKey::Char((character as u8) as i32)),
@@ -147,6 +147,24 @@ impl TryFrom<Key> for ProtobufKey {
     }
 }
 
+fn fn_index_to_main_key(index: u8) -> Result<MainKey, &'static str> {
+    match index {
+        1 => Ok(MainKey::Key(NamedKey::F1 as i32)),
+        2 => Ok(MainKey::Key(NamedKey::F2 as i32)),
+        3 => Ok(MainKey::Key(NamedKey::F3 as i32)),
+        4 => Ok(MainKey::Key(NamedKey::F4 as i32)),
+        5 => Ok(MainKey::Key(NamedKey::F5 as i32)),
+        6 => Ok(MainKey::Key(NamedKey::F6 as i32)),
+        7 => Ok(MainKey::Key(NamedKey::F7 as i32)),
+        8 => Ok(MainKey::Key(NamedKey::F8 as i32)),
+        9 => Ok(MainKey::Key(NamedKey::F9 as i32)),
+        10 => Ok(MainKey::Key(NamedKey::F10 as i32)),
+        11 => Ok(MainKey::Key(NamedKey::F11 as i32)),
+        12 => Ok(MainKey::Key(NamedKey::F12 as i32)),
+        _ => Err("Invalid key"),
+    }
+}
+
 impl CharOrArrow {
     pub fn from_main_key(
         main_key: std::option::Option<MainKey>,
@@ -188,6 +206,24 @@ fn char_from_main_key(main_key: Option<MainKey>) -> Result<char, &'static str> {
         _ => {
             return Err("Unsupported key");
         },
+    }
+}
+
+fn fn_index_from_main_key(main_key: Option<MainKey>) -> Result<u8, &'static str> {
+    match main_key {
+        Some(MainKey::Key(n)) if n == NamedKey::F1 as i32 => Ok(1),
+        Some(MainKey::Key(n)) if n == NamedKey::F2 as i32 => Ok(2),
+        Some(MainKey::Key(n)) if n == NamedKey::F3 as i32 => Ok(3),
+        Some(MainKey::Key(n)) if n == NamedKey::F4 as i32 => Ok(4),
+        Some(MainKey::Key(n)) if n == NamedKey::F5 as i32 => Ok(5),
+        Some(MainKey::Key(n)) if n == NamedKey::F6 as i32 => Ok(6),
+        Some(MainKey::Key(n)) if n == NamedKey::F7 as i32 => Ok(7),
+        Some(MainKey::Key(n)) if n == NamedKey::F8 as i32 => Ok(8),
+        Some(MainKey::Key(n)) if n == NamedKey::F9 as i32 => Ok(9),
+        Some(MainKey::Key(n)) if n == NamedKey::F10 as i32 => Ok(10),
+        Some(MainKey::Key(n)) if n == NamedKey::F11 as i32 => Ok(11),
+        Some(MainKey::Key(n)) if n == NamedKey::F12 as i32 => Ok(12),
+        _ => Err("Unsupported key"),
     }
 }
 
