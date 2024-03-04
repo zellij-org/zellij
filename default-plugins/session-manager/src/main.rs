@@ -52,8 +52,6 @@ register_plugin!(State);
 
 impl ZellijPlugin for State {
     fn load(&mut self, configuration: BTreeMap<String, String>) {
-        let plugin_ids = get_plugin_ids();
-        self.new_session_info.new_session_folder = plugin_ids.initial_cwd;
         self.is_welcome_screen = configuration
             .get("welcome_screen")
             .map(|v| v == "true")
@@ -70,7 +68,6 @@ impl ZellijPlugin for State {
     }
 
     fn pipe(&mut self, pipe_message: PipeMessage) -> bool {
-        // TODO: request-id!!
         if pipe_message.name == "filepicker_result" {
             match (pipe_message.payload, pipe_message.args.get("request_id")) {
                 (Some(payload), Some(request_id)) => {
@@ -78,7 +75,7 @@ impl ZellijPlugin for State {
                         Some(request_id_position) => {
                             self.request_ids.remove(request_id_position);
                             let new_session_folder = std::path::PathBuf::from(payload);
-                            self.new_session_info.new_session_folder = new_session_folder;
+                            self.new_session_info.new_session_folder = Some(new_session_folder);
                         },
                         None => {
                             eprintln!("request id not found");
@@ -135,7 +132,7 @@ impl ZellijPlugin for State {
                 render_new_session_block(
                     &self.new_session_info,
                     self.colors,
-                    height,
+                    height.saturating_sub(2),
                     width,
                     x,
                     y + 2,
@@ -210,9 +207,6 @@ impl State {
         } else if let Key::Ctrl('w') = key {
             self.active_screen = ActiveScreen::NewSession;
             should_render = true;
-        } else if let Key::Ctrl('c') = key {
-            self.new_session_info.handle_key(key);
-            should_render = true;
         } else if let Key::BackTab = key {
             self.toggle_active_screen();
             should_render = true;
@@ -231,9 +225,12 @@ impl State {
                 MessageToPlugin::new("filepicker")
                     .with_plugin_url("filepicker")
                     .with_plugin_config(config)
+                    .new_plugin_instance_should_have_pane_title("Select folder for the new session...")
                     .with_args(args)
             );
-            // self.new_session_info.handle_key(key);
+            should_render = true;
+        } else if let Key::Ctrl('c') = key {
+            self.new_session_info.new_session_folder = None;
             should_render = true;
         } else if let Key::Esc = key {
             self.new_session_info.handle_key(key);

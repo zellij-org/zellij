@@ -549,6 +549,41 @@ pub fn render_screen_toggle(active_screen: ActiveScreen, x: usize, y: usize, max
     print_ribbon_with_coordinates(exited_sessions_text, third_ribbon_x, y, None, None);
 }
 
+fn render_new_session_folder_prompt(new_session_info: &NewSessionInfo, colors: Colors, x: usize, y: usize) {
+    match new_session_info.new_session_folder.as_ref() {
+        Some(new_session_folder) => {
+            let folder_prompt = "New session folder:";
+            let new_session_folder = new_session_folder.display().to_string();
+            let change_folder_shortcut = colors.magenta("<Ctrl f>");
+            let to_change = "to change";
+            let reset_folder_shortcut = colors.magenta("<Ctrl c>");
+            let to_reset = "to reset";
+            print!(
+                "\u{1b}[m{}{} {} ({} {}, {} {})",
+                format!("\u{1b}[{};{}H", y + 1, x + 1),
+                colors.green(folder_prompt),
+                colors.orange(&new_session_folder),
+                change_folder_shortcut,
+                to_change,
+                reset_folder_shortcut,
+                to_reset,
+            );
+        },
+        None => {
+            let folder_prompt = "New session folder:";
+            let change_folder_shortcut = colors.magenta("<Ctrl f>");
+            let to_change = "to set";
+            print!(
+                "\u{1b}[m{}{} ({} {})",
+                format!("\u{1b}[{};{}H", y + 1, x + 1),
+                colors.green(folder_prompt),
+                change_folder_shortcut,
+                to_change,
+            );
+        }
+    }
+}
+
 pub fn render_new_session_block(
     new_session_info: &NewSessionInfo,
     colors: Colors,
@@ -558,18 +593,6 @@ pub fn render_new_session_block(
     y: usize,
 ) {
     let enter = colors.magenta("<ENTER>");
-    let folder_prompt = "New session folder:";
-    let new_session_folder = new_session_info.new_session_folder.display().to_string();
-    let change_folder_shortcut = colors.magenta("<Ctrl f>");
-    let to_change = "to change";
-    println!(
-        "\u{1b}[m{}{} {} ({} {})",
-        format!("\u{1b}[{};{}H", y + 1, x + 1),
-        colors.green(folder_prompt),
-        colors.orange(&new_session_folder),
-        change_folder_shortcut,
-        to_change,
-    );
     if new_session_info.entering_new_session_name() {
         let prompt = "New session name:";
         let long_instruction = "when done, blank for random";
@@ -579,7 +602,7 @@ pub fn render_new_session_block(
         {
             println!(
                 "\u{1b}[m{}{} {}_ ({} {})",
-                format!("\u{1b}[{};{}H", y + 3, x + 1),
+                format!("\u{1b}[{};{}H", y + 1, x + 1),
                 colors.green(prompt),
                 colors.orange(&new_session_name),
                 enter,
@@ -588,7 +611,7 @@ pub fn render_new_session_block(
         } else {
             println!(
                 "\u{1b}[m{}{} {}_ {}",
-                format!("\u{1b}[{};{}H", y + 3, x + 1),
+                format!("\u{1b}[{};{}H", y + 1, x + 1),
                 colors.green(prompt),
                 colors.orange(&new_session_name),
                 enter,
@@ -608,7 +631,7 @@ pub fn render_new_session_block(
         {
             println!(
                 "\u{1b}[m{}{}: {} ({} to correct)",
-                format!("\u{1b}[{};{}H", y + 3, x + 1),
+                format!("\u{1b}[{};{}H", y + 1, x + 1),
                 colors.green("New session name"),
                 colors.orange(new_session_name),
                 esc,
@@ -616,7 +639,7 @@ pub fn render_new_session_block(
         } else {
             println!(
                 "\u{1b}[m{}{}: {} {}",
-                format!("\u{1b}[{};{}H", y + 3, x + 1),
+                format!("\u{1b}[{};{}H", y + 1, x + 1),
                 colors.green("New session name"),
                 colors.orange(new_session_name),
                 esc,
@@ -624,16 +647,18 @@ pub fn render_new_session_block(
         }
         render_layout_selection_list(
             new_session_info,
+            colors,
             max_rows_of_new_session_block.saturating_sub(1),
             max_cols_of_new_session_block,
             x,
-            y + 3,
+            y + 1,
         );
     }
 }
 
 pub fn render_layout_selection_list(
     new_session_info: &NewSessionInfo,
+    colors: Colors,
     max_rows_of_new_session_block: usize,
     max_cols_of_new_session_block: usize,
     x: usize,
@@ -667,7 +692,7 @@ pub fn render_layout_selection_list(
         let layout_name = layout_info.name();
         let layout_name_len = layout_name.width();
         let is_builtin = layout_info.is_builtin();
-        if i > max_rows_of_new_session_block {
+        if i > max_rows_of_new_session_block.saturating_sub(1) {
             break;
         } else {
             let mut layout_cell = if is_builtin {
@@ -691,7 +716,9 @@ pub fn render_layout_selection_list(
             table = table.add_styled_row(vec![arrow_cell, layout_cell]);
         }
     }
-    print_table_with_coordinates(table, x, y + 3, None, None);
+    let table_y = y + 3;
+    print_table_with_coordinates(table, x, table_y, None, None);
+    render_new_session_folder_prompt(new_session_info, colors, x, (y + max_rows_of_new_session_block).saturating_sub(3));
 }
 
 pub fn render_error(error_text: &str, rows: usize, columns: usize, x: usize, y: usize) {
