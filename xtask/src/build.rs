@@ -52,6 +52,7 @@ pub fn build(sh: &Shell, flags: flags::Build) -> anyhow::Result<()> {
             std::fs::create_dir_all(&prost_asset_dir).unwrap();
 
             let mut prost = prost_build::Config::new();
+            prost.protoc_arg("--experimental_allow_proto3_optional");
             let last_generated = prost_asset_dir
                 .join("generated_plugin_api.rs")
                 .metadata()
