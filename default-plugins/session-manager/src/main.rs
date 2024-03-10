@@ -470,14 +470,14 @@ impl State {
         let confirmation_x_location =
             x + columns.saturating_sub(confirmation_text.chars().count()) / 2;
         print_text_with_coordinates(
-            Text::new(warning_description_text).color_range(0, 15..16 + session_count_len),
+            &Text::new(warning_description_text).color_range(0, 15..16 + session_count_len),
             warning_x_location,
             warning_y_location,
             None,
             None,
         );
         print_text_with_coordinates(
-            Text::new(confirmation_text).color_indices(2, vec![15, 17]),
+            &Text::new(confirmation_text).color_indices(2, vec![15, 17]),
             confirmation_x_location,
             confirmation_y_location,
             None,

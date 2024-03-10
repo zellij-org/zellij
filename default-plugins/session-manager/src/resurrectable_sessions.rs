@@ -36,8 +36,8 @@ impl ResurrectableSessions {
         } else {
             self.render_all_entries(table_rows, columns)
         };
-        print_text_with_coordinates(search_indication, x.saturating_sub(1), y + 2, None, None);
-        print_table_with_coordinates(table, x, y + 3, Some(table_columns), Some(table_rows));
+        print_text_with_coordinates(&search_indication, x.saturating_sub(1), y + 2, None, None);
+        print_table_with_coordinates(&table, x, y + 3, Some(table_columns), Some(table_rows));
     }
     fn render_search_results(&self, table_rows: usize, _table_columns: usize) -> Table {
         let mut table = Table::new().add_row(vec![" ", " ", " "]); // skip the title row
@@ -116,14 +116,14 @@ impl ResurrectableSessions {
         let confirmation_x_location =
             x + columns.saturating_sub(confirmation_text.chars().count()) / 2;
         print_text_with_coordinates(
-            Text::new(warning_description_text).color_range(0, 17..18 + session_count_len),
+            &Text::new(warning_description_text).color_range(0, 17..18 + session_count_len),
             warning_x_location,
             warning_y_location,
             None,
             None,
         );
         print_text_with_coordinates(
-            Text::new(confirmation_text).color_indices(2, vec![15, 17]),
+            &Text::new(confirmation_text).color_indices(2, vec![15, 17]),
             confirmation_x_location,
             confirmation_y_location,
             None,

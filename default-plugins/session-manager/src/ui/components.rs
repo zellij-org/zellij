@@ -524,8 +524,6 @@ pub fn render_screen_toggle(active_screen: ActiveScreen, x: usize, y: usize, max
         key_indication_len + first_ribbon_length + second_ribbon_length + third_ribbon_length;
     let key_indication_x = x;
     let first_ribbon_x = key_indication_x + key_indication_len;
-    let second_ribbon_x = first_ribbon_x + first_ribbon_length;
-    let third_ribbon_x = second_ribbon_x + second_ribbon_length;
     let mut new_session_text = Text::new(new_session_text);
     let mut running_sessions_text = Text::new(running_sessions_text);
     let mut exited_sessions_text = Text::new(exited_sessions_text);
@@ -541,15 +539,26 @@ pub fn render_screen_toggle(active_screen: ActiveScreen, x: usize, y: usize, max
         },
     }
     print_text_with_coordinates(
-        Text::new(key_indication_text).color_range(3, ..),
+        &Text::new(key_indication_text).color_range(3, ..),
         key_indication_x,
         y,
         None,
         None,
     );
-    print_ribbon_with_coordinates(new_session_text, first_ribbon_x, y, None, None);
-    print_ribbon_with_coordinates(running_sessions_text, second_ribbon_x, y, None, None);
-    print_ribbon_with_coordinates(exited_sessions_text, third_ribbon_x, y, None, None);
+    print!(
+        "{}",
+        serialize_ribbon_line_with_coordinates(
+            [
+                new_session_text,
+                running_sessions_text,
+                exited_sessions_text
+            ],
+            first_ribbon_x,
+            y,
+            None,
+            None,
+        )
+    );
 }
 
 pub fn render_new_session_block(
@@ -649,7 +658,7 @@ pub fn render_layout_selection_list(
         .color_range(3, 20..20 + search_term_len)
         .color_range(3, 22 + search_term_len..)
     };
-    print_text_with_coordinates(layout_indication_line, x, y + 1, None, None);
+    print_text_with_coordinates(&layout_indication_line, x, y + 1, None, None);
     println!();
     let mut table = Table::new();
     for (i, (layout_info, indices, is_selected)) in
@@ -682,12 +691,12 @@ pub fn render_layout_selection_list(
             table = table.add_styled_row(vec![arrow_cell, layout_cell]);
         }
     }
-    print_table_with_coordinates(table, x, y + 3, None, None);
+    print_table_with_coordinates(&table, x, y + 3, None, None);
 }
 
 pub fn render_error(error_text: &str, rows: usize, columns: usize, x: usize, y: usize) {
     print_text_with_coordinates(
-        Text::new(format!("Error: {}", error_text)).color_range(3, ..),
+        &Text::new(format!("Error: {}", error_text)).color_range(3, ..),
         x,
         y + rows,
         Some(columns),
@@ -714,7 +723,7 @@ pub fn render_renaming_session_screen(
         3,
         33 + new_session_name.width()..40 + new_session_name.width(),
     );
-    print_text_with_coordinates(text, x, y, None, None);
+    print_text_with_coordinates(&text, x, y, None, None);
 }
 
 pub fn render_controls_line(
