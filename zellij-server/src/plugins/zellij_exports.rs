@@ -1029,6 +1029,8 @@ fn apply_layout(env: &PluginEnv, layout: Layout) {
         let swap_tiled_layouts = Some(layout.swap_tiled_layouts.clone());
         let swap_floating_layouts = Some(layout.swap_floating_layouts.clone());
         let action = Action::NewTab(
+            None,
+            None,
             layout.template.as_ref().map(|t| t.0.clone()),
             layout.template.map(|t| t.1).unwrap_or_default(),
             swap_tiled_layouts,
@@ -1046,6 +1048,8 @@ fn apply_layout(env: &PluginEnv, layout: Layout) {
             let swap_tiled_layouts = Some(layout.swap_tiled_layouts.clone());
             let swap_floating_layouts = Some(layout.swap_floating_layouts.clone());
             let action = Action::NewTab(
+                None,
+                None,
                 Some(tiled_pane_layout),
                 floating_pane_layout,
                 swap_tiled_layouts,
@@ -1063,7 +1067,7 @@ fn apply_layout(env: &PluginEnv, layout: Layout) {
 }
 
 fn new_tab(env: &PluginEnv) {
-    let action = Action::NewTab(None, vec![], None, None, None, true);
+    let action = Action::NewTab(None, None, None, vec![], None, None, None, true);
     let error_msg = || format!("Failed to open new tab");
     apply_action!(action, error_msg, env);
 }

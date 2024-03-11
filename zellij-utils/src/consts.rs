@@ -122,7 +122,7 @@ mod not_wasm {
         // Zellij asset map
         pub static ref ASSET_MAP: HashMap<PathBuf, Vec<u8>> = {
             let mut assets = std::collections::HashMap::new();
-            add_plugin!(assets, "compact-bar.wasm");
+                add_plugin!(assets, "compact-bar.wasm");
             add_plugin!(assets, "status-bar.wasm");
             add_plugin!(assets, "tab-bar.wasm");
             add_plugin!(assets, "strider.wasm");
