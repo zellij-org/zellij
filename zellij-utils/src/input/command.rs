@@ -3,7 +3,7 @@ use crate::data::Direction;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum TerminalAction {
     OpenFile(PathBuf, Option<usize>, Option<PathBuf>), // path to file (should be absolute), optional line_number and an
     // optional cwd
