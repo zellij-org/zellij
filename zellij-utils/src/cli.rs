@@ -106,6 +106,10 @@ pub enum Sessions {
         /// Print just the session name
         #[clap(short, long, value_parser, takes_value(false), default_value("false"))]
         short: bool,
+
+        /// List newest sessions first (top) (default is newest last (bottom))
+        #[clap(short, long, value_parser, takes_value(false), default_value("false"))]
+        reverse: bool,
     },
 
     /// Attach to a session
