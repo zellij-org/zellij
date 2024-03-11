@@ -146,7 +146,9 @@ pub(crate) fn print_sessions(
 ) {
     // (session_name, timestamp, is_dead)
     let curr_session = envs::get_session_name().unwrap_or_else(|_| "".into());
-    sessions.sort_by(|a, b| a.1.cmp(&b.1));
+    // sort by `Duration` descending (newest would be last),
+    // so, `b.cmp(a)` instead of `a.cmp(b)`
+    sessions.sort_by(|a, b| b.1.cmp(&a.1));
     sessions
         .iter()
         .for_each(|(session_name, timestamp, is_dead)| {
