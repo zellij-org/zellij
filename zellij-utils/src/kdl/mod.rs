@@ -691,7 +691,7 @@ impl Action {
                 Some(node)
             },
             Action::UndoRenamePane => Some(KdlNode::new("UndoRenamePane")),
-            Action::NewTab(_, _, _, _, name) => {
+            Action::NewTab(_, _, _, _, _, _, name) => {
                 log::warn!("Converting new tab action without arguments, original action saved to .bak.kdl file");
                 let mut node = KdlNode::new("NewTab");
                 if let Some(name) = name {
@@ -1379,7 +1379,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
             "NewTab" => {
                 let command_metadata = action_children.iter().next();
                 if command_metadata.is_none() {
-                    return Ok(Action::NewTab(None, vec![], None, None, None));
+                    return Ok(Action::NewTab(None, None, None, vec![], None, None, None));
                 }
 
                 let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
@@ -1415,7 +1415,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                     &raw_layout,
                     path_to_raw_layout,
                     swap_layouts.as_ref().map(|(f, p)| (f.as_str(), p.as_str())),
-                    cwd,
+                    cwd.clone(),
                 )
                 .map_err(|e| {
                     ConfigError::new_kdl_error(
@@ -1440,6 +1440,8 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                     let name = tab_name.or(name);
 
                     Ok(Action::NewTab(
+                        cwd,
+                        None,
                         Some(layout),
                         floating_panes_layout,
                         swap_tiled_layouts,
@@ -1450,6 +1452,8 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                     let (layout, floating_panes_layout) = layout.new_tab();
 
                     Ok(Action::NewTab(
+                        cwd,
+                        None,
                         Some(layout),
                         floating_panes_layout,
                         swap_tiled_layouts,
