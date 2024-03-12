@@ -127,6 +127,7 @@ pub enum PluginInstruction {
         message: MessageToPlugin,
     },
     UnblockCliPipes(Vec<PluginRenderAsset>),
+    WatchFilesystem,
     Exit,
 }
 
@@ -162,6 +163,7 @@ impl From<&PluginInstruction> for PluginContext {
             PluginInstruction::CachePluginEvents { .. } => PluginContext::CachePluginEvents,
             PluginInstruction::MessageFromPlugin { .. } => PluginContext::MessageFromPlugin,
             PluginInstruction::UnblockCliPipes { .. } => PluginContext::UnblockCliPipes,
+            PluginInstruction::WatchFilesystem => PluginContext::WatchFilesystem,
         }
     }
 }
@@ -428,15 +430,8 @@ pub(crate) fn plugin_thread_main(
                 wasm_bridge.update_plugins(updates, shutdown_send.clone())?;
             },
             PluginInstruction::PluginSubscribedToEvents(_plugin_id, _client_id, events) => {
-                for event in events {
-                    if let EventType::FileSystemCreate
-                    | EventType::FileSystemRead
-                    | EventType::FileSystemUpdate
-                    | EventType::FileSystemDelete = event
-                    {
-                        wasm_bridge.start_fs_watcher_if_not_started();
-                    }
-                }
+                // no-op, there used to be stuff we did here - now there isn't, but we might want
+                // to add stuff here in the future
             },
             PluginInstruction::PermissionRequestResult(
                 plugin_id,
@@ -634,6 +629,9 @@ pub(crate) fn plugin_thread_main(
                         .context("failed to unblock input pipe");
                 }
             },
+            PluginInstruction::WatchFilesystem => {
+                wasm_bridge.start_fs_watcher_if_not_started();
+            }
             PluginInstruction::Exit => {
                 break;
             },

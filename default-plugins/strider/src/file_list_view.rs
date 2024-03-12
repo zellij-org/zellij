@@ -32,6 +32,9 @@ impl FileListView {
     pub fn update_files(&mut self, paths: Vec<(PathBuf, Option<FileMetadata>)>, hide_hidden_files: bool) {
         let mut files = vec![];
         for (entry, entry_metadata) in paths {
+            if entry_metadata.map(|e| e.is_symlink).unwrap_or(false) {
+                continue; // ignore symlinks
+            }
             let entry = if entry_metadata.map(|e| e.is_dir).unwrap_or(false) {
                 FsEntry::Dir(entry)
             } else {
