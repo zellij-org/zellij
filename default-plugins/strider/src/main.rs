@@ -99,6 +99,11 @@ impl ZellijPlugin for State {
     }
     fn pipe(&mut self, pipe_message: PipeMessage) -> bool {
         if pipe_message.is_private && pipe_message.name == "filepicker" {
+            if let PipeSource::Cli(pipe_id) = &pipe_message.source {
+                // here we block the cli pipe input because we want it to wait until the user chose
+                // a file
+                block_cli_pipe_input(pipe_id);
+            }
             self.handling_filepick_request_from = Some((pipe_message.source, pipe_message.args));
             true
         } else {

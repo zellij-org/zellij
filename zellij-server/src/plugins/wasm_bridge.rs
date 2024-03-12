@@ -580,6 +580,7 @@ impl WasmBridge {
                                 &mut running_plugin,
                                 &event,
                                 &mut plugin_render_assets,
+                                senders.clone(),
                             ) {
                                 Ok(()) => {
                                     let _ = senders.send_to_screen(ScreenInstruction::PluginBytes(
@@ -830,6 +831,7 @@ impl WasmBridge {
                                                     &mut running_plugin,
                                                     &event,
                                                     &mut plugin_render_assets,
+                                                    senders.clone(),
                                                 ) {
                                                     Ok(()) => {
                                                         let _ = senders.send_to_screen(
@@ -1261,6 +1263,7 @@ pub fn apply_event_to_plugin(
     running_plugin: &mut RunningPlugin,
     event: &Event,
     plugin_render_assets: &mut Vec<PluginRenderAsset>,
+    senders: ThreadSenders,
 ) -> Result<()> {
     let instance = &running_plugin.instance;
     let plugin_env = &running_plugin.plugin_env;
@@ -1315,6 +1318,19 @@ pub fn apply_event_to_plugin(
                 )
                 .with_pipes(pipes_to_block_or_unblock);
                 plugin_render_assets.push(plugin_render_asset);
+            } else {
+                // This is a bit of a hack to get around the fact that plugins are allowed not to
+                // render and still unblock CLI pipes
+                let pipes_to_block_or_unblock =
+                    pipes_to_block_or_unblock(running_plugin, None);
+                let plugin_render_asset = PluginRenderAsset::new(plugin_id, client_id, vec![])
+                    .with_pipes(pipes_to_block_or_unblock);
+                let _ = senders
+                    .send_to_plugin(PluginInstruction::UnblockCliPipes(vec![
+                        plugin_render_asset,
+                    ]))
+                    .context("failed to unblock input pipe");
+
             }
         },
         (PermissionStatus::Denied, permission) => {

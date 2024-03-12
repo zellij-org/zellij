@@ -158,7 +158,6 @@ impl State {
         let selected_path = self.initial_cwd.join(self.file_list_view.path.strip_prefix(ROOT).map(|p| p.to_path_buf()).unwrap_or_else(|_| self.file_list_view.path.clone()));
         match &self.handling_filepick_request_from {
             Some((PipeSource::Plugin(plugin_id), args)) => {
-                // let selected_path = f.entry.get_pathbuf();
                 pipe_message_to_plugin(
                     MessageToPlugin::new("filepicker_result")
                         .with_destination_plugin_id(*plugin_id)
@@ -168,7 +167,9 @@ impl State {
                 close_focus();
             },
             Some((PipeSource::Cli(pipe_id), _args)) => {
-                // TODO: implement this
+                cli_pipe_output(pipe_id, &selected_path.display().to_string());
+                unblock_cli_pipe_input(pipe_id);
+                close_focus();
             },
             _ => {}
         }

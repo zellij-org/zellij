@@ -12,6 +12,7 @@ use std::os::unix::io::RawFd;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::{io, thread, time};
+use std::io::IsTerminal;
 use zellij_utils::{
     data::Palette,
     errors::ErrorContext,
@@ -97,6 +98,8 @@ pub trait ClientOsApi: Send + Sync {
     fn get_stdout_writer(&self) -> Box<dyn io::Write>;
     /// Returns a BufReader that allows to read from STDIN line by line, also locks STDIN
     fn get_stdin_reader(&self) -> Box<dyn io::BufRead>;
+    fn stdin_is_terminal(&self) -> bool { true }
+    fn stdout_is_terminal(&self) -> bool { true }
     fn update_session_name(&mut self, new_session_name: String);
     /// Returns the raw contents of standard input.
     fn read_from_stdin(&mut self) -> Result<Vec<u8>, &'static str>;
@@ -191,6 +194,16 @@ impl ClientOsApi for ClientOsInputOutput {
     fn get_stdin_reader(&self) -> Box<dyn io::BufRead> {
         let stdin = ::std::io::stdin();
         Box::new(stdin.lock())
+    }
+
+    fn stdin_is_terminal(&self) -> bool {
+        let stdin = ::std::io::stdin();
+        stdin.is_terminal()
+    }
+
+    fn stdout_is_terminal(&self) -> bool {
+        let stdout = ::std::io::stdout();
+        stdout.is_terminal()
     }
 
     fn send_to_server(&self, msg: ClientToServerMsg) {
