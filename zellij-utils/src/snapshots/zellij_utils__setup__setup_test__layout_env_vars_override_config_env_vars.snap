@@ -1760,6 +1760,8 @@ Config {
             }: [
                 NewTab(
                     None,
+                    None,
+                    None,
                     [],
                     None,
                     None,
@@ -5240,6 +5242,8 @@ Config {
                 key_modifiers: {},
             }: [
                 NewTab(
+                    None,
+                    None,
                     None,
                     [],
                     None,

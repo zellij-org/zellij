@@ -2656,6 +2656,9 @@ pub fn send_cli_new_tab_action_default_params() {
         layout: None,
         layout_dir: None,
         cwd: None,
+        run: None,
+        args: None,
+        edit: None,
     };
     send_cli_action_to_server(&session_metadata, new_tab_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -2696,6 +2699,9 @@ pub fn send_cli_new_tab_action_with_name_and_layout() {
         ))),
         layout_dir: None,
         cwd: None,
+        run: None,
+        args: None,
+        edit: None,
     };
     send_cli_action_to_server(&session_metadata, new_tab_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
