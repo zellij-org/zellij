@@ -69,7 +69,7 @@ fn main() {
             height,
         })) = opts.command
         {
-            let cwd = std::env::current_dir().ok();
+            let cwd = None;
             let command_cli_action = CliAction::NewPane {
                 command: vec![],
                 plugin: Some(url),

@@ -5,26 +5,48 @@ use std::path::PathBuf;
 use zellij_tile::prelude::*;
 use unicode_width::UnicodeWidthStr;
 
-#[derive(Default, Debug, Clone)]
+#[derive(Debug, Clone)]
 pub struct FileListView {
     pub path: PathBuf,
+    pub path_is_dir: bool,
     pub files: Vec<FsEntry>,
     pub cursor_hist: HashMap<PathBuf, usize>,
 
 }
 
+impl Default for FileListView {
+    fn default() -> Self {
+        FileListView {
+            path_is_dir: true,
+            path: Default::default(),
+            files: Default::default(),
+            cursor_hist: Default::default(),
+        }
+    }
+}
+
 impl FileListView {
     pub fn descend_to_previous_path(&mut self) {
         self.path.pop();
+        self.path_is_dir = true;
+        self.files.clear();
+        self.reset_selected();
         refresh_directory(&self.path);
     }
     pub fn descend_to_root_path(&mut self) {
         self.path.clear();
+        self.path_is_dir = true;
+        self.files.clear();
+        self.reset_selected();
         refresh_directory(&self.path);
     }
-    pub fn enter_dir(&mut self, path: PathBuf) {
+    pub fn enter_dir(&mut self, entry: &FsEntry) {
+        let is_dir = entry.is_folder();
+        let path = entry.get_pathbuf_without_root_prefix();
         self.path = path;
-        *self.selected_mut() = self.selected().unwrap_or(0);
+        self.path_is_dir = is_dir;
+        self.files.clear();
+        self.reset_selected();
     }
     pub fn reset_selected(&mut self) {
         *self.selected_mut() = self.selected().unwrap_or(0);
@@ -83,23 +105,23 @@ impl FileListView {
                 if entry.is_folder() {
                     file_or_folder_name.push('/');
                 }
-                let padding = " ".repeat(cols.saturating_sub(file_or_folder_name.width()).saturating_sub(6));
+                let padding = " ".repeat(cols.saturating_sub(file_or_folder_name.width()).saturating_sub(10));
 
                 let mut text_element = if is_selected {
-                    Text::new(format!(" <↓↑> {}{}", file_or_folder_name, padding))
-                        .color_range(3, 1..5)
+                    Text::new(format!(" <↓↑ TAB> {}{}", file_or_folder_name, padding))
+                        .color_range(3, 1..9)
                         .selected()
                 } else if is_first_line && !has_selection {
-                    Text::new(format!(" <↓↑> {}{}", file_or_folder_name, padding))
-                        .color_range(3, 1..5)
+                    Text::new(format!(" <↓↑ TAB> {}{}", file_or_folder_name, padding))
+                        .color_range(3, 1..9)
                 } else {
-                    Text::new(format!("      {}{}", file_or_folder_name, padding))
+                    Text::new(format!("          {}{}", file_or_folder_name, padding))
                 };
 
                 if entry.is_folder() {
                     text_element = text_element.color_range(0, ..);
                 }
-                print_text_with_coordinates(text_element, 0, 2 + i.saturating_sub(start_index), None, None);
+                print_text_with_coordinates(text_element, 0, 3 + i.saturating_sub(start_index), None, None);
             }
         }
     }

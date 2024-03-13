@@ -4,12 +4,11 @@ use unicode_width::UnicodeWidthStr;
 use crate::state::ROOT;
 
 pub fn render_instruction_line(y: usize, max_cols: usize) {
-    let text = "Help: Type or select path <ENTER> when done, autocomplete with <TAB> go back with <Ctrl c>, reset with /";
+    let text = "Help: go back with <Ctrl c>, reset with /, <Ctrl e> - toggle hidden files";
     let text = Text::new(text)
-        .color_range(3, 26..33)
-        .color_range(3, 63..68)
-        .color_range(3, 82..90)
-        .color_range(3, 103..104);
+        .color_range(3, 19..27)
+        .color_range(3, 40..41)
+        .color_range(3, 43..51);
     print_text_with_coordinates(text, 0, y, None, None);
 }
 
@@ -48,23 +47,43 @@ pub fn calculate_list_bounds(result_count: usize, max_result_count: usize, selec
     }
 }
 
-pub fn render_current_path(initial_cwd: &PathBuf, path: &PathBuf, search_term: &str) {
+pub fn render_search_term(search_term: &str) {
+    let prompt = "FIND: ";
+    let text = Text::new(format!("{}{}_", prompt, search_term))
+        .color_range(2, 0..prompt.len())
+        .color_range(3, prompt.len()..);
+    print_text(text);
+    println!("")
+}
+
+pub fn render_current_path(
+    initial_cwd: &PathBuf,
+    path: &PathBuf,
+    path_is_dir: bool,
+    handling_filepick: bool,
+) {
     let prompt = "PATH: ";
     let initial_cwd = if initial_cwd == &PathBuf::from("/") { "".to_owned() } else { initial_cwd.display().to_string() };
     let mut path = path.strip_prefix(ROOT).unwrap_or_else(|_| path).display().to_string();
-    if !path.is_empty() {
+    if !path.is_empty() && path_is_dir {
         path = format!("{}/", path);
     }
     let prompt_len = prompt.width();
     let initial_cwd_len = std::cmp::max(initial_cwd.width(), 1);
     let path_len = path.width();
-    let search_term_len = search_term.width();
-    let current_path = Text::new(format!("{}{}/{}{}_", prompt, initial_cwd, path, search_term))
+    let enter_tip = if handling_filepick {
+        "Select"
+    } else if path_is_dir {
+        "Open terminal here"
+    } else {
+        "Open in editor"
+    };
+    let path_end = prompt_len + initial_cwd_len + path_len;
+    let current_path = Text::new(format!("{}{}/{} (<ENTER> - {})", prompt, initial_cwd, path, enter_tip))
         .color_range(2, 0..prompt_len)
-        .color_range(0, prompt_len..prompt_len + initial_cwd_len + path_len)
-        .color_range(3, prompt_len + initial_cwd_len + path_len..prompt_len + initial_cwd_len + path_len + search_term_len + 1);
+        .color_range(0, prompt_len..path_end)
+        .color_range(3, path_end + 3..path_end + 10);
     print_text(current_path);
     println!();
     println!();
 }
-

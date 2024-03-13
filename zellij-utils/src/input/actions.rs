@@ -353,7 +353,7 @@ impl Action {
                 let alias_cwd = cwd.clone().map(|cwd| current_dir.join(cwd));
                 let cwd = cwd
                     .map(|cwd| current_dir.join(cwd))
-                    .or_else(|| Some(current_dir));
+                    .or_else(|| Some(current_dir.clone()));
                 if let Some(plugin) = plugin {
                     let plugin = match RunPluginLocation::parse(&plugin, cwd.clone()) {
                         Ok(location) => {
@@ -365,11 +365,15 @@ impl Action {
                                 initial_cwd: cwd.clone(),
                             })
                         },
-                        Err(_) => RunPluginOrAlias::Alias(PluginAlias::new(
-                            &plugin,
-                            &configuration.map(|c| c.inner().clone()),
-                            alias_cwd,
-                        )),
+                        Err(_) => {
+                            let mut user_configuration = configuration.map(|c| c.inner().clone()).unwrap_or_default();
+                            user_configuration.insert("caller_cwd".to_owned(), current_dir.display().to_string());
+                            RunPluginOrAlias::Alias(PluginAlias::new(
+                                &plugin,
+                                &Some(user_configuration),
+                                alias_cwd,
+                            ))
+                        }
                     };
                     if floating {
                         Ok(vec![Action::NewFloatingPluginPane(

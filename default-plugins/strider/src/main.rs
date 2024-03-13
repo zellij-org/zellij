@@ -3,9 +3,11 @@ mod search_view;
 mod file_list_view;
 mod shared;
 
-use shared::{render_instruction_line, render_current_path};
+use shared::{render_instruction_line, render_current_path, render_search_term};
 use state::{refresh_directory, State};
+use crate::file_list_view::FsEntry;
 use std::collections::BTreeMap;
+use std::path::PathBuf;
 use zellij_tile::prelude::*;
 
 register_plugin!(State);
@@ -19,6 +21,10 @@ impl ZellijPlugin for State {
             .map(|v| v == "true")
             .unwrap_or(false);
         self.hide_hidden_files = !show_hidden_files;
+        self.close_on_selection = configuration
+            .get("close_on_selection")
+            .map(|v| v == "true")
+            .unwrap_or(false);
         subscribe(&[
             EventType::Key,
             EventType::Mouse,
@@ -27,7 +33,23 @@ impl ZellijPlugin for State {
             EventType::FileSystemUpdate,
         ]);
         self.file_list_view.reset_selected();
-        refresh_directory(&self.initial_cwd);
+        // the caller_cwd might be different from the initial_cwd if this plugin was defined as an
+        // alias, with access to a certain part of the file system (often broader) and was called
+        // from an individual pane somewhere inside this broad scope - in this case, we want to
+        // start in the same cwd as the caller, giving them the full access we were granted
+        match configuration
+        .get("caller_cwd")
+        .map(|c| PathBuf::from(c))
+        .and_then(|c| c.strip_prefix(&self.initial_cwd).ok().map(|c| PathBuf::from(c))) {
+            Some(relative_caller_path) => {
+                let relative_caller_path = FsEntry::Dir(relative_caller_path.to_path_buf());
+                self.file_list_view.enter_dir(&relative_caller_path);
+                refresh_directory(&self.file_list_view.path);
+            },
+            None => {
+                refresh_directory(&std::path::Path::new("/"));
+            }
+        }
     }
 
     fn update(&mut self, event: Event) -> bool {
@@ -61,8 +83,11 @@ impl ZellijPlugin for State {
                 Key::Char('\n') if self.handling_filepick_request_from.is_some() => {
                     self.send_filepick_response();
                 }
-                Key::Right | Key::Char('\n') | Key::BackTab => {
-                    self.handle_selection();
+                Key::Char('\n') => {
+                    self.open_selected_path();
+                }
+                Key::Right | Key::BackTab => {
+                    self.traverse_dir();
                     should_render = true;
                 },
                 Key::Left => {
@@ -113,8 +138,14 @@ impl ZellijPlugin for State {
 
     fn render(&mut self, rows: usize, cols: usize) {
         self.current_rows = Some(rows);
-        let rows_for_list = rows.saturating_sub(5);
-        render_current_path(&self.initial_cwd, &self.file_list_view.path, &self.search_term);
+        let rows_for_list = rows.saturating_sub(6);
+        render_search_term(&self.search_term);
+        render_current_path(
+            &self.initial_cwd,
+            &self.file_list_view.path,
+            self.file_list_view.path_is_dir,
+            self.handling_filepick_request_from.is_some()
+        );
         if self.is_searching {
             self.search_view.render(rows_for_list, cols);
         } else {

@@ -22,6 +22,7 @@ pub struct State {
     pub initial_cwd: PathBuf, // TODO: get this from zellij
     pub is_searching: bool,
     pub search_term: String,
+    pub close_on_selection: bool,
 }
 
 impl State {
@@ -78,14 +79,14 @@ impl State {
                 let prev_selected = self.search_view.selected_search_result;
                 self.search_view.selected_search_result = (line as usize).saturating_sub(2) + start_index;
                 if prev_selected == self.search_view.selected_search_result {
-                    self.handle_selection();
+                    self.traverse_dir();
                 }
             } else {
                 let (start_index, _selected_index_in_range, _end_index) = calculate_list_bounds(self.file_list_view.files.len(), rows_for_list, self.file_list_view.selected());
                 let prev_selected = self.file_list_view.selected();
                 *self.file_list_view.selected_mut() = (line as usize).saturating_sub(2) + start_index;
                 if prev_selected == self.file_list_view.selected() {
-                    self.handle_selection();
+                    self.traverse_dir();
                 }
             }
         }
@@ -105,17 +106,7 @@ impl State {
     pub fn toggle_hidden_files(&mut self) {
         self.hide_hidden_files = !self.hide_hidden_files;
     }
-    pub fn handle_selection(&mut self) {
-        if self.handling_filepick_request_from.is_some() {
-            self.traverse_dir();
-        } else {
-            self.traverse_dir_or_open_file();
-        }
-        self.is_searching = false;
-        self.search_term.clear();
-        self.search_view.clear_and_reset_selection();
-    }
-    pub fn traverse_dir_or_open_file(&mut self) {
+    pub fn traverse_dir(&mut self) {
         let entry = if self.is_searching {
             self.search_view.get_selected_entry()
         } else {
@@ -124,35 +115,41 @@ impl State {
         if let Some(entry) = entry {
             match &entry {
                 FsEntry::Dir(_p) => {
-                    let path = entry.get_pathbuf_without_root_prefix();
-                    self.file_list_view.enter_dir(path);
+                    self.file_list_view.enter_dir(&entry);
                     self.search_view.clear_and_reset_selection();
                     refresh_directory(&self.file_list_view.path);
-                },
-                FsEntry::File(_p, _) => open_file(FileToOpen {
-                    path: entry.get_pathbuf_without_root_prefix(),
-                    ..Default::default()
-                }),
+                }
+                FsEntry::File(_p, _) => {
+                    self.file_list_view.enter_dir(&entry);
+                    self.search_view.clear_and_reset_selection();
+                }
             }
         }
-    }
-    pub fn traverse_dir(&mut self) {
-        let entry = if self.is_searching {
-            self.search_view.get_selected_entry()
-        } else {
-            self.file_list_view.get_selected_entry()
-        };
-        if let Some(entry) = entry {
-            if let FsEntry::Dir(_p) = &entry {
-                let path = entry.get_pathbuf_without_root_prefix();
-                self.file_list_view.enter_dir(path);
-                self.search_view.clear_and_reset_selection();
-                refresh_directory(&self.file_list_view.path);
-            }
-        }
+        self.is_searching = false;
+        self.search_term.clear();
+        self.search_view.clear_and_reset_selection();
     }
     pub fn update_files(&mut self, paths: Vec<(PathBuf, Option<FileMetadata>)>) {
         self.file_list_view.update_files(paths, self.hide_hidden_files);
+    }
+    pub fn open_selected_path(&mut self) {
+        if self.file_list_view.path_is_dir {
+            open_terminal(&self.file_list_view.path);
+        } else {
+            if let Some(parent_folder) = self.file_list_view.path.parent() {
+                open_file(
+                    FileToOpen::new(&self.file_list_view.path)
+                    .with_cwd(parent_folder.into())
+                );
+            } else {
+                open_file(
+                    FileToOpen::new(&self.file_list_view.path)
+                );
+            }
+        }
+        if self.close_on_selection {
+            close_focus();
+        }
     }
     pub fn send_filepick_response(&mut self) {
         let selected_path = self.initial_cwd.join(self.file_list_view.path.strip_prefix(ROOT).map(|p| p.to_path_buf()).unwrap_or_else(|_| self.file_list_view.path.clone()));

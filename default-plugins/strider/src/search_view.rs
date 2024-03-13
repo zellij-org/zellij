@@ -58,20 +58,20 @@ impl SearchView {
                 if search_result.is_folder() {
                     search_result_text.push('/');
                 }
-                let padding = " ".repeat(cols.saturating_sub(search_result_text.width()).saturating_sub(6));
+                let padding = " ".repeat(cols.saturating_sub(search_result_text.width()).saturating_sub(10));
                 let mut text_element = if is_selected {
-                    Text::new(format!(" <↓↑> {}{}", search_result_text, padding))
-                        .color_indices(3, search_result.indices().iter().map(|i| i + 6).collect())
-                        .color_range(3, 1..5)
+                    Text::new(format!(" <↓↑ TAB> {}{}", search_result_text, padding))
+                        .color_indices(3, search_result.indices().iter().map(|i| i + 10).collect())
+                        .color_range(3, 1..9)
                         .selected()
                 } else {
-                    Text::new(format!("      {}{}", search_result_text, padding))
-                        .color_indices(3, search_result.indices().iter().map(|i| i + 6).collect())
+                    Text::new(format!("          {}{}", search_result_text, padding))
+                        .color_indices(3, search_result.indices().iter().map(|i| i + 10).collect())
                 };
                 if search_result.is_folder() {
                     text_element = text_element.color_range(0, ..);
                 }
-                print_text_with_coordinates(text_element, 0, i.saturating_sub(start_index) + 2, None, None);
+                print_text_with_coordinates(text_element, 0, i.saturating_sub(start_index) + 3, None, None);
             }
         }
     }
