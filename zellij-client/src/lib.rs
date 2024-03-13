@@ -14,6 +14,7 @@ use std::path::Path;
 use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::thread;
+use windows_sys::Win32::System::Console::ENABLE_PROCESSED_INPUT;
 use zellij_utils::errors::FatalError;
 
 use crate::stdin_ansi_parser::{AnsiStdinInstruction, StdinAnsiParser, SyncOutput};
@@ -21,10 +22,13 @@ use crate::{
     command_is_executing::CommandIsExecuting, input_handler::input_loop,
     os_input_output::ClientOsApi, stdin_handler::stdin_loop,
 };
+#[cfg(windows)]
+use windows_sys::Win32::System::Console::{
+    DISABLE_NEWLINE_AUTO_RETURN, ENABLE_ECHO_INPUT, ENABLE_LINE_INPUT,
+    ENABLE_VIRTUAL_TERMINAL_INPUT, ENABLE_VIRTUAL_TERMINAL_PROCESSING,
+};
 #[cfg(unix)]
 use zellij_utils::consts::set_permissions;
-#[cfg(windows)]
-use windows_sys::Win32::System::Console::{ENABLE_VIRTUAL_TERMINAL_INPUT, ENABLE_VIRTUAL_TERMINAL_PROCESSING, ENABLE_LINE_INPUT, ENABLE_ECHO_INPUT, DISABLE_NEWLINE_AUTO_RETURN};
 use zellij_utils::pane_size::Size;
 use zellij_utils::{
     channels::{self, ChannelWithContext, SenderWithContext},
@@ -261,8 +265,16 @@ pub fn start_client(
 
     let mut command_is_executing = CommandIsExecuting::new();
 
-    os_input.set_raw_mode(windows_sys::Win32::System::Console::STD_INPUT_HANDLE, ENABLE_VIRTUAL_TERMINAL_INPUT, ENABLE_LINE_INPUT | ENABLE_ECHO_INPUT);
-    os_input.set_raw_mode(windows_sys::Win32::System::Console::STD_OUTPUT_HANDLE, ENABLE_VIRTUAL_TERMINAL_PROCESSING, 0);// & DISABLE_NEWLINE_AUTO_RETURN);
+    os_input.set_raw_mode(
+        windows_sys::Win32::System::Console::STD_INPUT_HANDLE,
+        ENABLE_VIRTUAL_TERMINAL_INPUT,
+        ENABLE_LINE_INPUT | ENABLE_ECHO_INPUT | ENABLE_PROCESSED_INPUT,
+    );
+    os_input.set_raw_mode(
+        windows_sys::Win32::System::Console::STD_OUTPUT_HANDLE,
+        ENABLE_VIRTUAL_TERMINAL_PROCESSING,
+        0,
+    ); // & DISABLE_NEWLINE_AUTO_RETURN);
     let _ = os_input
         .get_stdout_writer()
         .write(bracketed_paste.as_bytes())
