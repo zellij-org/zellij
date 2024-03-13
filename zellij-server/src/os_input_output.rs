@@ -34,16 +34,12 @@ use std::{
     sync::{Arc, Mutex, RwLock},
 };
 
-
 pub use async_trait::async_trait;
 
-
-#[cfg(unix)]
-pub use nix::unistd::Pid;
 #[cfg(unix)]
 use async_std::os::unix::io::FromRawFd;
 #[cfg(unix)]
-use std::os::unix::{io::RawFd, process::CommandExt};
+pub use nix::unistd::Pid;
 #[cfg(unix)]
 use nix::{
     pty::{openpty, OpenptyResult, Winsize},
@@ -54,14 +50,16 @@ use nix::{
     unistd,
 };
 #[cfg(unix)]
+use std::os::unix::{io::RawFd, process::CommandExt};
+#[cfg(unix)]
 use zellij_utils::{libc, nix};
 
 #[cfg(windows)]
-pub use sysinfo::{Pid, System, Signal};
+use std::thread;
+#[cfg(windows)]
+pub use sysinfo::{Pid, Signal, System};
 #[cfg(windows)]
 use winptyrs::{AgentConfig, PTYArgs, PTY};
-#[cfg(windows)]
-use std::thread;
 
 #[cfg(unix)]
 fn set_terminal_size_using_fd(
@@ -139,8 +137,10 @@ fn handle_command_exit(mut child: Child) -> Result<Option<i32>> {
             kill(Pid::from_raw(child.id() as i32), Some(Signal::SIGTERM))
                 .with_context(err_context)?;
             #[cfg(windows)]
-            System::new_all().process(Pid::from(child.id() as usize))
-                .with_context(err_context)?.kill();
+            System::new_all()
+                .process(Pid::from(child.id() as usize))
+                .with_context(err_context)?
+                .kill();
             continue;
         } else {
             // when I say whoa, I mean WHOA!
@@ -279,7 +279,7 @@ fn handle_terminal(
     failover_cmd: Option<RunCommand>,
     quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
     terminal_id: u32,
-) -> Result<PTY> {
+) -> Result<Arc<RwLock<PTY>>> {
     let err_context = || "failed to spawn terminal";
 
     let pty_args = PTYArgs {
@@ -292,14 +292,28 @@ fn handle_terminal(
 
     let mut pty = PTY::new(&pty_args).map_err(|err| anyhow!("{:?}", err))?;
     let command: OsString = cmd.command.clone().into();
-    pty.spawn(command.clone(), None, None, None)
-        .map_err(move |err| {
-            anyhow!(
-                "Could not spawn terminal with command '{:?}': {:?}",
-                command,
-                err
-            )
-        })?;
+    pty.spawn(
+        command.clone(),
+        Some(cmd.args.join(" ").into()),
+        cmd.cwd.as_ref().map(Into::into),
+        None, // TODO: Initialize ZELLIJ_PANE_ID Environment
+    )
+    .map_err(move |err| {
+        anyhow!(
+            "Could not spawn terminal with command '{:?}': {:?}",
+            command,
+            err
+        )
+    })?;
+    let pty = Arc::new(RwLock::new(pty));
+    let monitored_pty = pty.clone();
+    thread::spawn(move || loop {
+        if let Ok(Ok(Some(exit_code))) = monitored_pty.try_read().map(|x| x.get_exitstatus()) {
+            quit_cb(PaneId::Terminal(terminal_id), Some(exit_code as i32), cmd);
+            break;
+        }
+        thread::sleep(std::time::Duration::from_millis(50)) // TODO figure out better way to register callback on process exit.
+    });
     Ok(pty)
 }
 
@@ -340,12 +354,11 @@ fn separate_command_arguments(command: &mut PathBuf, args: &mut Vec<String>) {
 #[cfg(unix)]
 type SpawnTerminalReturn = (RawFd, RawFd);
 #[cfg(windows)]
-type SpawnTerminalReturn = PTY;
+type SpawnTerminalReturn = Arc<RwLock<PTY>>;
 
 fn spawn_terminal(
     terminal_action: TerminalAction,
-    #[cfg(unix)]
-    orig_termios: termios::Termios,
+    #[cfg(unix)] orig_termios: termios::Termios,
     quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>, // u32 is the exit_status
     default_editor: Option<PathBuf>,
     terminal_id: u32,
@@ -430,8 +443,8 @@ fn spawn_terminal(
 //     default_editor: Option<PathBuf>,
 //     terminal_id: u32,
 // ) -> Result<PTY> {
-    // returns the terminal_id, the primary fd and the
-    // secondary fd
+// returns the terminal_id, the primary fd and the
+// secondary fd
 //     let mut failover_cmd_args = None;
 //     let cmd = match terminal_action {
 //         TerminalAction::OpenFile(mut file_to_open, line_number, cwd) => {
@@ -570,7 +583,6 @@ pub struct WinPtyReference {
 
 impl WinPtyReference {}
 
-
 #[cfg(unix)]
 type TerminalReference = RawFd;
 #[cfg(windows)]
@@ -628,10 +640,13 @@ impl AsyncReader for WinPtyReader {
         let len = buf.len();
         let pty = Arc::clone(&self.pty);
         let read_chars = thread::spawn(move || {
-            let read_chars = pty.read().unwrap().read(len as u32, true)
-                .map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err.to_str().unwrap()));
+            let read_chars = pty.read().unwrap().read(len as u32, true).map_err(|err| {
+                std::io::Error::new(std::io::ErrorKind::Other, err.to_str().unwrap())
+            });
             read_chars
-        }).join().expect("Thread has panicked")?;
+        })
+        .join()
+        .expect("Thread has panicked")?;
 
         buf.write(read_chars.as_encoded_bytes())
     }
@@ -752,7 +767,11 @@ impl ServerOsApi for ServerOsInputOutput {
                     #[cfg(unix)]
                     set_terminal_size_using_fd(*fd, cols, rows, width_in_pixels, height_in_pixels);
                     #[cfg(windows)]
-                    pty.pty.read().unwrap().set_size(cols as i32, rows as i32).map_err(|err| anyhow!("failed to set size: {:?}", err));
+                    pty.pty
+                        .read()
+                        .unwrap()
+                        .set_size(cols as i32, rows as i32)
+                        .map_err(|err| anyhow!("failed to set size: {:?}", err));
                 }
             },
             _ => {
@@ -856,9 +875,10 @@ impl ServerOsApi for ServerOsInputOutput {
                     terminal_id,
                 )
                 .and_then(|spawned_terminal| {
-                    let pty = Arc::new(RwLock::new(spawned_terminal));
                     #[cfg(windows)]
-                    let terminal = WinPtyReference { pty };
+                    let terminal = WinPtyReference {
+                        pty: spawned_terminal,
+                    };
                     #[cfg(windows)]
                     let map_reference = terminal.clone();
                     #[cfg(windows)]
@@ -921,7 +941,13 @@ impl ServerOsApi for ServerOsInputOutput {
     #[cfg(windows)]
     fn async_file_reader(&self, terminal_id: u32) -> Box<dyn AsyncReader> {
         let terminal_id_to_reference = self.terminal_id_to_reference.lock().unwrap();
-        let pty = terminal_id_to_reference.get(&terminal_id).unwrap().as_ref().unwrap().pty.clone();
+        let pty = terminal_id_to_reference
+            .get(&terminal_id)
+            .unwrap()
+            .as_ref()
+            .unwrap()
+            .pty
+            .clone();
         Box::new(WinPtyReader { pty })
     }
 
@@ -945,7 +971,7 @@ impl ServerOsApi for ServerOsInputOutput {
         let s = unsafe { std::ffi::OsStr::from_encoded_bytes_unchecked(buf) };
         let err_context = || format!("failed to write to stdin of TTY ID {}", terminal_id);
 
-        if(buf.len() == 0) {
+        if (buf.len() == 0) {
             return Ok(0);
         }
 
@@ -1020,12 +1046,18 @@ impl ServerOsApi for ServerOsInputOutput {
     }
     #[cfg(windows)]
     fn kill(&self, pid: Pid) -> Result<()> {
-        let res = System::new_all().process(pid).ok_or(Error::other("Unable to get process"))?.kill_with(Signal::Hangup);
+        let res = System::new_all()
+            .process(pid)
+            .ok_or(Error::other("Unable to get process"))?
+            .kill_with(Signal::Hangup);
         Ok(())
     }
     #[cfg(windows)]
     fn force_kill(&self, pid: Pid) -> Result<()> {
-        let res = System::new_all().process(pid).ok_or(Error::other("Unable to get process"))?.kill_with(Signal::Kill);
+        let res = System::new_all()
+            .process(pid)
+            .ok_or(Error::other("Unable to get process"))?
+            .kill_with(Signal::Kill);
         Ok(())
     }
     #[cfg(unix)]
@@ -1235,7 +1267,6 @@ pub fn get_server_os_input() -> Result<ServerOsInputOutput, nix::Error> {
 }
 #[cfg(windows)]
 pub fn get_server_os_input() -> Result<ServerOsInputOutput, ()> {
-
     Ok(ServerOsInputOutput {
         client_senders: Arc::new(Mutex::new(HashMap::new())),
         cached_resizes: Arc::new(Mutex::new(None)),
