@@ -50,7 +50,11 @@ impl SearchView {
         self.search_results.get(self.selected_search_result).map(|s| s.entry.clone())
     }
     pub fn render(&mut self, rows: usize, cols: usize) {
-        let (start_index, selected_index_in_range, end_index) = calculate_list_bounds(self.search_results.len(), rows, Some(self.selected_search_result));
+        let (start_index, selected_index_in_range, end_index) = calculate_list_bounds(self.search_results.len(), rows.saturating_sub(1), Some(self.selected_search_result));
+        let tip = Text::new(format!("(<↓↑> - Navigate, <TAB> - Select)"))
+            .color_range(3, 1..5)
+            .color_range(3, 18..23);
+        print_text_with_coordinates(tip, 0, 3, None, None);
         for i in start_index..end_index {
             if let Some(search_result) = self.search_results.get(i) {
                 let is_selected = Some(i) == selected_index_in_range;
@@ -58,20 +62,19 @@ impl SearchView {
                 if search_result.is_folder() {
                     search_result_text.push('/');
                 }
-                let padding = " ".repeat(cols.saturating_sub(search_result_text.width()).saturating_sub(10));
+                let padding = " ".repeat(cols.saturating_sub(search_result_text.width()));
                 let mut text_element = if is_selected {
-                    Text::new(format!(" <↓↑ TAB> {}{}", search_result_text, padding))
-                        .color_indices(3, search_result.indices().iter().map(|i| i + 10).collect())
-                        .color_range(3, 1..9)
+                    Text::new(format!("{}{}", search_result_text, padding))
+                        .color_indices(3, search_result.indices())
                         .selected()
                 } else {
-                    Text::new(format!("          {}{}", search_result_text, padding))
-                        .color_indices(3, search_result.indices().iter().map(|i| i + 10).collect())
+                    Text::new(format!("{}{}", search_result_text, padding))
+                        .color_indices(3, search_result.indices())
                 };
                 if search_result.is_folder() {
                     text_element = text_element.color_range(0, ..);
                 }
-                print_text_with_coordinates(text_element, 0, i.saturating_sub(start_index) + 3, None, None);
+                print_text_with_coordinates(text_element, 0, i.saturating_sub(start_index) + 4, None, None);
             }
         }
     }

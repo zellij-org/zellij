@@ -4,11 +4,11 @@ use unicode_width::UnicodeWidthStr;
 use crate::state::ROOT;
 
 pub fn render_instruction_line(y: usize, max_cols: usize) {
-    let text = "Help: go back with <Ctrl c>, reset with /, <Ctrl e> - toggle hidden files";
+    let text = "Help: go back with <Ctrl c>, go to root with /, <Ctrl e> - toggle hidden files";
     let text = Text::new(text)
         .color_range(3, 19..27)
-        .color_range(3, 40..41)
-        .color_range(3, 43..51);
+        .color_range(3, 45..46)
+        .color_range(3, 48..56);
     print_text_with_coordinates(text, 0, y, None, None);
 }
 

@@ -93,8 +93,12 @@ impl FileListView {
         }
     }
     pub fn render(&mut self, rows: usize, cols: usize) {
-        let (start_index, selected_index_in_range, end_index) = calculate_list_bounds(self.files.len(), rows, self.selected());
+        let (start_index, selected_index_in_range, end_index) = calculate_list_bounds(self.files.len(), rows.saturating_sub(1), self.selected());
 
+        let tip = Text::new(format!("(<↓↑> - Navigate, <TAB> - Select)"))
+            .color_range(3, 1..5)
+            .color_range(3, 18..23);
+        print_text_with_coordinates(tip, 0, 3, None, None);
         for i in start_index..end_index {
             let is_first_line = i == 0;
 
@@ -105,23 +109,20 @@ impl FileListView {
                 if entry.is_folder() {
                     file_or_folder_name.push('/');
                 }
-                let padding = " ".repeat(cols.saturating_sub(file_or_folder_name.width()).saturating_sub(10));
+                let padding = " ".repeat(cols.saturating_sub(file_or_folder_name.width()));
 
                 let mut text_element = if is_selected {
-                    Text::new(format!(" <↓↑ TAB> {}{}", file_or_folder_name, padding))
-                        .color_range(3, 1..9)
+                    Text::new(format!("{}{}", file_or_folder_name, padding))
                         .selected()
                 } else if is_first_line && !has_selection {
-                    Text::new(format!(" <↓↑ TAB> {}{}", file_or_folder_name, padding))
-                        .color_range(3, 1..9)
+                    Text::new(format!("{}{}", file_or_folder_name, padding))
                 } else {
-                    Text::new(format!("          {}{}", file_or_folder_name, padding))
+                    Text::new(format!("{}{}", file_or_folder_name, padding))
                 };
-
                 if entry.is_folder() {
                     text_element = text_element.color_range(0, ..);
                 }
-                print_text_with_coordinates(text_element, 0, 3 + i.saturating_sub(start_index), None, None);
+                print_text_with_coordinates(text_element, 0, 4 + i.saturating_sub(start_index), None, None);
             }
         }
     }
