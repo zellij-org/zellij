@@ -127,6 +127,7 @@ impl ZellijPlugin for State {
             if let PipeSource::Cli(pipe_id) = &pipe_message.source {
                 // here we block the cli pipe input because we want it to wait until the user chose
                 // a file
+                #[cfg(target_family = "wasm")]
                 block_cli_pipe_input(pipe_id);
             }
             self.handling_filepick_request_from = Some((pipe_message.source, pipe_message.args));

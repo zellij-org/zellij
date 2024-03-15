@@ -161,11 +161,15 @@ impl State {
                         .with_args(args.clone())
                         .with_payload(selected_path.display().to_string())
                 );
+                #[cfg(target_family = "wasm")]
                 close_focus();
             },
             Some((PipeSource::Cli(pipe_id), _args)) => {
+                #[cfg(target_family = "wasm")]
                 cli_pipe_output(pipe_id, &selected_path.display().to_string());
+                #[cfg(target_family = "wasm")]
                 unblock_cli_pipe_input(pipe_id);
+                #[cfg(target_family = "wasm")]
                 close_focus();
             },
             _ => {}
