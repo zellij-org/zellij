@@ -144,7 +144,8 @@ impl ZellijPlugin for State {
             &self.initial_cwd,
             &self.file_list_view.path,
             self.file_list_view.path_is_dir,
-            self.handling_filepick_request_from.is_some()
+            self.handling_filepick_request_from.is_some(),
+            cols
         );
         if self.is_searching {
             self.search_view.render(rows_for_list, cols);

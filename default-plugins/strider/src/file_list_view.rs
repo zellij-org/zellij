@@ -1,9 +1,10 @@
-use crate::shared::calculate_list_bounds;
+use crate::shared::{calculate_list_bounds, render_list_tip};
 use crate::state::{refresh_directory, ROOT};
 use std::collections::{HashMap};
 use std::path::PathBuf;
 use zellij_tile::prelude::*;
 use unicode_width::UnicodeWidthStr;
+use pretty_bytes::converter::convert as pretty_bytes;
 
 #[derive(Debug, Clone)]
 pub struct FileListView {
@@ -95,34 +96,34 @@ impl FileListView {
     pub fn render(&mut self, rows: usize, cols: usize) {
         let (start_index, selected_index_in_range, end_index) = calculate_list_bounds(self.files.len(), rows.saturating_sub(1), self.selected());
 
-        let tip = Text::new(format!("(<↓↑> - Navigate, <TAB> - Select)"))
-            .color_range(3, 1..5)
-            .color_range(3, 18..23);
-        print_text_with_coordinates(tip, 0, 3, None, None);
+        render_list_tip(3, cols);
         for i in start_index..end_index {
-            let is_first_line = i == 0;
-
             if let Some(entry) = self.files.get(i) {
-                let has_selection = selected_index_in_range.is_some();
                 let is_selected = Some(i) == selected_index_in_range;
                 let mut file_or_folder_name = entry.name();
+                let size = entry.size().map(|s| pretty_bytes(s as f64)).unwrap_or("".to_owned());
                 if entry.is_folder() {
                     file_or_folder_name.push('/');
                 }
-                let padding = " ".repeat(cols.saturating_sub(file_or_folder_name.width()));
-
-                let mut text_element = if is_selected {
-                    Text::new(format!("{}{}", file_or_folder_name, padding))
-                        .selected()
-                } else if is_first_line && !has_selection {
-                    Text::new(format!("{}{}", file_or_folder_name, padding))
+                let file_or_folder_name_width = file_or_folder_name.width();
+                let size_width = size.width();
+                let text = if file_or_folder_name_width + size_width < cols {
+                    let padding = " ".repeat(cols.saturating_sub(file_or_folder_name_width).saturating_sub(size_width));
+                    format!("{}{}{}", file_or_folder_name, padding, size)
                 } else {
-                    Text::new(format!("{}{}", file_or_folder_name, padding))
+                    // drop the size, no room for it
+                    let padding = " ".repeat(cols.saturating_sub(file_or_folder_name_width));
+                    format!("{}{}", file_or_folder_name, padding)
+                };
+                let mut text_element = if is_selected {
+                    Text::new(text).selected()
+                } else {
+                    Text::new(text)
                 };
                 if entry.is_folder() {
                     text_element = text_element.color_range(0, ..);
                 }
-                print_text_with_coordinates(text_element, 0, 4 + i.saturating_sub(start_index), None, None);
+                print_text_with_coordinates(text_element, 0, 4 + i.saturating_sub(start_index), Some(cols), None);
             }
         }
     }
@@ -141,6 +142,12 @@ impl FsEntry {
             FsEntry::File(p, _) => p,
         };
         path.file_name().unwrap().to_string_lossy().into_owned()
+    }
+    pub fn size(&self) -> Option<u64> {
+        match self {
+            FsEntry::Dir(p) => None,
+            FsEntry::File(_, size) => Some(*size),
+        }
     }
     pub fn get_pathbuf_without_root_prefix(&self) -> PathBuf {
         match self {
