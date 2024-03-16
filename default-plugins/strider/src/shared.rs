@@ -1,6 +1,6 @@
-use zellij_tile::prelude::*;
 use std::path::PathBuf;
 use unicode_width::UnicodeWidthStr;
+use zellij_tile::prelude::*;
 
 pub fn render_instruction_line(y: usize, max_cols: usize) {
     if max_cols > 78 {
@@ -10,7 +10,6 @@ pub fn render_instruction_line(y: usize, max_cols: usize) {
             .color_range(3, 45..46)
             .color_range(3, 48..56);
         print_text_with_coordinates(text, 0, y, Some(max_cols), None);
-
     } else if max_cols > 56 {
         let text = "Help: <Ctrl c> - back, / - root, <Ctrl e> - hidden files";
         let text = Text::new(text)
@@ -20,9 +19,7 @@ pub fn render_instruction_line(y: usize, max_cols: usize) {
         print_text_with_coordinates(text, 0, y, Some(max_cols), None);
     } else if max_cols > 25 {
         let text = "<Ctrl c> - back, / - root";
-        let text = Text::new(text)
-            .color_range(3, ..8)
-            .color_range(3, 17..18);
+        let text = Text::new(text).color_range(3, ..8).color_range(3, 17..18);
         print_text_with_coordinates(text, 0, y, Some(max_cols), None);
     }
 }
@@ -35,7 +32,11 @@ pub fn render_list_tip(y: usize, max_cols: usize) {
 }
 
 // returns the list (start_index, selected_index_in_range, end_index)
-pub fn calculate_list_bounds(result_count: usize, max_result_count: usize, selected_index_in_all_results: Option<usize>) -> (usize, Option<usize>, usize) {
+pub fn calculate_list_bounds(
+    result_count: usize,
+    max_result_count: usize,
+    selected_index_in_all_results: Option<usize>,
+) -> (usize, Option<usize>, usize) {
     match selected_index_in_all_results {
         Some(selected_index_in_all_results) => {
             let mut room_in_list = max_result_count;
@@ -65,7 +66,7 @@ pub fn calculate_list_bounds(result_count: usize, max_result_count: usize, selec
             }
             (start_index, Some(selected_index_in_all_results), end_index)
         },
-        None => (0, None, max_result_count + 1)
+        None => (0, None, max_result_count + 1),
     }
 }
 
@@ -83,7 +84,7 @@ pub fn render_current_path(
     path: &PathBuf,
     path_is_dir: bool,
     handling_filepick: bool,
-    max_cols: usize
+    max_cols: usize,
 ) {
     let prompt = "PATH: ";
     let current_path = initial_cwd.join(path);
@@ -100,17 +101,26 @@ pub fn render_current_path(
     };
     if max_cols > prompt_len + current_path_len + enter_tip.width() + 13 {
         let path_end = prompt_len + current_path_len;
-        let current_path = Text::new(format!("{}{} (<ENTER> - {})", prompt, current_path, enter_tip))
-            .color_range(2, 0..prompt_len)
-            .color_range(0, prompt_len..path_end)
-            .color_range(3, path_end + 2..path_end + 9);
+        let current_path = Text::new(format!(
+            "{}{} (<ENTER> - {})",
+            prompt, current_path, enter_tip
+        ))
+        .color_range(2, 0..prompt_len)
+        .color_range(0, prompt_len..path_end)
+        .color_range(3, path_end + 2..path_end + 9);
         print_text(current_path);
     } else {
-        let max_path_len = max_cols.saturating_sub(prompt_len).saturating_sub(8).saturating_sub(prompt_len);
+        let max_path_len = max_cols
+            .saturating_sub(prompt_len)
+            .saturating_sub(8)
+            .saturating_sub(prompt_len);
         let current_path = if current_path_len <= max_path_len {
             current_path
         } else {
-            truncate_path(initial_cwd.join(path), current_path_len.saturating_sub(max_path_len))
+            truncate_path(
+                initial_cwd.join(path),
+                current_path_len.saturating_sub(max_path_len),
+            )
         };
         let current_path_len = current_path.width();
         let path_end = prompt_len + current_path_len;

@@ -1,11 +1,11 @@
-mod state;
-mod search_view;
 mod file_list_view;
+mod search_view;
 mod shared;
+mod state;
 
-use shared::{render_instruction_line, render_current_path, render_search_term};
-use state::{refresh_directory, State};
 use crate::file_list_view::FsEntry;
+use shared::{render_current_path, render_instruction_line, render_search_term};
+use state::{refresh_directory, State};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use zellij_tile::prelude::*;
@@ -38,9 +38,13 @@ impl ZellijPlugin for State {
         // from an individual pane somewhere inside this broad scope - in this case, we want to
         // start in the same cwd as the caller, giving them the full access we were granted
         match configuration
-        .get("caller_cwd")
-        .map(|c| PathBuf::from(c))
-        .and_then(|c| c.strip_prefix(&self.initial_cwd).ok().map(|c| PathBuf::from(c))) {
+            .get("caller_cwd")
+            .map(|c| PathBuf::from(c))
+            .and_then(|c| {
+                c.strip_prefix(&self.initial_cwd)
+                    .ok()
+                    .map(|c| PathBuf::from(c))
+            }) {
             Some(relative_caller_path) => {
                 let relative_caller_path = FsEntry::Dir(relative_caller_path.to_path_buf());
                 self.file_list_view.enter_dir(&relative_caller_path);
@@ -48,7 +52,7 @@ impl ZellijPlugin for State {
             },
             None => {
                 refresh_directory(&std::path::Path::new("/"));
-            }
+            },
         }
     }
 
@@ -58,20 +62,20 @@ impl ZellijPlugin for State {
             Event::FileSystemUpdate(paths) => {
                 self.update_files(paths);
                 should_render = true;
-            }
+            },
             Event::Key(key) => match key {
                 Key::Char(character) if character != '\n' => {
                     self.update_search_term(character);
                     should_render = true;
-                }
+                },
                 Key::Backspace => {
                     self.handle_backspace();
                     should_render = true;
-                }
+                },
                 Key::Esc | Key::Ctrl('c') => {
                     self.clear_search_term_or_descend();
                     should_render = true;
-                }
+                },
                 Key::Up => {
                     self.move_selection_up();
                     should_render = true;
@@ -82,10 +86,10 @@ impl ZellijPlugin for State {
                 },
                 Key::Char('\n') if self.handling_filepick_request_from.is_some() => {
                     self.send_filepick_response();
-                }
+                },
                 Key::Char('\n') => {
                     self.open_selected_path();
-                }
+                },
                 Key::Right | Key::BackTab => {
                     self.traverse_dir();
                     should_render = true;
@@ -113,7 +117,7 @@ impl ZellijPlugin for State {
                 Mouse::LeftClick(line, _) => {
                     self.handle_left_click(line);
                     should_render = true;
-                }
+                },
                 _ => {},
             },
             _ => {
@@ -146,7 +150,7 @@ impl ZellijPlugin for State {
             &self.file_list_view.path,
             self.file_list_view.path_is_dir,
             self.handling_filepick_request_from.is_some(),
-            cols
+            cols,
         );
         if self.is_searching {
             self.search_view.render(rows_for_list, cols);

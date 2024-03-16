@@ -1373,7 +1373,9 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
             }),
             PluginCommand::ScanHostFolder(folder_to_scan) => Ok(ProtobufPluginCommand {
                 name: CommandName::ScanHostFolder as i32,
-                payload: Some(Payload::ScanHostFolderPayload(folder_to_scan.display().to_string()))
+                payload: Some(Payload::ScanHostFolderPayload(
+                    folder_to_scan.display().to_string(),
+                )),
             }),
             PluginCommand::WatchFilesystem => Ok(ProtobufPluginCommand {
                 name: CommandName::WatchFilesystem as i32,

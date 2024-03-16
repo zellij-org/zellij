@@ -1,10 +1,10 @@
 use crate::shared::{calculate_list_bounds, render_list_tip};
 use crate::state::{refresh_directory, ROOT};
-use std::collections::{HashMap};
-use std::path::PathBuf;
-use zellij_tile::prelude::*;
-use unicode_width::UnicodeWidthStr;
 use pretty_bytes::converter::convert as pretty_bytes;
+use std::collections::HashMap;
+use std::path::PathBuf;
+use unicode_width::UnicodeWidthStr;
+use zellij_tile::prelude::*;
 
 #[derive(Debug, Clone)]
 pub struct FileListView {
@@ -12,7 +12,6 @@ pub struct FileListView {
     pub path_is_dir: bool,
     pub files: Vec<FsEntry>,
     pub cursor_hist: HashMap<PathBuf, usize>,
-
 }
 
 impl Default for FileListView {
@@ -52,7 +51,11 @@ impl FileListView {
     pub fn reset_selected(&mut self) {
         *self.selected_mut() = self.selected().unwrap_or(0);
     }
-    pub fn update_files(&mut self, paths: Vec<(PathBuf, Option<FileMetadata>)>, hide_hidden_files: bool) {
+    pub fn update_files(
+        &mut self,
+        paths: Vec<(PathBuf, Option<FileMetadata>)>,
+        hide_hidden_files: bool,
+    ) {
         let mut files = vec![];
         for (entry, entry_metadata) in paths {
             if entry_metadata.map(|e| e.is_symlink).unwrap_or(false) {
@@ -94,21 +97,28 @@ impl FileListView {
         }
     }
     pub fn render(&mut self, rows: usize, cols: usize) {
-        let (start_index, selected_index_in_range, end_index) = calculate_list_bounds(self.files.len(), rows.saturating_sub(1), self.selected());
+        let (start_index, selected_index_in_range, end_index) =
+            calculate_list_bounds(self.files.len(), rows.saturating_sub(1), self.selected());
 
         render_list_tip(3, cols);
         for i in start_index..end_index {
             if let Some(entry) = self.files.get(i) {
                 let is_selected = Some(i) == selected_index_in_range;
                 let mut file_or_folder_name = entry.name();
-                let size = entry.size().map(|s| pretty_bytes(s as f64)).unwrap_or("".to_owned());
+                let size = entry
+                    .size()
+                    .map(|s| pretty_bytes(s as f64))
+                    .unwrap_or("".to_owned());
                 if entry.is_folder() {
                     file_or_folder_name.push('/');
                 }
                 let file_or_folder_name_width = file_or_folder_name.width();
                 let size_width = size.width();
                 let text = if file_or_folder_name_width + size_width < cols {
-                    let padding = " ".repeat(cols.saturating_sub(file_or_folder_name_width).saturating_sub(size_width));
+                    let padding = " ".repeat(
+                        cols.saturating_sub(file_or_folder_name_width)
+                            .saturating_sub(size_width),
+                    );
                     format!("{}{}{}", file_or_folder_name, padding, size)
                 } else {
                     // drop the size, no room for it
@@ -123,7 +133,13 @@ impl FileListView {
                 if entry.is_folder() {
                     text_element = text_element.color_range(0, ..);
                 }
-                print_text_with_coordinates(text_element, 0, 4 + i.saturating_sub(start_index), Some(cols), None);
+                print_text_with_coordinates(
+                    text_element,
+                    0,
+                    4 + i.saturating_sub(start_index),
+                    Some(cols),
+                    None,
+                );
             }
         }
     }
@@ -151,8 +167,14 @@ impl FsEntry {
     }
     pub fn get_pathbuf_without_root_prefix(&self) -> PathBuf {
         match self {
-            FsEntry::Dir(p) => p.strip_prefix(ROOT).map(|p| p.to_path_buf()).unwrap_or_else(|_| p.clone()),
-            FsEntry::File(p, _) => p.strip_prefix(ROOT).map(|p| p.to_path_buf()).unwrap_or_else(|_| p.clone()),
+            FsEntry::Dir(p) => p
+                .strip_prefix(ROOT)
+                .map(|p| p.to_path_buf())
+                .unwrap_or_else(|_| p.clone()),
+            FsEntry::File(p, _) => p
+                .strip_prefix(ROOT)
+                .map(|p| p.to_path_buf())
+                .unwrap_or_else(|_| p.clone()),
         }
     }
 
@@ -163,8 +185,7 @@ impl FsEntry {
     pub fn is_folder(&self) -> bool {
         match self {
             FsEntry::Dir(_) => true,
-            _ => false
+            _ => false,
         }
     }
 }
-

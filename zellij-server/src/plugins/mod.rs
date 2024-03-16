@@ -631,7 +631,7 @@ pub(crate) fn plugin_thread_main(
             },
             PluginInstruction::WatchFilesystem => {
                 wasm_bridge.start_fs_watcher_if_not_started();
-            }
+            },
             PluginInstruction::Exit => {
                 break;
             },

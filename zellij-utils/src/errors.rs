@@ -400,7 +400,7 @@ pub enum PluginContext {
     CachePluginEvents,
     MessageFromPlugin,
     UnblockCliPipes,
-    WatchFilesystem
+    WatchFilesystem,
 }
 
 /// Stack call representations corresponding to the different types of [`ClientInstruction`]s.

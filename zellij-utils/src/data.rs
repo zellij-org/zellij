@@ -5,8 +5,8 @@ use clap::ArgEnum;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt;
-use std::path::{Path, PathBuf};
 use std::fs::Metadata;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::time::Duration;
 use strum_macros::{Display, EnumDiscriminants, EnumIter, EnumString, ToString};
@@ -473,7 +473,7 @@ impl From<Metadata> for FileMetadata {
             is_dir: metadata.is_dir(),
             is_file: metadata.is_file(),
             is_symlink: metadata.is_symlink(),
-            len: metadata.len()
+            len: metadata.len(),
         }
     }
 }
@@ -1371,6 +1371,6 @@ pub enum PluginCommand {
     MessageToPlugin(MessageToPlugin),
     DisconnectOtherClients,
     KillSessions(Vec<String>), // one or more session names
-    ScanHostFolder(PathBuf), // TODO: rename to ScanHostFolder
+    ScanHostFolder(PathBuf),   // TODO: rename to ScanHostFolder
     WatchFilesystem,
 }

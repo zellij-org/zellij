@@ -2,9 +2,9 @@ mod new_session_info;
 mod resurrectable_sessions;
 mod session_list;
 mod ui;
-use zellij_tile::prelude::*;
-use uuid::Uuid;
 use std::collections::BTreeMap;
+use uuid::Uuid;
+use zellij_tile::prelude::*;
 
 use new_session_info::NewSessionInfo;
 use ui::{
@@ -79,10 +79,10 @@ impl ZellijPlugin for State {
                         },
                         None => {
                             eprintln!("request id not found");
-                        }
+                        },
                     }
                 },
-                _ => {}
+                _ => {},
             }
             true
         } else {
@@ -225,8 +225,10 @@ impl State {
                 MessageToPlugin::new("filepicker")
                     .with_plugin_url("filepicker")
                     .with_plugin_config(config)
-                    .new_plugin_instance_should_have_pane_title("Select folder for the new session...")
-                    .with_args(args)
+                    .new_plugin_instance_should_have_pane_title(
+                        "Select folder for the new session...",
+                    )
+                    .with_args(args),
             );
             should_render = true;
         } else if let Key::Ctrl('c') = key {

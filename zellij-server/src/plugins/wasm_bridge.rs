@@ -1321,8 +1321,7 @@ pub fn apply_event_to_plugin(
             } else {
                 // This is a bit of a hack to get around the fact that plugins are allowed not to
                 // render and still unblock CLI pipes
-                let pipes_to_block_or_unblock =
-                    pipes_to_block_or_unblock(running_plugin, None);
+                let pipes_to_block_or_unblock = pipes_to_block_or_unblock(running_plugin, None);
                 let plugin_render_asset = PluginRenderAsset::new(plugin_id, client_id, vec![])
                     .with_pipes(pipes_to_block_or_unblock);
                 let _ = senders
@@ -1330,7 +1329,6 @@ pub fn apply_event_to_plugin(
                         plugin_render_asset,
                     ]))
                     .context("failed to unblock input pipe");
-
             }
         },
         (PermissionStatus::Denied, permission) => {

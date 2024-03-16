@@ -366,14 +366,16 @@ impl Action {
                             })
                         },
                         Err(_) => {
-                            let mut user_configuration = configuration.map(|c| c.inner().clone()).unwrap_or_default();
-                            user_configuration.insert("caller_cwd".to_owned(), current_dir.display().to_string());
+                            let mut user_configuration =
+                                configuration.map(|c| c.inner().clone()).unwrap_or_default();
+                            user_configuration
+                                .insert("caller_cwd".to_owned(), current_dir.display().to_string());
                             RunPluginOrAlias::Alias(PluginAlias::new(
                                 &plugin,
                                 &Some(user_configuration),
                                 alias_cwd,
                             ))
-                        }
+                        },
                     };
                     if floating {
                         Ok(vec![Action::NewFloatingPluginPane(

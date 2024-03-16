@@ -769,8 +769,7 @@ where
 /// Scan a specific folder in the host filesystem (this is a hack around some WASI runtime performance
 /// issues), will not follow symlinks
 pub fn scan_host_folder<S: AsRef<Path>>(folder_to_scan: &S) {
-    let plugin_command =
-        PluginCommand::ScanHostFolder(folder_to_scan.as_ref().to_path_buf());
+    let plugin_command = PluginCommand::ScanHostFolder(folder_to_scan.as_ref().to_path_buf());
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };

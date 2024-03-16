@@ -1,10 +1,9 @@
-
 use crate::shared::{calculate_list_bounds, render_list_tip};
-use zellij_tile::prelude::*;
-use unicode_width::UnicodeWidthStr;
 use fuzzy_matcher::skim::SkimMatcherV2;
 use fuzzy_matcher::FuzzyMatcher;
 use pretty_bytes::converter::convert as pretty_bytes;
+use unicode_width::UnicodeWidthStr;
+use zellij_tile::prelude::*;
 
 use crate::file_list_view::FsEntry;
 
@@ -48,16 +47,25 @@ impl SearchView {
         }
     }
     pub fn get_selected_entry(&self) -> Option<FsEntry> {
-        self.search_results.get(self.selected_search_result).map(|s| s.entry.clone())
+        self.search_results
+            .get(self.selected_search_result)
+            .map(|s| s.entry.clone())
     }
     pub fn render(&mut self, rows: usize, cols: usize) {
-        let (start_index, selected_index_in_range, end_index) = calculate_list_bounds(self.search_results.len(), rows.saturating_sub(1), Some(self.selected_search_result));
+        let (start_index, selected_index_in_range, end_index) = calculate_list_bounds(
+            self.search_results.len(),
+            rows.saturating_sub(1),
+            Some(self.selected_search_result),
+        );
         render_list_tip(3, cols);
         for i in start_index..end_index {
             if let Some(search_result) = self.search_results.get(i) {
                 let is_selected = Some(i) == selected_index_in_range;
                 let mut search_result_text = search_result.name();
-                let size = search_result.size().map(|s| pretty_bytes(s as f64)).unwrap_or("".to_owned());
+                let size = search_result
+                    .size()
+                    .map(|s| pretty_bytes(s as f64))
+                    .unwrap_or("".to_owned());
                 if search_result.is_folder() {
                     search_result_text.push('/');
                 }
@@ -65,7 +73,10 @@ impl SearchView {
                 let search_result_text_width = search_result_text.width();
                 let size_width = size.width();
                 let text = if search_result_text_width + size_width < cols {
-                    let padding = " ".repeat(cols.saturating_sub(search_result_text_width).saturating_sub(size_width));
+                    let padding = " ".repeat(
+                        cols.saturating_sub(search_result_text_width)
+                            .saturating_sub(size_width),
+                    );
                     format!("{}{}{}", search_result_text, padding, size)
                 } else {
                     // drop the size, no room for it
@@ -81,7 +92,13 @@ impl SearchView {
                     text_element = text_element.color_range(0, ..);
                 }
                 text_element = text_element.color_indices(3, search_result.indices());
-                print_text_with_coordinates(text_element, 0, i.saturating_sub(start_index) + 4, Some(cols), None);
+                print_text_with_coordinates(
+                    text_element,
+                    0,
+                    i.saturating_sub(start_index) + 4,
+                    Some(cols),
+                    None,
+                );
             }
         }
     }
@@ -91,7 +108,7 @@ impl SearchView {
 pub struct SearchResult {
     pub entry: FsEntry,
     pub score: i64,
-    pub indices: Vec<usize>
+    pub indices: Vec<usize>,
 }
 
 impl SearchResult {
@@ -99,7 +116,7 @@ impl SearchResult {
         SearchResult {
             entry,
             score,
-            indices
+            indices,
         }
     }
     pub fn name(&self) -> String {

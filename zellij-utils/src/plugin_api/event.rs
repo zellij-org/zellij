@@ -3,19 +3,20 @@ pub use super::generated_api::api::{
     event::{
         event::Payload as ProtobufEventPayload, CopyDestination as ProtobufCopyDestination,
         Event as ProtobufEvent, EventNameList as ProtobufEventNameList,
-        EventType as ProtobufEventType, InputModeKeybinds as ProtobufInputModeKeybinds,
-        KeyBind as ProtobufKeyBind, LayoutInfo as ProtobufLayoutInfo,
-        ModeUpdatePayload as ProtobufModeUpdatePayload, PaneInfo as ProtobufPaneInfo,
-        PaneManifest as ProtobufPaneManifest, ResurrectableSession as ProtobufResurrectableSession,
-        SessionManifest as ProtobufSessionManifest, TabInfo as ProtobufTabInfo, FileMetadata as ProtobufFileMetadata, *,
+        EventType as ProtobufEventType, FileMetadata as ProtobufFileMetadata,
+        InputModeKeybinds as ProtobufInputModeKeybinds, KeyBind as ProtobufKeyBind,
+        LayoutInfo as ProtobufLayoutInfo, ModeUpdatePayload as ProtobufModeUpdatePayload,
+        PaneInfo as ProtobufPaneInfo, PaneManifest as ProtobufPaneManifest,
+        ResurrectableSession as ProtobufResurrectableSession,
+        SessionManifest as ProtobufSessionManifest, TabInfo as ProtobufTabInfo, *,
     },
     input_mode::InputMode as ProtobufInputMode,
     key::Key as ProtobufKey,
     style::Style as ProtobufStyle,
 };
 use crate::data::{
-    CopyDestination, Event, EventType, InputMode, Key, LayoutInfo, ModeInfo, Mouse, PaneInfo,
-    PaneManifest, PermissionStatus, PluginCapabilities, SessionInfo, Style, TabInfo, FileMetadata
+    CopyDestination, Event, EventType, FileMetadata, InputMode, Key, LayoutInfo, ModeInfo, Mouse,
+    PaneInfo, PaneManifest, PermissionStatus, PluginCapabilities, SessionInfo, Style, TabInfo,
 };
 
 use crate::errors::prelude::*;
@@ -1008,21 +1009,17 @@ impl From<&ProtobufFileMetadata> for Option<FileMetadata> {
 impl From<Option<FileMetadata>> for ProtobufFileMetadata {
     fn from(file_metadata: Option<FileMetadata>) -> ProtobufFileMetadata {
         match file_metadata {
-            Some(file_metadata) => {
-                ProtobufFileMetadata {
-                    metadata_is_set: true,
-                    is_file: file_metadata.is_file,
-                    is_dir: file_metadata.is_dir,
-                    is_symlink: file_metadata.is_symlink,
-                    len: file_metadata.len,
-                }
+            Some(file_metadata) => ProtobufFileMetadata {
+                metadata_is_set: true,
+                is_file: file_metadata.is_file,
+                is_dir: file_metadata.is_dir,
+                is_symlink: file_metadata.is_symlink,
+                len: file_metadata.len,
             },
-            None => {
-                ProtobufFileMetadata {
-                    metadata_is_set: false,
-                    ..Default::default()
-                }
-            }
+            None => ProtobufFileMetadata {
+                metadata_is_set: false,
+                ..Default::default()
+            },
         }
     }
 }
@@ -1325,11 +1322,10 @@ fn serialize_custom_message_event() {
 #[test]
 fn serialize_file_system_create_event() {
     use prost::Message;
-    let file_system_event =
-        Event::FileSystemCreate(vec![
-            ("/absolute/path".into(), None),
-            ("./relative_path".into(), Default::default())
-        ]);
+    let file_system_event = Event::FileSystemCreate(vec![
+        ("/absolute/path".into(), None),
+        ("./relative_path".into(), Default::default()),
+    ]);
     let protobuf_event: ProtobufEvent = file_system_event.clone().try_into().unwrap();
     let serialized_protobuf_event = protobuf_event.encode_to_vec();
     let deserialized_protobuf_event: ProtobufEvent =
@@ -1344,11 +1340,10 @@ fn serialize_file_system_create_event() {
 #[test]
 fn serialize_file_system_read_event() {
     use prost::Message;
-    let file_system_event =
-        Event::FileSystemRead(vec![
-            ("/absolute/path".into(), None),
-            ("./relative_path".into(), Default::default())
-        ]);
+    let file_system_event = Event::FileSystemRead(vec![
+        ("/absolute/path".into(), None),
+        ("./relative_path".into(), Default::default()),
+    ]);
     let protobuf_event: ProtobufEvent = file_system_event.clone().try_into().unwrap();
     let serialized_protobuf_event = protobuf_event.encode_to_vec();
     let deserialized_protobuf_event: ProtobufEvent =
@@ -1363,8 +1358,10 @@ fn serialize_file_system_read_event() {
 #[test]
 fn serialize_file_system_update_event() {
     use prost::Message;
-    let file_system_event =
-        Event::FileSystemUpdate(vec![("/absolute/path".into(), None), ("./relative_path".into(), Some(Default::default()))]);
+    let file_system_event = Event::FileSystemUpdate(vec![
+        ("/absolute/path".into(), None),
+        ("./relative_path".into(), Some(Default::default())),
+    ]);
     let protobuf_event: ProtobufEvent = file_system_event.clone().try_into().unwrap();
     let serialized_protobuf_event = protobuf_event.encode_to_vec();
     let deserialized_protobuf_event: ProtobufEvent =
@@ -1379,11 +1376,10 @@ fn serialize_file_system_update_event() {
 #[test]
 fn serialize_file_system_delete_event() {
     use prost::Message;
-    let file_system_event =
-        Event::FileSystemDelete(vec![
-            ("/absolute/path".into(), None),
-            ("./relative_path".into(), Default::default())
-        ]);
+    let file_system_event = Event::FileSystemDelete(vec![
+        ("/absolute/path".into(), None),
+        ("./relative_path".into(), Default::default()),
+    ]);
     let protobuf_event: ProtobufEvent = file_system_event.clone().try_into().unwrap();
     let serialized_protobuf_event = protobuf_event.encode_to_vec();
     let deserialized_protobuf_event: ProtobufEvent =

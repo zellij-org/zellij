@@ -94,10 +94,32 @@ pub fn watch_filesystem(
                 // the API is a bit unstable, so let's not rock the boat too much by adding another
                 // expensive syscall
                 let _ = senders.send_to_plugin(PluginInstruction::Update(vec![
-                    (None, None, Event::FileSystemRead(read_paths.into_iter().map(|p| (p, None)).collect())),
-                    (None, None, Event::FileSystemCreate(create_paths.into_iter().map(|p| (p, None)).collect())),
-                    (None, None, Event::FileSystemUpdate(update_paths.into_iter().map(|p| (p, None)).collect())),
-                    (None, None, Event::FileSystemDelete(delete_paths.into_iter().map(|p| (p, None)).collect())),
+                    (
+                        None,
+                        None,
+                        Event::FileSystemRead(read_paths.into_iter().map(|p| (p, None)).collect()),
+                    ),
+                    (
+                        None,
+                        None,
+                        Event::FileSystemCreate(
+                            create_paths.into_iter().map(|p| (p, None)).collect(),
+                        ),
+                    ),
+                    (
+                        None,
+                        None,
+                        Event::FileSystemUpdate(
+                            update_paths.into_iter().map(|p| (p, None)).collect(),
+                        ),
+                    ),
+                    (
+                        None,
+                        None,
+                        Event::FileSystemDelete(
+                            delete_paths.into_iter().map(|p| (p, None)).collect(),
+                        ),
+                    ),
                 ]));
             },
             Err(errors) => errors
