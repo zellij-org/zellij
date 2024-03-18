@@ -5,6 +5,7 @@ use clap::ArgEnum;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt;
+use std::fs::Metadata;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::time::Duration;
@@ -458,6 +459,25 @@ pub enum Mouse {
     Release(isize, usize),    // line and column
 }
 
+#[derive(Debug, Default, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct FileMetadata {
+    pub is_dir: bool,
+    pub is_file: bool,
+    pub is_symlink: bool,
+    pub len: u64,
+}
+
+impl From<Metadata> for FileMetadata {
+    fn from(metadata: Metadata) -> Self {
+        FileMetadata {
+            is_dir: metadata.is_dir(),
+            is_file: metadata.is_file(),
+            is_symlink: metadata.is_symlink(),
+            len: metadata.len(),
+        }
+    }
+}
+
 /// These events can be subscribed to with subscribe method exported by `zellij-tile`.
 /// Once subscribed to, they will trigger the `update` method of the `ZellijPlugin` trait.
 #[derive(Debug, Clone, PartialEq, EnumDiscriminants, ToString, Serialize, Deserialize)]
@@ -488,13 +508,13 @@ pub enum Event {
         String, // payload
     ),
     /// A file was created somewhere in the Zellij CWD folder
-    FileSystemCreate(Vec<PathBuf>),
+    FileSystemCreate(Vec<(PathBuf, Option<FileMetadata>)>),
     /// A file was accessed somewhere in the Zellij CWD folder
-    FileSystemRead(Vec<PathBuf>),
+    FileSystemRead(Vec<(PathBuf, Option<FileMetadata>)>),
     /// A file was modified somewhere in the Zellij CWD folder
-    FileSystemUpdate(Vec<PathBuf>),
+    FileSystemUpdate(Vec<(PathBuf, Option<FileMetadata>)>),
     /// A file was deleted somewhere in the Zellij CWD folder
-    FileSystemDelete(Vec<PathBuf>),
+    FileSystemDelete(Vec<(PathBuf, Option<FileMetadata>)>),
     /// A Result of plugin permission request
     PermissionRequestResult(PermissionStatus),
     SessionUpdate(
@@ -904,10 +924,11 @@ pub struct PaneInfo {
     pub is_selectable: bool,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub struct PluginIds {
     pub plugin_id: u32,
     pub zellij_pid: u32,
+    pub initial_cwd: PathBuf,
 }
 
 /// Tag used to identify the plugin in layout and config kdl files
@@ -1350,4 +1371,6 @@ pub enum PluginCommand {
     MessageToPlugin(MessageToPlugin),
     DisconnectOtherClients,
     KillSessions(Vec<String>), // one or more session names
+    ScanHostFolder(PathBuf),   // TODO: rename to ScanHostFolder
+    WatchFilesystem,
 }

@@ -5,7 +5,7 @@ pub struct PluginCommand {
     pub name: i32,
     #[prost(
         oneof = "plugin_command::Payload",
-        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 60"
+        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 60, 61"
     )]
     pub payload: ::core::option::Option<plugin_command::Payload>,
 }
@@ -114,6 +114,8 @@ pub mod plugin_command {
         MessageToPluginPayload(super::MessageToPluginPayload),
         #[prost(message, tag = "60")]
         KillSessionsPayload(super::KillSessionsPayload),
+        #[prost(string, tag = "61")]
+        ScanHostFolderPayload(::prost::alloc::string::String),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -416,6 +418,8 @@ pub enum CommandName {
     MessageToPlugin = 79,
     DisconnectOtherClients = 80,
     KillSessions = 81,
+    ScanHostFolder = 82,
+    WatchFilesystem = 83,
 }
 impl CommandName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -506,6 +510,8 @@ impl CommandName {
             CommandName::MessageToPlugin => "MessageToPlugin",
             CommandName::DisconnectOtherClients => "DisconnectOtherClients",
             CommandName::KillSessions => "KillSessions",
+            CommandName::ScanHostFolder => "ScanHostFolder",
+            CommandName::WatchFilesystem => "WatchFilesystem",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -593,6 +599,8 @@ impl CommandName {
             "MessageToPlugin" => Some(Self::MessageToPlugin),
             "DisconnectOtherClients" => Some(Self::DisconnectOtherClients),
             "KillSessions" => Some(Self::KillSessions),
+            "ScanHostFolder" => Some(Self::ScanHostFolder),
+            "WatchFilesystem" => Some(Self::WatchFilesystem),
             _ => None,
         }
     }

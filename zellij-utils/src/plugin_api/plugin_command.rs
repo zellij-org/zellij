@@ -855,7 +855,17 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 Some(Payload::KillSessionsPayload(KillSessionsPayload { session_names })) => {
                     Ok(PluginCommand::KillSessions(session_names))
                 },
-                _ => Err("Mismatched payload for PipeOutput"),
+                _ => Err("Mismatched payload for KillSessions"),
+            },
+            Some(CommandName::ScanHostFolder) => match protobuf_plugin_command.payload {
+                Some(Payload::ScanHostFolderPayload(folder_to_scan)) => {
+                    Ok(PluginCommand::ScanHostFolder(PathBuf::from(folder_to_scan)))
+                },
+                _ => Err("Mismatched payload for ScanHostFolder"),
+            },
+            Some(CommandName::WatchFilesystem) => match protobuf_plugin_command.payload {
+                Some(_) => Err("WatchFilesystem should have no payload, found a payload"),
+                None => Ok(PluginCommand::WatchFilesystem),
             },
             None => Err("Unrecognized plugin command"),
         }
@@ -1360,6 +1370,16 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                 payload: Some(Payload::KillSessionsPayload(KillSessionsPayload {
                     session_names,
                 })),
+            }),
+            PluginCommand::ScanHostFolder(folder_to_scan) => Ok(ProtobufPluginCommand {
+                name: CommandName::ScanHostFolder as i32,
+                payload: Some(Payload::ScanHostFolderPayload(
+                    folder_to_scan.display().to_string(),
+                )),
+            }),
+            PluginCommand::WatchFilesystem => Ok(ProtobufPluginCommand {
+                name: CommandName::WatchFilesystem as i32,
+                payload: None,
             }),
         }
     }

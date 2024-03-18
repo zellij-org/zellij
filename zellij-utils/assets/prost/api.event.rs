@@ -109,6 +109,23 @@ pub struct PermissionRequestResultPayload {
 pub struct FileListPayload {
     #[prost(string, repeated, tag = "1")]
     pub paths: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(message, repeated, tag = "2")]
+    pub paths_metadata: ::prost::alloc::vec::Vec<FileMetadata>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct FileMetadata {
+    /// if this is false, the metadata for this file has not been read
+    #[prost(bool, tag = "1")]
+    pub metadata_is_set: bool,
+    #[prost(bool, tag = "2")]
+    pub is_dir: bool,
+    #[prost(bool, tag = "3")]
+    pub is_file: bool,
+    #[prost(bool, tag = "4")]
+    pub is_symlink: bool,
+    #[prost(uint64, tag = "5")]
+    pub len: u64,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

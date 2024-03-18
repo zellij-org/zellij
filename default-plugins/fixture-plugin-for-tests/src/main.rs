@@ -67,6 +67,7 @@ impl ZellijPlugin for State {
             EventType::FileSystemUpdate,
             EventType::FileSystemDelete,
         ]);
+        watch_filesystem();
     }
 
     fn update(&mut self, event: Event) -> bool {
