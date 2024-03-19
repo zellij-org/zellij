@@ -209,6 +209,12 @@ pub const ZSH_AUTO_START_SCRIPT: &[u8] = include_bytes!(concat!(
     "assets/shell/auto-start.zsh"
 ));
 
+pub const NU_AUTO_START_SCRIPT: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/",
+    "assets/shell/auto-start.nu"
+));
+
 pub fn add_layout_ext(s: &str) -> String {
     match s {
         c if s.ends_with(".kdl") => c.to_owned(),
@@ -619,6 +625,13 @@ impl Setup {
     }
 
     fn generate_auto_start(shell: &str) {
+        let mut out = std::io::stdout();
+
+        if shell.to_lowercase() == "nu" {
+            let _ = out.write_all(NU_AUTO_START_SCRIPT);
+            return;
+        }
+
         let shell: Shell = match shell.to_lowercase().parse() {
             Ok(shell) => shell,
             _ => {
@@ -627,7 +640,6 @@ impl Setup {
             },
         };
 
-        let mut out = std::io::stdout();
         match shell {
             Shell::Bash => {
                 let _ = out.write_all(BASH_AUTO_START_SCRIPT);
