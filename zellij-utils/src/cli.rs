@@ -2,9 +2,10 @@ use crate::data::{Direction, InputMode, Resize};
 use crate::setup::Setup;
 use crate::{
     consts::{ZELLIJ_CONFIG_DIR_ENV, ZELLIJ_CONFIG_FILE_ENV},
+    errors::ZellijError,
     input::{layout::PluginUserConfiguration, options::CliOptions},
 };
-use clap::{Parser, Subcommand};
+use clap::{ArgEnum, Parser, Subcommand};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use url::Url;
@@ -94,6 +95,24 @@ pub enum SessionCommand {
     Options(CliOptions),
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, ArgEnum, PartialEq, Eq)]
+pub enum SessionStatus {
+    Alive,
+    Exited,
+}
+
+impl std::str::FromStr for Box<SessionStatus> {
+    type Err = ZellijError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().trim() {
+            _ if "alive".starts_with(s) => Ok(Box::new(SessionStatus::Alive)),
+            _ if "exited".starts_with(s) => Ok(Box::new(SessionStatus::Exited)),
+            _ => Err(ZellijError::UnknownStatus),
+        }
+    }
+}
+
 #[derive(Debug, Subcommand, Clone, Serialize, Deserialize)]
 pub enum Sessions {
     /// List active sessions
@@ -106,6 +125,10 @@ pub enum Sessions {
         /// Print just the session name
         #[clap(short, long, value_parser, takes_value(false), default_value("false"))]
         short: bool,
+
+        /// List sessions with the certain statuses: alive, exited
+        #[clap(short = 'S', long, value_parser)]
+        status: Vec<Box<SessionStatus>>,
     },
 
     /// Attach to a session
