@@ -166,6 +166,23 @@ pub const COMPACT_BAR_SWAP_LAYOUT: &[u8] = include_bytes!(concat!(
     "/",
     "assets/layouts/compact.swap.kdl"
 ));
+pub const FISH_FUNCTIONS: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/",
+    "assets/functions/functions.fish"
+));
+
+pub const BASH_FUNCTIONS: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/",
+    "assets/functions/functions.bash"
+));
+
+pub const ZSH_FUNCTIONS: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/",
+    "assets/functions/functions.zsh"
+));
 
 pub const WELCOME_LAYOUT: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -337,6 +354,10 @@ pub struct Setup {
     #[clap(long, value_name = "SHELL", value_parser)]
     pub generate_completion: Option<String>,
 
+    /// Generates functions for the specified shell
+    #[clap(long, value_name = "SHELL", value_parser)]
+    pub generate_functions: Option<String>,
+
     /// Generates auto-start script for the specified shell
     #[clap(long, value_name = "SHELL", value_parser)]
     pub generate_auto_start: Option<String>,
@@ -426,6 +447,11 @@ impl Setup {
 
         if let Some(shell) = &self.generate_completion {
             Self::generate_completion(shell);
+            std::process::exit(0);
+        }
+
+        if let Some(shell) = &self.generate_functions {
+            Self::generate_functions(shell);
             std::process::exit(0);
         }
 
@@ -591,6 +617,32 @@ impl Setup {
 
         Ok(())
     }
+
+    fn generate_functions(shell: &str) {
+        let shell: Shell = match shell.to_lowercase().parse() {
+            Ok(shell) => shell,
+            _ => {
+                eprintln!("Unsupported shell: {}", shell);
+                std::process::exit(1);
+            },
+        };
+        let mut out = std::io::stdout();
+        match shell {
+            Shell::Bash => {
+                let _ = out.write_all(BASH_FUNCTIONS);
+            },
+            Shell::Elvish => {},
+            Shell::Fish => {
+                let _ = out.write_all(FISH_FUNCTIONS);
+            },
+            Shell::PowerShell => {},
+            Shell::Zsh => {
+                let _ = out.write_all(ZSH_FUNCTIONS);
+            },
+            _ => {},
+        };
+    }
+
     fn generate_completion(shell: &str) {
         let shell: Shell = match shell.to_lowercase().parse() {
             Ok(shell) => shell,
