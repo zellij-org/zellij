@@ -116,7 +116,7 @@ macro_rules! active_tab_and_connected_client_id {
     ($screen:ident, $client_id:ident, $closure:expr, ?) => {
         match $screen.get_active_tab_mut($client_id) {
             Ok(active_tab) => {
-                $closure(active_tab, $client_id)?;
+                $closure(active_tab, $client_id).non_fatal();
             },
             Err(_) => {
                 if let Some(client_id) = $screen.get_first_client_id() {
