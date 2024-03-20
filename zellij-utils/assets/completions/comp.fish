@@ -18,6 +18,11 @@ end
 function zef
   command zellij edit --floating $argv
 end
+
+# the zpipe alias and its completions
+function __fish_complete_aliases
+  zellij list-aliases 2>/dev/null
+end
 function zpipe
   if count $argv > /dev/null
     command zellij pipe -p $argv
@@ -25,3 +30,4 @@ function zpipe
     command zellij pipe
   end
 end
+complete -c zpipe -f -a "(__fish_complete_aliases)" -d "Zpipes"

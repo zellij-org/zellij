@@ -667,3 +667,23 @@ fn generate_unique_session_name() -> String {
         process::exit(1);
     }
 }
+
+pub(crate) fn list_aliases(opts: CliArgs) {
+    let (config, _layout, _config_options, _config_without_layout, _config_options_without_layout) =
+        match Setup::from_cli_args(&opts) {
+            Ok(results) => results,
+            Err(e) => {
+                if let ConfigError::KdlError(error) = e {
+                    let report: Report = error.into();
+                    eprintln!("{:?}", report);
+                } else {
+                    eprintln!("{}", e);
+                }
+                process::exit(1);
+            },
+        };
+    for alias in config.plugins.list() {
+        println!("{}", alias);
+    }
+    process::exit(0);
+}

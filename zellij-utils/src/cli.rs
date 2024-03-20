@@ -107,7 +107,9 @@ pub enum Sessions {
         #[clap(short, long, value_parser, takes_value(false), default_value("false"))]
         short: bool,
     },
-
+    /// List existing plugin aliases
+    #[clap(visible_alias = "la")]
+    ListAliases,
     /// Attach to a session
     #[clap(visible_alias = "a")]
     Attach {
