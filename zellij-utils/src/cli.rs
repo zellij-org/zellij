@@ -107,7 +107,9 @@ pub enum Sessions {
         #[clap(short, long, value_parser, takes_value(false), default_value("false"))]
         short: bool,
     },
-
+    /// List existing plugin aliases
+    #[clap(visible_alias = "la")]
+    ListAliases,
     /// Attach to a session
     #[clap(visible_alias = "a")]
     Attach {
@@ -231,7 +233,7 @@ pub enum Sessions {
         height: Option<String>,
     },
     /// Load a plugin
-    #[clap(visible_alias = "r")]
+    #[clap(visible_alias = "p")]
     Plugin {
         /// Plugin URL, can either start with http(s), file: or zellij:
         #[clap(last(true), required(true))]

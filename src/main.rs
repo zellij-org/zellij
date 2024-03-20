@@ -170,6 +170,8 @@ fn main() {
     })) = opts.command
     {
         commands::list_sessions(no_formatting, short);
+    } else if let Some(Command::Sessions(Sessions::ListAliases)) = opts.command {
+        commands::list_aliases(opts);
     } else if let Some(Command::Sessions(Sessions::KillAllSessions { yes })) = opts.command {
         commands::kill_all_sessions(yes);
     } else if let Some(Command::Sessions(Sessions::KillSession { ref target_session })) =
