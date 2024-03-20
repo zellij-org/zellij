@@ -4,8 +4,8 @@ function ze () { zellij edit "$*";}
 function zef () { zellij edit --floating "$*";}
 function zpipe () { 
   if [ -z "$1" ]; then
-    /home/aram/code/zellij/target/dev-opt/zellij pipe;
+    zellij pipe;
   else 
-    /home/aram/code/zellij/target/dev-opt/zellij pipe -p $1;
+    zellij pipe -p $1;
   fi
 }
