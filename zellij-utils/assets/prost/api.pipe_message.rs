@@ -29,6 +29,7 @@ pub struct Arg {
 pub enum PipeSource {
     Cli = 0,
     Plugin = 1,
+    Keybind = 2,
 }
 impl PipeSource {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -39,6 +40,7 @@ impl PipeSource {
         match self {
             PipeSource::Cli => "Cli",
             PipeSource::Plugin => "Plugin",
+            PipeSource::Keybind => "Keybind",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -46,6 +48,7 @@ impl PipeSource {
         match value {
             "Cli" => Some(Self::Cli),
             "Plugin" => Some(Self::Plugin),
+            "Keybind" => Some(Self::Keybind),
             _ => None,
         }
     }

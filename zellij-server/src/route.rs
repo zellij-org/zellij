@@ -1,4 +1,4 @@
-use std::collections::{HashSet, VecDeque};
+use std::collections::{BTreeMap, HashSet, VecDeque};
 use std::sync::{Arc, RwLock};
 
 use crate::thread_bus::ThreadSenders;
@@ -10,6 +10,7 @@ use crate::{
     screen::ScreenInstruction,
     ServerInstruction, SessionMetaData, SessionState,
 };
+use uuid::Uuid;
 use zellij_utils::{
     channels::SenderWithContext,
     data::{Direction, Event, PluginCapabilities, ResizeStrategy},
@@ -866,6 +867,48 @@ pub(crate) fn route_action(
                 senders
                     .send_to_plugin(PluginInstruction::CliPipe {
                         pipe_id,
+                        name,
+                        payload,
+                        plugin,
+                        args,
+                        configuration,
+                        floating,
+                        pane_id_to_replace,
+                        cwd,
+                        pane_title,
+                        skip_cache,
+                        cli_client_id: client_id,
+                    })
+                    .with_context(err_context)?;
+            } else {
+                log::error!("Message must have a name");
+            }
+        },
+        Action::KeybindPipe {
+            mut name,
+            payload,
+            plugin,
+            args,
+            mut configuration,
+            floating,
+            in_place,
+            skip_cache,
+            cwd,
+            pane_title,
+            launch_new,
+            ..
+        } => {
+            if let Some(name) = name.take() {
+                let should_open_in_place = in_place.unwrap_or(false);
+                let pane_id_to_replace = if should_open_in_place { pane_id } else { None };
+                if launch_new {
+                    // we do this to make sure the plugin is unique (has a unique configuration parameter)
+                    configuration
+                        .get_or_insert_with(BTreeMap::new)
+                        .insert("_zellij_id".to_owned(), Uuid::new_v4().to_string());
+                }
+                senders
+                    .send_to_plugin(PluginInstruction::KeybindPipe {
                         name,
                         payload,
                         plugin,

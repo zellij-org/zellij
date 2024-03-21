@@ -401,6 +401,7 @@ pub enum PluginContext {
     MessageFromPlugin,
     UnblockCliPipes,
     WatchFilesystem,
+    KeybindPipe,
 }
 
 /// Stack call representations corresponding to the different types of [`ClientInstruction`]s.

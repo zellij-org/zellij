@@ -15,6 +15,7 @@ message PipeMessage {
 enum PipeSource {
   Cli = 0;
   Plugin = 1;
+  Keybind = 2;
 }
 
 message Arg {
