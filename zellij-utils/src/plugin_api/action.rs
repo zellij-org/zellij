@@ -689,6 +689,23 @@ impl TryFrom<ProtobufAction> for Action {
                 },
                 _ => Err("Wrong payload for Action::RenameSession"),
             },
+            Some(ProtobufActionName::KeybindPipe) => match protobuf_action.optional_payload {
+                Some(_) => Err("KeybindPipe should not have a payload"),
+                // TODO: at some point we might want to support a payload here
+                None => Ok(Action::KeybindPipe {
+                    name: None,
+                    payload: None,
+                    args: None,
+                    plugin: None,
+                    configuration: None,
+                    launch_new: false,
+                    skip_cache: false,
+                    floating: None,
+                    in_place: None,
+                    cwd: None,
+                    pane_title: None,
+                }),
+            },
             _ => Err("Unknown Action"),
         }
     }
@@ -1181,25 +1198,16 @@ impl TryFrom<Action> for ProtobufAction {
                 skip_plugin_cache,
                 _cwd,
                 _coordinates,
-            ) => {
-                //                 let plugin_url: Url = match run_plugin {
-                //                     RunPluginOrAlias::RunPlugin(run_plugin) => Url::from(&run_plugin.location),
-                //                     RunPluginOrAlias::Alias(plugin_alias) => {
-                //                         // TODO: support plugin alias
-                //                         unimplemented!()
-                //                     }
-                //                 };
-                Ok(ProtobufAction {
-                    name: ProtobufActionName::NewFloatingPluginPane as i32,
-                    optional_payload: Some(OptionalPayload::NewFloatingPluginPanePayload(
-                        NewPluginPanePayload {
-                            plugin_url: run_plugin.location_string(),
-                            pane_name,
-                            skip_plugin_cache,
-                        },
-                    )),
-                })
-            },
+            ) => Ok(ProtobufAction {
+                name: ProtobufActionName::NewFloatingPluginPane as i32,
+                optional_payload: Some(OptionalPayload::NewFloatingPluginPanePayload(
+                    NewPluginPanePayload {
+                        plugin_url: run_plugin.location_string(),
+                        pane_name,
+                        skip_plugin_cache,
+                    },
+                )),
+            }),
             Action::StartOrReloadPlugin(run_plugin) => Ok(ProtobufAction {
                 name: ProtobufActionName::StartOrReloadPlugin as i32,
                 optional_payload: Some(OptionalPayload::StartOrReloadPluginPayload(
@@ -1272,6 +1280,10 @@ impl TryFrom<Action> for ProtobufAction {
             Action::RenameSession(session_name) => Ok(ProtobufAction {
                 name: ProtobufActionName::RenameSession as i32,
                 optional_payload: Some(OptionalPayload::RenameSessionPayload(session_name)),
+            }),
+            Action::KeybindPipe { .. } => Ok(ProtobufAction {
+                name: ProtobufActionName::KeybindPipe as i32,
+                optional_payload: None,
             }),
             Action::NoOp
             | Action::Confirm

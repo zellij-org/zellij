@@ -454,6 +454,7 @@ pub enum ActionName {
     LaunchPlugin = 81,
     CliPipe = 82,
     MoveTab = 83,
+    KeybindPipe = 84,
 }
 impl ActionName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -546,6 +547,7 @@ impl ActionName {
             ActionName::LaunchPlugin => "LaunchPlugin",
             ActionName::CliPipe => "CliPipe",
             ActionName::MoveTab => "MoveTab",
+            ActionName::KeybindPipe => "KeybindPipe",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -635,6 +637,7 @@ impl ActionName {
             "LaunchPlugin" => Some(Self::LaunchPlugin),
             "CliPipe" => Some(Self::CliPipe),
             "MoveTab" => Some(Self::MoveTab),
+            "KeybindPipe" => Some(Self::KeybindPipe),
             _ => None,
         }
     }

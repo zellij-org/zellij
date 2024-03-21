@@ -284,6 +284,19 @@ pub enum Action {
         cwd: Option<PathBuf>,
         pane_title: Option<String>,
     },
+    KeybindPipe {
+        name: Option<String>,
+        payload: Option<String>,
+        args: Option<BTreeMap<String, String>>,
+        plugin: Option<String>,
+        configuration: Option<BTreeMap<String, String>>,
+        launch_new: bool,
+        skip_cache: bool,
+        floating: Option<bool>,
+        in_place: Option<bool>,
+        cwd: Option<PathBuf>,
+        pane_title: Option<String>,
+    },
 }
 
 impl Action {

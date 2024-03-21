@@ -119,6 +119,19 @@ pub enum PluginInstruction {
         skip_cache: bool,
         cli_client_id: ClientId,
     },
+    KeybindPipe {
+        name: String,
+        payload: Option<String>,
+        plugin: Option<String>,
+        args: Option<BTreeMap<String, String>>,
+        configuration: Option<BTreeMap<String, String>>,
+        floating: Option<bool>,
+        pane_id_to_replace: Option<PaneId>,
+        pane_title: Option<String>,
+        cwd: Option<PathBuf>,
+        skip_cache: bool,
+        cli_client_id: ClientId,
+    },
     CachePluginEvents {
         plugin_id: PluginId,
     },
@@ -164,6 +177,7 @@ impl From<&PluginInstruction> for PluginContext {
             PluginInstruction::MessageFromPlugin { .. } => PluginContext::MessageFromPlugin,
             PluginInstruction::UnblockCliPipes { .. } => PluginContext::UnblockCliPipes,
             PluginInstruction::WatchFilesystem => PluginContext::WatchFilesystem,
+            PluginInstruction::KeybindPipe { .. } => PluginContext::KeybindPipe,
         }
     }
 }
@@ -429,7 +443,7 @@ pub(crate) fn plugin_thread_main(
                 )];
                 wasm_bridge.update_plugins(updates, shutdown_send.clone())?;
             },
-            PluginInstruction::PluginSubscribedToEvents(_plugin_id, _client_id, events) => {
+            PluginInstruction::PluginSubscribedToEvents(_plugin_id, _client_id, _events) => {
                 // no-op, there used to be stuff we did here - now there isn't, but we might want
                 // to add stuff here in the future
             },
@@ -519,6 +533,57 @@ pub(crate) fn plugin_thread_main(
                         // no specific destination, send to all plugins
                         pipe_to_all_plugins(
                             PipeSource::Cli(pipe_id.clone()),
+                            &name,
+                            &payload,
+                            &args,
+                            &mut wasm_bridge,
+                            &mut pipe_messages,
+                        );
+                    },
+                }
+                wasm_bridge.pipe_messages(pipe_messages, shutdown_send.clone())?;
+            },
+            PluginInstruction::KeybindPipe {
+                name,
+                payload,
+                plugin,
+                args,
+                configuration,
+                floating,
+                pane_id_to_replace,
+                pane_title,
+                cwd,
+                skip_cache,
+                cli_client_id,
+            } => {
+                let should_float = floating.unwrap_or(true);
+                let mut pipe_messages = vec![];
+                match plugin {
+                    Some(plugin_url) => {
+                        // send to specific plugin(s)
+                        pipe_to_specific_plugins(
+                            PipeSource::Keybind,
+                            &plugin_url,
+                            &configuration,
+                            &cwd,
+                            skip_cache,
+                            should_float,
+                            &pane_id_to_replace,
+                            &pane_title,
+                            Some(cli_client_id),
+                            &mut pipe_messages,
+                            &name,
+                            &payload,
+                            &args,
+                            &bus,
+                            &mut wasm_bridge,
+                            &plugin_aliases,
+                        );
+                    },
+                    None => {
+                        // no specific destination, send to all plugins
+                        pipe_to_all_plugins(
+                            PipeSource::Keybind,
                             &name,
                             &payload,
                             &args,

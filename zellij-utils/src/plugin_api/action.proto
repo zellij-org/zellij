@@ -243,6 +243,7 @@ enum ActionName {
     LaunchPlugin = 81;
     CliPipe = 82;
     MoveTab = 83;
+    KeybindPipe = 84;
 }
 
 message Position {

@@ -15,6 +15,7 @@ use crate::input::theme::{FrameConfig, Theme, Themes, UiConfig};
 use kdl_layout_parser::KdlLayoutParser;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use strum::IntoEnumIterator;
+use uuid::Uuid;
 
 use miette::NamedSource;
 
@@ -1078,6 +1079,64 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                 action_arguments,
                 kdl_action
             ),
+            "MessagePlugin" => {
+                let arguments = action_arguments.iter().copied();
+                let mut args = kdl_arguments_that_are_strings(arguments)?;
+                let plugin_path = if args.is_empty() {
+                    None
+                } else {
+                    Some(args.remove(0))
+                };
+
+                let command_metadata = action_children.iter().next();
+                let launch_new = command_metadata
+                    .and_then(|c_m| kdl_child_bool_value_for_entry(c_m, "launch_new"))
+                    .unwrap_or(false);
+                let skip_cache = command_metadata
+                    .and_then(|c_m| kdl_child_bool_value_for_entry(c_m, "skip_cache"))
+                    .unwrap_or(false);
+                let should_float = command_metadata
+                    .and_then(|c_m| kdl_child_bool_value_for_entry(c_m, "floating"))
+                    .unwrap_or(false);
+                let name = command_metadata
+                    .and_then(|c_m| kdl_child_string_value_for_entry(c_m, "name"))
+                    .map(|n| n.to_owned());
+                let payload = command_metadata
+                    .and_then(|c_m| kdl_child_string_value_for_entry(c_m, "payload"))
+                    .map(|p| p.to_owned());
+                let title = command_metadata
+                    .and_then(|c_m| kdl_child_string_value_for_entry(c_m, "title"))
+                    .map(|t| t.to_owned());
+                let configuration = KdlLayoutParser::parse_plugin_user_configuration(&kdl_action)?;
+                let configuration = if configuration.inner().is_empty() {
+                    None
+                } else {
+                    Some(configuration.inner().clone())
+                };
+                let cwd = kdl_get_string_property_or_child_value!(kdl_action, "cwd")
+                    .map(|s| PathBuf::from(s));
+
+                let name = name
+                    // first we try to take the explicitly supplied message name
+                    // then we use the plugin, to facilitate using aliases
+                    .or_else(|| plugin_path.clone())
+                    // then we use a uuid to at least have some sort of identifier for this message
+                    .or_else(|| Some(Uuid::new_v4().to_string()));
+
+                Ok(Action::KeybindPipe {
+                    name,
+                    payload,
+                    args: None, // TODO: consider supporting this if there's a need
+                    plugin: plugin_path,
+                    configuration,
+                    launch_new,
+                    skip_cache,
+                    floating: Some(should_float),
+                    in_place: None, // TODO: support this
+                    cwd,
+                    pane_title: title,
+                })
+            },
             _ => Err(ConfigError::new_kdl_error(
                 format!("Unsupported action: {}", action_name).into(),
                 kdl_action.span().offset(),
@@ -1854,7 +1913,7 @@ impl PluginAliases {
                 {
                     let configuration =
                         KdlLayoutParser::parse_plugin_user_configuration(&alias_definition)?;
-                    let mut initial_cwd =
+                    let initial_cwd =
                         kdl_get_string_property_or_child_value!(alias_definition, "cwd")
                             .map(|s| PathBuf::from(s));
                     let run_plugin = RunPlugin::from_url(string_url)?
