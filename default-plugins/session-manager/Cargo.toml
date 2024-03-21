@@ -11,3 +11,4 @@ chrono = "0.4.0"
 fuzzy-matcher = "0.3.7"
 unicode-width = "0.1.10"
 humantime = "2.1.0"
+uuid = { version = "1.7.0", features = ["v4"] }

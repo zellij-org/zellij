@@ -259,6 +259,10 @@ fn host_run_plugin_command(env: FunctionEnvMut<ForeignFunctionEnv>) {
                     PluginCommand::MessageToPlugin(message) => message_to_plugin(env, message)?,
                     PluginCommand::DisconnectOtherClients => disconnect_other_clients(env),
                     PluginCommand::KillSessions(session_list) => kill_sessions(session_list),
+                    PluginCommand::ScanHostFolder(folder_to_scan) => {
+                        scan_host_folder(env, folder_to_scan)
+                    },
+                    PluginCommand::WatchFilesystem => watch_filesystem(env),
                 },
                 (PermissionStatus::Denied, permission) => {
                     log::error!(
@@ -398,6 +402,7 @@ fn get_plugin_ids(env: &ForeignFunctionEnv) {
     let ids = PluginIds {
         plugin_id: env.plugin_env.plugin_id,
         zellij_pid: process::id(),
+        initial_cwd: env.plugin_env.plugin_cwd.clone(),
     };
     ProtobufPluginIds::try_from(ids)
         .map_err(|e| anyhow!("Failed to serialized plugin ids: {}", e))
@@ -1323,6 +1328,82 @@ fn kill_sessions(session_names: Vec<String>) {
                 log::error!("Failed to kill session {}: {:?}", session_name, e);
             },
         };
+    }
+}
+
+fn watch_filesystem(env: &ForeignFunctionEnv) {
+    let _ = env
+        .plugin_env
+        .senders
+        .to_plugin
+        .as_ref()
+        .map(|sender| sender.send(PluginInstruction::WatchFilesystem));
+}
+
+fn scan_host_folder(env: &ForeignFunctionEnv, folder_to_scan: PathBuf) {
+    if !folder_to_scan.starts_with("/host") {
+        log::error!(
+            "Can only scan files in the /host filesystem, found: {}",
+            folder_to_scan.display()
+        );
+        return;
+    }
+    let plugin_host_folder = env.plugin_env.plugin_cwd.clone();
+    let folder_to_scan = plugin_host_folder.join(folder_to_scan.strip_prefix("/host").unwrap());
+    match folder_to_scan.canonicalize() {
+        Ok(folder_to_scan) => {
+            if !folder_to_scan.starts_with(&plugin_host_folder) {
+                log::error!(
+                    "Can only scan files in the plugin filesystem: {}, found: {}",
+                    plugin_host_folder.display(),
+                    folder_to_scan.display()
+                );
+                return;
+            }
+            let reading_folder = std::fs::read_dir(&folder_to_scan);
+            match reading_folder {
+                Ok(reading_folder) => {
+                    let send_plugin_instructions = env.plugin_env.senders.to_plugin.clone();
+                    let update_target = Some(env.plugin_env.plugin_id);
+                    let client_id = env.plugin_env.client_id;
+                    thread::spawn({
+                        move || {
+                            let mut paths_in_folder = vec![];
+                            for entry in reading_folder {
+                                if let Ok(entry) = entry {
+                                    let entry_metadata = entry.metadata().ok().map(|m| m.into());
+                                    paths_in_folder.push((
+                                        PathBuf::from("/host").join(
+                                            entry.path().strip_prefix(&plugin_host_folder).unwrap(),
+                                        ),
+                                        entry_metadata.into(),
+                                    ));
+                                }
+                            }
+                            let _ = send_plugin_instructions
+                                .ok_or(anyhow!("found no sender to send plugin instruction to"))
+                                .map(|sender| {
+                                    let _ = sender.send(PluginInstruction::Update(vec![(
+                                        update_target,
+                                        Some(client_id),
+                                        Event::FileSystemUpdate(paths_in_folder),
+                                    )]));
+                                })
+                                .non_fatal();
+                        }
+                    });
+                },
+                Err(e) => {
+                    log::error!("Failed to read folder {}: {e}", folder_to_scan.display());
+                },
+            }
+        },
+        Err(e) => {
+            log::error!(
+                "Failed to canonicalize path {folder_to_scan:?} when scanning folder: {:?}",
+                e
+            );
+        },
     }
 }
 

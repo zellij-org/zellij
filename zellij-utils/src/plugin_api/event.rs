@@ -3,10 +3,11 @@ pub use super::generated_api::api::{
     event::{
         event::Payload as ProtobufEventPayload, CopyDestination as ProtobufCopyDestination,
         Event as ProtobufEvent, EventNameList as ProtobufEventNameList,
-        EventType as ProtobufEventType, InputModeKeybinds as ProtobufInputModeKeybinds,
-        KeyBind as ProtobufKeyBind, LayoutInfo as ProtobufLayoutInfo,
-        ModeUpdatePayload as ProtobufModeUpdatePayload, PaneInfo as ProtobufPaneInfo,
-        PaneManifest as ProtobufPaneManifest, ResurrectableSession as ProtobufResurrectableSession,
+        EventType as ProtobufEventType, FileMetadata as ProtobufFileMetadata,
+        InputModeKeybinds as ProtobufInputModeKeybinds, KeyBind as ProtobufKeyBind,
+        LayoutInfo as ProtobufLayoutInfo, ModeUpdatePayload as ProtobufModeUpdatePayload,
+        PaneInfo as ProtobufPaneInfo, PaneManifest as ProtobufPaneManifest,
+        ResurrectableSession as ProtobufResurrectableSession,
         SessionManifest as ProtobufSessionManifest, TabInfo as ProtobufTabInfo, *,
     },
     input_mode::InputMode as ProtobufInputMode,
@@ -14,8 +15,8 @@ pub use super::generated_api::api::{
     style::Style as ProtobufStyle,
 };
 use crate::data::{
-    CopyDestination, Event, EventType, InputMode, Key, LayoutInfo, ModeInfo, Mouse, PaneInfo,
-    PaneManifest, PermissionStatus, PluginCapabilities, SessionInfo, Style, TabInfo,
+    CopyDestination, Event, EventType, FileMetadata, InputMode, Key, LayoutInfo, ModeInfo, Mouse,
+    PaneInfo, PaneManifest, PermissionStatus, PluginCapabilities, SessionInfo, Style, TabInfo,
 };
 
 use crate::errors::prelude::*;
@@ -124,7 +125,8 @@ impl TryFrom<ProtobufEvent> for Event {
                     let file_paths = file_list_payload
                         .paths
                         .iter()
-                        .map(|p| PathBuf::from(p))
+                        .zip(file_list_payload.paths_metadata.iter())
+                        .map(|(p, m)| (PathBuf::from(p), m.into()))
                         .collect();
                     Ok(Event::FileSystemCreate(file_paths))
                 },
@@ -135,7 +137,8 @@ impl TryFrom<ProtobufEvent> for Event {
                     let file_paths = file_list_payload
                         .paths
                         .iter()
-                        .map(|p| PathBuf::from(p))
+                        .zip(file_list_payload.paths_metadata.iter())
+                        .map(|(p, m)| (PathBuf::from(p), m.into()))
                         .collect();
                     Ok(Event::FileSystemRead(file_paths))
                 },
@@ -146,7 +149,8 @@ impl TryFrom<ProtobufEvent> for Event {
                     let file_paths = file_list_payload
                         .paths
                         .iter()
-                        .map(|p| PathBuf::from(p))
+                        .zip(file_list_payload.paths_metadata.iter())
+                        .map(|(p, m)| (PathBuf::from(p), m.into()))
                         .collect();
                     Ok(Event::FileSystemUpdate(file_paths))
                 },
@@ -157,7 +161,8 @@ impl TryFrom<ProtobufEvent> for Event {
                     let file_paths = file_list_payload
                         .paths
                         .iter()
-                        .map(|p| PathBuf::from(p))
+                        .zip(file_list_payload.paths_metadata.iter())
+                        .map(|(p, m)| (PathBuf::from(p), m.into()))
                         .collect();
                     Ok(Event::FileSystemDelete(file_paths))
                 },
@@ -322,36 +327,64 @@ impl TryFrom<Event> for ProtobufEvent {
                     payload,
                 })),
             }),
-            Event::FileSystemCreate(paths) => {
+            Event::FileSystemCreate(event_paths) => {
+                let mut paths = vec![];
+                let mut paths_metadata = vec![];
+                for (path, path_metadata) in event_paths {
+                    paths.push(path.display().to_string());
+                    paths_metadata.push(path_metadata.into());
+                }
                 let file_list_payload = FileListPayload {
-                    paths: paths.iter().map(|p| p.display().to_string()).collect(),
+                    paths,
+                    paths_metadata,
                 };
                 Ok(ProtobufEvent {
                     name: ProtobufEventType::FileSystemCreate as i32,
                     payload: Some(event::Payload::FileListPayload(file_list_payload)),
                 })
             },
-            Event::FileSystemRead(paths) => {
+            Event::FileSystemRead(event_paths) => {
+                let mut paths = vec![];
+                let mut paths_metadata = vec![];
+                for (path, path_metadata) in event_paths {
+                    paths.push(path.display().to_string());
+                    paths_metadata.push(path_metadata.into());
+                }
                 let file_list_payload = FileListPayload {
-                    paths: paths.iter().map(|p| p.display().to_string()).collect(),
+                    paths,
+                    paths_metadata,
                 };
                 Ok(ProtobufEvent {
                     name: ProtobufEventType::FileSystemRead as i32,
                     payload: Some(event::Payload::FileListPayload(file_list_payload)),
                 })
             },
-            Event::FileSystemUpdate(paths) => {
+            Event::FileSystemUpdate(event_paths) => {
+                let mut paths = vec![];
+                let mut paths_metadata = vec![];
+                for (path, path_metadata) in event_paths {
+                    paths.push(path.display().to_string());
+                    paths_metadata.push(path_metadata.into());
+                }
                 let file_list_payload = FileListPayload {
-                    paths: paths.iter().map(|p| p.display().to_string()).collect(),
+                    paths,
+                    paths_metadata,
                 };
                 Ok(ProtobufEvent {
                     name: ProtobufEventType::FileSystemUpdate as i32,
                     payload: Some(event::Payload::FileListPayload(file_list_payload)),
                 })
             },
-            Event::FileSystemDelete(paths) => {
+            Event::FileSystemDelete(event_paths) => {
+                let mut paths = vec![];
+                let mut paths_metadata = vec![];
+                for (path, path_metadata) in event_paths {
+                    paths.push(path.display().to_string());
+                    paths_metadata.push(path_metadata.into());
+                }
                 let file_list_payload = FileListPayload {
-                    paths: paths.iter().map(|p| p.display().to_string()).collect(),
+                    paths,
+                    paths_metadata,
                 };
                 Ok(ProtobufEvent {
                     name: ProtobufEventType::FileSystemDelete as i32,
@@ -958,6 +991,39 @@ impl From<(String, Duration)> for ProtobufResurrectableSession {
     }
 }
 
+impl From<&ProtobufFileMetadata> for Option<FileMetadata> {
+    fn from(protobuf_file_metadata: &ProtobufFileMetadata) -> Option<FileMetadata> {
+        if protobuf_file_metadata.metadata_is_set {
+            Some(FileMetadata {
+                is_file: protobuf_file_metadata.is_file,
+                is_dir: protobuf_file_metadata.is_dir,
+                is_symlink: protobuf_file_metadata.is_symlink,
+                len: protobuf_file_metadata.len,
+            })
+        } else {
+            None
+        }
+    }
+}
+
+impl From<Option<FileMetadata>> for ProtobufFileMetadata {
+    fn from(file_metadata: Option<FileMetadata>) -> ProtobufFileMetadata {
+        match file_metadata {
+            Some(file_metadata) => ProtobufFileMetadata {
+                metadata_is_set: true,
+                is_file: file_metadata.is_file,
+                is_dir: file_metadata.is_dir,
+                is_symlink: file_metadata.is_symlink,
+                len: file_metadata.len,
+            },
+            None => ProtobufFileMetadata {
+                metadata_is_set: false,
+                ..Default::default()
+            },
+        }
+    }
+}
+
 #[test]
 fn serialize_mode_update_event() {
     use prost::Message;
@@ -1256,8 +1322,10 @@ fn serialize_custom_message_event() {
 #[test]
 fn serialize_file_system_create_event() {
     use prost::Message;
-    let file_system_event =
-        Event::FileSystemCreate(vec!["/absolute/path".into(), "./relative_path".into()]);
+    let file_system_event = Event::FileSystemCreate(vec![
+        ("/absolute/path".into(), None),
+        ("./relative_path".into(), Default::default()),
+    ]);
     let protobuf_event: ProtobufEvent = file_system_event.clone().try_into().unwrap();
     let serialized_protobuf_event = protobuf_event.encode_to_vec();
     let deserialized_protobuf_event: ProtobufEvent =
@@ -1272,8 +1340,10 @@ fn serialize_file_system_create_event() {
 #[test]
 fn serialize_file_system_read_event() {
     use prost::Message;
-    let file_system_event =
-        Event::FileSystemRead(vec!["/absolute/path".into(), "./relative_path".into()]);
+    let file_system_event = Event::FileSystemRead(vec![
+        ("/absolute/path".into(), None),
+        ("./relative_path".into(), Default::default()),
+    ]);
     let protobuf_event: ProtobufEvent = file_system_event.clone().try_into().unwrap();
     let serialized_protobuf_event = protobuf_event.encode_to_vec();
     let deserialized_protobuf_event: ProtobufEvent =
@@ -1288,8 +1358,10 @@ fn serialize_file_system_read_event() {
 #[test]
 fn serialize_file_system_update_event() {
     use prost::Message;
-    let file_system_event =
-        Event::FileSystemUpdate(vec!["/absolute/path".into(), "./relative_path".into()]);
+    let file_system_event = Event::FileSystemUpdate(vec![
+        ("/absolute/path".into(), None),
+        ("./relative_path".into(), Some(Default::default())),
+    ]);
     let protobuf_event: ProtobufEvent = file_system_event.clone().try_into().unwrap();
     let serialized_protobuf_event = protobuf_event.encode_to_vec();
     let deserialized_protobuf_event: ProtobufEvent =
@@ -1304,8 +1376,10 @@ fn serialize_file_system_update_event() {
 #[test]
 fn serialize_file_system_delete_event() {
     use prost::Message;
-    let file_system_event =
-        Event::FileSystemDelete(vec!["/absolute/path".into(), "./relative_path".into()]);
+    let file_system_event = Event::FileSystemDelete(vec![
+        ("/absolute/path".into(), None),
+        ("./relative_path".into(), Default::default()),
+    ]);
     let protobuf_event: ProtobufEvent = file_system_event.clone().try_into().unwrap();
     let serialized_protobuf_event = protobuf_event.encode_to_vec();
     let deserialized_protobuf_event: ProtobufEvent =

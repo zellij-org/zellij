@@ -69,7 +69,7 @@ fn main() {
             height,
         })) = opts.command
         {
-            let cwd = std::env::current_dir().ok();
+            let cwd = None;
             let command_cli_action = CliAction::NewPane {
                 command: vec![],
                 plugin: Some(url),
@@ -171,6 +171,8 @@ fn main() {
     })) = opts.command
     {
         commands::list_sessions(no_formatting, short, reverse);
+    } else if let Some(Command::Sessions(Sessions::ListAliases)) = opts.command {
+        commands::list_aliases(opts);
     } else if let Some(Command::Sessions(Sessions::KillAllSessions { yes })) = opts.command {
         commands::kill_all_sessions(yes);
     } else if let Some(Command::Sessions(Sessions::KillSession { ref target_session })) =

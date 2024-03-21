@@ -25,6 +25,9 @@ impl PluginAliases {
     pub fn from_data(aliases: BTreeMap<String, RunPlugin>) -> Self {
         PluginAliases { aliases }
     }
+    pub fn list(&self) -> Vec<String> {
+        self.aliases.keys().cloned().collect()
+    }
 }
 
 /// Plugin metadata

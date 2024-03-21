@@ -74,7 +74,7 @@ fn pipe_client(
     os_input: &mut Box<dyn ClientOsApi>,
     pipe_id: String,
     mut name: Option<String>,
-    payload: Option<String>,
+    mut payload: Option<String>,
     plugin: Option<String>,
     args: Option<BTreeMap<String, String>>,
     mut configuration: Option<BTreeMap<String, String>>,
@@ -87,7 +87,13 @@ fn pipe_client(
     pane_title: Option<String>,
 ) {
     let mut stdin = os_input.get_stdin_reader();
-    let name = name.take().or_else(|| Some(Uuid::new_v4().to_string()));
+    let name = name
+        // first we try to take the explicitly supplied message name
+        .take()
+        // then we use the plugin, to facilitate using aliases
+        .or_else(|| plugin.clone())
+        // then we use a uuid to at least have some sort of identifier for this message
+        .or_else(|| Some(Uuid::new_v4().to_string()));
     if launch_new {
         // we do this to make sure the plugin is unique (has a unique configuration parameter) so
         // that a new one would be launched, but we'll still send it to the same instance rather
@@ -116,26 +122,30 @@ fn pipe_client(
             None,
         )
     };
+    let is_piped = !os_input.stdin_is_terminal();
     loop {
-        if payload.is_some() {
-            // we got payload from the command line, we should use it and not wait for more
-            let msg = create_msg(payload);
+        if let Some(payload) = payload.take() {
+            let msg = create_msg(Some(payload));
             os_input.send_to_server(msg);
-            break;
-        }
-        // we didn't get payload from the command line, meaning we listen on STDIN because this
-        // signifies the user is about to pipe more (eg. cat my-large-file | zellij pipe ...)
-        let mut buffer = String::new();
-        let _ = stdin.read_line(&mut buffer);
-        if buffer.is_empty() {
-            // end of pipe, send an empty message down the pipe
+        } else if !is_piped {
+            // here we send an empty message to trigger the plugin, because we don't have any more
+            // data
             let msg = create_msg(None);
             os_input.send_to_server(msg);
-            break;
         } else {
-            // we've got data! send it down the pipe (most common)
-            let msg = create_msg(Some(buffer));
-            os_input.send_to_server(msg);
+            // we didn't get payload from the command line, meaning we listen on STDIN because this
+            // signifies the user is about to pipe more (eg. cat my-large-file | zellij pipe ...)
+            let mut buffer = String::new();
+            let _ = stdin.read_line(&mut buffer);
+            if buffer.is_empty() {
+                // TODO: consider notifying the relevant plugin that the pipe has ended with a
+                // specialized message
+                break;
+            } else {
+                // we've got data! send it down the pipe (most common)
+                let msg = create_msg(Some(buffer));
+                os_input.send_to_server(msg);
+            }
         }
         loop {
             // wait for a response and act accordingly
@@ -144,7 +154,13 @@ fn pipe_client(
                     // unblock this pipe, meaning we need to stop waiting for a response and read
                     // once more from STDIN
                     if pipe_name == pipe_id {
-                        break;
+                        if !is_piped {
+                            // if this client is not piped, we need to exit the process completely
+                            // rather than wait for more data
+                            process::exit(0);
+                        } else {
+                            break;
+                        }
                     }
                 },
                 Some((ServerToClientMsg::CliPipeOutput(pipe_name, output), _)) => {

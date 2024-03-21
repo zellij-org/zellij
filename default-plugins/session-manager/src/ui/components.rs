@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use unicode_width::UnicodeWidthChar;
 use unicode_width::UnicodeWidthStr;
 use zellij_tile::prelude::*;
@@ -519,9 +520,6 @@ pub fn render_screen_toggle(active_screen: ActiveScreen, x: usize, y: usize, max
     let key_indication_len = key_indication_text.chars().count() + 1;
     let first_ribbon_length = new_session_text.chars().count() + 4;
     let second_ribbon_length = running_sessions_text.chars().count() + 4;
-    let third_ribbon_length = exited_sessions_text.chars().count() + 4;
-    let total_len =
-        key_indication_len + first_ribbon_length + second_ribbon_length + third_ribbon_length;
     let key_indication_x = x;
     let first_ribbon_x = key_indication_x + key_indication_len;
     let second_ribbon_x = first_ribbon_x + first_ribbon_length;
@@ -550,6 +548,140 @@ pub fn render_screen_toggle(active_screen: ActiveScreen, x: usize, y: usize, max
     print_ribbon_with_coordinates(new_session_text, first_ribbon_x, y, None, None);
     print_ribbon_with_coordinates(running_sessions_text, second_ribbon_x, y, None, None);
     print_ribbon_with_coordinates(exited_sessions_text, third_ribbon_x, y, None, None);
+}
+
+fn render_new_session_folder_prompt(
+    new_session_info: &NewSessionInfo,
+    colors: Colors,
+    x: usize,
+    y: usize,
+    max_cols: usize,
+) {
+    match new_session_info.new_session_folder.as_ref() {
+        Some(new_session_folder) => {
+            let folder_prompt = "New session folder:";
+            let short_folder_prompt = "Folder:";
+            let new_session_path = new_session_folder.clone();
+            let new_session_folder = new_session_folder.display().to_string();
+            let change_folder_shortcut_text = "<Ctrl f>";
+            let change_folder_shortcut = colors.magenta(&change_folder_shortcut_text);
+            let to_change = "to change";
+            let reset_folder_shortcut_text = "<Ctrl c>";
+            let reset_folder_shortcut = colors.magenta(reset_folder_shortcut_text);
+            let to_reset = "to reset";
+            if max_cols
+                >= folder_prompt.width()
+                    + new_session_folder.width()
+                    + change_folder_shortcut_text.width()
+                    + to_change.width()
+                    + reset_folder_shortcut_text.width()
+                    + to_reset.width()
+                    + 8
+            {
+                print!(
+                    "\u{1b}[m{}{} {} ({} {}, {} {})",
+                    format!("\u{1b}[{};{}H", y + 1, x + 1),
+                    colors.green(folder_prompt),
+                    colors.orange(&new_session_folder),
+                    change_folder_shortcut,
+                    to_change,
+                    reset_folder_shortcut,
+                    to_reset,
+                );
+            } else if max_cols
+                >= short_folder_prompt.width()
+                    + new_session_folder.width()
+                    + change_folder_shortcut_text.width()
+                    + to_change.width()
+                    + reset_folder_shortcut_text.width()
+                    + to_reset.width()
+                    + 8
+            {
+                print!(
+                    "\u{1b}[m{}{} {} ({} {}, {} {})",
+                    format!("\u{1b}[{};{}H", y + 1, x + 1),
+                    colors.green(short_folder_prompt),
+                    colors.orange(&new_session_folder),
+                    change_folder_shortcut,
+                    to_change,
+                    reset_folder_shortcut,
+                    to_reset,
+                );
+            } else if max_cols
+                >= short_folder_prompt.width()
+                    + new_session_folder.width()
+                    + change_folder_shortcut_text.width()
+                    + reset_folder_shortcut_text.width()
+                    + 5
+            {
+                print!(
+                    "\u{1b}[m{}{} {} ({}/{})",
+                    format!("\u{1b}[{};{}H", y + 1, x + 1),
+                    colors.green(short_folder_prompt),
+                    colors.orange(&new_session_folder),
+                    change_folder_shortcut,
+                    reset_folder_shortcut,
+                );
+            } else {
+                let total_len = short_folder_prompt.width()
+                    + change_folder_shortcut_text.width()
+                    + reset_folder_shortcut_text.width()
+                    + 5;
+                let max_path_len = max_cols.saturating_sub(total_len);
+                let truncated_path = truncate_path(
+                    new_session_path,
+                    new_session_folder.width().saturating_sub(max_path_len),
+                );
+                print!(
+                    "\u{1b}[m{}{} {} ({}/{})",
+                    format!("\u{1b}[{};{}H", y + 1, x + 1),
+                    colors.green(short_folder_prompt),
+                    colors.orange(&truncated_path),
+                    change_folder_shortcut,
+                    reset_folder_shortcut,
+                );
+            }
+        },
+        None => {
+            let folder_prompt = "New session folder:";
+            let short_folder_prompt = "Folder:";
+            let change_folder_shortcut_text = "<Ctrl f>";
+            let change_folder_shortcut = colors.magenta(change_folder_shortcut_text);
+            let to_set = "to set";
+
+            if max_cols
+                >= folder_prompt.width() + change_folder_shortcut_text.width() + to_set.width() + 4
+            {
+                print!(
+                    "\u{1b}[m{}{} ({} {})",
+                    format!("\u{1b}[{};{}H", y + 1, x + 1),
+                    colors.green(folder_prompt),
+                    change_folder_shortcut,
+                    to_set,
+                );
+            } else if max_cols
+                >= short_folder_prompt.width()
+                    + change_folder_shortcut_text.width()
+                    + to_set.width()
+                    + 4
+            {
+                print!(
+                    "\u{1b}[m{}{} ({} {})",
+                    format!("\u{1b}[{};{}H", y + 1, x + 1),
+                    colors.green(short_folder_prompt),
+                    change_folder_shortcut,
+                    to_set,
+                );
+            } else {
+                print!(
+                    "\u{1b}[m{}{} {}",
+                    format!("\u{1b}[{};{}H", y + 1, x + 1),
+                    colors.green(short_folder_prompt),
+                    change_folder_shortcut,
+                );
+            }
+        },
+    }
 }
 
 pub fn render_new_session_block(
@@ -615,6 +747,7 @@ pub fn render_new_session_block(
         }
         render_layout_selection_list(
             new_session_info,
+            colors,
             max_rows_of_new_session_block.saturating_sub(1),
             max_cols_of_new_session_block,
             x,
@@ -625,6 +758,7 @@ pub fn render_new_session_block(
 
 pub fn render_layout_selection_list(
     new_session_info: &NewSessionInfo,
+    colors: Colors,
     max_rows_of_new_session_block: usize,
     max_cols_of_new_session_block: usize,
     x: usize,
@@ -658,7 +792,7 @@ pub fn render_layout_selection_list(
         let layout_name = layout_info.name();
         let layout_name_len = layout_name.width();
         let is_builtin = layout_info.is_builtin();
-        if i > max_rows_of_new_session_block {
+        if i > max_rows_of_new_session_block.saturating_sub(1) {
             break;
         } else {
             let mut layout_cell = if is_builtin {
@@ -682,7 +816,15 @@ pub fn render_layout_selection_list(
             table = table.add_styled_row(vec![arrow_cell, layout_cell]);
         }
     }
-    print_table_with_coordinates(table, x, y + 3, None, None);
+    let table_y = y + 3;
+    print_table_with_coordinates(table, x, table_y, None, None);
+    render_new_session_folder_prompt(
+        new_session_info,
+        colors,
+        x,
+        (y + max_rows_of_new_session_block).saturating_sub(3),
+        max_cols_of_new_session_block,
+    );
 }
 
 pub fn render_error(error_text: &str, rows: usize, columns: usize, x: usize, y: usize) {
@@ -733,10 +875,6 @@ pub fn render_controls_line(
             }
         },
         ActiveScreen::AttachToSession => {
-            let arrows = colors.magenta("<←↓↑→>");
-            let navigate = colors.bold("Navigate");
-            let enter = colors.magenta("<ENTER>");
-            let select = colors.bold("Attach");
             let rename = colors.magenta("<Ctrl r>");
             let rename_text = colors.bold("Rename");
             let disconnect = colors.magenta("<Ctrl x>");
@@ -816,4 +954,26 @@ impl Colors {
     pub fn magenta(&self, text: &str) -> String {
         self.color(&self.palette.magenta, text)
     }
+}
+
+fn truncate_path(path: PathBuf, mut char_count_to_remove: usize) -> String {
+    let mut truncated = String::new();
+    let component_count = path.iter().count();
+    for (i, component) in path.iter().enumerate() {
+        let mut component_str = component.to_string_lossy().to_string();
+        if char_count_to_remove > 0 {
+            truncated.push(component_str.remove(0));
+            if i != 0 && i + 1 != component_count {
+                truncated.push('/');
+            }
+            char_count_to_remove =
+                char_count_to_remove.saturating_sub(component_str.width().saturating_sub(1));
+        } else {
+            truncated.push_str(&component_str);
+            if i != 0 && i + 1 != component_count {
+                truncated.push('/');
+            }
+        }
+    }
+    truncated
 }
