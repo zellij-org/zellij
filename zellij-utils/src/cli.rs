@@ -107,7 +107,7 @@ pub enum Sessions {
         #[clap(short, long, value_parser, takes_value(false), default_value("false"))]
         short: bool,
 
-        /// List newest sessions first (top) (default is newest last (bottom))
+        /// List the sessions in reverse order (default is ascending order)
         #[clap(short, long, value_parser, takes_value(false), default_value("false"))]
         reverse: bool,
     },
