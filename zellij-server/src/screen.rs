@@ -3008,10 +3008,8 @@ pub(crate) fn screen_thread_main(
                 // very short and cheap and shouldn't cause any trouble
                 if let Some(os_input) = &mut screen.bus.os_input {
                     for client_id in screen.connected_clients.borrow().iter() {
-                        let _ = os_input.send_to_client(
-                            *client_id,
-                            ServerToClientMsg::QueryTerminalSize
-                        );
+                        let _ = os_input
+                            .send_to_client(*client_id, ServerToClientMsg::QueryTerminalSize);
                     }
                 }
             },

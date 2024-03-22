@@ -506,7 +506,7 @@ pub fn start_client(
                 os_input.send_to_server(ClientToServerMsg::TerminalResize(
                     os_input.get_terminal_size_using_fd(0),
                 ));
-            }
+            },
             _ => {},
         }
     }
