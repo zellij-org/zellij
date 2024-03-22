@@ -425,12 +425,20 @@ impl RunPlugin {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Hash, Default, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, Clone, Hash, Default, Eq)]
 pub struct PluginAlias {
     pub name: String,
     pub configuration: Option<PluginUserConfiguration>,
     pub initial_cwd: Option<PathBuf>,
     pub run_plugin: Option<RunPlugin>,
+}
+
+impl PartialEq for PluginAlias {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name
+            && self.configuration == other.configuration
+            && self.initial_cwd == other.initial_cwd
+    }
 }
 
 impl PluginAlias {
