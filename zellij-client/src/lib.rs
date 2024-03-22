@@ -51,6 +51,7 @@ pub(crate) enum ClientInstruction {
     SetSynchronizedOutput(Option<SyncOutput>),
     UnblockCliPipeInput(String),   // String -> pipe name
     CliPipeOutput(String, String), // String -> pipe name, String -> output
+    QueryTerminalSize,
 }
 
 impl From<ServerToClientMsg> for ClientInstruction {
@@ -75,6 +76,7 @@ impl From<ServerToClientMsg> for ClientInstruction {
             ServerToClientMsg::CliPipeOutput(pipe_name, output) => {
                 ClientInstruction::CliPipeOutput(pipe_name, output)
             },
+            ServerToClientMsg::QueryTerminalSize => ClientInstruction::QueryTerminalSize,
         }
     }
 }
@@ -97,6 +99,7 @@ impl From<&ClientInstruction> for ClientContext {
             ClientInstruction::SetSynchronizedOutput(..) => ClientContext::SetSynchronisedOutput,
             ClientInstruction::UnblockCliPipeInput(..) => ClientContext::UnblockCliPipeInput,
             ClientInstruction::CliPipeOutput(..) => ClientContext::CliPipeOutput,
+            ClientInstruction::QueryTerminalSize => ClientContext::QueryTerminalSize,
         }
     }
 }
@@ -499,6 +502,11 @@ pub fn start_client(
             ClientInstruction::SetSynchronizedOutput(enabled) => {
                 synchronised_output = enabled;
             },
+            ClientInstruction::QueryTerminalSize => {
+                os_input.send_to_server(ClientToServerMsg::TerminalResize(
+                    os_input.get_terminal_size_using_fd(0),
+                ));
+            }
             _ => {},
         }
     }

@@ -105,6 +105,7 @@ pub enum ServerToClientMsg {
     SwitchSession(ConnectToSession),
     UnblockCliPipeInput(String),   // String -> pipe name
     CliPipeOutput(String, String), // String -> pipe name, String -> Output
+    QueryTerminalSize,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

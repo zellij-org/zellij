@@ -3000,6 +3000,20 @@ pub(crate) fn screen_thread_main(
 
                 screen.unblock_input()?;
                 screen.render(None)?;
+                // we do this here in order to recover from a race condition on app start
+                // that sometimes causes Zellij to think the terminal window is a different size
+                // than it actually is - here, we query the client for its terminal size after
+                // we've finished the setup and handle it as we handle a normal resize,
+                // while this can affect other instances of a layout being applied, the query is
+                // very short and cheap and shouldn't cause any trouble
+                if let Some(os_input) = &mut screen.bus.os_input {
+                    for client_id in screen.connected_clients.borrow().iter() {
+                        let _ = os_input.send_to_client(
+                            *client_id,
+                            ServerToClientMsg::QueryTerminalSize
+                        );
+                    }
+                }
             },
             ScreenInstruction::GoToTab(tab_index, client_id) => {
                 let client_id_to_switch = if client_id.is_none() {
