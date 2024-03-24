@@ -27,6 +27,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat(plugins): allow specifying cwd when creating a new session with a layout (https://github.com/zellij-org/zellij/pull/3172)
 * feat(plugins): session-manager cwd and new filepicker/strider (https://github.com/zellij-org/zellij/pull/3200)
 * fix(stability): various client races (https://github.com/zellij-org/zellij/pull/3209)
+* feat(cli): `list-sessions` show newest sessions last, for better user experience (https://github.com/zellij-org/zellij/pull/3194)
 
 ## [0.39.2] - 2023-11-29
 * fix(cli): typo in cli help (https://github.com/zellij-org/zellij/pull/2906)
