@@ -106,6 +106,10 @@ pub enum Sessions {
         /// Print just the session name
         #[clap(short, long, value_parser, takes_value(false), default_value("false"))]
         short: bool,
+
+        /// List the sessions in reverse order (default is ascending order)
+        #[clap(short, long, value_parser, takes_value(false), default_value("false"))]
+        reverse: bool,
     },
     /// List existing plugin aliases
     #[clap(visible_alias = "la")]

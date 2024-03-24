@@ -143,10 +143,18 @@ pub(crate) fn print_sessions(
     mut sessions: Vec<(String, Duration, bool)>,
     no_formatting: bool,
     short: bool,
+    reverse: bool,
 ) {
     // (session_name, timestamp, is_dead)
     let curr_session = envs::get_session_name().unwrap_or_else(|_| "".into());
-    sessions.sort_by(|a, b| a.1.cmp(&b.1));
+    sessions.sort_by(|a, b| {
+        if reverse {
+            // sort by `Duration` ascending (newest would be first)
+            a.1.cmp(&b.1)
+        } else {
+            b.1.cmp(&a.1)
+        }
+    });
     sessions
         .iter()
         .for_each(|(session_name, timestamp, is_dead)| {
@@ -246,7 +254,7 @@ pub(crate) fn delete_session(name: &str, force: bool) {
     }
 }
 
-pub(crate) fn list_sessions(no_formatting: bool, short: bool) {
+pub(crate) fn list_sessions(no_formatting: bool, short: bool, reverse: bool) {
     let exit_code = match get_sessions() {
         Ok(running_sessions) => {
             let resurrectable_sessions = get_resurrectable_sessions();
@@ -270,6 +278,7 @@ pub(crate) fn list_sessions(no_formatting: bool, short: bool) {
                         .collect(),
                     no_formatting,
                     short,
+                    reverse,
                 );
                 0
             }
