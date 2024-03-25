@@ -2085,6 +2085,9 @@ fn run_plugin_location_parsing() {
             pane {
                 plugin location="filepicker"
             }
+            pane {
+                plugin location="https://somewhere.com/plugin.wasm"
+            }
         }
     "#;
     let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into(), None, None).unwrap();
@@ -2158,6 +2161,15 @@ fn run_plugin_location_parsing() {
                         run: Some(Run::Plugin(RunPluginOrAlias::Alias(PluginAlias {
                             name: "filepicker".to_owned(),
                             configuration: Some(PluginUserConfiguration::default()),
+                            ..Default::default()
+                        }))),
+                        ..Default::default()
+                    },
+                    TiledPaneLayout {
+                        run: Some(Run::Plugin(RunPluginOrAlias::RunPlugin(RunPlugin {
+                            _allow_exec_host_cmd: false,
+                            location: RunPluginLocation::Remote(String::from("https://somewhere.com/plugin.wasm")),
+                            configuration: Default::default(),
                             ..Default::default()
                         }))),
                         ..Default::default()
