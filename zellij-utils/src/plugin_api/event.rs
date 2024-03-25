@@ -14,6 +14,7 @@ pub use super::generated_api::api::{
     key::Key as ProtobufKey,
     style::Style as ProtobufStyle,
 };
+#[allow(hidden_glob_reexports)]
 use crate::data::{
     CopyDestination, Event, EventType, FileMetadata, InputMode, Key, LayoutInfo, ModeInfo, Mouse,
     PaneInfo, PaneManifest, PermissionStatus, PluginCapabilities, SessionInfo, Style, TabInfo,
