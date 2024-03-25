@@ -20,8 +20,8 @@ use zellij_utils::{
     envs::set_session_name,
     input::command::TerminalAction,
     input::layout::{
-        FloatingPaneLayout, Layout, Run, RunPluginOrAlias,
-        SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,
+        FloatingPaneLayout, Layout, Run, RunPluginOrAlias, SwapFloatingLayout, SwapTiledLayout,
+        TiledPaneLayout,
     },
     position::Position,
 };

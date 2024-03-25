@@ -18,10 +18,7 @@ use zellij_utils::{
     errors::{ContextType, PtyContext},
     input::{
         command::{RunCommand, TerminalAction},
-        layout::{
-            FloatingPaneLayout, Layout, Run,
-            RunPluginOrAlias, TiledPaneLayout,
-        },
+        layout::{FloatingPaneLayout, Layout, Run, RunPluginOrAlias, TiledPaneLayout},
     },
     pane_size::Size,
     session_serialization,
