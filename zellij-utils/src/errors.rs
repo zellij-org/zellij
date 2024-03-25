@@ -424,6 +424,7 @@ pub enum ClientContext {
     SetSynchronisedOutput,
     UnblockCliPipeInput,
     CliPipeOutput,
+    QueryTerminalSize,
 }
 
 /// Stack call representations corresponding to the different types of [`ServerInstruction`]s.
