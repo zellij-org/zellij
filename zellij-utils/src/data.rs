@@ -62,6 +62,8 @@ pub enum Key {
     BackTab,
     Null,
     Esc,
+    AltF(u8),
+    CtrlF(u8),
 }
 
 impl FromStr for Key {
@@ -78,14 +80,7 @@ impl FromStr for Key {
         }
         match (modifier, main_key) {
             (Some("Ctrl"), Some(main_key)) => {
-                let mut key_chars = main_key.chars();
-                let key_count = main_key.chars().count();
-                if key_count == 1 {
-                    let key_char = key_chars.next().unwrap();
-                    Ok(Key::Ctrl(key_char))
-                } else {
-                    Err(format!("Failed to parse key: {}", key_str).into())
-                }
+                parse_main_key(main_key, key_str, Key::Ctrl, Key::CtrlF)
             },
             (Some("Alt"), Some(main_key)) => {
                 match main_key {
@@ -96,16 +91,12 @@ impl FromStr for Key {
                     "Right" => Ok(Key::Alt(CharOrArrow::Direction(Direction::Right))),
                     "Up" => Ok(Key::Alt(CharOrArrow::Direction(Direction::Up))),
                     "Down" => Ok(Key::Alt(CharOrArrow::Direction(Direction::Down))),
-                    _ => {
-                        let mut key_chars = main_key.chars();
-                        let key_count = main_key.chars().count();
-                        if key_count == 1 {
-                            let key_char = key_chars.next().unwrap();
-                            Ok(Key::Alt(CharOrArrow::Char(key_char)))
-                        } else {
-                            Err(format!("Failed to parse key: {}", key_str).into())
-                        }
-                    },
+                    _ => parse_main_key(
+                        main_key,
+                        key_str,
+                        |c| Key::Alt(CharOrArrow::Char(c)),
+                        Key::AltF,
+                    ),
                 }
             },
             (None, Some(main_key)) => match main_key {
@@ -124,32 +115,39 @@ impl FromStr for Key {
                 "Space" => Ok(Key::Char(' ')),
                 "Enter" => Ok(Key::Char('\n')),
                 "Esc" => Ok(Key::Esc),
-                _ => {
-                    let mut key_chars = main_key.chars();
-                    let key_count = main_key.chars().count();
-                    if key_count == 1 {
-                        let key_char = key_chars.next().unwrap();
-                        Ok(Key::Char(key_char))
-                    } else if key_count > 1 {
-                        if let Some(first_char) = key_chars.next() {
-                            if first_char == 'F' {
-                                let f_index: String = key_chars.collect();
-                                let f_index: u8 = f_index
-                                    .parse()
-                                    .map_err(|e| format!("Failed to parse F index: {}", e))?;
-                                if f_index >= 1 && f_index <= 12 {
-                                    return Ok(Key::F(f_index));
-                                }
-                            }
-                        }
-                        Err(format!("Failed to parse key: {}", key_str).into())
-                    } else {
-                        Err(format!("Failed to parse key: {}", key_str).into())
-                    }
-                },
+                _ => parse_main_key(main_key, key_str, Key::Char, Key::F),
             },
             _ => Err(format!("Failed to parse key: {}", key_str).into()),
         }
+    }
+}
+
+fn parse_main_key(
+    main_key: &str,
+    key_str: &str,
+    to_char_key: impl FnOnce(char) -> Key,
+    to_fn_key: impl FnOnce(u8) -> Key,
+) -> Result<Key, Box<dyn std::error::Error>> {
+    let mut key_chars = main_key.chars();
+    let key_count = main_key.chars().count();
+    if key_count == 1 {
+        let key_char = key_chars.next().unwrap();
+        Ok(to_char_key(key_char))
+    } else if key_count > 1 {
+        if let Some(first_char) = key_chars.next() {
+            if first_char == 'F' {
+                let f_index: String = key_chars.collect();
+                let f_index: u8 = f_index
+                    .parse()
+                    .map_err(|e| format!("Failed to parse F index: {}", e))?;
+                if f_index >= 1 && f_index <= 12 {
+                    return Ok(to_fn_key(f_index));
+                }
+            }
+        }
+        Err(format!("Failed to parse key: {}", key_str).into())
+    } else {
+        Err(format!("Failed to parse key: {}", key_str).into())
     }
 }
 
@@ -177,6 +175,8 @@ impl fmt::Display for Key {
             },
             Key::Alt(c) => write!(f, "Alt+{}", c),
             Key::Ctrl(c) => write!(f, "Ctrl+{}", Key::Char(*c)),
+            Key::AltF(n) => write!(f, "Alt+F{}", n),
+            Key::CtrlF(n) => write!(f, "Ctrl+F{}", n),
             Key::Null => write!(f, "NULL"),
             Key::Esc => write!(f, "ESC"),
         }
