@@ -13,13 +13,14 @@ use std::{collections::HashMap, os::unix::io::RawFd, path::PathBuf};
 use zellij_utils::nix::unistd::Pid;
 use zellij_utils::{
     async_std,
+    data::FloatingPaneCoordinates,
     errors::prelude::*,
     errors::{ContextType, PtyContext},
     input::{
         command::{RunCommand, TerminalAction},
         layout::{
-            FloatingPaneLayout, Layout, PluginUserConfiguration, Run, RunPlugin, RunPluginLocation,
-            TiledPaneLayout,
+            FloatingPaneLayout, Layout, PluginUserConfiguration, Run, RunPluginLocation,
+            RunPluginOrAlias, TiledPaneLayout,
         },
     },
     pane_size::Size,
@@ -43,6 +44,7 @@ pub enum PtyInstruction {
         Option<TerminalAction>,
         Option<bool>,
         Option<String>,
+        Option<FloatingPaneCoordinates>,
         ClientTabIndexOrPaneId,
     ), // bool (if Some) is
     // should_float, String is an optional pane name
@@ -60,8 +62,8 @@ pub enum PtyInstruction {
         Option<TerminalAction>,
         Option<TiledPaneLayout>,
         Vec<FloatingPaneLayout>,
-        usize,                                                           // tab_index
-        HashMap<(RunPluginLocation, PluginUserConfiguration), Vec<u32>>, // plugin_ids
+        usize,                               // tab_index
+        HashMap<RunPluginOrAlias, Vec<u32>>, // plugin_ids
         ClientId,
     ), // the String is the tab name
     ClosePane(PaneId),
@@ -83,12 +85,14 @@ pub enum PtyInstruction {
         Option<bool>,   // should float
         bool,           // should be opened in place
         Option<String>, // pane title
-        RunPlugin,
+        RunPluginOrAlias,
         usize,          // tab index
         Option<PaneId>, // pane id to replace if this is to be opened "in-place"
         ClientId,
         Size,
-        bool, // skip cache
+        bool,            // skip cache
+        Option<PathBuf>, // if Some, will not fill cwd but just forward the message
+        Option<FloatingPaneCoordinates>,
     ),
     Exit,
 }
@@ -134,6 +138,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                 terminal_action,
                 should_float,
                 name,
+                floating_pane_coordinates,
                 client_or_tab_index,
             ) => {
                 let err_context =
@@ -175,6 +180,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                                 should_float,
                                 hold_for_command,
                                 invoked_with,
+                                floating_pane_coordinates,
                                 client_or_tab_index,
                             ))
                             .with_context(err_context)?;
@@ -191,6 +197,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                                         should_float,
                                         hold_for_command,
                                         invoked_with,
+                                        floating_pane_coordinates,
                                         client_or_tab_index,
                                     ))
                                     .with_context(err_context)?;
@@ -655,6 +662,8 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                 client_id,
                 size,
                 skip_cache,
+                cwd,
+                floating_pane_coordinates,
             ) => {
                 pty.fill_plugin_cwd(
                     should_float,
@@ -666,6 +675,8 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     client_id,
                     size,
                     skip_cache,
+                    cwd,
+                    floating_pane_coordinates,
                 )?;
             },
             PtyInstruction::Exit => break,
@@ -863,7 +874,7 @@ impl Pty {
         layout: TiledPaneLayout,
         floating_panes_layout: Vec<FloatingPaneLayout>,
         default_shell: Option<TerminalAction>,
-        plugin_ids: HashMap<(RunPluginLocation, PluginUserConfiguration), Vec<u32>>,
+        plugin_ids: HashMap<RunPluginOrAlias, Vec<u32>>,
         tab_index: usize,
         client_id: ClientId,
     ) -> Result<()> {
@@ -1326,26 +1337,29 @@ impl Pty {
         should_float: Option<bool>,
         should_open_in_place: bool, // should be opened in place
         pane_title: Option<String>, // pane title
-        run: RunPlugin,
+        run: RunPluginOrAlias,
         tab_index: usize,                   // tab index
         pane_id_to_replace: Option<PaneId>, // pane id to replace if this is to be opened "in-place"
         client_id: ClientId,
         size: Size,
         skip_cache: bool,
+        cwd: Option<PathBuf>,
+        floating_pane_coordinates: Option<FloatingPaneCoordinates>,
     ) -> Result<()> {
-        let cwd = self
-            .active_panes
-            .get(&client_id)
-            .and_then(|pane| match pane {
-                PaneId::Plugin(..) => None,
-                PaneId::Terminal(id) => self.id_to_child_pid.get(id),
-            })
-            .and_then(|&id| {
-                self.bus
-                    .os_input
-                    .as_ref()
-                    .and_then(|input| input.get_cwd(Pid::from_raw(id)))
-            });
+        let cwd = cwd.or_else(|| {
+            self.active_panes
+                .get(&client_id)
+                .and_then(|pane| match pane {
+                    PaneId::Plugin(..) => None,
+                    PaneId::Terminal(id) => self.id_to_child_pid.get(id),
+                })
+                .and_then(|&id| {
+                    self.bus
+                        .os_input
+                        .as_ref()
+                        .and_then(|input| input.get_cwd(Pid::from_raw(id)))
+                })
+        });
 
         self.bus.senders.send_to_plugin(PluginInstruction::Load(
             should_float,

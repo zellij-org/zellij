@@ -56,7 +56,7 @@ pub struct PluginLoader<'a> {
     store: Arc<Mutex<Store>>,
     plugin: PluginConfig,
     plugin_dir: &'a PathBuf,
-    tab_index: usize,
+    tab_index: Option<usize>,
     plugin_own_data_dir: PathBuf,
     size: Size,
     wasm_blob_on_hd: Option<(Vec<u8>, PathBuf)>,
@@ -133,7 +133,7 @@ impl<'a> PluginLoader<'a> {
         plugin_id: PluginId,
         client_id: ClientId,
         plugin: &PluginConfig,
-        tab_index: usize,
+        tab_index: Option<usize>,
         plugin_dir: PathBuf,
         plugin_cache: Arc<Mutex<HashMap<PathBuf, Module>>>,
         senders: ThreadSenders,
@@ -339,7 +339,7 @@ impl<'a> PluginLoader<'a> {
         store: Arc<Mutex<Store>>,
         plugin: PluginConfig,
         plugin_dir: &'a PathBuf,
-        tab_index: usize,
+        tab_index: Option<usize>,
         size: Size,
         path_to_default_shell: PathBuf,
         zellij_cwd: PathBuf,
@@ -795,11 +795,22 @@ impl<'a> PluginLoader<'a> {
         };
         let mut store = get_store();
         let store_mut = &mut store;
+        let dirs = vec![
+            ("/host".to_owned(), self.zellij_cwd.clone()),
+            ("/data".to_owned(), self.plugin_own_data_dir.clone()),
+            ("/tmp".to_owned(), ZELLIJ_TMP_DIR.clone()),
+        ];
+        let dirs = dirs.into_iter().filter(|(_dir_name, dir)| {
+            // note that this does not protect against TOCTOU errors
+            // eg. if one or more of these folders existed at the time of check but was deleted
+            // before we mounted in in the wasi environment, we'll crash
+            // when we move to a new wasi environment, we should address this with locking if
+            // there's no built-in solution
+            dir.try_exists().ok().unwrap_or(false)
+        });
         let mut wasi_env = WasiState::new("Zellij")
             .env("CLICOLOR_FORCE", "1")
-            .map_dir("/host", self.zellij_cwd.clone())
-            .and_then(|wasi| wasi.map_dir("/data", &self.plugin_own_data_dir))
-            .and_then(|wasi| wasi.map_dir("/tmp", ZELLIJ_TMP_DIR.as_path()))
+            .map_dirs(dirs)
             .and_then(|wasi| {
                 wasi.stdin(Box::new(Pipe::new()))
                     .stdout(Box::new(Pipe::new()))
@@ -814,7 +825,9 @@ impl<'a> PluginLoader<'a> {
             .import_object(store_mut, &module)
             .with_context(err_context)?;
         let mut mut_plugin = self.plugin.clone();
-        mut_plugin.set_tab_index(self.tab_index);
+        if let Some(tab_index) = self.tab_index {
+            mut_plugin.set_tab_index(tab_index);
+        }
         let plugin_env = PluginEnv {
             plugin_id: self.plugin_id,
             client_id: self.client_id,
@@ -830,6 +843,8 @@ impl<'a> PluginLoader<'a> {
             default_shell: self.default_shell.clone(),
             default_layout: self.default_layout.clone(),
             plugin_cwd: self.zellij_cwd.clone(),
+            input_pipes_to_unblock: Arc::new(Mutex::new(HashSet::new())),
+            input_pipes_to_block: Arc::new(Mutex::new(HashSet::new())),
         };
 
         let subscriptions = Arc::new(Mutex::new(HashSet::new()));

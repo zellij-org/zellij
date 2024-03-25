@@ -103,6 +103,15 @@ message PermissionRequestResultPayload {
 
 message FileListPayload {
   repeated string paths = 1;
+  repeated FileMetadata paths_metadata = 2;
+}
+
+message FileMetadata {
+  bool metadata_is_set = 1; // if this is false, the metadata for this file has not been read
+  bool is_dir = 2;
+  bool is_file = 3;
+  bool is_symlink = 4;
+  uint64 len = 5;
 }
 
 message CustomMessagePayload {
@@ -152,6 +161,12 @@ message SessionManifest {
   repeated PaneManifest panes = 3;
   uint32 connected_clients = 4;
   bool is_current_session = 5;
+  repeated LayoutInfo available_layouts = 6;
+}
+
+message LayoutInfo {
+  string name = 1;
+  string source = 2;
 }
 
 message ResurrectableSession {

@@ -1,9 +1,9 @@
 ---
 source: zellij-server/src/tab/./unit/tab_integration_tests.rs
-assertion_line: 5971
+assertion_line: 5995
 expression: snapshot
 ---
-00 (C): ┌ status-bar ──────────────────────────────────────────────┐─────────────────────────────────────────────────┐──────────┐
+00 (C): ┌ zellij:status-bar ───────────────────────────────────────┐ab-bar ──────────────────────────────────────────┐──────────┐
 01 (C): │I am a                                                    │b bar                                            │          │
 02 (C): │status bar                                                │                                                 │          │
 03 (C): │                                                          │                                                 │          │

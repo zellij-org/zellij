@@ -1,6 +1,5 @@
 //! Plugins configuration metadata
-use std::borrow::Borrow;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
@@ -14,73 +13,20 @@ use crate::consts::ASSET_MAP;
 pub use crate::data::PluginTag;
 use crate::errors::prelude::*;
 
-use std::collections::BTreeMap;
-use std::fmt;
-
-/// Used in the config struct for plugin metadata
-#[derive(Clone, PartialEq, Deserialize, Serialize)]
-pub struct PluginsConfig(pub HashMap<PluginTag, PluginConfig>);
-
-impl fmt::Debug for PluginsConfig {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let mut stable_sorted = BTreeMap::new();
-        for (plugin_tag, plugin_config) in self.0.iter() {
-            stable_sorted.insert(plugin_tag, plugin_config);
-        }
-        write!(f, "{:#?}", stable_sorted)
-    }
+#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
+pub struct PluginAliases {
+    pub aliases: BTreeMap<String, RunPlugin>,
 }
 
-impl PluginsConfig {
-    pub fn new() -> Self {
-        Self(HashMap::new())
+impl PluginAliases {
+    pub fn merge(&mut self, other: Self) {
+        self.aliases.extend(other.aliases);
     }
-    pub fn from_data(data: HashMap<PluginTag, PluginConfig>) -> Self {
-        PluginsConfig(data)
+    pub fn from_data(aliases: BTreeMap<String, RunPlugin>) -> Self {
+        PluginAliases { aliases }
     }
-
-    /// Get plugin config from run configuration specified in layout files.
-    pub fn get(&self, run: impl Borrow<RunPlugin>) -> Option<PluginConfig> {
-        let run = run.borrow();
-        match &run.location {
-            RunPluginLocation::File(path) => Some(PluginConfig {
-                path: path.clone(),
-                run: PluginType::Pane(None),
-                _allow_exec_host_cmd: run._allow_exec_host_cmd,
-                location: run.location.clone(),
-                userspace_configuration: run.configuration.clone(),
-            }),
-            RunPluginLocation::Zellij(tag) => self.0.get(tag).cloned().map(|plugin| PluginConfig {
-                _allow_exec_host_cmd: run._allow_exec_host_cmd,
-                userspace_configuration: run.configuration.clone(),
-                ..plugin
-            }),
-            RunPluginLocation::Remote(_) => Some(PluginConfig {
-                path: PathBuf::new(),
-                run: PluginType::Pane(None),
-                _allow_exec_host_cmd: run._allow_exec_host_cmd,
-                location: run.location.clone(),
-                userspace_configuration: run.configuration.clone(),
-            }),
-        }
-    }
-
-    pub fn iter(&self) -> impl Iterator<Item = &PluginConfig> {
-        self.0.values()
-    }
-
-    /// Merges two PluginConfig structs into one PluginConfig struct
-    /// `other` overrides the PluginConfig of `self`.
-    pub fn merge(&self, other: Self) -> Self {
-        let mut plugin_config = self.0.clone();
-        plugin_config.extend(other.0);
-        Self(plugin_config)
-    }
-}
-
-impl Default for PluginsConfig {
-    fn default() -> Self {
-        PluginsConfig(HashMap::new())
+    pub fn list(&self) -> Vec<String> {
+        self.aliases.keys().cloned().collect()
     }
 }
 
@@ -97,9 +43,52 @@ pub struct PluginConfig {
     pub location: RunPluginLocation,
     /// Custom configuration for this plugin
     pub userspace_configuration: PluginUserConfiguration,
+    /// plugin initial working directory
+    pub initial_cwd: Option<PathBuf>,
 }
 
 impl PluginConfig {
+    pub fn from_run_plugin(run_plugin: &RunPlugin) -> Option<PluginConfig> {
+        match &run_plugin.location {
+            RunPluginLocation::File(path) => Some(PluginConfig {
+                path: path.clone(),
+                run: PluginType::Pane(None),
+                _allow_exec_host_cmd: run_plugin._allow_exec_host_cmd,
+                location: run_plugin.location.clone(),
+                userspace_configuration: run_plugin.configuration.clone(),
+                initial_cwd: run_plugin.initial_cwd.clone(),
+            }),
+            RunPluginLocation::Zellij(tag) => {
+                let tag = tag.to_string();
+                if tag == "status-bar"
+                    || tag == "tab-bar"
+                    || tag == "compact-bar"
+                    || tag == "strider"
+                    || tag == "session-manager"
+                {
+                    Some(PluginConfig {
+                        path: PathBuf::from(&tag),
+                        run: PluginType::Pane(None),
+                        _allow_exec_host_cmd: run_plugin._allow_exec_host_cmd,
+                        location: RunPluginLocation::parse(&format!("zellij:{}", tag), None)
+                            .ok()?,
+                        userspace_configuration: run_plugin.configuration.clone(),
+                        initial_cwd: run_plugin.initial_cwd.clone(),
+                    })
+                } else {
+                    None
+                }
+            },
+            RunPluginLocation::Remote(_) => Some(PluginConfig {
+                path: PathBuf::new(),
+                run: PluginType::Pane(None),
+                _allow_exec_host_cmd: run_plugin._allow_exec_host_cmd,
+                location: run_plugin.location.clone(),
+                userspace_configuration: run_plugin.configuration.clone(),
+                initial_cwd: run_plugin.initial_cwd.clone(),
+            }),
+        }
+    }
     /// Resolve wasm plugin bytes for the plugin path and given plugin directory.
     ///
     /// If zellij was built without the 'disable_automatic_asset_installation' feature, builtin

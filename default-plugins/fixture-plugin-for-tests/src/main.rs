@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+use std::io::prelude::*;
 use zellij_tile::prelude::*;
 
 // This is a fixture plugin used only for tests in Zellij
@@ -11,6 +12,7 @@ struct State {
     received_events: Vec<Event>,
     received_payload: Option<String>,
     configuration: BTreeMap<String, String>,
+    message_to_plugin_payload: Option<String>,
 }
 
 #[derive(Default, Serialize, Deserialize)]
@@ -34,9 +36,12 @@ impl<'de> ZellijWorker<'de> for TestWorker {
     }
 }
 
+#[cfg(target_family = "wasm")]
 register_plugin!(State);
+#[cfg(target_family = "wasm")]
 register_worker!(TestWorker, test_worker, TEST_WORKER);
 
+#[cfg(target_family = "wasm")]
 impl ZellijPlugin for State {
     fn load(&mut self, configuration: BTreeMap<String, String>) {
         request_permission(&[
@@ -49,6 +54,8 @@ impl ZellijPlugin for State {
             PermissionType::OpenTerminalsOrPlugins,
             PermissionType::WriteToStdin,
             PermissionType::WebAccess,
+            PermissionType::ReadCliPipes,
+            PermissionType::MessageAndLaunchOtherPlugins,
         ]);
         self.configuration = configuration;
         subscribe(&[
@@ -60,6 +67,7 @@ impl ZellijPlugin for State {
             EventType::FileSystemUpdate,
             EventType::FileSystemDelete,
         ]);
+        watch_filesystem();
     }
 
     fn update(&mut self, event: Event) -> bool {
@@ -161,10 +169,13 @@ impl ZellijPlugin for State {
                     });
                 },
                 Key::Ctrl('h') => {
-                    open_file_floating(FileToOpen {
-                        path: std::path::PathBuf::from("/path/to/my/file.rs"),
-                        ..Default::default()
-                    });
+                    open_file_floating(
+                        FileToOpen {
+                            path: std::path::PathBuf::from("/path/to/my/file.rs"),
+                            ..Default::default()
+                        },
+                        None,
+                    );
                 },
                 Key::Ctrl('i') => {
                     open_file(FileToOpen {
@@ -174,11 +185,14 @@ impl ZellijPlugin for State {
                     });
                 },
                 Key::Ctrl('j') => {
-                    open_file_floating(FileToOpen {
-                        path: std::path::PathBuf::from("/path/to/my/file.rs"),
-                        line_number: Some(42),
-                        ..Default::default()
-                    });
+                    open_file_floating(
+                        FileToOpen {
+                            path: std::path::PathBuf::from("/path/to/my/file.rs"),
+                            line_number: Some(42),
+                            ..Default::default()
+                        },
+                        None,
+                    );
                 },
                 Key::Ctrl('k') => {
                     open_terminal(std::path::PathBuf::from("/path/to/my/file.rs").as_path());
@@ -186,6 +200,7 @@ impl ZellijPlugin for State {
                 Key::Ctrl('l') => {
                     open_terminal_floating(
                         std::path::PathBuf::from("/path/to/my/file.rs").as_path(),
+                        None,
                     );
                 },
                 Key::Ctrl('m') => {
@@ -196,11 +211,14 @@ impl ZellijPlugin for State {
                     });
                 },
                 Key::Ctrl('n') => {
-                    open_command_pane_floating(CommandToRun {
-                        path: std::path::PathBuf::from("/path/to/my/file.rs"),
-                        args: vec!["arg1".to_owned(), "arg2".to_owned()],
-                        ..Default::default()
-                    });
+                    open_command_pane_floating(
+                        CommandToRun {
+                            path: std::path::PathBuf::from("/path/to/my/file.rs"),
+                            args: vec!["arg1".to_owned(), "arg2".to_owned()],
+                            ..Default::default()
+                        },
+                        None,
+                    );
                 },
                 Key::Ctrl('o') => {
                     switch_tab_to(1);
@@ -274,6 +292,28 @@ impl ZellijPlugin for State {
                         context,
                     );
                 },
+                Key::Ctrl('5') => {
+                    switch_session(Some("my_new_session"));
+                },
+                Key::Ctrl('6') => disconnect_other_clients(),
+                Key::Ctrl('7') => {
+                    switch_session_with_layout(
+                        Some("my_other_new_session"),
+                        LayoutInfo::BuiltIn("compact".to_owned()),
+                        None,
+                    );
+                },
+                Key::Ctrl('8') => {
+                    let mut file = std::fs::File::create("/host/hi-from-plugin.txt").unwrap();
+                    file.write_all(b"Hi there!").unwrap();
+                },
+                Key::Ctrl('9') => {
+                    switch_session_with_layout(
+                        Some("my_other_new_session_with_cwd"),
+                        LayoutInfo::BuiltIn("compact".to_owned()),
+                        Some(std::path::PathBuf::from("/tmp")),
+                    );
+                },
                 _ => {},
             },
             Event::CustomMessage(message, payload) => {
@@ -295,10 +335,36 @@ impl ZellijPlugin for State {
         self.received_events.push(event);
         should_render
     }
+    fn pipe(&mut self, pipe_message: PipeMessage) -> bool {
+        let input_pipe_id = match pipe_message.source {
+            PipeSource::Cli(id) => id.clone(),
+            PipeSource::Plugin(id) => format!("{}", id),
+            PipeSource::Keybind => format!("keybind"),
+        };
+        let name = pipe_message.name;
+        let payload = pipe_message.payload;
+        if name == "message_name" && payload == Some("message_payload".to_owned()) {
+            unblock_cli_pipe_input(&input_pipe_id);
+        } else if name == "message_name_block" {
+            block_cli_pipe_input(&input_pipe_id);
+        } else if name == "pipe_output" {
+            cli_pipe_output(&name, "this_is_my_output");
+        } else if name == "pipe_message_to_plugin" {
+            pipe_message_to_plugin(
+                MessageToPlugin::new("message_to_plugin").with_payload("my_cool_payload"),
+            );
+        } else if name == "message_to_plugin" {
+            self.message_to_plugin_payload = payload.clone();
+        }
+        let should_render = true;
+        should_render
+    }
 
     fn render(&mut self, rows: usize, cols: usize) {
         if let Some(payload) = self.received_payload.as_ref() {
             println!("Payload from worker: {:?}", payload);
+        } else if let Some(payload) = self.message_to_plugin_payload.take() {
+            println!("Payload from self: {:?}", payload);
         } else {
             println!(
                 "Rows: {:?}, Cols: {:?}, Received events: {:?}",

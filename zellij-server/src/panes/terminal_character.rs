@@ -1,6 +1,7 @@
 use std::convert::From;
 use std::fmt::{self, Debug, Display, Formatter};
 use std::ops::{Index, IndexMut};
+use std::rc::Rc;
 use unicode_width::UnicodeWidthChar;
 
 use unicode_width::UnicodeWidthStr;
@@ -15,7 +16,7 @@ use crate::panes::alacritty_functions::parse_sgr_color;
 pub const EMPTY_TERMINAL_CHARACTER: TerminalCharacter = TerminalCharacter {
     character: ' ',
     width: 1,
-    styles: RESET_STYLES,
+    styles: RcCharacterStyles::Reset,
 };
 
 pub const RESET_STYLES: CharacterStyles = CharacterStyles {
@@ -34,6 +35,30 @@ pub const RESET_STYLES: CharacterStyles = CharacterStyles {
     link_anchor: Some(LinkAnchor::End),
     styled_underlines_enabled: false,
 };
+
+// Prefer to use RcCharacterStyles::default() where it makes sense
+// as it will reduce memory usage
+pub const DEFAULT_STYLES: CharacterStyles = CharacterStyles {
+    foreground: None,
+    background: None,
+    underline_color: None,
+    strike: None,
+    hidden: None,
+    reverse: None,
+    slow_blink: None,
+    fast_blink: None,
+    underline: None,
+    bold: None,
+    dim: None,
+    italic: None,
+    link_anchor: None,
+    styled_underlines_enabled: false,
+};
+
+thread_local! {
+    static RC_DEFAULT_STYLES: RcCharacterStyles =
+        RcCharacterStyles::Rc(Rc::new(DEFAULT_STYLES));
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AnsiCode {
@@ -129,7 +154,62 @@ impl NamedColor {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default)]
+// This enum carefully only has two variants so
+// enum niche optimisations can keep it to 8 bytes
+#[derive(Clone, Debug, PartialEq)]
+pub enum RcCharacterStyles {
+    Reset,
+    Rc(Rc<CharacterStyles>),
+}
+const _: [(); 8] = [(); std::mem::size_of::<RcCharacterStyles>()];
+
+impl From<CharacterStyles> for RcCharacterStyles {
+    fn from(styles: CharacterStyles) -> Self {
+        if styles == RESET_STYLES {
+            RcCharacterStyles::Reset
+        } else {
+            RcCharacterStyles::Rc(Rc::new(styles))
+        }
+    }
+}
+
+impl Default for RcCharacterStyles {
+    fn default() -> Self {
+        RC_DEFAULT_STYLES.with(|s| s.clone())
+    }
+}
+
+impl std::ops::Deref for RcCharacterStyles {
+    type Target = CharacterStyles;
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            RcCharacterStyles::Reset => &RESET_STYLES,
+            RcCharacterStyles::Rc(styles) => &*styles,
+        }
+    }
+}
+
+impl Display for RcCharacterStyles {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let styles: &CharacterStyles = &*self;
+        Display::fmt(&styles, f)
+    }
+}
+
+impl RcCharacterStyles {
+    pub fn reset() -> Self {
+        Self::Reset
+    }
+
+    pub fn update(&mut self, f: impl FnOnce(&mut CharacterStyles)) {
+        let mut styles: CharacterStyles = **self;
+        f(&mut styles);
+        *self = styles.into();
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
 pub struct CharacterStyles {
     pub foreground: Option<AnsiCode>,
     pub background: Option<AnsiCode>,
@@ -166,9 +246,6 @@ impl PartialEq for CharacterStyles {
 }
 
 impl CharacterStyles {
-    pub fn new() -> Self {
-        Self::default()
-    }
     pub fn foreground(mut self, foreground_code: Option<AnsiCode>) -> Self {
         self.foreground = foreground_code;
         self
@@ -255,8 +332,7 @@ impl CharacterStyles {
         }
 
         // create diff from all changed styles
-        let mut diff =
-            CharacterStyles::new().enable_styled_underlines(self.styled_underlines_enabled);
+        let mut diff = DEFAULT_STYLES.enable_styled_underlines(self.styled_underlines_enabled);
 
         if self.foreground != new_styles.foreground {
             diff.foreground = new_styles.foreground;
@@ -299,7 +375,7 @@ impl CharacterStyles {
         }
 
         // apply new styles
-        *self = *new_styles;
+        *self = new_styles.enable_styled_underlines(self.styled_underlines_enabled);
 
         if let Some(changed_colors) = changed_colors {
             if let Some(AnsiCode::ColorIndex(color_index)) = diff.foreground {
@@ -315,7 +391,7 @@ impl CharacterStyles {
         }
         Some(diff)
     }
-    pub fn reset_all(&mut self) {
+    fn reset_ansi(&mut self) {
         self.foreground = Some(AnsiCode::Reset);
         self.background = Some(AnsiCode::Reset);
         self.underline_color = Some(AnsiCode::Reset);
@@ -328,11 +404,12 @@ impl CharacterStyles {
         self.reverse = Some(AnsiCode::Reset);
         self.hidden = Some(AnsiCode::Reset);
         self.strike = Some(AnsiCode::Reset);
+        // Deliberately don't end link anchor
     }
     pub fn add_style_from_ansi_params(&mut self, params: &mut ParamsIter) {
         while let Some(param) = params.next() {
             match param {
-                [] | [0] => self.reset_all(),
+                [] | [0] => self.reset_ansi(),
                 [1] => *self = self.bold(Some(AnsiCode::On)),
                 [2] => *self = self.dim(Some(AnsiCode::On)),
                 [3] => *self = self.italic(Some(AnsiCode::On)),
@@ -813,7 +890,7 @@ impl CursorShape {
 pub struct Cursor {
     pub x: usize,
     pub y: usize,
-    pub pending_styles: CharacterStyles,
+    pub pending_styles: RcCharacterStyles,
     pub charsets: Charsets,
     shape: CursorShape,
 }
@@ -823,7 +900,9 @@ impl Cursor {
         Cursor {
             x,
             y,
-            pending_styles: RESET_STYLES.enable_styled_underlines(styled_underlines),
+            pending_styles: RESET_STYLES
+                .enable_styled_underlines(styled_underlines)
+                .into(),
             charsets: Default::default(),
             shape: CursorShape::Initial,
         }
@@ -836,20 +915,47 @@ impl Cursor {
     }
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct TerminalCharacter {
     pub character: char,
-    pub styles: CharacterStyles,
-    pub width: usize,
+    pub styles: RcCharacterStyles,
+    width: u8,
 }
+// This size has significant memory and CPU implications for long lines,
+// be careful about allowing it to grow
+const _: [(); 16] = [(); std::mem::size_of::<TerminalCharacter>()];
 
 impl TerminalCharacter {
+    #[inline]
     pub fn new(character: char) -> Self {
+        Self::new_styled(character, Default::default())
+    }
+
+    #[inline]
+    pub fn new_styled(character: char, styles: RcCharacterStyles) -> Self {
         TerminalCharacter {
             character,
-            styles: CharacterStyles::default(),
-            width: character.width().unwrap_or(0),
+            styles,
+            width: character.width().unwrap_or(0) as u8,
         }
+    }
+
+    #[inline]
+    pub fn new_singlewidth(character: char) -> Self {
+        Self::new_singlewidth_styled(character, Default::default())
+    }
+
+    #[inline]
+    pub fn new_singlewidth_styled(character: char, styles: RcCharacterStyles) -> Self {
+        TerminalCharacter {
+            character,
+            styles,
+            width: 1,
+        }
+    }
+
+    pub fn width(&self) -> usize {
+        self.width as usize
     }
 }
 

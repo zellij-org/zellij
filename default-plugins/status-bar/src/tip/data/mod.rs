@@ -8,6 +8,7 @@ mod compact_layout;
 mod edit_scrollbuffer;
 mod floating_panes_mouse;
 mod move_focus_hjkl_tab_switch;
+mod move_tabs;
 mod quicknav;
 mod send_mouse_click_to_terminal;
 mod sync_tab;
@@ -88,5 +89,13 @@ lazy_static! {
                 full: compact_layout::compact_layout_full,
             }
         ),
+        (
+            "move_tabs",
+            TipBody {
+                short: move_tabs::move_tabs_short,
+                medium: move_tabs::move_tabs_medium,
+                full: move_tabs::move_tabs_full,
+            }
+        )
     ]);
 }

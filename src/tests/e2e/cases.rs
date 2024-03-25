@@ -9,6 +9,13 @@ use regex::Regex;
 use std::fmt::Write;
 use std::path::Path;
 
+use crate::tests::e2e::steps::{
+    check_focus_on_second_tab, check_second_tab_opened, check_third_tab_is_left_wrapped,
+    check_third_tab_is_right_wrapped, check_third_tab_moved_left,
+    check_third_tab_moved_to_beginning, check_third_tab_opened, move_tab_left, move_tab_right,
+    new_tab, switch_focus_to_left_tab, type_second_tab_content,
+};
+
 use super::remote_runner::{RemoteRunner, RemoteTerminal, Step};
 
 pub const QUIT: [u8; 1] = [17]; // ctrl-q
@@ -56,12 +63,18 @@ pub const SWITCH_PREV_TAB_IN_TAB_MODE: [u8; 1] = [104]; // h
 pub const CLOSE_TAB_IN_TAB_MODE: [u8; 1] = [120]; // x
 pub const RENAME_TAB_MODE: [u8; 1] = [114]; // r
 
+pub const MOVE_TAB_LEFT: [u8; 2] = [27, 105]; // Alt + i
+pub const MOVE_TAB_RIGHT: [u8; 2] = [27, 111]; // Alt + o
+
 pub const SESSION_MODE: [u8; 1] = [15]; // ctrl-o
 pub const DETACH_IN_SESSION_MODE: [u8; 1] = [100]; // d
 
 pub const BRACKETED_PASTE_START: [u8; 6] = [27, 91, 50, 48, 48, 126]; // \u{1b}[200~
 pub const BRACKETED_PASTE_END: [u8; 6] = [27, 91, 50, 48, 49, 126]; // \u{1b}[201
 pub const SLEEP: [u8; 0] = [];
+
+pub const SECOND_TAB_CONTENT: [u8; 14] =
+    [84, 97, 98, 32, 35, 50, 32, 99, 111, 110, 116, 101, 110, 116]; // Tab #2 content
 
 pub fn sgr_mouse_report(position: Position, button: u8) -> Vec<u8> {
     // button: (release is with lower case m, not supported here yet)
@@ -509,6 +522,116 @@ pub fn close_tab() {
     };
     assert!(last_snapshot.contains("Tab #1"));
     assert!(!last_snapshot.contains("Tab #2"));
+}
+
+#[test]
+#[ignore]
+pub fn move_tab_to_left() {
+    let mut test_attempts = 10;
+    let last_snapshot = loop {
+        RemoteRunner::kill_running_sessions(fake_win_size());
+        let mut runner = RemoteRunner::new(fake_win_size())
+            .add_step(new_tab())
+            .add_step(check_second_tab_opened())
+            .add_step(new_tab())
+            .add_step(check_third_tab_opened()) // should have Tab#1 >> Tab#2 >> Tab#3 (focused on Tab#3)
+            .add_step(move_tab_left()); // now, it should be Tab#1 >> Tab#3 >> Tab#2
+
+        runner.run_all_steps();
+
+        let last_snapshot = runner.take_snapshot_after(check_third_tab_moved_left());
+        if !runner.test_timed_out || test_attempts == 0 {
+            break last_snapshot;
+        }
+        test_attempts -= 1;
+    };
+    assert_snapshot!(account_for_races_in_snapshot(last_snapshot));
+}
+
+fn fake_win_size() -> Size {
+    Size {
+        cols: 120,
+        rows: 24,
+    }
+}
+
+#[test]
+#[ignore]
+pub fn move_tab_to_right() {
+    let mut test_attempts = 10;
+    let last_snapshot = loop {
+        RemoteRunner::kill_running_sessions(fake_win_size());
+        let mut runner = RemoteRunner::new(fake_win_size())
+            .add_step(new_tab())
+            .add_step(check_second_tab_opened())
+            .add_step(type_second_tab_content()) // allows verifying the focus later
+            .add_step(new_tab())
+            .add_step(check_third_tab_opened())
+            .add_step(switch_focus_to_left_tab())
+            .add_step(check_focus_on_second_tab()) // should have Tab#1 >> Tab#2 >> Tab#3 (focused on Tab#2)
+            .add_step(move_tab_right()); // now, it should be Tab#1 >> Tab#3 >> Tab#2
+
+        runner.run_all_steps();
+
+        let last_snapshot = runner.take_snapshot_after(check_third_tab_moved_left());
+        if !runner.test_timed_out || test_attempts == 0 {
+            break last_snapshot;
+        }
+        test_attempts -= 1;
+    };
+    assert_snapshot!(account_for_races_in_snapshot(last_snapshot));
+}
+
+#[test]
+#[ignore]
+pub fn move_tab_to_left_until_it_wraps_around() {
+    let mut test_attempts = 10;
+    let last_snapshot = loop {
+        RemoteRunner::kill_running_sessions(fake_win_size());
+        let mut runner = RemoteRunner::new(fake_win_size())
+            .add_step(new_tab())
+            .add_step(check_second_tab_opened())
+            .add_step(new_tab())
+            .add_step(check_third_tab_opened())
+            .add_step(move_tab_left())
+            .add_step(check_third_tab_moved_left())
+            .add_step(move_tab_left())
+            .add_step(check_third_tab_moved_to_beginning()) // should have Tab#3 >> Tab#1 >> Tab#2 (focused on Tab#3)
+            .add_step(move_tab_left()); // now, it should be Tab#2 >> Tab#1 >> Tab#3
+
+        runner.run_all_steps();
+
+        let last_snapshot = runner.take_snapshot_after(check_third_tab_is_left_wrapped());
+        if !runner.test_timed_out || test_attempts == 0 {
+            break last_snapshot;
+        }
+        test_attempts -= 1;
+    };
+    assert_snapshot!(account_for_races_in_snapshot(last_snapshot));
+}
+
+#[test]
+#[ignore]
+pub fn move_tab_to_right_until_it_wraps_around() {
+    let mut test_attempts = 10;
+    let last_snapshot = loop {
+        RemoteRunner::kill_running_sessions(fake_win_size());
+        let mut runner = RemoteRunner::new(fake_win_size())
+            .add_step(new_tab())
+            .add_step(check_second_tab_opened())
+            .add_step(new_tab())
+            .add_step(check_third_tab_opened()) // should have Tab#1 >> Tab#2 >> Tab#3 (focused on Tab#3)
+            .add_step(move_tab_right()); // now, it should be Tab#3 >> Tab#2 >> Tab#1
+
+        runner.run_all_steps();
+
+        let last_snapshot = runner.take_snapshot_after(check_third_tab_is_right_wrapped());
+        if !runner.test_timed_out || test_attempts == 0 {
+            break last_snapshot;
+        }
+        test_attempts -= 1;
+    };
+    assert_snapshot!(account_for_races_in_snapshot(last_snapshot));
 }
 
 #[test]

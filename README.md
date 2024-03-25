@@ -98,3 +98,6 @@ These are issues that are either being actively worked on or are planned for the
 ## License
 
 MIT
+
+## Sponsored by
+<a href="https://github.com/tbjers"><img src="https://avatars.githubusercontent.com/u/1117052?v=4" width="80px"></a>

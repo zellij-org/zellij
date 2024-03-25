@@ -109,6 +109,23 @@ pub struct PermissionRequestResultPayload {
 pub struct FileListPayload {
     #[prost(string, repeated, tag = "1")]
     pub paths: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(message, repeated, tag = "2")]
+    pub paths_metadata: ::prost::alloc::vec::Vec<FileMetadata>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct FileMetadata {
+    /// if this is false, the metadata for this file has not been read
+    #[prost(bool, tag = "1")]
+    pub metadata_is_set: bool,
+    #[prost(bool, tag = "2")]
+    pub is_dir: bool,
+    #[prost(bool, tag = "3")]
+    pub is_file: bool,
+    #[prost(bool, tag = "4")]
+    pub is_symlink: bool,
+    #[prost(uint64, tag = "5")]
+    pub len: u64,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -172,6 +189,16 @@ pub struct SessionManifest {
     pub connected_clients: u32,
     #[prost(bool, tag = "5")]
     pub is_current_session: bool,
+    #[prost(message, repeated, tag = "6")]
+    pub available_layouts: ::prost::alloc::vec::Vec<LayoutInfo>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct LayoutInfo {
+    #[prost(string, tag = "1")]
+    pub name: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub source: ::prost::alloc::string::String,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

@@ -6,7 +6,7 @@ use crate::panes::Row;
 use crate::{
     panes::sixel::SixelImageStore,
     panes::terminal_character::{AnsiCode, CharacterStyles},
-    panes::{LinkHandler, TerminalCharacter, EMPTY_TERMINAL_CHARACTER},
+    panes::{LinkHandler, TerminalCharacter, DEFAULT_STYLES, EMPTY_TERMINAL_CHARACTER},
     ClientId,
 };
 use std::cell::RefCell;
@@ -91,14 +91,13 @@ fn serialize_chunks_with_newlines(
     let link_handler = link_handler.map(|l_h| l_h.borrow());
     for character_chunk in character_chunks {
         let chunk_changed_colors = character_chunk.changed_colors();
-        let mut character_styles =
-            CharacterStyles::new().enable_styled_underlines(styled_underlines);
+        let mut character_styles = DEFAULT_STYLES.enable_styled_underlines(styled_underlines);
         vte_output.push_str("\n\r");
         let mut chunk_width = character_chunk.x;
         for t_character in character_chunk.terminal_characters.iter() {
             let current_character_styles = adjust_styles_for_possible_selection(
                 character_chunk.selection_and_colors(),
-                t_character.styles,
+                *t_character.styles,
                 character_chunk.y,
                 chunk_width,
             );
@@ -110,10 +109,9 @@ fn serialize_chunks_with_newlines(
                 &mut vte_output,
             )
             .with_context(err_context)?;
-            chunk_width += t_character.width;
+            chunk_width += t_character.width();
             vte_output.push(t_character.character);
         }
-        character_styles.clear();
     }
     Ok(vte_output)
 }
@@ -131,15 +129,14 @@ fn serialize_chunks(
     let link_handler = link_handler.map(|l_h| l_h.borrow());
     for character_chunk in character_chunks {
         let chunk_changed_colors = character_chunk.changed_colors();
-        let mut character_styles =
-            CharacterStyles::new().enable_styled_underlines(styled_underlines);
+        let mut character_styles = DEFAULT_STYLES.enable_styled_underlines(styled_underlines);
         vte_goto_instruction(character_chunk.x, character_chunk.y, &mut vte_output)
             .with_context(err_context)?;
         let mut chunk_width = character_chunk.x;
         for t_character in character_chunk.terminal_characters.iter() {
             let current_character_styles = adjust_styles_for_possible_selection(
                 character_chunk.selection_and_colors(),
-                t_character.styles,
+                *t_character.styles,
                 character_chunk.y,
                 chunk_width,
             );
@@ -151,10 +148,9 @@ fn serialize_chunks(
                 &mut vte_output,
             )
             .with_context(err_context)?;
-            chunk_width += t_character.width;
+            chunk_width += t_character.width();
             vte_output.push(t_character.character);
         }
-        character_styles.clear();
     }
     if let Some(sixel_image_store) = sixel_image_store {
         if let Some(sixel_chunks) = sixel_chunks {
@@ -215,7 +211,7 @@ fn adjust_middle_segment_for_wide_chars(
     let mut pad_left_end_by = 0;
     let mut pad_right_start_by = 0;
     for (absolute_index, t_character) in terminal_characters.iter().enumerate() {
-        current_x += t_character.width;
+        current_x += t_character.width();
         if current_x >= middle_start && absolute_middle_start_index.is_none() {
             if current_x > middle_start {
                 pad_left_end_by = current_x - middle_start;
@@ -802,7 +798,7 @@ impl CharacterChunk {
     pub fn width(&self) -> usize {
         let mut width = 0;
         for t_character in &self.terminal_characters {
-            width += t_character.width
+            width += t_character.width()
         }
         width
     }
@@ -814,14 +810,14 @@ impl CharacterChunk {
                 break;
             }
             let next_character = self.terminal_characters.remove(0); // TODO: consider copying self.terminal_characters into a VecDeque to make this process faster?
-            if drained_part_len + next_character.width <= x {
+            if drained_part_len + next_character.width() <= x {
+                drained_part_len += next_character.width();
                 drained_part.push_back(next_character);
-                drained_part_len += next_character.width;
             } else {
                 if drained_part_len == x {
                     self.terminal_characters.insert(0, next_character); // put it back
-                } else if next_character.width > 1 {
-                    for _ in 1..next_character.width {
+                } else if next_character.width() > 1 {
+                    for _ in 1..next_character.width() {
                         self.terminal_characters.insert(0, EMPTY_TERMINAL_CHARACTER);
                         drained_part.push_back(EMPTY_TERMINAL_CHARACTER);
                     }
@@ -963,7 +959,7 @@ impl OutputBuffer {
         row: &Row,
         viewport_width: usize,
     ) -> Vec<TerminalCharacter> {
-        let mut terminal_characters: Vec<TerminalCharacter> = row.columns.iter().copied().collect();
+        let mut terminal_characters: Vec<TerminalCharacter> = row.columns.iter().cloned().collect();
         // pad row
         let row_width = row.width();
         if row_width < viewport_width {

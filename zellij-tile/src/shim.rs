@@ -84,8 +84,8 @@ pub fn open_file(file_to_open: FileToOpen) {
 }
 
 /// Open a file in the user's default `$EDITOR` in a new floating pane
-pub fn open_file_floating(file_to_open: FileToOpen) {
-    let plugin_command = PluginCommand::OpenFileFloating(file_to_open);
+pub fn open_file_floating(file_to_open: FileToOpen, coordinates: Option<FloatingPaneCoordinates>) {
+    let plugin_command = PluginCommand::OpenFileFloating(file_to_open, coordinates);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
@@ -109,9 +109,12 @@ pub fn open_terminal<P: AsRef<Path>>(path: P) {
 }
 
 /// Open a new floating terminal pane to the specified location on the host filesystem
-pub fn open_terminal_floating<P: AsRef<Path>>(path: P) {
+pub fn open_terminal_floating<P: AsRef<Path>>(
+    path: P,
+    coordinates: Option<FloatingPaneCoordinates>,
+) {
     let file_to_open = FileToOpen::new(path.as_ref().to_path_buf());
-    let plugin_command = PluginCommand::OpenTerminalFloating(file_to_open);
+    let plugin_command = PluginCommand::OpenTerminalFloating(file_to_open, coordinates);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
@@ -136,14 +139,17 @@ pub fn open_command_pane(command_to_run: CommandToRun) {
 }
 
 /// Open a new floating command pane with the specified command and args (this sort of pane allows the user to control the command, re-run it and see its exit status through the Zellij UI).
-pub fn open_command_pane_floating(command_to_run: CommandToRun) {
-    let plugin_command = PluginCommand::OpenCommandPaneFloating(command_to_run);
+pub fn open_command_pane_floating(
+    command_to_run: CommandToRun,
+    coordinates: Option<FloatingPaneCoordinates>,
+) {
+    let plugin_command = PluginCommand::OpenCommandPaneFloating(command_to_run, coordinates);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
 }
 
-/// Open a new floating command pane with the specified command and args (this sort of pane allows the user to control the command, re-run it and see its exit status through the Zellij UI).
+/// Open a new in place command pane with the specified command and args (this sort of pane allows the user to control the command, re-run it and see its exit status through the Zellij UI).
 pub fn open_command_pane_in_place(command_to_run: CommandToRun) {
     let plugin_command = PluginCommand::OpenCommandPaneInPlace(command_to_run);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
@@ -653,6 +659,19 @@ pub fn switch_session(name: Option<&str>) {
     unsafe { host_run_plugin_command() };
 }
 
+/// Switch to a session with the given name, create one if no name is given
+pub fn switch_session_with_layout(name: Option<&str>, layout: LayoutInfo, cwd: Option<PathBuf>) {
+    let plugin_command = PluginCommand::SwitchSession(ConnectToSession {
+        name: name.map(|n| n.to_string()),
+        layout: Some(layout),
+        cwd,
+        ..Default::default()
+    });
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 /// Switch to a session with the given name, focusing either the provided pane_id or the provided
 /// tab position (in that order)
 pub fn switch_session_with_focus(
@@ -664,6 +683,7 @@ pub fn switch_session_with_focus(
         name: Some(name.to_owned()),
         tab_position,
         pane_id,
+        ..Default::default()
     });
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
@@ -689,6 +709,76 @@ pub fn delete_all_dead_sessions() {
 /// Rename the current session
 pub fn rename_session(name: &str) {
     let plugin_command = PluginCommand::RenameSession(name.to_owned());
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+/// Unblock the input side of a pipe, requesting the next message be sent if there is one
+pub fn unblock_cli_pipe_input(pipe_name: &str) {
+    let plugin_command = PluginCommand::UnblockCliPipeInput(pipe_name.to_owned());
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+/// Block the input side of a pipe, will only be released once this or another plugin unblocks it
+pub fn block_cli_pipe_input(pipe_name: &str) {
+    let plugin_command = PluginCommand::BlockCliPipeInput(pipe_name.to_owned());
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+/// Send output to the output side of a pipe, ths does not affect the input side of same pipe
+pub fn cli_pipe_output(pipe_name: &str, output: &str) {
+    let plugin_command = PluginCommand::CliPipeOutput(pipe_name.to_owned(), output.to_owned());
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+/// Send a message to a plugin, it will be launched if it is not already running
+pub fn pipe_message_to_plugin(message_to_plugin: MessageToPlugin) {
+    let plugin_command = PluginCommand::MessageToPlugin(message_to_plugin);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+/// Disconnect all other clients from the current session
+pub fn disconnect_other_clients() {
+    let plugin_command = PluginCommand::DisconnectOtherClients;
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+/// Kill all Zellij sessions in the list
+pub fn kill_sessions<S: AsRef<str>>(session_names: &[S])
+where
+    S: ToString,
+{
+    let plugin_command =
+        PluginCommand::KillSessions(session_names.into_iter().map(|s| s.to_string()).collect());
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+/// Scan a specific folder in the host filesystem (this is a hack around some WASI runtime performance
+/// issues), will not follow symlinks
+pub fn scan_host_folder<S: AsRef<Path>>(folder_to_scan: &S) {
+    let plugin_command = PluginCommand::ScanHostFolder(folder_to_scan.as_ref().to_path_buf());
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+/// Start watching the host folder for filesystem changes (Note: somewhat unstable at the time
+/// being)
+pub fn watch_filesystem() {
+    let plugin_command = PluginCommand::WatchFilesystem;
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };

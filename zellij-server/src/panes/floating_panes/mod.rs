@@ -25,7 +25,7 @@ use zellij_utils::{
     data::{ModeInfo, Style},
     errors::prelude::*,
     input::command::RunCommand,
-    input::layout::{FloatingPaneLayout, Run, RunPlugin},
+    input::layout::{FloatingPaneLayout, Run, RunPlugin, RunPluginOrAlias},
     pane_size::{Dimension, Offset, PaneGeom, Size, SizeInPixels, Viewport},
 };
 
@@ -872,11 +872,10 @@ impl FloatingPanes {
             self.focus_pane_for_all_clients(active_pane_id);
         }
     }
-    pub fn get_plugin_pane_id(&self, run_plugin: &RunPlugin) -> Option<PaneId> {
-        let run = Some(Run::Plugin(run_plugin.clone()));
+    pub fn get_plugin_pane_id(&self, run_plugin_or_alias: &RunPluginOrAlias) -> Option<PaneId> {
         self.panes
             .iter()
-            .find(|(_id, s_p)| s_p.invoked_with() == &run)
+            .find(|(_id, pane)| run_plugin_or_alias.is_equivalent_to_run(pane.invoked_with()))
             .map(|(id, _)| *id)
     }
     pub fn focus_pane_if_exists(&mut self, pane_id: PaneId, client_id: ClientId) -> Result<()> {

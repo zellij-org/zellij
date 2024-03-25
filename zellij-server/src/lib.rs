@@ -44,13 +44,13 @@ use zellij_utils::{
     consts::{DEFAULT_SCROLL_BUFFER_SIZE, SCROLL_BUFFER_SIZE},
     data::{ConnectToSession, Event, PluginCapabilities},
     errors::{prelude::*, ContextType, ErrorInstruction, FatalError, ServerContext},
-    home::get_default_data_dir,
+    home::{default_layout_dir, get_default_data_dir},
     input::{
         command::{RunCommand, TerminalAction},
         get_mode_info,
         layout::Layout,
         options::Options,
-        plugins::PluginsConfig,
+        plugins::PluginAliases,
     },
     ipc::{ClientAttributes, ExitReason, ServerToClientMsg},
 };
@@ -65,8 +65,8 @@ pub enum ServerInstruction {
         Box<CliArgs>,
         Box<Options>,
         Box<Layout>,
+        Box<PluginAliases>,
         ClientId,
-        Option<PluginsConfig>,
     ),
     Render(Option<HashMap<ClientId, String>>),
     UnblockInputThread,
@@ -85,14 +85,22 @@ pub enum ServerInstruction {
     ConnStatus(ClientId),
     ActiveClients(ClientId),
     Log(Vec<String>, ClientId),
+    LogError(Vec<String>, ClientId),
     SwitchSession(ConnectToSession, ClientId),
+    UnblockCliPipeInput(String),   // String -> Pipe name
+    CliPipeOutput(String, String), // String -> Pipe name, String -> Output
+    AssociatePipeWithClient {
+        pipe_id: String,
+        client_id: ClientId,
+    },
+    DisconnectAllClientsExcept(ClientId),
 }
 
 impl From<&ServerInstruction> for ServerContext {
     fn from(server_instruction: &ServerInstruction) -> Self {
         match *server_instruction {
             ServerInstruction::NewClient(..) => ServerContext::NewClient,
-            ServerInstruction::Render(_) => ServerContext::Render,
+            ServerInstruction::Render(..) => ServerContext::Render,
             ServerInstruction::UnblockInputThread => ServerContext::UnblockInputThread,
             ServerInstruction::ClientExit(..) => ServerContext::ClientExit,
             ServerInstruction::RemoveClient(..) => ServerContext::RemoveClient,
@@ -103,7 +111,16 @@ impl From<&ServerInstruction> for ServerContext {
             ServerInstruction::ConnStatus(..) => ServerContext::ConnStatus,
             ServerInstruction::ActiveClients(_) => ServerContext::ActiveClients,
             ServerInstruction::Log(..) => ServerContext::Log,
+            ServerInstruction::LogError(..) => ServerContext::LogError,
             ServerInstruction::SwitchSession(..) => ServerContext::SwitchSession,
+            ServerInstruction::UnblockCliPipeInput(..) => ServerContext::UnblockCliPipeInput,
+            ServerInstruction::CliPipeOutput(..) => ServerContext::CliPipeOutput,
+            ServerInstruction::AssociatePipeWithClient { .. } => {
+                ServerContext::AssociatePipeWithClient
+            },
+            ServerInstruction::DisconnectAllClientsExcept(..) => {
+                ServerContext::DisconnectAllClientsExcept
+            },
         }
     }
 }
@@ -120,6 +137,7 @@ pub(crate) struct SessionMetaData {
     pub client_attributes: ClientAttributes,
     pub default_shell: Option<TerminalAction>,
     pub layout: Box<Layout>,
+    pub config_options: Box<Options>,
     screen_thread: Option<thread::JoinHandle<()>>,
     pty_thread: Option<thread::JoinHandle<()>>,
     plugin_thread: Option<thread::JoinHandle<()>>,
@@ -186,12 +204,14 @@ macro_rules! send_to_client {
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct SessionState {
     clients: HashMap<ClientId, Option<Size>>,
+    pipes: HashMap<String, ClientId>, // String => pipe_id
 }
 
 impl SessionState {
     pub fn new() -> Self {
         SessionState {
             clients: HashMap::new(),
+            pipes: HashMap::new(),
         }
     }
     pub fn new_client(&mut self) -> ClientId {
@@ -207,8 +227,12 @@ impl SessionState {
         self.clients.insert(next_client_id, None);
         next_client_id
     }
+    pub fn associate_pipe_with_client(&mut self, pipe_id: String, client_id: ClientId) {
+        self.pipes.insert(pipe_id, client_id);
+    }
     pub fn remove_client(&mut self, client_id: ClientId) {
         self.clients.remove(&client_id);
+        self.pipes.retain(|_p_id, c_id| c_id != &client_id);
     }
     pub fn set_client_size(&mut self, client_id: ClientId, size: Size) {
         self.clients.insert(client_id, Some(size));
@@ -239,6 +263,17 @@ impl SessionState {
     }
     pub fn client_ids(&self) -> Vec<ClientId> {
         self.clients.keys().copied().collect()
+    }
+    pub fn active_clients_are_connected(&self) -> bool {
+        let ids_of_pipe_clients: HashSet<ClientId> = self.pipes.values().copied().collect();
+        let mut active_clients_connected = false;
+        for client_id in self.clients.keys() {
+            if ids_of_pipe_clients.contains(client_id) {
+                continue;
+            }
+            active_clients_connected = true;
+        }
+        active_clients_connected
     }
 }
 
@@ -330,8 +365,8 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 opts,
                 config_options,
                 layout,
+                plugin_aliases,
                 client_id,
-                plugins,
             ) => {
                 let session = init_session(
                     os_input.clone(),
@@ -340,9 +375,9 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     SessionOptions {
                         opts,
                         layout: layout.clone(),
-                        plugins,
                         config_options: config_options.clone(),
                     },
+                    plugin_aliases,
                 );
                 *session_data.write().unwrap() = Some(session);
                 session_state
@@ -490,6 +525,52 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     );
                 }
             },
+            ServerInstruction::UnblockCliPipeInput(pipe_name) => {
+                match session_state.read().unwrap().pipes.get(&pipe_name) {
+                    Some(client_id) => {
+                        send_to_client!(
+                            *client_id,
+                            os_input,
+                            ServerToClientMsg::UnblockCliPipeInput(pipe_name.clone()),
+                            session_state
+                        );
+                    },
+                    None => {
+                        // send to all clients, this pipe might not have been associated yet
+                        for client_id in session_state.read().unwrap().clients.keys() {
+                            send_to_client!(
+                                *client_id,
+                                os_input,
+                                ServerToClientMsg::UnblockCliPipeInput(pipe_name.clone()),
+                                session_state
+                            );
+                        }
+                    },
+                }
+            },
+            ServerInstruction::CliPipeOutput(pipe_name, output) => {
+                match session_state.read().unwrap().pipes.get(&pipe_name) {
+                    Some(client_id) => {
+                        send_to_client!(
+                            *client_id,
+                            os_input,
+                            ServerToClientMsg::CliPipeOutput(pipe_name.clone(), output.clone()),
+                            session_state
+                        );
+                    },
+                    None => {
+                        // send to all clients, this pipe might not have been associated yet
+                        for client_id in session_state.read().unwrap().clients.keys() {
+                            send_to_client!(
+                                *client_id,
+                                os_input,
+                                ServerToClientMsg::CliPipeOutput(pipe_name.clone(), output.clone()),
+                                session_state
+                            );
+                        }
+                    },
+                }
+            },
             ServerInstruction::ClientExit(client_id) => {
                 let _ =
                     os_input.send_to_client(client_id, ServerToClientMsg::Exit(ExitReason::Normal));
@@ -520,8 +601,19 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .senders
                     .send_to_plugin(PluginInstruction::RemoveClient(client_id))
                     .unwrap();
-                if session_state.read().unwrap().clients.is_empty() {
+                if !session_state.read().unwrap().active_clients_are_connected() {
                     *session_data.write().unwrap() = None;
+                    let client_ids_to_cleanup: Vec<ClientId> = session_state
+                        .read()
+                        .unwrap()
+                        .clients
+                        .keys()
+                        .copied()
+                        .collect();
+                    // these are just the pipes
+                    for client_id in client_ids_to_cleanup {
+                        remove_client!(client_id, os_input, session_state);
+                    }
                     break;
                 }
             },
@@ -562,6 +654,21 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     remove_client!(client_id, os_input, session_state);
                 }
                 break;
+            },
+            ServerInstruction::DisconnectAllClientsExcept(client_id) => {
+                let client_ids: Vec<ClientId> = session_state
+                    .read()
+                    .unwrap()
+                    .client_ids()
+                    .iter()
+                    .copied()
+                    .filter(|c| c != &client_id)
+                    .collect();
+                for client_id in client_ids {
+                    let _ = os_input
+                        .send_to_client(client_id, ServerToClientMsg::Exit(ExitReason::Normal));
+                    remove_client!(client_id, os_input, session_state);
+                }
             },
             ServerInstruction::DetachSession(client_ids) => {
                 for client_id in client_ids {
@@ -654,7 +761,24 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     session_state
                 );
             },
-            ServerInstruction::SwitchSession(connect_to_session, client_id) => {
+            ServerInstruction::LogError(lines_to_log, client_id) => {
+                send_to_client!(
+                    client_id,
+                    os_input,
+                    ServerToClientMsg::LogError(lines_to_log),
+                    session_state
+                );
+            },
+            ServerInstruction::SwitchSession(mut connect_to_session, client_id) => {
+                let layout_dir = session_data
+                    .read()
+                    .unwrap()
+                    .as_ref()
+                    .and_then(|c| c.config_options.layout_dir.clone())
+                    .or_else(|| default_layout_dir());
+                if let Some(layout_dir) = layout_dir {
+                    connect_to_session.apply_layout_dir(&layout_dir);
+                }
                 if let Some(min_size) = session_state.read().unwrap().min_client_terminal_size() {
                     session_data
                         .write()
@@ -689,6 +813,12 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 );
                 remove_client!(client_id, os_input, session_state);
             },
+            ServerInstruction::AssociatePipeWithClient { pipe_id, client_id } => {
+                session_state
+                    .write()
+                    .unwrap()
+                    .associate_pipe_with_client(pipe_id, client_id);
+            },
         }
     }
 
@@ -702,7 +832,6 @@ pub struct SessionOptions {
     pub opts: Box<CliArgs>,
     pub config_options: Box<Options>,
     pub layout: Box<Layout>,
-    pub plugins: Option<PluginsConfig>,
 }
 
 fn init_session(
@@ -710,12 +839,12 @@ fn init_session(
     to_server: SenderWithContext<ServerInstruction>,
     client_attributes: ClientAttributes,
     options: SessionOptions,
+    plugin_aliases: Box<PluginAliases>,
 ) -> SessionMetaData {
     let SessionOptions {
         opts,
         config_options,
         layout,
-        plugins,
     } = options;
 
     let _ = SCROLL_BUFFER_SIZE.set(
@@ -805,6 +934,7 @@ fn init_session(
             let client_attributes_clone = client_attributes.clone();
             let debug = opts.debug;
             let layout = layout.clone();
+            let config_options = config_options.clone();
             move || {
                 screen_thread_main(
                     screen_bus,
@@ -825,7 +955,7 @@ fn init_session(
         .spawn({
             let plugin_bus = Bus::new(
                 vec![plugin_receiver],
-                Some(&to_screen),
+                Some(&to_screen_bounded),
                 Some(&to_pty),
                 Some(&to_plugin),
                 Some(&to_server),
@@ -844,13 +974,13 @@ fn init_session(
                     plugin_bus,
                     store,
                     data_dir,
-                    plugins.unwrap_or_default(),
                     layout,
                     path_to_default_shell,
                     zellij_cwd,
                     capabilities,
                     client_attributes,
                     default_shell,
+                    plugin_aliases,
                 )
                 .fatal()
             }
@@ -905,6 +1035,7 @@ fn init_session(
         default_shell,
         client_attributes,
         layout,
+        config_options: config_options.clone(),
         screen_thread: Some(screen_thread),
         pty_thread: Some(pty_thread),
         plugin_thread: Some(plugin_thread),

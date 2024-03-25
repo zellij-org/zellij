@@ -46,12 +46,12 @@ use std::{
     str,
 };
 use zellij_utils::{
-    data::{Event, InputMode, ModeInfo, Palette, PaletteColor, Style},
+    data::{Event, FloatingPaneCoordinates, InputMode, ModeInfo, Palette, PaletteColor, Style},
     input::{
         command::TerminalAction,
         layout::{
             FloatingPaneLayout, PluginUserConfiguration, Run, RunPlugin, RunPluginLocation,
-            SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,
+            RunPluginOrAlias, SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,
         },
         parse_keys,
     },
@@ -636,7 +636,7 @@ impl Tab {
         floating_panes_layout: Vec<FloatingPaneLayout>,
         new_terminal_ids: Vec<(u32, HoldForCommand)>,
         new_floating_terminal_ids: Vec<(u32, HoldForCommand)>,
-        new_plugin_ids: HashMap<(RunPluginLocation, PluginUserConfiguration), Vec<u32>>,
+        new_plugin_ids: HashMap<RunPluginOrAlias, Vec<u32>>,
         client_id: ClientId,
     ) -> Result<()> {
         self.swap_layouts
@@ -847,7 +847,7 @@ impl Tab {
     pub fn rename_session(&mut self, new_session_name: String) -> Result<()> {
         {
             let mode_infos = &mut self.mode_info.borrow_mut();
-            for (_client_id, mut mode_info) in mode_infos.iter_mut() {
+            for (_client_id, mode_info) in mode_infos.iter_mut() {
                 mode_info.session_name = Some(new_session_name.clone());
             }
             self.default_mode_info.session_name = Some(new_session_name);
@@ -991,7 +991,12 @@ impl Tab {
                 self.close_pane(focused_pane_id, true, Some(client_id))
             {
                 self.show_floating_panes();
-                self.add_floating_pane(embedded_pane_to_float, focused_pane_id, Some(client_id))?;
+                self.add_floating_pane(
+                    embedded_pane_to_float,
+                    focused_pane_id,
+                    None,
+                    Some(client_id),
+                )?;
             }
         }
         Ok(())
@@ -1030,6 +1035,7 @@ impl Tab {
                         default_shell,
                         Some(should_float),
                         name,
+                        None,
                         client_id_or_tab_index,
                     );
                     self.senders
@@ -1048,6 +1054,7 @@ impl Tab {
         initial_pane_title: Option<String>,
         should_float: Option<bool>,
         invoked_with: Option<Run>,
+        floating_pane_coordinates: Option<FloatingPaneCoordinates>,
         client_id: Option<ClientId>,
     ) -> Result<()> {
         let err_context = || format!("failed to create new pane with id {pid:?}");
@@ -1105,7 +1112,7 @@ impl Tab {
             },
         };
         if self.floating_panes.panes_are_visible() {
-            self.add_floating_pane(new_pane, pid, client_id)
+            self.add_floating_pane(new_pane, pid, floating_pane_coordinates, client_id)
         } else {
             self.add_tiled_pane(new_pane, pid, client_id)
         }
@@ -3580,15 +3587,16 @@ impl Tab {
         self.set_force_render();
     }
 
-    pub fn find_plugin(&self, run_plugin: &RunPlugin) -> Option<PaneId> {
+    pub fn find_plugin(&self, run_plugin_or_alias: &RunPluginOrAlias) -> Option<PaneId> {
         self.tiled_panes
-            .get_plugin_pane_id(run_plugin)
-            .or_else(|| self.floating_panes.get_plugin_pane_id(run_plugin))
+            .get_plugin_pane_id(run_plugin_or_alias)
+            .or_else(|| self.floating_panes.get_plugin_pane_id(run_plugin_or_alias))
             .or_else(|| {
-                let run = Some(Run::Plugin(run_plugin.clone()));
                 self.suppressed_panes
                     .iter()
-                    .find(|(_id, s_p)| s_p.1.invoked_with() == &run)
+                    .find(|(_id, (_, pane))| {
+                        run_plugin_or_alias.is_equivalent_to_run(pane.invoked_with())
+                    })
                     .map(|(id, _)| *id)
             })
     }
@@ -3615,7 +3623,7 @@ impl Tab {
                 Some(pane) => {
                     if should_float {
                         self.show_floating_panes();
-                        self.add_floating_pane(pane.1, pane_id, Some(client_id))
+                        self.add_floating_pane(pane.1, pane_id, None, Some(client_id))
                     } else {
                         self.hide_floating_panes();
                         self.add_tiled_pane(pane.1, pane_id, Some(client_id))
@@ -3655,10 +3663,16 @@ impl Tab {
         &mut self,
         mut pane: Box<dyn Pane>,
         pane_id: PaneId,
+        floating_pane_coordinates: Option<FloatingPaneCoordinates>,
         client_id: Option<ClientId>,
     ) -> Result<()> {
         let err_context = || format!("failed to add floating pane");
-        if let Some(new_pane_geom) = self.floating_panes.find_room_for_new_pane() {
+        if let Some(mut new_pane_geom) = self.floating_panes.find_room_for_new_pane() {
+            if let Some(floating_pane_coordinates) = floating_pane_coordinates {
+                let viewport = self.viewport.borrow();
+                new_pane_geom.adjust_coordinates(floating_pane_coordinates, *viewport);
+                self.swap_layouts.set_is_floating_damaged();
+            }
             pane.set_active_at(Instant::now());
             pane.set_geom(new_pane_geom);
             pane.set_content_offset(Offset::frame(1)); // floating panes always have a frame
@@ -3756,7 +3770,7 @@ pub fn pane_info_for_pane(pane_id: &PaneId, pane: &Box<dyn Pane>) -> PaneInfo {
             pane_info.id = *plugin_id;
             pane_info.is_plugin = true;
             pane_info.plugin_url = pane.invoked_with().as_ref().and_then(|c| match c {
-                Run::Plugin(run_plugin) => Some(run_plugin.location.to_string()),
+                Run::Plugin(run_plugin_or_alias) => Some(run_plugin_or_alias.location_string()),
                 _ => None,
             });
         },

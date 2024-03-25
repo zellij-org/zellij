@@ -1,0 +1,10 @@
+---
+source: zellij-server/src/panes/./unit/grid_tests.rs
+assertion_line: 2475
+expression: "format!(\"{:?}\", grid)"
+---
+00 (C): 
+01 (C): Line 1 >fi
+02 (W): ll ZZ 20_<
+03 (W): YY
+

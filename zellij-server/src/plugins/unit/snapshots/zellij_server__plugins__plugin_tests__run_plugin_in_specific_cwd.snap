@@ -1,0 +1,12 @@
+---
+source: zellij-server/src/plugins/./unit/plugin_tests.rs
+assertion_line: 6481
+expression: "format!(\"{:#?}\", std :: fs :: read_dir(plugin_initial_cwd).unwrap().collect ::\n    < Vec < _ >> ())"
+---
+[
+    Ok(
+        DirEntry(
+            "/tmp/.tmpvA1zie/custom_plugin_cwd/foo.txt",
+        ),
+    ),
+]

@@ -38,6 +38,8 @@ xflags::xflags! {
         cmd publish {
             /// Perform a dry-run (don't push/publish anything)
             optional --dry-run
+            /// Publish but don't push a commit to git (only works with '--cargo-registry')
+            optional --no-push
             /// Push commit to custom git remote
             optional --git-remote remote: OsString
             /// Publish crates to custom registry
@@ -159,6 +161,7 @@ pub struct Manpage;
 #[derive(Debug)]
 pub struct Publish {
     pub dry_run: bool,
+    pub no_push: bool,
     pub git_remote: Option<OsString>,
     pub cargo_registry: Option<OsString>,
 }

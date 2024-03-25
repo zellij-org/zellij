@@ -49,6 +49,9 @@ pub(crate) enum ClientInstruction {
     LogError(Vec<String>),
     SwitchSession(ConnectToSession),
     SetSynchronizedOutput(Option<SyncOutput>),
+    UnblockCliPipeInput(String),   // String -> pipe name
+    CliPipeOutput(String, String), // String -> pipe name, String -> output
+    QueryTerminalSize,
 }
 
 impl From<ServerToClientMsg> for ClientInstruction {
@@ -67,6 +70,13 @@ impl From<ServerToClientMsg> for ClientInstruction {
             ServerToClientMsg::SwitchSession(connect_to_session) => {
                 ClientInstruction::SwitchSession(connect_to_session)
             },
+            ServerToClientMsg::UnblockCliPipeInput(pipe_name) => {
+                ClientInstruction::UnblockCliPipeInput(pipe_name)
+            },
+            ServerToClientMsg::CliPipeOutput(pipe_name, output) => {
+                ClientInstruction::CliPipeOutput(pipe_name, output)
+            },
+            ServerToClientMsg::QueryTerminalSize => ClientInstruction::QueryTerminalSize,
         }
     }
 }
@@ -87,6 +97,9 @@ impl From<&ClientInstruction> for ClientContext {
             ClientInstruction::DoneParsingStdinQuery => ClientContext::DoneParsingStdinQuery,
             ClientInstruction::SwitchSession(..) => ClientContext::SwitchSession,
             ClientInstruction::SetSynchronizedOutput(..) => ClientContext::SetSynchronisedOutput,
+            ClientInstruction::UnblockCliPipeInput(..) => ClientContext::UnblockCliPipeInput,
+            ClientInstruction::CliPipeOutput(..) => ClientContext::CliPipeOutput,
+            ClientInstruction::QueryTerminalSize => ClientContext::QueryTerminalSize,
         }
     }
 }
@@ -232,7 +245,7 @@ pub fn start_client(
                     Box::new(opts),
                     Box::new(config_options.clone()),
                     Box::new(layout.unwrap()),
-                    Some(config.plugins.clone()),
+                    Box::new(config.plugins.clone()),
                 ),
                 ipc_pipe,
             )
@@ -488,6 +501,11 @@ pub fn start_client(
             },
             ClientInstruction::SetSynchronizedOutput(enabled) => {
                 synchronised_output = enabled;
+            },
+            ClientInstruction::QueryTerminalSize => {
+                os_input.send_to_server(ClientToServerMsg::TerminalResize(
+                    os_input.get_terminal_size_using_fd(0),
+                ));
             },
             _ => {},
         }

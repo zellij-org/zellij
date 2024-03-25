@@ -1,7 +1,7 @@
 tab_template name="ui" {
    children
    pane size=1 borderless=true {
-       plugin location="zellij:compact-bar"
+       plugin location="compact-bar"
    }
 }
 

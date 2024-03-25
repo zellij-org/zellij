@@ -1,242 +1,124 @@
-mod search;
+mod file_list_view;
+mod search_view;
+mod shared;
 mod state;
 
-use colored::*;
-use search::{FileContentsWorker, FileNameWorker, MessageToSearch, ResultsOfSearch};
-use serde::{Deserialize, Serialize};
-use serde_json;
-use state::{refresh_directory, FsEntry, State};
+use crate::file_list_view::FsEntry;
+use shared::{render_current_path, render_instruction_line, render_search_term};
+use state::{refresh_directory, State};
 use std::collections::BTreeMap;
-use std::{cmp::min, time::Instant};
+use std::path::PathBuf;
 use zellij_tile::prelude::*;
 
 register_plugin!(State);
-register_worker!(FileNameWorker, file_name_search_worker, FILE_NAME_WORKER);
-register_worker!(
-    FileContentsWorker,
-    file_contents_search_worker,
-    FILE_CONTENTS_WORKER
-);
 
 impl ZellijPlugin for State {
-    fn load(&mut self, _configuration: BTreeMap<String, String>) {
-        refresh_directory(self);
-        self.search_state.loading = true;
+    fn load(&mut self, configuration: BTreeMap<String, String>) {
+        let plugin_ids = get_plugin_ids();
+        self.initial_cwd = plugin_ids.initial_cwd;
+        let show_hidden_files = configuration
+            .get("show_hidden_files")
+            .map(|v| v == "true")
+            .unwrap_or(false);
+        self.hide_hidden_files = !show_hidden_files;
+        self.close_on_selection = configuration
+            .get("close_on_selection")
+            .map(|v| v == "true")
+            .unwrap_or(false);
         subscribe(&[
             EventType::Key,
             EventType::Mouse,
             EventType::CustomMessage,
             EventType::Timer,
-            EventType::FileSystemCreate,
             EventType::FileSystemUpdate,
-            EventType::FileSystemDelete,
-            EventType::PermissionRequestResult,
         ]);
-        post_message_to(PluginMessage {
-            worker_name: Some("file_name_search".into()),
-            name: serde_json::to_string(&MessageToSearch::ScanFolder).unwrap(),
-            payload: "".into(),
-        });
-        post_message_to(PluginMessage {
-            worker_name: Some("file_contents_search".into()),
-            name: serde_json::to_string(&MessageToSearch::ScanFolder).unwrap(),
-            payload: "".into(),
-        });
-        self.search_state.loading = true;
-        set_timeout(0.5); // for displaying loading animation
+        self.file_list_view.reset_selected();
+        // the caller_cwd might be different from the initial_cwd if this plugin was defined as an
+        // alias, with access to a certain part of the file system (often broader) and was called
+        // from an individual pane somewhere inside this broad scope - in this case, we want to
+        // start in the same cwd as the caller, giving them the full access we were granted
+        match configuration
+            .get("caller_cwd")
+            .map(|c| PathBuf::from(c))
+            .and_then(|c| {
+                c.strip_prefix(&self.initial_cwd)
+                    .ok()
+                    .map(|c| PathBuf::from(c))
+            }) {
+            Some(relative_caller_path) => {
+                let relative_caller_path = FsEntry::Dir(relative_caller_path.to_path_buf());
+                self.file_list_view.enter_dir(&relative_caller_path);
+                refresh_directory(&self.file_list_view.path);
+            },
+            None => {
+                refresh_directory(&std::path::Path::new("/"));
+            },
+        }
     }
 
     fn update(&mut self, event: Event) -> bool {
         let mut should_render = false;
-        let prev_event = if self.ev_history.len() == 2 {
-            self.ev_history.pop_front()
-        } else {
-            None
-        };
-        self.ev_history.push_back((event.clone(), Instant::now()));
         match event {
-            Event::PermissionRequestResult(_) => {
+            Event::FileSystemUpdate(paths) => {
+                self.update_files(paths);
                 should_render = true;
             },
-            Event::Timer(_elapsed) => {
-                if self.search_state.loading {
-                    set_timeout(0.5);
-                    self.search_state.progress_animation();
-                    should_render = true;
-                }
-            },
-            Event::CustomMessage(message, payload) => match serde_json::from_str(&message) {
-                Ok(MessageToPlugin::UpdateFileNameSearchResults) => {
-                    if let Ok(results_of_search) = serde_json::from_str::<ResultsOfSearch>(&payload)
-                    {
-                        self.search_state
-                            .update_file_name_search_results(results_of_search);
-                        should_render = true;
-                    }
-                },
-                Ok(MessageToPlugin::UpdateFileContentsSearchResults) => {
-                    if let Ok(results_of_search) = serde_json::from_str::<ResultsOfSearch>(&payload)
-                    {
-                        self.search_state
-                            .update_file_contents_search_results(results_of_search);
-                        should_render = true;
-                    }
-                },
-                Ok(MessageToPlugin::DoneScanningFolder) => {
-                    self.search_state.loading = false;
-                    should_render = true;
-                },
-                Err(e) => eprintln!("Failed to deserialize custom message: {:?}", e),
-            },
             Event::Key(key) => match key {
-                Key::Esc if self.typing_search_term() => {
-                    if self.search_state.search_term.is_empty() {
-                        self.stop_typing_search_term();
-                    } else {
-                        self.search_state.handle_key(key);
-                    }
+                Key::Char(character) if character != '\n' => {
+                    self.update_search_term(character);
                     should_render = true;
                 },
-                _ if self.typing_search_term() => {
-                    self.search_state.handle_key(key);
+                Key::Backspace => {
+                    self.handle_backspace();
                     should_render = true;
                 },
-                Key::Char('/') => {
-                    self.start_typing_search_term();
+                Key::Esc | Key::Ctrl('c') => {
+                    self.clear_search_term_or_descend();
                     should_render = true;
                 },
-                Key::Esc => {
-                    self.stop_typing_search_term();
-                    hide_self();
+                Key::Up => {
+                    self.move_selection_up();
                     should_render = true;
                 },
-                Key::Up | Key::Char('k') => {
-                    let currently_selected = self.selected();
-                    *self.selected_mut() = self.selected().saturating_sub(1);
-                    if currently_selected != self.selected() {
-                        should_render = true;
-                    }
-                },
-                Key::Down | Key::Char('j') => {
-                    let currently_selected = self.selected();
-                    let next = self.selected().saturating_add(1);
-                    *self.selected_mut() = min(self.files.len().saturating_sub(1), next);
-                    if currently_selected != self.selected() {
-                        should_render = true;
-                    }
-                },
-                Key::Right | Key::Char('\n') | Key::Char('l') if !self.files.is_empty() => {
-                    self.traverse_dir_or_open_file();
-                    self.ev_history.clear();
+                Key::Down => {
+                    self.move_selection_down();
                     should_render = true;
                 },
-                Key::Left | Key::Char('h') => {
-                    if self.path.components().count() > 2 {
-                        // don't descend into /host
-                        // the reason this is a hard-coded number (2) and not "== ROOT"
-                        // or some such is that there are certain cases in which self.path
-                        // is empty and this will work then too
-                        should_render = true;
-                        self.path.pop();
-                        refresh_directory(self);
-                    }
+                Key::Char('\n') if self.handling_filepick_request_from.is_some() => {
+                    self.send_filepick_response();
                 },
-                Key::Char('.') => {
+                Key::Char('\n') => {
+                    self.open_selected_path();
+                },
+                Key::Right | Key::BackTab => {
+                    self.traverse_dir();
+                    should_render = true;
+                },
+                Key::Left => {
+                    self.descend_to_previous_path();
+                    should_render = true;
+                },
+                Key::Ctrl('e') => {
                     should_render = true;
                     self.toggle_hidden_files();
-                    refresh_directory(self);
+                    refresh_directory(&self.file_list_view.path);
                 },
-
                 _ => (),
             },
             Event::Mouse(mouse_event) => match mouse_event {
                 Mouse::ScrollDown(_) => {
-                    let currently_selected = self.selected();
-                    let next = self.selected().saturating_add(1);
-                    *self.selected_mut() = min(self.files.len().saturating_sub(1), next);
-                    if currently_selected != self.selected() {
-                        should_render = true;
-                    }
+                    self.move_selection_down();
+                    should_render = true;
                 },
                 Mouse::ScrollUp(_) => {
-                    let currently_selected = self.selected();
-                    *self.selected_mut() = self.selected().saturating_sub(1);
-                    if currently_selected != self.selected() {
-                        should_render = true;
-                    }
+                    self.move_selection_up();
+                    should_render = true;
                 },
-                Mouse::Release(line, _) => {
-                    if line < 0 {
-                        return should_render;
-                    }
-                    let mut should_select = true;
-                    if let Some((Event::Mouse(Mouse::Release(prev_line, _)), t)) = prev_event {
-                        if prev_line == line
-                            && Instant::now().saturating_duration_since(t).as_millis() < 400
-                        {
-                            self.traverse_dir_or_open_file();
-                            self.ev_history.clear();
-                            should_select = false;
-                            should_render = true;
-                        }
-                    }
-                    if should_select && self.scroll() + (line as usize) < self.files.len() {
-                        let currently_selected = self.selected();
-                        *self.selected_mut() = self.scroll() + (line as usize);
-                        if currently_selected != self.selected() {
-                            should_render = true;
-                        }
-                    }
+                Mouse::LeftClick(line, _) => {
+                    self.handle_left_click(line);
+                    should_render = true;
                 },
                 _ => {},
-            },
-            Event::FileSystemCreate(paths) => {
-                let paths: Vec<String> = paths
-                    .iter()
-                    .map(|p| p.to_string_lossy().to_string())
-                    .collect();
-                post_message_to(PluginMessage {
-                    worker_name: Some("file_name_search".into()),
-                    name: serde_json::to_string(&MessageToSearch::FileSystemCreate).unwrap(),
-                    payload: serde_json::to_string(&paths).unwrap(),
-                });
-                post_message_to(PluginMessage {
-                    worker_name: Some("file_contents_search".into()),
-                    name: serde_json::to_string(&MessageToSearch::FileSystemCreate).unwrap(),
-                    payload: serde_json::to_string(&paths).unwrap(),
-                });
-            },
-            Event::FileSystemUpdate(paths) => {
-                let paths: Vec<String> = paths
-                    .iter()
-                    .map(|p| p.to_string_lossy().to_string())
-                    .collect();
-                post_message_to(PluginMessage {
-                    worker_name: Some("file_name_search".into()),
-                    name: serde_json::to_string(&MessageToSearch::FileSystemUpdate).unwrap(),
-                    payload: serde_json::to_string(&paths).unwrap(),
-                });
-                post_message_to(PluginMessage {
-                    worker_name: Some("file_contents_search".into()),
-                    name: serde_json::to_string(&MessageToSearch::FileSystemUpdate).unwrap(),
-                    payload: serde_json::to_string(&paths).unwrap(),
-                });
-            },
-            Event::FileSystemDelete(paths) => {
-                let paths: Vec<String> = paths
-                    .iter()
-                    .map(|p| p.to_string_lossy().to_string())
-                    .collect();
-                post_message_to(PluginMessage {
-                    worker_name: Some("file_name_search".into()),
-                    name: serde_json::to_string(&MessageToSearch::FileSystemDelete).unwrap(),
-                    payload: serde_json::to_string(&paths).unwrap(),
-                });
-                post_message_to(PluginMessage {
-                    worker_name: Some("file_contents_search".into()),
-                    name: serde_json::to_string(&MessageToSearch::FileSystemDelete).unwrap(),
-                    payload: serde_json::to_string(&paths).unwrap(),
-                });
             },
             _ => {
                 dbg!("Unknown event {:?}", event);
@@ -244,54 +126,37 @@ impl ZellijPlugin for State {
         };
         should_render
     }
-
-    fn render(&mut self, rows: usize, cols: usize) {
-        if self.typing_search_term() {
-            self.search_state.change_size(rows, cols);
-            print!("{}", self.search_state);
-            return;
-        }
-
-        for i in 0..rows {
-            if self.selected() < self.scroll() {
-                *self.scroll_mut() = self.selected();
+    fn pipe(&mut self, pipe_message: PipeMessage) -> bool {
+        if pipe_message.is_private && pipe_message.name == "filepicker" {
+            if let PipeSource::Cli(pipe_id) = &pipe_message.source {
+                // here we block the cli pipe input because we want it to wait until the user chose
+                // a file
+                #[cfg(target_family = "wasm")]
+                block_cli_pipe_input(pipe_id);
             }
-            if self.selected() - self.scroll() + 2 > rows {
-                *self.scroll_mut() = self.selected() + 2 - rows;
-            }
-
-            let is_last_row = i == rows.saturating_sub(1);
-            let i = self.scroll() + i;
-            if let Some(entry) = self.files.get(i) {
-                let mut path = entry.as_line(cols).normal();
-
-                if let FsEntry::Dir(..) = entry {
-                    path = path.dimmed().bold();
-                }
-
-                if i == self.selected() {
-                    if is_last_row {
-                        print!("{}", path.clone().reversed());
-                    } else {
-                        println!("{}", path.clone().reversed());
-                    }
-                } else {
-                    if is_last_row {
-                        print!("{}", path);
-                    } else {
-                        println!("{}", path);
-                    }
-                }
-            } else if !is_last_row {
-                println!();
-            }
+            self.handling_filepick_request_from = Some((pipe_message.source, pipe_message.args));
+            true
+        } else {
+            false
         }
     }
-}
 
-#[derive(Serialize, Deserialize)]
-pub enum MessageToPlugin {
-    UpdateFileNameSearchResults,
-    UpdateFileContentsSearchResults,
-    DoneScanningFolder,
+    fn render(&mut self, rows: usize, cols: usize) {
+        self.current_rows = Some(rows);
+        let rows_for_list = rows.saturating_sub(6);
+        render_search_term(&self.search_term);
+        render_current_path(
+            &self.initial_cwd,
+            &self.file_list_view.path,
+            self.file_list_view.path_is_dir,
+            self.handling_filepick_request_from.is_some(),
+            cols,
+        );
+        if self.is_searching {
+            self.search_view.render(rows_for_list, cols);
+        } else {
+            self.file_list_view.render(rows_for_list, cols);
+        }
+        render_instruction_line(rows, cols);
+    }
 }

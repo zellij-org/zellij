@@ -1,0 +1,12 @@
+---
+source: zellij-server/src/plugins/./unit/plugin_tests.rs
+assertion_line: 5856
+expression: "format!(\"{:#?}\", plugin_bytes_event)"
+---
+Some(
+    (
+        0,
+        1,
+        "Payload from self: \"my_cool_payload\"\n\r",
+    ),
+)

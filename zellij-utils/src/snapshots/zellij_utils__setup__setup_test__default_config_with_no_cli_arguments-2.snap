@@ -1,6 +1,6 @@
 ---
 source: zellij-utils/src/setup.rs
-assertion_line: 672
+assertion_line: 699
 expression: "format!(\"{:#?}\", layout)"
 ---
 Layout {
@@ -23,17 +23,18 @@ Layout {
                         ),
                         run: Some(
                             Plugin(
-                                RunPlugin {
-                                    _allow_exec_host_cmd: false,
-                                    location: Zellij(
-                                        PluginTag(
-                                            "tab-bar",
+                                Alias(
+                                    PluginAlias {
+                                        name: "tab-bar",
+                                        configuration: Some(
+                                            PluginUserConfiguration(
+                                                {},
+                                            ),
                                         ),
-                                    ),
-                                    configuration: PluginUserConfiguration(
-                                        {},
-                                    ),
-                                },
+                                        initial_cwd: None,
+                                        run_plugin: None,
+                                    },
+                                ),
                             ),
                         ),
                         borderless: true,
@@ -73,17 +74,18 @@ Layout {
                         ),
                         run: Some(
                             Plugin(
-                                RunPlugin {
-                                    _allow_exec_host_cmd: false,
-                                    location: Zellij(
-                                        PluginTag(
-                                            "status-bar",
+                                Alias(
+                                    PluginAlias {
+                                        name: "status-bar",
+                                        configuration: Some(
+                                            PluginUserConfiguration(
+                                                {},
+                                            ),
                                         ),
-                                    ),
-                                    configuration: PluginUserConfiguration(
-                                        {},
-                                    ),
-                                },
+                                        initial_cwd: None,
+                                        run_plugin: None,
+                                    },
+                                ),
                             ),
                         ),
                         borderless: true,
@@ -133,17 +135,18 @@ Layout {
                             ),
                             run: Some(
                                 Plugin(
-                                    RunPlugin {
-                                        _allow_exec_host_cmd: false,
-                                        location: Zellij(
-                                            PluginTag(
-                                                "tab-bar",
+                                    Alias(
+                                        PluginAlias {
+                                            name: "tab-bar",
+                                            configuration: Some(
+                                                PluginUserConfiguration(
+                                                    {},
+                                                ),
                                             ),
-                                        ),
-                                        configuration: PluginUserConfiguration(
-                                            {},
-                                        ),
-                                    },
+                                            initial_cwd: None,
+                                            run_plugin: None,
+                                        },
+                                    ),
                                 ),
                             ),
                             borderless: true,
@@ -235,17 +238,18 @@ Layout {
                             ),
                             run: Some(
                                 Plugin(
-                                    RunPlugin {
-                                        _allow_exec_host_cmd: false,
-                                        location: Zellij(
-                                            PluginTag(
-                                                "status-bar",
+                                    Alias(
+                                        PluginAlias {
+                                            name: "status-bar",
+                                            configuration: Some(
+                                                PluginUserConfiguration(
+                                                    {},
+                                                ),
                                             ),
-                                        ),
-                                        configuration: PluginUserConfiguration(
-                                            {},
-                                        ),
-                                    },
+                                            initial_cwd: None,
+                                            run_plugin: None,
+                                        },
+                                    ),
                                 ),
                             ),
                             borderless: true,
@@ -288,17 +292,18 @@ Layout {
                             ),
                             run: Some(
                                 Plugin(
-                                    RunPlugin {
-                                        _allow_exec_host_cmd: false,
-                                        location: Zellij(
-                                            PluginTag(
-                                                "tab-bar",
+                                    Alias(
+                                        PluginAlias {
+                                            name: "tab-bar",
+                                            configuration: Some(
+                                                PluginUserConfiguration(
+                                                    {},
+                                                ),
                                             ),
-                                        ),
-                                        configuration: PluginUserConfiguration(
-                                            {},
-                                        ),
-                                    },
+                                            initial_cwd: None,
+                                            run_plugin: None,
+                                        },
+                                    ),
                                 ),
                             ),
                             borderless: true,
@@ -455,17 +460,18 @@ Layout {
                             ),
                             run: Some(
                                 Plugin(
-                                    RunPlugin {
-                                        _allow_exec_host_cmd: false,
-                                        location: Zellij(
-                                            PluginTag(
-                                                "status-bar",
+                                    Alias(
+                                        PluginAlias {
+                                            name: "status-bar",
+                                            configuration: Some(
+                                                PluginUserConfiguration(
+                                                    {},
+                                                ),
                                             ),
-                                        ),
-                                        configuration: PluginUserConfiguration(
-                                            {},
-                                        ),
-                                    },
+                                            initial_cwd: None,
+                                            run_plugin: None,
+                                        },
+                                    ),
                                 ),
                             ),
                             borderless: true,
@@ -508,17 +514,18 @@ Layout {
                             ),
                             run: Some(
                                 Plugin(
-                                    RunPlugin {
-                                        _allow_exec_host_cmd: false,
-                                        location: Zellij(
-                                            PluginTag(
-                                                "tab-bar",
+                                    Alias(
+                                        PluginAlias {
+                                            name: "tab-bar",
+                                            configuration: Some(
+                                                PluginUserConfiguration(
+                                                    {},
+                                                ),
                                             ),
-                                        ),
-                                        configuration: PluginUserConfiguration(
-                                            {},
-                                        ),
-                                    },
+                                            initial_cwd: None,
+                                            run_plugin: None,
+                                        },
+                                    ),
                                 ),
                             ),
                             borderless: true,
@@ -756,17 +763,18 @@ Layout {
                             ),
                             run: Some(
                                 Plugin(
-                                    RunPlugin {
-                                        _allow_exec_host_cmd: false,
-                                        location: Zellij(
-                                            PluginTag(
-                                                "status-bar",
+                                    Alias(
+                                        PluginAlias {
+                                            name: "status-bar",
+                                            configuration: Some(
+                                                PluginUserConfiguration(
+                                                    {},
+                                                ),
                                             ),
-                                        ),
-                                        configuration: PluginUserConfiguration(
-                                            {},
-                                        ),
-                                    },
+                                            initial_cwd: None,
+                                            run_plugin: None,
+                                        },
+                                    ),
                                 ),
                             ),
                             borderless: true,
@@ -816,17 +824,18 @@ Layout {
                             ),
                             run: Some(
                                 Plugin(
-                                    RunPlugin {
-                                        _allow_exec_host_cmd: false,
-                                        location: Zellij(
-                                            PluginTag(
-                                                "tab-bar",
+                                    Alias(
+                                        PluginAlias {
+                                            name: "tab-bar",
+                                            configuration: Some(
+                                                PluginUserConfiguration(
+                                                    {},
+                                                ),
                                             ),
-                                        ),
-                                        configuration: PluginUserConfiguration(
-                                            {},
-                                        ),
-                                    },
+                                            initial_cwd: None,
+                                            run_plugin: None,
+                                        },
+                                    ),
                                 ),
                             ),
                             borderless: true,
@@ -899,17 +908,18 @@ Layout {
                             ),
                             run: Some(
                                 Plugin(
-                                    RunPlugin {
-                                        _allow_exec_host_cmd: false,
-                                        location: Zellij(
-                                            PluginTag(
-                                                "status-bar",
+                                    Alias(
+                                        PluginAlias {
+                                            name: "status-bar",
+                                            configuration: Some(
+                                                PluginUserConfiguration(
+                                                    {},
+                                                ),
                                             ),
-                                        ),
-                                        configuration: PluginUserConfiguration(
-                                            {},
-                                        ),
-                                    },
+                                            initial_cwd: None,
+                                            run_plugin: None,
+                                        },
+                                    ),
                                 ),
                             ),
                             borderless: true,
@@ -952,17 +962,18 @@ Layout {
                             ),
                             run: Some(
                                 Plugin(
-                                    RunPlugin {
-                                        _allow_exec_host_cmd: false,
-                                        location: Zellij(
-                                            PluginTag(
-                                                "tab-bar",
+                                    Alias(
+                                        PluginAlias {
+                                            name: "tab-bar",
+                                            configuration: Some(
+                                                PluginUserConfiguration(
+                                                    {},
+                                                ),
                                             ),
-                                        ),
-                                        configuration: PluginUserConfiguration(
-                                            {},
-                                        ),
-                                    },
+                                            initial_cwd: None,
+                                            run_plugin: None,
+                                        },
+                                    ),
                                 ),
                             ),
                             borderless: true,
@@ -1119,17 +1130,18 @@ Layout {
                             ),
                             run: Some(
                                 Plugin(
-                                    RunPlugin {
-                                        _allow_exec_host_cmd: false,
-                                        location: Zellij(
-                                            PluginTag(
-                                                "status-bar",
+                                    Alias(
+                                        PluginAlias {
+                                            name: "status-bar",
+                                            configuration: Some(
+                                                PluginUserConfiguration(
+                                                    {},
+                                                ),
                                             ),
-                                        ),
-                                        configuration: PluginUserConfiguration(
-                                            {},
-                                        ),
-                                    },
+                                            initial_cwd: None,
+                                            run_plugin: None,
+                                        },
+                                    ),
                                 ),
                             ),
                             borderless: true,
@@ -1172,17 +1184,18 @@ Layout {
                             ),
                             run: Some(
                                 Plugin(
-                                    RunPlugin {
-                                        _allow_exec_host_cmd: false,
-                                        location: Zellij(
-                                            PluginTag(
-                                                "tab-bar",
+                                    Alias(
+                                        PluginAlias {
+                                            name: "tab-bar",
+                                            configuration: Some(
+                                                PluginUserConfiguration(
+                                                    {},
+                                                ),
                                             ),
-                                        ),
-                                        configuration: PluginUserConfiguration(
-                                            {},
-                                        ),
-                                    },
+                                            initial_cwd: None,
+                                            run_plugin: None,
+                                        },
+                                    ),
                                 ),
                             ),
                             borderless: true,
@@ -1420,17 +1433,18 @@ Layout {
                             ),
                             run: Some(
                                 Plugin(
-                                    RunPlugin {
-                                        _allow_exec_host_cmd: false,
-                                        location: Zellij(
-                                            PluginTag(
-                                                "status-bar",
+                                    Alias(
+                                        PluginAlias {
+                                            name: "status-bar",
+                                            configuration: Some(
+                                                PluginUserConfiguration(
+                                                    {},
+                                                ),
                                             ),
-                                        ),
-                                        configuration: PluginUserConfiguration(
-                                            {},
-                                        ),
-                                    },
+                                            initial_cwd: None,
+                                            run_plugin: None,
+                                        },
+                                    ),
                                 ),
                             ),
                             borderless: true,
@@ -1480,17 +1494,18 @@ Layout {
                             ),
                             run: Some(
                                 Plugin(
-                                    RunPlugin {
-                                        _allow_exec_host_cmd: false,
-                                        location: Zellij(
-                                            PluginTag(
-                                                "tab-bar",
+                                    Alias(
+                                        PluginAlias {
+                                            name: "tab-bar",
+                                            configuration: Some(
+                                                PluginUserConfiguration(
+                                                    {},
+                                                ),
                                             ),
-                                        ),
-                                        configuration: PluginUserConfiguration(
-                                            {},
-                                        ),
-                                    },
+                                            initial_cwd: None,
+                                            run_plugin: None,
+                                        },
+                                    ),
                                 ),
                             ),
                             borderless: true,
@@ -1582,17 +1597,18 @@ Layout {
                             ),
                             run: Some(
                                 Plugin(
-                                    RunPlugin {
-                                        _allow_exec_host_cmd: false,
-                                        location: Zellij(
-                                            PluginTag(
-                                                "status-bar",
+                                    Alias(
+                                        PluginAlias {
+                                            name: "status-bar",
+                                            configuration: Some(
+                                                PluginUserConfiguration(
+                                                    {},
+                                                ),
                                             ),
-                                        ),
-                                        configuration: PluginUserConfiguration(
-                                            {},
-                                        ),
-                                    },
+                                            initial_cwd: None,
+                                            run_plugin: None,
+                                        },
+                                    ),
                                 ),
                             ),
                             borderless: true,

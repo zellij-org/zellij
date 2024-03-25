@@ -8,6 +8,8 @@ pub enum PermissionType {
     OpenTerminalsOrPlugins = 4,
     WriteToStdin = 5,
     WebAccess = 6,
+    ReadCliPipes = 7,
+    MessageAndLaunchOtherPlugins = 8,
 }
 impl PermissionType {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -23,6 +25,10 @@ impl PermissionType {
             PermissionType::OpenTerminalsOrPlugins => "OpenTerminalsOrPlugins",
             PermissionType::WriteToStdin => "WriteToStdin",
             PermissionType::WebAccess => "WebAccess",
+            PermissionType::ReadCliPipes => "ReadCliPipes",
+            PermissionType::MessageAndLaunchOtherPlugins => {
+                "MessageAndLaunchOtherPlugins"
+            }
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -35,6 +41,8 @@ impl PermissionType {
             "OpenTerminalsOrPlugins" => Some(Self::OpenTerminalsOrPlugins),
             "WriteToStdin" => Some(Self::WriteToStdin),
             "WebAccess" => Some(Self::WebAccess),
+            "ReadCliPipes" => Some(Self::ReadCliPipes),
+            "MessageAndLaunchOtherPlugins" => Some(Self::MessageAndLaunchOtherPlugins),
             _ => None,
         }
     }

@@ -1,6 +1,6 @@
 ---
 source: zellij-utils/src/setup.rs
-assertion_line: 671
+assertion_line: 698
 expression: "format!(\"{:#?}\", config)"
 ---
 Config {
@@ -61,6 +61,15 @@ Config {
             ],
             Alt(
                 Char(
+                    'i',
+                ),
+            ): [
+                MoveTab(
+                    Left,
+                ),
+            ],
+            Alt(
+                Char(
                     'j',
                 ),
             ): [
@@ -94,6 +103,15 @@ Config {
                 NewPane(
                     None,
                     None,
+                ),
+            ],
+            Alt(
+                Char(
+                    'o',
+                ),
+            ): [
+                MoveTab(
+                    Right,
                 ),
             ],
             Alt(
@@ -402,6 +420,15 @@ Config {
             ],
             Alt(
                 Char(
+                    'i',
+                ),
+            ): [
+                MoveTab(
+                    Left,
+                ),
+            ],
+            Alt(
+                Char(
                     'j',
                 ),
             ): [
@@ -435,6 +462,15 @@ Config {
                 NewPane(
                     None,
                     None,
+                ),
+            ],
+            Alt(
+                Char(
+                    'o',
+                ),
+            ): [
+                MoveTab(
+                    Right,
                 ),
             ],
             Alt(
@@ -745,6 +781,15 @@ Config {
             ],
             Alt(
                 Char(
+                    'i',
+                ),
+            ): [
+                MoveTab(
+                    Left,
+                ),
+            ],
+            Alt(
+                Char(
                     'j',
                 ),
             ): [
@@ -778,6 +823,15 @@ Config {
                 NewPane(
                     None,
                     None,
+                ),
+            ],
+            Alt(
+                Char(
+                    'o',
+                ),
+            ): [
+                MoveTab(
+                    Right,
                 ),
             ],
             Alt(
@@ -1134,6 +1188,15 @@ Config {
             ],
             Alt(
                 Char(
+                    'i',
+                ),
+            ): [
+                MoveTab(
+                    Left,
+                ),
+            ],
+            Alt(
+                Char(
                     'j',
                 ),
             ): [
@@ -1167,6 +1230,15 @@ Config {
                 NewPane(
                     None,
                     None,
+                ),
+            ],
+            Alt(
+                Char(
+                    'o',
+                ),
+            ): [
+                MoveTab(
+                    Right,
                 ),
             ],
             Alt(
@@ -1406,6 +1478,15 @@ Config {
             ],
             Alt(
                 Char(
+                    'i',
+                ),
+            ): [
+                MoveTab(
+                    Left,
+                ),
+            ],
+            Alt(
+                Char(
                     'j',
                 ),
             ): [
@@ -1439,6 +1520,15 @@ Config {
                 NewPane(
                     None,
                     None,
+                ),
+            ],
+            Alt(
+                Char(
+                    'o',
+                ),
+            ): [
+                MoveTab(
+                    Right,
                 ),
             ],
             Alt(
@@ -1618,6 +1708,15 @@ Config {
             ],
             Alt(
                 Char(
+                    'i',
+                ),
+            ): [
+                MoveTab(
+                    Left,
+                ),
+            ],
+            Alt(
+                Char(
                     'j',
                 ),
             ): [
@@ -1651,6 +1750,15 @@ Config {
                 NewPane(
                     None,
                     None,
+                ),
+            ],
+            Alt(
+                Char(
+                    'o',
+                ),
+            ): [
+                MoveTab(
+                    Right,
                 ),
             ],
             Alt(
@@ -1909,6 +2017,15 @@ Config {
             ],
             Alt(
                 Char(
+                    'i',
+                ),
+            ): [
+                MoveTab(
+                    Left,
+                ),
+            ],
+            Alt(
+                Char(
                     'j',
                 ),
             ): [
@@ -1942,6 +2059,15 @@ Config {
                 NewPane(
                     None,
                     None,
+                ),
+            ],
+            Alt(
+                Char(
+                    'o',
+                ),
+            ): [
+                MoveTab(
+                    Right,
                 ),
             ],
             Alt(
@@ -2121,6 +2247,15 @@ Config {
             ],
             Alt(
                 Char(
+                    'i',
+                ),
+            ): [
+                MoveTab(
+                    Left,
+                ),
+            ],
+            Alt(
+                Char(
                     'j',
                 ),
             ): [
@@ -2154,6 +2289,15 @@ Config {
                 NewPane(
                     None,
                     None,
+                ),
+            ],
+            Alt(
+                Char(
+                    'o',
+                ),
+            ): [
+                MoveTab(
+                    Right,
                 ),
             ],
             Alt(
@@ -2330,6 +2474,15 @@ Config {
             ],
             Alt(
                 Char(
+                    'i',
+                ),
+            ): [
+                MoveTab(
+                    Left,
+                ),
+            ],
+            Alt(
+                Char(
                     'j',
                 ),
             ): [
@@ -2363,6 +2516,15 @@ Config {
                 NewPane(
                     None,
                     None,
+                ),
+            ],
+            Alt(
+                Char(
+                    'o',
+                ),
+            ): [
+                MoveTab(
+                    Right,
                 ),
             ],
             Alt(
@@ -2493,17 +2655,20 @@ Config {
                 'w',
             ): [
                 LaunchOrFocusPlugin(
-                    RunPlugin {
-                        _allow_exec_host_cmd: false,
-                        location: Zellij(
-                            PluginTag(
-                                "session-manager",
+                    RunPlugin(
+                        RunPlugin {
+                            _allow_exec_host_cmd: false,
+                            location: Zellij(
+                                PluginTag(
+                                    "session-manager",
+                                ),
                             ),
-                        ),
-                        configuration: PluginUserConfiguration(
-                            {},
-                        ),
-                    },
+                            configuration: PluginUserConfiguration(
+                                {},
+                            ),
+                            initial_cwd: None,
+                        },
+                    ),
                     true,
                     true,
                     false,
@@ -2568,6 +2733,15 @@ Config {
             ],
             Alt(
                 Char(
+                    'i',
+                ),
+            ): [
+                MoveTab(
+                    Left,
+                ),
+            ],
+            Alt(
+                Char(
                     'j',
                 ),
             ): [
@@ -2601,6 +2775,15 @@ Config {
                 NewPane(
                     None,
                     None,
+                ),
+            ],
+            Alt(
+                Char(
+                    'o',
+                ),
+            ): [
+                MoveTab(
+                    Right,
                 ),
             ],
             Alt(
@@ -2845,6 +3028,15 @@ Config {
             ],
             Alt(
                 Char(
+                    'i',
+                ),
+            ): [
+                MoveTab(
+                    Left,
+                ),
+            ],
+            Alt(
+                Char(
                     'j',
                 ),
             ): [
@@ -2878,6 +3070,15 @@ Config {
                 NewPane(
                     None,
                     None,
+                ),
+            ],
+            Alt(
+                Char(
+                    'o',
+                ),
+            ): [
+                MoveTab(
+                    Right,
                 ),
             ],
             Alt(
@@ -3051,6 +3252,15 @@ Config {
             ],
             Alt(
                 Char(
+                    'i',
+                ),
+            ): [
+                MoveTab(
+                    Left,
+                ),
+            ],
+            Alt(
+                Char(
                     'j',
                 ),
             ): [
@@ -3084,6 +3294,15 @@ Config {
                 NewPane(
                     None,
                     None,
+                ),
+            ],
+            Alt(
+                Char(
+                    'o',
+                ),
+            ): [
+                MoveTab(
+                    Right,
                 ),
             ],
             Alt(
@@ -3425,6 +3644,15 @@ Config {
             ],
             Alt(
                 Char(
+                    'i',
+                ),
+            ): [
+                MoveTab(
+                    Left,
+                ),
+            ],
+            Alt(
+                Char(
                     'j',
                 ),
             ): [
@@ -3458,6 +3686,15 @@ Config {
                 NewPane(
                     None,
                     None,
+                ),
+            ],
+            Alt(
+                Char(
+                    'o',
+                ),
+            ): [
+                MoveTab(
+                    Right,
                 ),
             ],
             Alt(
@@ -3597,91 +3834,96 @@ Config {
         serialization_interval: None,
     },
     themes: {},
-    plugins: {
-        PluginTag(
-            "compact-bar",
-        ): PluginConfig {
-            path: "compact-bar",
-            run: Pane(
-                None,
-            ),
-            _allow_exec_host_cmd: false,
-            location: Zellij(
-                PluginTag(
-                    "compact-bar",
+    plugins: PluginAliases {
+        aliases: {
+            "compact-bar": RunPlugin {
+                _allow_exec_host_cmd: false,
+                location: Zellij(
+                    PluginTag(
+                        "compact-bar",
+                    ),
                 ),
-            ),
-            userspace_configuration: PluginUserConfiguration(
-                {},
-            ),
-        },
-        PluginTag(
-            "session-manager",
-        ): PluginConfig {
-            path: "session-manager",
-            run: Pane(
-                None,
-            ),
-            _allow_exec_host_cmd: false,
-            location: Zellij(
-                PluginTag(
-                    "session-manager",
+                configuration: PluginUserConfiguration(
+                    {},
                 ),
-            ),
-            userspace_configuration: PluginUserConfiguration(
-                {},
-            ),
-        },
-        PluginTag(
-            "status-bar",
-        ): PluginConfig {
-            path: "status-bar",
-            run: Pane(
-                None,
-            ),
-            _allow_exec_host_cmd: false,
-            location: Zellij(
-                PluginTag(
-                    "status-bar",
+                initial_cwd: None,
+            },
+            "filepicker": RunPlugin {
+                _allow_exec_host_cmd: false,
+                location: Zellij(
+                    PluginTag(
+                        "strider",
+                    ),
                 ),
-            ),
-            userspace_configuration: PluginUserConfiguration(
-                {},
-            ),
-        },
-        PluginTag(
-            "strider",
-        ): PluginConfig {
-            path: "strider",
-            run: Pane(
-                None,
-            ),
-            _allow_exec_host_cmd: false,
-            location: Zellij(
-                PluginTag(
-                    "strider",
+                configuration: PluginUserConfiguration(
+                    {},
                 ),
-            ),
-            userspace_configuration: PluginUserConfiguration(
-                {},
-            ),
-        },
-        PluginTag(
-            "tab-bar",
-        ): PluginConfig {
-            path: "tab-bar",
-            run: Pane(
-                None,
-            ),
-            _allow_exec_host_cmd: false,
-            location: Zellij(
-                PluginTag(
-                    "tab-bar",
+                initial_cwd: Some(
+                    "/",
                 ),
-            ),
-            userspace_configuration: PluginUserConfiguration(
-                {},
-            ),
+            },
+            "session-manager": RunPlugin {
+                _allow_exec_host_cmd: false,
+                location: Zellij(
+                    PluginTag(
+                        "session-manager",
+                    ),
+                ),
+                configuration: PluginUserConfiguration(
+                    {},
+                ),
+                initial_cwd: None,
+            },
+            "status-bar": RunPlugin {
+                _allow_exec_host_cmd: false,
+                location: Zellij(
+                    PluginTag(
+                        "status-bar",
+                    ),
+                ),
+                configuration: PluginUserConfiguration(
+                    {},
+                ),
+                initial_cwd: None,
+            },
+            "strider": RunPlugin {
+                _allow_exec_host_cmd: false,
+                location: Zellij(
+                    PluginTag(
+                        "strider",
+                    ),
+                ),
+                configuration: PluginUserConfiguration(
+                    {},
+                ),
+                initial_cwd: None,
+            },
+            "tab-bar": RunPlugin {
+                _allow_exec_host_cmd: false,
+                location: Zellij(
+                    PluginTag(
+                        "tab-bar",
+                    ),
+                ),
+                configuration: PluginUserConfiguration(
+                    {},
+                ),
+                initial_cwd: None,
+            },
+            "welcome-screen": RunPlugin {
+                _allow_exec_host_cmd: false,
+                location: Zellij(
+                    PluginTag(
+                        "session-manager",
+                    ),
+                ),
+                configuration: PluginUserConfiguration(
+                    {
+                        "welcome_screen": "true",
+                    },
+                ),
+                initial_cwd: None,
+            },
         },
     },
     ui: UiConfig {

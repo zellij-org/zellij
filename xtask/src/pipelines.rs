@@ -197,10 +197,11 @@ pub fn publish(sh: &Shell, flags: flags::Publish) -> anyhow::Result<()> {
         None
     };
     let remote = flags.git_remote.unwrap_or("origin".into());
-    let registry = if let Some(registry) = flags.cargo_registry {
+    let registry = if let Some(ref registry) = flags.cargo_registry {
         Some(format!(
             "--registry={}",
             registry
+                .clone()
                 .into_string()
                 .map_err(|registry| anyhow::Error::msg(format!(
                     "failed to convert '{:?}' to valid registry name",
@@ -212,6 +213,9 @@ pub fn publish(sh: &Shell, flags: flags::Publish) -> anyhow::Result<()> {
         None
     };
     let registry = registry.as_ref();
+    if flags.no_push && flags.cargo_registry.is_none() {
+        anyhow::bail!("flag '--no-push' can only be used with '--cargo-registry'");
+    }
 
     sh.change_dir(crate::project_root());
     let cargo = crate::cargo().context(err_context)?;
@@ -304,6 +308,8 @@ pub fn publish(sh: &Shell, flags: flags::Publish) -> anyhow::Result<()> {
         // Push commit and tag
         if flags.dry_run {
             println!("Skipping push due to dry-run");
+        } else if flags.no_push {
+            println!("Skipping push due to no-push");
         } else {
             cmd!(sh, "git push --atomic {remote} main v{version}")
                 .run()
@@ -331,7 +337,7 @@ pub fn publish(sh: &Shell, flags: flags::Publish) -> anyhow::Result<()> {
 
                 if let Err(err) = cmd!(
                     sh,
-                    "{cargo} publish {registry...} {more_args...} {dry_run...}"
+                    "{cargo} publish --locked {registry...} {more_args...} {dry_run...}"
                 )
                 .run()
                 .context(err_context)

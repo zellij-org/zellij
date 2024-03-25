@@ -1,132 +1,199 @@
-use crate::search::search_results::SearchResult;
-use crate::search::search_state::SearchState;
-use crate::search::search_state::SearchType;
-use pretty_bytes::converter as pb;
+use crate::file_list_view::{FileListView, FsEntry};
+use crate::search_view::SearchView;
+use crate::shared::calculate_list_bounds;
 use std::{
-    collections::{HashMap, VecDeque},
-    fs::read_dir,
+    collections::BTreeMap,
     path::{Path, PathBuf},
-    time::Instant,
 };
 use zellij_tile::prelude::*;
 
 pub const ROOT: &str = "/host";
-pub const CURRENT_SEARCH_TERM: &str = "/data/current_search_term";
 
 #[derive(Default)]
 pub struct State {
-    pub path: PathBuf,
-    pub files: Vec<FsEntry>,
-    pub cursor_hist: HashMap<PathBuf, (usize, usize)>,
+    pub file_list_view: FileListView,
+    pub search_view: SearchView,
     pub hide_hidden_files: bool,
-    pub ev_history: VecDeque<(Event, Instant)>, // stores last event, can be expanded in future
-    pub search_state: SearchState,
-    pub search_paths: Vec<String>,
-    pub search_term: Option<String>,
-    pub file_name_search_results: Vec<SearchResult>,
-    pub file_contents_search_results: Vec<SearchResult>,
     pub loading: bool,
     pub loading_animation_offset: u8,
-    pub typing_search_term: bool,
-    pub selected_search_result: usize,
-    pub processed_search_index: usize,
     pub should_open_floating: bool,
-    pub search_filter: SearchType,
+    pub current_rows: Option<usize>,
+    pub handling_filepick_request_from: Option<(PipeSource, BTreeMap<String, String>)>,
+    pub initial_cwd: PathBuf, // TODO: get this from zellij
+    pub is_searching: bool,
+    pub search_term: String,
+    pub close_on_selection: bool,
 }
 
 impl State {
-    pub fn typing_search_term(&self) -> bool {
-        self.typing_search_term
+    pub fn update_search_term(&mut self, character: char) {
+        self.search_term.push(character);
+        if &self.search_term == ".." {
+            self.descend_to_previous_path();
+        } else if &self.search_term == "/" {
+            self.descend_to_root_path();
+        } else {
+            self.is_searching = true;
+            self.search_view
+                .update_search_results(&self.search_term, &self.file_list_view.files);
+        }
     }
-    pub fn start_typing_search_term(&mut self) {
-        self.typing_search_term = true;
+    pub fn handle_backspace(&mut self) {
+        if self.search_term.is_empty() {
+            self.descend_to_previous_path();
+        } else {
+            self.search_term.pop();
+            if self.search_term.is_empty() {
+                self.is_searching = false;
+            }
+            self.search_view
+                .update_search_results(&self.search_term, &self.file_list_view.files);
+        }
     }
-    pub fn stop_typing_search_term(&mut self) {
-        self.typing_search_term = false;
+    pub fn clear_search_term_or_descend(&mut self) {
+        if self.search_term.is_empty() {
+            self.descend_to_previous_path();
+        } else {
+            self.search_term.clear();
+            self.search_view
+                .update_search_results(&self.search_term, &self.file_list_view.files);
+            self.is_searching = false;
+        }
     }
-    pub fn selected_mut(&mut self) -> &mut usize {
-        &mut self.cursor_hist.entry(self.path.clone()).or_default().0
+    pub fn move_selection_up(&mut self) {
+        if self.is_searching {
+            self.search_view.move_selection_up();
+        } else {
+            self.file_list_view.move_selection_up();
+        }
     }
-    pub fn selected(&self) -> usize {
-        self.cursor_hist.get(&self.path).unwrap_or(&(0, 0)).0
+    pub fn move_selection_down(&mut self) {
+        if self.is_searching {
+            self.search_view.move_selection_down();
+        } else {
+            self.file_list_view.move_selection_down();
+        }
     }
-    pub fn scroll_mut(&mut self) -> &mut usize {
-        &mut self.cursor_hist.entry(self.path.clone()).or_default().1
+    pub fn handle_left_click(&mut self, line: isize) {
+        if let Some(current_rows) = self.current_rows {
+            let rows_for_list = current_rows.saturating_sub(5);
+            if self.is_searching {
+                let (start_index, _selected_index_in_range, _end_index) = calculate_list_bounds(
+                    self.search_view.search_result_count(),
+                    rows_for_list,
+                    Some(self.search_view.selected_search_result),
+                );
+                let prev_selected = self.search_view.selected_search_result;
+                self.search_view.selected_search_result =
+                    (line as usize).saturating_sub(2) + start_index;
+                if prev_selected == self.search_view.selected_search_result {
+                    self.traverse_dir();
+                }
+            } else {
+                let (start_index, _selected_index_in_range, _end_index) = calculate_list_bounds(
+                    self.file_list_view.files.len(),
+                    rows_for_list,
+                    self.file_list_view.selected(),
+                );
+                let prev_selected = self.file_list_view.selected();
+                *self.file_list_view.selected_mut() =
+                    (line as usize).saturating_sub(2) + start_index;
+                if prev_selected == self.file_list_view.selected() {
+                    self.traverse_dir();
+                }
+            }
+        }
     }
-    pub fn scroll(&self) -> usize {
-        self.cursor_hist.get(&self.path).unwrap_or(&(0, 0)).1
+    pub fn descend_to_previous_path(&mut self) {
+        self.search_term.clear();
+        self.search_view.clear_and_reset_selection();
+        self.file_list_view.descend_to_previous_path();
+    }
+    pub fn descend_to_root_path(&mut self) {
+        self.search_term.clear();
+        self.search_view.clear_and_reset_selection();
+        self.file_list_view.descend_to_root_path();
+        refresh_directory(&self.file_list_view.path);
     }
     pub fn toggle_hidden_files(&mut self) {
         self.hide_hidden_files = !self.hide_hidden_files;
     }
-    pub fn traverse_dir_or_open_file(&mut self) {
-        if let Some(f) = self.files.get(self.selected()) {
-            match f.clone() {
-                FsEntry::Dir(p, _) => {
-                    self.path = p;
-                    refresh_directory(self);
+    pub fn traverse_dir(&mut self) {
+        let entry = if self.is_searching {
+            self.search_view.get_selected_entry()
+        } else {
+            self.file_list_view.get_selected_entry()
+        };
+        if let Some(entry) = entry {
+            match &entry {
+                FsEntry::Dir(_p) => {
+                    self.file_list_view.enter_dir(&entry);
+                    self.search_view.clear_and_reset_selection();
+                    refresh_directory(&self.file_list_view.path);
                 },
-                FsEntry::File(p, _) => open_file(FileToOpen {
-                    path: p.strip_prefix(ROOT).unwrap().into(),
-                    ..Default::default()
-                }),
+                FsEntry::File(_p, _) => {
+                    self.file_list_view.enter_dir(&entry);
+                    self.search_view.clear_and_reset_selection();
+                },
             }
         }
+        self.is_searching = false;
+        self.search_term.clear();
+        self.search_view.clear_and_reset_selection();
     }
-}
-
-#[derive(PartialEq, Eq, PartialOrd, Ord, Clone)]
-pub enum FsEntry {
-    Dir(PathBuf, usize),
-    File(PathBuf, u64),
-}
-
-impl FsEntry {
-    pub fn name(&self) -> String {
-        let path = match self {
-            FsEntry::Dir(p, _) => p,
-            FsEntry::File(p, _) => p,
-        };
-        path.file_name().unwrap().to_string_lossy().into_owned()
+    pub fn update_files(&mut self, paths: Vec<(PathBuf, Option<FileMetadata>)>) {
+        self.file_list_view
+            .update_files(paths, self.hide_hidden_files);
     }
-
-    pub fn as_line(&self, width: usize) -> String {
-        let info = match self {
-            FsEntry::Dir(_, s) => s.to_string(),
-            FsEntry::File(_, s) => pb::convert(*s as f64),
-        };
-        let space = width.saturating_sub(info.len());
-        let name = self.name();
-        if space.saturating_sub(1) < name.len() {
-            [&name[..space.saturating_sub(2)], &info].join("~ ")
+    pub fn open_selected_path(&mut self) {
+        if self.file_list_view.path_is_dir {
+            open_terminal(&self.file_list_view.path);
         } else {
-            let padding = " ".repeat(space - name.len());
-            [name, padding, info].concat()
+            if let Some(parent_folder) = self.file_list_view.path.parent() {
+                open_file(
+                    FileToOpen::new(&self.file_list_view.path).with_cwd(parent_folder.into()),
+                );
+            } else {
+                open_file(FileToOpen::new(&self.file_list_view.path));
+            }
+        }
+        if self.close_on_selection {
+            close_focus();
         }
     }
-
-    pub fn is_hidden_file(&self) -> bool {
-        self.name().starts_with('.')
+    pub fn send_filepick_response(&mut self) {
+        let selected_path = self.initial_cwd.join(
+            self.file_list_view
+                .path
+                .strip_prefix(ROOT)
+                .map(|p| p.to_path_buf())
+                .unwrap_or_else(|_| self.file_list_view.path.clone()),
+        );
+        match &self.handling_filepick_request_from {
+            Some((PipeSource::Plugin(plugin_id), args)) => {
+                pipe_message_to_plugin(
+                    MessageToPlugin::new("filepicker_result")
+                        .with_destination_plugin_id(*plugin_id)
+                        .with_args(args.clone())
+                        .with_payload(selected_path.display().to_string()),
+                );
+                #[cfg(target_family = "wasm")]
+                close_focus();
+            },
+            Some((PipeSource::Cli(pipe_id), _args)) => {
+                #[cfg(target_family = "wasm")]
+                cli_pipe_output(pipe_id, &selected_path.display().to_string());
+                #[cfg(target_family = "wasm")]
+                unblock_cli_pipe_input(pipe_id);
+                #[cfg(target_family = "wasm")]
+                close_focus();
+            },
+            _ => {},
+        }
     }
 }
 
-pub(crate) fn refresh_directory(state: &mut State) {
-    state.files = read_dir(Path::new(ROOT).join(&state.path))
-        .unwrap()
-        .filter_map(|res| {
-            res.and_then(|d| {
-                if d.metadata()?.is_dir() {
-                    let children = read_dir(d.path())?.count();
-                    Ok(FsEntry::Dir(d.path(), children))
-                } else {
-                    let size = d.metadata()?.len();
-                    Ok(FsEntry::File(d.path(), size))
-                }
-            })
-            .ok()
-            .filter(|d| !d.is_hidden_file() || !state.hide_hidden_files)
-        })
-        .collect();
-
-    state.files.sort_unstable();
+pub(crate) fn refresh_directory(path: &Path) {
+    let path_on_host = Path::new(ROOT).join(path.strip_prefix("/").unwrap_or(path));
+    scan_host_folder(&path_on_host);
 }

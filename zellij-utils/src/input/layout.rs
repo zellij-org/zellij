@@ -9,8 +9,8 @@
 //  If plugins should be able to depend on the layout system
 //  then [`zellij-utils`] could be a proper place.
 use crate::{
-    data::Direction,
-    home::find_default_config_dir,
+    data::{Direction, LayoutInfo},
+    home::{default_layout_dir, find_default_config_dir},
     input::{
         command::RunCommand,
         config::{Config, ConfigError},
@@ -19,10 +19,11 @@ use crate::{
     setup::{self},
 };
 
+use std::cmp::Ordering;
 use std::fmt::{Display, Formatter};
 use std::str::FromStr;
 
-use super::plugins::{PluginTag, PluginsConfigError};
+use super::plugins::{PluginAliases, PluginTag, PluginsConfigError};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::vec::Vec;
@@ -68,10 +69,164 @@ pub enum SplitSize {
     Fixed(usize), // An absolute number of columns or rows
 }
 
+impl SplitSize {
+    pub fn to_fixed(&self, full_size: usize) -> usize {
+        match self {
+            SplitSize::Percent(percent) => {
+                ((*percent as f64 / 100.0) * full_size as f64).floor() as usize
+            },
+            SplitSize::Fixed(fixed) => *fixed,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+pub enum RunPluginOrAlias {
+    RunPlugin(RunPlugin),
+    Alias(PluginAlias),
+}
+
+impl Default for RunPluginOrAlias {
+    fn default() -> Self {
+        RunPluginOrAlias::RunPlugin(Default::default())
+    }
+}
+
+impl RunPluginOrAlias {
+    pub fn location_string(&self) -> String {
+        match self {
+            RunPluginOrAlias::RunPlugin(run_plugin) => run_plugin.location.display(),
+            RunPluginOrAlias::Alias(plugin_alias) => plugin_alias.name.clone(),
+        }
+    }
+    pub fn populate_run_plugin_if_needed(&mut self, plugin_aliases: &PluginAliases) {
+        if let RunPluginOrAlias::Alias(run_plugin_alias) = self {
+            if run_plugin_alias.run_plugin.is_some() {
+                log::warn!("Overriding plugin alias");
+            }
+            let merged_run_plugin = plugin_aliases
+                .aliases
+                .get(run_plugin_alias.name.as_str())
+                .map(|r| {
+                    let mut merged_run_plugin = r.clone().merge_configuration(
+                        &run_plugin_alias
+                            .configuration
+                            .as_ref()
+                            .map(|c| c.inner().clone()),
+                    );
+                    // if the alias has its own cwd, it should always override the alias
+                    // value's cwd
+                    if run_plugin_alias.initial_cwd.is_some() {
+                        merged_run_plugin.initial_cwd = run_plugin_alias.initial_cwd.clone();
+                    }
+                    merged_run_plugin
+                });
+            run_plugin_alias.run_plugin = merged_run_plugin;
+        }
+    }
+    pub fn get_run_plugin(&self) -> Option<RunPlugin> {
+        match self {
+            RunPluginOrAlias::RunPlugin(run_plugin) => Some(run_plugin.clone()),
+            RunPluginOrAlias::Alias(plugin_alias) => plugin_alias.run_plugin.clone(),
+        }
+    }
+    pub fn get_configuration(&self) -> Option<PluginUserConfiguration> {
+        self.get_run_plugin().map(|r| r.configuration.clone())
+    }
+    pub fn get_initial_cwd(&self) -> Option<PathBuf> {
+        self.get_run_plugin().and_then(|r| r.initial_cwd.clone())
+    }
+    pub fn from_url(
+        url: &str,
+        configuration: &Option<BTreeMap<String, String>>,
+        alias_dict: Option<&PluginAliases>,
+        cwd: Option<PathBuf>,
+    ) -> Result<Self, String> {
+        match RunPluginLocation::parse(&url, cwd) {
+            Ok(location) => Ok(RunPluginOrAlias::RunPlugin(RunPlugin {
+                _allow_exec_host_cmd: false,
+                location,
+                configuration: configuration
+                    .as_ref()
+                    .map(|c| PluginUserConfiguration::new(c.clone()))
+                    .unwrap_or_default(),
+                ..Default::default()
+            })),
+            Err(PluginsConfigError::InvalidUrlScheme(_))
+            | Err(PluginsConfigError::InvalidUrl(..)) => {
+                let mut plugin_alias = PluginAlias::new(&url, configuration, None);
+                if let Some(alias_dict) = alias_dict {
+                    plugin_alias.run_plugin = alias_dict
+                        .aliases
+                        .get(url)
+                        .map(|r| r.clone().merge_configuration(configuration));
+                }
+                Ok(RunPluginOrAlias::Alias(plugin_alias))
+            },
+            Err(e) => {
+                return Err(format!("Failed to parse plugin location {url}: {}", e));
+            },
+        }
+    }
+    pub fn is_equivalent_to_run(&self, run: &Option<Run>) -> bool {
+        match (self, run) {
+            (
+                RunPluginOrAlias::Alias(self_alias),
+                Some(Run::Plugin(RunPluginOrAlias::Alias(run_alias))),
+            ) => {
+                self_alias.name == run_alias.name
+                    && self_alias
+                        .configuration
+                        .as_ref()
+                        // we do the is_empty() checks because an empty configuration is the same as no
+                        // configuration (i.e. None)
+                        .and_then(|c| if c.inner().is_empty() { None } else { Some(c) })
+                        == run_alias.configuration.as_ref().and_then(|c| {
+                            if c.inner().is_empty() {
+                                None
+                            } else {
+                                Some(c)
+                            }
+                        })
+            },
+            (
+                RunPluginOrAlias::Alias(self_alias),
+                Some(Run::Plugin(RunPluginOrAlias::RunPlugin(other_run_plugin))),
+            ) => self_alias.run_plugin.as_ref() == Some(other_run_plugin),
+            (
+                RunPluginOrAlias::RunPlugin(self_run_plugin),
+                Some(Run::Plugin(RunPluginOrAlias::RunPlugin(other_run_plugin))),
+            ) => self_run_plugin == other_run_plugin,
+            _ => false,
+        }
+    }
+    pub fn with_initial_cwd(mut self, initial_cwd: Option<PathBuf>) -> Self {
+        match self {
+            RunPluginOrAlias::RunPlugin(ref mut run_plugin) => {
+                run_plugin.initial_cwd = initial_cwd;
+            },
+            RunPluginOrAlias::Alias(ref mut alias) => {
+                alias.initial_cwd = initial_cwd;
+            },
+        }
+        self
+    }
+    pub fn add_initial_cwd(&mut self, initial_cwd: &PathBuf) {
+        match self {
+            RunPluginOrAlias::RunPlugin(ref mut run_plugin) => {
+                run_plugin.initial_cwd = Some(initial_cwd.clone());
+            },
+            RunPluginOrAlias::Alias(ref mut alias) => {
+                alias.initial_cwd = Some(initial_cwd.clone());
+            },
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub enum Run {
     #[serde(rename = "plugin")]
-    Plugin(RunPlugin),
+    Plugin(RunPluginOrAlias),
     #[serde(rename = "command")]
     Command(RunCommand),
     EditFile(PathBuf, Option<usize>, Option<PathBuf>), // TODO: merge this with TerminalAction::OpenFile
@@ -160,7 +315,9 @@ impl Run {
             Run::Cwd(path) => {
                 *path = cwd.join(&path);
             },
-            _ => {}, // plugins aren't yet supported
+            Run::Plugin(run_plugin_or_alias) => {
+                run_plugin_or_alias.add_initial_cwd(&cwd);
+            },
         }
     }
     pub fn add_args(&mut self, args: Option<Vec<String>>) {
@@ -215,6 +372,23 @@ impl Run {
             Run::Cwd(cwd) => Some(cwd.clone()),
         }
     }
+    pub fn get_run_plugin(&self) -> Option<RunPlugin> {
+        match self {
+            Run::Plugin(RunPluginOrAlias::RunPlugin(run_plugin)) => Some(run_plugin.clone()),
+            Run::Plugin(RunPluginOrAlias::Alias(plugin_alias)) => {
+                plugin_alias.run_plugin.as_ref().map(|r| r.clone())
+            },
+            _ => None,
+        }
+    }
+    pub fn populate_run_plugin_if_needed(&mut self, alias_dict: &PluginAliases) {
+        match self {
+            Run::Plugin(run_plugin_alias) => {
+                run_plugin_alias.populate_run_plugin_if_needed(alias_dict)
+            },
+            _ => {},
+        }
+    }
 }
 
 #[allow(clippy::derive_hash_xor_eq)]
@@ -224,6 +398,7 @@ pub struct RunPlugin {
     pub _allow_exec_host_cmd: bool,
     pub location: RunPluginLocation,
     pub configuration: PluginUserConfiguration,
+    pub initial_cwd: Option<PathBuf>,
 }
 
 impl RunPlugin {
@@ -233,6 +408,53 @@ impl RunPlugin {
             location,
             ..Default::default()
         })
+    }
+    pub fn with_configuration(mut self, configuration: BTreeMap<String, String>) -> Self {
+        self.configuration = PluginUserConfiguration::new(configuration);
+        self
+    }
+    pub fn with_initial_cwd(mut self, initial_cwd: Option<PathBuf>) -> Self {
+        self.initial_cwd = initial_cwd;
+        self
+    }
+    pub fn merge_configuration(mut self, configuration: &Option<BTreeMap<String, String>>) -> Self {
+        if let Some(configuration) = configuration {
+            self.configuration.merge(configuration);
+        }
+        self
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Hash, Default, Eq)]
+pub struct PluginAlias {
+    pub name: String,
+    pub configuration: Option<PluginUserConfiguration>,
+    pub initial_cwd: Option<PathBuf>,
+    pub run_plugin: Option<RunPlugin>,
+}
+
+impl PartialEq for PluginAlias {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name
+            && self.configuration == other.configuration
+            && self.initial_cwd == other.initial_cwd
+    }
+}
+
+impl PluginAlias {
+    pub fn new(
+        name: &str,
+        configuration: &Option<BTreeMap<String, String>>,
+        initial_cwd: Option<PathBuf>,
+    ) -> Self {
+        PluginAlias {
+            name: name.to_owned(),
+            configuration: configuration
+                .as_ref()
+                .map(|c| PluginUserConfiguration::new(c.clone())),
+            initial_cwd,
+            ..Default::default()
+        }
     }
 }
 
@@ -264,6 +486,14 @@ impl PluginUserConfiguration {
     }
     pub fn inner(&self) -> &BTreeMap<String, String> {
         &self.0
+    }
+    pub fn insert(&mut self, config_key: impl Into<String>, config_value: impl Into<String>) {
+        self.0.insert(config_key.into(), config_value.into());
+    }
+    pub fn merge(&mut self, other_config: &BTreeMap<String, String>) {
+        for (key, value) in other_config {
+            self.0.insert(key.to_owned(), value.clone());
+        }
     }
 }
 
@@ -691,6 +921,15 @@ impl TiledPaneLayout {
             child.add_cwd_to_layout(cwd);
         }
     }
+    pub fn populate_plugin_aliases_in_layout(&mut self, plugin_aliases: &PluginAliases) {
+        match self.run.as_mut() {
+            Some(run) => run.populate_run_plugin_if_needed(plugin_aliases),
+            _ => {},
+        }
+        for child in self.children.iter_mut() {
+            child.populate_plugin_aliases_in_layout(plugin_aliases);
+        }
+    }
     pub fn deepest_depth(&self) -> usize {
         let mut deepest_child_depth = 0;
         for child in self.children.iter() {
@@ -816,6 +1055,62 @@ impl Default for LayoutParts {
 }
 
 impl Layout {
+    // the first layout will either be the default one
+    pub fn list_available_layouts(
+        layout_dir: Option<PathBuf>,
+        default_layout_name: &Option<String>,
+    ) -> Vec<LayoutInfo> {
+        let mut available_layouts = layout_dir
+            .clone()
+            .or_else(|| default_layout_dir())
+            .and_then(|layout_dir| match std::fs::read_dir(layout_dir) {
+                Ok(layout_files) => Some(layout_files),
+                Err(e) => {
+                    log::error!("Failed to read layout dir: {:?}", e);
+                    None
+                },
+            })
+            .map(|layout_files| {
+                let mut available_layouts = vec![];
+                for file in layout_files {
+                    if let Ok(file) = file {
+                        if Layout::from_path_or_default_without_config(
+                            Some(&file.path()),
+                            layout_dir.clone(),
+                        )
+                        .is_ok()
+                        {
+                            if let Some(file_name) = file.path().file_stem() {
+                                available_layouts
+                                    .push(LayoutInfo::File(file_name.to_string_lossy().to_string()))
+                            }
+                        }
+                    }
+                }
+                available_layouts
+            })
+            .unwrap_or_else(Default::default);
+        let default_layout_name = default_layout_name
+            .as_ref()
+            .map(|d| d.as_str())
+            .unwrap_or("default");
+        available_layouts.push(LayoutInfo::BuiltIn("default".to_owned()));
+        available_layouts.push(LayoutInfo::BuiltIn("strider".to_owned()));
+        available_layouts.push(LayoutInfo::BuiltIn("disable-status-bar".to_owned()));
+        available_layouts.push(LayoutInfo::BuiltIn("compact".to_owned()));
+        available_layouts.sort_by(|a, b| {
+            let a_name = a.name();
+            let b_name = b.name();
+            if a_name == default_layout_name {
+                return Ordering::Less;
+            } else if b_name == default_layout_name {
+                return Ordering::Greater;
+            } else {
+                a_name.cmp(&b_name)
+            }
+        });
+        available_layouts
+    }
     pub fn stringified_from_path_or_default(
         layout_path: Option<&PathBuf>,
         layout_dir: Option<PathBuf>,
@@ -858,6 +1153,40 @@ impl Layout {
         let config = Config::from_kdl(&raw_layout, Some(config))?; // this merges the two config, with
         Ok((layout, config))
     }
+    pub fn from_path_or_default_without_config(
+        layout_path: Option<&PathBuf>,
+        layout_dir: Option<PathBuf>,
+    ) -> Result<Layout, ConfigError> {
+        let (path_to_raw_layout, raw_layout, raw_swap_layouts) =
+            Layout::stringified_from_path_or_default(layout_path, layout_dir)?;
+        let layout = Layout::from_kdl(
+            &raw_layout,
+            path_to_raw_layout,
+            raw_swap_layouts
+                .as_ref()
+                .map(|(r, f)| (r.as_str(), f.as_str())),
+            None,
+        )?;
+        Ok(layout)
+    }
+    pub fn from_default_assets(
+        layout_name: &Path,
+        _layout_dir: Option<PathBuf>,
+        config: Config,
+    ) -> Result<(Layout, Config), ConfigError> {
+        let (path_to_raw_layout, raw_layout, raw_swap_layouts) =
+            Layout::stringified_from_default_assets(layout_name)?;
+        let layout = Layout::from_kdl(
+            &raw_layout,
+            path_to_raw_layout,
+            raw_swap_layouts
+                .as_ref()
+                .map(|(r, f)| (r.as_str(), f.as_str())),
+            None,
+        )?;
+        let config = Config::from_kdl(&raw_layout, Some(config))?; // this merges the two config, with
+        Ok((layout, config))
+    }
     pub fn from_str(
         raw: &str,
         path_to_raw_layout: String,
@@ -883,7 +1212,7 @@ impl Layout {
             None => {
                 let home = find_default_config_dir();
                 let Some(home) = home else {
-                    return Layout::stringified_from_default_assets(layout)
+                    return Layout::stringified_from_default_assets(layout);
                 };
 
                 let layout_path = &home.join(layout);
@@ -948,6 +1277,11 @@ impl Layout {
                     Self::stringified_compact_swap_from_assets()?,
                 )),
             )),
+            Some("welcome") => Ok((
+                "Welcome screen layout".into(),
+                Self::stringified_welcome_from_assets()?,
+                None,
+            )),
             None | Some(_) => Err(ConfigError::IoPath(
                 std::io::Error::new(std::io::ErrorKind::Other, "The layout was not found"),
                 path.into(),
@@ -977,6 +1311,10 @@ impl Layout {
 
     pub fn stringified_compact_swap_from_assets() -> Result<String, ConfigError> {
         Ok(String::from_utf8(setup::COMPACT_BAR_SWAP_LAYOUT.to_vec())?)
+    }
+
+    pub fn stringified_welcome_from_assets() -> Result<String, ConfigError> {
+        Ok(String::from_utf8(setup::WELCOME_LAYOUT.to_vec())?)
     }
 
     pub fn new_tab(&self) -> (TiledPaneLayout, Vec<FloatingPaneLayout>) {
@@ -1021,24 +1359,44 @@ impl Layout {
                         swap_layout_path.as_os_str().to_string_lossy().into(),
                         swap_kdl_layout,
                     )),
-                    Err(e) => {
-                        log::warn!(
-                            "Failed to read swap layout file: {}. Error: {:?}",
-                            swap_layout_path.as_os_str().to_string_lossy(),
-                            e
-                        );
-                        None
-                    },
+                    Err(_e) => None,
                 }
             },
-            Err(e) => {
-                log::warn!(
-                    "Failed to read swap layout file: {}. Error: {:?}",
-                    swap_layout_path.as_os_str().to_string_lossy(),
-                    e
-                );
-                None
-            },
+            Err(_e) => None,
+        }
+    }
+    pub fn populate_plugin_aliases_in_layout(&mut self, plugin_aliases: &PluginAliases) {
+        for tab in self.tabs.iter_mut() {
+            tab.1.populate_plugin_aliases_in_layout(plugin_aliases);
+            for floating_pane_layout in tab.2.iter_mut() {
+                floating_pane_layout
+                    .run
+                    .as_mut()
+                    .map(|f| f.populate_run_plugin_if_needed(&plugin_aliases));
+            }
+        }
+        if let Some(template) = self.template.as_mut() {
+            template.0.populate_plugin_aliases_in_layout(plugin_aliases);
+            for floating_pane_layout in template.1.iter_mut() {
+                floating_pane_layout
+                    .run
+                    .as_mut()
+                    .map(|f| f.populate_run_plugin_if_needed(&plugin_aliases));
+            }
+        }
+    }
+    pub fn add_cwd_to_layout(&mut self, cwd: &PathBuf) {
+        for (_, tiled_pane_layout, floating_panes) in self.tabs.iter_mut() {
+            tiled_pane_layout.add_cwd_to_layout(&cwd);
+            for floating_pane in floating_panes {
+                floating_pane.add_cwd_to_layout(&cwd);
+            }
+        }
+        if let Some((tiled_pane_layout, floating_panes)) = self.template.as_mut() {
+            tiled_pane_layout.add_cwd_to_layout(&cwd);
+            for floating_pane in floating_panes {
+                floating_pane.add_cwd_to_layout(&cwd);
+            }
         }
     }
 }
