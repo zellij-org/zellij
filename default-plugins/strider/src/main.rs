@@ -4,7 +4,7 @@ mod shared;
 mod state;
 
 use crate::file_list_view::FsEntry;
-use shared::{render_current_path, render_instruction_line, render_search_term};
+use shared::{render_current_path, render_instruction_tip, render_instruction_line, render_search_term};
 use state::{refresh_directory, State};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -21,6 +21,7 @@ impl ZellijPlugin for State {
             .map(|v| v == "true")
             .unwrap_or(false);
         self.hide_hidden_files = !show_hidden_files;
+        self.showing_keybinds = false;
         self.close_on_selection = configuration
             .get("close_on_selection")
             .map(|v| v == "true")
@@ -103,6 +104,10 @@ impl ZellijPlugin for State {
                     self.toggle_hidden_files();
                     refresh_directory(&self.file_list_view.path);
                 },
+                Key::Ctrl('h') => {
+                    should_render = true;
+                    self.showing_keybinds = !self.showing_keybinds;
+                }
                 _ => (),
             },
             Event::Mouse(mouse_event) => match mouse_event {
@@ -157,6 +162,10 @@ impl ZellijPlugin for State {
         } else {
             self.file_list_view.render(rows_for_list, cols);
         }
-        render_instruction_line(rows, cols);
+        if self.showing_keybinds {
+            render_instruction_line(rows, cols);
+        } else {
+            render_instruction_tip(rows, cols);
+        }
     }
 }

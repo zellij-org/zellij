@@ -2,6 +2,14 @@ use std::path::PathBuf;
 use unicode_width::UnicodeWidthStr;
 use zellij_tile::prelude::*;
 
+pub fn render_instruction_tip(y: usize, max_cols: usize) {
+    if max_cols < 11 { return; }
+    let text = "?: <Ctrl h>";
+    let text = Text::new(text)
+        .color_range(3, 3..11);
+    print_text_with_coordinates(text, 0, y, Some(max_cols), None);
+}
+
 pub fn render_instruction_line(y: usize, max_cols: usize) {
     if max_cols > 78 {
         let text = "Help: go back with <Ctrl c>, go to root with /, <Ctrl e> - toggle hidden files";

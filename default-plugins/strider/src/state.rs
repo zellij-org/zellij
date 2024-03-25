@@ -23,6 +23,7 @@ pub struct State {
     pub is_searching: bool,
     pub search_term: String,
     pub close_on_selection: bool,
+    pub showing_keybinds: bool,
 }
 
 impl State {
