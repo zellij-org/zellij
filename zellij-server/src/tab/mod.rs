@@ -50,7 +50,7 @@ use zellij_utils::{
     input::{
         command::TerminalAction,
         layout::{
-            FloatingPaneLayout, PluginUserConfiguration, Run, RunPlugin, RunPluginLocation,
+            FloatingPaneLayout, Run,
             RunPluginOrAlias, SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,
         },
         parse_keys,

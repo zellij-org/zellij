@@ -19,7 +19,7 @@ use zellij_utils::{
     input::{
         command::{RunCommand, TerminalAction},
         layout::{
-            FloatingPaneLayout, Layout, PluginUserConfiguration, Run, RunPluginLocation,
+            FloatingPaneLayout, Layout, Run,
             RunPluginOrAlias, TiledPaneLayout,
         },
     },
@@ -1344,7 +1344,9 @@ impl Pty {
         size: Size,
         skip_cache: bool,
         cwd: Option<PathBuf>,
-        floating_pane_coordinates: Option<FloatingPaneCoordinates>,
+        // left here for historical and potential future reasons since we might change the ordering
+        // of the pipeline between threads and end up needing to forward this
+        _floating_pane_coordinates: Option<FloatingPaneCoordinates>,
     ) -> Result<()> {
         let cwd = cwd.or_else(|| {
             self.active_panes
