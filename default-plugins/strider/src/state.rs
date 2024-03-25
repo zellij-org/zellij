@@ -10,20 +10,26 @@ use zellij_tile::prelude::*;
 pub const ROOT: &str = "/host";
 
 #[derive(Default)]
+pub enum Mode {
+    #[default] Normal,
+    // Loading,
+    Searching,
+    Keybinds
+}
+
+#[derive(Default)]
 pub struct State {
     pub file_list_view: FileListView,
     pub search_view: SearchView,
     pub hide_hidden_files: bool,
-    pub loading: bool,
     pub loading_animation_offset: u8,
     pub should_open_floating: bool,
     pub current_rows: Option<usize>,
     pub handling_filepick_request_from: Option<(PipeSource, BTreeMap<String, String>)>,
     pub initial_cwd: PathBuf, // TODO: get this from zellij
-    pub is_searching: bool,
     pub search_term: String,
     pub close_on_selection: bool,
-    pub showing_keybinds: bool,
+    pub mode: Mode
 }
 
 impl State {
@@ -34,7 +40,7 @@ impl State {
         } else if &self.search_term == "/" {
             self.descend_to_root_path();
         } else {
-            self.is_searching = true;
+            self.mode = Mode::Searching;
             self.search_view
                 .update_search_results(&self.search_term, &self.file_list_view.files);
         }
@@ -45,7 +51,7 @@ impl State {
         } else {
             self.search_term.pop();
             if self.search_term.is_empty() {
-                self.is_searching = false;
+                self.mode = Mode::Normal;
             }
             self.search_view
                 .update_search_results(&self.search_term, &self.file_list_view.files);
@@ -58,49 +64,50 @@ impl State {
             self.search_term.clear();
             self.search_view
                 .update_search_results(&self.search_term, &self.file_list_view.files);
-            self.is_searching = false;
+            self.mode = Mode::Normal;
         }
     }
     pub fn move_selection_up(&mut self) {
-        if self.is_searching {
-            self.search_view.move_selection_up();
-        } else {
-            self.file_list_view.move_selection_up();
-        }
+        match self.mode {
+            Mode::Searching => self.search_view.move_selection_up(),
+            _ => self.file_list_view.move_selection_up()
+        };
     }
     pub fn move_selection_down(&mut self) {
-        if self.is_searching {
-            self.search_view.move_selection_down();
-        } else {
-            self.file_list_view.move_selection_down();
+        match self.mode {
+            Mode::Searching => self.search_view.move_selection_down(),
+            _ => self.file_list_view.move_selection_down()
         }
     }
     pub fn handle_left_click(&mut self, line: isize) {
         if let Some(current_rows) = self.current_rows {
             let rows_for_list = current_rows.saturating_sub(5);
-            if self.is_searching {
-                let (start_index, _selected_index_in_range, _end_index) = calculate_list_bounds(
-                    self.search_view.search_result_count(),
-                    rows_for_list,
-                    Some(self.search_view.selected_search_result),
-                );
-                let prev_selected = self.search_view.selected_search_result;
-                self.search_view.selected_search_result =
-                    (line as usize).saturating_sub(2) + start_index;
-                if prev_selected == self.search_view.selected_search_result {
-                    self.traverse_dir();
-                }
-            } else {
-                let (start_index, _selected_index_in_range, _end_index) = calculate_list_bounds(
-                    self.file_list_view.files.len(),
-                    rows_for_list,
-                    self.file_list_view.selected(),
-                );
-                let prev_selected = self.file_list_view.selected();
-                *self.file_list_view.selected_mut() =
-                    (line as usize).saturating_sub(2) + start_index;
-                if prev_selected == self.file_list_view.selected() {
-                    self.traverse_dir();
+            match self.mode {
+                Mode::Searching => {
+                    let (start_index, _selected_index_in_range, _end_index) = calculate_list_bounds(
+                        self.search_view.search_result_count(),
+                        rows_for_list,
+                        Some(self.search_view.selected_search_result),
+                    );
+                    let prev_selected = self.search_view.selected_search_result;
+                    self.search_view.selected_search_result =
+                        (line as usize).saturating_sub(2) + start_index;
+                    if prev_selected == self.search_view.selected_search_result {
+                        self.traverse_dir();
+                    }
+                },
+                _ => {
+                    let (start_index, _selected_index_in_range, _end_index) = calculate_list_bounds(
+                        self.file_list_view.files.len(),
+                        rows_for_list,
+                        self.file_list_view.selected(),
+                    );
+                    let prev_selected = self.file_list_view.selected();
+                    *self.file_list_view.selected_mut() =
+                        (line as usize).saturating_sub(2) + start_index;
+                    if prev_selected == self.file_list_view.selected() {
+                        self.traverse_dir();
+                    }
                 }
             }
         }
@@ -120,10 +127,9 @@ impl State {
         self.hide_hidden_files = !self.hide_hidden_files;
     }
     pub fn traverse_dir(&mut self) {
-        let entry = if self.is_searching {
-            self.search_view.get_selected_entry()
-        } else {
-            self.file_list_view.get_selected_entry()
+        let entry = match self.mode {
+            Mode::Searching => self.search_view.get_selected_entry(),
+            _ => self.file_list_view.get_selected_entry()
         };
         if let Some(entry) = entry {
             match &entry {
@@ -138,7 +144,7 @@ impl State {
                 },
             }
         }
-        self.is_searching = false;
+        self.mode = Mode::Normal;
         self.search_term.clear();
         self.search_view.clear_and_reset_selection();
     }

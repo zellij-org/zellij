@@ -21,7 +21,6 @@ impl ZellijPlugin for State {
             .map(|v| v == "true")
             .unwrap_or(false);
         self.hide_hidden_files = !show_hidden_files;
-        self.showing_keybinds = false;
         self.close_on_selection = configuration
             .get("close_on_selection")
             .map(|v| v == "true")
@@ -58,10 +57,13 @@ impl ZellijPlugin for State {
     }
 
     fn update(&mut self, event: Event) -> bool {
-        if self.showing_keybinds {
-            // Any key will hide the keybinds
-            self.showing_keybinds = false;
-            return true;
+        // TODO: Only run this if the event is a key
+        match self.mode {
+            state::Mode::Keybinds => {
+                self.mode = state::Mode::Normal;
+                return true;
+            },
+            _ => {}
         }
 
         let mut should_render = false;
@@ -112,7 +114,7 @@ impl ZellijPlugin for State {
                 },
                 Key::Ctrl('h') => {
                     should_render = true;
-                    self.showing_keybinds = !self.showing_keybinds;
+                    self.mode = state::Mode::Keybinds;
                 }
                 _ => (),
             },
@@ -153,10 +155,13 @@ impl ZellijPlugin for State {
     }
 
     fn render(&mut self, rows: usize, cols: usize) {
-        if self.showing_keybinds {
-            render_instruction_line(cols);
-            render_instruction_tip(rows, cols);
-            return;
+        match self.mode {
+            state::Mode::Keybinds => {
+                render_instruction_line(cols);
+                render_instruction_tip(rows, cols);
+                return;
+            },
+            _ => {}
         }
 
         self.current_rows = Some(rows);
@@ -170,10 +175,9 @@ impl ZellijPlugin for State {
             self.handling_filepick_request_from.is_some(),
             cols,
         );
-        if self.is_searching {
-            self.search_view.render(rows_for_list, cols);
-        } else {
-            self.file_list_view.render(rows_for_list, cols);
+        match self.mode {
+            state::Mode::Searching => self.search_view.render(rows_for_list, cols),
+            _ => self.file_list_view.render(rows_for_list, cols)
         }
         render_instruction_tip(rows, cols);
     }
