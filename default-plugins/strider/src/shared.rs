@@ -10,19 +10,54 @@ pub fn render_instruction_tip(y: usize, max_cols: usize) {
     print_text_with_coordinates(text, 0, y, Some(max_cols), None);
 }
 
+enum HelpTextSize {
+    Small,
+    Medium,
+    Large
+}
+
+fn render_help_text(bind: &str, desc: &str, max_cols: usize, y: usize) {
+    let len = bind.len();
+    let padding = " ".repeat(max_cols.saturating_sub(len + desc.len()));
+    let text = format!("{}{}{}", bind, padding, desc);
+    let text = Text::new(text).color_range(3, 0..len);
+    print_text_with_coordinates(text, 0, y, Some(max_cols), None)
+}
+
 pub fn render_instruction_line(max_cols: usize) {
-    let text = Text::new("Go back <Ctrl c>")
-        .color_range(3, 13..20);
-    print_text_with_coordinates(text, 0, 0, Some(max_cols), None);
+    let text_size = if max_cols > 28 {
+        HelpTextSize::Large
+    } else if max_cols > 15 {
+        HelpTextSize::Medium
+    } else if max_cols > 8 {
+        HelpTextSize::Small
+    } else {
+        return;
+    };
 
+    let bind = "<Ctrl c>";
+    let desc = match text_size {
+        HelpTextSize::Large => "Go back",
+        HelpTextSize::Medium => "back",
+        _ => "",
+    };
+    render_help_text(bind, desc, max_cols, 0);
 
-    let text = Text::new("Go to root /")
-        .color_range(3, 3..5);
-    print_text_with_coordinates(text, 0, 1, Some(max_cols), None);
+    let bind = "/";
+    let desc = match text_size {
+        HelpTextSize::Large => "Go to root",
+        HelpTextSize::Medium => "root",
+        _ => "",
+    };
+    render_help_text(bind, desc, max_cols, 1);
 
-    let text = Text::new("Toggle hidden files <Ctrl e>")
-        .color_range(3, 3..5);
-    print_text_with_coordinates(text, 0, 2, Some(max_cols), None);
+    let bind = "<Ctrl e>";
+    let desc = match text_size {
+        HelpTextSize::Large => "Toggle hidden files",
+        HelpTextSize::Medium => "hidden",
+        _ => ""
+    };
+    render_help_text(bind, desc, max_cols, 2);
 }
 
 pub fn render_list_tip(y: usize, max_cols: usize) {
