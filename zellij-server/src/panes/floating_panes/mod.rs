@@ -25,7 +25,7 @@ use zellij_utils::{
     data::{ModeInfo, Style},
     errors::prelude::*,
     input::command::RunCommand,
-    input::layout::{FloatingPaneLayout, Run, RunPlugin, RunPluginOrAlias},
+    input::layout::{FloatingPaneLayout, Run, RunPluginOrAlias},
     pane_size::{Dimension, Offset, PaneGeom, Size, SizeInPixels, Viewport},
 };
 

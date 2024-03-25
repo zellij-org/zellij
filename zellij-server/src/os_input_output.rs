@@ -443,7 +443,7 @@ struct RawFdAsyncReader {
 impl RawFdAsyncReader {
     fn new(fd: RawFd) -> RawFdAsyncReader {
         RawFdAsyncReader {
-            /// The supplied `RawFd` is consumed by the created `RawFdAsyncReader`, closing it when dropped
+            // The supplied `RawFd` is consumed by the created `RawFdAsyncReader`, closing it when dropped
             fd: unsafe { AsyncFile::from_raw_fd(fd) },
         }
     }

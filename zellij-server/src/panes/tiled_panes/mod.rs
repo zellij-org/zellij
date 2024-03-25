@@ -22,7 +22,7 @@ use zellij_utils::{
     errors::prelude::*,
     input::{
         command::RunCommand,
-        layout::{Run, RunPlugin, RunPluginOrAlias, SplitDirection},
+        layout::{Run, RunPluginOrAlias, SplitDirection},
     },
     pane_size::{Offset, PaneGeom, Size, SizeInPixels, Viewport},
 };
