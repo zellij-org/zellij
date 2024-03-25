@@ -58,6 +58,12 @@ impl ZellijPlugin for State {
     }
 
     fn update(&mut self, event: Event) -> bool {
+        if self.showing_keybinds {
+            // Any key will hide the keybinds
+            self.showing_keybinds = false;
+            return true;
+        }
+
         let mut should_render = false;
         match event {
             Event::FileSystemUpdate(paths) => {
@@ -147,8 +153,15 @@ impl ZellijPlugin for State {
     }
 
     fn render(&mut self, rows: usize, cols: usize) {
+        if self.showing_keybinds {
+            render_instruction_line(cols);
+            render_instruction_tip(rows, cols);
+            return;
+        }
+
         self.current_rows = Some(rows);
         let rows_for_list = rows.saturating_sub(6);
+
         render_search_term(&self.search_term);
         render_current_path(
             &self.initial_cwd,
@@ -162,10 +175,6 @@ impl ZellijPlugin for State {
         } else {
             self.file_list_view.render(rows_for_list, cols);
         }
-        if self.showing_keybinds {
-            render_instruction_line(rows, cols);
-        } else {
-            render_instruction_tip(rows, cols);
-        }
+        render_instruction_tip(rows, cols);
     }
 }

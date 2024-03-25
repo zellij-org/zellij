@@ -10,26 +10,19 @@ pub fn render_instruction_tip(y: usize, max_cols: usize) {
     print_text_with_coordinates(text, 0, y, Some(max_cols), None);
 }
 
-pub fn render_instruction_line(y: usize, max_cols: usize) {
-    if max_cols > 78 {
-        let text = "Help: go back with <Ctrl c>, go to root with /, <Ctrl e> - toggle hidden files";
-        let text = Text::new(text)
-            .color_range(3, 19..27)
-            .color_range(3, 45..46)
-            .color_range(3, 48..56);
-        print_text_with_coordinates(text, 0, y, Some(max_cols), None);
-    } else if max_cols > 56 {
-        let text = "Help: <Ctrl c> - back, / - root, <Ctrl e> - hidden files";
-        let text = Text::new(text)
-            .color_range(3, 6..14)
-            .color_range(3, 23..24)
-            .color_range(3, 33..41);
-        print_text_with_coordinates(text, 0, y, Some(max_cols), None);
-    } else if max_cols > 25 {
-        let text = "<Ctrl c> - back, / - root";
-        let text = Text::new(text).color_range(3, ..8).color_range(3, 17..18);
-        print_text_with_coordinates(text, 0, y, Some(max_cols), None);
-    }
+pub fn render_instruction_line(max_cols: usize) {
+    let text = Text::new("Go back <Ctrl c>")
+        .color_range(3, 13..20);
+    print_text_with_coordinates(text, 0, 0, Some(max_cols), None);
+
+
+    let text = Text::new("Go to root /")
+        .color_range(3, 3..5);
+    print_text_with_coordinates(text, 0, 1, Some(max_cols), None);
+
+    let text = Text::new("Toggle hidden files <Ctrl e>")
+        .color_range(3, 3..5);
+    print_text_with_coordinates(text, 0, 2, Some(max_cols), None);
 }
 
 pub fn render_list_tip(y: usize, max_cols: usize) {
