@@ -36,7 +36,7 @@ use crate::{
     output::Output,
     panes::sixel::SixelImageStore,
     panes::PaneId,
-    plugins::{PluginInstruction, PluginRenderAsset},
+    plugins::{PluginId, PluginInstruction, PluginRenderAsset},
     pty::{ClientTabIndexOrPaneId, PtyInstruction, VteBytes},
     tab::Tab,
     thread_bus::Bus,
@@ -180,6 +180,7 @@ pub enum ScreenInstruction {
     DumpScreen(String, ClientId, bool),
     DumpLayout(Option<PathBuf>, ClientId), // PathBuf is the default configured
     // shell
+    DumpLayoutToPlugin(PluginId),
     EditScrollback(ClientId),
     ScrollUp(ClientId),
     ScrollUpAt(Position, ClientId),
@@ -421,6 +422,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::ClearScreen(..) => ScreenContext::ClearScreen,
             ScreenInstruction::DumpScreen(..) => ScreenContext::DumpScreen,
             ScreenInstruction::DumpLayout(..) => ScreenContext::DumpLayout,
+            ScreenInstruction::DumpLayoutToPlugin(..) => ScreenContext::DumpLayoutToPlugin,
             ScreenInstruction::EditScrollback(..) => ScreenContext::EditScrollback,
             ScreenInstruction::ScrollUp(..) => ScreenContext::ScrollUp,
             ScreenInstruction::ScrollDown(..) => ScreenContext::ScrollDown,
@@ -2629,6 +2631,20 @@ pub(crate) fn screen_thread_main(
                         client_id,
                     ))
                     .with_context(err_context)?;
+            },
+            ScreenInstruction::DumpLayoutToPlugin(plugin_id) => {
+                let err_context = || format!("Failed to dump layout");
+                let session_layout_metadata =
+                    screen.get_layout_metadata(screen.default_shell.clone());
+                screen
+                    .bus
+                    .senders
+                    .send_to_pty(PtyInstruction::DumpLayoutToPlugin(
+                        session_layout_metadata,
+                        plugin_id,
+                    ))
+                    .with_context(err_context)
+                    .non_fatal();
             },
             ScreenInstruction::EditScrollback(client_id) => {
                 active_tab_and_connected_client_id!(

@@ -37,6 +37,7 @@ use zellij_utils::{
     },
     ipc::ClientAttributes,
     pane_size::Size,
+    session_serialization,
 };
 
 pub type PluginId = u32;
@@ -104,6 +105,7 @@ pub enum PluginInstruction {
         Option<PathBuf>,
     ),
     DumpLayout(SessionLayoutMetadata, ClientId),
+    DumpLayoutToPlugin(SessionLayoutMetadata, PluginId),
     LogLayoutToHd(SessionLayoutMetadata),
     CliPipe {
         pipe_id: String,
@@ -178,6 +180,7 @@ impl From<&PluginInstruction> for PluginContext {
             PluginInstruction::UnblockCliPipes { .. } => PluginContext::UnblockCliPipes,
             PluginInstruction::WatchFilesystem => PluginContext::WatchFilesystem,
             PluginInstruction::KeybindPipe { .. } => PluginContext::KeybindPipe,
+            PluginInstruction::DumpLayoutToPlugin(..) => PluginContext::DumpLayoutToPlugin,
         }
     }
 }
@@ -483,6 +486,32 @@ pub(crate) fn plugin_thread_main(
                     session_layout_metadata,
                     client_id,
                 )));
+            },
+            PluginInstruction::DumpLayoutToPlugin(mut session_layout_metadata, plugin_id) => {
+                populate_session_layout_metadata(&mut session_layout_metadata, &wasm_bridge);
+                match session_serialization::serialize_session_layout(
+                    session_layout_metadata.into(),
+                ) {
+                    Ok((layout, _pane_contents)) => {
+                        let updates = vec![(
+                            Some(plugin_id),
+                            None,
+                            Event::CustomMessage("session_layout".to_owned(), layout),
+                        )];
+                        wasm_bridge.update_plugins(updates, shutdown_send.clone())?;
+                    },
+                    Err(e) => {
+                        let updates = vec![(
+                            Some(plugin_id),
+                            None,
+                            Event::CustomMessage(
+                                "session_layout_error".to_owned(),
+                                format!("{}", e),
+                            ),
+                        )];
+                        wasm_bridge.update_plugins(updates, shutdown_send.clone())?;
+                    },
+                }
             },
             PluginInstruction::LogLayoutToHd(mut session_layout_metadata) => {
                 populate_session_layout_metadata(&mut session_layout_metadata, &wasm_bridge);

@@ -95,6 +95,7 @@ enum CommandName {
   KillSessions = 81;
   ScanHostFolder = 82;
   WatchFilesystem = 83;
+  DumpSessionLayout = 84;
 }
 
 message PluginCommand {

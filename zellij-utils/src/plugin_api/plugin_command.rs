@@ -867,6 +867,10 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 Some(_) => Err("WatchFilesystem should have no payload, found a payload"),
                 None => Ok(PluginCommand::WatchFilesystem),
             },
+            Some(CommandName::DumpSessionLayout) => match protobuf_plugin_command.payload {
+                Some(_) => Err("DumpSessionLayout should have no payload, found a payload"),
+                None => Ok(PluginCommand::DumpSessionLayout),
+            },
             None => Err("Unrecognized plugin command"),
         }
     }
@@ -1379,6 +1383,10 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
             }),
             PluginCommand::WatchFilesystem => Ok(ProtobufPluginCommand {
                 name: CommandName::WatchFilesystem as i32,
+                payload: None,
+            }),
+            PluginCommand::DumpSessionLayout => Ok(ProtobufPluginCommand {
+                name: CommandName::DumpSessionLayout as i32,
                 payload: None,
             }),
         }

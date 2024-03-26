@@ -1378,4 +1378,5 @@ pub enum PluginCommand {
     KillSessions(Vec<String>), // one or more session names
     ScanHostFolder(PathBuf),   // TODO: rename to ScanHostFolder
     WatchFilesystem,
+    DumpSessionLayout,
 }
