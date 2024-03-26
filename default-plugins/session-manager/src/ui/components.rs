@@ -747,18 +747,23 @@ pub fn render_new_session_block(
         }
         render_layout_selection_list(
             new_session_info,
-            colors,
             max_rows_of_new_session_block.saturating_sub(1),
             max_cols_of_new_session_block,
             x,
             y + 1,
         );
     }
+    render_new_session_folder_prompt(
+        new_session_info,
+        colors,
+        x,
+        (y + max_rows_of_new_session_block).saturating_sub(3),
+        max_cols_of_new_session_block,
+    );
 }
 
 pub fn render_layout_selection_list(
     new_session_info: &NewSessionInfo,
-    colors: Colors,
     max_rows_of_new_session_block: usize,
     max_cols_of_new_session_block: usize,
     x: usize,
@@ -818,13 +823,6 @@ pub fn render_layout_selection_list(
     }
     let table_y = y + 3;
     print_table_with_coordinates(table, x, table_y, None, None);
-    render_new_session_folder_prompt(
-        new_session_info,
-        colors,
-        x,
-        (y + max_rows_of_new_session_block).saturating_sub(3),
-        max_cols_of_new_session_block,
-    );
 }
 
 pub fn render_error(error_text: &str, rows: usize, columns: usize, x: usize, y: usize) {
