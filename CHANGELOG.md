@@ -30,6 +30,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat(cli): `list-sessions` show newest sessions last, for better user experience (https://github.com/zellij-org/zellij/pull/3194)
 * fix(startup): recover from Zellij sometimes not filling the whole terminal window on startup (https://github.com/zellij-org/zellij/pull/3218)
 * fix(config): support Ctrl/Alt modifier keys on F keys (eg. `Ctrl F1`, `Alt F2`) (https://github.com/zellij-org/zellij/pull/3179)
+* fix(keybindings): allow binding `Ctrl Space` (https://github.com/zellij-org/zellij/pull/3101)
 
 ## [0.39.2] - 2023-11-29
 * fix(cli): typo in cli help (https://github.com/zellij-org/zellij/pull/2906)
