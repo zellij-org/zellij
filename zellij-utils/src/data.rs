@@ -79,6 +79,9 @@ impl FromStr for Key {
             }
         }
         match (modifier, main_key) {
+            (Some("Ctrl"), Some(main_key)) if main_key == "@" || main_key == "Space" => {
+                Ok(Key::Char('\x00'))
+            },
             (Some("Ctrl"), Some(main_key)) => {
                 parse_main_key(main_key, key_str, Key::Ctrl, Key::CtrlF)
             },
@@ -171,6 +174,7 @@ impl fmt::Display for Key {
                 '\n' => write!(f, "ENTER"),
                 '\t' => write!(f, "TAB"),
                 ' ' => write!(f, "SPACE"),
+                '\x00' => write!(f, "Ctrl+SPACE"),
                 _ => write!(f, "{}", c),
             },
             Key::Alt(c) => write!(f, "Alt+{}", c),
