@@ -79,7 +79,9 @@ impl FromStr for Key {
             }
         }
         match (modifier, main_key) {
-            (Some("Ctrl"), Some(main_key)) if main_key == "@" || main_key == "Space" => Ok(Key::Char('\x00')),
+            (Some("Ctrl"), Some(main_key)) if main_key == "@" || main_key == "Space" => {
+                Ok(Key::Char('\x00'))
+            },
             (Some("Ctrl"), Some(main_key)) => {
                 parse_main_key(main_key, key_str, Key::Ctrl, Key::CtrlF)
             },
