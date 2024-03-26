@@ -709,11 +709,14 @@ pub fn render_new_session_block(
                 long_instruction,
             );
         } else {
-            let space_for_new_session_name = max_cols_of_new_session_block.saturating_sub(prompt.width() + 18);
+            let space_for_new_session_name =
+                max_cols_of_new_session_block.saturating_sub(prompt.width() + 18);
             let new_session_name = if new_session_name.width() > space_for_new_session_name {
                 let mut truncated = String::new();
                 for character in new_session_name.chars().rev() {
-                    if truncated.width() + character.width().unwrap_or(0) < space_for_new_session_name {
+                    if truncated.width() + character.width().unwrap_or(0)
+                        < space_for_new_session_name
+                    {
                         truncated.push(character);
                     } else {
                         break;
@@ -805,8 +808,10 @@ pub fn render_layout_selection_list(
     print_text_with_coordinates(layout_indication_line, x, y + 1, None, None);
     println!();
     let mut table = Table::new();
-    for (i, (layout_info, indices, is_selected)) in
-        new_session_info.layouts_to_render(max_rows_of_new_session_block).into_iter().enumerate()
+    for (i, (layout_info, indices, is_selected)) in new_session_info
+        .layouts_to_render(max_rows_of_new_session_block)
+        .into_iter()
+        .enumerate()
     {
         let layout_name = layout_info.name();
         let layout_name_len = layout_name.width();

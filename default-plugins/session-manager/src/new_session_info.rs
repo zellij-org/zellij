@@ -128,7 +128,11 @@ impl NewSessionInfo {
     }
     pub fn layout_list(&self, max_rows: usize) -> Vec<(LayoutInfo, bool)> {
         // bool - is_selected
-        let range_to_render = self.range_to_render(max_rows, self.layout_count(), Some(self.layout_list.selected_layout_index));
+        let range_to_render = self.range_to_render(
+            max_rows,
+            self.layout_count(),
+            Some(self.layout_list.selected_layout_index),
+        );
         self.layout_list
             .layout_list
             .iter()
@@ -162,7 +166,11 @@ impl NewSessionInfo {
     }
     pub fn layout_search_results(&self, max_rows: usize) -> Vec<(LayoutSearchResult, bool)> {
         // bool - is_selected
-        let range_to_render = self.range_to_render(max_rows, self.layout_list.layout_search_results.len(), Some(self.layout_list.selected_layout_index));
+        let range_to_render = self.range_to_render(
+            max_rows,
+            self.layout_list.layout_search_results.len(),
+            Some(self.layout_list.selected_layout_index),
+        );
         self.layout_list
             .layout_search_results
             .iter()
