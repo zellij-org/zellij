@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 use unicode_width::UnicodeWidthStr;
 use zellij_tile::prelude::*;
+use crate::state::Mode;
 
 pub fn render_instruction_tip(y: usize, max_cols: usize) {
     if max_cols < 11 { return; }
@@ -58,6 +59,38 @@ pub fn render_instruction_line(max_cols: usize) {
         _ => ""
     };
     render_help_text(bind, desc, max_cols, 2);
+
+    let bind = "<Ctrl r>";
+    let desc = match text_size {
+        HelpTextSize::Large => "Rename / move file",
+        HelpTextSize::Medium => "rename",
+        _ => ""
+    };
+    render_help_text(bind, desc, max_cols, 3);
+
+    let bind = "<Ctrl d>";
+    let desc = match text_size {
+        HelpTextSize::Large => "Delete file",
+        HelpTextSize::Medium => "delete",
+        _ => ""
+    };
+    render_help_text(bind, desc, max_cols, 4);
+
+    let bind = "<Ctrl y>";
+    let desc = match text_size {
+        HelpTextSize::Large => "Copy & paste file",
+        HelpTextSize::Medium => "copy",
+        _ => ""
+    };
+    render_help_text(bind, desc, max_cols, 4);
+
+    let bind = "<Ctrl a>";
+    let desc = match text_size {
+        HelpTextSize::Large => "Create new file",
+        HelpTextSize::Medium => "create",
+        _ => ""
+    };
+    render_help_text(bind, desc, max_cols, 4);
 }
 
 pub fn render_list_tip(y: usize, max_cols: usize) {
@@ -106,8 +139,14 @@ pub fn calculate_list_bounds(
     }
 }
 
-pub fn render_search_term(search_term: &str) {
-    let prompt = "FIND: ";
+pub fn render_search_term(search_term: &str, mode: &Mode) {
+    let prompt = match mode {
+        Mode::Create => "CREATE: ",
+        Mode::Copy => "PASTE: ",
+        Mode::Delete => "CONFIRM (y): ",
+        Mode::Move => "EDIT: ",
+        _ => "FIND: "
+    };
     let text = Text::new(format!("{}{}_", prompt, search_term))
         .color_range(2, 0..prompt.len())
         .color_range(3, prompt.len()..);

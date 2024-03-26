@@ -9,12 +9,16 @@ use zellij_tile::prelude::*;
 
 pub const ROOT: &str = "/host";
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub enum Mode {
     #[default] Normal,
     // Loading,
     Searching,
-    Keybinds
+    Keybinds,
+    Create,
+    Copy,
+    Delete,
+    Move
 }
 
 #[derive(Default)]
@@ -77,6 +81,18 @@ impl State {
         match self.mode {
             Mode::Searching => self.search_view.move_selection_down(),
             _ => self.file_list_view.move_selection_down()
+        }
+    }
+    pub fn move_entry_to_search(&mut self) {
+        let entry = match self.mode {
+            Mode::Searching => self.search_view.get_selected_entry(),
+            _ => self.file_list_view.get_selected_entry()
+        };
+
+        if let Some(entry) = entry {
+            self.search_term = match entry {
+                FsEntry::Dir(path) | FsEntry::File(path, _) => path.display().to_string()
+            };
         }
     }
     pub fn handle_left_click(&mut self, line: isize) {
@@ -197,6 +213,17 @@ impl State {
             },
             _ => {},
         }
+    }
+
+    pub fn handle_file_manipulation(&mut self) {
+        match self.mode {
+            Mode::Create => unimplemented!(),
+            Mode::Copy => unimplemented!(),
+            Mode::Move => unimplemented!(),
+            Mode::Delete => unimplemented!(),
+            _ => {}
+        }
+        self.mode = Mode::Normal;
     }
 }
 

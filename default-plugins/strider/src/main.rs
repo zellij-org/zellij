@@ -4,7 +4,9 @@ mod shared;
 mod state;
 
 use crate::file_list_view::FsEntry;
-use shared::{render_current_path, render_instruction_tip, render_instruction_line, render_search_term};
+use shared::{
+    render_current_path, render_instruction_line, render_instruction_tip, render_search_term,
+};
 use state::{refresh_directory, State};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -63,7 +65,7 @@ impl ZellijPlugin for State {
                 self.mode = state::Mode::Normal;
                 return true;
             },
-            _ => {}
+            _ => {},
         }
 
         let mut should_render = false;
@@ -96,8 +98,10 @@ impl ZellijPlugin for State {
                 Key::Char('\n') if self.handling_filepick_request_from.is_some() => {
                     self.send_filepick_response();
                 },
-                Key::Char('\n') => {
-                    self.open_selected_path();
+                Key::Char('\n') => match self.mode {
+                    state::Mode::Normal | state::Mode::Searching => self.open_selected_path(),
+                    state::Mode::Create | state::Mode::Copy | state::Mode::Delete | state::Mode::Move => self.handle_file_manipulation(),
+                    _ => {}
                 },
                 Key::Right | Key::BackTab => {
                     self.traverse_dir();
@@ -115,6 +119,26 @@ impl ZellijPlugin for State {
                 Key::Ctrl('h') => {
                     should_render = true;
                     self.mode = state::Mode::Keybinds;
+                },
+                Key::Ctrl('r') => {
+                    should_render = true;
+                    self.move_entry_to_search();
+                    self.mode = state::Mode::Move
+                },
+                Key::Ctrl('d') => {
+                    should_render = true;
+                    self.search_term = "".to_string();
+                    self.mode = state::Mode::Delete
+                },
+                Key::Ctrl('y') => {
+                    should_render = true;
+                    self.move_entry_to_search();
+                    self.mode = state::Mode::Copy
+                }
+                Key::Ctrl('a') => {
+                    should_render = true;
+                    self.move_entry_to_search();
+                    self.mode = state::Mode::Create;
                 }
                 _ => (),
             },
@@ -161,13 +185,13 @@ impl ZellijPlugin for State {
                 render_instruction_tip(rows, cols);
                 return;
             },
-            _ => {}
+            _ => {},
         }
 
         self.current_rows = Some(rows);
         let rows_for_list = rows.saturating_sub(6);
 
-        render_search_term(&self.search_term);
+        render_search_term(&self.search_term, &self.mode);
         render_current_path(
             &self.initial_cwd,
             &self.file_list_view.path,
@@ -177,7 +201,7 @@ impl ZellijPlugin for State {
         );
         match self.mode {
             state::Mode::Searching => self.search_view.render(rows_for_list, cols),
-            _ => self.file_list_view.render(rows_for_list, cols)
+            _ => self.file_list_view.render(rows_for_list, cols),
         }
         render_instruction_tip(rows, cols);
     }
