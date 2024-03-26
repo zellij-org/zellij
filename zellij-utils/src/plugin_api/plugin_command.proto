@@ -91,6 +91,10 @@ enum CommandName {
   BlockCliPipeInput = 77;
   CliPipeOutput = 78;
   MessageToPlugin = 79;
+  DisconnectOtherClients = 80;
+  KillSessions = 81;
+  ScanHostFolder = 82;
+  WatchFilesystem = 83;
 }
 
 message PluginCommand {
@@ -145,7 +149,13 @@ message PluginCommand {
     string block_cli_pipe_input_payload = 48;
     CliPipeOutputPayload cli_pipe_output_payload = 49;
     MessageToPluginPayload message_to_plugin_payload = 50;
+    KillSessionsPayload kill_sessions_payload = 60;
+    string scan_host_folder_payload = 61;
   }
+}
+
+message KillSessionsPayload {
+  repeated string session_names = 1;
 }
 
 message CliPipeOutputPayload {
@@ -160,6 +170,7 @@ message MessageToPluginPayload {
   optional string message_payload = 4;
   repeated ContextItem message_args = 5;
   optional NewPluginArgs new_plugin_args = 6;
+  optional uint32 destination_plugin_id = 7;
 }
 
 message NewPluginArgs {
@@ -185,6 +196,8 @@ message SwitchSessionPayload {
   optional uint32 tab_position = 2;
   optional uint32 pane_id = 3;
   optional bool pane_id_is_plugin = 4;
+  optional event.LayoutInfo layout = 5;
+  optional string cwd = 6;
 }
 
 message RequestPluginPermissionPayload {
@@ -201,10 +214,12 @@ message UnsubscribePayload {
 
 message OpenFilePayload {
   file.File file_to_open = 1;
+  optional FloatingPaneCoordinates floating_pane_coordinates = 2;
 }
 
 message OpenCommandPanePayload {
   command.Command command_to_run = 1;
+  optional FloatingPaneCoordinates floating_pane_coordinates = 2;
 }
 
 message SwitchTabToPayload {
@@ -266,4 +281,21 @@ message MovePayload {
 message IdAndNewName {
   uint32 id = 1; // pane id or tab index
   string new_name = 2;
+}
+
+message FloatingPaneCoordinates {
+  optional FixedOrPercentValue x = 1;
+  optional FixedOrPercentValue y = 2;
+  optional FixedOrPercentValue width = 3;
+  optional FixedOrPercentValue height = 4;
+}
+
+message FixedOrPercentValue {
+  FixedOrPercent type = 1;
+  uint32 value = 2;
+}
+
+enum FixedOrPercent {
+  Fixed = 0;
+  Percent = 1;
 }

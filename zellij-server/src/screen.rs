@@ -7,6 +7,7 @@ use std::rc::Rc;
 use std::str;
 use std::time::Duration;
 
+use log::{debug, warn};
 use zellij_utils::data::{
     Direction, PaneManifest, PluginPermission, Resize, ResizeStrategy, SessionInfo,
 };
@@ -19,8 +20,8 @@ use zellij_utils::{
     envs::set_session_name,
     input::command::TerminalAction,
     input::layout::{
-        FloatingPaneLayout, Layout, PluginUserConfiguration, Run, RunPlugin, RunPluginLocation,
-        SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,
+        FloatingPaneLayout, Layout, Run, RunPluginOrAlias, SwapFloatingLayout, SwapTiledLayout,
+        TiledPaneLayout,
     },
     position::Position,
 };
@@ -46,7 +47,10 @@ use crate::{
     ClientId, ServerInstruction,
 };
 use zellij_utils::{
-    data::{Event, InputMode, ModeInfo, Palette, PaletteColor, PluginCapabilities, Style, TabInfo},
+    data::{
+        Event, FloatingPaneCoordinates, InputMode, ModeInfo, Palette, PaletteColor,
+        PluginCapabilities, Style, TabInfo,
+    },
     errors::{ContextType, ScreenContext},
     input::{get_mode_info, options::Options},
     ipc::{ClientAttributes, PixelDimensions, ServerToClientMsg},
@@ -112,7 +116,7 @@ macro_rules! active_tab_and_connected_client_id {
     ($screen:ident, $client_id:ident, $closure:expr, ?) => {
         match $screen.get_active_tab_mut($client_id) {
             Ok(active_tab) => {
-                $closure(active_tab, $client_id)?;
+                $closure(active_tab, $client_id).non_fatal();
             },
             Err(_) => {
                 if let Some(client_id) = $screen.get_first_client_id() {
@@ -146,6 +150,7 @@ pub enum ScreenInstruction {
         Option<ShouldFloat>,
         HoldForCommand,
         Option<Run>, // invoked with
+        Option<FloatingPaneCoordinates>,
         ClientTabIndexOrPaneId,
     ),
     OpenInPlaceEditor(PaneId, ClientId),
@@ -215,7 +220,7 @@ pub enum ScreenInstruction {
         Vec<FloatingPaneLayout>,
         Vec<(u32, HoldForCommand)>, // new pane pids
         Vec<(u32, HoldForCommand)>, // new floating pane pids
-        HashMap<(RunPluginLocation, PluginUserConfiguration), Vec<u32>>,
+        HashMap<RunPluginOrAlias, Vec<u32>>,
         usize, // tab_index
         ClientId,
     ),
@@ -234,6 +239,8 @@ pub enum ScreenInstruction {
     ToggleTab(ClientId),
     UpdateTabName(Vec<u8>, ClientId),
     UndoRenameTab(ClientId),
+    MoveTabLeft(ClientId),
+    MoveTabRight(ClientId),
     TerminalResize(Size),
     TerminalPixelDimensions(PixelDimensions),
     TerminalBackgroundColor(String),
@@ -272,18 +279,31 @@ pub enum ScreenInstruction {
     PreviousSwapLayout(ClientId),
     NextSwapLayout(ClientId),
     QueryTabNames(ClientId),
-    NewTiledPluginPane(RunPlugin, Option<String>, bool, ClientId), // Option<String> is
-    // optional pane title, bool is skip cache
-    NewFloatingPluginPane(RunPlugin, Option<String>, bool, ClientId), // Option<String> is an
+    NewTiledPluginPane(
+        RunPluginOrAlias,
+        Option<String>,
+        bool,
+        Option<PathBuf>,
+        ClientId,
+    ), // Option<String> is
+    // optional pane title, bool is skip cache, Option<PathBuf> is an optional cwd
+    NewFloatingPluginPane(
+        RunPluginOrAlias,
+        Option<String>,
+        bool,
+        Option<PathBuf>,
+        Option<FloatingPaneCoordinates>,
+        ClientId,
+    ), // Option<String> is an
     // optional pane title, bool
-    // is skip cache
-    NewInPlacePluginPane(RunPlugin, Option<String>, PaneId, bool, ClientId), // Option<String> is an
+    // is skip cache, Option<PathBuf> is an optional cwd
+    NewInPlacePluginPane(RunPluginOrAlias, Option<String>, PaneId, bool, ClientId), // Option<String> is an
     // optional pane title, bool is skip cache
-    StartOrReloadPluginPane(RunPlugin, Option<String>),
+    StartOrReloadPluginPane(RunPluginOrAlias, Option<String>),
     AddPlugin(
         Option<bool>, // should_float
         bool,         // should be opened in place
-        RunPlugin,
+        RunPluginOrAlias,
         Option<String>, // pane title
         Option<usize>,  // tab index
         u32,            // plugin id
@@ -295,10 +315,26 @@ pub enum ScreenInstruction {
     StartPluginLoadingIndication(u32, LoadingIndication), // u32 - plugin_id
     ProgressPluginLoadingOffset(u32),                 // u32 - plugin id
     RequestStateUpdateForPlugins,
-    LaunchOrFocusPlugin(RunPlugin, bool, bool, bool, Option<PaneId>, bool, ClientId), // bools are: should_float, move_to_focused_tab, should_open_in_place, Option<PaneId> is the pane id to replace, bool following it is skip_cache
-    LaunchPlugin(RunPlugin, bool, bool, Option<PaneId>, bool, ClientId), // bools are: should_float, should_open_in_place Option<PaneId> is the pane id to replace, bool after is skip_cache
-    SuppressPane(PaneId, ClientId),                                      // bool is should_float
-    FocusPaneWithId(PaneId, bool, ClientId),                             // bool is should_float
+    LaunchOrFocusPlugin(
+        RunPluginOrAlias,
+        bool,
+        bool,
+        bool,
+        Option<PaneId>,
+        bool,
+        ClientId,
+    ), // bools are: should_float, move_to_focused_tab, should_open_in_place, Option<PaneId> is the pane id to replace, bool following it is skip_cache
+    LaunchPlugin(
+        RunPluginOrAlias,
+        bool,
+        bool,
+        Option<PaneId>,
+        bool,
+        Option<PathBuf>,
+        ClientId,
+    ), // bools are: should_float, should_open_in_place Option<PaneId> is the pane id to replace, Option<PathBuf> is an optional cwd, bool after is skip_cache
+    SuppressPane(PaneId, ClientId),          // bool is should_float
+    FocusPaneWithId(PaneId, bool, ClientId), // bool is should_float
     RenamePane(PaneId, Vec<u8>),
     RenameTab(usize, Vec<u8>),
     RequestPluginPermissions(
@@ -414,6 +450,8 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::GoToTabName(..) => ScreenContext::GoToTabName,
             ScreenInstruction::UpdateTabName(..) => ScreenContext::UpdateTabName,
             ScreenInstruction::UndoRenameTab(..) => ScreenContext::UndoRenameTab,
+            ScreenInstruction::MoveTabLeft(..) => ScreenContext::MoveTabLeft,
+            ScreenInstruction::MoveTabRight(..) => ScreenContext::MoveTabRight,
             ScreenInstruction::TerminalResize(..) => ScreenContext::TerminalResize,
             ScreenInstruction::TerminalPixelDimensions(..) => {
                 ScreenContext::TerminalPixelDimensions
@@ -577,6 +615,8 @@ pub(crate) struct Screen {
     default_shell: Option<PathBuf>,
     styled_underlines: bool,
     arrow_fonts: bool,
+    layout_dir: Option<PathBuf>,
+    default_layout_name: Option<String>,
 }
 
 impl Screen {
@@ -592,12 +632,14 @@ impl Screen {
         copy_options: CopyOptions,
         debug: bool,
         default_layout: Box<Layout>,
+        default_layout_name: Option<String>,
         default_shell: Option<PathBuf>,
         session_serialization: bool,
         serialize_pane_viewport: bool,
         scrollback_lines_to_serialize: Option<usize>,
         styled_underlines: bool,
         arrow_fonts: bool,
+        layout_dir: Option<PathBuf>,
     ) -> Self {
         let session_name = mode_info.session_name.clone().unwrap_or_default();
         let session_info = SessionInfo::new(session_name.clone());
@@ -629,6 +671,7 @@ impl Screen {
             session_name,
             session_infos_on_machine,
             default_layout,
+            default_layout_name,
             default_shell,
             session_serialization,
             serialize_pane_viewport,
@@ -636,6 +679,7 @@ impl Screen {
             styled_underlines,
             arrow_fonts,
             resurrectable_sessions,
+            layout_dir,
         }
     }
 
@@ -1194,7 +1238,7 @@ impl Screen {
         floating_panes_layout: Vec<FloatingPaneLayout>,
         new_terminal_ids: Vec<(u32, HoldForCommand)>,
         new_floating_terminal_ids: Vec<(u32, HoldForCommand)>,
-        new_plugin_ids: HashMap<(RunPluginLocation, PluginUserConfiguration), Vec<u32>>,
+        new_plugin_ids: HashMap<RunPluginOrAlias, Vec<u32>>,
         tab_index: usize,
         client_id: ClientId,
     ) -> Result<()> {
@@ -1412,12 +1456,21 @@ impl Screen {
         // generate own session info
         let pane_manifest = self.generate_and_report_pane_state()?;
         let tab_infos = self.generate_and_report_tab_state()?;
+        // in the context of unit/integration tests, we don't need to list available layouts
+        // because this is mostly about HD access - it does however throw off the timing in the
+        // tests and causes them to flake, which is why we skip it here
+        #[cfg(not(test))]
+        let available_layouts =
+            Layout::list_available_layouts(self.layout_dir.clone(), &self.default_layout_name);
+        #[cfg(test)]
+        let available_layouts = vec![];
         let session_info = SessionInfo {
             name: self.session_name.clone(),
             tabs: tab_infos,
             panes: pane_manifest,
             connected_clients: self.active_tab_indices.keys().len(),
             is_current_session: true,
+            available_layouts,
         };
         self.bus
             .senders
@@ -1535,6 +1588,91 @@ impl Screen {
             },
             None => Ok(()),
         }
+    }
+
+    pub fn move_active_tab_to_left(&mut self, client_id: ClientId) -> Result<()> {
+        if self.tabs.len() < 2 {
+            debug!("cannot move tab to left: only one tab exists");
+            return Ok(());
+        }
+        let Some(client_id) = self.client_id(client_id) else {
+            return Ok(());
+        };
+        let Some(&active_tab_idx) = self.active_tab_indices.get(&client_id) else {
+            return Ok(());
+        };
+
+        // wraps around: [tab1, tab2, tab3] => [tab1, tab2, tab3]
+        //                 ^                                 ^
+        //          active_tab_idx                     left_tab_idx
+        let left_tab_idx = (active_tab_idx + self.tabs.len() - 1) % self.tabs.len();
+
+        self.switch_tabs(active_tab_idx, left_tab_idx, client_id);
+        self.log_and_report_session_state()
+            .context("failed to move tab to left")?;
+        Ok(())
+    }
+
+    fn client_id(&mut self, client_id: ClientId) -> Option<u16> {
+        if self.get_active_tab(client_id).is_ok() {
+            Some(client_id)
+        } else {
+            self.get_first_client_id()
+        }
+    }
+
+    fn switch_tabs(&mut self, active_tab_idx: usize, other_tab_idx: usize, client_id: u16) {
+        if !self.tabs.contains_key(&active_tab_idx) || !self.tabs.contains_key(&other_tab_idx) {
+            warn!(
+                "failed to switch tabs: index {} or {} not found in {:?}",
+                active_tab_idx,
+                other_tab_idx,
+                self.tabs.keys()
+            );
+            return;
+        }
+
+        // NOTE: Can `expect` here, because we checked that the keys exist above
+        let mut active_tab = self
+            .tabs
+            .remove(&active_tab_idx)
+            .expect("active tab not found");
+        let mut other_tab = self
+            .tabs
+            .remove(&other_tab_idx)
+            .expect("other tab not found");
+
+        std::mem::swap(&mut active_tab.index, &mut other_tab.index);
+        std::mem::swap(&mut active_tab.position, &mut other_tab.position);
+
+        // now, `active_tab.index` is changed, so we need to update it
+        self.active_tab_indices.insert(client_id, active_tab.index);
+
+        self.tabs.insert(active_tab.index, active_tab);
+        self.tabs.insert(other_tab.index, other_tab);
+    }
+
+    pub fn move_active_tab_to_right(&mut self, client_id: ClientId) -> Result<()> {
+        if self.tabs.len() < 2 {
+            debug!("cannot move tab to right: only one tab exists");
+            return Ok(());
+        }
+        let Some(client_id) = self.client_id(client_id) else {
+            return Ok(());
+        };
+        let Some(&active_tab_idx) = self.active_tab_indices.get(&client_id) else {
+            return Ok(());
+        };
+
+        // wraps around: [tab1, tab2, tab3] => [tab1, tab2, tab3]
+        //                             ^          ^
+        //                     active_tab_idx   right_tab_idx
+        let right_tab_idx = (active_tab_idx + 1) % self.tabs.len();
+
+        self.switch_tabs(active_tab_idx, right_tab_idx, client_id);
+        self.log_and_report_session_state()
+            .context("failed to move active tab to right")?;
+        Ok(())
     }
 
     pub fn change_mode(&mut self, mut mode_info: ModeInfo, client_id: ClientId) -> Result<()> {
@@ -1706,7 +1844,7 @@ impl Screen {
 
     pub fn focus_plugin_pane(
         &mut self,
-        run_plugin: &RunPlugin,
+        run_plugin: &RunPluginOrAlias,
         should_float: bool,
         move_to_focused_tab: bool,
         client_id: ClientId,
@@ -1737,6 +1875,7 @@ impl Screen {
                 new_active_tab.add_floating_pane(
                     plugin_pane_to_move_to_active_tab,
                     pane_id,
+                    None,
                     Some(client_id),
                 )?;
             } else {
@@ -1821,7 +1960,7 @@ impl Screen {
             let (mut tiled_panes_layout, mut floating_panes_layout) = default_layout.new_tab();
             if pane_to_break_is_floating {
                 tab.show_floating_panes();
-                tab.add_floating_pane(active_pane, active_pane_id, Some(client_id))?;
+                tab.add_floating_pane(active_pane, active_pane_id, None, Some(client_id))?;
                 if let Some(already_running_layout) = floating_panes_layout
                     .iter_mut()
                     .find(|i| i.run == active_pane_run_instruction)
@@ -1886,7 +2025,12 @@ impl Screen {
 
             if pane_to_break_is_floating {
                 new_active_tab.show_floating_panes();
-                new_active_tab.add_floating_pane(active_pane, active_pane_id, Some(client_id))?;
+                new_active_tab.add_floating_pane(
+                    active_pane,
+                    active_pane_id,
+                    None,
+                    Some(client_id),
+                )?;
             } else {
                 new_active_tab.hide_floating_panes();
                 new_active_tab.add_tiled_pane(active_pane, active_pane_id, Some(client_id))?;
@@ -2101,7 +2245,11 @@ pub(crate) fn screen_thread_main(
     let serialize_pane_viewport = config_options.serialize_pane_viewport.unwrap_or(false);
     let scrollback_lines_to_serialize = config_options.scrollback_lines_to_serialize;
     let session_is_mirrored = config_options.mirror_session.unwrap_or(false);
+    let layout_dir = config_options.layout_dir;
     let default_shell = config_options.default_shell;
+    let default_layout_name = config_options
+        .default_layout
+        .map(|l| format!("{}", l.display()));
     let copy_options = CopyOptions::new(
         config_options.copy_command,
         config_options.copy_clipboard.unwrap_or_default(),
@@ -2128,12 +2276,14 @@ pub(crate) fn screen_thread_main(
         copy_options,
         debug,
         default_layout,
+        default_layout_name,
         default_shell,
         session_serialization,
         serialize_pane_viewport,
         scrollback_lines_to_serialize,
         styled_underlines,
         arrow_fonts,
+        layout_dir,
     );
 
     let mut pending_tab_ids: HashSet<usize> = HashSet::new();
@@ -2188,6 +2338,7 @@ pub(crate) fn screen_thread_main(
                 should_float,
                 hold_for_command,
                 invoked_with,
+                floating_pane_coordinates,
                 client_or_tab_index,
             ) => {
                 match client_or_tab_index {
@@ -2197,6 +2348,7 @@ pub(crate) fn screen_thread_main(
                                initial_pane_title,
                                should_float,
                                invoked_with,
+                               floating_pane_coordinates,
                                Some(client_id)
                            )
                         }, ?);
@@ -2221,6 +2373,7 @@ pub(crate) fn screen_thread_main(
                                 initial_pane_title,
                                 should_float,
                                 invoked_with,
+                                floating_pane_coordinates,
                                 None,
                             )?;
                             if let Some(hold_for_command) = hold_for_command {
@@ -2847,6 +3000,18 @@ pub(crate) fn screen_thread_main(
 
                 screen.unblock_input()?;
                 screen.render(None)?;
+                // we do this here in order to recover from a race condition on app start
+                // that sometimes causes Zellij to think the terminal window is a different size
+                // than it actually is - here, we query the client for its terminal size after
+                // we've finished the setup and handle it as we handle a normal resize,
+                // while this can affect other instances of a layout being applied, the query is
+                // very short and cheap and shouldn't cause any trouble
+                if let Some(os_input) = &mut screen.bus.os_input {
+                    for client_id in screen.connected_clients.borrow().iter() {
+                        let _ = os_input
+                            .send_to_client(*client_id, ServerToClientMsg::QueryTerminalSize);
+                    }
+                }
             },
             ScreenInstruction::GoToTab(tab_index, client_id) => {
                 let client_id_to_switch = if client_id.is_none() {
@@ -2923,6 +3088,16 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::UndoRenameTab(client_id) => {
                 screen.undo_active_rename_tab(client_id)?;
+                screen.unblock_input()?;
+                screen.render(None)?;
+            },
+            ScreenInstruction::MoveTabLeft(client_id) => {
+                screen.move_active_tab_to_left(client_id)?;
+                screen.unblock_input()?;
+                screen.render(None)?;
+            },
+            ScreenInstruction::MoveTabRight(client_id) => {
+                screen.move_active_tab_to_right(client_id)?;
                 screen.unblock_input()?;
                 screen.render(None)?;
             },
@@ -3191,6 +3366,7 @@ pub(crate) fn screen_thread_main(
                 run_plugin,
                 pane_title,
                 skip_cache,
+                cwd,
                 client_id,
             ) => {
                 let tab_index = screen.active_tab_indices.values().next().unwrap_or(&1);
@@ -3210,12 +3386,16 @@ pub(crate) fn screen_thread_main(
                         client_id,
                         size,
                         skip_cache,
+                        cwd,
+                        None,
                     ))?;
             },
             ScreenInstruction::NewFloatingPluginPane(
                 run_plugin,
                 pane_title,
                 skip_cache,
+                cwd,
+                floating_pane_coordinates,
                 client_id,
             ) => match screen.active_tab_indices.values().next() {
                 Some(tab_index) => {
@@ -3235,6 +3415,8 @@ pub(crate) fn screen_thread_main(
                             client_id,
                             size,
                             skip_cache,
+                            cwd,
+                            floating_pane_coordinates,
                         ))?;
                 },
                 None => {
@@ -3267,6 +3449,8 @@ pub(crate) fn screen_thread_main(
                             client_id,
                             size,
                             skip_cache,
+                            None,
+                            None,
                         ))?;
                 },
                 None => {
@@ -3294,7 +3478,7 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::AddPlugin(
                 should_float,
                 should_be_in_place,
-                run_plugin_location,
+                run_plugin_or_alias,
                 pane_title,
                 tab_index,
                 plugin_id,
@@ -3307,10 +3491,10 @@ pub(crate) fn screen_thread_main(
                         "({}) - {}",
                         cwd.map(|cwd| cwd.display().to_string())
                             .unwrap_or(".".to_owned()),
-                        run_plugin_location.location
+                        run_plugin_or_alias.location_string()
                     )
                 });
-                let run_plugin = Run::Plugin(run_plugin_location);
+                let run_plugin = Run::Plugin(run_plugin_or_alias);
 
                 if should_be_in_place {
                     if let Some(pane_id_to_replace) = pane_id_to_replace {
@@ -3337,12 +3521,13 @@ pub(crate) fn screen_thread_main(
                         log::error!("Must have pane id to replace or connected client_id if replacing a pane");
                     }
                 } else if let Some(client_id) = client_id {
-                    active_tab!(screen, client_id, |active_tab: &mut Tab| {
+                    active_tab_and_connected_client_id!(screen, client_id, |active_tab: &mut Tab, _client_id: ClientId| {
                         active_tab.new_pane(
                             PaneId::Plugin(plugin_id),
                             Some(pane_title),
                             should_float,
                             Some(run_plugin),
+                            None,
                             None,
                         )
                     }, ?);
@@ -3354,6 +3539,7 @@ pub(crate) fn screen_thread_main(
                         Some(pane_title),
                         should_float,
                         Some(run_plugin),
+                        None,
                         None,
                     )?;
                 } else {
@@ -3411,31 +3597,35 @@ pub(crate) fn screen_thread_main(
                 skip_cache,
                 client_id,
             ) => match pane_id_to_replace {
-                Some(pane_id_to_replace) => match screen.active_tab_indices.values().next() {
-                    Some(tab_index) => {
-                        let size = Size::default();
-                        screen
-                            .bus
-                            .senders
-                            .send_to_pty(PtyInstruction::FillPluginCwd(
-                                Some(should_float),
-                                should_open_in_place,
-                                None,
-                                run_plugin,
-                                *tab_index,
-                                Some(pane_id_to_replace),
-                                client_id,
-                                size,
-                                skip_cache,
-                            ))?;
-                    },
-                    None => {
-                        log::error!(
+                Some(pane_id_to_replace) if should_open_in_place => {
+                    match screen.active_tab_indices.values().next() {
+                        Some(tab_index) => {
+                            let size = Size::default();
+                            screen
+                                .bus
+                                .senders
+                                .send_to_pty(PtyInstruction::FillPluginCwd(
+                                    Some(should_float),
+                                    should_open_in_place,
+                                    None,
+                                    run_plugin,
+                                    *tab_index,
+                                    Some(pane_id_to_replace),
+                                    client_id,
+                                    size,
+                                    skip_cache,
+                                    None,
+                                    None,
+                                ))?;
+                        },
+                        None => {
+                            log::error!(
                             "Could not find an active tab - is there at least 1 connected user?"
                         );
-                    },
+                        },
+                    }
                 },
-                None => {
+                _ => {
                     let client_id = if screen.active_tab_indices.contains_key(&client_id) {
                         Some(client_id)
                     } else {
@@ -3471,6 +3661,8 @@ pub(crate) fn screen_thread_main(
                                         client_id,
                                         Size::default(),
                                         skip_cache,
+                                        None,
+                                        None,
                                     ))?;
                             }
                         },
@@ -3486,6 +3678,7 @@ pub(crate) fn screen_thread_main(
                 should_open_in_place,
                 pane_id_to_replace,
                 skip_cache,
+                cwd,
                 client_id,
             ) => match pane_id_to_replace {
                 Some(pane_id_to_replace) => match screen.active_tab_indices.values().next() {
@@ -3504,6 +3697,8 @@ pub(crate) fn screen_thread_main(
                                 client_id,
                                 size,
                                 skip_cache,
+                                cwd,
+                                None,
                             ))?;
                     },
                     None => {
@@ -3539,6 +3734,8 @@ pub(crate) fn screen_thread_main(
                                     client_id,
                                     Size::default(),
                                     skip_cache,
+                                    cwd,
+                                    None,
                                 ))?;
                         },
                         None => {
@@ -3668,7 +3865,7 @@ pub(crate) fn screen_thread_main(
                     // update state
                     screen.session_name = name.clone();
                     screen.default_mode_info.session_name = Some(name.clone());
-                    for (_client_id, mut mode_info) in screen.mode_info.iter_mut() {
+                    for (_client_id, mode_info) in screen.mode_info.iter_mut() {
                         mode_info.session_name = Some(name.clone());
                     }
                     for (_, tab) in screen.tabs.iter_mut() {

@@ -19,6 +19,7 @@ impl TryFrom<ProtobufPipeMessage> for PipeMessage {
             (Some(ProtobufPipeSource::Plugin), _, Some(plugin_source_id)) => {
                 PipeSource::Plugin(plugin_source_id)
             },
+            (Some(ProtobufPipeSource::Keybind), _, _) => PipeSource::Keybind,
             _ => return Err("Invalid PipeSource or payload"),
         };
         let name = protobuf_pipe_message.name;
@@ -49,6 +50,7 @@ impl TryFrom<PipeMessage> for ProtobufPipeMessage {
             PipeSource::Plugin(plugin_id) => {
                 (ProtobufPipeSource::Plugin as i32, None, Some(plugin_id))
             },
+            PipeSource::Keybind => (ProtobufPipeSource::Keybind as i32, None, None),
         };
         let name = pipe_message.name;
         let payload = pipe_message.payload;

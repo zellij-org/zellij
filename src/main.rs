@@ -29,8 +29,13 @@ fn main() {
             name,
             close_on_exit,
             start_suspended,
+            x,
+            y,
+            width,
+            height,
         })) = opts.command
         {
+            let cwd = cwd.or_else(|| std::env::current_dir().ok());
             let skip_plugin_cache = false; // N/A for this action
             let command_cli_action = CliAction::NewPane {
                 command,
@@ -44,6 +49,10 @@ fn main() {
                 start_suspended,
                 configuration: None,
                 skip_plugin_cache,
+                x,
+                y,
+                width,
+                height,
             };
             commands::send_action_to_session(command_cli_action, opts.session, config);
             std::process::exit(0);
@@ -54,13 +63,18 @@ fn main() {
             in_place,
             configuration,
             skip_plugin_cache,
+            x,
+            y,
+            width,
+            height,
         })) = opts.command
         {
+            let cwd = None;
             let command_cli_action = CliAction::NewPane {
                 command: vec![],
                 plugin: Some(url),
                 direction: None,
-                cwd: None,
+                cwd,
                 floating,
                 in_place,
                 name: None,
@@ -68,6 +82,10 @@ fn main() {
                 start_suspended: false,
                 configuration,
                 skip_plugin_cache,
+                x,
+                y,
+                width,
+                height,
             };
             commands::send_action_to_session(command_cli_action, opts.session, config);
             std::process::exit(0);
@@ -79,6 +97,10 @@ fn main() {
             floating,
             in_place,
             cwd,
+            x,
+            y,
+            width,
+            height,
         })) = opts.command
         {
             let mut file = file;
@@ -95,6 +117,10 @@ fn main() {
                 floating,
                 in_place,
                 cwd,
+                x,
+                y,
+                width,
+                height,
             };
             commands::send_action_to_session(command_cli_action, opts.session, config);
             std::process::exit(0);
@@ -141,9 +167,12 @@ fn main() {
     if let Some(Command::Sessions(Sessions::ListSessions {
         no_formatting,
         short,
+        reverse,
     })) = opts.command
     {
-        commands::list_sessions(no_formatting, short);
+        commands::list_sessions(no_formatting, short, reverse);
+    } else if let Some(Command::Sessions(Sessions::ListAliases)) = opts.command {
+        commands::list_aliases(opts);
     } else if let Some(Command::Sessions(Sessions::KillAllSessions { yes })) = opts.command {
         commands::kill_all_sessions(yes);
     } else if let Some(Command::Sessions(Sessions::KillSession { ref target_session })) =

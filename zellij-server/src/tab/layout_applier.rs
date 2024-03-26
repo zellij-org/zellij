@@ -18,9 +18,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::rc::Rc;
 use zellij_utils::{
     data::{Palette, Style},
-    input::layout::{
-        FloatingPaneLayout, PluginUserConfiguration, Run, RunPluginLocation, TiledPaneLayout,
-    },
+    input::layout::{FloatingPaneLayout, Run, RunPluginOrAlias, TiledPaneLayout},
     pane_size::{Offset, PaneGeom, Size, SizeInPixels, Viewport},
 };
 
@@ -104,7 +102,7 @@ impl<'a> LayoutApplier<'a> {
         floating_panes_layout: Vec<FloatingPaneLayout>,
         new_terminal_ids: Vec<(u32, HoldForCommand)>,
         new_floating_terminal_ids: Vec<(u32, HoldForCommand)>,
-        mut new_plugin_ids: HashMap<(RunPluginLocation, PluginUserConfiguration), Vec<u32>>,
+        mut new_plugin_ids: HashMap<RunPluginOrAlias, Vec<u32>>,
         client_id: ClientId,
     ) -> Result<bool> {
         // true => should_show_floating_panes
@@ -208,15 +206,14 @@ impl<'a> LayoutApplier<'a> {
         &mut self,
         layout: TiledPaneLayout,
         new_terminal_ids: Vec<(u32, HoldForCommand)>,
-        new_plugin_ids: &mut HashMap<(RunPluginLocation, PluginUserConfiguration), Vec<u32>>,
+        new_plugin_ids: &mut HashMap<RunPluginOrAlias, Vec<u32>>,
         client_id: ClientId,
     ) -> Result<()> {
         let err_context = || format!("failed to apply tiled panes layout");
         let free_space = self.total_space_for_tiled_panes();
         match layout.position_panes_in_space(&free_space, None) {
-            Ok(positions_in_layout) => {
+            Ok(mut positions_in_layout) => {
                 let mut run_instructions_to_ignore = layout.run_instructions_to_ignore.clone();
-                let positions_and_size = positions_in_layout.iter();
                 let mut new_terminal_ids = new_terminal_ids.iter();
 
                 let mut focus_pane_id: Option<PaneId> = None;
@@ -226,21 +223,47 @@ impl<'a> LayoutApplier<'a> {
                     }
                 };
 
-                for (layout, position_and_size) in positions_and_size {
-                    if let Some(position) = run_instructions_to_ignore
+                // first, try to find rooms for the panes that are already running (represented by
+                // run_instructions_to_ignore), we try to either find an explicit position (the new
+                // layout has a pane with the exact run instruction) or an otherwise free position
+                // (the new layout has a pane with None as its run instruction)
+                for run_instruction in run_instructions_to_ignore.drain(..) {
+                    if let Some(position) = positions_in_layout
                         .iter()
-                        .position(|r| r == &layout.run)
+                        .position(|(layout, _position_and_size)| &layout.run == &run_instruction)
                     {
-                        let run = run_instructions_to_ignore.remove(position);
+                        let (layout, position_and_size) = positions_in_layout.remove(position);
                         self.tiled_panes.set_geom_for_pane_with_run(
-                            run,
-                            *position_and_size,
+                            layout.run,
+                            position_and_size,
                             layout.borderless,
                         );
-                    } else if let Some(Run::Plugin(run)) = layout.run.clone() {
-                        let pane_title = run.location.to_string();
+                    } else if let Some(position) = positions_in_layout
+                        .iter()
+                        .position(|(layout, _position_and_size)| layout.run.is_none())
+                    {
+                        let (layout, position_and_size) = positions_in_layout.remove(position);
+                        self.tiled_panes.set_geom_for_pane_with_run(
+                            run_instruction,
+                            position_and_size,
+                            layout.borderless,
+                        );
+                    } else {
+                        log::error!(
+                            "Failed to find room for run instruction: {:?}",
+                            run_instruction
+                        );
+                    }
+                }
+
+                // then, we open new panes for each run instruction in the layout with the details
+                // we got from the plugin thread and pty thread
+                let positions_and_size = positions_in_layout.iter();
+                for (layout, position_and_size) in positions_and_size {
+                    if let Some(Run::Plugin(run)) = layout.run.clone() {
+                        let pane_title = run.location_string();
                         let pid = new_plugin_ids
-                            .get_mut(&(run.location, run.configuration))
+                            .get_mut(&run)
                             .and_then(|ids| ids.pop())
                             .with_context(err_context)?;
                         let mut new_plugin = PluginPane::new(
@@ -347,7 +370,7 @@ impl<'a> LayoutApplier<'a> {
         &mut self,
         floating_panes_layout: Vec<FloatingPaneLayout>,
         new_floating_terminal_ids: Vec<(u32, HoldForCommand)>,
-        new_plugin_ids: &mut HashMap<(RunPluginLocation, PluginUserConfiguration), Vec<u32>>,
+        new_plugin_ids: &mut HashMap<RunPluginOrAlias, Vec<u32>>,
         layout_name: Option<String>,
     ) -> Result<bool> {
         // true => has floating panes
@@ -367,9 +390,9 @@ impl<'a> LayoutApplier<'a> {
                     position_and_size,
                 );
             } else if let Some(Run::Plugin(run)) = floating_pane_layout.run.clone() {
-                let pane_title = run.location.to_string();
+                let pane_title = run.location_string();
                 let pid = new_plugin_ids
-                    .get_mut(&(run.location, run.configuration))
+                    .get_mut(&run)
                     .and_then(|ids| ids.pop())
                     .with_context(err_context)?;
                 let mut new_pane = PluginPane::new(

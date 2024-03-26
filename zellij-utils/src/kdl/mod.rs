@@ -1,20 +1,21 @@
 mod kdl_layout_parser;
 use crate::data::{
-    Direction, InputMode, Key, Palette, PaletteColor, PaneInfo, PaneManifest, PermissionType,
-    Resize, SessionInfo, TabInfo,
+    Direction, FloatingPaneCoordinates, InputMode, Key, LayoutInfo, Palette, PaletteColor,
+    PaneInfo, PaneManifest, PermissionType, Resize, SessionInfo, TabInfo,
 };
 use crate::envs::EnvironmentVariables;
 use crate::home::{find_default_config_dir, get_layout_dir};
 use crate::input::config::{Config, ConfigError, KdlError};
 use crate::input::keybinds::Keybinds;
-use crate::input::layout::{Layout, PluginUserConfiguration, RunPlugin, RunPluginLocation};
+use crate::input::layout::{Layout, RunPlugin, RunPluginOrAlias};
 use crate::input::options::{Clipboard, OnForceClose, Options};
 use crate::input::permission::{GrantedPermission, PermissionCache};
-use crate::input::plugins::{PluginConfig, PluginTag, PluginType, PluginsConfig};
+use crate::input::plugins::PluginAliases;
 use crate::input::theme::{FrameConfig, Theme, Themes, UiConfig};
 use kdl_layout_parser::KdlLayoutParser;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use strum::IntoEnumIterator;
+use uuid::Uuid;
 
 use miette::NamedSource;
 
@@ -248,6 +249,22 @@ macro_rules! kdl_children {
 }
 
 #[macro_export]
+macro_rules! kdl_get_string_property_or_child_value {
+    ( $kdl_node:expr, $name:expr ) => {
+        $kdl_node
+            .get($name)
+            .and_then(|e| e.value().as_string())
+            .or_else(|| {
+                $kdl_node
+                    .children()
+                    .and_then(|c| c.get($name))
+                    .and_then(|c| c.get(0))
+                    .and_then(|c| c.value().as_string())
+            })
+    };
+}
+
+#[macro_export]
 macro_rules! kdl_string_arguments {
     ( $kdl_node:expr ) => {{
         let res: Result<Vec<_>, _> = $kdl_node
@@ -452,6 +469,24 @@ impl Action {
                     )
                 })?;
                 Ok(Action::MoveFocusOrTab(direction))
+            },
+            "MoveTab" => {
+                let direction = Direction::from_str(string.as_str()).map_err(|_| {
+                    ConfigError::new_kdl_error(
+                        format!("Invalid direction: '{}'", string),
+                        action_node.span().offset(),
+                        action_node.span().len(),
+                    )
+                })?;
+                if direction.is_vertical() {
+                    Err(ConfigError::new_kdl_error(
+                        format!("Invalid horizontal direction: '{}'", string),
+                        action_node.span().offset(),
+                        action_node.span().len(),
+                    ))
+                } else {
+                    Ok(Action::MoveTab(direction))
+                }
             },
             "MovePane" => {
                 if string.is_empty() {
@@ -738,6 +773,11 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                 action_arguments,
                 kdl_action
             ),
+            "MoveTab" => parse_kdl_action_char_or_string_arguments!(
+                action_name,
+                action_arguments,
+                kdl_action
+            ),
             "MoveFocusOrTab" => parse_kdl_action_char_or_string_arguments!(
                 action_name,
                 action_arguments,
@@ -904,8 +944,24 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                     hold_on_close,
                     hold_on_start,
                 };
+                let x = command_metadata
+                    .and_then(|c_m| kdl_child_string_value_for_entry(c_m, "x"))
+                    .map(|s| s.to_owned());
+                let y = command_metadata
+                    .and_then(|c_m| kdl_child_string_value_for_entry(c_m, "y"))
+                    .map(|s| s.to_owned());
+                let width = command_metadata
+                    .and_then(|c_m| kdl_child_string_value_for_entry(c_m, "width"))
+                    .map(|s| s.to_owned());
+                let height = command_metadata
+                    .and_then(|c_m| kdl_child_string_value_for_entry(c_m, "height"))
+                    .map(|s| s.to_owned());
                 if floating {
-                    Ok(Action::NewFloatingPane(Some(run_command_action), name))
+                    Ok(Action::NewFloatingPane(
+                        Some(run_command_action),
+                        name,
+                        FloatingPaneCoordinates::new(x, y, width, height),
+                    ))
                 } else if in_place {
                     Ok(Action::NewInPlacePane(Some(run_command_action), name))
                 } else {
@@ -942,15 +998,25 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                     .and_then(|c_m| kdl_child_bool_value_for_entry(c_m, "skip_plugin_cache"))
                     .unwrap_or(false);
                 let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-                let location = RunPluginLocation::parse(&plugin_path, Some(current_dir))?;
                 let configuration = KdlLayoutParser::parse_plugin_user_configuration(&kdl_action)?;
-                let run_plugin = RunPlugin {
-                    location,
-                    _allow_exec_host_cmd: false,
-                    configuration,
-                };
+                let initial_cwd = kdl_get_string_property_or_child_value!(kdl_action, "cwd")
+                    .map(|s| PathBuf::from(s));
+                let run_plugin_or_alias = RunPluginOrAlias::from_url(
+                    &plugin_path,
+                    &Some(configuration.inner().clone()),
+                    None,
+                    Some(current_dir),
+                )
+                .map_err(|e| {
+                    ConfigError::new_kdl_error(
+                        format!("Failed to parse plugin: {}", e),
+                        kdl_action.span().offset(),
+                        kdl_action.span().len(),
+                    )
+                })?
+                .with_initial_cwd(initial_cwd);
                 Ok(Action::LaunchOrFocusPlugin(
-                    run_plugin,
+                    run_plugin_or_alias,
                     should_float,
                     move_to_focused_tab,
                     should_open_in_place,
@@ -980,18 +1046,27 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                     .and_then(|c_m| kdl_child_bool_value_for_entry(c_m, "skip_plugin_cache"))
                     .unwrap_or(false);
                 let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-                let location = RunPluginLocation::parse(&plugin_path, Some(current_dir))?;
                 let configuration = KdlLayoutParser::parse_plugin_user_configuration(&kdl_action)?;
-                let run_plugin = RunPlugin {
-                    location,
-                    _allow_exec_host_cmd: false,
-                    configuration,
-                };
+                let run_plugin_or_alias = RunPluginOrAlias::from_url(
+                    &plugin_path,
+                    &Some(configuration.inner().clone()),
+                    None,
+                    Some(current_dir),
+                )
+                .map_err(|e| {
+                    ConfigError::new_kdl_error(
+                        format!("Failed to parse plugin: {}", e),
+                        kdl_action.span().offset(),
+                        kdl_action.span().len(),
+                    )
+                })?;
                 Ok(Action::LaunchPlugin(
-                    run_plugin,
+                    run_plugin_or_alias,
                     should_float,
                     should_open_in_place,
                     skip_plugin_cache,
+                    None, // we explicitly do not send the current dir here so that it will be
+                          // filled from the active pane == better UX
                 ))
             },
             "PreviousSwapLayout" => Ok(Action::PreviousSwapLayout),
@@ -1004,6 +1079,64 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                 action_arguments,
                 kdl_action
             ),
+            "MessagePlugin" => {
+                let arguments = action_arguments.iter().copied();
+                let mut args = kdl_arguments_that_are_strings(arguments)?;
+                let plugin_path = if args.is_empty() {
+                    None
+                } else {
+                    Some(args.remove(0))
+                };
+
+                let command_metadata = action_children.iter().next();
+                let launch_new = command_metadata
+                    .and_then(|c_m| kdl_child_bool_value_for_entry(c_m, "launch_new"))
+                    .unwrap_or(false);
+                let skip_cache = command_metadata
+                    .and_then(|c_m| kdl_child_bool_value_for_entry(c_m, "skip_cache"))
+                    .unwrap_or(false);
+                let should_float = command_metadata
+                    .and_then(|c_m| kdl_child_bool_value_for_entry(c_m, "floating"))
+                    .unwrap_or(false);
+                let name = command_metadata
+                    .and_then(|c_m| kdl_child_string_value_for_entry(c_m, "name"))
+                    .map(|n| n.to_owned());
+                let payload = command_metadata
+                    .and_then(|c_m| kdl_child_string_value_for_entry(c_m, "payload"))
+                    .map(|p| p.to_owned());
+                let title = command_metadata
+                    .and_then(|c_m| kdl_child_string_value_for_entry(c_m, "title"))
+                    .map(|t| t.to_owned());
+                let configuration = KdlLayoutParser::parse_plugin_user_configuration(&kdl_action)?;
+                let configuration = if configuration.inner().is_empty() {
+                    None
+                } else {
+                    Some(configuration.inner().clone())
+                };
+                let cwd = kdl_get_string_property_or_child_value!(kdl_action, "cwd")
+                    .map(|s| PathBuf::from(s));
+
+                let name = name
+                    // first we try to take the explicitly supplied message name
+                    // then we use the plugin, to facilitate using aliases
+                    .or_else(|| plugin_path.clone())
+                    // then we use a uuid to at least have some sort of identifier for this message
+                    .or_else(|| Some(Uuid::new_v4().to_string()));
+
+                Ok(Action::KeybindPipe {
+                    name,
+                    payload,
+                    args: None, // TODO: consider supporting this if there's a need
+                    plugin: plugin_path,
+                    configuration,
+                    launch_new,
+                    skip_cache,
+                    floating: Some(should_float),
+                    in_place: None, // TODO: support this
+                    cwd,
+                    pane_title: title,
+                })
+            },
             _ => Err(ConfigError::new_kdl_error(
                 format!("Unsupported action: {}", action_name).into(),
                 kdl_action.span().offset(),
@@ -1269,22 +1402,6 @@ macro_rules! kdl_get_bool_property_or_child_value_with_error {
                 }
             },
         }
-    };
-}
-
-#[macro_export]
-macro_rules! kdl_get_string_property_or_child_value {
-    ( $kdl_node:expr, $name:expr ) => {
-        $kdl_node
-            .get($name)
-            .and_then(|e| e.value().as_string())
-            .or_else(|| {
-                $kdl_node
-                    .children()
-                    .and_then(|c| c.get($name))
-                    .and_then(|c| c.get(0))
-                    .and_then(|c| c.value().as_string())
-            })
     };
 }
 
@@ -1769,9 +1886,9 @@ impl Config {
             let config_themes = Themes::from_kdl(kdl_themes)?;
             config.themes = config.themes.merge(config_themes);
         }
-        if let Some(kdl_plugin_config) = kdl_config.get("plugins") {
-            let config_plugins = PluginsConfig::from_kdl(kdl_plugin_config)?;
-            config.plugins = config.plugins.merge(config_plugins);
+        if let Some(kdl_plugin_aliases) = kdl_config.get("plugins") {
+            let config_plugins = PluginAliases::from_kdl(kdl_plugin_aliases)?;
+            config.plugins.merge(config_plugins);
         }
         if let Some(kdl_ui_config) = kdl_config.get("ui") {
             let config_ui = UiConfig::from_kdl(&kdl_ui_config)?;
@@ -1785,38 +1902,31 @@ impl Config {
     }
 }
 
-impl PluginsConfig {
-    pub fn from_kdl(kdl_plugin_config: &KdlNode) -> Result<Self, ConfigError> {
-        let mut plugins: HashMap<PluginTag, PluginConfig> = HashMap::new();
-        for plugin_config in
-            kdl_children_nodes_or_error!(kdl_plugin_config, "no plugin config found")
-        {
-            let plugin_name = kdl_name!(plugin_config);
-            let plugin_tag = PluginTag::new(plugin_name);
-            let path = kdl_children_property_first_arg_as_string!(plugin_config, "path")
-                .map(|path| PathBuf::from(path))
-                .ok_or(ConfigError::new_kdl_error(
-                    "Plugin path not found or invalid".into(),
-                    plugin_config.span().offset(),
-                    plugin_config.span().len(),
-                ))?;
-            let allow_exec_host_cmd =
-                kdl_children_property_first_arg_as_bool!(plugin_config, "_allow_exec_host_cmd")
-                    .unwrap_or(false);
-            let plugin_config = PluginConfig {
-                path,
-                run: PluginType::Pane(None),
-                location: RunPluginLocation::Zellij(plugin_tag.clone()),
-                _allow_exec_host_cmd: allow_exec_host_cmd,
-                userspace_configuration: PluginUserConfiguration::new(BTreeMap::new()), // TODO: consider removing the whole
-                                                                                        // "plugins" section in the config
-                                                                                        // because it's not used???
-            };
-            plugins.insert(plugin_tag, plugin_config);
+impl PluginAliases {
+    pub fn from_kdl(kdl_plugin_aliases: &KdlNode) -> Result<PluginAliases, ConfigError> {
+        let mut aliases: BTreeMap<String, RunPlugin> = BTreeMap::new();
+        if let Some(kdl_plugin_aliases) = kdl_children_nodes!(kdl_plugin_aliases) {
+            for alias_definition in kdl_plugin_aliases {
+                let alias_name = kdl_name!(alias_definition);
+                if let Some(string_url) =
+                    kdl_get_string_property_or_child_value!(alias_definition, "location")
+                {
+                    let configuration =
+                        KdlLayoutParser::parse_plugin_user_configuration(&alias_definition)?;
+                    let initial_cwd =
+                        kdl_get_string_property_or_child_value!(alias_definition, "cwd")
+                            .map(|s| PathBuf::from(s));
+                    let run_plugin = RunPlugin::from_url(string_url)?
+                        .with_configuration(configuration.inner().clone())
+                        .with_initial_cwd(initial_cwd);
+                    aliases.insert(alias_name.to_owned(), run_plugin);
+                }
+            }
         }
-        Ok(PluginsConfig(plugins))
+        Ok(PluginAliases { aliases })
     }
 }
+
 impl UiConfig {
     pub fn from_kdl(kdl_ui_config: &KdlNode) -> Result<UiConfig, ConfigError> {
         let mut ui_config = UiConfig::default();
@@ -1986,6 +2096,31 @@ impl SessionInfo {
             .and_then(|p| p.children())
             .map(|p| PaneManifest::decode_from_kdl(p))
             .ok_or("Failed to parse panes")?;
+        let available_layouts: Vec<LayoutInfo> = kdl_document
+            .get("available_layouts")
+            .and_then(|p| p.children())
+            .map(|e| {
+                e.nodes()
+                    .iter()
+                    .filter_map(|n| {
+                        let layout_name = n.name().value().to_owned();
+                        let layout_source = n
+                            .entries()
+                            .iter()
+                            .find(|e| e.name().map(|n| n.value()) == Some("source"))
+                            .and_then(|e| e.value().as_string());
+                        match layout_source {
+                            Some(layout_source) => match layout_source {
+                                "built-in" => Some(LayoutInfo::BuiltIn(layout_name)),
+                                "file" => Some(LayoutInfo::File(layout_name)),
+                                _ => None,
+                            },
+                            None => None,
+                        }
+                    })
+                    .collect()
+            })
+            .ok_or("Failed to parse available_layouts")?;
         let is_current_session = name == current_session_name;
         Ok(SessionInfo {
             name,
@@ -1993,6 +2128,7 @@ impl SessionInfo {
             panes,
             connected_clients,
             is_current_session,
+            available_layouts,
         })
     }
     pub fn to_string(&self) -> String {
@@ -2017,10 +2153,25 @@ impl SessionInfo {
         let mut panes = KdlNode::new("panes");
         panes.set_children(self.panes.encode_to_kdl());
 
+        let mut available_layouts = KdlNode::new("available_layouts");
+        let mut available_layouts_children = KdlDocument::new();
+        for layout_info in &self.available_layouts {
+            let (layout_name, layout_source) = match layout_info {
+                LayoutInfo::File(name) => (name.clone(), "file"),
+                LayoutInfo::BuiltIn(name) => (name.clone(), "built-in"),
+            };
+            let mut layout_node = KdlNode::new(format!("{}", layout_name));
+            let layout_source = KdlEntry::new_prop("source", layout_source);
+            layout_node.entries_mut().push(layout_source);
+            available_layouts_children.nodes_mut().push(layout_node);
+        }
+        available_layouts.set_children(available_layouts_children);
+
         kdl_document.nodes_mut().push(name);
         kdl_document.nodes_mut().push(tabs);
         kdl_document.nodes_mut().push(panes);
         kdl_document.nodes_mut().push(connected_clients);
+        kdl_document.nodes_mut().push(available_layouts);
         kdl_document.fmt();
         kdl_document.to_string()
     }
@@ -2506,6 +2657,11 @@ fn serialize_and_deserialize_session_info_with_data() {
         panes: PaneManifest { panes },
         connected_clients: 2,
         is_current_session: false,
+        available_layouts: vec![
+            LayoutInfo::File("layout1".to_owned()),
+            LayoutInfo::BuiltIn("layout2".to_owned()),
+            LayoutInfo::File("layout3".to_owned()),
+        ],
     };
     let serialized = session_info.to_string();
     let deserealized = SessionInfo::from_string(&serialized, "not this session").unwrap();

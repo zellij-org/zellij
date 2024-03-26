@@ -52,8 +52,7 @@ pub(crate) fn get_resurrectable_sessions() -> Vec<(String, Duration, Layout)> {
                         session_layout_cache_file_name(&folder_name.display().to_string());
                     let raw_layout = match std::fs::read_to_string(&layout_file_name) {
                         Ok(raw_layout) => raw_layout,
-                        Err(e) => {
-                            log::error!("Failed to read resurrection layout file: {:?}", e);
+                        Err(_e) => {
                             return None;
                         },
                     };
@@ -61,13 +60,7 @@ pub(crate) fn get_resurrectable_sessions() -> Vec<(String, Duration, Layout)> {
                         .and_then(|metadata| metadata.created())
                     {
                         Ok(created) => Some(created),
-                        Err(e) => {
-                            log::error!(
-                                "Failed to read created stamp of resurrection file: {:?}",
-                                e
-                            );
-                            None
-                        },
+                        Err(_e) => None,
                     };
                     let layout = match Layout::from_kdl(
                         &raw_layout,
@@ -150,10 +143,18 @@ pub(crate) fn print_sessions(
     mut sessions: Vec<(String, Duration, bool)>,
     no_formatting: bool,
     short: bool,
+    reverse: bool,
 ) {
     // (session_name, timestamp, is_dead)
     let curr_session = envs::get_session_name().unwrap_or_else(|_| "".into());
-    sessions.sort_by(|a, b| a.1.cmp(&b.1));
+    sessions.sort_by(|a, b| {
+        if reverse {
+            // sort by `Duration` ascending (newest would be first)
+            a.1.cmp(&b.1)
+        } else {
+            b.1.cmp(&a.1)
+        }
+    });
     sessions
         .iter()
         .for_each(|(session_name, timestamp, is_dead)| {
@@ -253,7 +254,7 @@ pub(crate) fn delete_session(name: &str, force: bool) {
     }
 }
 
-pub(crate) fn list_sessions(no_formatting: bool, short: bool) {
+pub(crate) fn list_sessions(no_formatting: bool, short: bool, reverse: bool) {
     let exit_code = match get_sessions() {
         Ok(running_sessions) => {
             let resurrectable_sessions = get_resurrectable_sessions();
@@ -277,6 +278,7 @@ pub(crate) fn list_sessions(no_formatting: bool, short: bool) {
                         .collect(),
                     no_formatting,
                     short,
+                    reverse,
                 );
                 0
             }

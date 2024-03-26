@@ -22,7 +22,7 @@ use zellij_utils::{
     errors::prelude::*,
     input::{
         command::RunCommand,
-        layout::{Run, RunPlugin, SplitDirection},
+        layout::{Run, RunPluginOrAlias, SplitDirection},
     },
     pane_size::{Offset, PaneGeom, Size, SizeInPixels, Viewport},
 };
@@ -1571,35 +1571,38 @@ impl TiledPanes {
         if self.fullscreen_is_active {
             let first_client_id = {
                 let connected_clients = self.connected_clients.borrow();
-                *connected_clients.iter().next().unwrap()
+                connected_clients.iter().next().copied()
             };
-            let active_pane_id = self.get_active_pane_id(first_client_id).unwrap();
-            let panes_to_hide: Vec<_> = self.panes_to_hide.iter().copied().collect();
-            for pane_id in panes_to_hide {
-                let pane = self.get_pane_mut(pane_id).unwrap();
-                pane.set_should_render(true);
-                pane.set_should_render_boundaries(true);
+            if let Some(active_pane_id) =
+                first_client_id.and_then(|first_client_id| self.get_active_pane_id(first_client_id))
+            {
+                let panes_to_hide: Vec<_> = self.panes_to_hide.iter().copied().collect();
+                for pane_id in panes_to_hide {
+                    let pane = self.get_pane_mut(pane_id).unwrap();
+                    pane.set_should_render(true);
+                    pane.set_should_render_boundaries(true);
+                }
+                let viewport_pane_ids: Vec<_> = self
+                    .panes
+                    .keys()
+                    .copied()
+                    .into_iter()
+                    .filter(|id| {
+                        !is_inside_viewport(&*self.viewport.borrow(), self.get_pane(*id).unwrap())
+                    })
+                    .collect();
+                for pid in viewport_pane_ids {
+                    let viewport_pane = self.get_pane_mut(pid).unwrap();
+                    viewport_pane.reset_size_and_position_override();
+                }
+                self.panes_to_hide.clear();
+                let active_terminal = self.get_pane_mut(active_pane_id).unwrap();
+                active_terminal.reset_size_and_position_override();
+                self.set_force_render();
+                let display_area = *self.display_area.borrow();
+                self.resize(display_area);
+                self.fullscreen_is_active = false;
             }
-            let viewport_pane_ids: Vec<_> = self
-                .panes
-                .keys()
-                .copied()
-                .into_iter()
-                .filter(|id| {
-                    !is_inside_viewport(&*self.viewport.borrow(), self.get_pane(*id).unwrap())
-                })
-                .collect();
-            for pid in viewport_pane_ids {
-                let viewport_pane = self.get_pane_mut(pid).unwrap();
-                viewport_pane.reset_size_and_position_override();
-            }
-            self.panes_to_hide.clear();
-            let active_terminal = self.get_pane_mut(active_pane_id).unwrap();
-            active_terminal.reset_size_and_position_override();
-            self.set_force_render();
-            let display_area = *self.display_area.borrow();
-            self.resize(display_area);
-            self.fullscreen_is_active = false;
         }
     }
     pub fn toggle_active_pane_fullscreen(&mut self, client_id: ClientId) {
@@ -1744,11 +1747,10 @@ impl TiledPanes {
     fn reset_boundaries(&mut self) {
         self.client_id_to_boundaries.clear();
     }
-    pub fn get_plugin_pane_id(&self, run_plugin: &RunPlugin) -> Option<PaneId> {
-        let run = Some(Run::Plugin(run_plugin.clone()));
+    pub fn get_plugin_pane_id(&self, run_plugin_or_alias: &RunPluginOrAlias) -> Option<PaneId> {
         self.panes
             .iter()
-            .find(|(_id, s_p)| s_p.invoked_with() == &run)
+            .find(|(_id, pane)| run_plugin_or_alias.is_equivalent_to_run(pane.invoked_with()))
             .map(|(id, _)| *id)
     }
     pub fn pane_info(&self) -> Vec<PaneInfo> {

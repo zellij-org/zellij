@@ -62,6 +62,8 @@ impl KeyShortcut {
         } else {
             match key {
                 Key::F(c) => format!("{}", c),
+                Key::CtrlF(n) => format!("F{}", n),
+                Key::AltF(n) => format!("F{}", n),
                 Key::Ctrl(c) => format!("{}", c),
                 Key::Char(_) => format!("{}", key),
                 Key::Alt(c) => format!("{}", c),

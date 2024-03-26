@@ -291,6 +291,8 @@ pub enum ScreenContext {
     GoToTabName,
     UpdateTabName,
     UndoRenameTab,
+    MoveTabLeft,
+    MoveTabRight,
     TerminalResize,
     TerminalPixelDimensions,
     TerminalBackgroundColor,
@@ -398,6 +400,8 @@ pub enum PluginContext {
     CachePluginEvents,
     MessageFromPlugin,
     UnblockCliPipes,
+    WatchFilesystem,
+    KeybindPipe,
 }
 
 /// Stack call representations corresponding to the different types of [`ClientInstruction`]s.
@@ -420,6 +424,7 @@ pub enum ClientContext {
     SetSynchronisedOutput,
     UnblockCliPipeInput,
     CliPipeOutput,
+    QueryTerminalSize,
 }
 
 /// Stack call representations corresponding to the different types of [`ServerInstruction`]s.
@@ -442,6 +447,7 @@ pub enum ServerContext {
     UnblockCliPipeInput,
     CliPipeOutput,
     AssociatePipeWithClient,
+    DisconnectAllClientsExcept,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]

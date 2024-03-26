@@ -5,6 +5,8 @@ pub struct PluginIds {
     pub plugin_id: i32,
     #[prost(int32, tag = "2")]
     pub zellij_pid: i32,
+    #[prost(string, tag = "3")]
+    pub initial_cwd: ::prost::alloc::string::String,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

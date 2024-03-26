@@ -1,6 +1,6 @@
 ---
 source: zellij-utils/src/kdl/mod.rs
-assertion_line: 2377
+assertion_line: 2552
 expression: serialized
 ---
 name "my session name"
@@ -78,4 +78,9 @@ panes {
     }
 }
 connected_clients 2
+available_layouts {
+    layout1 source="file"
+    layout2 source="built-in"
+    layout3 source="file"
+}
 

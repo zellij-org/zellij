@@ -106,8 +106,14 @@ pub enum Sessions {
         /// Print just the session name
         #[clap(short, long, value_parser, takes_value(false), default_value("false"))]
         short: bool,
-    },
 
+        /// List the sessions in reverse order (default is ascending order)
+        #[clap(short, long, value_parser, takes_value(false), default_value("false"))]
+        reverse: bool,
+    },
+    /// List existing plugin aliases
+    #[clap(visible_alias = "la")]
+    ListAliases,
     /// Attach to a session
     #[clap(visible_alias = "a")]
     Attach {
@@ -216,9 +222,22 @@ pub enum Sessions {
         /// Start the command suspended, only running after you first presses ENTER
         #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
         start_suspended: bool,
+
+        /// The x coordinates if the pane is floating as a bare integer (eg. 1) or percent (eg. 10%)
+        #[clap(short, long, requires("floating"))]
+        x: Option<String>,
+        /// The y coordinates if the pane is floating as a bare integer (eg. 1) or percent (eg. 10%)
+        #[clap(short, long, requires("floating"))]
+        y: Option<String>,
+        /// The width if the pane is floating as a bare integer (eg. 1) or percent (eg. 10%)
+        #[clap(long, requires("floating"))]
+        width: Option<String>,
+        /// The height if the pane is floating as a bare integer (eg. 1) or percent (eg. 10%)
+        #[clap(long, requires("floating"))]
+        height: Option<String>,
     },
     /// Load a plugin
-    #[clap(visible_alias = "r")]
+    #[clap(visible_alias = "p")]
     Plugin {
         /// Plugin URL, can either start with http(s), file: or zellij:
         #[clap(last(true), required(true))]
@@ -246,6 +265,18 @@ pub enum Sessions {
         /// Skip the memory and HD cache and force recompile of the plugin (good for development)
         #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
         skip_plugin_cache: bool,
+        /// The x coordinates if the pane is floating as a bare integer (eg. 1) or percent (eg. 10%)
+        #[clap(short, long, requires("floating"))]
+        x: Option<String>,
+        /// The y coordinates if the pane is floating as a bare integer (eg. 1) or percent (eg. 10%)
+        #[clap(short, long, requires("floating"))]
+        y: Option<String>,
+        /// The width if the pane is floating as a bare integer (eg. 1) or percent (eg. 10%)
+        #[clap(long, requires("floating"))]
+        width: Option<String>,
+        /// The height if the pane is floating as a bare integer (eg. 1) or percent (eg. 10%)
+        #[clap(long, requires("floating"))]
+        height: Option<String>,
     },
     /// Edit file with default $EDITOR / $VISUAL
     #[clap(visible_alias = "e")]
@@ -279,6 +310,18 @@ pub enum Sessions {
         /// Change the working directory of the editor
         #[clap(long, value_parser)]
         cwd: Option<PathBuf>,
+        /// The x coordinates if the pane is floating as a bare integer (eg. 1) or percent (eg. 10%)
+        #[clap(short, long, requires("floating"))]
+        x: Option<String>,
+        /// The y coordinates if the pane is floating as a bare integer (eg. 1) or percent (eg. 10%)
+        #[clap(short, long, requires("floating"))]
+        y: Option<String>,
+        /// The width if the pane is floating as a bare integer (eg. 1) or percent (eg. 10%)
+        #[clap(long, requires("floating"))]
+        width: Option<String>,
+        /// The height if the pane is floating as a bare integer (eg. 1) or percent (eg. 10%)
+        #[clap(long, requires("floating"))]
+        height: Option<String>,
     },
     ConvertConfig {
         old_config_file: PathBuf,
@@ -458,8 +501,20 @@ pub enum CliAction {
         start_suspended: bool,
         #[clap(long, value_parser)]
         configuration: Option<PluginUserConfiguration>,
-        #[clap(short, long, value_parser)]
+        #[clap(long, value_parser)]
         skip_plugin_cache: bool,
+        /// The x coordinates if the pane is floating as a bare integer (eg. 1) or percent (eg. 10%)
+        #[clap(short, long, requires("floating"))]
+        x: Option<String>,
+        /// The y coordinates if the pane is floating as a bare integer (eg. 1) or percent (eg. 10%)
+        #[clap(short, long, requires("floating"))]
+        y: Option<String>,
+        /// The width if the pane is floating as a bare integer (eg. 1) or percent (eg. 10%)
+        #[clap(long, requires("floating"))]
+        width: Option<String>,
+        /// The height if the pane is floating as a bare integer (eg. 1) or percent (eg. 10%)
+        #[clap(long, requires("floating"))]
+        height: Option<String>,
     },
     /// Open the specified file in a new zellij pane with your default EDITOR
     Edit {
@@ -492,6 +547,18 @@ pub enum CliAction {
         /// Change the working directory of the editor
         #[clap(long, value_parser)]
         cwd: Option<PathBuf>,
+        /// The x coordinates if the pane is floating as a bare integer (eg. 1) or percent (eg. 10%)
+        #[clap(short, long, requires("floating"))]
+        x: Option<String>,
+        /// The y coordinates if the pane is floating as a bare integer (eg. 1) or percent (eg. 10%)
+        #[clap(short, long, requires("floating"))]
+        y: Option<String>,
+        /// The width if the pane is floating as a bare integer (eg. 1) or percent (eg. 10%)
+        #[clap(long, requires("floating"))]
+        width: Option<String>,
+        /// The height if the pane is floating as a bare integer (eg. 1) or percent (eg. 10%)
+        #[clap(long, requires("floating"))]
+        height: Option<String>,
     },
     /// Switch input mode of all connected clients [locked|pane|tab|resize|move|search|session]
     SwitchMode {
@@ -566,7 +633,7 @@ pub enum CliAction {
         in_place: bool,
         #[clap(short, long, value_parser)]
         move_to_focused_tab: bool,
-        url: Url,
+        url: String,
         #[clap(short, long, value_parser)]
         configuration: Option<PluginUserConfiguration>,
         #[clap(short, long, value_parser)]

@@ -4,9 +4,12 @@ pub use super::generated_api::api::{
     input_mode::InputMode as ProtobufInputMode,
     plugin_command::{
         plugin_command::Payload, CliPipeOutputPayload, CommandName, ContextItem, EnvVariable,
-        ExecCmdPayload, HttpVerb as ProtobufHttpVerb, IdAndNewName, MessageToPluginPayload,
-        MovePayload, NewPluginArgs as ProtobufNewPluginArgs, OpenCommandPanePayload,
-        OpenFilePayload, PaneId as ProtobufPaneId, PaneType as ProtobufPaneType,
+        ExecCmdPayload, FixedOrPercent as ProtobufFixedOrPercent,
+        FixedOrPercentValue as ProtobufFixedOrPercentValue,
+        FloatingPaneCoordinates as ProtobufFloatingPaneCoordinates, HttpVerb as ProtobufHttpVerb,
+        IdAndNewName, KillSessionsPayload, MessageToPluginPayload, MovePayload,
+        NewPluginArgs as ProtobufNewPluginArgs, OpenCommandPanePayload, OpenFilePayload,
+        PaneId as ProtobufPaneId, PaneType as ProtobufPaneType,
         PluginCommand as ProtobufPluginCommand, PluginMessagePayload,
         RequestPluginPermissionPayload, ResizePayload, RunCommandPayload, SetTimeoutPayload,
         SubscribePayload, SwitchSessionPayload, SwitchTabToPayload, UnsubscribePayload,
@@ -17,13 +20,112 @@ pub use super::generated_api::api::{
 };
 
 use crate::data::{
-    ConnectToSession, HttpVerb, MessageToPlugin, NewPluginArgs, PaneId, PermissionType,
-    PluginCommand,
+    ConnectToSession, FloatingPaneCoordinates, HttpVerb, MessageToPlugin, NewPluginArgs, PaneId,
+    PermissionType, PluginCommand,
 };
+use crate::input::layout::SplitSize;
 
 use std::collections::BTreeMap;
 use std::convert::TryFrom;
 use std::path::PathBuf;
+
+impl Into<FloatingPaneCoordinates> for ProtobufFloatingPaneCoordinates {
+    fn into(self) -> FloatingPaneCoordinates {
+        FloatingPaneCoordinates {
+            x: self
+                .x
+                .and_then(|x| match ProtobufFixedOrPercent::from_i32(x.r#type) {
+                    Some(ProtobufFixedOrPercent::Percent) => {
+                        Some(SplitSize::Percent(x.value as usize))
+                    },
+                    Some(ProtobufFixedOrPercent::Fixed) => Some(SplitSize::Fixed(x.value as usize)),
+                    None => None,
+                }),
+            y: self
+                .y
+                .and_then(|y| match ProtobufFixedOrPercent::from_i32(y.r#type) {
+                    Some(ProtobufFixedOrPercent::Percent) => {
+                        Some(SplitSize::Percent(y.value as usize))
+                    },
+                    Some(ProtobufFixedOrPercent::Fixed) => Some(SplitSize::Fixed(y.value as usize)),
+                    None => None,
+                }),
+            width: self.width.and_then(|width| {
+                match ProtobufFixedOrPercent::from_i32(width.r#type) {
+                    Some(ProtobufFixedOrPercent::Percent) => {
+                        Some(SplitSize::Percent(width.value as usize))
+                    },
+                    Some(ProtobufFixedOrPercent::Fixed) => {
+                        Some(SplitSize::Fixed(width.value as usize))
+                    },
+                    None => None,
+                }
+            }),
+            height: self.height.and_then(|height| {
+                match ProtobufFixedOrPercent::from_i32(height.r#type) {
+                    Some(ProtobufFixedOrPercent::Percent) => {
+                        Some(SplitSize::Percent(height.value as usize))
+                    },
+                    Some(ProtobufFixedOrPercent::Fixed) => {
+                        Some(SplitSize::Fixed(height.value as usize))
+                    },
+                    None => None,
+                }
+            }),
+        }
+    }
+}
+
+impl Into<ProtobufFloatingPaneCoordinates> for FloatingPaneCoordinates {
+    fn into(self) -> ProtobufFloatingPaneCoordinates {
+        ProtobufFloatingPaneCoordinates {
+            x: match self.x {
+                Some(SplitSize::Percent(percent)) => Some(ProtobufFixedOrPercentValue {
+                    r#type: ProtobufFixedOrPercent::Percent as i32,
+                    value: percent as u32,
+                }),
+                Some(SplitSize::Fixed(fixed)) => Some(ProtobufFixedOrPercentValue {
+                    r#type: ProtobufFixedOrPercent::Fixed as i32,
+                    value: fixed as u32,
+                }),
+                None => None,
+            },
+            y: match self.y {
+                Some(SplitSize::Percent(percent)) => Some(ProtobufFixedOrPercentValue {
+                    r#type: ProtobufFixedOrPercent::Percent as i32,
+                    value: percent as u32,
+                }),
+                Some(SplitSize::Fixed(fixed)) => Some(ProtobufFixedOrPercentValue {
+                    r#type: ProtobufFixedOrPercent::Fixed as i32,
+                    value: fixed as u32,
+                }),
+                None => None,
+            },
+            width: match self.width {
+                Some(SplitSize::Percent(percent)) => Some(ProtobufFixedOrPercentValue {
+                    r#type: ProtobufFixedOrPercent::Percent as i32,
+                    value: percent as u32,
+                }),
+                Some(SplitSize::Fixed(fixed)) => Some(ProtobufFixedOrPercentValue {
+                    r#type: ProtobufFixedOrPercent::Fixed as i32,
+                    value: fixed as u32,
+                }),
+                None => None,
+            },
+            height: match self.height {
+                Some(SplitSize::Percent(percent)) => Some(ProtobufFixedOrPercentValue {
+                    r#type: ProtobufFixedOrPercent::Percent as i32,
+                    value: percent as u32,
+                }),
+                Some(SplitSize::Fixed(fixed)) => Some(ProtobufFixedOrPercentValue {
+                    r#type: ProtobufFixedOrPercent::Fixed as i32,
+                    value: fixed as u32,
+                }),
+                None => None,
+            },
+        }
+    }
+}
 
 impl Into<HttpVerb> for ProtobufHttpVerb {
     fn into(self) -> HttpVerb {
@@ -133,10 +235,14 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
             },
             Some(CommandName::OpenFileFloating) => match protobuf_plugin_command.payload {
                 Some(Payload::OpenFileFloatingPayload(file_to_open_payload)) => {
+                    let floating_pane_coordinates = file_to_open_payload
+                        .floating_pane_coordinates
+                        .map(|f| f.into());
                     match file_to_open_payload.file_to_open {
-                        Some(file_to_open) => {
-                            Ok(PluginCommand::OpenFileFloating(file_to_open.try_into()?))
-                        },
+                        Some(file_to_open) => Ok(PluginCommand::OpenFileFloating(
+                            file_to_open.try_into()?,
+                            floating_pane_coordinates,
+                        )),
                         None => Err("Malformed open file payload"),
                     }
                 },
@@ -155,9 +261,13 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
             },
             Some(CommandName::OpenTerminalFloating) => match protobuf_plugin_command.payload {
                 Some(Payload::OpenTerminalFloatingPayload(file_to_open_payload)) => {
+                    let floating_pane_coordinates = file_to_open_payload
+                        .floating_pane_coordinates
+                        .map(|f| f.into());
                     match file_to_open_payload.file_to_open {
                         Some(file_to_open) => Ok(PluginCommand::OpenTerminalFloating(
                             file_to_open.try_into()?,
+                            floating_pane_coordinates,
                         )),
                         None => Err("Malformed open terminal floating payload"),
                     }
@@ -177,9 +287,13 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
             },
             Some(CommandName::OpenCommandPaneFloating) => match protobuf_plugin_command.payload {
                 Some(Payload::OpenCommandPaneFloatingPayload(command_to_run_payload)) => {
+                    let floating_pane_coordinates = command_to_run_payload
+                        .floating_pane_coordinates
+                        .map(|f| f.into());
                     match command_to_run_payload.command_to_run {
                         Some(command_to_run) => Ok(PluginCommand::OpenCommandPaneFloating(
                             command_to_run.try_into()?,
+                            floating_pane_coordinates,
                         )),
                         None => Err("Malformed open command pane floating payload"),
                     }
@@ -574,6 +688,8 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                         name: payload.name,
                         tab_position: payload.tab_position.map(|p| p as usize),
                         pane_id,
+                        layout: payload.layout.and_then(|l| l.try_into().ok()),
+                        cwd: payload.cwd.map(|c| PathBuf::from(c)),
                     }))
                 },
                 _ => Err("Mismatched payload for SwitchSession"),
@@ -699,6 +815,7 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                     message_payload,
                     message_args,
                     new_plugin_args,
+                    destination_plugin_id,
                 })) => {
                     let plugin_config: BTreeMap<String, String> = plugin_config
                         .into_iter()
@@ -725,9 +842,30 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                                 skip_cache: protobuf_new_plugin_args.skip_cache,
                             })
                         }),
+                        destination_plugin_id,
                     }))
                 },
-                _ => Err("Mismatched payload for PipeOutput"),
+                _ => Err("Mismatched payload for MessageToPlugin"),
+            },
+            Some(CommandName::DisconnectOtherClients) => match protobuf_plugin_command.payload {
+                None => Ok(PluginCommand::DisconnectOtherClients),
+                _ => Err("Mismatched payload for DisconnectOtherClients"),
+            },
+            Some(CommandName::KillSessions) => match protobuf_plugin_command.payload {
+                Some(Payload::KillSessionsPayload(KillSessionsPayload { session_names })) => {
+                    Ok(PluginCommand::KillSessions(session_names))
+                },
+                _ => Err("Mismatched payload for KillSessions"),
+            },
+            Some(CommandName::ScanHostFolder) => match protobuf_plugin_command.payload {
+                Some(Payload::ScanHostFolderPayload(folder_to_scan)) => {
+                    Ok(PluginCommand::ScanHostFolder(PathBuf::from(folder_to_scan)))
+                },
+                _ => Err("Mismatched payload for ScanHostFolder"),
+            },
+            Some(CommandName::WatchFilesystem) => match protobuf_plugin_command.payload {
+                Some(_) => Err("WatchFilesystem should have no payload, found a payload"),
+                None => Ok(PluginCommand::WatchFilesystem),
             },
             None => Err("Unrecognized plugin command"),
         }
@@ -772,40 +910,52 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                 name: CommandName::OpenFile as i32,
                 payload: Some(Payload::OpenFilePayload(OpenFilePayload {
                     file_to_open: Some(file_to_open.try_into()?),
+                    floating_pane_coordinates: None,
                 })),
             }),
-            PluginCommand::OpenFileFloating(file_to_open) => Ok(ProtobufPluginCommand {
-                name: CommandName::OpenFileFloating as i32,
-                payload: Some(Payload::OpenFileFloatingPayload(OpenFilePayload {
-                    file_to_open: Some(file_to_open.try_into()?),
-                })),
-            }),
+            PluginCommand::OpenFileFloating(file_to_open, floating_pane_coordinates) => {
+                Ok(ProtobufPluginCommand {
+                    name: CommandName::OpenFileFloating as i32,
+                    payload: Some(Payload::OpenFileFloatingPayload(OpenFilePayload {
+                        file_to_open: Some(file_to_open.try_into()?),
+                        floating_pane_coordinates: floating_pane_coordinates.map(|f| f.into()),
+                    })),
+                })
+            },
             PluginCommand::OpenTerminal(cwd) => Ok(ProtobufPluginCommand {
                 name: CommandName::OpenTerminal as i32,
                 payload: Some(Payload::OpenTerminalPayload(OpenFilePayload {
                     file_to_open: Some(cwd.try_into()?),
+                    floating_pane_coordinates: None,
                 })),
             }),
-            PluginCommand::OpenTerminalFloating(cwd) => Ok(ProtobufPluginCommand {
-                name: CommandName::OpenTerminalFloating as i32,
-                payload: Some(Payload::OpenTerminalFloatingPayload(OpenFilePayload {
-                    file_to_open: Some(cwd.try_into()?),
-                })),
-            }),
+            PluginCommand::OpenTerminalFloating(cwd, floating_pane_coordinates) => {
+                Ok(ProtobufPluginCommand {
+                    name: CommandName::OpenTerminalFloating as i32,
+                    payload: Some(Payload::OpenTerminalFloatingPayload(OpenFilePayload {
+                        file_to_open: Some(cwd.try_into()?),
+                        floating_pane_coordinates: floating_pane_coordinates.map(|f| f.into()),
+                    })),
+                })
+            },
             PluginCommand::OpenCommandPane(command_to_run) => Ok(ProtobufPluginCommand {
                 name: CommandName::OpenCommandPane as i32,
                 payload: Some(Payload::OpenCommandPanePayload(OpenCommandPanePayload {
                     command_to_run: Some(command_to_run.try_into()?),
+                    floating_pane_coordinates: None,
                 })),
             }),
-            PluginCommand::OpenCommandPaneFloating(command_to_run) => Ok(ProtobufPluginCommand {
-                name: CommandName::OpenCommandPaneFloating as i32,
-                payload: Some(Payload::OpenCommandPaneFloatingPayload(
-                    OpenCommandPanePayload {
-                        command_to_run: Some(command_to_run.try_into()?),
-                    },
-                )),
-            }),
+            PluginCommand::OpenCommandPaneFloating(command_to_run, floating_pane_coordinates) => {
+                Ok(ProtobufPluginCommand {
+                    name: CommandName::OpenCommandPaneFloating as i32,
+                    payload: Some(Payload::OpenCommandPaneFloatingPayload(
+                        OpenCommandPanePayload {
+                            command_to_run: Some(command_to_run.try_into()?),
+                            floating_pane_coordinates: floating_pane_coordinates.map(|f| f.into()),
+                        },
+                    )),
+                })
+            },
             PluginCommand::SwitchTabTo(tab_index) => Ok(ProtobufPluginCommand {
                 name: CommandName::SwitchTabTo as i32,
                 payload: Some(Payload::SwitchTabToPayload(SwitchTabToPayload {
@@ -1082,18 +1232,22 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     tab_position: switch_to_session.tab_position.map(|t| t as u32),
                     pane_id: switch_to_session.pane_id.map(|p| p.0),
                     pane_id_is_plugin: switch_to_session.pane_id.map(|p| p.1),
+                    layout: switch_to_session.layout.and_then(|l| l.try_into().ok()),
+                    cwd: switch_to_session.cwd.map(|c| c.display().to_string()),
                 })),
             }),
             PluginCommand::OpenTerminalInPlace(cwd) => Ok(ProtobufPluginCommand {
                 name: CommandName::OpenTerminalInPlace as i32,
                 payload: Some(Payload::OpenTerminalInPlacePayload(OpenFilePayload {
                     file_to_open: Some(cwd.try_into()?),
+                    floating_pane_coordinates: None,
                 })),
             }),
             PluginCommand::OpenFileInPlace(file_to_open) => Ok(ProtobufPluginCommand {
                 name: CommandName::OpenFileInPlace as i32,
                 payload: Some(Payload::OpenFileInPlacePayload(OpenFilePayload {
                     file_to_open: Some(file_to_open.try_into()?),
+                    floating_pane_coordinates: None,
                 })),
             }),
             PluginCommand::OpenCommandPaneInPlace(command_to_run) => Ok(ProtobufPluginCommand {
@@ -1101,6 +1255,7 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                 payload: Some(Payload::OpenCommandPaneInPlacePayload(
                     OpenCommandPanePayload {
                         command_to_run: Some(command_to_run.try_into()?),
+                        floating_pane_coordinates: None,
                     },
                 )),
             }),
@@ -1202,9 +1357,30 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                                 skip_cache: m_t_p.skip_cache,
                             }
                         }),
+                        destination_plugin_id: message_to_plugin.destination_plugin_id,
                     })),
                 })
             },
+            PluginCommand::DisconnectOtherClients => Ok(ProtobufPluginCommand {
+                name: CommandName::DisconnectOtherClients as i32,
+                payload: None,
+            }),
+            PluginCommand::KillSessions(session_names) => Ok(ProtobufPluginCommand {
+                name: CommandName::KillSessions as i32,
+                payload: Some(Payload::KillSessionsPayload(KillSessionsPayload {
+                    session_names,
+                })),
+            }),
+            PluginCommand::ScanHostFolder(folder_to_scan) => Ok(ProtobufPluginCommand {
+                name: CommandName::ScanHostFolder as i32,
+                payload: Some(Payload::ScanHostFolderPayload(
+                    folder_to_scan.display().to_string(),
+                )),
+            }),
+            PluginCommand::WatchFilesystem => Ok(ProtobufPluginCommand {
+                name: CommandName::WatchFilesystem as i32,
+                payload: None,
+            }),
         }
     }
 }

@@ -44,13 +44,13 @@ use zellij_utils::{
     consts::{DEFAULT_SCROLL_BUFFER_SIZE, SCROLL_BUFFER_SIZE},
     data::{ConnectToSession, Event, PluginCapabilities},
     errors::{prelude::*, ContextType, ErrorInstruction, FatalError, ServerContext},
-    home::get_default_data_dir,
+    home::{default_layout_dir, get_default_data_dir},
     input::{
         command::{RunCommand, TerminalAction},
         get_mode_info,
         layout::Layout,
         options::Options,
-        plugins::PluginsConfig,
+        plugins::PluginAliases,
     },
     ipc::{ClientAttributes, ExitReason, ServerToClientMsg},
 };
@@ -65,8 +65,8 @@ pub enum ServerInstruction {
         Box<CliArgs>,
         Box<Options>,
         Box<Layout>,
+        Box<PluginAliases>,
         ClientId,
-        Option<PluginsConfig>,
     ),
     Render(Option<HashMap<ClientId, String>>),
     UnblockInputThread,
@@ -93,6 +93,7 @@ pub enum ServerInstruction {
         pipe_id: String,
         client_id: ClientId,
     },
+    DisconnectAllClientsExcept(ClientId),
 }
 
 impl From<&ServerInstruction> for ServerContext {
@@ -117,6 +118,9 @@ impl From<&ServerInstruction> for ServerContext {
             ServerInstruction::AssociatePipeWithClient { .. } => {
                 ServerContext::AssociatePipeWithClient
             },
+            ServerInstruction::DisconnectAllClientsExcept(..) => {
+                ServerContext::DisconnectAllClientsExcept
+            },
         }
     }
 }
@@ -133,6 +137,7 @@ pub(crate) struct SessionMetaData {
     pub client_attributes: ClientAttributes,
     pub default_shell: Option<TerminalAction>,
     pub layout: Box<Layout>,
+    pub config_options: Box<Options>,
     screen_thread: Option<thread::JoinHandle<()>>,
     pty_thread: Option<thread::JoinHandle<()>>,
     plugin_thread: Option<thread::JoinHandle<()>>,
@@ -360,8 +365,8 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 opts,
                 config_options,
                 layout,
+                plugin_aliases,
                 client_id,
-                plugins,
             ) => {
                 let session = init_session(
                     os_input.clone(),
@@ -370,9 +375,9 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     SessionOptions {
                         opts,
                         layout: layout.clone(),
-                        plugins,
                         config_options: config_options.clone(),
                     },
+                    plugin_aliases,
                 );
                 *session_data.write().unwrap() = Some(session);
                 session_state
@@ -650,6 +655,21 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 }
                 break;
             },
+            ServerInstruction::DisconnectAllClientsExcept(client_id) => {
+                let client_ids: Vec<ClientId> = session_state
+                    .read()
+                    .unwrap()
+                    .client_ids()
+                    .iter()
+                    .copied()
+                    .filter(|c| c != &client_id)
+                    .collect();
+                for client_id in client_ids {
+                    let _ = os_input
+                        .send_to_client(client_id, ServerToClientMsg::Exit(ExitReason::Normal));
+                    remove_client!(client_id, os_input, session_state);
+                }
+            },
             ServerInstruction::DetachSession(client_ids) => {
                 for client_id in client_ids {
                     let _ = os_input
@@ -749,7 +769,16 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     session_state
                 );
             },
-            ServerInstruction::SwitchSession(connect_to_session, client_id) => {
+            ServerInstruction::SwitchSession(mut connect_to_session, client_id) => {
+                let layout_dir = session_data
+                    .read()
+                    .unwrap()
+                    .as_ref()
+                    .and_then(|c| c.config_options.layout_dir.clone())
+                    .or_else(|| default_layout_dir());
+                if let Some(layout_dir) = layout_dir {
+                    connect_to_session.apply_layout_dir(&layout_dir);
+                }
                 if let Some(min_size) = session_state.read().unwrap().min_client_terminal_size() {
                     session_data
                         .write()
@@ -803,7 +832,6 @@ pub struct SessionOptions {
     pub opts: Box<CliArgs>,
     pub config_options: Box<Options>,
     pub layout: Box<Layout>,
-    pub plugins: Option<PluginsConfig>,
 }
 
 fn init_session(
@@ -811,12 +839,12 @@ fn init_session(
     to_server: SenderWithContext<ServerInstruction>,
     client_attributes: ClientAttributes,
     options: SessionOptions,
+    plugin_aliases: Box<PluginAliases>,
 ) -> SessionMetaData {
     let SessionOptions {
         opts,
         config_options,
         layout,
-        plugins,
     } = options;
 
     let _ = SCROLL_BUFFER_SIZE.set(
@@ -906,6 +934,7 @@ fn init_session(
             let client_attributes_clone = client_attributes.clone();
             let debug = opts.debug;
             let layout = layout.clone();
+            let config_options = config_options.clone();
             move || {
                 screen_thread_main(
                     screen_bus,
@@ -945,13 +974,13 @@ fn init_session(
                     plugin_bus,
                     store,
                     data_dir,
-                    plugins.unwrap_or_default(),
                     layout,
                     path_to_default_shell,
                     zellij_cwd,
                     capabilities,
                     client_attributes,
                     default_shell,
+                    plugin_aliases,
                 )
                 .fatal()
             }
@@ -1006,6 +1035,7 @@ fn init_session(
         default_shell,
         client_attributes,
         layout,
+        config_options: config_options.clone(),
         screen_thread: Some(screen_thread),
         pty_thread: Some(pty_thread),
         plugin_thread: Some(plugin_thread),

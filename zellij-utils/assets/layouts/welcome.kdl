@@ -1,0 +1,6 @@
+layout {
+    pane borderless=true {
+        plugin location="welcome-screen"
+    }
+}
+session_serialization false // this will apply only to the initial welcome screen layout, and is intended to prevent lots of garbage sessions left around

@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+use std::io::prelude::*;
 use zellij_tile::prelude::*;
 
 // This is a fixture plugin used only for tests in Zellij
@@ -66,6 +67,7 @@ impl ZellijPlugin for State {
             EventType::FileSystemUpdate,
             EventType::FileSystemDelete,
         ]);
+        watch_filesystem();
     }
 
     fn update(&mut self, event: Event) -> bool {
@@ -167,10 +169,13 @@ impl ZellijPlugin for State {
                     });
                 },
                 Key::Ctrl('h') => {
-                    open_file_floating(FileToOpen {
-                        path: std::path::PathBuf::from("/path/to/my/file.rs"),
-                        ..Default::default()
-                    });
+                    open_file_floating(
+                        FileToOpen {
+                            path: std::path::PathBuf::from("/path/to/my/file.rs"),
+                            ..Default::default()
+                        },
+                        None,
+                    );
                 },
                 Key::Ctrl('i') => {
                     open_file(FileToOpen {
@@ -180,11 +185,14 @@ impl ZellijPlugin for State {
                     });
                 },
                 Key::Ctrl('j') => {
-                    open_file_floating(FileToOpen {
-                        path: std::path::PathBuf::from("/path/to/my/file.rs"),
-                        line_number: Some(42),
-                        ..Default::default()
-                    });
+                    open_file_floating(
+                        FileToOpen {
+                            path: std::path::PathBuf::from("/path/to/my/file.rs"),
+                            line_number: Some(42),
+                            ..Default::default()
+                        },
+                        None,
+                    );
                 },
                 Key::Ctrl('k') => {
                     open_terminal(std::path::PathBuf::from("/path/to/my/file.rs").as_path());
@@ -192,6 +200,7 @@ impl ZellijPlugin for State {
                 Key::Ctrl('l') => {
                     open_terminal_floating(
                         std::path::PathBuf::from("/path/to/my/file.rs").as_path(),
+                        None,
                     );
                 },
                 Key::Ctrl('m') => {
@@ -202,11 +211,14 @@ impl ZellijPlugin for State {
                     });
                 },
                 Key::Ctrl('n') => {
-                    open_command_pane_floating(CommandToRun {
-                        path: std::path::PathBuf::from("/path/to/my/file.rs"),
-                        args: vec!["arg1".to_owned(), "arg2".to_owned()],
-                        ..Default::default()
-                    });
+                    open_command_pane_floating(
+                        CommandToRun {
+                            path: std::path::PathBuf::from("/path/to/my/file.rs"),
+                            args: vec!["arg1".to_owned(), "arg2".to_owned()],
+                            ..Default::default()
+                        },
+                        None,
+                    );
                 },
                 Key::Ctrl('o') => {
                     switch_tab_to(1);
@@ -280,6 +292,28 @@ impl ZellijPlugin for State {
                         context,
                     );
                 },
+                Key::Ctrl('5') => {
+                    switch_session(Some("my_new_session"));
+                },
+                Key::Ctrl('6') => disconnect_other_clients(),
+                Key::Ctrl('7') => {
+                    switch_session_with_layout(
+                        Some("my_other_new_session"),
+                        LayoutInfo::BuiltIn("compact".to_owned()),
+                        None,
+                    );
+                },
+                Key::Ctrl('8') => {
+                    let mut file = std::fs::File::create("/host/hi-from-plugin.txt").unwrap();
+                    file.write_all(b"Hi there!").unwrap();
+                },
+                Key::Ctrl('9') => {
+                    switch_session_with_layout(
+                        Some("my_other_new_session_with_cwd"),
+                        LayoutInfo::BuiltIn("compact".to_owned()),
+                        Some(std::path::PathBuf::from("/tmp")),
+                    );
+                },
                 _ => {},
             },
             Event::CustomMessage(message, payload) => {
@@ -305,6 +339,7 @@ impl ZellijPlugin for State {
         let input_pipe_id = match pipe_message.source {
             PipeSource::Cli(id) => id.clone(),
             PipeSource::Plugin(id) => format!("{}", id),
+            PipeSource::Keybind => format!("keybind"),
         };
         let name = pipe_message.name;
         let payload = pipe_message.payload;

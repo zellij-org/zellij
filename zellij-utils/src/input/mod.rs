@@ -113,7 +113,15 @@ mod not_wasm {
             KeyCode::Tab => Key::BackTab, // TODO: ???
             KeyCode::Delete => Key::Delete,
             KeyCode::Insert => Key::Insert,
-            KeyCode::Function(n) => Key::F(n),
+            KeyCode::Function(n) => {
+                if modifiers.contains(Modifiers::ALT) {
+                    Key::AltF(n)
+                } else if modifiers.contains(Modifiers::CTRL) {
+                    Key::CtrlF(n)
+                } else {
+                    Key::F(n)
+                }
+            },
             KeyCode::Escape => Key::Esc,
             KeyCode::Enter => Key::Char('\n'),
             _ => Key::Esc, // there are other keys we can implement here, but we might need additional terminal support to implement them, not just exhausting this enum

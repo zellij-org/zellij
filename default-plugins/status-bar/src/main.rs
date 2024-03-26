@@ -333,8 +333,8 @@ pub fn get_common_modifier(keyvec: Vec<&Key>) -> Option<String> {
     let mut new_modifier;
     for key in keyvec.iter() {
         match key {
-            Key::Ctrl(_) => new_modifier = "Ctrl",
-            Key::Alt(_) => new_modifier = "Alt",
+            Key::Ctrl(_) | Key::CtrlF(_) => new_modifier = "Ctrl",
+            Key::Alt(_) | Key::AltF(_) => new_modifier = "Alt",
             _ => return None,
         }
         if modifier.is_empty() {
@@ -468,7 +468,9 @@ pub fn style_key_with_modifier(
             } else {
                 match key {
                     Key::Ctrl(c) => format!("{}", Key::Char(*c)),
+                    Key::CtrlF(n) => format!("{}", Key::F(*n)),
                     Key::Alt(c) => format!("{}", c),
+                    Key::AltF(n) => format!("{}", Key::F(*n)),
                     _ => format!("{}", key),
                 }
             }

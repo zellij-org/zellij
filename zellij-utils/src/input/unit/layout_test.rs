@@ -551,29 +551,32 @@ fn layout_with_plugin_panes() {
             TiledPaneLayout {
                 children: vec![
                     TiledPaneLayout {
-                        run: Some(Run::Plugin(RunPlugin {
+                        run: Some(Run::Plugin(RunPluginOrAlias::RunPlugin(RunPlugin {
                             location: RunPluginLocation::Zellij(PluginTag::new("tab-bar")),
                             _allow_exec_host_cmd: false,
                             configuration: Default::default(),
-                        })),
+                            ..Default::default()
+                        }))),
                         ..Default::default()
                     },
                     TiledPaneLayout {
-                        run: Some(Run::Plugin(RunPlugin {
+                        run: Some(Run::Plugin(RunPluginOrAlias::RunPlugin(RunPlugin {
                             location: RunPluginLocation::File(PathBuf::from(
                                 "/path/to/my/plugin.wasm",
                             )),
                             _allow_exec_host_cmd: false,
                             configuration: Default::default(),
-                        })),
+                            ..Default::default()
+                        }))),
                         ..Default::default()
                     },
                     TiledPaneLayout {
-                        run: Some(Run::Plugin(RunPlugin {
+                        run: Some(Run::Plugin(RunPluginOrAlias::RunPlugin(RunPlugin {
                             location: RunPluginLocation::Zellij(PluginTag::new("status-bar")),
                             _allow_exec_host_cmd: false,
                             configuration: PluginUserConfiguration(expected_plugin_configuration),
-                        })),
+                            ..Default::default()
+                        }))),
                         ..Default::default()
                     },
                 ],
@@ -2079,6 +2082,9 @@ fn run_plugin_location_parsing() {
             pane {
                 plugin location="file:c:/absolute/windows/plugin.wasm"
             }
+            pane {
+                plugin location="filepicker"
+            }
         }
     "#;
     let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into(), None, None).unwrap();
@@ -2087,59 +2093,73 @@ fn run_plugin_location_parsing() {
             TiledPaneLayout {
                 children: vec![
                     TiledPaneLayout {
-                        run: Some(Run::Plugin(RunPlugin {
+                        run: Some(Run::Plugin(RunPluginOrAlias::RunPlugin(RunPlugin {
                             _allow_exec_host_cmd: false,
                             location: RunPluginLocation::Zellij(PluginTag::new("tab-bar")),
                             configuration: Default::default(),
-                        })),
+                            ..Default::default()
+                        }))),
                         ..Default::default()
                     },
                     TiledPaneLayout {
-                        run: Some(Run::Plugin(RunPlugin {
+                        run: Some(Run::Plugin(RunPluginOrAlias::RunPlugin(RunPlugin {
                             _allow_exec_host_cmd: false,
                             location: RunPluginLocation::File(PathBuf::from(
                                 "/path/to/my/plugin.wasm",
                             )),
                             configuration: Default::default(),
-                        })),
+                            ..Default::default()
+                        }))),
                         ..Default::default()
                     },
                     TiledPaneLayout {
-                        run: Some(Run::Plugin(RunPlugin {
+                        run: Some(Run::Plugin(RunPluginOrAlias::RunPlugin(RunPlugin {
                             _allow_exec_host_cmd: false,
                             location: RunPluginLocation::File(PathBuf::from("plugin.wasm")),
                             configuration: Default::default(),
-                        })),
+                            ..Default::default()
+                        }))),
                         ..Default::default()
                     },
                     TiledPaneLayout {
-                        run: Some(Run::Plugin(RunPlugin {
+                        run: Some(Run::Plugin(RunPluginOrAlias::RunPlugin(RunPlugin {
                             _allow_exec_host_cmd: false,
                             location: RunPluginLocation::File(PathBuf::from(
                                 "relative/with space/plugin.wasm",
                             )),
                             configuration: Default::default(),
-                        })),
+                            ..Default::default()
+                        }))),
                         ..Default::default()
                     },
                     TiledPaneLayout {
-                        run: Some(Run::Plugin(RunPlugin {
+                        run: Some(Run::Plugin(RunPluginOrAlias::RunPlugin(RunPlugin {
                             _allow_exec_host_cmd: false,
                             location: RunPluginLocation::File(PathBuf::from(
                                 "/absolute/with space/plugin.wasm",
                             )),
                             configuration: Default::default(),
-                        })),
+                            ..Default::default()
+                        }))),
                         ..Default::default()
                     },
                     TiledPaneLayout {
-                        run: Some(Run::Plugin(RunPlugin {
+                        run: Some(Run::Plugin(RunPluginOrAlias::RunPlugin(RunPlugin {
                             _allow_exec_host_cmd: false,
                             location: RunPluginLocation::File(PathBuf::from(
                                 "c:/absolute/windows/plugin.wasm",
                             )),
                             configuration: Default::default(),
-                        })),
+                            ..Default::default()
+                        }))),
+                        ..Default::default()
+                    },
+                    TiledPaneLayout {
+                        run: Some(Run::Plugin(RunPluginOrAlias::Alias(PluginAlias {
+                            name: "filepicker".to_owned(),
+                            configuration: Some(PluginUserConfiguration::default()),
+                            ..Default::default()
+                        }))),
                         ..Default::default()
                     },
                 ],

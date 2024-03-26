@@ -1,0 +1,10 @@
+---
+source: zellij-server/src/plugins/./unit/plugin_tests.rs
+assertion_line: 6131
+expression: "format!(\"{:#?}\", switch_session_event)"
+---
+Some(
+    DisconnectAllClientsExcept(
+        1,
+    ),
+)

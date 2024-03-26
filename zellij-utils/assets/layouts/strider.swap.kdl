@@ -1,10 +1,10 @@
 tab_template name="ui" {
     pane size=1 borderless=true {
-        plugin location="zellij:tab-bar"
+        plugin location="tab-bar"
     }
     pane split_direction="Vertical" {
         pane size="20%" {
-            plugin location="zellij:strider"
+            plugin location="strider"
         }
         pane {
             children
@@ -12,7 +12,7 @@ tab_template name="ui" {
 
     }
     pane size=2 borderless=true {
-        plugin location="zellij:status-bar"
+        plugin location="status-bar"
     }
 }
 

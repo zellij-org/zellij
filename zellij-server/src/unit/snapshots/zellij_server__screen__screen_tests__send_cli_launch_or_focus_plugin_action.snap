@@ -1,6 +1,6 @@
 ---
 source: zellij-server/src/./unit/screen_tests.rs
-assertion_line: 2620
+assertion_line: 2983
 expression: "format!(\"{:#?}\", pty_fill_plugin_cwd_instruction)"
 ---
 Some(
@@ -10,15 +10,18 @@ Some(
         ),
         false,
         None,
-        RunPlugin {
-            _allow_exec_host_cmd: false,
-            location: File(
-                "/path/to/fake/plugin",
-            ),
-            configuration: PluginUserConfiguration(
-                {},
-            ),
-        },
+        RunPlugin(
+            RunPlugin {
+                _allow_exec_host_cmd: false,
+                location: File(
+                    "/path/to/fake/plugin",
+                ),
+                configuration: PluginUserConfiguration(
+                    {},
+                ),
+                initial_cwd: None,
+            },
+        ),
         0,
         None,
         1,
@@ -27,5 +30,7 @@ Some(
             cols: 0,
         },
         false,
+        None,
+        None,
     ),
 )
