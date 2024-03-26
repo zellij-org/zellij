@@ -761,7 +761,7 @@ pub fn render_new_session_block(
         }
         render_layout_selection_list(
             new_session_info,
-            max_rows_of_new_session_block.saturating_sub(1),
+            max_rows_of_new_session_block.saturating_sub(8),
             max_cols_of_new_session_block,
             x,
             y + 1,
@@ -806,7 +806,7 @@ pub fn render_layout_selection_list(
     println!();
     let mut table = Table::new();
     for (i, (layout_info, indices, is_selected)) in
-        new_session_info.layouts_to_render().into_iter().enumerate()
+        new_session_info.layouts_to_render(max_rows_of_new_session_block).into_iter().enumerate()
     {
         let layout_name = layout_info.name();
         let layout_name_len = layout_name.width();

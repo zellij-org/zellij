@@ -126,21 +126,24 @@ impl NewSessionInfo {
     pub fn update_layout_list(&mut self, layout_info: Vec<LayoutInfo>) {
         self.layout_list.update_layout_list(layout_info);
     }
-    pub fn layout_list(&self) -> Vec<(LayoutInfo, bool)> {
+    pub fn layout_list(&self, max_rows: usize) -> Vec<(LayoutInfo, bool)> {
         // bool - is_selected
+        let range_to_render = self.range_to_render(max_rows, self.layout_count(), Some(self.layout_list.selected_layout_index));
         self.layout_list
             .layout_list
             .iter()
             .enumerate()
             .map(|(i, l)| (l.clone(), i == self.layout_list.selected_layout_index))
+            .take(range_to_render.1)
+            .skip(range_to_render.0)
             .collect()
     }
-    pub fn layouts_to_render(&self) -> Vec<(LayoutInfo, Vec<usize>, bool)> {
+    pub fn layouts_to_render(&self, max_rows: usize) -> Vec<(LayoutInfo, Vec<usize>, bool)> {
         // (layout_info,
         // search_indices,
         // is_selected)
         if self.is_searching() {
-            self.layout_search_results()
+            self.layout_search_results(max_rows)
                 .into_iter()
                 .map(|(layout_search_result, is_selected)| {
                     (
@@ -151,20 +154,43 @@ impl NewSessionInfo {
                 })
                 .collect()
         } else {
-            self.layout_list()
+            self.layout_list(max_rows)
                 .into_iter()
                 .map(|(layout_info, is_selected)| (layout_info, vec![], is_selected))
                 .collect()
         }
     }
-    pub fn layout_search_results(&self) -> Vec<(LayoutSearchResult, bool)> {
+    pub fn layout_search_results(&self, max_rows: usize) -> Vec<(LayoutSearchResult, bool)> {
         // bool - is_selected
+        let range_to_render = self.range_to_render(max_rows, self.layout_list.layout_search_results.len(), Some(self.layout_list.selected_layout_index));
         self.layout_list
             .layout_search_results
             .iter()
             .enumerate()
             .map(|(i, l)| (l.clone(), i == self.layout_list.selected_layout_index))
+            .take(range_to_render.1)
+            .skip(range_to_render.0)
             .collect()
+    }
+    // TODO: merge with similar function in resurrectable_sessions
+    fn range_to_render(
+        &self,
+        table_rows: usize,
+        results_len: usize,
+        selected_index: Option<usize>,
+    ) -> (usize, usize) {
+        if table_rows <= results_len {
+            let row_count_to_render = table_rows.saturating_sub(1); // 1 for the title
+            let first_row_index_to_render = selected_index
+                .unwrap_or(0)
+                .saturating_sub(row_count_to_render / 2);
+            let last_row_index_to_render = first_row_index_to_render + row_count_to_render;
+            (first_row_index_to_render, last_row_index_to_render)
+        } else {
+            let first_row_index_to_render = 0;
+            let last_row_index_to_render = results_len;
+            (first_row_index_to_render, last_row_index_to_render)
+        }
     }
     pub fn is_searching(&self) -> bool {
         !self.layout_list.layout_search_term.is_empty()
