@@ -1,0 +1,18 @@
+// Lucario Theme:
+// https://github.com/raphamorim/lucario
+
+themes {
+    lucario {
+        fg 248 248 242
+        bg 43 62 90
+        red 233 75 53
+        green 25 156 75
+        yellow 240 204 4
+        blue 92 152 205
+        magenta 202 148 255
+        orange 233 75 53
+        cyan 139 244 253
+        black 25 36 47
+        white 248 248 242
+    }
+}
