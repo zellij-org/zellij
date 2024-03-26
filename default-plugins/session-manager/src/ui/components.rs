@@ -709,6 +709,23 @@ pub fn render_new_session_block(
                 long_instruction,
             );
         } else {
+            let space_for_new_session_name =
+                max_cols_of_new_session_block.saturating_sub(prompt.width() + 18);
+            let new_session_name = if new_session_name.width() > space_for_new_session_name {
+                let mut truncated = String::new();
+                for character in new_session_name.chars().rev() {
+                    if truncated.width() + character.width().unwrap_or(0)
+                        < space_for_new_session_name
+                    {
+                        truncated.push(character);
+                    } else {
+                        break;
+                    }
+                }
+                format!("...{}", truncated.chars().rev().collect::<String>())
+            } else {
+                new_session_name.to_owned()
+            };
             println!(
                 "\u{1b}[m{}{} {}_ {}",
                 format!("\u{1b}[{};{}H", y + 1, x + 1),
@@ -747,18 +764,23 @@ pub fn render_new_session_block(
         }
         render_layout_selection_list(
             new_session_info,
-            colors,
-            max_rows_of_new_session_block.saturating_sub(1),
+            max_rows_of_new_session_block.saturating_sub(8),
             max_cols_of_new_session_block,
             x,
             y + 1,
         );
     }
+    render_new_session_folder_prompt(
+        new_session_info,
+        colors,
+        x,
+        (y + max_rows_of_new_session_block).saturating_sub(3),
+        max_cols_of_new_session_block,
+    );
 }
 
 pub fn render_layout_selection_list(
     new_session_info: &NewSessionInfo,
-    colors: Colors,
     max_rows_of_new_session_block: usize,
     max_cols_of_new_session_block: usize,
     x: usize,
@@ -786,8 +808,10 @@ pub fn render_layout_selection_list(
     print_text_with_coordinates(layout_indication_line, x, y + 1, None, None);
     println!();
     let mut table = Table::new();
-    for (i, (layout_info, indices, is_selected)) in
-        new_session_info.layouts_to_render().into_iter().enumerate()
+    for (i, (layout_info, indices, is_selected)) in new_session_info
+        .layouts_to_render(max_rows_of_new_session_block)
+        .into_iter()
+        .enumerate()
     {
         let layout_name = layout_info.name();
         let layout_name_len = layout_name.width();
@@ -818,13 +842,6 @@ pub fn render_layout_selection_list(
     }
     let table_y = y + 3;
     print_table_with_coordinates(table, x, table_y, None, None);
-    render_new_session_folder_prompt(
-        new_session_info,
-        colors,
-        x,
-        (y + max_rows_of_new_session_block).saturating_sub(3),
-        max_cols_of_new_session_block,
-    );
 }
 
 pub fn render_error(error_text: &str, rows: usize, columns: usize, x: usize, y: usize) {
