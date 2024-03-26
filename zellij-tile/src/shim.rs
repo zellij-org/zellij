@@ -784,6 +784,14 @@ pub fn watch_filesystem() {
     unsafe { host_run_plugin_command() };
 }
 
+/// Get the serialized session layout in KDL format as a CustomMessage Event
+pub fn dump_session_layout() {
+    let plugin_command = PluginCommand::DumpSessionLayout;
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 // Utility Functions
 
 #[allow(unused)]

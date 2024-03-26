@@ -263,6 +263,7 @@ fn host_run_plugin_command(env: FunctionEnvMut<ForeignFunctionEnv>) {
                         scan_host_folder(env, folder_to_scan)
                     },
                     PluginCommand::WatchFilesystem => watch_filesystem(env),
+                    PluginCommand::DumpSessionLayout => dump_session_layout(env),
                 },
                 (PermissionStatus::Denied, permission) => {
                     log::error!(
@@ -1340,6 +1341,14 @@ fn watch_filesystem(env: &ForeignFunctionEnv) {
         .map(|sender| sender.send(PluginInstruction::WatchFilesystem));
 }
 
+fn dump_session_layout(env: &ForeignFunctionEnv) {
+    let _ = env.plugin_env.senders.to_screen.as_ref().map(|sender| {
+        sender.send(ScreenInstruction::DumpLayoutToPlugin(
+            env.plugin_env.plugin_id,
+        ))
+    });
+}
+
 fn scan_host_folder(env: &ForeignFunctionEnv, folder_to_scan: PathBuf) {
     if !folder_to_scan.starts_with("/host") {
         log::error!(
@@ -1542,6 +1551,7 @@ fn check_command_permission(
         | PluginCommand::BlockCliPipeInput(..)
         | PluginCommand::CliPipeOutput(..) => PermissionType::ReadCliPipes,
         PluginCommand::MessageToPlugin(..) => PermissionType::MessageAndLaunchOtherPlugins,
+        PluginCommand::DumpSessionLayout => PermissionType::ReadApplicationState,
         _ => return (PermissionStatus::Granted, None),
     };
 
