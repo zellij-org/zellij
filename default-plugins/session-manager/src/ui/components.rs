@@ -709,6 +709,20 @@ pub fn render_new_session_block(
                 long_instruction,
             );
         } else {
+            let space_for_new_session_name = max_cols_of_new_session_block.saturating_sub(prompt.width() + 18);
+            let new_session_name = if new_session_name.width() > space_for_new_session_name {
+                let mut truncated = String::new();
+                for character in new_session_name.chars().rev() {
+                    if truncated.width() + character.width().unwrap_or(0) < space_for_new_session_name {
+                        truncated.push(character);
+                    } else {
+                        break;
+                    }
+                }
+                format!("...{}", truncated.chars().rev().collect::<String>())
+            } else {
+                new_session_name.to_owned()
+            };
             println!(
                 "\u{1b}[m{}{} {}_ {}",
                 format!("\u{1b}[{};{}H", y + 1, x + 1),
