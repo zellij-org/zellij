@@ -2086,7 +2086,7 @@ fn run_plugin_location_parsing() {
                 plugin location="filepicker"
             }
             pane {
-                plugin location="https://somewhere.com/plugin.wasm"
+                plugin location="https://example.com/plugin.wasm"
             }
         }
     "#;
@@ -2168,7 +2168,7 @@ fn run_plugin_location_parsing() {
                     TiledPaneLayout {
                         run: Some(Run::Plugin(RunPluginOrAlias::RunPlugin(RunPlugin {
                             _allow_exec_host_cmd: false,
-                            location: RunPluginLocation::Remote(String::from("https://somewhere.com/plugin.wasm")),
+                            location: RunPluginLocation::Remote(String::from("https://example.com/plugin.wasm")),
                             configuration: Default::default(),
                             ..Default::default()
                         }))),
