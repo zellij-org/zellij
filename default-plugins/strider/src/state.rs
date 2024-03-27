@@ -229,13 +229,25 @@ impl State {
         src.push(entry.get_pathbuf_without_root_prefix());
 
         match self.mode {
-            Mode::Create => unimplemented!(),
-            Mode::Copy => unimplemented!(),
-            Mode::Move => unimplemented!(),
-            Mode::Delete => unimplemented!(),
+            Mode::Create => self.handle_file_create(target),
+            Mode::Copy => self.handle_file_copy(src, target),
+            Mode::Move => self.handle_file_move(src, target),
+            Mode::Delete => self.handle_file_delete(src),
             _ => {}
-        }
+        };
         self.clear_search_term_or_descend(); // resets mode to Normal
+    }
+    fn handle_file_create(&self, target: PathBuf) {
+        let _ = std::fs::create_dir(target);
+    }
+    fn handle_file_copy(&self, source: PathBuf, target: PathBuf) {
+        let _ = std::fs::copy(source, target);
+    }
+    fn handle_file_move(&mut self, source: PathBuf, target: PathBuf) {
+        let _ = std::fs::rename(source, target);
+    }
+    fn handle_file_delete(&self, source: PathBuf) {
+        let _ = std::fs::remove_file(source);
     }
 }
 
