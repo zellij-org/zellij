@@ -571,7 +571,7 @@ impl RunPluginLocation {
         match self {
             RunPluginLocation::File(pathbuf) => format!("file:{}", pathbuf.display()),
             RunPluginLocation::Zellij(plugin_tag) => format!("zellij:{}", plugin_tag),
-            RunPluginLocation::Remote(url) => format!("remote:{}", url),
+            RunPluginLocation::Remote(url) => String::from(url),
         }
     }
 }
@@ -584,7 +584,7 @@ impl From<&RunPluginLocation> for Url {
                 path.clone().into_os_string().into_string().unwrap()
             ),
             RunPluginLocation::Zellij(tag) => format!("zellij:{}", tag),
-            RunPluginLocation::Remote(url) => format!("remote:{}", url),
+            RunPluginLocation::Remote(url) => String::from(url),
         };
         Self::parse(&url).unwrap()
     }
