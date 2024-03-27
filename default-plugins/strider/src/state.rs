@@ -56,11 +56,17 @@ impl State {
     }
     pub fn handle_backspace(&mut self) {
         if self.search_term.is_empty() {
-            self.descend_to_previous_path();
+            match self.mode {
+                Mode::Normal | Mode::Searching => self.descend_to_previous_path(),
+                _ => {}
+            }
         } else {
             self.search_term.pop();
             if self.search_term.is_empty() {
-                self.mode = Mode::Normal;
+                match self.mode {
+                    Mode::Searching => self.mode = Mode::Normal,
+                    _ => {}
+                }
             }
             self.search_view
                 .update_search_results(&self.search_term, &self.file_list_view.files);
@@ -73,8 +79,8 @@ impl State {
             self.search_term.clear();
             self.search_view
                 .update_search_results(&self.search_term, &self.file_list_view.files);
-            self.mode = Mode::Normal;
         }
+        self.mode = Mode::Normal;
     }
     pub fn move_selection_up(&mut self) {
         match self.mode {
@@ -238,16 +244,24 @@ impl State {
         self.clear_search_term_or_descend(); // resets mode to Normal
     }
     fn handle_file_create(&self, target: PathBuf) {
-        let _ = std::fs::create_dir(target);
+        if let Err(err) = std::fs::create_dir(target) {
+            dbg!("Could not create file: {:?}", err);
+        }
     }
     fn handle_file_copy(&self, source: PathBuf, target: PathBuf) {
-        let _ = std::fs::copy(source, target);
+        if let Err(err) = std::fs::copy(source, target) {
+            dbg!("Cound not copy file: {:?}", err);
+        }
     }
     fn handle_file_move(&mut self, source: PathBuf, target: PathBuf) {
-        let _ = std::fs::rename(source, target);
+        if let Err(err) = std::fs::rename(source, target) {
+            dbg!("Cound not rename file: {:?}", err);
+        }
     }
     fn handle_file_delete(&self, source: PathBuf) {
-        let _ = std::fs::remove_file(source);
+        if let Err(err) = std::fs::remove_file(source) {
+            dbg!("Cound not delete file: {:?}", err);
+        }
     }
 }
 
