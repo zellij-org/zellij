@@ -2168,7 +2168,9 @@ fn run_plugin_location_parsing() {
                     TiledPaneLayout {
                         run: Some(Run::Plugin(RunPluginOrAlias::RunPlugin(RunPlugin {
                             _allow_exec_host_cmd: false,
-                            location: RunPluginLocation::Remote(String::from("https://example.com/plugin.wasm")),
+                            location: RunPluginLocation::Remote(String::from(
+                                "https://example.com/plugin.wasm",
+                            )),
                             configuration: Default::default(),
                             ..Default::default()
                         }))),
