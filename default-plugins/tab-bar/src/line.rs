@@ -48,7 +48,7 @@ fn populate_tabs_in_tab_line(
         let total_size = collapsed_left.len + middle_size + collapsed_right.len;
 
         if total_size > cols {
-            // break and dont add collapsed tabs to tabs_to_render, they will not fit
+            // break and don't add collapsed tabs to tabs_to_render, they will not fit
             break;
         }
 

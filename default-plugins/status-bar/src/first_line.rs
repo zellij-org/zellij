@@ -90,7 +90,7 @@ impl KeyShortcut {
 /// - `shared_super`: If set to true, all mode shortcut keybindings share a common modifier (see
 ///   [`get_common_modifier`]) and the modifier belonging to the keybinding is **not** printed in
 ///   the shortcut tile.
-/// - `first_tile`: If set to true, the leading separator for this tile will be ommited so no gap
+/// - `first_tile`: If set to true, the leading separator for this tile will be omitted so no gap
 ///   appears on the screen.
 fn long_mode_shortcut(
     key: &KeyShortcut,
@@ -159,7 +159,7 @@ fn long_mode_shortcut(
 /// - `shared_super`: If set to true, all mode shortcut keybindings share a common modifier (see
 ///   [`get_common_modifier`]) and the modifier belonging to the keybinding is **not** printed in
 ///   the shortcut tile.
-/// - `first_tile`: If set to true, the leading separator for this tile will be ommited so no gap
+/// - `first_tile`: If set to true, the leading separator for this tile will be omitted so no gap
 ///   appears on the screen.
 fn short_mode_shortcut(
     key: &KeyShortcut,
