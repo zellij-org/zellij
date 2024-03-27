@@ -97,10 +97,7 @@ impl State {
     }
     pub fn move_entry_to_search(&mut self) {
         if let Some(entry) = self.get_selected_entry() {
-            self.search_term = match entry {
-                FsEntry::Dir(path) | FsEntry::File(path, _) => path.display().to_string()
-            };
-            self.search_term = self.search_term[6..].to_string();
+            self.search_term = entry.get_pathbuf_without_root_prefix().display().to_string();
         }
     }
     pub fn handle_left_click(&mut self, line: isize) {
@@ -224,6 +221,13 @@ impl State {
     }
 
     pub fn handle_file_manipulation(&mut self) {
+        let mut target = self.initial_cwd.clone();
+        target.push(&self.search_term);
+
+        let mut src = self.initial_cwd.clone();
+        let entry = self.get_selected_entry().expect("Expected a selected entry");
+        src.push(entry.get_pathbuf_without_root_prefix());
+
         match self.mode {
             Mode::Create => unimplemented!(),
             Mode::Copy => unimplemented!(),
