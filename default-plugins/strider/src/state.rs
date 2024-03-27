@@ -11,14 +11,15 @@ pub const ROOT: &str = "/host";
 
 #[derive(Default, Clone)]
 pub enum Mode {
-    #[default] Normal,
+    #[default]
+    Normal,
     // Loading,
     Searching,
     Keybinds,
     Create,
     Copy,
     Delete,
-    Move
+    Move,
 }
 
 #[derive(Default)]
@@ -33,7 +34,7 @@ pub struct State {
     pub initial_cwd: PathBuf, // TODO: get this from zellij
     pub search_term: String,
     pub close_on_selection: bool,
-    pub mode: Mode
+    pub mode: Mode,
 }
 
 impl State {
@@ -58,14 +59,14 @@ impl State {
         if self.search_term.is_empty() {
             match self.mode {
                 Mode::Normal | Mode::Searching => self.descend_to_previous_path(),
-                _ => {}
+                _ => {},
             }
         } else {
             self.search_term.pop();
             if self.search_term.is_empty() {
                 match self.mode {
                     Mode::Searching => self.mode = Mode::Normal,
-                    _ => {}
+                    _ => {},
                 }
             }
             self.search_view
@@ -85,25 +86,28 @@ impl State {
     pub fn move_selection_up(&mut self) {
         match self.mode {
             Mode::Searching => self.search_view.move_selection_up(),
-            _ => self.file_list_view.move_selection_up()
+            _ => self.file_list_view.move_selection_up(),
         };
     }
     pub fn move_selection_down(&mut self) {
         match self.mode {
             Mode::Searching => self.search_view.move_selection_down(),
-            _ => self.file_list_view.move_selection_down()
+            _ => self.file_list_view.move_selection_down(),
         }
     }
     pub fn get_selected_entry(&mut self) -> Option<FsEntry> {
         let entry = match self.mode {
             Mode::Searching => self.search_view.get_selected_entry(),
-            _ => self.file_list_view.get_selected_entry()
+            _ => self.file_list_view.get_selected_entry(),
         };
         return entry;
     }
     pub fn move_entry_to_search(&mut self) {
         if let Some(entry) = self.get_selected_entry() {
-            self.search_term = entry.get_pathbuf_without_root_prefix().display().to_string();
+            self.search_term = entry
+                .get_pathbuf_without_root_prefix()
+                .display()
+                .to_string();
         }
     }
     pub fn handle_left_click(&mut self, line: isize) {
@@ -135,7 +139,7 @@ impl State {
                     if prev_selected == self.file_list_view.selected() {
                         self.traverse_dir();
                     }
-                }
+                },
             }
         }
     }
@@ -156,7 +160,7 @@ impl State {
     pub fn traverse_dir(&mut self) {
         let entry = match self.mode {
             Mode::Searching => self.search_view.get_selected_entry(),
-            _ => self.file_list_view.get_selected_entry()
+            _ => self.file_list_view.get_selected_entry(),
         };
         if let Some(entry) = entry {
             match &entry {
@@ -231,7 +235,9 @@ impl State {
         target.push(&self.search_term);
 
         let mut src = self.initial_cwd.clone();
-        let entry = self.get_selected_entry().expect("Expected a selected entry");
+        let entry = self
+            .get_selected_entry()
+            .expect("Expected a selected entry");
         src.push(entry.get_pathbuf_without_root_prefix());
 
         match self.mode {
@@ -243,7 +249,7 @@ impl State {
                     self.handle_file_delete(src);
                 }
             },
-            _ => {}
+            _ => {},
         };
         self.clear_search_term_or_descend(); // resets mode to Normal
     }

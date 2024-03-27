@@ -1,20 +1,21 @@
+use crate::state::Mode;
 use std::path::PathBuf;
 use unicode_width::UnicodeWidthStr;
 use zellij_tile::prelude::*;
-use crate::state::Mode;
 
 pub fn render_instruction_tip(y: usize, max_cols: usize) {
-    if max_cols < 11 { return; }
+    if max_cols < 11 {
+        return;
+    }
     let text = "?: <Ctrl h>";
-    let text = Text::new(text)
-        .color_range(3, 3..11);
+    let text = Text::new(text).color_range(3, 3..11);
     print_text_with_coordinates(text, 0, y, Some(max_cols), None);
 }
 
 enum HelpTextSize {
     Small,
     Medium,
-    Large
+    Large,
 }
 
 fn render_help_text(bind: &str, desc: &str, max_cols: usize, y: usize) {
@@ -56,7 +57,7 @@ pub fn render_instruction_line(max_cols: usize) {
     let desc = match text_size {
         HelpTextSize::Large => "Toggle hidden files",
         HelpTextSize::Medium => "hidden",
-        _ => ""
+        _ => "",
     };
     render_help_text(bind, desc, max_cols, 2);
 
@@ -64,7 +65,7 @@ pub fn render_instruction_line(max_cols: usize) {
     let desc = match text_size {
         HelpTextSize::Large => "Rename / move file",
         HelpTextSize::Medium => "rename",
-        _ => ""
+        _ => "",
     };
     render_help_text(bind, desc, max_cols, 3);
 
@@ -72,7 +73,7 @@ pub fn render_instruction_line(max_cols: usize) {
     let desc = match text_size {
         HelpTextSize::Large => "Delete file",
         HelpTextSize::Medium => "delete",
-        _ => ""
+        _ => "",
     };
     render_help_text(bind, desc, max_cols, 4);
 
@@ -80,7 +81,7 @@ pub fn render_instruction_line(max_cols: usize) {
     let desc = match text_size {
         HelpTextSize::Large => "Copy & paste file",
         HelpTextSize::Medium => "copy",
-        _ => ""
+        _ => "",
     };
     render_help_text(bind, desc, max_cols, 5);
 
@@ -88,7 +89,7 @@ pub fn render_instruction_line(max_cols: usize) {
     let desc = match text_size {
         HelpTextSize::Large => "Create new file",
         HelpTextSize::Medium => "create",
-        _ => ""
+        _ => "",
     };
     render_help_text(bind, desc, max_cols, 6);
 }
@@ -145,7 +146,7 @@ pub fn render_search_term(search_term: &str, mode: &Mode) {
         Mode::Copy => "PASTE: ",
         Mode::Delete => "CONFIRM (y): ",
         Mode::Move => "EDIT: ",
-        _ => "FIND: "
+        _ => "FIND: ",
     };
     let text = Text::new(format!("{}{}_", prompt, search_term))
         .color_range(2, 0..prompt.len())

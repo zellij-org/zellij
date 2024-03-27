@@ -99,8 +99,11 @@ impl ZellijPlugin for State {
                 },
                 Key::Char('\n') => match self.mode {
                     state::Mode::Normal | state::Mode::Searching => self.open_selected_path(),
-                    state::Mode::Create | state::Mode::Copy | state::Mode::Delete | state::Mode::Move => self.handle_file_manipulation(),
-                    _ => {}
+                    state::Mode::Create
+                    | state::Mode::Copy
+                    | state::Mode::Delete
+                    | state::Mode::Move => self.handle_file_manipulation(),
+                    _ => {},
                 },
                 Key::Right | Key::BackTab => {
                     self.traverse_dir();
@@ -133,12 +136,12 @@ impl ZellijPlugin for State {
                     should_render = true;
                     self.move_entry_to_search();
                     self.mode = state::Mode::Copy
-                }
+                },
                 Key::Ctrl('a') => {
                     should_render = true;
                     self.search_term = "".to_string();
                     self.mode = state::Mode::Create;
-                }
+                },
                 _ => (),
             },
             Event::Mouse(mouse_event) => match mouse_event {
