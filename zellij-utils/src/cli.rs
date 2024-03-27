@@ -219,6 +219,10 @@ pub enum Sessions {
         #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
         close_on_exit: bool,
 
+        /// Block the calling terminal until the run command exits
+        #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
+        blocking: bool,
+
         /// Start the command suspended, only running after you first presses ENTER
         #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
         start_suspended: bool,
@@ -489,6 +493,18 @@ pub enum CliAction {
             requires("command")
         )]
         close_on_exit: bool,
+
+        /// Block the calling terminal until the run command exits
+        #[clap(
+            short,
+            long,
+            value_parser,
+            default_value("false"),
+            takes_value(false),
+            requires("command")
+        )]
+        blocking: bool,
+
         /// Start the command suspended, only running it after the you first press ENTER
         #[clap(
             short,

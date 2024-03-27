@@ -70,6 +70,7 @@ pub enum ServerInstruction {
     ),
     Render(Option<HashMap<ClientId, String>>),
     UnblockInputThread,
+    RunCommandComplete,
     ClientExit(ClientId),
     RemoveClient(ClientId),
     Error(String),
@@ -102,6 +103,7 @@ impl From<&ServerInstruction> for ServerContext {
             ServerInstruction::NewClient(..) => ServerContext::NewClient,
             ServerInstruction::Render(..) => ServerContext::Render,
             ServerInstruction::UnblockInputThread => ServerContext::UnblockInputThread,
+            ServerInstruction::RunCommandComplete => ServerContext::RunCommandComplete,
             ServerInstruction::ClientExit(..) => ServerContext::ClientExit,
             ServerInstruction::RemoveClient(..) => ServerContext::RemoveClient,
             ServerInstruction::Error(_) => ServerContext::Error,
@@ -569,6 +571,16 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                             );
                         }
                     },
+                }
+            },
+            ServerInstruction::RunCommandComplete => {
+                for client_id in session_state.read().unwrap().clients.keys() {
+                    send_to_client!(
+                        *client_id,
+                        os_input,
+                        ServerToClientMsg::RunCommandComplete,
+                        session_state
+                    );
                 }
             },
             ServerInstruction::ClientExit(client_id) => {

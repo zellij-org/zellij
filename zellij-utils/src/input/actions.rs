@@ -352,6 +352,7 @@ impl Action {
                 in_place,
                 name,
                 close_on_exit,
+                blocking: _,
                 start_suspended,
                 configuration,
                 skip_plugin_cache,
