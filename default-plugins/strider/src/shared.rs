@@ -82,7 +82,7 @@ pub fn render_instruction_line(max_cols: usize) {
         HelpTextSize::Medium => "copy",
         _ => ""
     };
-    render_help_text(bind, desc, max_cols, 4);
+    render_help_text(bind, desc, max_cols, 5);
 
     let bind = "<Ctrl a>";
     let desc = match text_size {
@@ -90,7 +90,7 @@ pub fn render_instruction_line(max_cols: usize) {
         HelpTextSize::Medium => "create",
         _ => ""
     };
-    render_help_text(bind, desc, max_cols, 4);
+    render_help_text(bind, desc, max_cols, 6);
 }
 
 pub fn render_list_tip(y: usize, max_cols: usize) {
