@@ -254,23 +254,23 @@ impl State {
         self.clear_search_term_or_descend(); // resets mode to Normal
     }
     fn handle_file_create(&self, target: PathBuf) {
-        if let Err(err) = std::fs::create_dir(target) {
-            dbg!("Could not create file: {:?}", err);
+        if let Err(err) = std::fs::create_dir(&target) {
+            dbg!("Could not create {:?} file: {:?}", target, err);
         }
     }
     fn handle_file_copy(&self, source: PathBuf, target: PathBuf) {
-        if let Err(err) = std::fs::copy(source, target) {
-            dbg!("Cound not copy file: {:?}", err);
+        if let Err(err) = std::fs::copy(&source, &target) {
+            dbg!("Cound not copy file {:?} -> {:?}: {:?}", source, target, err);
         }
     }
     fn handle_file_move(&mut self, source: PathBuf, target: PathBuf) {
-        if let Err(err) = std::fs::rename(source, target) {
-            dbg!("Cound not rename file: {:?}", err);
+        if let Err(err) = std::fs::rename(&source, &target) {
+            dbg!("Cound not rename file {:?} -> {:?}: {:?}", source, target, err);
         }
     }
     fn handle_file_delete(&self, source: PathBuf) {
-        if let Err(err) = std::fs::remove_file(source) {
-            dbg!("Cound not delete file: {:?}", err);
+        if let Err(err) = std::fs::remove_file(&source) {
+            dbg!("Cound not delete {:?} file: {:?}", source, err);
         }
     }
 }
