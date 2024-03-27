@@ -238,7 +238,11 @@ impl State {
             Mode::Create => self.handle_file_create(target),
             Mode::Copy => self.handle_file_copy(src, target),
             Mode::Move => self.handle_file_move(src, target),
-            Mode::Delete => self.handle_file_delete(src),
+            Mode::Delete => {
+                if self.search_term == "y" {
+                    self.handle_file_delete(src);
+                }
+            },
             _ => {}
         };
         self.clear_search_term_or_descend(); // resets mode to Normal
