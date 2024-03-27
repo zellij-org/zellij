@@ -100,7 +100,11 @@ impl ZellijPlugin for State {
                 },
                 Key::Char('\n') => match self.mode {
                     state::Mode::Normal | state::Mode::Searching => self.open_selected_path(),
-                    state::Mode::Create | state::Mode::Copy | state::Mode::Delete | state::Mode::Move => self.handle_file_manipulation(),
+                    state::Mode::Create | state::Mode::Copy | state::Mode::Delete | state::Mode::Move => {
+                        //TODO: Remove this when done testing
+                        should_render = true;
+                        self.handle_file_manipulation();
+                    },
                     _ => {}
                 },
                 Key::Right | Key::BackTab => {

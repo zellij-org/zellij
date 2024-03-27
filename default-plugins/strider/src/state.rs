@@ -88,16 +88,19 @@ impl State {
             _ => self.file_list_view.move_selection_down()
         }
     }
-    pub fn move_entry_to_search(&mut self) {
+    pub fn get_selected_entry(&mut self) -> Option<FsEntry> {
         let entry = match self.mode {
             Mode::Searching => self.search_view.get_selected_entry(),
             _ => self.file_list_view.get_selected_entry()
         };
-
-        if let Some(entry) = entry {
+        return entry;
+    }
+    pub fn move_entry_to_search(&mut self) {
+        if let Some(entry) = self.get_selected_entry() {
             self.search_term = match entry {
                 FsEntry::Dir(path) | FsEntry::File(path, _) => path.display().to_string()
             };
+            self.search_term = self.search_term[6..].to_string();
         }
     }
     pub fn handle_left_click(&mut self, line: isize) {
