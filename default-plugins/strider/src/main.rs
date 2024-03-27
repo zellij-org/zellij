@@ -141,7 +141,7 @@ impl ZellijPlugin for State {
                 }
                 Key::Ctrl('a') => {
                     should_render = true;
-                    self.move_entry_to_search();
+                    self.search_term = "".to_string();
                     self.mode = state::Mode::Create;
                 }
                 _ => (),
