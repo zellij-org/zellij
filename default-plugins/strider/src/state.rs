@@ -231,7 +231,7 @@ impl State {
             Mode::Delete => unimplemented!(),
             _ => {}
         }
-        self.mode = Mode::Normal;
+        self.clear_search_term_or_descend(); // resets mode to Normal
     }
 }
 
