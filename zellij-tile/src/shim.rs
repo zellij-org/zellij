@@ -249,6 +249,14 @@ pub fn show_self(should_float_if_hidden: bool) {
     unsafe { host_run_plugin_command() };
 }
 
+/// Close this plugin pane
+pub fn close_self() {
+    let plugin_command = PluginCommand::CloseSelf;
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 /// Switch to the specified Input Mode (eg. `Normal`, `Tab`, `Pane`)
 pub fn switch_to_input_mode(mode: &InputMode) {
     let plugin_command = PluginCommand::SwitchToMode(*mode);

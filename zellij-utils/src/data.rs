@@ -1379,4 +1379,5 @@ pub enum PluginCommand {
     ScanHostFolder(PathBuf),   // TODO: rename to ScanHostFolder
     WatchFilesystem,
     DumpSessionLayout,
+    CloseSelf,
 }
