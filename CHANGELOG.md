@@ -32,6 +32,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix(config): support Ctrl/Alt modifier keys on F keys (eg. `Ctrl F1`, `Alt F2`) (https://github.com/zellij-org/zellij/pull/3179)
 * fix(keybindings): allow binding `Ctrl Space` (https://github.com/zellij-org/zellij/pull/3101)
 * feat(plugins): add API to dump the current session's layout to a plugin (https://github.com/zellij-org/zellij/pull/3227)
+* fix(plugins): properly serialize remote urls (https://github.com/zellij-org/zellij/pull/3224)
 
 ## [0.39.2] - 2023-11-29
 * fix(cli): typo in cli help (https://github.com/zellij-org/zellij/pull/2906)
