@@ -264,6 +264,7 @@ fn host_run_plugin_command(env: FunctionEnvMut<ForeignFunctionEnv>) {
                     },
                     PluginCommand::WatchFilesystem => watch_filesystem(env),
                     PluginCommand::DumpSessionLayout => dump_session_layout(env),
+                    PluginCommand::CloseSelf => close_self(env),
                 },
                 (PermissionStatus::Denied, permission) => {
                     log::error!(
@@ -811,6 +812,22 @@ fn show_self(env: &ForeignFunctionEnv, should_float_if_hidden: bool) {
     let action = Action::FocusPluginPaneWithId(env.plugin_env.plugin_id, should_float_if_hidden);
     let error_msg = || format!("Failed to show self for plugin");
     apply_action!(action, error_msg, env);
+}
+
+fn close_self(env: &ForeignFunctionEnv) {
+    env.plugin_env
+        .senders
+        .send_to_screen(ScreenInstruction::ClosePane(
+            PaneId::Plugin(env.plugin_env.plugin_id),
+            None,
+        ))
+        .with_context(|| format!("failed to close self"))
+        .non_fatal();
+    env.plugin_env
+        .senders
+        .send_to_plugin(PluginInstruction::Unload(env.plugin_env.plugin_id))
+        .with_context(|| format!("failed to close self"))
+        .non_fatal();
 }
 
 fn switch_to_mode(env: &ForeignFunctionEnv, input_mode: InputMode) {
