@@ -39,14 +39,19 @@ pub struct State {
 impl State {
     pub fn update_search_term(&mut self, character: char) {
         self.search_term.push(character);
-        if &self.search_term == ".." {
-            self.descend_to_previous_path();
-        } else if &self.search_term == "/" {
-            self.descend_to_root_path();
-        } else {
-            self.mode = Mode::Searching;
-            self.search_view
-                .update_search_results(&self.search_term, &self.file_list_view.files);
+        match self.mode {
+            Mode::Create | Mode::Copy | Mode::Delete | Mode::Move => return,
+            _ => {
+                if self.search_term == ".." {
+                    self.descend_to_previous_path();
+                } else if &self.search_term == "/" {
+                    self.descend_to_root_path();
+                } else {
+                    self.mode = Mode::Searching;
+                    self.search_view
+                        .update_search_results(&self.search_term, &self.file_list_view.files);
+                }
+            },
         }
     }
     pub fn handle_backspace(&mut self) {
