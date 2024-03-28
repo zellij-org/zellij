@@ -320,7 +320,13 @@ fn cli_pipe_output(env: &ForeignFunctionEnv, pipe_name: String, output: String) 
         .context("failed to send pipe output")
 }
 
-fn message_to_plugin(env: &ForeignFunctionEnv, message_to_plugin: MessageToPlugin) -> Result<()> {
+fn message_to_plugin(
+    env: &ForeignFunctionEnv,
+    mut message_to_plugin: MessageToPlugin,
+) -> Result<()> {
+    if message_to_plugin.plugin_url.as_ref().map(|s| s.as_str()) == Some("zellij:OWN_URL") {
+        message_to_plugin.plugin_url = Some(env.plugin_env.plugin.location.display());
+    }
     env.plugin_env
         .senders
         .send_to_plugin(PluginInstruction::MessageFromPlugin {
