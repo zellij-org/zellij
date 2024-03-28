@@ -161,7 +161,7 @@ impl FsEntry {
     }
     pub fn size(&self) -> Option<u64> {
         match self {
-            FsEntry::Dir(p) => None,
+            FsEntry::Dir(_p) => None,
             FsEntry::File(_, size) => Some(*size),
         }
     }

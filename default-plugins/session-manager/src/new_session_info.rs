@@ -1,6 +1,5 @@
 use fuzzy_matcher::skim::SkimMatcherV2;
 use fuzzy_matcher::FuzzyMatcher;
-use std::cmp::Ordering;
 use std::path::PathBuf;
 use zellij_tile::prelude::*;
 
@@ -30,9 +29,6 @@ impl NewSessionInfo {
     }
     pub fn layout_search_term(&self) -> &str {
         &self.layout_list.layout_search_term
-    }
-    pub fn entering_new_session_info(&self) -> bool {
-        true
     }
     pub fn entering_new_session_name(&self) -> bool {
         self.entering_new_session_info == EnteringState::EnteringName
