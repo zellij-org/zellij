@@ -3,15 +3,35 @@ use zellij_utils::interprocess::local_socket::LocalSocketListener;
 use zellij_utils::pane_size::Size;
 use zellij_utils::{interprocess, signal_hook};
 
-
 use interprocess::local_socket::LocalSocketStream;
 
 use mio::{Events, Interest, Poll, Token};
 
+#[cfg(not(windows))]
+use mio::unix::SourceFd;
+#[cfg(windows)]
+use mio::windows::NamedPipe;
+#[cfg(not(windows))]
+use nix::{pty::Winsize, sys::termios};
+#[cfg(unix)]
+use signal_hook::{consts::signal::*, iterator::Signals};
 use std::io::prelude::*;
+#[cfg(not(windows))]
+use std::os::unix::io::RawFd;
+#[cfg(windows)]
+use std::os::windows::io::{AsHandle, AsRawHandle, FromRawHandle, RawHandle};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::{io, process, thread, time};
+#[cfg(windows)]
+use windows_sys::Win32::{
+    Foundation::{HANDLE, INVALID_HANDLE_VALUE},
+    System::Console::{
+        GetConsoleMode, GetConsoleScreenBufferInfo, GetStdHandle, ReadConsoleInputW,
+        SetConsoleMode, CONSOLE_SCREEN_BUFFER_INFO, COORD, FOCUS_EVENT_RECORD, INPUT_RECORD,
+        INPUT_RECORD_0, KEY_EVENT, MOUSE_EVENT, SMALL_RECT,
+    },
+};
 use zellij_utils::{
     data::Palette,
     errors::ErrorContext,
@@ -20,26 +40,6 @@ use zellij_utils::{
 };
 #[cfg(not(windows))]
 use zellij_utils::{libc, nix};
-#[cfg(not(windows))]
-use nix::{pty::Winsize, sys::termios};
-#[cfg(not(windows))]
-use std::os::unix::io::RawFd;
-#[cfg(not(windows))]
-use mio::unix::SourceFd;
-#[cfg(unix)]
-use signal_hook::{iterator::Signals, consts::signal::*};
-#[cfg(windows)]
-use std::os::windows::io::{RawHandle ,FromRawHandle};
-#[cfg(windows)]
-use windows_sys::Win32::{
-    Foundation::{INVALID_HANDLE_VALUE, HANDLE},
-    System::Console::{
-        GetConsoleScreenBufferInfo, GetStdHandle, CONSOLE_SCREEN_BUFFER_INFO, COORD, SMALL_RECT,
-GetConsoleMode, SetConsoleMode
-    },
-};
-#[cfg(windows)]
-use mio::windows::NamedPipe;
 
 const SIGWINCH_CB_THROTTLE_DURATION: time::Duration = time::Duration::from_millis(50);
 
@@ -112,7 +112,6 @@ pub(crate) fn get_terminal_size(handle_type: HandleType) -> Size {
 
 #[cfg(windows)]
 pub(crate) fn get_terminal_size(handle_type: HandleType) -> Size {
-
     // TODO: handle other handle types, only stdout is supported for now
     let handle_type = match handle_type {
         HandleType::Stdin => windows_sys::Win32::System::Console::STD_INPUT_HANDLE,
@@ -262,6 +261,64 @@ impl ClientOsApi for ClientOsInputOutput {
         let mut buffered_bytes = self.reading_from_stdin.lock().unwrap();
         match buffered_bytes.take() {
             Some(buffered_bytes) => Ok(buffered_bytes),
+            #[cfg(windows)]
+            None => {
+                let stdin = std::io::stdin().lock();
+                let hStdin = stdin.as_handle();
+                let mut buf = [INPUT_RECORD {
+                    EventType: 0,
+                    Event: INPUT_RECORD_0 {
+                        FocusEvent: FOCUS_EVENT_RECORD { bSetFocus: 0 },
+                    },
+                }; 128];
+                let mut consumed: u32 = 0;
+                let mut read_bytes = Vec::new();
+                unsafe {
+                    if ReadConsoleInputW(
+                        hStdin.as_raw_handle() as _,
+                        buf.as_mut_ptr(),
+                        buf.len() as u32,
+                        (&mut consumed) as _,
+                    ) != 0
+                    {
+                        let buf: &[INPUT_RECORD] = &buf[..consumed as usize];
+                        for event in buf {
+                            match event.EventType as u32 {
+                                windows_sys::Win32::System::Console::KEY_EVENT => {
+                                    let args = event.Event.KeyEvent;
+                                    if args.bKeyDown == 1 && args.dwControlKeyState == 0 {
+                                        read_bytes.push(args.uChar.AsciiChar);
+                                    }
+                                    Ok(())
+                                },
+                                windows_sys::Win32::System::Console::MOUSE_EVENT => {
+                                    let args = event.Event.MouseEvent;
+                                    Ok(())
+                                },
+                                windows_sys::Win32::System::Console::WINDOW_BUFFER_SIZE_EVENT => {
+                                    let args = event.Event.WindowBufferSizeEvent;
+                                    self.send_to_server(ClientToServerMsg::TerminalResize(Size {
+                                        rows: args.dwSize.Y as usize,
+                                        cols: args.dwSize.X as usize,
+                                    }));
+                                    Ok(())
+                                },
+                                windows_sys::Win32::System::Console::FOCUS_EVENT => {
+                                    // Discard as the payload is undocumented: https://learn.microsoft.com/en-us/windows/console/focus-event-record-str
+                                    Ok(())
+                                },
+                                windows_sys::Win32::System::Console::MENU_EVENT => {
+                                    // Discard as the payload is undocumented: https://learn.microsoft.com/en-us/windows/console/menu-event-record-str
+                                    Ok(())
+                                },
+                                x => Err(format!("Unknown Eventtype: {x}")),
+                            };
+                        }
+                    }
+                    Ok(read_bytes)
+                }
+            },
+            #[cfg(not(windows))]
             None => {
                 let stdin = std::io::stdin();
                 let mut stdin = stdin.lock();
@@ -494,7 +551,7 @@ impl Default for StdinPoller {
         #[cfg(unix)]
         let mut stdin_fd = SourceFd(&stdin);
         #[cfg(windows)]
-        let mut stdin_fd = unsafe { NamedPipe::from_raw_handle(GetStdHandle(stdin) as RawHandle ) };
+        let mut stdin_fd = unsafe { NamedPipe::from_raw_handle(GetStdHandle(stdin) as RawHandle) };
         let events = Events::with_capacity(128);
         let poll = Poll::new().unwrap();
         poll.registry()
