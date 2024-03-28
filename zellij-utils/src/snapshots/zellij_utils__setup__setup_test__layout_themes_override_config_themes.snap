@@ -1096,6 +1096,8 @@ Config {
             ): [
                 NewTab(
                     None,
+                    None,
+                    None,
                     [],
                     None,
                     None,
@@ -3497,6 +3499,8 @@ Config {
                 'c',
             ): [
                 NewTab(
+                    None,
+                    None,
                     None,
                     [],
                     None,
