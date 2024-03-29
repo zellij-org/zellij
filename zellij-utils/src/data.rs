@@ -1168,8 +1168,59 @@ pub struct StyleDeclaration {
 
 impl From<Styling> for Palette {
     // TODO: Implement mapping of old colors -> styling
-    fn from(_value: Styling) -> Self {
+    fn from(_palette: Styling) -> Self {
         default_palette()
+    }
+}
+
+impl From<Palette> for Styling {
+    fn from(palette: Palette) -> Self {
+        Styling {
+            text_unselected: [
+                palette.white,
+                palette.orange,
+                palette.cyan,
+                palette.green,
+                palette.magenta,
+                palette.bg,
+            ],
+            // TODO: update
+            text_selected: [
+                palette.white,
+                palette.orange,
+                palette.cyan,
+                palette.green,
+                palette.magenta,
+                palette.bg,
+            ],
+            ribbon_unselected: [
+                palette.black,
+                palette.red,
+                palette.white,
+                palette.blue,
+                palette.magenta,
+                palette.fg,
+            ],
+            ribbon_selected: [
+                palette.black,
+                palette.red,
+                palette.white,
+                palette.blue,
+                palette.magenta,
+                palette.green,
+            ],
+            ..Default::default() /*
+                                 table_title: (),
+                                 table_cell_unselected: (),
+                                 table_cell_selected: (),
+                                 list_unselected: (),
+                                 list_selected: (),
+                                 frame_unselected: (),
+                                 frame_selected: (),
+                                 exit_code_success: (),
+                                 exit_code_error: (),
+                                 */
+        }
     }
 }
 

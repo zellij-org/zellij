@@ -395,7 +395,7 @@ pub fn style_key_with_modifier(
     }
 
     let text_color = palette_match!(palette.text_unselected[0]);
-    let green_color = palette_match!(palette.text_unselected[1]);
+    let green_color = palette_match!(palette.text_unselected[3]); 
     let orange_color = palette_match!(palette.text_unselected[2]);
     let mut ret = vec![];
 

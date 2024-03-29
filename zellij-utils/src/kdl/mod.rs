@@ -2103,17 +2103,7 @@ impl Themes {
                     Theme {
                         palette,
                         // TODO: inverse palette -> styling
-                        styling: Styling {
-                            ribbon_unselected: [
-                                PaletteColor::EightBit(colors::BLUE),
-                                PaletteColor::EightBit(colors::BLUE),
-                                PaletteColor::EightBit(colors::BLUE),
-                                PaletteColor::EightBit(colors::BLUE),
-                                PaletteColor::EightBit(colors::BLUE),
-                                PaletteColor::EightBit(colors::BLUE),
-                            ],
-                            ..Default::default()
-                        },
+                        styling: palette.into(),
                     }
                 },
             };
