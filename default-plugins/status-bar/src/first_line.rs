@@ -351,8 +351,11 @@ fn swap_layout_keycode(mode_info: &ModeInfo, palette: &Palette) -> LinePart {
         &mode_keybinds,
         &[&[Action::PreviousSwapLayout], &[Action::NextSwapLayout]],
     );
-    let prev_next_keys_indicator =
-        style_key_with_modifier(&prev_next_keys, palette, Some(palette.black));
+    let prev_next_keys_indicator = style_key_with_modifier(
+        &prev_next_keys,
+        &mode_info.style.styling,
+        Some(palette.black),
+    );
     let keycode = ANSIStrings(&prev_next_keys_indicator);
     let len = unstyled_len(&keycode);
     let part = keycode.to_string();

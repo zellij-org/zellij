@@ -25,7 +25,7 @@ macro_rules! strings {
 pub fn compact_layout_full(help: &ModeInfo) -> LinePart {
     // Tip: UI taking up too much space? Start Zellij with
     // zellij -l compact or remove pane frames with Ctrl + <p> + <z>
-    let green_color = palette_match!(help.style.colors.green);
+    let green_color = palette_match!(help.style.styling.text_unselected[1]);
 
     let mut bits = vec![
         Style::new().paint(" Tip: "),
@@ -43,7 +43,7 @@ pub fn compact_layout_full(help: &ModeInfo) -> LinePart {
 pub fn compact_layout_medium(help: &ModeInfo) -> LinePart {
     // Tip: To save screen space, start Zellij with
     // zellij -l compact or remove pane frames with Ctrl + <p> + <z>
-    let green_color = palette_match!(help.style.colors.green);
+    let green_color = palette_match!(help.style.styling.text_unselected[1]);
 
     let mut bits = vec![
         Style::new().paint(" Tip: "),
@@ -61,7 +61,7 @@ pub fn compact_layout_medium(help: &ModeInfo) -> LinePart {
 pub fn compact_layout_short(help: &ModeInfo) -> LinePart {
     // Save screen space, start Zellij with
     // zellij -l compact or remove pane frames with Ctrl + <p> + <z>
-    let green_color = palette_match!(help.style.colors.green);
+    let green_color = palette_match!(help.style.styling.text_unselected[1]);
 
     let mut bits = vec![
         Style::new().paint(" Save screen space, start with: "),
@@ -93,11 +93,11 @@ fn add_keybinds(help: &ModeInfo) -> Vec<ANSIString> {
     }
 
     let mut bits = vec![];
-    bits.extend(style_key_with_modifier(&to_pane, &help.style.colors, None));
+    bits.extend(style_key_with_modifier(&to_pane, &help.style.styling, None));
     bits.push(Style::new().paint(", "));
     bits.extend(style_key_with_modifier(
         &pane_frames,
-        &help.style.colors,
+        &help.style.styling,
         None,
     ));
     bits

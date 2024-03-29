@@ -24,7 +24,7 @@ macro_rules! strings {
 pub fn edit_scrollbuffer_full(help: &ModeInfo) -> LinePart {
     // Tip: Search through the scrollbuffer using your default $EDITOR with
     // Ctrl + <s> + <e>
-    let green_color = palette_match!(help.style.colors.green);
+    let green_color = palette_match!(help.style.styling.text_unselected[1]);
 
     let mut bits = vec![
         Style::new().paint(" Tip: "),
@@ -39,7 +39,7 @@ pub fn edit_scrollbuffer_full(help: &ModeInfo) -> LinePart {
 pub fn edit_scrollbuffer_medium(help: &ModeInfo) -> LinePart {
     // Tip: Search the scrollbuffer using your $EDITOR with
     // Ctrl + <s> + <e>
-    let green_color = palette_match!(help.style.colors.green);
+    let green_color = palette_match!(help.style.styling.text_unselected[1]);
 
     let mut bits = vec![
         Style::new().paint(" Tip: "),
@@ -54,7 +54,7 @@ pub fn edit_scrollbuffer_medium(help: &ModeInfo) -> LinePart {
 pub fn edit_scrollbuffer_short(help: &ModeInfo) -> LinePart {
     // Search using $EDITOR with
     // Ctrl + <s> + <e>
-    let green_color = palette_match!(help.style.colors.green);
+    let green_color = palette_match!(help.style.styling.text_unselected[1]);
 
     let mut bits = vec![
         Style::new().paint(" Search using "),
@@ -83,11 +83,11 @@ fn add_keybinds(help: &ModeInfo) -> Vec<ANSIString> {
     }
 
     let mut bits = vec![];
-    bits.extend(style_key_with_modifier(&to_pane, &help.style.colors, None));
+    bits.extend(style_key_with_modifier(&to_pane, &help.style.styling, None));
     bits.push(Style::new().paint(", "));
     bits.extend(style_key_with_modifier(
         &edit_buffer,
-        &help.style.colors,
+        &help.style.styling,
         None,
     ));
     bits

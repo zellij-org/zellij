@@ -93,7 +93,7 @@ fn color_elements(palette: Styling, different_color_alternates: bool) -> Colored
     let alternate_background_color = palette.text_unselected[5];
     ColoredElements {
         selected: SegmentStyle {
-            prefix_separator: style!(background, palette.ribbon_selected[0]),
+            prefix_separator: style!(palette.ribbon_selected[0], palette.ribbon_selected[5]),
             char_left_separator: style!(palette.ribbon_selected[0], palette.ribbon_selected[5])
                 .bold(),
             char_shortcut: style!(palette.ribbon_selected[1], palette.ribbon_selected[5]).bold(),
@@ -233,6 +233,7 @@ impl ZellijPlugin for State {
             return;
         }
 
+        //TODO: Switch to UI components here
         let active_tab = self.tabs.iter().find(|t| t.active);
         let first_line = first_line(&self.mode_info, active_tab, cols, separator);
         let second_line = self.second_line(cols);
@@ -276,18 +277,18 @@ impl State {
         let active_tab = self.tabs.iter().find(|t| t.active);
 
         if let Some(copy_destination) = self.text_copy_destination {
-            text_copied_hint(&self.mode_info.style.colors, copy_destination)
+            text_copied_hint(&self.mode_info.style.styling, copy_destination)
         } else if self.display_system_clipboard_failure {
-            system_clipboard_error(&self.mode_info.style.colors)
+            system_clipboard_error(&self.mode_info.style.styling)
         } else if let Some(active_tab) = active_tab {
             if active_tab.is_fullscreen_active {
                 match self.mode_info.mode {
                     InputMode::Normal => fullscreen_panes_to_hide(
-                        &self.mode_info.style.colors,
+                        &self.mode_info.style.styling,
                         active_tab.panes_to_hide,
                     ),
                     InputMode::Locked => locked_fullscreen_panes_to_hide(
-                        &self.mode_info.style.colors,
+                        &self.mode_info.style.styling,
                         active_tab.panes_to_hide,
                     ),
                     _ => keybinds(&self.mode_info, &self.tip_name, cols),
@@ -296,7 +297,7 @@ impl State {
                 match self.mode_info.mode {
                     InputMode::Normal => floating_panes_are_visible(&self.mode_info),
                     InputMode::Locked => {
-                        locked_floating_panes_are_visible(&self.mode_info.style.colors)
+                        locked_floating_panes_are_visible(&self.mode_info.style.styling)
                     },
                     _ => keybinds(&self.mode_info, &self.tip_name, cols),
                 }
@@ -386,19 +387,16 @@ pub fn action_key_group(
 /// type.
 pub fn style_key_with_modifier(
     keyvec: &[KeyWithModifier],
-    palette: &Palette,
+    palette: &Styling,
     background: Option<PaletteColor>,
 ) -> Vec<ANSIString<'static>> {
     if keyvec.is_empty() {
         return vec![];
     }
 
-    let text_color = palette_match!(match palette.theme_hue {
-        ThemeHue::Dark => palette.white,
-        ThemeHue::Light => palette.black,
-    });
-    let green_color = palette_match!(palette.green);
-    let orange_color = palette_match!(palette.orange);
+    let text_color = palette_match!(palette.text_unselected[0]);
+    let green_color = palette_match!(palette.text_unselected[1]);
+    let orange_color = palette_match!(palette.text_unselected[2]);
     let mut ret = vec![];
 
     let common_modifiers = get_common_modifiers(keyvec.iter().collect());
@@ -660,7 +658,7 @@ pub mod tests {
             KeyWithModifier::new(BareKey::Char('b')),
             KeyWithModifier::new(BareKey::Char('c')),
         ];
-        let palette = get_palette();
+        let palette = Styling::default();
 
         let ret = style_key_with_modifier(&keyvec, &palette, None);
         let ret = unstyle(&ANSIStrings(&ret));
@@ -676,7 +674,7 @@ pub mod tests {
             KeyWithModifier::new(BareKey::Char('k')),
             KeyWithModifier::new(BareKey::Char('l')),
         ];
-        let palette = get_palette();
+        let palette = Styling::default();
 
         let ret = style_key_with_modifier(&keyvec, &palette, None);
         let ret = unstyle(&ANSIStrings(&ret));
@@ -692,7 +690,7 @@ pub mod tests {
             KeyWithModifier::new(BareKey::Up),
             KeyWithModifier::new(BareKey::Right),
         ];
-        let palette = get_palette();
+        let palette = Styling::default();
 
         let ret = style_key_with_modifier(&keyvec, &palette, None);
         let ret = unstyle(&ANSIStrings(&ret));
@@ -706,7 +704,7 @@ pub mod tests {
             KeyWithModifier::new(BareKey::Left),
             KeyWithModifier::new(BareKey::Right),
         ];
-        let palette = get_palette();
+        let palette = Styling::default();
 
         let ret = style_key_with_modifier(&keyvec, &palette, None);
         let ret = unstyle(&ANSIStrings(&ret));
@@ -720,7 +718,7 @@ pub mod tests {
             KeyWithModifier::new(BareKey::Down),
             KeyWithModifier::new(BareKey::Up),
         ];
-        let palette = get_palette();
+        let palette = Styling::default();
 
         let ret = style_key_with_modifier(&keyvec, &palette, None);
         let ret = unstyle(&ANSIStrings(&ret));
@@ -736,7 +734,7 @@ pub mod tests {
             KeyWithModifier::new(BareKey::Char('c')).with_ctrl_modifier(),
             KeyWithModifier::new(BareKey::Char('d')).with_ctrl_modifier(),
         ];
-        let palette = get_palette();
+        let palette = Styling::default();
 
         let ret = style_key_with_modifier(&keyvec, &palette, None);
         let ret = unstyle(&ANSIStrings(&ret));
@@ -752,7 +750,7 @@ pub mod tests {
             KeyWithModifier::new(BareKey::Char('c')).with_alt_modifier(),
             KeyWithModifier::new(BareKey::Char('d')).with_alt_modifier(),
         ];
-        let palette = get_palette();
+        let palette = Styling::default();
 
         let ret = style_key_with_modifier(&keyvec, &palette, None);
         let ret = unstyle(&ANSIStrings(&ret));
@@ -768,7 +766,7 @@ pub mod tests {
             KeyWithModifier::new(BareKey::Up).with_alt_modifier(),
             KeyWithModifier::new(BareKey::Right).with_alt_modifier(),
         ];
-        let palette = get_palette();
+        let palette = Styling::default();
 
         let ret = style_key_with_modifier(&keyvec, &palette, None);
         let ret = unstyle(&ANSIStrings(&ret));
@@ -783,7 +781,7 @@ pub mod tests {
             KeyWithModifier::new(BareKey::Char('b')).with_ctrl_modifier(),
             KeyWithModifier::new(BareKey::Char('c')),
         ];
-        let palette = get_palette();
+        let palette = Styling::default();
 
         let ret = style_key_with_modifier(&keyvec, &palette, None);
         let ret = unstyle(&ANSIStrings(&ret));
@@ -806,7 +804,7 @@ pub mod tests {
             KeyWithModifier::new(BareKey::Tab),
             KeyWithModifier::new(BareKey::Esc),
         ];
-        let palette = get_palette();
+        let palette = Styling::default();
 
         let ret = style_key_with_modifier(&keyvec, &palette, None);
         let ret = unstyle(&ANSIStrings(&ret));
@@ -824,7 +822,7 @@ pub mod tests {
             KeyWithModifier::new(BareKey::Char(' ')).with_ctrl_modifier(),
             KeyWithModifier::new(BareKey::Tab).with_ctrl_modifier(),
         ];
-        let palette = get_palette();
+        let palette = Styling::default();
 
         let ret = style_key_with_modifier(&keyvec, &palette, None);
         let ret = unstyle(&ANSIStrings(&ret));
@@ -839,7 +837,7 @@ pub mod tests {
             KeyWithModifier::new(BareKey::Char(' ')).with_alt_modifier(),
             KeyWithModifier::new(BareKey::Tab).with_alt_modifier(),
         ];
-        let palette = get_palette();
+        let palette = Styling::default();
 
         let ret = style_key_with_modifier(&keyvec, &palette, None);
         let ret = unstyle(&ANSIStrings(&ret));
