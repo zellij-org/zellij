@@ -2024,7 +2024,7 @@ impl Themes {
     ) -> Result<[PaletteColor; 5], ConfigError> {
         let colors = kdl_children_or_error!(
             kdl_child_with_name_or_error!(style_node, style_descriptor)?,
-            "foo"
+            format!("Missing colors for {}", style_descriptor)
         );
         Ok([
             PaletteColor::try_from(("base", colors))?,
@@ -2041,22 +2041,6 @@ impl Themes {
             let theme_name = kdl_name!(theme_config);
             let theme_colors = kdl_children_or_error!(theme_config, "empty theme");
             let styling = kdl_child_with_name!(theme_config, "styling");
-            /*
-            let styling_node =
-                kdl_child_with_name!(theme_config, "styling").ok_or(ConfigError::new_kdl_error(
-                    "Styling block invalid".into(),
-                    theme_config.span().offset(),
-                    theme_config.span().len(),
-                ))?;
-
-            let mut colors = BTreeMap::new();
-            let color_nodes = kdl_children_nodes_or_error!(theme_config, "Palette is empty").iter();
-            for color in color_nodes.filter(|n| n.name().value() != "styling") {
-                let color_name = kdl_name!(color);
-                let color = PaletteColor::try_from(color)?;
-                colors.insert(color_name.to_owned(), color);
-            }
-            */
             let theme = match styling {
                 // Newer theme definition with named styles
                 Some(style) => {

@@ -27,9 +27,7 @@ impl TryFrom<ProtobufStyle> for Style {
 impl TryFrom<Style> for ProtobufStyle {
     type Error = &'static str;
     fn try_from(style: Style) -> Result<Self, &'static str> {
-        log::info!("{:?}", style.styling.ribbon_unselected);
         let s = ProtobufStyling::try_from(style.styling)?;
-        log::info!("{:?}", s.ribbon_unselected);
         Ok(ProtobufStyle {
             palette: Some(style.colors.try_into()?),
             rounded_corners: style.rounded_corners,
@@ -60,7 +58,6 @@ impl TryFrom<ProtobufStyling> for Styling {
     type Error = &'static str;
 
     fn try_from(proto: ProtobufStyling) -> std::result::Result<Self, Self::Error> {
-        log::info!("{:?}", proto);
         Ok(Styling {
             text_unselected: color_definitions!(proto, text_unselected, 6),
             text_selected: color_definitions!(proto, text_selected, 6),
