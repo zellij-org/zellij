@@ -261,8 +261,6 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
             .expect("could not daemonize the server process");
     }
 
-    // TODO: Windows "daemonize"
-
     envs::set_zellij("0".to_string());
 
     let (to_server, server_receiver): ChannelWithContext<ServerInstruction> = channels::bounded(50);
@@ -303,10 +301,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                         Ok(stream) => {
                             let mut os_input = os_input.clone();
                             let client_id = session_state.write().unwrap().new_client();
-                            let client_pid = stream.peer_pid().unwrap();
-                            let client_connection_path: PathBuf = PathBuf::from(format!("{}{}", socket_path.to_string_lossy(), client_pid));
-                            let sender = LocalSocketStream::connect(client_connection_path).unwrap();
-                            let receiver = os_input.new_client(client_id, stream, sender).unwrap();
+                            let receiver = os_input.new_client(client_id, stream).unwrap();
                             let session_data = session_data.clone();
                             let session_state = session_state.clone();
                             let to_server = to_server.clone();

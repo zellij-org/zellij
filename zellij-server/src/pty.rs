@@ -822,10 +822,9 @@ impl Pty {
         if let TerminalAction::RunCommand(run_command) = terminal_action {
             if run_command.cwd.is_none() {
                 run_command.cwd = self.id_to_child_pid.get(pane_id).and_then(|winpty| {
-                    self.bus
-                        .os_input
-                        .as_ref()
-                        .and_then(|input| input.get_cwd(Pid::from(winpty.pty.read().unwrap().get_pid() as usize)))
+                    self.bus.os_input.as_ref().and_then(|input| {
+                        input.get_cwd(Pid::from(winpty.pty.read().unwrap().get_pid() as usize))
+                    })
                 });
             };
         };
@@ -1187,19 +1186,13 @@ impl Pty {
             .iter()
             .filter(|f| !f.already_running)
             .map(|f| f.run.clone());
-        let mut new_pane_pids: Vec<(u32, bool, Option<RunCommand>, Result<u32>)> =
-            vec![]; // (terminal_id,
-                    // starts_held,
-                    // run_command,
-                    // file_descriptor)
-        let mut new_floating_panes_pids: Vec<(
-            u32,
-            bool,
-            Option<RunCommand>,
-            Result<u32>,
-        )> = vec![]; // same
-                     // as
-                     // new_pane_pids
+        let mut new_pane_pids: Vec<(u32, bool, Option<RunCommand>, Result<u32>)> = vec![]; // (terminal_id,
+                                                                                           // starts_held,
+                                                                                           // run_command,
+                                                                                           // file_descriptor)
+        let mut new_floating_panes_pids: Vec<(u32, bool, Option<RunCommand>, Result<u32>)> = vec![]; // same
+                                                                                                     // as
+                                                                                                     // new_pane_pids
         for run_instruction in extracted_run_instructions {
             if let Some(new_pane_data) =
                 self.apply_run_instruction(run_instruction, default_shell.clone(), tab_index)?
@@ -1716,7 +1709,12 @@ impl Pty {
                 {
                     Ok((terminal_id, reference)) => {
                         self.id_to_child_pid.insert(terminal_id, reference.clone());
-                        Ok(Some((terminal_id, starts_held, None, Ok(reference.pty.read().unwrap().get_pid()))))
+                        Ok(Some((
+                            terminal_id,
+                            starts_held,
+                            None,
+                            Ok(reference.pty.read().unwrap().get_pid()),
+                        )))
                     },
                     Err(err) => match err.downcast_ref::<ZellijError>() {
                         Some(ZellijError::CommandNotFound { terminal_id, .. }) => {

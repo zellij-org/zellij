@@ -65,7 +65,6 @@ winapi = { version = "0.3.9", features = ["winbase"] }
 nix = "0.23.1"
 libc = "0.2"
 
-
 [dev-dependencies]
 insta = { version = "1.6.0", features = ["backtrace"] }
 expect-test = "1.4.1"

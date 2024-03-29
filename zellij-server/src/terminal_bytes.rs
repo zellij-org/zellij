@@ -91,12 +91,10 @@ impl TerminalBytes {
         log::info!("starting read");
         loop {
             match self.deadline_read(&mut buf).await {
-                ReadResult::Ok(0) => {
-                    continue
-                },
+                ReadResult::Ok(0) => continue,
                 ReadResult::Err(_) => {
                     log::info!("reached EoF");
-                    break
+                    break;
                 }, // EOF or error
                 ReadResult::Timeout => {
                     let time_to_send_render = self

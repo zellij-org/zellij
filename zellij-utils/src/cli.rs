@@ -218,7 +218,6 @@ pub enum Sessions {
         start_suspended: bool,
     },
     /// Load a plugin
-    // #[clap(visible_alias = "r")]
     Plugin {
         /// Plugin URL, can either start with http(s), file: or zellij:
         #[clap(last(true), required(true))]
@@ -229,7 +228,7 @@ pub enum Sessions {
         configuration: Option<PluginUserConfiguration>,
 
         /// Open the new pane in floating mode
-        #[clap(short, long, value_parser, default_value("false"), num_args(0))]
+        #[clap(short, long, value_parser, default_value("false"))]
         floating: bool,
 
         /// Open the new pane in place of the current pane, temporarily suspending it
@@ -238,7 +237,6 @@ pub enum Sessions {
             long,
             value_parser,
             default_value("false"),
-            num_args(0),
             conflicts_with("floating")
         )]
         in_place: bool,

@@ -706,7 +706,6 @@ pub trait ServerOsApi: Send + Sync {
         &mut self,
         client_id: ClientId,
         stream: LocalSocketStream,
-        sender: LocalSocketStream,
     ) -> Result<IpcReceiverWithContext<ClientToServerMsg>>;
     fn remove_client(&mut self, client_id: ClientId) -> Result<()>;
     fn load_palette(&self) -> Palette;
@@ -1085,10 +1084,9 @@ impl ServerOsApi for ServerOsInputOutput {
         &mut self,
         client_id: ClientId,
         stream: LocalSocketStream,
-        sender: LocalSocketStream,
     ) -> Result<IpcReceiverWithContext<ClientToServerMsg>> {
         let receiver = IpcReceiverWithContext::new(stream);
-        let sender = ClientSender::new(client_id, IpcSenderWithContext::new(sender));
+        let sender = ClientSender::new(client_id, receiver.get_sender());
         self.client_senders
             .lock()
             .to_anyhow()
