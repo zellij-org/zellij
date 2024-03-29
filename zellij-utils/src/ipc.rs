@@ -22,6 +22,8 @@ use std::{
 
 #[cfg(unix)]
 use std::os::unix::io::{AsRawFd, FromRawFd};
+#[cfg(windows)]
+use std::os::windows::io::{AsRawHandle, FromRawHandle};
 
 type SessionId = u64;
 
@@ -189,7 +191,7 @@ impl<T: Serialize> IpcSenderWithContext<T> {
             Ok(())
         }
     }
-    
+
     #[cfg(unix)]
     /// Returns an [`IpcReceiverWithContext`] with the same socket as this sender.
     pub fn get_receiver<F>(&self) -> IpcReceiverWithContext<F>
@@ -208,7 +210,10 @@ impl<T: Serialize> IpcSenderWithContext<T> {
     where
         F: for<'de> Deserialize<'de> + Serialize,
     {
-        unimplemented!()
+        let sock_fd = self.sender.get_ref().as_raw_handle();
+        let dup_sock = dup(sock_fd).expect("Failed to duplicate pipe to obtain receiver");
+        let socket = unsafe { LocalSocketStream::from_raw_handle(dup_sock) };
+        IpcReceiverWithContext::new(socket)
     }
 }
 
@@ -245,19 +250,43 @@ where
     /// Returns an [`IpcSenderWithContext`] with the same socket as this receiver.
     pub fn get_sender<F: Serialize>(&self) -> IpcSenderWithContext<F> {
         let sock_fd = self.receiver.get_ref().as_raw_fd();
-        let dup_sock = dup(sock_fd).unwrap();
+        let dup_sock = dup(sock_fd).expect("Failed to duplicate pipe to obtain sender");
         let socket = unsafe { LocalSocketStream::from_raw_fd(dup_sock) };
         IpcSenderWithContext::new(socket)
     }
-
     #[cfg(windows)]
     /// Returns an [`IpcSenderWithContext`] with the same socket as this receiver.
     pub fn get_sender<F: Serialize>(&self) -> IpcSenderWithContext<F> {
-        // use std::io::Read;
-
-        // let socket_ref = self.receiver.get_ref();
-        // let socket: LocalSocketStream = socket_ref.clone();
-        // IpcSenderWithContext::new(socket)
-        todo!()
+        let sock_fd = self.receiver.get_ref().as_raw_handle();
+        let dup_sock = dup(sock_fd).expect("Failed to duplicate pipe to obtain sender");
+        let socket = unsafe { LocalSocketStream::from_raw_handle(sock_fd) };
+        IpcSenderWithContext::new(socket)
     }
+}
+
+#[cfg(windows)]
+fn dup(
+    sock_fd: std::os::windows::raw::HANDLE,
+) -> Result<std::os::windows::raw::HANDLE, std::io::Error> {
+    use std::ptr;
+
+    use winapi::um::{processthreadsapi::GetCurrentProcess, winnt::DUPLICATE_SAME_ACCESS};
+
+    let mut dup_sock = ptr::null_mut();
+    if unsafe {
+        winapi::um::handleapi::DuplicateHandle(
+            GetCurrentProcess(),
+            sock_fd,
+            GetCurrentProcess(),
+            &mut dup_sock,
+            0,
+            0,
+            DUPLICATE_SAME_ACCESS,
+        )
+    } == 0
+    {
+        return Err(std::io::Error::last_os_error());
+    }
+
+    Ok(dup_sock)
 }
