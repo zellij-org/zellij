@@ -259,7 +259,7 @@ where
     pub fn get_sender<F: Serialize>(&self) -> IpcSenderWithContext<F> {
         let sock_fd = self.receiver.get_ref().as_raw_handle();
         let dup_sock = dup(sock_fd).expect("Failed to duplicate pipe to obtain sender");
-        let socket = unsafe { LocalSocketStream::from_raw_handle(sock_fd) };
+        let socket = unsafe { LocalSocketStream::from_raw_handle(dup_sock) };
         IpcSenderWithContext::new(socket)
     }
 }
