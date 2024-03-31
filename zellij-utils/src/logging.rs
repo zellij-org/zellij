@@ -43,7 +43,7 @@ pub fn configure_logger() {
 
     // {n} means platform dependent newline
     // module is padded to exactly 25 bytes and thread is padded to be between 10 and 15 bytes.
-    let file_pattern = "{highlight({level:<6})} |{module:<25.25}| {date(%Y-%m-%d %H:%M:%S.%3f)} [{thread:<10.15}] [{file}:{line}]: {message} {n}";
+    let file_pattern = "{highlight({level:<6})} |{module:<25.25}| {date(%Y-%m-%d %H:%M:%S.%3f)} [{pid}:{thread:<10.15}] [{file}:{line}]: {message} {n}";
 
     // default zellij appender, should be used across most of the codebase.
     let log_file = RollingFileAppender::builder()
