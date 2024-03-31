@@ -8,7 +8,7 @@ use crate::{
     pane_size::{Size, SizeInPixels},
 };
 use interprocess::local_socket::LocalSocketStream;
-use log::warn;
+use log::{debug, warn};
 
 #[cfg(unix)]
 use nix::unistd::dup;
@@ -231,15 +231,18 @@ impl<T: Serialize> IpcSenderWithContext<T> {
 
     /// Sends an event, along with the current [`ErrorContext`], on this [`IpcSenderWithContext`]'s socket.
     pub fn send(&mut self, msg: T) -> Result<()> {
+        log::debug!("Sending message");
         let err_ctx = get_current_ctx();
-        if rmp_serde::encode::write(&mut self.sender, &(msg, err_ctx)).is_err() {
+        let result = if rmp_serde::encode::write(&mut self.sender, &(msg, err_ctx)).is_err() {
             Err(anyhow!("failed to send message to client"))
         } else {
             // TODO: unwrapping here can cause issues when the server disconnects which we don't mind
             // do we need to handle errors here in other cases?
             let _ = self.sender.flush();
             Ok(())
-        }
+        };
+        log::debug!("Message sent with {:?}", &result);
+        result
     }
 
     #[cfg(unix)]
@@ -320,7 +323,10 @@ fn dup(
 ) -> Result<std::os::windows::raw::HANDLE, std::io::Error> {
     use std::ptr;
 
-    use winapi::um::{processthreadsapi::GetCurrentProcess, winnt::DUPLICATE_SAME_ACCESS};
+    use winapi::um::{
+        processthreadsapi::GetCurrentProcess,
+        winnt::{DUPLICATE_SAME_ACCESS, GENERIC_READ, GENERIC_WRITE},
+    };
 
     let mut dup_sock = ptr::null_mut();
     if unsafe {
