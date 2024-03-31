@@ -138,9 +138,17 @@ fn assert_socket(name: &str) -> bool {
             let mut sender = IpcSenderWithContext::new(stream);
             let _ = sender.send(ClientToServerMsg::ConnStatus);
             let mut receiver: IpcReceiverWithContext<ServerToClientMsg> = sender.get_receiver();
+            sender
+                .send(ClientToServerMsg::ConnStatus)
+                .with_context(|| "Query connection status")
+                .non_fatal();
             match receiver.recv() {
-                Some((ServerToClientMsg::Connected, _)) => true,
-                None | Some((_, _)) => false,
+                Ok((ServerToClientMsg::Connected, _)) => true,
+                Err(_) => false,
+                Ok(x) => {
+                    dbg!(x);
+                    false
+                },
             }
         },
         Err(e) if e.kind() == io::ErrorKind::ConnectionRefused => {
@@ -228,7 +236,10 @@ pub(crate) fn kill_session(name: &str) {
     let path = &*ZELLIJ_SOCK_DIR.join(name);
     match LocalSocketStream::connect(path) {
         Ok(stream) => {
-            let _ = IpcSenderWithContext::new(stream).send(ClientToServerMsg::KillSession);
+            IpcSenderWithContext::new(stream)
+                .send(ClientToServerMsg::KillSession)
+                .with_context(|| format!("Killing session {name}"))
+                .non_fatal();
         },
         Err(e) => {
             eprintln!("Error occurred: {:?}", e);

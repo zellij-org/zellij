@@ -970,7 +970,7 @@ impl ServerOsApi for ServerOsInputOutput {
         let s = unsafe { std::ffi::OsStr::from_encoded_bytes_unchecked(buf) };
         let err_context = || format!("failed to write to stdin of TTY ID {}", terminal_id);
 
-        if (buf.len() == 0) {
+        if buf.len() == 0 {
             return Ok(0);
         }
 

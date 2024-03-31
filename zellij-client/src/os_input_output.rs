@@ -1,4 +1,6 @@
 use zellij_utils::anyhow::{Context, Result};
+use zellij_utils::errors::FatalError;
+use zellij_utils::ipc::ReceiveError;
 use zellij_utils::pane_size::Size;
 use zellij_utils::{interprocess, signal_hook};
 
@@ -20,7 +22,7 @@ use std::os::unix::io::RawFd;
 #[cfg(windows)]
 use std::os::windows::io::{FromRawHandle, RawHandle};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, TryLockError};
 use std::{io, process, thread, time};
 #[cfg(windows)]
 use windows_sys::Win32::{
@@ -191,7 +193,7 @@ pub trait ClientOsApi: Send + Sync {
     fn send_to_server(&self, msg: ClientToServerMsg);
     /// Receives a message on client-side IPC channel
     // This should be called from the client-side router thread only.
-    fn recv_from_server(&self) -> Option<(ServerToClientMsg, ErrorContext)>;
+    fn recv_from_server(&self) -> Result<(ServerToClientMsg, ErrorContext), ReceiveError>;
     fn handle_signals(&self, sigwinch_cb: Box<dyn Fn()>, quit_cb: Box<dyn Fn()>);
     /// Establish a connection with the server socket.
     fn connect_to_server(&self, path: &Path);
@@ -297,15 +299,23 @@ impl ClientOsApi for ClientOsInputOutput {
             .unwrap()
             .as_mut()
             .unwrap()
-            .send(msg);
+            .send(msg)
+            .with_context(|| "Failed to send message to server")
+            .non_fatal();
     }
-    fn recv_from_server(&self) -> Option<(ServerToClientMsg, ErrorContext)> {
-        self.receive_instructions_from_server
-            .lock()
-            .unwrap()
-            .as_mut()
-            .unwrap()
-            .recv()
+    fn recv_from_server(&self) -> Result<(ServerToClientMsg, ErrorContext), ReceiveError> {
+        log::info!("Receiving from Server");
+        let receiver = self.receive_instructions_from_server.try_lock();
+        let result = match receiver {
+            Ok(mut receiver) => receiver
+                .as_mut()
+                .expect("Receiver should be initialized by now")
+                .recv(),
+            Err(TryLockError::WouldBlock) => Err(ReceiveError::ReceiverLocked),
+            Err(TryLockError::Poisoned(err)) => panic!("receiver has been poisoned"),
+        };
+        log::info!("{:?} received from server", &result);
+        result
     }
     fn handle_signals(&self, sigwinch_cb: Box<dyn Fn()>, quit_cb: Box<dyn Fn()>) {
         let mut sigwinch_cb_timestamp = time::Instant::now();
@@ -344,8 +354,8 @@ impl ClientOsApi for ClientOsInputOutput {
                 },
             }
         }
-        let sender = IpcSenderWithContext::new(socket);
-        let receiver = sender.get_receiver();
+        let receiver = IpcReceiverWithContext::new(socket);
+        let sender = receiver.get_sender();
         *self.send_instructions_to_server.lock().unwrap() = Some(sender);
         *self.receive_instructions_from_server.lock().unwrap() = Some(receiver);
     }

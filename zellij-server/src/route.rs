@@ -10,6 +10,7 @@ use crate::{
     screen::ScreenInstruction,
     ServerInstruction, SessionMetaData, SessionState,
 };
+use zellij_utils::ipc::ReceiveError;
 use zellij_utils::{
     channels::SenderWithContext,
     data::{Direction, Event, PluginCapabilities, ResizeStrategy},
@@ -832,7 +833,7 @@ pub(crate) fn route_thread_main(
     let err_context = || format!("failed to handle instruction for client {client_id}");
     'route_loop: loop {
         match receiver.recv() {
-            Some((instruction, err_ctx)) => {
+            Ok((instruction, err_ctx)) => {
                 err_ctx.update_thread_ctx();
                 let rlocked_sessions = session_data.read().to_anyhow().with_context(err_context)?;
                 let handle_instruction = |instruction: ClientToServerMsg,
@@ -1006,7 +1007,12 @@ pub(crate) fn route_thread_main(
                     break 'route_loop;
                 }
             },
-            None => {
+            Err(ReceiveError::Disconnected) => {
+                log::info!("Client has disconnected or crashed");
+                // Client is already gone so there is no use in sending a message to the client
+                break 'route_loop;
+            },
+            Err(e) => {
                 log::error!("Received empty message from client, logging client out.");
                 let _ = os_input.send_to_client(
                     client_id,
@@ -1019,5 +1025,6 @@ pub(crate) fn route_thread_main(
             },
         }
     }
+    log::info!("Terminating server_router");
     Ok(())
 }

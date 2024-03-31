@@ -16,6 +16,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use windows_sys::Win32::System::Console::ENABLE_PROCESSED_INPUT;
 use zellij_utils::errors::FatalError;
+use zellij_utils::ipc::ReceiveError;
 
 use crate::stdin_ansi_parser::{AnsiStdinInstruction, StdinAnsiParser, SyncOutput};
 use crate::{
@@ -299,6 +300,9 @@ pub fn start_client(
             if let Ok(()) = os_input.unset_raw_mode(0) {
                 handle_panic(info, &send_client_instructions);
             }
+
+            #[cfg(windows)]
+            handle_panic(info, &send_client_instructions);
         })
     });
 
@@ -370,7 +374,7 @@ pub fn start_client(
             let mut should_break = false;
             move || loop {
                 match os_input.recv_from_server() {
-                    Some((instruction, err_ctx)) => {
+                    Ok((instruction, err_ctx)) => {
                         err_ctx.update_thread_ctx();
                         if let ServerToClientMsg::Exit(_) = instruction {
                             should_break = true;
@@ -380,7 +384,16 @@ pub fn start_client(
                             break;
                         }
                     },
-                    None => {
+                    Err(ReceiveError::Disconnected) => {
+                        log::error!("Pipe is disconnected");
+                        break;
+                    },
+                    Err(ReceiveError::ReceiverLocked) => {
+                        // TODO enable the lock to be returned
+                        thread::sleep(std::time::Duration::from_secs_f32(0.1));
+                        continue;
+                    },
+                    Err(e) => {
                         send_client_instructions
                             .send(ClientInstruction::UnblockInputThread)
                             .unwrap();

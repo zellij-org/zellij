@@ -9,6 +9,9 @@ use crate::{
 };
 use interprocess::local_socket::LocalSocketStream;
 use log::{debug, warn};
+use std::{fmt::Debug, io::Read, mem::MaybeUninit};
+#[cfg(windows)]
+use winapi::um::wincon::CONSOLE_CURSOR_INFO;
 
 #[cfg(unix)]
 use nix::unistd::dup;
@@ -220,7 +223,7 @@ pub struct IpcSenderWithContext<T: Serialize> {
     _phantom: PhantomData<T>,
 }
 
-impl<T: Serialize> IpcSenderWithContext<T> {
+impl<T: Serialize + std::fmt::Debug> IpcSenderWithContext<T> {
     /// Returns a sender to the given [LocalSocketStream](interprocess::local_socket::LocalSocketStream).
     pub fn new(sender: LocalSocketStream) -> Self {
         Self {
@@ -249,7 +252,7 @@ impl<T: Serialize> IpcSenderWithContext<T> {
     /// Returns an [`IpcReceiverWithContext`] with the same socket as this sender.
     pub fn get_receiver<F>(&self) -> IpcReceiverWithContext<F>
     where
-        F: for<'de> Deserialize<'de> + Serialize,
+        F: for<'de> Deserialize<'de> + Serialize + Debug,
     {
         let sock_fd = self.sender.get_ref().as_raw_fd();
         let dup_sock = dup(sock_fd).unwrap();
@@ -261,7 +264,7 @@ impl<T: Serialize> IpcSenderWithContext<T> {
     ///Returns an [`IpcReceiverWithContext`] with the same socket as this sender.
     pub fn get_receiver<F>(&self) -> IpcReceiverWithContext<F>
     where
-        F: for<'de> Deserialize<'de> + Serialize,
+        F: for<'de> Deserialize<'de> + Serialize + Debug,
     {
         let sock_fd = self.sender.get_ref().as_raw_handle();
         let dup_sock = dup(sock_fd).expect("Failed to duplicate pipe to obtain receiver");
@@ -272,8 +275,16 @@ impl<T: Serialize> IpcSenderWithContext<T> {
 
 /// Receives messages on a stream socket, along with an [`ErrorContext`].
 pub struct IpcReceiverWithContext<T> {
-    receiver: io::BufReader<LocalSocketStream>,
+    receiver: LocalSocketStream,
     _phantom: PhantomData<T>,
+}
+
+#[derive(Debug)]
+pub enum ReceiveError {
+    Disconnected,
+    IOError(io::Error),
+    ParseError(rmp_serde::decode::Error),
+    ReceiverLocked,
 }
 
 impl<T> IpcReceiverWithContext<T>
@@ -289,19 +300,73 @@ where
     }
 
     /// Receives an event, along with the current [`ErrorContext`], on this [`IpcReceiverWithContext`]'s socket.
-    pub fn recv(&mut self) -> Option<(T, ErrorContext)> {
-        match rmp_serde::decode::from_read(&mut self.receiver) {
-            Ok(msg) => Some(msg),
-            Err(e) => {
-                warn!("Error in IpcReceiver.recv(): {:?}", e);
-                None
-            },
+    pub fn recv(&mut self) -> Result<(T, ErrorContext), ReceiveError> {
+        let mut buf = Vec::with_capacity(512);
+        let mut counter = 0;
+        loop {
+            let remaining_buffer = buf.spare_capacity_mut();
+            for element in remaining_buffer.iter_mut() {
+                element.write(0);
+            }
+            let remaining_buffer: &mut [u8] = unsafe { std::mem::transmute(remaining_buffer) };
+
+            log::info!("Reading from pipe");
+            let consumed = self.receiver.read(remaining_buffer);
+            let consumed = match consumed {
+                Ok(x) => {
+                    log::info!("Received {} bytes", x);
+                    x
+                },
+                Err(e) => {
+                    return Err(ReceiveError::IOError(e));
+                },
+            };
+            unsafe { buf.set_len(buf.len() + consumed) };
+            let input = &buf;
+            if consumed > 0 {
+                counter = 0;
+            }
+            match rmp_serde::decode::from_slice(input) {
+                Ok(msg) => break Ok(msg),
+                Err(e) => {
+                    match e {
+                        rmp_serde::decode::Error::LengthMismatch(expected) => {
+                            let expected = expected as usize;
+                            if expected > input.len() {
+                                // we need more bytes
+                                if expected > buf.capacity() {
+                                    buf.reserve_exact(expected - buf.len())
+                                }
+                                continue;
+                            } else if expected < input.len() {
+                                // we have more than one message
+                                todo!("Decode first message and figure out what to do with the remainder")
+                            }
+                        },
+                        (rmp_serde::decode::Error::InvalidDataRead(io_error)
+                        | rmp_serde::decode::Error::InvalidMarkerRead(io_error))
+                            if io_error.kind() == std::io::ErrorKind::UnexpectedEof =>
+                        {
+                            counter += 1;
+                            if counter > 5 {
+                                return Err(ReceiveError::Disconnected);
+                            }
+                            log::warn!("Missing some content in {:x?}", input);
+                            buf.reserve(1);
+                            continue;
+                        },
+                        e => {
+                            return Err(ReceiveError::ParseError(e));
+                        },
+                    }
+                },
+            }
         }
     }
 
     #[cfg(unix)]
     /// Returns an [`IpcSenderWithContext`] with the same socket as this receiver.
-    pub fn get_sender<F: Serialize>(&self) -> IpcSenderWithContext<F> {
+    pub fn get_sender<F: Serialize + Debug>(&self) -> IpcSenderWithContext<F> {
         let sock_fd = self.receiver.get_ref().as_raw_fd();
         let dup_sock = dup(sock_fd).expect("Failed to duplicate pipe to obtain sender");
         let socket = unsafe { LocalSocketStream::from_raw_fd(dup_sock) };
@@ -309,8 +374,8 @@ where
     }
     #[cfg(windows)]
     /// Returns an [`IpcSenderWithContext`] with the same socket as this receiver.
-    pub fn get_sender<F: Serialize>(&self) -> IpcSenderWithContext<F> {
-        let sock_fd = self.receiver.get_ref().as_raw_handle();
+    pub fn get_sender<F: Serialize + Debug>(&self) -> IpcSenderWithContext<F> {
+        let sock_fd = self.receiver.as_raw_handle();
         let dup_sock = dup(sock_fd).expect("Failed to duplicate pipe to obtain sender");
         let socket = unsafe { LocalSocketStream::from_raw_handle(dup_sock) };
         IpcSenderWithContext::new(socket)
@@ -335,9 +400,9 @@ fn dup(
             sock_fd,
             GetCurrentProcess(),
             &mut dup_sock,
+            GENERIC_READ | GENERIC_WRITE,
             0,
             0,
-            DUPLICATE_SAME_ACCESS,
         )
     } == 0
     {
