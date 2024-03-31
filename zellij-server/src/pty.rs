@@ -121,6 +121,45 @@ impl From<&PtyInstruction> for PtyContext {
     }
 }
 
+impl std::fmt::Display for PtyInstruction {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PtyInstruction::SpawnTerminal(_, _, _, _) => write!(f, "PtyInstruction::SpawnTerminal"),
+            PtyInstruction::OpenInPlaceEditor(_, _, _) => {
+                write!(f, "PtyInstruction::OpenInPlaceEditor")
+            },
+            PtyInstruction::SpawnTerminalVertically(_, _, _) => {
+                write!(f, "PtyInstruction::SpawnTerminalVertically")
+            },
+            PtyInstruction::SpawnTerminalHorizontally(_, _, _) => {
+                write!(f, "PtyInstruction::SpawnTerminalHorizontally")
+            },
+            PtyInstruction::UpdateActivePane(_, _) => write!(f, "PtyInstruction::UpdateActivePane"),
+            PtyInstruction::GoToTab(_, _) => write!(f, "PtyInstruction::GoToTab"),
+            PtyInstruction::NewTab(_, _, _, _, _, _, _) => write!(f, "PtyInstruction::NewTab"),
+            PtyInstruction::ClosePane(_) => write!(f, "PtyInstruction::ClosePane"),
+            PtyInstruction::CloseTab(_) => write!(f, "PtyInstruction::CloseTab"),
+            PtyInstruction::ReRunCommandInPane(_, _) => {
+                write!(f, "PtyInstruction::ReRunCommandInPane")
+            },
+            PtyInstruction::DropToShellInPane {
+                pane_id,
+                shell,
+                working_dir,
+            } => write!(f, "PtyInstruction::DropToShellInPane"),
+            PtyInstruction::SpawnInPlaceTerminal(_, _, _) => {
+                write!(f, "PtyInstruction::SpawnInPlaceTerminal")
+            },
+            PtyInstruction::DumpLayout(_, _) => write!(f, "PtyInstruction::DumpLayout"),
+            PtyInstruction::LogLayoutToHd(_) => write!(f, "PtyInstruction::LogLayoutToHd"),
+            PtyInstruction::FillPluginCwd(_, _, _, _, _, _, _, _) => {
+                write!(f, "PtyInstruction::FillPluginCwd")
+            },
+            PtyInstruction::Exit => write!(f, "PtyInstruction::Exit"),
+        }
+    }
+}
+
 pub(crate) struct Pty {
     pub active_panes: HashMap<ClientId, PaneId>,
     pub bus: Bus<PtyInstruction>,

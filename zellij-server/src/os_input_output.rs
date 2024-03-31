@@ -538,11 +538,17 @@ impl ClientSender {
         // We, the zellij maintainers, have decided against an unbounded
         // queue for the time being because we want to prevent e.g. the whole session being killed
         // (by OOM-killers or some other mechanism) just because a single client doesn't respond.
-        let (client_buffer_sender, client_buffer_receiver) = channels::bounded(5000);
+        let (client_buffer_sender, client_buffer_receiver) =
+            channels::bounded::<ServerToClientMsg>(5000);
         std::thread::spawn(move || {
-            let err_context = || format!("failed to send message to client {client_id}");
             for msg in client_buffer_receiver.iter() {
-                sender.send(msg).with_context(err_context).non_fatal();
+                log::debug!("transmit message {} to client", msg);
+                sender
+                    .send(msg.clone())
+                    .with_context(|| {
+                        format!("failed to send message {msg:?} to client {client_id}")
+                    })
+                    .non_fatal();
             }
             // If we're here, the message buffer is broken for some reason
             let _ = sender.send(ServerToClientMsg::Exit(ExitReason::Disconnect));
@@ -1065,6 +1071,7 @@ impl ServerOsApi for ServerOsInputOutput {
         Ok(())
     }
     fn send_to_client(&self, client_id: ClientId, msg: ServerToClientMsg) -> Result<()> {
+        log::debug!("Sending message {} to client {}", &msg, &client_id);
         let err_context = || format!("failed to send message to client {client_id}");
 
         if let Some(sender) = self
@@ -1076,6 +1083,7 @@ impl ServerOsApi for ServerOsInputOutput {
         {
             sender.send_or_buffer(msg).with_context(err_context)
         } else {
+            log::warn!("Could not find client {}", client_id);
             Ok(())
         }
     }

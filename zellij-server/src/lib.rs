@@ -118,6 +118,32 @@ impl ErrorInstruction for ServerInstruction {
     }
 }
 
+impl std::fmt::Display for ServerInstruction {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ServerInstruction::NewClient(_, _, _, _, _, _) => {
+                write!(f, "ServerInstruction::NewClient")
+            },
+            ServerInstruction::Render(_) => write!(f, "ServerInstruction::Render"),
+            ServerInstruction::UnblockInputThread => {
+                write!(f, "ServerInstruction::UnblockInputThread")
+            },
+            ServerInstruction::ClientExit(_) => write!(f, "ServerInstruction::ClientExit"),
+            ServerInstruction::RemoveClient(_) => write!(f, "ServerInstruction::RemoveClient"),
+            ServerInstruction::Error(_) => write!(f, "ServerInstruction::Error"),
+            ServerInstruction::KillSession => write!(f, "ServerInstruction::KillSession"),
+            ServerInstruction::DetachSession(_) => write!(f, "ServerInstruction::DetachSession"),
+            ServerInstruction::AttachClient(_, _, _, _, _) => {
+                write!(f, "ServerInstruction::AttachClient")
+            },
+            ServerInstruction::ConnStatus(_) => write!(f, "ServerInstruction::ConnStatus"),
+            ServerInstruction::ActiveClients(_) => write!(f, "ServerInstruction::ActiveClients"),
+            ServerInstruction::Log(_, _) => write!(f, "ServerInstruction::Log"),
+            ServerInstruction::SwitchSession(_, _) => write!(f, "ServerInstruction::SwitchSession"),
+        }
+    }
+}
+
 pub(crate) struct SessionMetaData {
     pub senders: ThreadSenders,
     pub capabilities: PluginCapabilities,
@@ -331,6 +357,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
     loop {
         let (instruction, mut err_ctx) = server_receiver.recv().unwrap();
         err_ctx.add_call(ContextType::IPCServer((&instruction).into()));
+        log::debug!("Received ServerInstruction: {}", instruction);
         match instruction {
             ServerInstruction::NewClient(
                 client_attributes,

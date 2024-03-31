@@ -10,6 +10,7 @@ use zellij_utils::{
 };
 
 pub fn start_cli_client(os_input: Box<dyn ClientOsApi>, session_name: &str, actions: Vec<Action>) {
+    log::info!("Starting cli client");
     let zellij_ipc_pipe: PathBuf = {
         let mut sock_dir = zellij_utils::consts::ZELLIJ_SOCK_DIR.clone();
         fs::create_dir_all(&sock_dir).unwrap();

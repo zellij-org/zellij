@@ -835,12 +835,15 @@ pub(crate) fn route_thread_main(
         match receiver.recv() {
             Ok((instruction, err_ctx)) => {
                 err_ctx.update_thread_ctx();
+                log::debug!("Received message {}", instruction);
                 let rlocked_sessions = session_data.read().to_anyhow().with_context(err_context)?;
+                log::debug!("Session obtained");
                 let handle_instruction = |instruction: ClientToServerMsg,
                                           mut retry_queue: Option<
                     &mut VecDeque<ClientToServerMsg>,
                 >|
                  -> Result<bool> {
+                    log::debug!("Processing message {}", instruction);
                     let mut should_break = false;
                     match instruction {
                         ClientToServerMsg::Action(action, maybe_pane_id, maybe_client_id) => {

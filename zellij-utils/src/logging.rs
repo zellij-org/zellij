@@ -86,7 +86,11 @@ pub fn configure_logger() {
                 .additive(false)
                 .build("zellij_server::logging_pipe", LevelFilter::Trace),
         )
-        .build(Root::builder().appender("logFile").build(LevelFilter::Info))
+        .build(
+            Root::builder()
+                .appender("logFile")
+                .build(LevelFilter::Debug),
+        )
         .unwrap();
 
     let _ = log4rs::init_config(config).unwrap();
