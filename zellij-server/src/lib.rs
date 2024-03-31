@@ -18,7 +18,6 @@ mod ui;
 use background_jobs::{background_jobs_main, BackgroundJob};
 use log::info;
 use pty_writer::{pty_writer_main, PtyWriteInstruction};
-use zellij_utils::interprocess::local_socket::LocalSocketStream;
 use std::collections::{HashMap, HashSet};
 use std::{
     path::PathBuf,
@@ -26,11 +25,14 @@ use std::{
     thread,
 };
 use zellij_utils::envs;
-use zellij_utils::pane_size::Size;
+use zellij_utils::interprocess::local_socket::LocalSocketStream;
+#[cfg(windows)]
+use zellij_utils::interprocess::os::windows::named_pipe::{
+    PipeListener, PipeListenerOptions, PipeMode,
+};
 #[cfg(unix)]
 use zellij_utils::nix::sys::stat::{umask, Mode};
-#[cfg(windows)]
-use zellij_utils::interprocess::os::windows::named_pipe::{PipeListener, PipeListenerOptions, PipeMode, DuplexBytePipeStream};
+use zellij_utils::pane_size::Size;
 
 use wasmer::Store;
 
@@ -315,13 +317,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
             let to_server = to_server.clone();
             let socket_path = socket_path.clone();
             move || {
-                drop(std::fs::remove_file(&socket_path));
-                let listener = LocalSocketListener::bind(&*socket_path).unwrap();
-                // set the sticky bit to avoid the socket file being potentially cleaned up
-                // https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html states that for XDG_RUNTIME_DIR:
-                // "To ensure that your files are not removed, they should have their access time timestamp modified at least once every 6 hours of monotonic time or the 'sticky' bit should be set on the file. "
-                // It is not guaranteed that all platforms allow setting the sticky bit on sockets!
-                drop(set_permissions(&socket_path, 0o1700));
+                let listener = zellij_utils::ipc::bind_server(&socket_path).unwrap();
                 for stream in listener.incoming() {
                     match stream {
                         Ok(stream) => {

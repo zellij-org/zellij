@@ -13,8 +13,7 @@ use zellij_utils::{
     envs,
     humantime::format_duration,
     input::layout::Layout,
-    interprocess::local_socket::LocalSocketStream,
-    ipc::{ClientToServerMsg, IpcReceiverWithContext, IpcSenderWithContext, ServerToClientMsg},
+    ipc::{ClientToServerMsg, ServerToClientMsg},
 };
 
 pub(crate) fn get_sessions() -> Result<Vec<(String, Duration)>, io::ErrorKind> {
@@ -133,11 +132,8 @@ pub(crate) fn get_sessions_sorted_by_mtime() -> anyhow::Result<Vec<String>> {
 
 fn assert_socket(name: &str) -> bool {
     let path = &*ZELLIJ_SOCK_DIR.join(name);
-    match LocalSocketStream::connect(path) {
-        Ok(stream) => {
-            let mut sender = IpcSenderWithContext::new(stream);
-            let _ = sender.send(ClientToServerMsg::ConnStatus);
-            let mut receiver: IpcReceiverWithContext<ServerToClientMsg> = sender.get_receiver();
+    match zellij_utils::ipc::try_connect_to_server::<ClientToServerMsg, ServerToClientMsg>(path) {
+        Ok((mut sender, mut receiver)) => {
             sender
                 .send(ClientToServerMsg::ConnStatus)
                 .with_context(|| "Query connection status")
@@ -234,9 +230,9 @@ pub(crate) fn get_active_session() -> ActiveSession {
 
 pub(crate) fn kill_session(name: &str) {
     let path = &*ZELLIJ_SOCK_DIR.join(name);
-    match LocalSocketStream::connect(path) {
-        Ok(stream) => {
-            IpcSenderWithContext::new(stream)
+    match zellij_utils::ipc::try_connect_to_server::<ClientToServerMsg, ServerToClientMsg>(path) {
+        Ok((mut sender, _receiver)) => {
+            sender
                 .send(ClientToServerMsg::KillSession)
                 .with_context(|| format!("Killing session {name}"))
                 .non_fatal();
@@ -251,11 +247,11 @@ pub(crate) fn kill_session(name: &str) {
 pub(crate) fn delete_session(name: &str, force: bool) {
     if force {
         let path = &*ZELLIJ_SOCK_DIR.join(name);
-        let _ = LocalSocketStream::connect(path).map(|stream| {
-            IpcSenderWithContext::new(stream)
-                .send(ClientToServerMsg::KillSession)
-                .ok();
-        });
+        let _ =
+            zellij_utils::ipc::try_connect_to_server::<ClientToServerMsg, ServerToClientMsg>(path)
+                .map(|(mut sender, _receiver)| {
+                    sender.send(ClientToServerMsg::KillSession).ok();
+                });
     }
     if let Err(e) = std::fs::remove_dir_all(session_info_folder_for_session(name)) {
         if e.kind() == std::io::ErrorKind::NotFound {

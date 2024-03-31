@@ -342,20 +342,8 @@ impl ClientOsApi for ClientOsInputOutput {
         }
     }
     fn connect_to_server(&self, path: &Path) {
-        let socket;
-        loop {
-            match LocalSocketStream::connect(path) {
-                Ok(sock) => {
-                    socket = sock;
-                    break;
-                },
-                Err(_) => {
-                    std::thread::sleep(std::time::Duration::from_millis(50));
-                },
-            }
-        }
-        let receiver = IpcReceiverWithContext::new(socket);
-        let sender = receiver.get_sender();
+        let (sender, receiver) = zellij_utils::ipc::connect_to_server(path);
+
         *self.send_instructions_to_server.lock().unwrap() = Some(sender);
         *self.receive_instructions_from_server.lock().unwrap() = Some(receiver);
     }

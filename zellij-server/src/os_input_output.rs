@@ -9,15 +9,15 @@ use std::io::Error;
 
 use sysinfo::{ProcessExt, ProcessRefreshKind, SystemExt};
 use zellij_utils::{
-    async_std, channels,
-    channels::TrySendError,
+    async_std,
+    channels::{self, TrySendError},
     data::Palette,
     errors::prelude::*,
     input::command::{RunCommand, TerminalAction},
     interprocess,
     ipc::{
         ClientToServerMsg, ExitReason, IpcReceiverWithContext, IpcSenderWithContext,
-        ServerToClientMsg,
+        IpcSocketStream, ServerToClientMsg,
     },
     shared::default_palette,
     signal_hook,
@@ -711,7 +711,7 @@ pub trait ServerOsApi: Send + Sync {
     fn new_client(
         &mut self,
         client_id: ClientId,
-        stream: LocalSocketStream,
+        stream: IpcSocketStream,
     ) -> Result<IpcReceiverWithContext<ClientToServerMsg>>;
     fn remove_client(&mut self, client_id: ClientId) -> Result<()>;
     fn load_palette(&self) -> Palette;
@@ -1091,7 +1091,7 @@ impl ServerOsApi for ServerOsInputOutput {
     fn new_client(
         &mut self,
         client_id: ClientId,
-        stream: LocalSocketStream,
+        stream: IpcSocketStream,
     ) -> Result<IpcReceiverWithContext<ClientToServerMsg>> {
         let receiver = IpcReceiverWithContext::new(stream);
         let sender = ClientSender::new(client_id, receiver.get_sender());

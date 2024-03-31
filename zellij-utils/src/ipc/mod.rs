@@ -1,4 +1,6 @@
 //! IPC stuff for starting to split things into a client and server model.
+#[cfg(windows)]
+use crate::ipc::named_pipe::PipeStream;
 use crate::{
     cli::CliArgs,
     data::{ClientId, ConnectToSession, InputMode, Style},
@@ -7,9 +9,11 @@ use crate::{
     input::{actions::Action, layout::Layout, options::Options, plugins::PluginsConfig},
     pane_size::{Size, SizeInPixels},
 };
-use interprocess::local_socket::LocalSocketStream;
+use interprocess::local_socket::{LocalSocketListener, LocalSocketStream};
 use log::{debug, warn};
+use std::path::Path;
 use std::{fmt::Debug, io::Read, mem::MaybeUninit};
+
 #[cfg(windows)]
 use winapi::um::wincon::CONSOLE_CURSOR_INFO;
 
@@ -25,8 +29,6 @@ use std::{
 
 #[cfg(unix)]
 use std::os::unix::io::{AsRawFd, FromRawFd};
-#[cfg(windows)]
-use std::os::windows::io::{AsRawHandle, FromRawHandle};
 
 type SessionId = u64;
 
@@ -217,12 +219,18 @@ There are a few things you can try now:
     }
 }
 
+#[cfg(windows)]
+pub type IpcSocketStream = PipeStream;
+#[cfg(unix)]
+pub type IpcSocketStream = LocalSocketStream;
+
 /// Sends messages on a stream socket, along with an [`ErrorContext`].
 pub struct IpcSenderWithContext<T: Serialize> {
-    sender: io::BufWriter<LocalSocketStream>,
+    sender: io::BufWriter<IpcSocketStream>,
     _phantom: PhantomData<T>,
 }
 
+#[cfg(unix)]
 impl<T: Serialize + std::fmt::Debug> IpcSenderWithContext<T> {
     /// Returns a sender to the given [LocalSocketStream](interprocess::local_socket::LocalSocketStream).
     pub fn new(sender: LocalSocketStream) -> Self {
@@ -232,6 +240,43 @@ impl<T: Serialize + std::fmt::Debug> IpcSenderWithContext<T> {
         }
     }
 
+    /// Returns an [`IpcReceiverWithContext`] with the same socket as this sender.
+    pub fn get_receiver<F>(&self) -> IpcReceiverWithContext<F>
+    where
+        F: for<'de> Deserialize<'de> + Serialize + Debug,
+    {
+        let sock_fd = self.sender.get_ref().as_raw_fd();
+        let dup_sock = dup(sock_fd).unwrap();
+        let socket = unsafe { LocalSocketStream::from_raw_fd(dup_sock) };
+        IpcReceiverWithContext::new(socket)
+    }
+}
+
+#[cfg(windows)]
+impl<T: Serialize + std::fmt::Debug> IpcSenderWithContext<T> {
+    /// Returns a sender to the given [PipeStream](zellij_utils::ipc::named_pipe::PipeStream).
+    pub fn new(sender: PipeStream) -> Self {
+        Self {
+            sender: io::BufWriter::new(sender),
+            _phantom: PhantomData,
+        }
+    }
+
+    ///Returns an [`IpcReceiverWithContext`] with the same socket as this sender.
+    pub fn get_receiver<F>(&self) -> IpcReceiverWithContext<F>
+    where
+        F: for<'de> Deserialize<'de> + Serialize + Debug,
+    {
+        let socket = self
+            .sender
+            .get_ref()
+            .try_clone()
+            .expect("Failed to duplicate pipe to obtain receiver");
+        IpcReceiverWithContext::new(socket)
+    }
+}
+
+impl<T: Serialize + std::fmt::Debug> IpcSenderWithContext<T> {
     /// Sends an event, along with the current [`ErrorContext`], on this [`IpcSenderWithContext`]'s socket.
     pub fn send(&mut self, msg: T) -> Result<()> {
         log::debug!("Sending message");
@@ -247,36 +292,12 @@ impl<T: Serialize + std::fmt::Debug> IpcSenderWithContext<T> {
         log::debug!("Message sent with {:?}", &result);
         result
     }
-
-    #[cfg(unix)]
-    /// Returns an [`IpcReceiverWithContext`] with the same socket as this sender.
-    pub fn get_receiver<F>(&self) -> IpcReceiverWithContext<F>
-    where
-        F: for<'de> Deserialize<'de> + Serialize + Debug,
-    {
-        let sock_fd = self.sender.get_ref().as_raw_fd();
-        let dup_sock = dup(sock_fd).unwrap();
-        let socket = unsafe { LocalSocketStream::from_raw_fd(dup_sock) };
-        IpcReceiverWithContext::new(socket)
-    }
-
-    #[cfg(windows)]
-    ///Returns an [`IpcReceiverWithContext`] with the same socket as this sender.
-    pub fn get_receiver<F>(&self) -> IpcReceiverWithContext<F>
-    where
-        F: for<'de> Deserialize<'de> + Serialize + Debug,
-    {
-        let sock_fd = self.sender.get_ref().as_raw_handle();
-        let dup_sock = dup(sock_fd).expect("Failed to duplicate pipe to obtain receiver");
-        let socket = unsafe { LocalSocketStream::from_raw_handle(dup_sock) };
-        IpcReceiverWithContext::new(socket)
-    }
 }
 
 /// Receives messages on a stream socket, along with an [`ErrorContext`].
-pub struct IpcReceiverWithContext<T> {
-    receiver: LocalSocketStream,
-    _phantom: PhantomData<T>,
+pub struct IpcReceiverWithContext<TData> {
+    receiver: IpcSocketStream,
+    _phantom: PhantomData<TData>,
 }
 
 #[derive(Debug)]
@@ -287,9 +308,10 @@ pub enum ReceiveError {
     ReceiverLocked,
 }
 
-impl<T> IpcReceiverWithContext<T>
+#[cfg(unix)]
+impl<TData> IpcReceiverWithContext<TData>
 where
-    T: for<'de> Deserialize<'de> + Serialize,
+    TData: for<'de> Deserialize<'de> + Serialize,
 {
     /// Returns a receiver to the given [LocalSocketStream](interprocess::local_socket::LocalSocketStream).
     pub fn new(receiver: LocalSocketStream) -> Self {
@@ -299,8 +321,44 @@ where
         }
     }
 
+    /// Returns an [`IpcSenderWithContext`] with the same socket as this receiver.
+    pub fn get_sender<F: Serialize + Debug>(&self) -> IpcSenderWithContext<F> {
+        let sock_fd = self.receiver.get_ref().as_raw_fd();
+        let dup_sock = dup(sock_fd).expect("Failed to duplicate pipe to obtain sender");
+        let socket = unsafe { LocalSocketStream::from_raw_fd(dup_sock) };
+        IpcSenderWithContext::new(socket)
+    }
+}
+
+#[cfg(windows)]
+impl<TData> IpcReceiverWithContext<TData>
+where
+    TData: for<'de> Deserialize<'de> + Serialize,
+{
+    /// Returns a receiver to the given [PipeStream](zellij_utils::ipc::named_pipe::PipeStream).
+    pub fn new(receiver: PipeStream) -> Self {
+        Self {
+            receiver,
+            _phantom: PhantomData,
+        }
+    }
+
+    /// Returns an [`IpcSenderWithContext`] with the same socket as this receiver.
+    pub fn get_sender<F: Serialize + Debug>(&self) -> IpcSenderWithContext<F> {
+        let socket = self
+            .receiver
+            .try_clone()
+            .expect("Failed to duplicate pipe to obtain sender");
+        IpcSenderWithContext::new(socket)
+    }
+}
+
+impl<TData> IpcReceiverWithContext<TData>
+where
+    TData: for<'de> Deserialize<'de> + Serialize,
+{
     /// Receives an event, along with the current [`ErrorContext`], on this [`IpcReceiverWithContext`]'s socket.
-    pub fn recv(&mut self) -> Result<(T, ErrorContext), ReceiveError> {
+    pub fn recv(&mut self) -> Result<(TData, ErrorContext), ReceiveError> {
         let mut buf = Vec::with_capacity(512);
         let mut counter = 0;
         loop {
@@ -363,51 +421,79 @@ where
             }
         }
     }
-
-    #[cfg(unix)]
-    /// Returns an [`IpcSenderWithContext`] with the same socket as this receiver.
-    pub fn get_sender<F: Serialize + Debug>(&self) -> IpcSenderWithContext<F> {
-        let sock_fd = self.receiver.get_ref().as_raw_fd();
-        let dup_sock = dup(sock_fd).expect("Failed to duplicate pipe to obtain sender");
-        let socket = unsafe { LocalSocketStream::from_raw_fd(dup_sock) };
-        IpcSenderWithContext::new(socket)
-    }
-    #[cfg(windows)]
-    /// Returns an [`IpcSenderWithContext`] with the same socket as this receiver.
-    pub fn get_sender<F: Serialize + Debug>(&self) -> IpcSenderWithContext<F> {
-        let sock_fd = self.receiver.as_raw_handle();
-        let dup_sock = dup(sock_fd).expect("Failed to duplicate pipe to obtain sender");
-        let socket = unsafe { LocalSocketStream::from_raw_handle(dup_sock) };
-        IpcSenderWithContext::new(socket)
-    }
 }
 
 #[cfg(windows)]
-fn dup(
-    sock_fd: std::os::windows::raw::HANDLE,
-) -> Result<std::os::windows::raw::HANDLE, std::io::Error> {
-    use std::ptr;
+pub mod named_pipe;
 
-    use winapi::um::{
-        processthreadsapi::GetCurrentProcess,
-        winnt::{DUPLICATE_SAME_ACCESS, GENERIC_READ, GENERIC_WRITE},
-    };
+#[cfg(unix)]
+pub fn try_connect_to_server<T>(
+    path: &Path,
+) -> io::Result<(IpcSenderWithContext<T>, IpcReceiverWithContext<T>)>
+where
+    T: Serialize + for<'de> Deserialize<'de> + std::fmt::Debug,
+{
+    let socket = LocalSocketStream::connect(path)?;
+    let receiver = IpcReceiverWithContext::new(socket);
+    let sender = receiver.get_sender();
+    Ok((sender, receiver))
+}
 
-    let mut dup_sock = ptr::null_mut();
-    if unsafe {
-        winapi::um::handleapi::DuplicateHandle(
-            GetCurrentProcess(),
-            sock_fd,
-            GetCurrentProcess(),
-            &mut dup_sock,
-            GENERIC_READ | GENERIC_WRITE,
-            0,
-            0,
-        )
-    } == 0
-    {
-        return Err(std::io::Error::last_os_error());
+#[cfg(windows)]
+pub fn try_connect_to_server<TDataSender, TDataReceiver>(
+    path: &Path,
+) -> io::Result<(
+    IpcSenderWithContext<TDataSender>,
+    IpcReceiverWithContext<TDataReceiver>,
+)>
+where
+    TDataSender: Serialize + std::fmt::Debug,
+    TDataReceiver: Serialize + for<'de> Deserialize<'de>,
+{
+    let pipe = named_pipe::Pipe::new(path);
+    let socket = pipe.connect()?;
+
+    let receiver = IpcReceiverWithContext::new(socket);
+    let sender = receiver.get_sender();
+    Ok((sender, receiver))
+}
+
+pub fn connect_to_server<TDataSender, TDataReceiver>(
+    path: &Path,
+) -> (
+    IpcSenderWithContext<TDataSender>,
+    IpcReceiverWithContext<TDataReceiver>,
+)
+where
+    TDataSender: Serialize + std::fmt::Debug,
+    TDataReceiver: Serialize + for<'de> Deserialize<'de>,
+{
+    loop {
+        match try_connect_to_server(path) {
+            Ok(result) => break result,
+            Err(_) => {
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            },
+        }
     }
+}
 
-    Ok(dup_sock)
+#[cfg(unix)]
+pub fn bind_server(name: &Path) -> Result<LocalSocketListener> {
+    drop(std::fs::remove_file(&socket_path));
+    let listener = LocalSocketListener::bind(&*socket_path)?;
+    // set the sticky bit to avoid the socket file being potentially cleaned up
+    // https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html states that for XDG_RUNTIME_DIR:
+    // "To ensure that your files are not removed, they should have their access time timestamp modified at least once every 6 hours of monotonic time or the 'sticky' bit should be set on the file. "
+    // It is not guaranteed that all platforms allow setting the sticky bit on sockets!
+    drop(set_permissions(&socket_path, 0o1700));
+
+    return Ok(listener);
+}
+
+#[cfg(windows)]
+pub fn bind_server(name: &Path) -> Result<named_pipe::Pipe> {
+    let pipe = named_pipe::Pipe::new(name);
+
+    Ok(pipe)
 }
