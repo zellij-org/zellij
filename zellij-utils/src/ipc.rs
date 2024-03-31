@@ -98,6 +98,38 @@ pub enum ClientToServerMsg {
     ListClients,
 }
 
+impl Display for ClientToServerMsg {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ClientToServerMsg::DetachSession(_) => write!(f, "ClientToServerMsg::DetachSession"),
+            ClientToServerMsg::TerminalPixelDimensions(_) => {
+                write!(f, "ClientToServerMsg::TerminalPixelDimensions")
+            },
+            ClientToServerMsg::BackgroundColor(_) => {
+                write!(f, "ClientToServerMsg::BackgroundColor")
+            },
+            ClientToServerMsg::ForegroundColor(_) => {
+                write!(f, "ClientToServerMsg::ForegroundColor")
+            },
+            ClientToServerMsg::ColorRegisters(_) => write!(f, "ClientToServerMsg::ColorRegisters"),
+            ClientToServerMsg::TerminalResize(_) => write!(f, "ClientToServerMsg::TerminalResize"),
+            ClientToServerMsg::NewClient(_, _, _, _, _) => {
+                write!(f, "ClientToServerMsg::NewClient")
+            },
+            ClientToServerMsg::AttachClient(_, _, _, _) => {
+                write!(f, "ClientToServerMsg::AttachClient")
+            },
+            ClientToServerMsg::Action(action, _, _) => {
+                write!(f, "ClientToServerMsg::Action({:?})", action)
+            },
+            ClientToServerMsg::ClientExited => write!(f, "ClientToServerMsg::ClientExited"),
+            ClientToServerMsg::KillSession => write!(f, "ClientToServerMsg::KillSession"),
+            ClientToServerMsg::ConnStatus => write!(f, "ClientToServerMsg::ConnStatus"),
+            ClientToServerMsg::ListClients => write!(f, "ClientToServerMsg::ListClients"),
+        }
+    }
+}
+
 // Types of messages sent from the server to the client
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ServerToClientMsg {
@@ -110,6 +142,24 @@ pub enum ServerToClientMsg {
     Log(Vec<String>),
     LogError(Vec<String>),
     SwitchSession(ConnectToSession),
+}
+
+impl Display for ServerToClientMsg {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ServerToClientMsg::Render(_) => write!(f, "ServerToClientMsg::Render"),
+            ServerToClientMsg::UnblockInputThread => {
+                write!(f, "ServerToClientMsg::UnblockInputThread")
+            },
+            ServerToClientMsg::Exit(_) => write!(f, "ServerToClientMsg::Exit"),
+            ServerToClientMsg::SwitchToMode(_) => write!(f, "ServerToClientMsg::SwitchToMode"),
+            ServerToClientMsg::Connected => write!(f, "ServerToClientMsg::Connected"),
+            ServerToClientMsg::ActiveClients(_) => write!(f, "ServerToClientMsg::ActiveClients"),
+            ServerToClientMsg::Log(_) => write!(f, "ServerToClientMsg::Log"),
+            ServerToClientMsg::LogError(_) => write!(f, "ServerToClientMsg::LogError"),
+            ServerToClientMsg::SwitchSession(_) => write!(f, "ServerToClientMsg::SwitchSession"),
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
