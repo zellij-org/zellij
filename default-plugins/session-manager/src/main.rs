@@ -93,7 +93,7 @@ impl ZellijPlugin for State {
         let mut should_render = false;
         match event {
             Event::ModeUpdate(mode_info) => {
-                self.colors = Colors::new(mode_info.style.colors);
+                self.colors = Colors::new(mode_info.style.styling);
                 should_render = true;
             },
             Event::Key(key) => {
