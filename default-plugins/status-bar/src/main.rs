@@ -97,18 +97,18 @@ fn color_elements(palette: Styling, different_color_alternates: bool) -> Colored
     };
     ColoredElements {
         selected: SegmentStyle {
-            prefix_separator: style!(palette.ribbon_selected[0], palette.ribbon_selected[5]),
+            prefix_separator: style!(background, palette.ribbon_selected[5]),
             char_left_separator: style!(palette.ribbon_selected[0], palette.ribbon_selected[5])
                 .bold(),
             char_shortcut: style!(palette.ribbon_selected[1], palette.ribbon_selected[5]).bold(),
             char_right_separator: style!(palette.ribbon_selected[0], palette.ribbon_selected[5])
                 .bold(),
             styled_text: style!(palette.ribbon_selected[0], palette.ribbon_selected[5]).bold(),
-            suffix_separator: style!(palette.ribbon_selected[5], palette.ribbon_selected[0]).bold(),
+            suffix_separator: style!(palette.ribbon_selected[5], background).bold(),
         },
         unselected: SegmentStyle {
-            prefix_separator: style!(palette.ribbon_unselected[0], palette.ribbon_unselected[5]),
-            char_left_separator: style!(palette.ribbon_unselected[0], palette.ribbon_unselected[5])
+            prefix_separator: style!(background, palette.ribbon_unselected[5]),
+            char_left_separator: style!(palette.ribbon_unselected[1], palette.ribbon_unselected[5])
                 .bold(),
             char_shortcut: style!(palette.ribbon_unselected[2], palette.ribbon_unselected[5])
                 .bold(),
@@ -118,26 +118,36 @@ fn color_elements(palette: Styling, different_color_alternates: bool) -> Colored
             )
             .bold(),
             styled_text: style!(palette.ribbon_unselected[0], palette.ribbon_unselected[5]).bold(),
-            suffix_separator: style!(palette.ribbon_unselected[5], palette.ribbon_selected[0])
-                .bold(),
+            suffix_separator: style!(palette.ribbon_unselected[5], background).bold(),
         },
         unselected_alternate: SegmentStyle {
-            prefix_separator: style!(palette.ribbon_unselected[0], alternate_background_color),
-            char_left_separator: style!(palette.ribbon_unselected[0], alternate_background_color)
+            prefix_separator: style!(background, alternate_background_color),
+            char_left_separator: style!(palette.ribbon_unselected[1], alternate_background_color)
                 .bold(),
-            char_shortcut: style!(palette.ribbon_unselected[1], alternate_background_color).bold(),
-            char_right_separator: style!(palette.ribbon_unselected[0], alternate_background_color)
+            char_shortcut: style!(palette.ribbon_unselected[2], alternate_background_color).bold(),
+            char_right_separator: style!(palette.ribbon_unselected[1], alternate_background_color)
                 .bold(),
             styled_text: style!(palette.ribbon_unselected[0], alternate_background_color).bold(),
             suffix_separator: style!(alternate_background_color, background).bold(),
         },
         disabled: SegmentStyle {
-            prefix_separator: style!(background, foreground),
-            char_left_separator: style!(background, foreground).dimmed().italic(),
-            char_shortcut: style!(background, foreground).dimmed().italic(),
-            char_right_separator: style!(background, foreground).dimmed().italic(),
-            styled_text: style!(background, foreground).dimmed().italic(),
-            suffix_separator: style!(foreground, background),
+            prefix_separator: style!(background, palette.ribbon_unselected[5]),
+            char_left_separator: style!(palette.ribbon_unselected[0], palette.ribbon_unselected[5])
+                .dimmed()
+                .italic(),
+            char_shortcut: style!(palette.ribbon_unselected[0], palette.ribbon_unselected[5])
+                .dimmed()
+                .italic(),
+            char_right_separator: style!(
+                palette.ribbon_unselected[0],
+                palette.ribbon_unselected[5]
+            )
+            .dimmed()
+            .italic(),
+            styled_text: style!(palette.ribbon_unselected[0], palette.ribbon_unselected[5])
+                .dimmed()
+                .italic(),
+            suffix_separator: style!(palette.ribbon_unselected[5], background),
         },
         superkey_prefix: style!(foreground, background).bold(),
         superkey_suffix_separator: style!(background, background),

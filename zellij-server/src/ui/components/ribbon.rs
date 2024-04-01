@@ -12,17 +12,18 @@ pub fn ribbon(
     component_coordinates: Option<Coordinates>,
 ) -> Vec<u8> {
     let colors = style.styling;
+    let background = colors.text_unselected[5];
     let (first_arrow_styles, text_style, last_arrow_styles) = if content.selected {
         (
+            character_style(background, colors.ribbon_selected[5]),
             character_style(colors.ribbon_selected[0], colors.ribbon_selected[5]),
-            character_style(colors.ribbon_selected[0], colors.ribbon_selected[5]),
-            character_style(colors.ribbon_selected[5], colors.ribbon_selected[0]),
+            character_style(colors.ribbon_selected[5], background),
         )
     } else {
         (
+            character_style(background, colors.ribbon_unselected[5]),
             character_style(colors.ribbon_unselected[0], colors.ribbon_unselected[5]),
-            character_style(colors.ribbon_unselected[0], colors.ribbon_unselected[5]),
-            character_style(colors.ribbon_unselected[5], colors.ribbon_unselected[0]),
+            character_style(colors.ribbon_unselected[5], background),
         )
     };
     let (text, _text_width) =
