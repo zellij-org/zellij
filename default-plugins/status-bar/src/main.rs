@@ -90,7 +90,11 @@ pub struct SegmentStyle {
 fn color_elements(palette: Styling, different_color_alternates: bool) -> ColoredElements {
     let background = palette.text_unselected[5];
     let foreground = palette.text_unselected[0];
-    let alternate_background_color = palette.text_unselected[5];
+    let alternate_background_color = if different_color_alternates {
+        palette.text_unselected[1]
+    } else {
+        palette.text_unselected[5]
+    };
     ColoredElements {
         selected: SegmentStyle {
             prefix_separator: style!(palette.ribbon_selected[0], palette.ribbon_selected[5]),
@@ -118,19 +122,14 @@ fn color_elements(palette: Styling, different_color_alternates: bool) -> Colored
                 .bold(),
         },
         unselected_alternate: SegmentStyle {
-            prefix_separator: style!(palette.ribbon_unselected[0], palette.ribbon_unselected[5]),
-            char_left_separator: style!(palette.ribbon_unselected[0], palette.ribbon_unselected[5])
+            prefix_separator: style!(palette.ribbon_unselected[0], alternate_background_color),
+            char_left_separator: style!(palette.ribbon_unselected[0], alternate_background_color)
                 .bold(),
-            char_shortcut: style!(palette.ribbon_unselected[1], palette.ribbon_unselected[5])
+            char_shortcut: style!(palette.ribbon_unselected[1], alternate_background_color).bold(),
+            char_right_separator: style!(palette.ribbon_unselected[0], alternate_background_color)
                 .bold(),
-            char_right_separator: style!(
-                palette.ribbon_unselected[0],
-                palette.ribbon_unselected[5]
-            )
-            .bold(),
-            styled_text: style!(palette.ribbon_unselected[0], palette.ribbon_unselected[5]).bold(),
-            suffix_separator: style!(palette.ribbon_unselected[5], palette.ribbon_selected[0])
-                .bold(),
+            styled_text: style!(palette.ribbon_unselected[0], alternate_background_color).bold(),
+            suffix_separator: style!(alternate_background_color, background).bold(),
         },
         disabled: SegmentStyle {
             prefix_separator: style!(background, foreground),
@@ -395,7 +394,7 @@ pub fn style_key_with_modifier(
     }
 
     let text_color = palette_match!(palette.text_unselected[0]);
-    let green_color = palette_match!(palette.text_unselected[3]); 
+    let green_color = palette_match!(palette.text_unselected[3]);
     let orange_color = palette_match!(palette.text_unselected[1]);
     let mut ret = vec![];
 
