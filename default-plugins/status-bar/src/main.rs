@@ -91,9 +91,9 @@ fn color_elements(palette: Styling, different_color_alternates: bool) -> Colored
     let background = palette.text_unselected[5];
     let foreground = palette.text_unselected[0];
     let alternate_background_color = if different_color_alternates {
-        palette.text_unselected[1]
+        palette.ribbon_unselected[3]
     } else {
-        palette.text_unselected[5]
+        palette.ribbon_unselected[5]
     };
     ColoredElements {
         selected: SegmentStyle {

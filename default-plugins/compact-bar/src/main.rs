@@ -109,7 +109,7 @@ impl ZellijPlugin for State {
                 tabname,
                 t,
                 is_alternate_tab,
-                self.mode_info.style.colors,
+                self.mode_info.style.styling,
                 self.mode_info.capabilities,
             );
             is_alternate_tab = !is_alternate_tab;

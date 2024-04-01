@@ -23,10 +23,13 @@ pub type ClientId = u16; // TODO: merge with crate type?
 
 pub fn client_id_to_colors(
     client_id: ClientId,
-    colors: Palette,
+    colors: Styling,
 ) -> Option<(PaletteColor, PaletteColor)> {
     // (primary color, secondary color)
+    // TODO: mapping of client colors
     match client_id {
+        _ => Some((colors.text_unselected[0], colors.text_unselected[5])),
+        /*
         1 => Some((colors.magenta, colors.black)),
         2 => Some((colors.blue, colors.black)),
         3 => Some((colors.purple, colors.black)),
@@ -38,6 +41,7 @@ pub fn client_id_to_colors(
         9 => Some((colors.pink, colors.black)),
         10 => Some((colors.brown, colors.black)),
         _ => None,
+        */
     }
 }
 

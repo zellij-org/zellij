@@ -117,7 +117,7 @@ impl PaneFrame {
         self.color = Some(color);
     }
     fn client_cursor(&self, client_id: ClientId) -> Vec<TerminalCharacter> {
-        let color = client_id_to_colors(client_id, self.style.colors);
+        let color = client_id_to_colors(client_id, self.style.styling);
         background_color(" ", color.map(|c| c.0))
     }
     fn get_corner(&self, corner: &'static str) -> &'static str {
@@ -773,9 +773,9 @@ impl PaneFrame {
                 let exited_text = "EXIT CODE: ";
                 let exit_code_text = format!("{}", exit_code);
                 let exit_code_color = if exit_code == 0 {
-                    self.style.colors.green
+                    self.style.styling.exit_code_success[0]
                 } else {
-                    self.style.colors.red
+                    self.style.styling.exit_code_error[0]
                 };
                 let right_bracket = " ] ";
                 first_part.append(&mut foreground_color(left_bracket, self.color));
