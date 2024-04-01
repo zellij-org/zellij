@@ -1,15 +1,17 @@
 use std::collections::HashMap;
+use std::fs::DirEntry;
+use std::iter::empty;
 #[cfg(unix)]
 use std::os::unix::fs::FileTypeExt;
 use std::time::{Duration, SystemTime};
-use std::{fs, io, process};
+use std::{fs, io, process, thread};
 use suggest::Suggest;
+use zellij_utils::anyhow::Context;
+use zellij_utils::consts::ZELLIJ_SESSION_INFO_CACHE_DIR;
+use zellij_utils::errors::FatalError;
 use zellij_utils::{
     anyhow,
-    consts::{
-        session_info_folder_for_session, session_layout_cache_file_name,
-        ZELLIJ_SESSION_INFO_CACHE_DIR, ZELLIJ_SOCK_DIR,
-    },
+    consts::{session_info_folder_for_session, session_layout_cache_file_name, ZELLIJ_SOCK_DIR},
     envs,
     humantime::format_duration,
     input::layout::Layout,
@@ -17,11 +19,10 @@ use zellij_utils::{
 };
 
 pub(crate) fn get_sessions() -> Result<Vec<(String, Duration)>, io::ErrorKind> {
-    match fs::read_dir(&*ZELLIJ_SOCK_DIR) {
+    match iter_sessions() {
         Ok(files) => {
             let mut sessions = Vec::new();
             files.for_each(|file| {
-                let file = file.unwrap();
                 let file_name = file.file_name().into_string().unwrap();
                 let ctime = std::fs::metadata(&file.path())
                     .ok()
@@ -29,17 +30,45 @@ pub(crate) fn get_sessions() -> Result<Vec<(String, Duration)>, io::ErrorKind> {
                     .and_then(|d| d.elapsed().ok())
                     .unwrap_or_default();
                 let duration = Duration::from_secs(ctime.as_secs());
-                #[cfg(unix)]
-                if file.file_type().unwrap().is_socket() && assert_socket(&file_name) {
+                if is_socket(&file).unwrap() && assert_socket(&file_name) {
                     sessions.push((file_name, duration));
                 }
                 // TODO windows
             });
             Ok(sessions)
         },
-        Err(err) if io::ErrorKind::NotFound != err.kind() => Err(err.kind()),
-        Err(_) => Ok(Vec::with_capacity(0)),
+        Err(err) => Err(err.kind()),
     }
+}
+
+fn iter_sessions() -> Result<Box<dyn Iterator<Item = DirEntry>>, io::Error> {
+    #[cfg(windows)]
+    {
+        use std::path::PathBuf;
+
+        let path = PathBuf::from("\\\\.\\pipe\\");
+        match fs::read_dir(path) {
+            Ok(pipes) => Ok(Box::new(
+                pipes
+                    .map(|file| file.unwrap())
+                    .filter(|file| file.path().starts_with(&*ZELLIJ_SOCK_DIR)),
+            )),
+            Err(err) if io::ErrorKind::NotFound != err.kind() => Err(err),
+            Err(_) => Ok(Box::new(empty())),
+        }
+    }
+    #[cfg(unix)]
+    {
+        match fs::read_dir(&*ZELLIJ_SOCK_DIR) {
+            Ok(files) => Ok(files.map(|file| file.unwrap())),
+            Err(err) if io::ErrorKind::NotFound != err.kind() => Err(err),
+            Err(_) => Ok(empty()),
+        }
+    }
+}
+
+fn is_socket(file: &DirEntry) -> io::Result<bool> {
+    zellij_utils::is_socket(file)
 }
 
 pub(crate) fn get_resurrectable_sessions() -> Vec<(String, Duration, Layout)> {
@@ -55,7 +84,11 @@ pub(crate) fn get_resurrectable_sessions() -> Vec<(String, Duration, Layout)> {
                     let raw_layout = match std::fs::read_to_string(&layout_file_name) {
                         Ok(raw_layout) => raw_layout,
                         Err(e) => {
-                            log::error!("Failed to read resurrection layout file: {:?} at {:?}", e, &layout_file_name);
+                            log::error!(
+                                "Failed to read resurrection layout file: {:?} at {:?}",
+                                e,
+                                &layout_file_name
+                            );
                             return None;
                         },
                     };
@@ -107,27 +140,17 @@ pub(crate) fn get_resurrectable_sessions() -> Vec<(String, Duration, Layout)> {
 }
 
 pub(crate) fn get_sessions_sorted_by_mtime() -> anyhow::Result<Vec<String>> {
-    match fs::read_dir(&*ZELLIJ_SOCK_DIR) {
-        Ok(files) => {
-            let mut sessions_with_mtime: Vec<(String, SystemTime)> = Vec::new();
-            for file in files {
-                let file = file?;
-                let file_name = file.file_name().into_string().unwrap();
-                let file_modified_at = file.metadata()?.modified()?;
-                #[cfg(unix)]
-                if file.file_type()?.is_socket() && assert_socket(&file_name) {
-                    sessions_with_mtime.push((file_name, file_modified_at));
-                }
-                // TODO windows
-            }
-            sessions_with_mtime.sort_by_key(|x| x.1); // the oldest one will be the first
-
-            let sessions = sessions_with_mtime.iter().map(|x| x.0.clone()).collect();
-            Ok(sessions)
-        },
-        Err(err) if io::ErrorKind::NotFound != err.kind() => Err(err.into()),
-        Err(_) => Ok(Vec::with_capacity(0)),
+    let mut sessions_with_mtime: Vec<(String, SystemTime)> = Vec::new();
+    for file in iter_sessions()? {
+        let file_name = file.file_name().into_string().unwrap();
+        let file_modified_at = file.metadata()?.modified()?;
+        if is_socket(&file)? && assert_socket(&file_name) {
+            sessions_with_mtime.push((file_name, file_modified_at));
+        }
     }
+    sessions_with_mtime.sort_by_key(|x| x.1); // the oldest one will be the first
+    let sessions = sessions_with_mtime.iter().map(|x| x.0.clone()).collect();
+    Ok(sessions)
 }
 
 fn assert_socket(name: &str) -> bool {

@@ -872,15 +872,12 @@ fn delete_dead_session(session_name: String) -> Result<()> {
 }
 
 fn delete_all_dead_sessions() -> Result<()> {
-    #[cfg(unix)]
-    use std::os::unix::fs::FileTypeExt;
     let mut live_sessions = vec![];
     if let Ok(files) = std::fs::read_dir(&*ZELLIJ_SOCK_DIR) {
         files.for_each(|file| {
             if let Ok(file) = file {
                 if let Ok(file_name) = file.file_name().into_string() {
-                    #[cfg(unix)]
-                    if file.file_type().unwrap().is_socket() {
+                    if zellij_utils::is_socket(&file).expect("Failed to check for session") {
                         live_sessions.push(file_name);
                     }
                 }
