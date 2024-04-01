@@ -120,7 +120,7 @@ impl PluginPane {
         arrow_fonts: bool,
         styled_underlines: bool,
     ) -> Self {
-        let loading_indication = LoadingIndication::new(title.clone()).with_colors(style.colors);
+        let loading_indication = LoadingIndication::new(title.clone()).with_colors(style.styling);
         let initial_loading_message = loading_indication.to_string();
         let mut plugin = PluginPane {
             pid,
