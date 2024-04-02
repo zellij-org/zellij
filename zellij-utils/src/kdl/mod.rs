@@ -12,7 +12,6 @@ use crate::input::options::{Clipboard, OnForceClose, Options};
 use crate::input::permission::{GrantedPermission, PermissionCache};
 use crate::input::plugins::PluginAliases;
 use crate::input::theme::{FrameConfig, Theme, Themes, UiConfig};
-use crate::shared::colors;
 use kdl_layout_parser::KdlLayoutParser;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use strum::IntoEnumIterator;
@@ -2005,7 +2004,7 @@ impl Themes {
     ) -> Result<[PaletteColor; 6], ConfigError> {
         let colors = kdl_children_or_error!(
             kdl_child_with_name_or_error!(style_node, style_descriptor)?,
-            "foo"
+            format!("Missing colors for {}", style_descriptor)
         );
         Ok([
             PaletteColor::try_from(("base", colors))?,

@@ -44,9 +44,6 @@ pub fn render_tab(
     } else {
         palette.ribbon_unselected[0]
     };
-    let alternate_tab_color = if is_alternate_tab {
-        // TODO: only do this if we don't have the arrow capabilities
-    };
     let left_separator = style!(foreground_color, background_color).paint(separator);
     let mut tab_text_len = text.width() + (separator_width * 2) + 2; // +2 for padding
     let tab_styled_text = style!(foreground_color, background_color)
