@@ -38,7 +38,8 @@ impl TryFrom<Style> for ProtobufStyle {
 }
 
 fn to_array<T, const N: usize>(v: Vec<T>) -> std::result::Result<[T; N], &'static str> {
-    v.try_into().map_err(|_| "darn")
+    v.try_into()
+        .map_err(|_| "Could not obtain array from protobuf field")
 }
 
 #[macro_export]
