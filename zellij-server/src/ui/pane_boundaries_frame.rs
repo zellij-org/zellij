@@ -801,7 +801,7 @@ impl PaneFrame {
                 first_part.append(&mut foreground_color(left_bracket, self.color));
                 first_part.append(&mut foreground_color(
                     exited_text,
-                    Some(self.style.colors.red),
+                    Some(self.style.styling.exit_code_error[0]),
                 ));
                 first_part.append(&mut foreground_color(right_bracket, self.color));
                 (
@@ -836,7 +836,7 @@ impl PaneFrame {
         second_part.append(&mut foreground_color(left_enter_bracket, self.color));
         second_part.append(&mut foreground_color(
             enter_text,
-            Some(self.style.colors.orange),
+            Some(self.style.styling.text_unselected[4]),
         ));
         second_part.append(&mut foreground_color(right_enter_bracket, self.color));
         second_part.append(&mut foreground_color(enter_tip, self.color));
@@ -844,7 +844,7 @@ impl PaneFrame {
         second_part.append(&mut foreground_color(left_esc_bracket, self.color));
         second_part.append(&mut foreground_color(
             esc_text,
-            Some(self.style.colors.orange),
+            Some(self.style.styling.text_unselected[4]),
         ));
         second_part.append(&mut foreground_color(right_esc_bracket, self.color));
         second_part.append(&mut foreground_color(esc_tip, self.color));
@@ -852,7 +852,7 @@ impl PaneFrame {
         second_part.append(&mut foreground_color(left_break_bracket, self.color));
         second_part.append(&mut foreground_color(
             break_text,
-            Some(self.style.colors.orange),
+            Some(self.style.styling.text_unselected[4]),
         ));
         second_part.append(&mut foreground_color(right_break_bracket, self.color));
         second_part.append(&mut foreground_color(break_tip, self.color));

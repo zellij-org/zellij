@@ -28,7 +28,7 @@ pub fn render_tab(
     let separator_width = separator.width();
 
     let alternate_tab_color = if is_alternate_tab {
-        palette.ribbon_unselected[1]
+        palette.text_unselected[5]
     } else {
         palette.ribbon_unselected[5]
     };

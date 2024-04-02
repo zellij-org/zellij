@@ -91,7 +91,7 @@ fn color_elements(palette: Styling, different_color_alternates: bool) -> Colored
     let background = palette.text_unselected[5];
     let foreground = palette.text_unselected[0];
     let alternate_background_color = if different_color_alternates {
-        palette.ribbon_unselected[3]
+        palette.ribbon_unselected[0]
     } else {
         palette.ribbon_unselected[5]
     };
@@ -108,9 +108,9 @@ fn color_elements(palette: Styling, different_color_alternates: bool) -> Colored
         },
         unselected: SegmentStyle {
             prefix_separator: style!(background, palette.ribbon_unselected[5]),
-            char_left_separator: style!(palette.ribbon_unselected[1], palette.ribbon_unselected[5])
+            char_left_separator: style!(palette.ribbon_unselected[0], palette.ribbon_unselected[5])
                 .bold(),
-            char_shortcut: style!(palette.ribbon_unselected[2], palette.ribbon_unselected[5])
+            char_shortcut: style!(palette.ribbon_unselected[1], palette.ribbon_unselected[5])
                 .bold(),
             char_right_separator: style!(
                 palette.ribbon_unselected[0],
@@ -122,12 +122,10 @@ fn color_elements(palette: Styling, different_color_alternates: bool) -> Colored
         },
         unselected_alternate: SegmentStyle {
             prefix_separator: style!(background, alternate_background_color),
-            char_left_separator: style!(palette.ribbon_unselected[1], alternate_background_color)
-                .bold(),
-            char_shortcut: style!(palette.ribbon_unselected[2], alternate_background_color).bold(),
-            char_right_separator: style!(palette.ribbon_unselected[1], alternate_background_color)
-                .bold(),
-            styled_text: style!(palette.ribbon_unselected[0], alternate_background_color).bold(),
+            char_left_separator: style!(background, alternate_background_color).bold(),
+            char_shortcut: style!(palette.ribbon_unselected[1], alternate_background_color).bold(),
+            char_right_separator: style!(background, alternate_background_color).bold(),
+            styled_text: style!(background, alternate_background_color).bold(),
             suffix_separator: style!(alternate_background_color, background).bold(),
         },
         disabled: SegmentStyle {
