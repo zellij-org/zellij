@@ -5,9 +5,7 @@ use crate::ui::boundaries::Boundaries;
 use crate::ui::pane_boundaries_frame::FrameParams;
 use crate::ClientId;
 use std::collections::HashMap;
-use zellij_utils::data::{
-    client_id_to_colors, single_client_color, InputMode, PaletteColor, Style,
-};
+use zellij_utils::data::{client_id_to_colors, InputMode, PaletteColor, Style};
 use zellij_utils::errors::prelude::*;
 pub struct PaneContentsAndUi<'a> {
     pane: &'a mut Box<dyn Pane>,
@@ -135,7 +133,7 @@ impl<'a> PaneContentsAndUi<'a> {
                 .with_context(|| {
                     format!("failed to render fake cursor if needed for client {client_id}")
                 })?;
-            if let Some(colors) = client_id_to_colors(*fake_cursor_client_id, self.style.styling) {
+            if let Some(colors) = client_id_to_colors(*fake_cursor_client_id) {
                 if let Some(vte_output) = self.pane.render_fake_cursor(colors.0, colors.1) {
                     self.output.add_post_vte_instruction_to_client(
                         client_id,
@@ -261,7 +259,7 @@ impl<'a> PaneContentsAndUi<'a> {
                     if session_is_mirrored || !self.multiple_users_exist_in_session {
                         Some(self.style.styling.frame_selected[0])
                     } else {
-                        let colors = client_id_to_colors(client_id, self.style.styling);
+                        let colors = client_id_to_colors(client_id);
                         colors.map(|colors| colors.0)
                     }
                 },

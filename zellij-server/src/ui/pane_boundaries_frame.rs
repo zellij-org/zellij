@@ -117,7 +117,7 @@ impl PaneFrame {
         self.color = Some(color);
     }
     fn client_cursor(&self, client_id: ClientId) -> Vec<TerminalCharacter> {
-        let color = client_id_to_colors(client_id, self.style.styling);
+        let color = client_id_to_colors(client_id);
         background_color(" ", color.map(|c| c.0))
     }
     fn get_corner(&self, corner: &'static str) -> &'static str {
