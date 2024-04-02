@@ -38,7 +38,7 @@ impl Table {
 }
 
 pub fn print_table(table: Table) {
-    print!("{}", serialize_table(&table))
+    print!("\u{1b}Pztable;{}", table.serialize())
 }
 
 pub fn print_table_with_coordinates(
@@ -48,9 +48,15 @@ pub fn print_table_with_coordinates(
     width: Option<usize>,
     height: Option<usize>,
 ) {
+    let width = width.map(|w| w.to_string()).unwrap_or_default();
+    let height = height.map(|h| h.to_string()).unwrap_or_default();
     print!(
-        "{}",
-        serialize_table_with_coordinates(&table, x, y, width, height)
+        "\u{1b}Pztable;{}/{}/{}/{};{}\u{1b}\\",
+        x,
+        y,
+        width,
+        height,
+        table.serialize()
     )
 }
 

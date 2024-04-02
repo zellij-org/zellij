@@ -84,7 +84,7 @@ impl Text {
 }
 
 pub fn print_text(text: Text) {
-    print!("{}", serialize_text(&text))
+    print!("\u{1b}Pztext;{}\u{1b}\\", text.serialize())
 }
 
 pub fn print_text_with_coordinates(
@@ -94,9 +94,15 @@ pub fn print_text_with_coordinates(
     width: Option<usize>,
     height: Option<usize>,
 ) {
+    let width = width.map(|w| w.to_string()).unwrap_or_default();
+    let height = height.map(|h| h.to_string()).unwrap_or_default();
     print!(
-        "{}",
-        serialize_text_with_coordinates(&text, x, y, width, height)
+        "\u{1b}Pztext;{}/{}/{}/{};{}\u{1b}\\",
+        x,
+        y,
+        width,
+        height,
+        text.serialize()
     )
 }
 

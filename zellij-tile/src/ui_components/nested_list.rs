@@ -45,7 +45,12 @@ impl NestedListItem {
 
 /// render a nested list with arbitrary data
 pub fn print_nested_list(items: Vec<NestedListItem>) {
-    print!("{}", serialize_nested_list(&items))
+    let items = items
+        .into_iter()
+        .map(|i| i.serialize())
+        .collect::<Vec<_>>()
+        .join(";");
+    print!("\u{1b}Pznested_list;{}\u{1b}\\", items)
 }
 
 pub fn print_nested_list_with_coordinates(
@@ -55,9 +60,16 @@ pub fn print_nested_list_with_coordinates(
     width: Option<usize>,
     height: Option<usize>,
 ) {
+    let width = width.map(|w| w.to_string()).unwrap_or_default();
+    let height = height.map(|h| h.to_string()).unwrap_or_default();
+    let items = items
+        .into_iter()
+        .map(|i| i.serialize())
+        .collect::<Vec<_>>()
+        .join(";");
     print!(
-        "{}",
-        serialize_nested_list_with_coordinates(&items, x, y, width, height)
+        "\u{1b}Pznested_list;{}/{}/{}/{};{}\u{1b}\\",
+        x, y, width, height, items
     )
 }
 
