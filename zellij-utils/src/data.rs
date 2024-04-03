@@ -1174,17 +1174,21 @@ impl From<Styling> for Palette {
 
 impl From<Palette> for Styling {
     fn from(palette: Palette) -> Self {
+        let (fg, bg) = match palette.theme_hue {
+            ThemeHue::Light => (palette.black, palette.white),
+            ThemeHue::Dark => (palette.white, palette.black),
+        };
         Styling {
             text_unselected: [
-                palette.white,
+                fg,
                 palette.orange,
                 palette.cyan,
                 palette.green,
                 palette.magenta,
-                palette.black,
+                bg,
             ],
             text_selected: [
-                palette.white,
+                fg,
                 palette.orange,
                 palette.cyan,
                 palette.green,
