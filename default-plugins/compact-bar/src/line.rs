@@ -319,7 +319,7 @@ fn swap_layout_status(
             swap_layout_name.make_ascii_uppercase();
             let swap_layout_name_len = swap_layout_name.len() + 3;
             let bg = palette.text_unselected[5];
-            let fg = palete.ribbon_unselected[5];
+            let fg = palette.ribbon_unselected[5];
             let green = palette.ribbon_selected[5];
 
             let (prefix_separator, swap_layout_name, suffix_separator) =
