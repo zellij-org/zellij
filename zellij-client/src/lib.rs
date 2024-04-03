@@ -208,7 +208,7 @@ pub fn start_client(
 
     let (palette, styling) = config
         .theme_config(&config_options)
-        .unwrap_or_else(|| (os_input.load_palette(), Default::default()));
+        .unwrap_or_else(|| (os_input.load_palette(), os_input.load_palette().into()));
 
     let full_screen_ws = os_input.get_terminal_size_using_fd(0);
     let client_attributes = ClientAttributes {

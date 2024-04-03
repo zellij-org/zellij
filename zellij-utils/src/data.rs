@@ -1158,6 +1158,7 @@ pub struct Styling {
     pub exit_code_error: [PaletteColor; 5],
 }
 
+// TODO: possibly better Struct type for caller rather than indexing?
 #[derive(Debug, Copy, Default, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub struct StyleDeclaration {
     pub base: PaletteColor,
@@ -1166,9 +1167,21 @@ pub struct StyleDeclaration {
 }
 
 impl From<Styling> for Palette {
-    // TODO: Implement mapping of old colors -> styling
-    fn from(_palette: Styling) -> Self {
-        default_palette()
+    fn from(styling: Styling) -> Self {
+        Palette {
+            fg: styling.ribbon_unselected[5],
+            bg: styling.text_unselected[5],
+            red: styling.exit_code_error[0],
+            green: styling.text_unselected[3],
+            yellow: styling.exit_code_error[1],
+            blue: styling.ribbon_unselected[3],
+            magenta: styling.text_unselected[4],
+            orange: styling.text_unselected[1],
+            cyan: styling.text_unselected[2],
+            black: styling.ribbon_unselected[0],
+            white: styling.ribbon_selected[2],
+            ..Default::default()
+        }
     }
 }
 
