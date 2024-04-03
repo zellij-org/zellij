@@ -617,7 +617,7 @@ impl Pane for PluginPane {
             .unwrap();
     }
     fn add_red_pane_frame_color_override(&mut self, error_text: Option<String>) {
-        self.pane_frame_color_override = Some((self.style.colors.red, error_text));
+        self.pane_frame_color_override = Some((self.style.styling.exit_code_error[0], error_text));
     }
     fn clear_pane_frame_color_override(&mut self) {
         self.pane_frame_color_override = None;
@@ -696,10 +696,10 @@ impl PluginPane {
         }
     }
     fn display_request_permission_message(&self, plugin_permission: &PluginPermission) -> String {
-        let bold_white = style!(self.style.colors.white).bold();
-        let cyan = style!(self.style.colors.cyan).bold();
-        let orange = style!(self.style.colors.orange).bold();
-        let green = style!(self.style.colors.green).bold();
+        let bold_white = style!(self.style.styling.text_unselected[0]).bold();
+        let cyan = style!(self.style.styling.text_unselected[2]).bold();
+        let orange = style!(self.style.styling.text_unselected[1]).bold();
+        let green = style!(self.style.styling.text_unselected[3]).bold();
 
         let mut messages = String::new();
         let permissions: BTreeSet<PermissionType> =
