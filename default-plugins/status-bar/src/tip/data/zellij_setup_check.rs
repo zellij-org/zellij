@@ -23,7 +23,7 @@ macro_rules! strings {
 
 pub fn zellij_setup_check_full(help: &ModeInfo) -> LinePart {
     // Tip: Having issues with Zellij? Try running "zellij setup --check"
-    let orange_color = palette_match!(help.style.colors.orange);
+    let orange_color = palette_match!(help.style.styling.text_unselected[1]);
 
     strings!(&[
         Style::new().paint(" Tip: "),
@@ -37,7 +37,7 @@ pub fn zellij_setup_check_full(help: &ModeInfo) -> LinePart {
 
 pub fn zellij_setup_check_medium(help: &ModeInfo) -> LinePart {
     // Tip: Run "zellij setup --check" to find issues
-    let orange_color = palette_match!(help.style.colors.orange);
+    let orange_color = palette_match!(help.style.styling.text_unselected[1]);
 
     strings!(&[
         Style::new().paint(" Tip: "),
@@ -52,7 +52,7 @@ pub fn zellij_setup_check_medium(help: &ModeInfo) -> LinePart {
 
 pub fn zellij_setup_check_short(help: &ModeInfo) -> LinePart {
     // Run "zellij setup --check" to find issues
-    let orange_color = palette_match!(help.style.colors.orange);
+    let orange_color = palette_match!(help.style.styling.text_unselected[1]);
 
     strings!(&[
         Style::new().paint(" Run "),

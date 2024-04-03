@@ -24,7 +24,7 @@ macro_rules! strings {
 pub fn use_mouse_full(help: &ModeInfo) -> LinePart {
     // Tip: Use the mouse to switch pane focus, scroll through the pane
     // scrollbuffer, switch or scroll through tabs
-    let green_color = palette_match!(help.style.colors.green);
+    let green_color = palette_match!(help.style.styling.text_unselected[3]);
 
     strings!(&[
         Style::new().paint(" Tip: "),
@@ -36,7 +36,7 @@ pub fn use_mouse_full(help: &ModeInfo) -> LinePart {
 pub fn use_mouse_medium(help: &ModeInfo) -> LinePart {
     // Tip: Use the mouse to switch panes/tabs or scroll through the pane
     // scrollbuffer
-    let green_color = palette_match!(help.style.colors.green);
+    let green_color = palette_match!(help.style.styling.text_unselected[3]);
 
     strings!(&[
         Style::new().paint(" Tip: "),
@@ -47,7 +47,7 @@ pub fn use_mouse_medium(help: &ModeInfo) -> LinePart {
 
 pub fn use_mouse_short(help: &ModeInfo) -> LinePart {
     // Tip: Use the mouse to switch panes/tabs or scroll
-    let green_color = palette_match!(help.style.colors.green);
+    let green_color = palette_match!(help.style.styling.text_unselected[3]);
 
     strings!(&[
         Style::new().fg(green_color).bold().paint(" Use the mouse"),
