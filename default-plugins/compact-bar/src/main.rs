@@ -109,7 +109,7 @@ impl ZellijPlugin for State {
                 tabname,
                 t,
                 is_alternate_tab,
-                self.mode_info.style.styling,
+                self.mode_info.style.colors,
                 self.mode_info.capabilities,
             );
             is_alternate_tab = !is_alternate_tab;
@@ -120,7 +120,7 @@ impl ZellijPlugin for State {
             all_tabs,
             active_tab_index,
             cols.saturating_sub(1),
-            self.mode_info.style.styling,
+            self.mode_info.style.colors,
             self.mode_info.capabilities,
             self.mode_info.style.hide_session_name,
             self.mode_info.mode,
@@ -131,7 +131,7 @@ impl ZellijPlugin for State {
             .tab_line
             .iter()
             .fold(String::new(), |output, part| output + &part.part);
-        let background = self.mode_info.style.styling.text_unselected[5];
+        let background = self.mode_info.style.colors.text_unselected[5];
         match background {
             PaletteColor::Rgb((r, g, b)) => {
                 print!("{}\u{1b}[48;2;{};{};{}m\u{1b}[0K", output, r, g, b);

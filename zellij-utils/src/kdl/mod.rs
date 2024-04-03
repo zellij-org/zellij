@@ -2076,10 +2076,7 @@ impl Themes {
                         exit_code_error: Themes::colors_from_node(style, "exit_code_error")?,
                     };
 
-                    Theme {
-                        palette: s.into(),
-                        styling: s,
-                    }
+                    Theme { palette: s }
                 },
                 // Older palette based theme definition
                 None => {
@@ -2098,8 +2095,7 @@ impl Themes {
                         ..Default::default()
                     };
                     Theme {
-                        palette,
-                        styling: palette.into(),
+                        palette: palette.into(),
                     }
                 },
             };

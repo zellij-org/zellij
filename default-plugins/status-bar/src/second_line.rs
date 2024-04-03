@@ -60,9 +60,9 @@ fn add_shortcut(
     keys: Vec<KeyWithModifier>,
 ) -> LinePart {
     let shortcut = if linepart.len == 0 {
-        full_length_shortcut(true, keys, text, help.style.styling)
+        full_length_shortcut(true, keys, text, help.style.colors)
     } else {
-        full_length_shortcut(false, keys, text, help.style.styling)
+        full_length_shortcut(false, keys, text, help.style.colors)
     };
 
     let mut new_linepart = LinePart::default();
@@ -270,7 +270,7 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<KeyWithModifier
 fn full_shortcut_list(help: &ModeInfo, tip: TipFn) -> LinePart {
     match help.mode {
         InputMode::Normal => tip(help),
-        InputMode::Locked => locked_interface_indication(help.style.styling),
+        InputMode::Locked => locked_interface_indication(help.style.colors),
         _ => full_shortcut_list_nonstandard_mode(help),
     }
 }
@@ -288,7 +288,7 @@ fn shortened_shortcut_list_nonstandard_mode(help: &ModeInfo) -> LinePart {
 fn shortened_shortcut_list(help: &ModeInfo, tip: TipFn) -> LinePart {
     match help.mode {
         InputMode::Normal => tip(help),
-        InputMode::Locked => locked_interface_indication(help.style.styling),
+        InputMode::Locked => locked_interface_indication(help.style.colors),
         _ => shortened_shortcut_list_nonstandard_mode(help),
     }
 }
@@ -320,7 +320,7 @@ fn best_effort_shortcut_list(help: &ModeInfo, tip: TipFn, max_len: usize) -> Lin
             }
         },
         InputMode::Locked => {
-            let line_part = locked_interface_indication(help.style.styling);
+            let line_part = locked_interface_indication(help.style.colors);
             if line_part.len <= max_len {
                 line_part
             } else {
@@ -403,7 +403,7 @@ pub fn fullscreen_panes_to_hide(palette: &Styling, panes_to_hide: usize) -> Line
 }
 
 pub fn floating_panes_are_visible(mode_info: &ModeInfo) -> LinePart {
-    let palette = mode_info.style.styling;
+    let palette = mode_info.style.colors;
     let km = &mode_info.get_mode_keybinds();
     let white_color = palette_match!(palette.text_unselected[0]);
     let green_color = palette_match!(palette.text_unselected[3]);

@@ -57,7 +57,7 @@ pub fn nested_list(
             });
         if line_item.text.selected {
             let selected_background =
-                RESET_STYLES.background(Some(style.styling.list_selected[5].into()));
+                RESET_STYLES.background(Some(style.colors.list_selected[5].into()));
             stringified.push_str(&format!(
                 "{}{}{}{:padding$}{bulletin}{}{text}{}",
                 go_to_row_instruction,

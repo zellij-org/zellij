@@ -162,16 +162,10 @@ impl TryFrom<&CliArgs> for Config {
 }
 
 impl Config {
-    pub fn theme_config(&self, opts: &Options) -> Option<(Palette, Styling)> {
+    pub fn theme_config(&self, opts: &Options) -> Option<Styling> {
         match &opts.theme {
-            Some(theme_name) => self
-                .themes
-                .get_theme(theme_name)
-                .map(|theme| (theme.palette, theme.styling)),
-            None => self
-                .themes
-                .get_theme("default")
-                .map(|theme| (theme.palette, theme.styling)),
+            Some(theme_name) => self.themes.get_theme(theme_name).map(|theme| theme.palette),
+            None => self.themes.get_theme("default").map(|theme| theme.palette),
         }
     }
     /// Gets default configuration from assets
@@ -468,8 +462,8 @@ mod config_test {
                     black: PaletteColor::Rgb((0, 0, 0)),
                     white: PaletteColor::Rgb((255, 255, 255)),
                     ..Default::default()
-                },
-                styling: Default::default(),
+                }
+                .into(),
             },
         );
         let expected_themes = Themes::from_data(expected_themes);
@@ -526,8 +520,8 @@ mod config_test {
                     black: PaletteColor::Rgb((0, 0, 0)),
                     white: PaletteColor::Rgb((255, 255, 255)),
                     ..Default::default()
-                },
-                styling: Default::default(),
+                }
+                .into(),
             },
         );
         expected_themes.insert(
@@ -546,8 +540,8 @@ mod config_test {
                     white: PaletteColor::Rgb((229, 233, 240)),
                     orange: PaletteColor::Rgb((208, 135, 112)),
                     ..Default::default()
-                },
-                styling: Default::default(),
+                }
+                .into(),
             },
         );
         let expected_themes = Themes::from_data(expected_themes);
@@ -591,8 +585,8 @@ mod config_test {
                     black: PaletteColor::EightBit(1),
                     white: PaletteColor::EightBit(255),
                     ..Default::default()
-                },
-                styling: Default::default(),
+                }
+                .into(),
             },
         );
         let expected_themes = Themes::from_data(expected_themes);
@@ -715,7 +709,7 @@ mod config_test {
         expected_themes.insert(
             "named_theme".into(),
             Theme {
-                styling: Styling {
+                palette: Styling {
                     text_unselected: [
                         PaletteColor::Rgb((220, 215, 186)),
                         PaletteColor::Rgb((220, 215, 205)),
@@ -817,7 +811,6 @@ mod config_test {
                         PaletteColor::Rgb((195, 64, 67)),
                     ],
                 },
-                palette: Default::default(),
             },
         );
         let expected_themes = Themes::from_data(expected_themes);

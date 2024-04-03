@@ -11,13 +11,12 @@ use std::convert::TryFrom;
 impl TryFrom<ProtobufStyle> for Style {
     type Error = &'static str;
     fn try_from(protobuf_style: ProtobufStyle) -> Result<Self, &'static str> {
-        let s = protobuf_style.styling.ok_or("malformed")?.try_into()?;
+        let s = protobuf_style
+            .styling
+            .ok_or("malformed style payload")?
+            .try_into()?;
         Ok(Style {
-            colors: protobuf_style
-                .palette
-                .ok_or("malformed style payload")?
-                .try_into()?,
-            styling: s,
+            colors: s,
             rounded_corners: protobuf_style.rounded_corners,
             hide_session_name: protobuf_style.hide_session_name,
         })
@@ -27,9 +26,10 @@ impl TryFrom<ProtobufStyle> for Style {
 impl TryFrom<Style> for ProtobufStyle {
     type Error = &'static str;
     fn try_from(style: Style) -> Result<Self, &'static str> {
-        let s = ProtobufStyling::try_from(style.styling)?;
+        let s = ProtobufStyling::try_from(style.colors)?;
+        let palette = Palette::try_from(style.colors).map_err(|_| "malformed style payload")?;
         Ok(ProtobufStyle {
-            palette: Some(style.colors.try_into()?),
+            palette: Some(palette.try_into()?),
             rounded_corners: style.rounded_corners,
             hide_session_name: style.hide_session_name,
             styling: Some(s),

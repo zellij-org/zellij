@@ -66,7 +66,7 @@ fn add_keybinds(help: &ModeInfo) -> Keygroups {
     let new_pane = if new_pane_keys.is_empty() {
         vec![Style::new().bold().paint("UNBOUND")]
     } else {
-        style_key_with_modifier(&new_pane_keys, &help.style.styling, None)
+        style_key_with_modifier(&new_pane_keys, &help.style.colors, None)
     };
 
     let mut resize_keys = action_key_group(
@@ -84,7 +84,7 @@ fn add_keybinds(help: &ModeInfo) -> Keygroups {
     let resize = if resize_keys.is_empty() {
         vec![Style::new().bold().paint("UNBOUND")]
     } else {
-        style_key_with_modifier(&resize_keys, &help.style.styling, None)
+        style_key_with_modifier(&resize_keys, &help.style.colors, None)
     };
 
     let move_focus_keys = action_key_group(
@@ -113,8 +113,8 @@ fn add_keybinds(help: &ModeInfo) -> Keygroups {
             letters.push(key);
         }
     }
-    let arrows = style_key_with_modifier(&arrows, &help.style.styling, None);
-    let letters = style_key_with_modifier(&letters, &help.style.styling, None);
+    let arrows = style_key_with_modifier(&arrows, &help.style.colors, None);
+    let letters = style_key_with_modifier(&letters, &help.style.colors, None);
     let move_focus = if arrows.is_empty() && letters.is_empty() {
         vec![Style::new().bold().paint("UNBOUND")]
     } else if arrows.is_empty() || letters.is_empty() {

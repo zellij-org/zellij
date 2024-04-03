@@ -1085,7 +1085,7 @@ impl Grid {
                 .selection
                 .contains_row(character_chunk.y.saturating_sub(content_y))
             {
-                let background_color = match style.styling.text_unselected[5] {
+                let background_color = match style.colors.text_unselected[5] {
                     PaletteColor::Rgb(rgb) => AnsiCode::RgbCode(rgb),
                     PaletteColor::EightBit(col) => AnsiCode::ColorIndex(col),
                 };
@@ -1102,13 +1102,13 @@ impl Grid {
                         let (select_background_palette, select_foreground_palette) =
                             if Some(res) == self.search_results.active.as_ref() {
                                 (
-                                    style.styling.text_unselected[1],
-                                    style.styling.text_unselected[5],
+                                    style.colors.text_unselected[1],
+                                    style.colors.text_unselected[5],
                                 )
                             } else {
                                 (
-                                    style.styling.text_unselected[3],
-                                    style.styling.text_unselected[5],
+                                    style.colors.text_unselected[3],
+                                    style.colors.text_unselected[5],
                                 )
                             };
                         let background_color = match select_background_palette {

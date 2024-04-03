@@ -1135,8 +1135,7 @@ pub struct Palette {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
 pub struct Style {
-    pub colors: Palette,
-    pub styling: Styling,
+    pub colors: Styling,
     pub rounded_corners: bool,
     pub hide_session_name: bool,
 }

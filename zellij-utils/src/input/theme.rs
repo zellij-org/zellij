@@ -72,8 +72,7 @@ impl Themes {
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct Theme {
     #[serde(flatten)]
-    pub palette: Palette,
-    pub styling: Styling,
+    pub palette: Styling,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]

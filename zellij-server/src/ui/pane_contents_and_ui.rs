@@ -257,13 +257,13 @@ impl<'a> PaneContentsAndUi<'a> {
             match mode {
                 InputMode::Normal | InputMode::Locked => {
                     if session_is_mirrored || !self.multiple_users_exist_in_session {
-                        Some(self.style.styling.frame_selected[0])
+                        Some(self.style.colors.frame_selected[0])
                     } else {
                         let colors = client_id_to_colors(client_id);
                         colors.map(|colors| colors.0)
                     }
                 },
-                _ => Some(self.style.styling.frame_unselected[0]),
+                _ => Some(self.style.colors.frame_unselected[0]),
             }
         } else {
             None

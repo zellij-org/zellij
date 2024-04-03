@@ -353,8 +353,8 @@ fn swap_layout_keycode(mode_info: &ModeInfo) -> LinePart {
     );
     let prev_next_keys_indicator = style_key_with_modifier(
         &prev_next_keys,
-        &mode_info.style.styling,
-        Some(mode_info.style.styling.text_unselected[5]),
+        &mode_info.style.colors,
+        Some(mode_info.style.colors.text_unselected[5]),
     );
     let keycode = ANSIStrings(&prev_next_keys_indicator);
     let len = unstyled_len(&keycode);
@@ -614,7 +614,7 @@ pub fn first_line(
     separator: &str,
 ) -> LinePart {
     let supports_arrow_fonts = !help.capabilities.arrow_fonts;
-    let colored_elements = color_elements(help.style.styling, !supports_arrow_fonts);
+    let colored_elements = color_elements(help.style.colors, !supports_arrow_fonts);
     let binds = &help.get_mode_keybinds();
     // Unselect all by default
     let mut default_keys = vec![
