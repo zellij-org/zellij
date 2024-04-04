@@ -325,6 +325,7 @@ impl Action {
             CliAction::MoveFocusOrTab { direction } => Ok(vec![Action::MoveFocusOrTab(direction)]),
             CliAction::MovePane { direction } => Ok(vec![Action::MovePane(direction)]),
             CliAction::MovePaneBackwards => Ok(vec![Action::MovePaneBackwards]),
+            CliAction::MoveTab { direction } => Ok(vec![Action::MoveTab(direction)]),
             CliAction::Clear => Ok(vec![Action::ClearScreen]),
             CliAction::DumpScreen { path, full } => Ok(vec![Action::DumpScreen(
                 path.as_os_str().to_string_lossy().into(),

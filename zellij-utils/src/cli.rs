@@ -617,6 +617,10 @@ pub enum CliAction {
         #[clap(short, long, value_parser, requires("layout"))]
         cwd: Option<PathBuf>,
     },
+    /// Move the focused tab in the specified direction. [right|left]
+    MoveTab {
+        direction: Direction,
+    },
     PreviousSwapLayout,
     NextSwapLayout,
     /// Query all tab names
