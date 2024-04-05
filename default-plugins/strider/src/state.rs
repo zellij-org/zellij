@@ -158,7 +158,7 @@ impl State {
             }
         }
         if self.close_on_selection {
-            close_focus();
+            close_self();
         }
     }
     pub fn send_filepick_response(&mut self) {
@@ -178,7 +178,7 @@ impl State {
                         .with_payload(selected_path.display().to_string()),
                 );
                 #[cfg(target_family = "wasm")]
-                close_focus();
+                close_self();
             },
             Some((PipeSource::Cli(pipe_id), _args)) => {
                 #[cfg(target_family = "wasm")]
@@ -186,7 +186,7 @@ impl State {
                 #[cfg(target_family = "wasm")]
                 unblock_cli_pipe_input(pipe_id);
                 #[cfg(target_family = "wasm")]
-                close_focus();
+                close_self();
             },
             _ => {},
         }

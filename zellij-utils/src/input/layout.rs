@@ -456,6 +456,27 @@ impl PluginAlias {
             ..Default::default()
         }
     }
+    pub fn set_caller_cwd_if_not_set(&mut self, caller_cwd: Option<PathBuf>) {
+        // we do this only for an alias because in all other cases this will be handled by the
+        // "cwd" configuration key above
+        // for an alias we might have cases where the cwd is defined on the alias but we still
+        // want to pass the "caller" cwd for the plugin the alias resolves into (eg. a
+        // filepicker that has access to the whole filesystem but wants to start in a specific
+        // folder)
+        if let Some(caller_cwd) = caller_cwd {
+            if self
+                .configuration
+                .as_ref()
+                .map(|c| c.inner().get("caller_cwd").is_none())
+                .unwrap_or(true)
+            {
+                let configuration = self
+                    .configuration
+                    .get_or_insert_with(|| PluginUserConfiguration::new(BTreeMap::new()));
+                configuration.insert("caller_cwd", caller_cwd.display().to_string());
+            }
+        }
+    }
 }
 
 #[allow(clippy::derive_hash_xor_eq)]

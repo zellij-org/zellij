@@ -2655,18 +2655,16 @@ Config {
                 'w',
             ): [
                 LaunchOrFocusPlugin(
-                    RunPlugin(
-                        RunPlugin {
-                            _allow_exec_host_cmd: false,
-                            location: Zellij(
-                                PluginTag(
-                                    "session-manager",
+                    Alias(
+                        PluginAlias {
+                            name: "session-manager",
+                            configuration: Some(
+                                PluginUserConfiguration(
+                                    {},
                                 ),
                             ),
-                            configuration: PluginUserConfiguration(
-                                {},
-                            ),
                             initial_cwd: None,
+                            run_plugin: None,
                         },
                     ),
                     true,

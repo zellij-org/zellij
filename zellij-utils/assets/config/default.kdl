@@ -114,7 +114,7 @@ keybinds {
         bind "Ctrl s" { SwitchToMode "Scroll"; }
         bind "d" { Detach; }
         bind "w" {
-            LaunchOrFocusPlugin "zellij:session-manager" {
+            LaunchOrFocusPlugin "session-manager" {
                 floating true
                 move_to_focused_tab true
             };
