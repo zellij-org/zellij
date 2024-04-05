@@ -36,6 +36,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat(plugins): add close_self API to allow plugins to close their own instance (https://github.com/zellij-org/zellij/pull/3228)
 * feat(plugins): allow plugins to specify `zellij:OWN_URL` as a pipe destination (https://github.com/zellij-org/zellij/pull/3232)
 * feat(cli): Add `move-tab` action (https://github.com/zellij-org/zellij/pull/3244)
+* feat(plugins): add serialization methods to UI components (https://github.com/zellij-org/zellij/pull/3193)
 
 ## [0.39.2] - 2023-11-29
 * fix(cli): typo in cli help (https://github.com/zellij-org/zellij/pull/2906)
