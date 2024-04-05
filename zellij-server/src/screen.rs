@@ -3544,7 +3544,7 @@ pub(crate) fn screen_thread_main(
                             should_float,
                             Some(run_plugin),
                             None,
-                            None,
+                            Some(client_id),
                         )
                     }, ?);
                 } else if let Some(active_tab) =

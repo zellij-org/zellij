@@ -1348,7 +1348,7 @@ impl Pty {
         should_float: Option<bool>,
         should_open_in_place: bool, // should be opened in place
         pane_title: Option<String>, // pane title
-        run: RunPluginOrAlias,
+        mut run: RunPluginOrAlias,
         tab_index: usize,                   // tab index
         pane_id_to_replace: Option<PaneId>, // pane id to replace if this is to be opened "in-place"
         client_id: ClientId,
@@ -1359,7 +1359,7 @@ impl Pty {
         // of the pipeline between threads and end up needing to forward this
         _floating_pane_coordinates: Option<FloatingPaneCoordinates>,
     ) -> Result<()> {
-        let cwd = cwd.or_else(|| {
+        let get_focused_cwd = || {
             self.active_panes
                 .get(&client_id)
                 .and_then(|pane| match pane {
@@ -1372,8 +1372,14 @@ impl Pty {
                         .as_ref()
                         .and_then(|input| input.get_cwd(Pid::from_raw(id)))
                 })
-        });
+        };
 
+        let cwd = cwd.or_else(get_focused_cwd);
+
+        if let RunPluginOrAlias::Alias(alias) = &mut run {
+            let cwd = get_focused_cwd();
+            alias.set_caller_cwd_if_not_set(cwd);
+        }
         self.bus.senders.send_to_plugin(PluginInstruction::Load(
             should_float,
             should_open_in_place,

@@ -380,15 +380,13 @@ impl Action {
                             })
                         },
                         Err(_) => {
-                            let mut user_configuration =
-                                configuration.map(|c| c.inner().clone()).unwrap_or_default();
-                            user_configuration
-                                .insert("caller_cwd".to_owned(), current_dir.display().to_string());
-                            RunPluginOrAlias::Alias(PluginAlias::new(
+                            let mut plugin_alias = PluginAlias::new(
                                 &plugin,
-                                &Some(user_configuration),
+                                &configuration.map(|c| c.inner().clone()),
                                 alias_cwd,
-                            ))
+                            );
+                            plugin_alias.set_caller_cwd_if_not_set(Some(current_dir));
+                            RunPluginOrAlias::Alias(plugin_alias)
                         },
                     };
                     if floating {
