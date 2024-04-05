@@ -1,4 +1,5 @@
 use super::Text;
+use std::borrow::Borrow;
 use std::ops::RangeBounds;
 
 #[derive(Debug, Default, Clone)]
@@ -67,6 +68,43 @@ pub fn print_nested_list_with_coordinates(
         .collect::<Vec<_>>()
         .join(";");
     print!(
+        "\u{1b}Pznested_list;{}/{}/{}/{};{}\u{1b}\\",
+        x, y, width, height, items
+    )
+}
+
+pub fn serialize_nested_list<I>(items: I) -> String
+where
+    I: IntoIterator,
+    I::Item: Borrow<NestedListItem>,
+{
+    let items = items
+        .into_iter()
+        .map(|i| i.borrow().serialize())
+        .collect::<Vec<_>>()
+        .join(";");
+    format!("\u{1b}Pznested_list;{}\u{1b}\\", items)
+}
+
+pub fn serialize_nested_list_with_coordinates<I>(
+    items: I,
+    x: usize,
+    y: usize,
+    width: Option<usize>,
+    height: Option<usize>,
+) -> String
+where
+    I: IntoIterator,
+    I::Item: Borrow<NestedListItem>,
+{
+    let width = width.map(|w| w.to_string()).unwrap_or_default();
+    let height = height.map(|h| h.to_string()).unwrap_or_default();
+    let items = items
+        .into_iter()
+        .map(|i| i.borrow().serialize())
+        .collect::<Vec<_>>()
+        .join(";");
+    format!(
         "\u{1b}Pznested_list;{}/{}/{}/{};{}\u{1b}\\",
         x, y, width, height, items
     )
