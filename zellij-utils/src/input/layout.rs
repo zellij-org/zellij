@@ -464,8 +464,15 @@ impl PluginAlias {
         // filepicker that has access to the whole filesystem but wants to start in a specific
         // folder)
         if let Some(caller_cwd) = caller_cwd {
-            if self.configuration.as_ref().map(|c| c.inner().get("caller_cwd").is_none()).unwrap_or(true) {
-                let configuration = self.configuration.get_or_insert_with(|| PluginUserConfiguration::new(BTreeMap::new()));
+            if self
+                .configuration
+                .as_ref()
+                .map(|c| c.inner().get("caller_cwd").is_none())
+                .unwrap_or(true)
+            {
+                let configuration = self
+                    .configuration
+                    .get_or_insert_with(|| PluginUserConfiguration::new(BTreeMap::new()));
                 configuration.insert("caller_cwd", caller_cwd.display().to_string());
             }
         }
