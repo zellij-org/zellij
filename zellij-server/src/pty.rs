@@ -1935,13 +1935,11 @@ impl Pty {
         let mut terminal_ids_to_commands: HashMap<u32, Vec<String>> = HashMap::new();
         let mut terminal_ids_to_cwds: HashMap<u32, PathBuf> = HashMap::new();
 
-        #[cfg(unix)]
         let pids: Vec<_> = terminal_ids
             .iter()
             .filter_map(|id| self.id_to_child_pid.get(&id))
-            .map(|pid| Pid::from_raw(*pid))
+            .map(|pid| Self::child_to_pid(pid))
             .collect();
-        #[cfg(unix)]
         let pids_to_cwds = self
             .bus
             .os_input
@@ -1955,15 +1953,14 @@ impl Pty {
             .map(|os_input| os_input.get_all_cmds_by_ppid())
             .unwrap_or_default();
 
-        #[cfg(unix)]
         for terminal_id in terminal_ids {
             let process_id = self.id_to_child_pid.get(&terminal_id);
             let cwd = process_id
                 .as_ref()
-                .and_then(|pid| pids_to_cwds.get(&Pid::from_raw(**pid)));
+                .and_then(|pid| pids_to_cwds.get(&Self::child_to_pid(&pid)));
             let cmd = process_id
                 .as_ref()
-                .and_then(|pid| ppids_to_cmds.get(&format!("{}", pid)));
+                .and_then(|pid| ppids_to_cmds.get(&format!("{}", Self::child_to_pid(pid))));
             if let Some(cmd) = cmd {
                 terminal_ids_to_commands.insert(terminal_id, cmd.clone());
             }
@@ -2014,6 +2011,17 @@ impl Pty {
             cwd,
         ))?;
         Ok(())
+    }
+
+    #[cfg(windows)]
+    fn child_to_pid(child: &WinPtyReference) -> Pid {
+        /// TODO somehow support `Pid::from(WinPtyReference)`. This eliminates this special casing
+        Pid::from(child.pty.read().unwrap().get_pid() as usize)
+    }
+
+    #[cfg(unix)]
+    fn child_to_pid(child: &RawFd) -> Pid {
+        Pid::from(child)
     }
 }
 

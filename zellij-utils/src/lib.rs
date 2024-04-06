@@ -51,7 +51,7 @@ pub fn is_socket(file: &std::fs::DirEntry) -> std::io::Result<bool> {
         path.push(PIPEFS_LITERAL);
         path.push(pipe_name);
 
-        let mut path = dbg!(path).encode_wide().collect::<Vec<u16>>();
+        let mut path = path.encode_wide().collect::<Vec<u16>>();
         path.push(0); // encode_wide does not include the terminating NULL, so we have to add it ourselves
         path
     }
@@ -90,6 +90,7 @@ pub fn is_socket(file: &std::fs::DirEntry) -> std::io::Result<bool> {
     Ok(file_type == FILE_TYPE_PIPE)
 }
 
+#[cfg(unix)]
 pub fn is_socket(file: &std::fs::DirEntry) -> std::io::Result<bool> {
     use std::os::unix::fs::FileTypeExt;
     file.file_type()?.is_socket()

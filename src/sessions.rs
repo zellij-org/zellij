@@ -4,7 +4,7 @@ use std::iter::empty;
 #[cfg(unix)]
 use std::os::unix::fs::FileTypeExt;
 use std::time::{Duration, SystemTime};
-use std::{fs, io, process, thread};
+use std::{fs, io, process};
 use suggest::Suggest;
 use zellij_utils::anyhow::Context;
 use zellij_utils::consts::ZELLIJ_SESSION_INFO_CACHE_DIR;
@@ -164,10 +164,7 @@ fn assert_socket(name: &str) -> bool {
             match receiver.recv() {
                 Ok((ServerToClientMsg::Connected, _)) => true,
                 Err(_) => false,
-                Ok(x) => {
-                    dbg!(x);
-                    false
-                },
+                Ok(x) => false,
             }
         },
         Err(e) if e.kind() == io::ErrorKind::ConnectionRefused => {

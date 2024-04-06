@@ -776,7 +776,8 @@ impl ServerOsApi for ServerOsInputOutput {
                         .read()
                         .unwrap()
                         .set_size(cols as i32, rows as i32)
-                        .map_err(|err| anyhow!("failed to set size: {:?}", err));
+                        .map_err(|err| anyhow!("failed to set size: {:?}", err))
+                        .non_fatal();
                 }
             },
             _ => {

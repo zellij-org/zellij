@@ -307,10 +307,6 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
     let _ = thread::Builder::new()
         .name("server_listener".to_string())
         .spawn({
-            use zellij_utils::{
-                interprocess::local_socket::LocalSocketListener, shared::set_permissions,
-            };
-
             let os_input = os_input.clone();
             let session_data = session_data.clone();
             let session_state = session_state.clone();
