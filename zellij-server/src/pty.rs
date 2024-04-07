@@ -1,4 +1,5 @@
 use crate::background_jobs::BackgroundJob;
+#[cfg(windows)]
 use crate::os_input_output::WinPtyReference;
 use crate::terminal_bytes::TerminalBytes;
 use crate::{

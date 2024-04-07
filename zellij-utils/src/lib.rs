@@ -93,5 +93,5 @@ pub fn is_socket(file: &std::fs::DirEntry) -> std::io::Result<bool> {
 #[cfg(unix)]
 pub fn is_socket(file: &std::fs::DirEntry) -> std::io::Result<bool> {
     use std::os::unix::fs::FileTypeExt;
-    file.file_type()?.is_socket()
+    Ok(file.file_type()?.is_socket())
 }

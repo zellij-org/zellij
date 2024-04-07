@@ -27,6 +27,7 @@ use std::{
     marker::PhantomData,
 };
 
+use crate::shared::set_permissions;
 #[cfg(unix)]
 use std::os::unix::io::{AsRawFd, FromRawFd};
 
@@ -316,14 +317,14 @@ where
     /// Returns a receiver to the given [LocalSocketStream](interprocess::local_socket::LocalSocketStream).
     pub fn new(receiver: LocalSocketStream) -> Self {
         Self {
-            receiver: io::BufReader::new(receiver),
+            receiver: receiver,
             _phantom: PhantomData,
         }
     }
 
     /// Returns an [`IpcSenderWithContext`] with the same socket as this receiver.
     pub fn get_sender<F: Serialize + Debug>(&self) -> IpcSenderWithContext<F> {
-        let sock_fd = self.receiver.get_ref().as_raw_fd();
+        let sock_fd = self.receiver.as_raw_fd();
         let dup_sock = dup(sock_fd).expect("Failed to duplicate pipe to obtain sender");
         let socket = unsafe { LocalSocketStream::from_raw_fd(dup_sock) };
         IpcSenderWithContext::new(socket)
@@ -427,11 +428,15 @@ where
 pub mod named_pipe;
 
 #[cfg(unix)]
-pub fn try_connect_to_server<T>(
+pub fn try_connect_to_server<TDataSender, TDataReceiver>(
     path: &Path,
-) -> io::Result<(IpcSenderWithContext<T>, IpcReceiverWithContext<T>)>
+) -> io::Result<(
+    IpcSenderWithContext<TDataSender>,
+    IpcReceiverWithContext<TDataReceiver>,
+)>
 where
-    T: Serialize + for<'de> Deserialize<'de> + std::fmt::Debug,
+    TDataSender: Serialize + std::fmt::Debug,
+    TDataReceiver: Serialize + for<'de> Deserialize<'de>,
 {
     let socket = LocalSocketStream::connect(path)?;
     let receiver = IpcReceiverWithContext::new(socket);
@@ -469,8 +474,8 @@ where
     TDataReceiver: Serialize + for<'de> Deserialize<'de>,
 {
     loop {
-        match try_connect_to_server(path) {
-            Ok(result) => break result,
+        match try_connect_to_server::<TDataSender, TDataReceiver>(path) {
+            Ok((sender, receiver)) => break (sender, receiver),
             Err(_) => {
                 std::thread::sleep(std::time::Duration::from_millis(50));
             },
@@ -480,6 +485,7 @@ where
 
 #[cfg(unix)]
 pub fn bind_server(name: &Path) -> Result<LocalSocketListener> {
+    let socket_path = name;
     drop(std::fs::remove_file(&socket_path));
     let listener = LocalSocketListener::bind(&*socket_path)?;
     // set the sticky bit to avoid the socket file being potentially cleaned up

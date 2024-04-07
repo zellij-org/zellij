@@ -174,7 +174,7 @@ pub trait ClientOsApi: Send + Sync {
     /// Set the terminal associated to file descriptor `fd` to
     /// [raw mode](https://en.wikipedia.org/wiki/Terminal_mode).
     #[cfg(unix)]
-    fn set_raw_mode(&mut self, fd: RawFd);
+    fn set_raw_mode(&mut self, fd: RawFd, enable_mode: u32, disable_mode: u32);
     #[cfg(windows)]
     fn set_raw_mode(&mut self, handle_type: u32, enable_mode: u32, disable_mode: u32);
     /// Set the terminal associated to file descriptor `fd` to
@@ -212,7 +212,7 @@ impl ClientOsApi for ClientOsInputOutput {
         get_terminal_size(handle_type)
     }
     #[cfg(unix)]
-    fn set_raw_mode(&mut self, fd: RawFd) {
+    fn set_raw_mode(&mut self, fd: RawFd, _enable_mode: u32, _disable_mode: u32) {
         into_raw_mode(fd);
     }
 

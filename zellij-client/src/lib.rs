@@ -14,7 +14,6 @@ use std::path::Path;
 use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::thread;
-use windows_sys::Win32::System::Console::ENABLE_PROCESSED_INPUT;
 use zellij_utils::errors::FatalError;
 use zellij_utils::ipc::ReceiveError;
 
@@ -25,7 +24,7 @@ use crate::{
 };
 #[cfg(windows)]
 use windows_sys::Win32::System::Console::{
-    DISABLE_NEWLINE_AUTO_RETURN, ENABLE_ECHO_INPUT, ENABLE_LINE_INPUT,
+    DISABLE_NEWLINE_AUTO_RETURN, ENABLE_ECHO_INPUT, ENABLE_LINE_INPUT, ENABLE_PROCESSED_INPUT,
     ENABLE_VIRTUAL_TERMINAL_INPUT, ENABLE_VIRTUAL_TERMINAL_PROCESSING,
 };
 #[cfg(unix)]
