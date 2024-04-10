@@ -122,7 +122,7 @@ impl Dimension {
         self.inner += by;
     }
     pub fn decrease_inner(&mut self, by: usize) {
-        self.inner -= by;
+        self.inner = self.inner.saturating_sub(by);
     }
 
     pub fn is_fixed(&self) -> bool {

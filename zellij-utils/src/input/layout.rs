@@ -849,6 +849,7 @@ impl TiledPaneLayout {
         &self,
         space: &PaneGeom,
         max_panes: Option<usize>,
+        ignore_percent_split_sizes: bool,
     ) -> Result<Vec<(TiledPaneLayout, PaneGeom)>, &'static str> {
         let layouts = match max_panes {
             Some(max_panes) => {
@@ -874,9 +875,9 @@ impl TiledPaneLayout {
                     layout_to_split.focus_deepest_pane();
                 }
 
-                split_space(space, &layout_to_split, space)?
+                split_space(space, &layout_to_split, space, ignore_percent_split_sizes)?
             },
-            None => split_space(space, self, space)?,
+            None => split_space(space, self, space, ignore_percent_split_sizes)?,
         };
         for (_pane_layout, pane_geom) in layouts.iter() {
             if !pane_geom.is_at_least_minimum_size() {
@@ -1426,6 +1427,7 @@ fn split_space(
     space_to_split: &PaneGeom,
     layout: &TiledPaneLayout,
     total_space_to_split: &PaneGeom,
+    ignore_percent_split_sizes: bool,
 ) -> Result<Vec<(TiledPaneLayout, PaneGeom)>, &'static str> {
     let sizes: Vec<Option<SplitSize>> = if layout.children_are_stacked {
         let index_of_expanded_pane = layout.children.iter().position(|p| p.is_expanded_in_stack);
@@ -1440,6 +1442,15 @@ fn split_space(
             *last_size = None;
         }
         sizes
+    } else if ignore_percent_split_sizes {
+        layout
+            .children
+            .iter()
+            .map(|part| match part.split_size {
+                Some(SplitSize::Percent(_)) => None,
+                split_size => split_size,
+            })
+            .collect()
     } else {
         layout.children.iter().map(|part| part.split_size).collect()
     };
@@ -1539,8 +1550,12 @@ fn split_space(
     for (i, part) in layout.children.iter().enumerate() {
         let part_position_and_size = split_geom.get(i).unwrap();
         if !part.children.is_empty() {
-            let mut part_positions =
-                split_space(part_position_and_size, part, total_space_to_split)?;
+            let mut part_positions = split_space(
+                part_position_and_size,
+                part,
+                total_space_to_split,
+                ignore_percent_split_sizes,
+            )?;
             pane_positions.append(&mut part_positions);
         } else {
             let part = part.clone();
