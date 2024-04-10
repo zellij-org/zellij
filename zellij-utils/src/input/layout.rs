@@ -435,8 +435,7 @@ pub struct PluginAlias {
 
 impl PartialEq for PluginAlias {
     fn eq(&self, other: &Self) -> bool {
-        self.name == other.name
-            && self.configuration == other.configuration
+        self.name == other.name && self.configuration == other.configuration
     }
 }
 
