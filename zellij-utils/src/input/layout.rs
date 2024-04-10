@@ -437,7 +437,6 @@ impl PartialEq for PluginAlias {
     fn eq(&self, other: &Self) -> bool {
         self.name == other.name
             && self.configuration == other.configuration
-            && self.initial_cwd == other.initial_cwd
     }
 }
 
