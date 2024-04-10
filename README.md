@@ -60,17 +60,6 @@ fish/xonsh:
 bash -c 'bash <(curl -L zellij.dev/launch)'
 ```
 
-## How do I get involved?
-
-Zellij is a labour of love built by an enthusiastic team of volunteers. We eagerly welcome anyone who would like to join us, regardless of experience level, so long as they adhere to our [Code of Conduct](CODE_OF_CONDUCT.md).
-
-Please report any code of conduct violations to [aram@poor.dev](mailto:aram@poor.dev)
-
-To get started, you can:
-1. Take a look at the [Issues](https://github.com/zellij-org/zellij/issues) in this repository - especially those marked "good first issue". Those with the "help wanted" tag probably don't have anyone else working on them.
-2. Drop by our [Discord](https://discord.gg/CrUAFH3), or [Matrix](https://matrix.to/#/#zellij_general:matrix.org) chat and ask what you can work on, or how to get started.
-3. Open an issue with your idea(s) for the project or tell us about them in our chat.
-
 ## How do I start a development environment?
 
 * Clone the project
@@ -93,7 +82,8 @@ These are issues that are either being actively worked on or are planned for the
 
 ***If you'll click on the image, you'll be led to an SVG version of it on the website where you can directly click on every issue***
 
-[![roadmap](https://user-images.githubusercontent.com/795598/228612600-78fbd05a-ec84-484d-8b82-bba071460690.png)](https://zellij.dev/roadmap)
+[![roadmap](https://github.com/zellij-org/zellij/assets/795598/9c5b573b-20f5-41c6-908b-6b21c5fd456e)](https://zellij.dev/roadmap)
+
 
 ## License
 
