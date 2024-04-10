@@ -860,6 +860,9 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                     )
                 })?;
 
+                let swap_tiled_layouts = Some(layout.swap_tiled_layouts.clone());
+                let swap_floating_layouts = Some(layout.swap_floating_layouts.clone());
+
                 let mut tabs = layout.tabs();
                 if tabs.len() > 1 {
                     return Err(ConfigError::new_kdl_error(
@@ -874,8 +877,8 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                     Ok(Action::NewTab(
                         Some(layout),
                         floating_panes_layout,
-                        None,
-                        None,
+                        swap_tiled_layouts,
+                        swap_floating_layouts,
                         name,
                     ))
                 } else {
@@ -884,8 +887,8 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                     Ok(Action::NewTab(
                         Some(layout),
                         floating_panes_layout,
-                        None,
-                        None,
+                        swap_tiled_layouts,
+                        swap_floating_layouts,
                         name,
                     ))
                 }
