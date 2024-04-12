@@ -55,8 +55,19 @@ macro_rules! call_with_last_error {
     }};
 }
 
+#[repr(transparent)]
+struct EventedOverlapped(OVERLAPPED);
+
+impl Drop for EventedOverlapped {
+    fn drop(&mut self) {
+        if (!self.0.hEvent.is_null()) {
+            unsafe { CloseHandle(self.0.hEvent) }
+        }
+    }
+}
+
 /// Helper function to create an instance of [OVERLAPPED] with a new unique event
-fn create_overlapped_with_new_event() -> io::Result<OVERLAPPED> {
+fn create_overlapped_with_new_event() -> io::Result<EventedOverlapped> {
     let mut overlapped = create_zeroed_overlapped();
     overlapped.hEvent = {
         let value = unsafe { CreateEventW(ptr::null_mut(), TRUE, TRUE, ptr::null_mut()) };
@@ -67,7 +78,7 @@ fn create_overlapped_with_new_event() -> io::Result<OVERLAPPED> {
         }
     }?;
 
-    Ok(overlapped)
+    Ok(EventedOverlapped(overlapped))
 }
 
 /// Helper function to create an zeroed instance of [OVERLAPPED]
