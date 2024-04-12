@@ -39,6 +39,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat(plugins): add serialization methods to UI components (https://github.com/zellij-org/zellij/pull/3193)
 * fix(layouts): recover from resurrection crash and fix swap layouts not being picked up by new-tab keybinding (https://github.com/zellij-org/zellij/pull/3249)
 * feat(cli): allow starting a session in the background (detached) (https://github.com/zellij-org/zellij/pull/3257)
+* feat(config): allow disabling writing of session metadata to disk (https://github.com/zellij-org/zellij/pull/3258)
 
 ## [0.39.2] - 2023-11-29
 * fix(cli): typo in cli help (https://github.com/zellij-org/zellij/pull/2906)
