@@ -1018,7 +1018,14 @@ fn init_session(
                 None,
                 Some(os_input.clone()),
             );
-            move || background_jobs_main(background_jobs_bus, serialization_interval, disable_session_metadata).fatal()
+            move || {
+                background_jobs_main(
+                    background_jobs_bus,
+                    serialization_interval,
+                    disable_session_metadata,
+                )
+                .fatal()
+            }
         })
         .unwrap();
 

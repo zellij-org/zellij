@@ -227,7 +227,9 @@ impl Options {
             .or(self.scrollback_lines_to_serialize);
         let styled_underlines = other.styled_underlines.or(self.styled_underlines);
         let serialization_interval = other.serialization_interval.or(self.serialization_interval);
-        let disable_session_metadata = other.disable_session_metadata.or(self.disable_session_metadata);
+        let disable_session_metadata = other
+            .disable_session_metadata
+            .or(self.disable_session_metadata);
 
         Options {
             simplified_ui,
@@ -308,7 +310,9 @@ impl Options {
             .or_else(|| self.scrollback_lines_to_serialize.clone());
         let styled_underlines = other.styled_underlines.or(self.styled_underlines);
         let serialization_interval = other.serialization_interval.or(self.serialization_interval);
-        let disable_session_metadata = other.disable_session_metadata.or(self.disable_session_metadata);
+        let disable_session_metadata = other
+            .disable_session_metadata
+            .or(self.disable_session_metadata);
 
         Options {
             simplified_ui,
