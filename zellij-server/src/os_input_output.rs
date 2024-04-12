@@ -221,7 +221,7 @@ fn handle_openpty(
 fn handle_terminal(
     cmd: RunCommand,
     failover_cmd: Option<RunCommand>,
-    orig_termios: termios::Termios,
+    orig_termios: Option<termios::Termios>,
     quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
     terminal_id: u32,
 ) -> Result<(RawFd, RawFd)> {
@@ -229,7 +229,7 @@ fn handle_terminal(
 
     // Create a pipe to allow the child the communicate the shell's pid to its
     // parent.
-    match openpty(None, Some(&orig_termios)) {
+    match openpty(None, &orig_termios) {
         Ok(open_pty_res) => handle_openpty(open_pty_res, cmd, quit_cb, terminal_id),
         Err(e) => match failover_cmd {
             Some(failover_cmd) => {
@@ -279,7 +279,7 @@ fn separate_command_arguments(command: &mut PathBuf, args: &mut Vec<String>) {
 /// set.
 fn spawn_terminal(
     terminal_action: TerminalAction,
-    orig_termios: termios::Termios,
+    orig_termios: Option<termios::Termios>,
     quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>, // u32 is the exit_status
     default_editor: Option<PathBuf>,
     terminal_id: u32,
@@ -418,7 +418,7 @@ impl ClientSender {
 
 #[derive(Clone)]
 pub struct ServerOsInputOutput {
-    orig_termios: Arc<Mutex<termios::Termios>>,
+    orig_termios: Arc<Mutex<Option<termios::Termios>>>,
     client_senders: Arc<Mutex<HashMap<ClientId, ClientSender>>>,
     terminal_id_to_raw_fd: Arc<Mutex<BTreeMap<u32, Option<RawFd>>>>, // A value of None means the
     // terminal_id exists but is
@@ -876,7 +876,10 @@ impl Clone for Box<dyn ServerOsApi> {
 }
 
 pub fn get_server_os_input() -> Result<ServerOsInputOutput, nix::Error> {
-    let current_termios = termios::tcgetattr(0)?;
+    let current_termios = termios::tcgetattr(0).ok();
+    if current_termios.is_none() {
+        log::warn!("Starting a server without a controlling terminal, using the default termios configuration.");
+    }
     let orig_termios = Arc::new(Mutex::new(current_termios));
     Ok(ServerOsInputOutput {
         orig_termios,
