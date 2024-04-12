@@ -881,6 +881,7 @@ fn init_session(
     };
 
     let serialization_interval = config_options.serialization_interval;
+    let disable_session_metadata = config_options.disable_session_metadata.unwrap_or(false);
 
     let default_shell = config_options.default_shell.clone().map(|command| {
         TerminalAction::RunCommand(RunCommand {
@@ -1017,7 +1018,14 @@ fn init_session(
                 None,
                 Some(os_input.clone()),
             );
-            move || background_jobs_main(background_jobs_bus, serialization_interval).fatal()
+            move || {
+                background_jobs_main(
+                    background_jobs_bus,
+                    serialization_interval,
+                    disable_session_metadata,
+                )
+                .fatal()
+            }
         })
         .unwrap();
 

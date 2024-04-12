@@ -87,6 +87,7 @@ Config {
         scrollback_lines_to_serialize: None,
         styled_underlines: None,
         serialization_interval: None,
+        disable_session_metadata: None,
     },
     themes: {},
     plugins: PluginAliases {

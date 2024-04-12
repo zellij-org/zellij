@@ -1611,6 +1611,9 @@ impl Options {
         let serialization_interval =
             kdl_property_first_arg_as_i64_or_error!(kdl_options, "serialization_interval")
                 .map(|(scroll_buffer_size, _entry)| scroll_buffer_size as u64);
+        let disable_session_metadata =
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "disable_session_metadata")
+                .map(|(v, _)| v);
         Ok(Options {
             simplified_ui,
             theme,
@@ -1637,6 +1640,7 @@ impl Options {
             scrollback_lines_to_serialize,
             styled_underlines,
             serialization_interval,
+            disable_session_metadata,
         })
     }
 }
