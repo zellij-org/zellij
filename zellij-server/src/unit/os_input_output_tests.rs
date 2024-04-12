@@ -36,7 +36,7 @@ fn get_cwd() {
         termios::tcgetattr(test_terminal.slave()).expect("Could not configure the termios");
 
     let server = ServerOsInputOutput {
-        orig_termios: Arc::new(Mutex::new(test_termios)),
+        orig_termios: Arc::new(Mutex::new(Some(test_termios))),
         client_senders: Arc::default(),
         terminal_id_to_raw_fd: Arc::default(),
         cached_resizes: Arc::default(),

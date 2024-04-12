@@ -29,6 +29,7 @@ use zellij_utils::{
     errors::{ClientContext, ContextType, ErrorInstruction},
     input::{config::Config, options::Options},
     ipc::{ClientAttributes, ClientToServerMsg, ExitReason, ServerToClientMsg},
+    pane_size::Size,
     termwiz::input::InputEvent,
 };
 use zellij_utils::{cli::CliArgs, input::layout::Layout};
@@ -168,7 +169,12 @@ pub fn start_client(
     tab_position_to_focus: Option<usize>,
     pane_id_to_focus: Option<(u32, bool)>, // (pane_id, is_plugin)
     is_a_reconnect: bool,
+    start_detached_and_exit: bool,
 ) -> Option<ConnectToSession> {
+    if start_detached_and_exit {
+        start_server_detached(os_input, opts, config, config_options, info, layout);
+        return None;
+    }
     info!("Starting Zellij client!");
 
     let mut reconnect_to_session = None;
@@ -539,6 +545,69 @@ pub fn start_client(
     let _ = send_input_instructions.send(InputInstruction::Exit);
 
     reconnect_to_session
+}
+
+pub fn start_server_detached(
+    mut os_input: Box<dyn ClientOsApi>,
+    opts: CliArgs,
+    config: Config,
+    config_options: Options,
+    info: ClientInfo,
+    layout: Option<Layout>,
+) {
+    envs::set_zellij("0".to_string());
+    config.env.set_vars();
+
+    let palette = config
+        .theme_config(&config_options)
+        .unwrap_or_else(|| os_input.load_palette());
+
+    let client_attributes = ClientAttributes {
+        size: Size { rows: 50, cols: 50 }, // just so size is not 0, it doesn't matter because we
+        // immediately detach
+        style: Style {
+            colors: palette,
+            rounded_corners: config.ui.pane_frames.rounded_corners,
+            hide_session_name: config.ui.pane_frames.hide_session_name,
+        },
+        keybinds: config.keybinds.clone(),
+    };
+
+    let create_ipc_pipe = || -> std::path::PathBuf {
+        let mut sock_dir = ZELLIJ_SOCK_DIR.clone();
+        std::fs::create_dir_all(&sock_dir).unwrap();
+        set_permissions(&sock_dir, 0o700).unwrap();
+        sock_dir.push(envs::get_session_name().unwrap());
+        sock_dir
+    };
+
+    let (first_msg, ipc_pipe) = match info {
+        ClientInfo::New(name) | ClientInfo::Resurrect(name, _) => {
+            envs::set_session_name(name.clone());
+            os_input.update_session_name(name);
+            let ipc_pipe = create_ipc_pipe();
+
+            spawn_server(&*ipc_pipe, opts.debug).unwrap();
+
+            (
+                ClientToServerMsg::NewClient(
+                    client_attributes,
+                    Box::new(opts),
+                    Box::new(config_options.clone()),
+                    Box::new(layout.unwrap()),
+                    Box::new(config.plugins.clone()),
+                ),
+                ipc_pipe,
+            )
+        },
+        _ => {
+            eprintln!("Session already exists");
+            std::process::exit(1);
+        },
+    };
+
+    os_input.connect_to_server(&*ipc_pipe);
+    os_input.send_to_server(first_msg);
 }
 
 #[cfg(test)]

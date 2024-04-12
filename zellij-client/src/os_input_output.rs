@@ -317,8 +317,8 @@ impl Clone for Box<dyn ClientOsApi> {
 }
 
 pub fn get_client_os_input() -> Result<ClientOsInputOutput, nix::Error> {
-    let current_termios = termios::tcgetattr(0)?;
-    let orig_termios = Some(Arc::new(Mutex::new(current_termios)));
+    let current_termios = termios::tcgetattr(0).ok();
+    let orig_termios = current_termios.map(|termios| Arc::new(Mutex::new(termios)));
     let reading_from_stdin = Arc::new(Mutex::new(None));
     Ok(ClientOsInputOutput {
         orig_termios,

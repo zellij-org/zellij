@@ -407,6 +407,7 @@ pub(crate) fn start_client(opts: CliArgs) {
         let mut config_options = config_options.clone();
         let mut opts = opts.clone();
         let mut is_a_reconnect = false;
+        let mut should_create_detached = false;
 
         if let Some(reconnect_to_session) = &reconnect_to_session {
             // this is integration code to make session reconnects work with this existing,
@@ -417,6 +418,7 @@ pub(crate) fn start_client(opts: CliArgs) {
                 opts.command = Some(Command::Sessions(Sessions::Attach {
                     session_name: reconnect_to_session.name.clone(),
                     create: true,
+                    background: false,
                     force_run_commands: false,
                     index: None,
                     options: None,
@@ -476,6 +478,7 @@ pub(crate) fn start_client(opts: CliArgs) {
         if let Some(Command::Sessions(Sessions::Attach {
             session_name,
             create,
+            background,
             force_run_commands,
             index,
             options,
@@ -487,9 +490,14 @@ pub(crate) fn start_client(opts: CliArgs) {
                 },
                 None => config_options,
             };
+            should_create_detached = background;
 
             let client = if let Some(idx) = index {
-                attach_with_session_index(config_options.clone(), idx, create)
+                attach_with_session_index(
+                    config_options.clone(),
+                    idx,
+                    create || should_create_detached,
+                )
             } else {
                 let session_exists = session_name
                     .as_ref()
@@ -497,7 +505,10 @@ pub(crate) fn start_client(opts: CliArgs) {
                     .unwrap_or(false);
                 let resurrection_layout =
                     session_name.as_ref().and_then(|s| resurrection_layout(&s));
-                if create && !session_exists && resurrection_layout.is_none() {
+                if (create || should_create_detached)
+                    && !session_exists
+                    && resurrection_layout.is_none()
+                {
                     session_name.clone().map(start_client_plan);
                 }
                 match (session_name.as_ref(), resurrection_layout) {
@@ -507,7 +518,11 @@ pub(crate) fn start_client(opts: CliArgs) {
                         }
                         ClientInfo::Resurrect(session_name.clone(), resurrection_layout)
                     },
-                    _ => attach_with_session_name(session_name, config_options.clone(), create),
+                    _ => attach_with_session_name(
+                        session_name,
+                        config_options.clone(),
+                        create || should_create_detached,
+                    ),
                 }
             };
 
@@ -541,6 +556,7 @@ pub(crate) fn start_client(opts: CliArgs) {
                 tab_position_to_focus,
                 pane_id_to_focus,
                 is_a_reconnect,
+                should_create_detached,
             );
         } else {
             if let Some(session_name) = opts.session.clone() {
@@ -555,6 +571,7 @@ pub(crate) fn start_client(opts: CliArgs) {
                     None,
                     None,
                     is_a_reconnect,
+                    should_create_detached,
                 );
             } else {
                 if let Some(session_name) = config_options.session_name.as_ref() {
@@ -595,6 +612,7 @@ pub(crate) fn start_client(opts: CliArgs) {
                                 None,
                                 None,
                                 is_a_reconnect,
+                                should_create_detached,
                             );
                         },
                         _ => {
@@ -609,6 +627,7 @@ pub(crate) fn start_client(opts: CliArgs) {
                                 None,
                                 None,
                                 is_a_reconnect,
+                                should_create_detached,
                             );
                         },
                     }
@@ -632,6 +651,7 @@ pub(crate) fn start_client(opts: CliArgs) {
                     None,
                     None,
                     is_a_reconnect,
+                    should_create_detached,
                 );
             }
         }

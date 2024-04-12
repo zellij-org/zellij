@@ -138,8 +138,8 @@ fn pipe_client(
             let mut buffer = String::new();
             let _ = stdin.read_line(&mut buffer);
             if buffer.is_empty() {
-                // TODO: consider notifying the relevant plugin that the pipe has ended with a
-                // specialized message
+                let msg = create_msg(None);
+                os_input.send_to_server(msg);
                 break;
             } else {
                 // we've got data! send it down the pipe (most common)
