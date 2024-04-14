@@ -199,7 +199,7 @@ fn tab_line_prefix(
         tab_index: None,
     }];
     if let Some(name) = session_name {
-        let name_part = format!("({}) ", name);
+        let name_part = format!("({})", name);
         let name_part_len = name_part.width();
         let text_color = match palette.theme_hue {
             ThemeHue::Dark => palette.white,
@@ -215,7 +215,7 @@ fn tab_line_prefix(
         }
     }
     let mode_part = format!("{:?}", mode).to_uppercase();
-    let mode_part_padded = format!("{:^8}", mode_part);
+    let mode_part_padded = format!(" {} ", mode_part);
     let mode_part_len = mode_part_padded.width();
     let mode_part_styled_text = if mode == InputMode::Locked {
         style!(locked_mode_color, bg_color)
