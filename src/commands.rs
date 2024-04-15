@@ -418,7 +418,7 @@ pub(crate) fn start_client(opts: CliArgs) {
                 opts.command = Some(Command::Sessions(Sessions::Attach {
                     session_name: reconnect_to_session.name.clone(),
                     create: true,
-                    background: false,
+                    create_background: false,
                     force_run_commands: false,
                     index: None,
                     options: None,
@@ -478,7 +478,7 @@ pub(crate) fn start_client(opts: CliArgs) {
         if let Some(Command::Sessions(Sessions::Attach {
             session_name,
             create,
-            background,
+            create_background,
             force_run_commands,
             index,
             options,
@@ -490,7 +490,7 @@ pub(crate) fn start_client(opts: CliArgs) {
                 },
                 None => config_options,
             };
-            should_create_detached = background;
+            should_create_detached = create_background;
 
             let client = if let Some(idx) = index {
                 attach_with_session_index(
