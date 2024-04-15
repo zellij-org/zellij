@@ -126,7 +126,7 @@ pub enum Sessions {
         create: bool,
 
         /// Create a detached session in the background if one does not exist
-        #[clap(short, long, value_parser)]
+        #[clap(short('b'), long, value_parser)]
         create_background: bool,
 
         /// Number of the session index in the active sessions ordered creation date.
