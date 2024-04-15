@@ -436,10 +436,10 @@ fn find_resurrectable_sessions(
                     {
                         Ok(created) => Some(created),
                         Err(e) => {
-                            if e.kind() != std::io::ErrorKind::NotFound {
-                                // let's not spam the
-                                // logs if serialization
-                                // is disabled
+                            if e.kind() == std::io::ErrorKind::NotFound {
+                                return None; // no layout file, cannot resurrect session, let's not
+                                             // list it
+                            } else {
                                 log::error!(
                                     "Failed to read created stamp of resurrection file: {:?}",
                                     e
