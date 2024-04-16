@@ -1,6 +1,6 @@
 [package]
 name = "zellij"
-version = "0.40.0"
+version = "0.41.0"
 authors = ["Aram Drevekenin <aram@poor.dev>"]
 edition = "2021"
 description = "A terminal workspace with batteries included"
@@ -13,9 +13,9 @@ rust-version = "1.60"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-zellij-client = { path = "zellij-client/", version = "0.40.0" }
-zellij-server = { path = "zellij-server/", version = "0.40.0" }
-zellij-utils = { path = "zellij-utils/", version = "0.40.0" }
+zellij-client = { path = "zellij-client/", version = "0.41.0" }
+zellij-server = { path = "zellij-server/", version = "0.41.0" }
+zellij-utils = { path = "zellij-utils/", version = "0.41.0" }
 thiserror = "1.0.40"
 names = { version = "0.14.0", default-features = false }
 log = "0.4.17"

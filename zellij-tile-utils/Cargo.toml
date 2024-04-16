@@ -1,6 +1,6 @@
 [package]
 name = "zellij-tile-utils"
-version = "0.40.0"
+version = "0.41.0"
 authors = ["denis <denismaximov98@gmail.com>"]
 edition = "2021"
 description = "A utility library for Zellij plugins"

@@ -1,6 +1,6 @@
 [package]
 name = "zellij-client"
-version = "0.40.0"
+version = "0.41.0"
 authors = ["Kunal Mohan <kunalmohan99@gmail.com>"]
 edition = "2021"
 description = "The client-side library for Zellij"
@@ -14,7 +14,7 @@ serde = { version = "1.0", features = ["derive"] }
 url = { version = "2.2.2", features = ["serde"] }
 serde_yaml = "0.8"
 serde_json = "1.0"
-zellij-utils = { path = "../zellij-utils/", version = "0.40.0" }
+zellij-utils = { path = "../zellij-utils/", version = "0.41.0" }
 log = "0.4.17"
 
 [dev-dependencies]
