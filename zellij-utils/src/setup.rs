@@ -2,7 +2,7 @@
 use crate::consts::ASSET_MAP;
 use crate::input::theme::Themes;
 use crate::{
-    cli::{CliArgs, Command},
+    cli::{CliArgs, Command, SessionCommand, Sessions},
     consts::{
         FEATURES, SYSTEM_DEFAULT_CONFIG_DIR, SYSTEM_DEFAULT_DATA_DIR_PREFIX, VERSION,
         ZELLIJ_DEFAULT_THEMES, ZELLIJ_PROJ_DIR,
@@ -363,6 +363,11 @@ impl Setup {
             } else {
                 None
             };
+
+        // the attach CLI command can also have its own Options, we need to merge them if they
+        // exist
+        let cli_config_options = merge_attach_command_options(cli_config_options, &cli_args);
+
         let mut config_without_layout = config.clone();
         let (layout, mut config) =
             Setup::parse_layout_and_override_config(cli_config_options.as_ref(), config, cli_args)?;
@@ -681,6 +686,28 @@ impl Setup {
             );
         };
     }
+}
+
+fn merge_attach_command_options(
+    cli_config_options: Option<Options>,
+    cli_args: &CliArgs,
+) -> Option<Options> {
+    let cli_config_options = if let Some(Command::Sessions(Sessions::Attach { options, .. })) =
+        cli_args.command.clone()
+    {
+        match options.clone().as_deref() {
+            Some(SessionCommand::Options(options)) => match cli_config_options {
+                Some(cli_config_options) => {
+                    Some(cli_config_options.merge_from_cli(options.to_owned().into()))
+                },
+                None => Some(options.to_owned().into()),
+            },
+            _ => cli_config_options,
+        }
+    } else {
+        cli_config_options
+    };
+    cli_config_options
 }
 
 #[cfg(test)]
