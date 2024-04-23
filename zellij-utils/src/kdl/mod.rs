@@ -1553,6 +1553,10 @@ impl Options {
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "auto_layout").map(|(v, _)| v);
         let theme = kdl_property_first_arg_as_string_or_error!(kdl_options, "theme")
             .map(|(theme, _entry)| theme.to_string());
+        let theme_light = kdl_property_first_arg_as_string_or_error!(kdl_options, "theme_light")
+            .map(|(theme, _entry)| theme.to_string());
+        let theme_dark = kdl_property_first_arg_as_string_or_error!(kdl_options, "theme_dark")
+            .map(|(theme, _entry)| theme.to_string());
         let default_mode =
             match kdl_property_first_arg_as_string_or_error!(kdl_options, "default_mode") {
                 Some((string, entry)) => Some(InputMode::from_str(string).map_err(|_| {
@@ -1617,6 +1621,8 @@ impl Options {
         Ok(Options {
             simplified_ui,
             theme,
+            theme_light,
+            theme_dark,
             default_mode,
             default_shell,
             default_cwd,

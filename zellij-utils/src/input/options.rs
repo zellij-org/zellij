@@ -46,6 +46,12 @@ pub struct Options {
     /// Set the default theme
     #[clap(long, value_parser)]
     pub theme: Option<String>,
+    /// Set the light theme
+    #[clap(long, value_parser)]
+    pub theme_light: Option<String>,
+    /// Set the dark theme
+    #[clap(long, value_parser)]
+    pub theme_dark: Option<String>,
     /// Set the default mode
     #[clap(long, arg_enum, hide_possible_values = true, value_parser)]
     pub default_mode: Option<InputMode>,
@@ -206,6 +212,8 @@ impl Options {
         let layout_dir = other.layout_dir.or_else(|| self.layout_dir.clone());
         let theme_dir = other.theme_dir.or_else(|| self.theme_dir.clone());
         let theme = other.theme.or_else(|| self.theme.clone());
+        let theme_light = other.theme_light.or_else(|| self.theme_light.clone());
+        let theme_dark = other.theme_dark.or_else(|| self.theme_dark.clone());
         let on_force_close = other.on_force_close.or(self.on_force_close);
         let scroll_buffer_size = other.scroll_buffer_size.or(self.scroll_buffer_size);
         let copy_command = other.copy_command.or_else(|| self.copy_command.clone());
@@ -234,6 +242,8 @@ impl Options {
         Options {
             simplified_ui,
             theme,
+            theme_light,
+            theme_dark,
             default_mode,
             default_shell,
             default_cwd,
@@ -293,6 +303,8 @@ impl Options {
         let layout_dir = other.layout_dir.or_else(|| self.layout_dir.clone());
         let theme_dir = other.theme_dir.or_else(|| self.theme_dir.clone());
         let theme = other.theme.or_else(|| self.theme.clone());
+        let theme_light = other.theme_light.or_else(|| self.theme_light.clone());
+        let theme_dark = other.theme_dark.or_else(|| self.theme_dark.clone());
         let on_force_close = other.on_force_close.or(self.on_force_close);
         let scroll_buffer_size = other.scroll_buffer_size.or(self.scroll_buffer_size);
         let copy_command = other.copy_command.or_else(|| self.copy_command.clone());
@@ -317,6 +329,8 @@ impl Options {
         Options {
             simplified_ui,
             theme,
+            theme_light,
+            theme_dark,
             default_mode,
             default_shell,
             default_cwd,
