@@ -3,8 +3,13 @@ use crate::{
     cli::CliArgs,
     data::{ClientId, ConnectToSession, InputMode, Style},
     errors::{get_current_ctx, prelude::*, ErrorContext},
-    input::keybinds::Keybinds,
-    input::{actions::Action, layout::Layout, options::Options, plugins::PluginAliases},
+    input::{
+        actions::Action,
+        keybinds::Keybinds,
+        layout::Layout,
+        options::{Options, ThemeVariant},
+        plugins::PluginAliases,
+    },
     pane_size::{Size, SizeInPixels},
 };
 use interprocess::local_socket::LocalSocketStream;
@@ -69,6 +74,7 @@ pub enum ClientToServerMsg {
     TerminalPixelDimensions(PixelDimensions),
     BackgroundColor(String),
     ForegroundColor(String),
+    ThemeVariant(ThemeVariant),
     ColorRegisters(Vec<(usize, String)>),
     TerminalResize(Size),
     NewClient(

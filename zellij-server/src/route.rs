@@ -10,7 +10,9 @@ use crate::{
     screen::ScreenInstruction,
     ServerInstruction, SessionMetaData, SessionState,
 };
+use log::warn;
 use uuid::Uuid;
+use zellij_utils::input::options::ThemeVariant;
 use zellij_utils::{
     channels::SenderWithContext,
     data::{Direction, Event, PluginCapabilities, ResizeStrategy},
@@ -1060,6 +1062,9 @@ pub(crate) fn route_thread_main(
                                 retry_queue
                             )
                             .with_context(err_context)?;
+                        },
+                        ClientToServerMsg::ThemeVariant(ref theme) => {
+                            log::warn!("Should change theme variant: {:?}", theme);
                         },
                         ClientToServerMsg::NewClient(
                             client_attributes,

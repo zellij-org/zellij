@@ -408,6 +408,7 @@ pub fn start_client(
         std::process::exit(1);
     };
 
+    let mut last_theme_variant = dark_light::detect();
     let mut exit_msg = String::new();
     let mut loading = true;
     let mut pending_instructions = vec![];
@@ -421,8 +422,25 @@ pub fn start_client(
         .write_all("\u{1b}[1m\u{1b}[HLoading Zellij\u{1b}[m\n\r".as_bytes())
         .expect("cannot write to stdout");
     stdout.flush().expect("could not flush");
-
+    log::warn!("Starting with variant {:?}", last_theme_variant);
     loop {
+        // TODO: move to better place
+        let theme_variant = dark_light::detect();
+
+        log::warn!("checking {:?}", dark_light::detect());
+        if last_theme_variant != theme_variant {
+            let variant = match theme_variant {
+                dark_light::Mode::Dark | dark_light::Mode::Default => ThemeVariant::Dark,
+                dark_light::Mode::Light => ThemeVariant::Light,
+            };
+            warn!(
+                "Will update theme variant on server: {:?} => {:?}",
+                last_theme_variant, variant
+            );
+            os_input.send_to_server(ClientToServerMsg::ThemeVariant(variant));
+            last_theme_variant = theme_variant;
+        }
+
         let (client_instruction, mut err_ctx) = if !loading && !pending_instructions.is_empty() {
             // there are buffered instructions, we need to go through them before processing the
             // new ones
