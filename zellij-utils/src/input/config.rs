@@ -8,7 +8,7 @@ use thiserror::Error;
 use std::convert::TryFrom;
 
 use super::keybinds::Keybinds;
-use super::options::Options;
+use super::options::{Options, ThemeVariant};
 use super::plugins::{PluginAliases, PluginsConfigError};
 use super::theme::{Themes, UiConfig};
 use crate::cli::{CliArgs, Command};
@@ -160,10 +160,28 @@ impl TryFrom<&CliArgs> for Config {
 }
 
 impl Config {
-    pub fn theme_config(&self, opts: &Options) -> Option<Palette> {
-        match &opts.theme {
-            Some(theme_name) => self.themes.get_theme(theme_name).map(|theme| theme.palette),
-            None => self.themes.get_theme("default").map(|theme| theme.palette),
+    pub fn theme_config(&self, opts: &Options, theme_variant: &ThemeVariant) -> Option<Palette> {
+        match (
+            &opts.theme,
+            &opts.theme_light,
+            &opts.theme_dark,
+            &theme_variant,
+        ) {
+            (_, Some(theme_light), _, ThemeVariant::Light) => {
+                self.themes
+                    .get_theme(theme_light)
+                    .map(|theme| theme.palette)
+            },
+            (_, _, Some(theme_dark), ThemeVariant::Dark) => {
+                self.themes.get_theme(theme_dark).map(|theme| theme.palette)
+            },
+
+            (Some(theme_name), _, _, _) => {
+                self.themes.get_theme(theme_name).map(|theme| theme.palette)
+            },
+            _ => {
+                self.themes.get_theme("default").map(|theme| theme.palette)
+            },
         }
     }
     /// Gets default configuration from assets

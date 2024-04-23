@@ -6,6 +6,13 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::str::FromStr;
 
+#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
+pub enum ThemeVariant {
+    Light,
+    Dark,
+    Default,
+}
+
 #[derive(Copy, Clone, Debug, PartialEq, Deserialize, Serialize, ArgEnum)]
 pub enum OnForceClose {
     #[serde(alias = "quit")]

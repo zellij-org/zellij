@@ -16,6 +16,7 @@ serde_yaml = "0.8"
 serde_json = "1.0"
 zellij-utils = { path = "../zellij-utils/", version = "0.41.0" }
 log = "0.4.17"
+dark-light = "1.1.1"
 
 [dev-dependencies]
 insta = "1.6.0"

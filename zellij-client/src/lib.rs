@@ -15,6 +15,7 @@ use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use zellij_utils::errors::FatalError;
+use zellij_utils::input::options::ThemeVariant;
 
 use crate::stdin_ansi_parser::{AnsiStdinInstruction, StdinAnsiParser, SyncOutput};
 use crate::{
@@ -199,8 +200,13 @@ pub fn start_client(
     envs::set_zellij("0".to_string());
     config.env.set_vars();
 
+    let theme_variant = match dark_light::detect() {
+        dark_light::Mode::Dark | dark_light::Mode::Default => ThemeVariant::Dark,
+        dark_light::Mode::Light => ThemeVariant::Light,
+    };
+
     let palette = config
-        .theme_config(&config_options)
+        .theme_config(&config_options, &theme_variant)
         .unwrap_or_else(|| os_input.load_palette());
 
     let full_screen_ws = os_input.get_terminal_size_using_fd(0);
@@ -558,8 +564,13 @@ pub fn start_server_detached(
     envs::set_zellij("0".to_string());
     config.env.set_vars();
 
+    let theme_variant = match dark_light::detect() {
+        dark_light::Mode::Dark | dark_light::Mode::Default => ThemeVariant::Dark,
+        dark_light::Mode::Light => ThemeVariant::Light,
+    };
+
     let palette = config
-        .theme_config(&config_options)
+        .theme_config(&config_options, &theme_variant)
         .unwrap_or_else(|| os_input.load_palette());
 
     let client_attributes = ClientAttributes {
