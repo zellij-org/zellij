@@ -1629,12 +1629,25 @@ impl Screen {
     }
 
     fn switch_tabs(&mut self, active_tab_pos: usize, other_tab_pos: usize, client_id: u16) {
-        let Some(active_tab_idx) = self.tabs.values().find(|t| t.position == active_tab_pos).map(|t| t.index) else {
+        let Some(active_tab_idx) = self
+            .tabs
+            .values()
+            .find(|t| t.position == active_tab_pos)
+            .map(|t| t.index)
+        else {
             log::error!("Failed to find active tab at position: {}", active_tab_pos);
             return;
         };
-        let Some(other_tab_idx) = self.tabs.values().find(|t| t.position == other_tab_pos).map(|t| t.index) else {
-            log::error!("Failed to find tab to switch to at position: {}", other_tab_pos);
+        let Some(other_tab_idx) = self
+            .tabs
+            .values()
+            .find(|t| t.position == other_tab_pos)
+            .map(|t| t.index)
+        else {
+            log::error!(
+                "Failed to find tab to switch to at position: {}",
+                other_tab_pos
+            );
             return;
         };
 
@@ -1669,7 +1682,6 @@ impl Screen {
     }
 
     pub fn move_active_tab_to_right(&mut self, client_id: ClientId) -> Result<()> {
-
         let err_context = || "Failed to move active tab right ";
         if self.tabs.len() < 2 {
             debug!("cannot move tab to right: only one tab exists");
