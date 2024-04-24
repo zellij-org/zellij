@@ -1,6 +1,6 @@
 ---
 source: zellij-server/src/plugins/./unit/plugin_tests.rs
-assertion_line: 4169
+assertion_line: 4312
 expression: "format!(\"{:#?}\", new_tab_event)"
 ---
 Some(
@@ -8,7 +8,7 @@ Some(
         Some(
             RunCommand(
                 RunCommand {
-                    command: "",
+                    command: ".",
                     args: [],
                     cwd: Some(
                         "/path/to/my/file.rs",
