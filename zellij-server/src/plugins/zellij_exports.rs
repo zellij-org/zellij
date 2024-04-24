@@ -519,7 +519,12 @@ fn open_terminal(env: &ForeignFunctionEnv, cwd: PathBuf) {
         .plugin_env
         .default_shell
         .clone()
-        .unwrap_or_else(|| TerminalAction::RunCommand(RunCommand::default()));
+        .unwrap_or_else(|| TerminalAction::RunCommand(
+            RunCommand {
+                command: env.plugin_env.path_to_default_shell.clone(),
+                ..Default::default()
+            }
+        ));
     default_shell.change_cwd(cwd);
     let run_command_action: Option<RunCommandAction> = match default_shell {
         TerminalAction::RunCommand(run_command) => Some(run_command.into()),
@@ -540,7 +545,12 @@ fn open_terminal_floating(
         .plugin_env
         .default_shell
         .clone()
-        .unwrap_or_else(|| TerminalAction::RunCommand(RunCommand::default()));
+        .unwrap_or_else(|| TerminalAction::RunCommand(
+            RunCommand {
+                command: env.plugin_env.path_to_default_shell.clone(),
+                ..Default::default()
+            }
+        ));
     default_shell.change_cwd(cwd);
     let run_command_action: Option<RunCommandAction> = match default_shell {
         TerminalAction::RunCommand(run_command) => Some(run_command.into()),
@@ -557,7 +567,12 @@ fn open_terminal_in_place(env: &ForeignFunctionEnv, cwd: PathBuf) {
         .plugin_env
         .default_shell
         .clone()
-        .unwrap_or_else(|| TerminalAction::RunCommand(RunCommand::default()));
+        .unwrap_or_else(|| TerminalAction::RunCommand(
+            RunCommand {
+                command: env.plugin_env.path_to_default_shell.clone(),
+                ..Default::default()
+            }
+        ));
     default_shell.change_cwd(cwd);
     let run_command_action: Option<RunCommandAction> = match default_shell {
         TerminalAction::RunCommand(run_command) => Some(run_command.into()),
