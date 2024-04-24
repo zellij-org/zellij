@@ -64,10 +64,11 @@ pub fn start_cli_client(
                 );
             },
             action => {
-                single_message_client(&mut os_input, action, pane_id);
+                individual_messages_client(&mut os_input, action, pane_id);
             },
         }
     }
+    os_input.send_to_server(ClientToServerMsg::ClientExited);
 }
 
 fn pipe_client(
@@ -198,7 +199,7 @@ fn pipe_client(
     }
 }
 
-fn single_message_client(
+fn individual_messages_client(
     os_input: &mut Box<dyn ClientOsApi>,
     action: Action,
     pane_id: Option<u32>,
@@ -208,12 +209,11 @@ fn single_message_client(
     loop {
         match os_input.recv_from_server() {
             Some((ServerToClientMsg::UnblockInputThread, _)) => {
-                os_input.send_to_server(ClientToServerMsg::ClientExited);
-                process::exit(0);
+                break;
             },
             Some((ServerToClientMsg::Log(log_lines), _)) => {
                 log_lines.iter().for_each(|line| println!("{line}"));
-                process::exit(0);
+                break;
             },
             Some((ServerToClientMsg::LogError(log_lines), _)) => {
                 log_lines.iter().for_each(|line| eprintln!("{line}"));
@@ -225,7 +225,7 @@ fn single_message_client(
                     process::exit(2);
                 },
                 _ => {
-                    process::exit(0);
+                    break;
                 },
             },
             _ => {},
