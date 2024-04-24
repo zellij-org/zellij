@@ -85,6 +85,7 @@ pub(crate) fn background_jobs_main(
     bus: Bus<BackgroundJob>,
     serialization_interval: Option<u64>,
     disable_session_metadata: bool,
+    session_read_interval: Option<u64>,
 ) -> Result<()> {
     let err_context = || "failed to write to pty".to_string();
     let mut running_jobs: HashMap<BackgroundJob, Instant> = HashMap::new();
@@ -94,7 +95,7 @@ pub(crate) fn background_jobs_main(
     let current_session_layout = Arc::new(Mutex::new((String::new(), BTreeMap::new())));
     let last_serialization_time = Arc::new(Mutex::new(Instant::now()));
     let serialization_interval = serialization_interval.map(|s| s * 1000); // convert to
-                                                                           // milliseconds
+    let session_read_interval = session_read_interval.map(|s| s * 1000); // milliseconds
 
     loop {
         let (event, mut err_ctx) = bus.recv().with_context(err_context)?;
@@ -203,8 +204,10 @@ pub(crate) fn background_jobs_main(
                                 let _ = senders.send_to_screen(ScreenInstruction::DumpLayoutToHd);
                                 *last_serialization_time.lock().unwrap() = Instant::now();
                             }
-                            task::sleep(std::time::Duration::from_millis(SESSION_READ_DURATION))
-                                .await;
+                            task::sleep(std::time::Duration::from_millis(
+                                session_read_interval.unwrap_or(SESSION_READ_DURATION),
+                            ))
+                            .await;
                         }
                     }
                 });
