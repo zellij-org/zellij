@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 ## [Unreleased]
 * fix(sessions): issue where sessions would occasionally become unresponsive (https://github.com/zellij-org/zellij/pull/3281)
 * fix(cli): respect all options (eg. `default-layout`) when creating a session in the background from the CLI (https://github.com/zellij-org/zellij/pull/3288)
+* fix(cli): rename tab and pane from cli (https://github.com/zellij-org/zellij/pull/3295)
 
 ## [0.40.0] - 2024-04-16
 * feat(plugins): skip plugin cache flag when loading plugins (https://github.com/zellij-org/zellij/pull/2971)
