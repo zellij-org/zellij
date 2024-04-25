@@ -1593,6 +1593,7 @@ impl Screen {
     }
 
     pub fn move_active_tab_to_left(&mut self, client_id: ClientId) -> Result<()> {
+        let err_context = || "Failed to move active tab left";
         if self.tabs.len() < 2 {
             debug!("cannot move tab to left: only one tab exists");
             return Ok(());
@@ -1600,18 +1601,22 @@ impl Screen {
         let Some(client_id) = self.client_id(client_id) else {
             return Ok(());
         };
-        let Some(&active_tab_idx) = self.active_tab_indices.get(&client_id) else {
-            return Ok(());
-        };
 
-        // wraps around: [tab1, tab2, tab3] => [tab1, tab2, tab3]
-        //                 ^                                 ^
-        //          active_tab_idx                     left_tab_idx
-        let left_tab_idx = (active_tab_idx + self.tabs.len() - 1) % self.tabs.len();
+        match self.get_active_tab(client_id) {
+            Ok(active_tab) => {
+                let active_tab_pos = active_tab.position;
+                let left_tab_pos = if active_tab_pos == 0 {
+                    self.tabs.len() - 1
+                } else {
+                    active_tab_pos - 1
+                };
 
-        self.switch_tabs(active_tab_idx, left_tab_idx, client_id);
-        self.log_and_report_session_state()
-            .context("failed to move tab to left")?;
+                self.switch_tabs(active_tab_pos, left_tab_pos, client_id);
+                self.log_and_report_session_state()
+                    .context("failed to move tab to left")?;
+            },
+            Err(err) => Err::<(), _>(err).with_context(err_context).non_fatal(),
+        }
         Ok(())
     }
 
@@ -1623,7 +1628,29 @@ impl Screen {
         }
     }
 
-    fn switch_tabs(&mut self, active_tab_idx: usize, other_tab_idx: usize, client_id: u16) {
+    fn switch_tabs(&mut self, active_tab_pos: usize, other_tab_pos: usize, client_id: u16) {
+        let Some(active_tab_idx) = self
+            .tabs
+            .values()
+            .find(|t| t.position == active_tab_pos)
+            .map(|t| t.index)
+        else {
+            log::error!("Failed to find active tab at position: {}", active_tab_pos);
+            return;
+        };
+        let Some(other_tab_idx) = self
+            .tabs
+            .values()
+            .find(|t| t.position == other_tab_pos)
+            .map(|t| t.index)
+        else {
+            log::error!(
+                "Failed to find tab to switch to at position: {}",
+                other_tab_pos
+            );
+            return;
+        };
+
         if !self.tabs.contains_key(&active_tab_idx) || !self.tabs.contains_key(&other_tab_idx) {
             warn!(
                 "failed to switch tabs: index {} or {} not found in {:?}",
@@ -1655,6 +1682,7 @@ impl Screen {
     }
 
     pub fn move_active_tab_to_right(&mut self, client_id: ClientId) -> Result<()> {
+        let err_context = || "Failed to move active tab right ";
         if self.tabs.len() < 2 {
             debug!("cannot move tab to right: only one tab exists");
             return Ok(());
@@ -1662,18 +1690,18 @@ impl Screen {
         let Some(client_id) = self.client_id(client_id) else {
             return Ok(());
         };
-        let Some(&active_tab_idx) = self.active_tab_indices.get(&client_id) else {
-            return Ok(());
-        };
 
-        // wraps around: [tab1, tab2, tab3] => [tab1, tab2, tab3]
-        //                             ^          ^
-        //                     active_tab_idx   right_tab_idx
-        let right_tab_idx = (active_tab_idx + 1) % self.tabs.len();
+        match self.get_active_tab(client_id) {
+            Ok(active_tab) => {
+                let active_tab_pos = active_tab.position;
+                let right_tab_pos = (active_tab_pos + 1) % self.tabs.len();
 
-        self.switch_tabs(active_tab_idx, right_tab_idx, client_id);
-        self.log_and_report_session_state()
-            .context("failed to move active tab to right")?;
+                self.switch_tabs(active_tab_pos, right_tab_pos, client_id);
+                self.log_and_report_session_state()
+                    .context("failed to move tab to the right")?;
+            },
+            Err(err) => Err::<(), _>(err).with_context(err_context).non_fatal(),
+        }
         Ok(())
     }
 
