@@ -154,6 +154,9 @@ fn host_run_plugin_command(env: FunctionEnvMut<ForeignFunctionEnv>) {
                     PluginCommand::NewTabsWithLayout(raw_layout) => {
                         new_tabs_with_layout(env, &raw_layout)?
                     },
+                    PluginCommand::NewTabsWithLayoutInfo(layout_info) => {
+                        new_tabs_with_layout_info(env, layout_info)?
+                    },
                     PluginCommand::NewTab => new_tab(env),
                     PluginCommand::GoToNextTab => go_to_next_tab(env),
                     PluginCommand::GoToPreviousTab => go_to_previous_tab(env),
@@ -859,6 +862,19 @@ fn new_tabs_with_layout(env: &ForeignFunctionEnv, raw_layout: &str) -> Result<()
         None,
     )
     .map_err(|e| anyhow!("Failed to parse layout: {:?}", e))?;
+    apply_layout(env, layout);
+    Ok(())
+}
+
+fn new_tabs_with_layout_info(env: &ForeignFunctionEnv, layout_info: LayoutInfo) -> Result<()> {
+    // TODO: cwd
+    let layout = Layout::from_layout_info(&env.plugin_env.layout_dir, layout_info)
+        .map_err(|e| anyhow!("Failed to parse layout: {:?}", e))?;
+    apply_layout(env, layout);
+    Ok(())
+}
+
+fn apply_layout(env: &ForeignFunctionEnv, layout: Layout) {
     let mut tabs_to_open = vec![];
     let tabs = layout.tabs();
     if tabs.is_empty() {
@@ -890,7 +906,6 @@ fn new_tabs_with_layout(env: &ForeignFunctionEnv, raw_layout: &str) -> Result<()
         let error_msg = || format!("Failed to create layout tab");
         apply_action!(action, error_msg, env);
     }
-    Ok(())
 }
 
 fn new_tab(env: &ForeignFunctionEnv) {
@@ -1526,6 +1541,7 @@ fn check_command_permission(
         PluginCommand::SwitchTabTo(..)
         | PluginCommand::SwitchToMode(..)
         | PluginCommand::NewTabsWithLayout(..)
+        | PluginCommand::NewTabsWithLayoutInfo(..)
         | PluginCommand::NewTab
         | PluginCommand::GoToNextTab
         | PluginCommand::GoToPreviousTab

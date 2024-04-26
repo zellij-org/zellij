@@ -1075,7 +1075,6 @@ impl Default for LayoutParts {
 }
 
 impl Layout {
-    // the first layout will either be the default one
     pub fn list_available_layouts(
         layout_dir: Option<PathBuf>,
         default_layout_name: &Option<String>,
@@ -1130,6 +1129,31 @@ impl Layout {
             }
         });
         available_layouts
+    }
+    pub fn from_layout_info(
+        layout_dir: &Option<PathBuf>,
+        layout_info: LayoutInfo,
+    ) -> Result<Layout, ConfigError> {
+        let (path_to_raw_layout, raw_layout, raw_swap_layouts) = match layout_info {
+            LayoutInfo::File(layout_name_without_extension) => {
+                let layout_dir = layout_dir.clone().or_else(|| default_layout_dir());
+                Self::stringified_from_dir(
+                    &PathBuf::from(layout_name_without_extension),
+                    layout_dir.as_ref(),
+                )?
+            },
+            LayoutInfo::BuiltIn(layout_name) => {
+                Self::stringified_from_default_assets(&PathBuf::from(layout_name))?
+            },
+        };
+        Layout::from_kdl(
+            &raw_layout,
+            path_to_raw_layout,
+            raw_swap_layouts
+                .as_ref()
+                .map(|(r, f)| (r.as_str(), f.as_str())),
+            None,
+        )
     }
     pub fn stringified_from_path_or_default(
         layout_path: Option<&PathBuf>,

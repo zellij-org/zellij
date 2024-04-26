@@ -273,6 +273,14 @@ pub fn new_tabs_with_layout(layout: &str) {
     unsafe { host_run_plugin_command() };
 }
 
+/// Provide a LayoutInfo to be applied to the current session in a new tab. If the layout has multiple tabs, they will all be opened.
+pub fn new_tabs_with_layout_info(layout_info: LayoutInfo) {
+    let plugin_command = PluginCommand::NewTabsWithLayoutInfo(layout_info);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 /// Open a new tab with the default layout
 pub fn new_tab() {
     let plugin_command = PluginCommand::NewTab;

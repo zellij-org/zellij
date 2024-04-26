@@ -97,6 +97,7 @@ enum CommandName {
   WatchFilesystem = 83;
   DumpSessionLayout = 84;
   CloseSelf = 85;
+  NewTabsWithLayoutInfo = 86;
 }
 
 message PluginCommand {
@@ -153,7 +154,12 @@ message PluginCommand {
     MessageToPluginPayload message_to_plugin_payload = 50;
     KillSessionsPayload kill_sessions_payload = 60;
     string scan_host_folder_payload = 61;
+    NewTabsWithLayoutInfoPayload new_tabs_with_layout_info_payload = 62;
   }
+}
+
+message NewTabsWithLayoutInfoPayload {
+  event.LayoutInfo layout_info = 1;
 }
 
 message KillSessionsPayload {

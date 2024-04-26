@@ -101,6 +101,7 @@ pub struct WasmBridge {
     cached_plugin_map:
         HashMap<RunPluginLocation, HashMap<PluginUserConfiguration, Vec<(PluginId, ClientId)>>>,
     pending_pipes: PendingPipes,
+    layout_dir: Option<PathBuf>,
 }
 
 impl WasmBridge {
@@ -114,6 +115,7 @@ impl WasmBridge {
         client_attributes: ClientAttributes,
         default_shell: Option<TerminalAction>,
         default_layout: Box<Layout>,
+        layout_dir: Option<PathBuf>,
     ) -> Self {
         let plugin_map = Arc::new(Mutex::new(PluginMap::default()));
         let connected_clients: Arc<Mutex<Vec<ClientId>>> = Arc::new(Mutex::new(vec![]));
@@ -143,6 +145,7 @@ impl WasmBridge {
             default_layout,
             cached_plugin_map: HashMap::new(),
             pending_pipes: Default::default(),
+            layout_dir,
         }
     }
     pub fn load_plugin(
@@ -198,6 +201,7 @@ impl WasmBridge {
                     let client_attributes = self.client_attributes.clone();
                     let default_shell = self.default_shell.clone();
                     let default_layout = self.default_layout.clone();
+                    let layout_dir = self.layout_dir.clone();
                     async move {
                         let _ = senders.send_to_background_jobs(
                             BackgroundJob::AnimatePluginLoading(plugin_id),
@@ -244,6 +248,7 @@ impl WasmBridge {
                             default_shell,
                             default_layout,
                             skip_cache,
+                            layout_dir,
                         ) {
                             Ok(_) => handle_plugin_successful_loading(&senders, plugin_id),
                             Err(e) => handle_plugin_loading_failure(
@@ -334,6 +339,7 @@ impl WasmBridge {
             let client_attributes = self.client_attributes.clone();
             let default_shell = self.default_shell.clone();
             let default_layout = self.default_layout.clone();
+            let layout_dir = self.layout_dir.clone();
             async move {
                 match PluginLoader::reload_plugin(
                     first_plugin_id,
@@ -350,6 +356,7 @@ impl WasmBridge {
                     client_attributes.clone(),
                     default_shell.clone(),
                     default_layout.clone(),
+                    layout_dir.clone(),
                 ) {
                     Ok(_) => {
                         handle_plugin_successful_loading(&senders, first_plugin_id);
@@ -374,6 +381,7 @@ impl WasmBridge {
                                 client_attributes.clone(),
                                 default_shell.clone(),
                                 default_layout.clone(),
+                                layout_dir.clone(),
                             ) {
                                 Ok(_) => handle_plugin_successful_loading(&senders, *plugin_id),
                                 Err(e) => handle_plugin_loading_failure(
@@ -425,6 +433,7 @@ impl WasmBridge {
             self.client_attributes.clone(),
             self.default_shell.clone(),
             self.default_layout.clone(),
+            self.layout_dir.clone(),
         ) {
             Ok(_) => {
                 let _ = self
