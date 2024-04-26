@@ -24,6 +24,8 @@ mod not_wasm {
     };
     use termwiz::input::{InputEvent, InputParser, KeyCode, KeyEvent, Modifiers};
 
+    use super::keybinds::Keybinds;
+
     /// Creates a [`ModeInfo`] struct indicating the current [`InputMode`] and its keybinds
     /// (as pairs of [`String`]s).
     pub fn get_mode_info(
@@ -49,22 +51,36 @@ mod not_wasm {
         let maybe_more = false;
         let parse_input_event = |input_event: InputEvent| {
             if let InputEvent::Key(key_event) = input_event {
-                ret.push(cast_termwiz_key(key_event, input_bytes));
+                ret.push(cast_termwiz_key(key_event, input_bytes, None));
             }
         };
         input_parser.parse(input_bytes, parse_input_event, maybe_more);
         ret
     }
 
+    fn key_is_bound(key: Key, keybinds: &Keybinds, mode: &InputMode) -> bool {
+        keybinds
+            .get_actions_for_key_in_mode(mode, &key)
+            .map_or(false, |actions| !actions.is_empty())
+    }
+
     // FIXME: This is an absolutely cursed function that should be destroyed as soon
     // as an alternative that doesn't touch zellij-tile can be developed...
-    pub fn cast_termwiz_key(event: KeyEvent, raw_bytes: &[u8]) -> Key {
+    pub fn cast_termwiz_key(event: KeyEvent, raw_bytes: &[u8], keybinds_mode: Option<(&Keybinds, &InputMode)>) -> Key {
         let modifiers = event.modifiers;
 
         // *** THIS IS WHERE WE SHOULD WORK AROUND ISSUES WITH TERMWIZ ***
         if raw_bytes == [8] {
             return Key::Ctrl('h');
         };
+
+        if raw_bytes == [10] {
+            if let Some((keybinds, mode)) = keybinds_mode {
+                if key_is_bound(Key::Ctrl('j'), keybinds, mode) {
+                    return Key::Ctrl('j');
+                }
+            }
+        }
 
         match event.key {
             KeyCode::Char(c) => {
