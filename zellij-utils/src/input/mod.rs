@@ -66,7 +66,11 @@ mod not_wasm {
 
     // FIXME: This is an absolutely cursed function that should be destroyed as soon
     // as an alternative that doesn't touch zellij-tile can be developed...
-    pub fn cast_termwiz_key(event: KeyEvent, raw_bytes: &[u8], keybinds_mode: Option<(&Keybinds, &InputMode)>) -> Key {
+    pub fn cast_termwiz_key(
+        event: KeyEvent,
+        raw_bytes: &[u8],
+        keybinds_mode: Option<(&Keybinds, &InputMode)>,
+    ) -> Key {
         let modifiers = event.modifiers;
 
         // *** THIS IS WHERE WE SHOULD WORK AROUND ISSUES WITH TERMWIZ ***
