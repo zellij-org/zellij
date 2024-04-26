@@ -190,6 +190,7 @@ pub(crate) fn plugin_thread_main(
     store: Store,
     data_dir: PathBuf,
     mut layout: Box<Layout>,
+    layout_dir: Option<PathBuf>,
     path_to_default_shell: PathBuf,
     zellij_cwd: PathBuf,
     capabilities: PluginCapabilities,
@@ -217,6 +218,7 @@ pub(crate) fn plugin_thread_main(
         client_attributes,
         default_shell,
         layout.clone(),
+        layout_dir,
     );
 
     loop {

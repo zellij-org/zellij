@@ -978,12 +978,14 @@ fn init_session(
             let client_attributes = client_attributes.clone();
             let default_shell = default_shell.clone();
             let capabilities = capabilities.clone();
+            let layout_dir = config_options.layout_dir.clone();
             move || {
                 plugin_thread_main(
                     plugin_bus,
                     store,
                     data_dir,
                     layout,
+                    layout_dir,
                     path_to_default_shell,
                     zellij_cwd,
                     capabilities,

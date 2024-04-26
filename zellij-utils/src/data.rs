@@ -1380,4 +1380,5 @@ pub enum PluginCommand {
     WatchFilesystem,
     DumpSessionLayout,
     CloseSelf,
+    NewTabsWithLayoutInfo(LayoutInfo),
 }
