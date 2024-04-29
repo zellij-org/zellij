@@ -47,7 +47,7 @@ common-path = "1.0.0"
 
 #[cfg(not(target_family = "wasm"))]
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
-termwiz = "0.20.0"
+termwiz = "0.22"
 log4rs = "1.2.0"
 signal-hook = "0.3"
 interprocess = "1.2.1"
