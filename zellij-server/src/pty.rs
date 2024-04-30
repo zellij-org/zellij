@@ -639,7 +639,13 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                 pty.populate_session_layout_metadata(&mut session_layout_metadata);
                 pty.bus
                     .senders
-                    .send_to_server(ServerInstruction::Log(vec![format!("{}", session_layout_metadata.list_clients_metadata())], client_id))
+                    .send_to_server(ServerInstruction::Log(
+                        vec![format!(
+                            "{}",
+                            session_layout_metadata.list_clients_metadata()
+                        )],
+                        client_id,
+                    ))
                     .with_context(err_context)
                     .non_fatal();
             },

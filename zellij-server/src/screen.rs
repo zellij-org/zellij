@@ -2168,12 +2168,20 @@ impl Screen {
                 suppressed_panes.insert(*triggering_pane_id, p);
             }
 
-            let all_connected_clients: Vec<ClientId> =
-                self.connected_clients.borrow().iter().copied().filter(|c| self.active_tab_indices.get(&c) == Some(&tab_index)).collect();
+            let all_connected_clients: Vec<ClientId> = self
+                .connected_clients
+                .borrow()
+                .iter()
+                .copied()
+                .filter(|c| self.active_tab_indices.get(&c) == Some(&tab_index))
+                .collect();
 
             let mut active_pane_ids: HashMap<ClientId, Option<PaneId>> = HashMap::new();
             for connected_client_id in &all_connected_clients {
-                active_pane_ids.insert(*connected_client_id, tab.get_active_pane_id(*connected_client_id));
+                active_pane_ids.insert(
+                    *connected_client_id,
+                    tab.get_active_pane_id(*connected_client_id),
+                );
             }
 
             let tiled_panes: Vec<PaneLayoutMetadata> = tab
@@ -2192,7 +2200,12 @@ impl Screen {
                     }
                 })
                 .map(|(pane_id, p)| {
-                    let focused_clients: Vec<ClientId> = active_pane_ids.iter().filter_map(|(c_id, p_id)| p_id.and_then(|p_id| if p_id == pane_id { Some(*c_id) } else { None })).collect();
+                    let focused_clients: Vec<ClientId> = active_pane_ids
+                        .iter()
+                        .filter_map(|(c_id, p_id)| {
+                            p_id.and_then(|p_id| if p_id == pane_id { Some(*c_id) } else { None })
+                        })
+                        .collect();
                     PaneLayoutMetadata::new(
                         pane_id,
                         p.position_and_size(),
@@ -2205,7 +2218,7 @@ impl Screen {
                         } else {
                             None
                         },
-                        focused_clients
+                        focused_clients,
                     )
                 })
                 .collect();
@@ -2225,7 +2238,12 @@ impl Screen {
                     }
                 })
                 .map(|(pane_id, p)| {
-                    let focused_clients: Vec<ClientId> = active_pane_ids.iter().filter_map(|(c_id, p_id)| p_id.and_then(|p_id| if p_id == pane_id { Some(*c_id) } else { None })).collect();
+                    let focused_clients: Vec<ClientId> = active_pane_ids
+                        .iter()
+                        .filter_map(|(c_id, p_id)| {
+                            p_id.and_then(|p_id| if p_id == pane_id { Some(*c_id) } else { None })
+                        })
+                        .collect();
                     PaneLayoutMetadata::new(
                         pane_id,
                         p.position_and_size(),

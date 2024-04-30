@@ -1,13 +1,16 @@
-use crate::ClientId;
 use crate::panes::PaneId;
-use std::collections::{HashMap, BTreeMap};
+use crate::ClientId;
+use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use zellij_utils::common_path::common_path_all;
 use zellij_utils::pane_size::PaneGeom;
 use zellij_utils::{
     input::command::RunCommand,
     input::layout::{Layout, Run, RunPlugin, RunPluginOrAlias},
-    session_serialization::{GlobalLayoutManifest, PaneLayoutManifest, TabLayoutManifest, extract_command_and_args, extract_plugin_and_config, extract_edit_and_line_number},
+    session_serialization::{
+        extract_command_and_args, extract_edit_and_line_number, extract_plugin_and_config,
+        GlobalLayoutManifest, PaneLayoutManifest, TabLayoutManifest,
+    },
 };
 
 #[derive(Default, Debug, Clone)]
@@ -58,16 +61,22 @@ impl SessionLayoutMetadata {
     pub fn list_clients_metadata(&self) -> String {
         let mut clients_metadata: BTreeMap<ClientId, ClientMetadata> = BTreeMap::new();
         for tab in &self.tabs {
-            let panes = if tab.hide_floating_panes { &tab.tiled_panes } else { &tab.floating_panes };
+            let panes = if tab.hide_floating_panes {
+                &tab.tiled_panes
+            } else {
+                &tab.floating_panes
+            };
             for pane in panes {
                 for focused_client in &pane.focused_clients {
-                    clients_metadata.insert(*focused_client, ClientMetadata {
-                        pane_id: pane.id.clone(),
-                        command: pane.run.clone(),
-                    });
+                    clients_metadata.insert(
+                        *focused_client,
+                        ClientMetadata {
+                            pane_id: pane.id.clone(),
+                            command: pane.run.clone(),
+                        },
+                    );
                 }
             }
-
         }
 
         ClientMetadata::render_many(clients_metadata, &self.default_editor)
@@ -311,7 +320,7 @@ impl PaneLayoutMetadata {
 
 struct ClientMetadata {
     pane_id: PaneId,
-    command: Option<Run>
+    command: Option<Run>,
 }
 impl ClientMetadata {
     pub fn stringify_pane_id(&self) -> String {
@@ -325,30 +334,40 @@ impl ClientMetadata {
             Some(Run::Command(..)) => {
                 let (command, args) = extract_command_and_args(&self.command);
                 command.map(|c| format!("{} {}", c, args.join(" ")))
-            }
+            },
             Some(Run::EditFile(..)) => {
                 let (file_to_edit, _line_number) = extract_edit_and_line_number(&self.command);
-                editor
-                    .as_ref()
-                    .and_then(|editor| file_to_edit
+                editor.as_ref().and_then(|editor| {
+                    file_to_edit
                         .map(|file_to_edit| format!("{} {}", editor.display(), file_to_edit))
-                    )
-            }
+                })
+            },
             Some(Run::Plugin(..)) => {
                 let (plugin, _plugin_config) = extract_plugin_and_config(&self.command);
                 plugin.map(|p| format!("{}", p))
-            }
+            },
             _ => None,
         };
         stringified.unwrap_or("N/A".to_owned())
     }
-    pub fn render_many(clients_metadata: BTreeMap<ClientId, ClientMetadata>, default_editor: &Option<PathBuf>) -> String {
+    pub fn render_many(
+        clients_metadata: BTreeMap<ClientId, ClientMetadata>,
+        default_editor: &Option<PathBuf>,
+    ) -> String {
         let mut lines = vec![];
         lines.push(String::from("CLIENT_ID ZELLIJ_PANE_ID RUNNING_COMMAND"));
 
         for (client_id, client_metadata) in clients_metadata.iter() {
             // 9 - CLIENT_ID, 14 - ZELLIJ_PANE_ID, 15 - RUNNING_COMMAND
-            lines.push(format!("{} {} {}", format!("{0: <9}", client_id), format!("{0: <14}", client_metadata.stringify_pane_id()), format!("{0: <15}", client_metadata.stringify_command(default_editor))));
+            lines.push(format!(
+                "{} {} {}",
+                format!("{0: <9}", client_id),
+                format!("{0: <14}", client_metadata.stringify_pane_id()),
+                format!(
+                    "{0: <15}",
+                    client_metadata.stringify_command(default_editor)
+                )
+            ));
         }
         lines.join("\n")
     }

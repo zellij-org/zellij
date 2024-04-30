@@ -932,7 +932,10 @@ pub(crate) fn route_action(
                 _ => None,
             };
             senders
-                .send_to_screen(ScreenInstruction::ListClientsMetadata(default_shell, client_id))
+                .send_to_screen(ScreenInstruction::ListClientsMetadata(
+                    default_shell,
+                    client_id,
+                ))
                 .with_context(err_context)?;
         },
     }

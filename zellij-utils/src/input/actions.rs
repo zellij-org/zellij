@@ -690,9 +690,7 @@ impl Action {
                     skip_cache,
                 }])
             },
-            CliAction::ListClients => {
-                Ok(vec![Action::ListClients])
-            }
+            CliAction::ListClients => Ok(vec![Action::ListClients]),
         }
     }
 }
