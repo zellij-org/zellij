@@ -11,6 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix(plugins): respect $SHELL when opening a terminal from plugins (eg. from the filepicker strider) (https://github.com/zellij-org/zellij/pull/3296)
 * fix(tabs): closing a tab no longer breaks tab movement (https://github.com/zellij-org/zellij/pull/3299)
 * feat(plugins): add API to open new tabs with a LayoutInfo (https://github.com/zellij-org/zellij/pull/3305)
+* feat(cli): add `zellij action list-clients` to allow listing the connected clients as well as their pane_id and running command (https://github.com/zellij-org/zellij/pull/3314)
 
 ## [0.40.0] - 2024-04-16
 * feat(plugins): skip plugin cache flag when loading plugins (https://github.com/zellij-org/zellij/pull/2971)
