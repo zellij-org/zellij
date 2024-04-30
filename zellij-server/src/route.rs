@@ -926,6 +926,18 @@ pub(crate) fn route_action(
                 log::error!("Message must have a name");
             }
         },
+        Action::ListClients => {
+            let default_shell = match default_shell {
+                Some(TerminalAction::RunCommand(run_command)) => Some(run_command.command),
+                _ => None,
+            };
+            senders
+                .send_to_screen(ScreenInstruction::ListClientsMetadata(
+                    default_shell,
+                    client_id,
+                ))
+                .with_context(err_context)?;
+        },
     }
     Ok(should_break)
 }

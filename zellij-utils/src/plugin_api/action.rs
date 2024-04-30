@@ -1293,6 +1293,7 @@ impl TryFrom<Action> for ProtobufAction {
             | Action::Copy
             | Action::DumpLayout
             | Action::CliPipe { .. }
+            | Action::ListClients
             | Action::SkipConfirm(..) => Err("Unsupported action"),
         }
     }

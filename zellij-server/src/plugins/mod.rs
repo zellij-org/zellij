@@ -105,6 +105,7 @@ pub enum PluginInstruction {
         Option<PathBuf>,
     ),
     DumpLayout(SessionLayoutMetadata, ClientId),
+    ListClientsMetadata(SessionLayoutMetadata, ClientId),
     DumpLayoutToPlugin(SessionLayoutMetadata, PluginId),
     LogLayoutToHd(SessionLayoutMetadata),
     CliPipe {
@@ -173,6 +174,7 @@ impl From<&PluginInstruction> for PluginContext {
                 PluginContext::PermissionRequestResult
             },
             PluginInstruction::DumpLayout(..) => PluginContext::DumpLayout,
+            PluginInstruction::ListClientsMetadata(..) => PluginContext::ListClientsMetadata,
             PluginInstruction::LogLayoutToHd(..) => PluginContext::LogLayoutToHd,
             PluginInstruction::CliPipe { .. } => PluginContext::CliPipe,
             PluginInstruction::CachePluginEvents { .. } => PluginContext::CachePluginEvents,
@@ -485,6 +487,13 @@ pub(crate) fn plugin_thread_main(
             PluginInstruction::DumpLayout(mut session_layout_metadata, client_id) => {
                 populate_session_layout_metadata(&mut session_layout_metadata, &wasm_bridge);
                 drop(bus.senders.send_to_pty(PtyInstruction::DumpLayout(
+                    session_layout_metadata,
+                    client_id,
+                )));
+            },
+            PluginInstruction::ListClientsMetadata(mut session_layout_metadata, client_id) => {
+                populate_session_layout_metadata(&mut session_layout_metadata, &wasm_bridge);
+                drop(bus.senders.send_to_pty(PtyInstruction::ListClientsMetadata(
                     session_layout_metadata,
                     client_id,
                 )));
