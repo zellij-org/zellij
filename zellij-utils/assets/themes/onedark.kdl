@@ -1,0 +1,15 @@
+themes {
+    onedark {
+        fg 171 178 191
+        bg 40 44 52
+        black 29 32 37
+        red 190 80 70
+        green 152 195 121
+        yellow 229 192 123
+        blue 97 175 239
+        magenta 198 120 221
+        cyan 86 182 194
+        white 204 204 204
+        orange 209 154 102
+    }
+}
