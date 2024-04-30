@@ -352,6 +352,7 @@ pub enum ScreenContext {
     DumpLayoutToHd,
     RenameSession,
     DumpLayoutToPlugin,
+    ListClientsMetadata,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.
@@ -373,6 +374,7 @@ pub enum PtyContext {
     LogLayoutToHd,
     FillPluginCwd,
     DumpLayoutToPlugin,
+    ListClientsMetadata,
     Exit,
 }
 
@@ -405,6 +407,7 @@ pub enum PluginContext {
     WatchFilesystem,
     KeybindPipe,
     DumpLayoutToPlugin,
+    ListClientsMetadata,
 }
 
 /// Stack call representations corresponding to the different types of [`ClientInstruction`]s.

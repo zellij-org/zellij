@@ -1,12 +1,13 @@
+use crate::ClientId;
 use crate::panes::PaneId;
-use std::collections::HashMap;
+use std::collections::{HashMap, BTreeMap};
 use std::path::PathBuf;
 use zellij_utils::common_path::common_path_all;
 use zellij_utils::pane_size::PaneGeom;
 use zellij_utils::{
     input::command::RunCommand,
     input::layout::{Layout, Run, RunPlugin, RunPluginOrAlias},
-    session_serialization::{GlobalLayoutManifest, PaneLayoutManifest, TabLayoutManifest},
+    session_serialization::{GlobalLayoutManifest, PaneLayoutManifest, TabLayoutManifest, extract_command_and_args, extract_plugin_and_config, extract_edit_and_line_number},
 };
 
 #[derive(Default, Debug, Clone)]
@@ -14,6 +15,7 @@ pub struct SessionLayoutMetadata {
     default_layout: Box<Layout>,
     global_cwd: Option<PathBuf>,
     pub default_shell: Option<PathBuf>,
+    pub default_editor: Option<PathBuf>,
     tabs: Vec<TabLayoutMetadata>,
 }
 
@@ -52,6 +54,23 @@ impl SessionLayoutMetadata {
                 }
             }
         }
+    }
+    pub fn list_clients_metadata(&self) -> String {
+        let mut clients_metadata: BTreeMap<ClientId, ClientMetadata> = BTreeMap::new();
+        for tab in &self.tabs {
+            let panes = if tab.hide_floating_panes { &tab.tiled_panes } else { &tab.floating_panes };
+            for pane in panes {
+                for focused_client in &pane.focused_clients {
+                    clients_metadata.insert(*focused_client, ClientMetadata {
+                        pane_id: pane.id.clone(),
+                        command: pane.run.clone(),
+                    });
+                }
+            }
+
+        }
+
+        ClientMetadata::render_many(clients_metadata, &self.default_editor)
     }
     fn is_default_shell(
         default_shell: Option<&PathBuf>,
@@ -192,6 +211,15 @@ impl SessionLayoutMetadata {
             }
         }
     }
+    pub fn update_default_editor(&mut self, default_editor: &Option<PathBuf>) {
+        let default_editor = default_editor.clone().unwrap_or_else(|| {
+            PathBuf::from(
+                std::env::var("EDITOR")
+                    .unwrap_or_else(|_| std::env::var("VISUAL").unwrap_or_else(|_| "vi".into())),
+            )
+        });
+        self.default_editor = Some(default_editor);
+    }
 }
 
 impl Into<GlobalLayoutManifest> for SessionLayoutMetadata {
@@ -253,6 +281,7 @@ pub struct PaneLayoutMetadata {
     title: Option<String>,
     is_focused: bool,
     pane_contents: Option<String>,
+    focused_clients: Vec<ClientId>,
 }
 
 impl PaneLayoutMetadata {
@@ -264,6 +293,7 @@ impl PaneLayoutMetadata {
         title: Option<String>,
         is_focused: bool,
         pane_contents: Option<String>,
+        focused_clients: Vec<ClientId>,
     ) -> Self {
         PaneLayoutMetadata {
             id,
@@ -274,6 +304,52 @@ impl PaneLayoutMetadata {
             title,
             is_focused,
             pane_contents,
+            focused_clients,
         }
+    }
+}
+
+struct ClientMetadata {
+    pane_id: PaneId,
+    command: Option<Run>
+}
+impl ClientMetadata {
+    pub fn stringify_pane_id(&self) -> String {
+        match self.pane_id {
+            PaneId::Terminal(terminal_id) => format!("terminal_{}", terminal_id),
+            PaneId::Plugin(plugin_id) => format!("plugin_{}", plugin_id),
+        }
+    }
+    pub fn stringify_command(&self, editor: &Option<PathBuf>) -> String {
+        let stringified = match &self.command {
+            Some(Run::Command(..)) => {
+                let (command, args) = extract_command_and_args(&self.command);
+                command.map(|c| format!("{} {}", c, args.join(" ")))
+            }
+            Some(Run::EditFile(..)) => {
+                let (file_to_edit, _line_number) = extract_edit_and_line_number(&self.command);
+                editor
+                    .as_ref()
+                    .and_then(|editor| file_to_edit
+                        .map(|file_to_edit| format!("{} {}", editor.display(), file_to_edit))
+                    )
+            }
+            Some(Run::Plugin(..)) => {
+                let (plugin, _plugin_config) = extract_plugin_and_config(&self.command);
+                plugin.map(|p| format!("{}", p))
+            }
+            _ => None,
+        };
+        stringified.unwrap_or("N/A".to_owned())
+    }
+    pub fn render_many(clients_metadata: BTreeMap<ClientId, ClientMetadata>, default_editor: &Option<PathBuf>) -> String {
+        let mut lines = vec![];
+        lines.push(String::from("CLIENT_ID ZELLIJ_PANE_ID RUNNING_COMMAND"));
+
+        for (client_id, client_metadata) in clients_metadata.iter() {
+            // 9 - CLIENT_ID, 14 - ZELLIJ_PANE_ID, 15 - RUNNING_COMMAND
+            lines.push(format!("{} {} {}", format!("{0: <9}", client_id), format!("{0: <14}", client_metadata.stringify_pane_id()), format!("{0: <15}", client_metadata.stringify_command(default_editor))));
+        }
+        lines.join("\n")
     }
 }

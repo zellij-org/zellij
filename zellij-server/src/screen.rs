@@ -358,6 +358,7 @@ pub enum ScreenInstruction {
     ),
     DumpLayoutToHd,
     RenameSession(String, ClientId), // String -> new name
+    ListClientsMetadata(Option<PathBuf>, ClientId), // Option<PathBuf> - default shell
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -541,6 +542,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::NewInPlacePluginPane(..) => ScreenContext::NewInPlacePluginPane,
             ScreenInstruction::DumpLayoutToHd => ScreenContext::DumpLayoutToHd,
             ScreenInstruction::RenameSession(..) => ScreenContext::RenameSession,
+            ScreenInstruction::ListClientsMetadata(..) => ScreenContext::ListClientsMetadata,
         }
     }
 }
@@ -2165,8 +2167,15 @@ impl Screen {
             for (triggering_pane_id, p) in tab.get_suppressed_panes() {
                 suppressed_panes.insert(*triggering_pane_id, p);
             }
-            let active_pane_id =
-                first_client_id.and_then(|client_id| tab.get_active_pane_id(client_id));
+
+            let all_connected_clients: Vec<ClientId> =
+                self.connected_clients.borrow().iter().copied().filter(|c| self.active_tab_indices.get(&c) == Some(&tab_index)).collect();
+
+            let mut active_pane_ids: HashMap<ClientId, Option<PaneId>> = HashMap::new();
+            for connected_client_id in &all_connected_clients {
+                active_pane_ids.insert(*connected_client_id, tab.get_active_pane_id(*connected_client_id));
+            }
+
             let tiled_panes: Vec<PaneLayoutMetadata> = tab
                 .get_tiled_panes()
                 .map(|(pane_id, p)| {
@@ -2183,18 +2192,20 @@ impl Screen {
                     }
                 })
                 .map(|(pane_id, p)| {
+                    let focused_clients: Vec<ClientId> = active_pane_ids.iter().filter_map(|(c_id, p_id)| p_id.and_then(|p_id| if p_id == pane_id { Some(*c_id) } else { None })).collect();
                     PaneLayoutMetadata::new(
                         pane_id,
                         p.position_and_size(),
                         p.borderless(),
                         p.invoked_with().clone(),
                         p.custom_title(),
-                        active_pane_id == Some(pane_id),
+                        !focused_clients.is_empty(),
                         if self.serialize_pane_viewport {
                             p.serialize(self.scrollback_lines_to_serialize)
                         } else {
                             None
                         },
+                        focused_clients
                     )
                 })
                 .collect();
@@ -2214,18 +2225,20 @@ impl Screen {
                     }
                 })
                 .map(|(pane_id, p)| {
+                    let focused_clients: Vec<ClientId> = active_pane_ids.iter().filter_map(|(c_id, p_id)| p_id.and_then(|p_id| if p_id == pane_id { Some(*c_id) } else { None })).collect();
                     PaneLayoutMetadata::new(
                         pane_id,
                         p.position_and_size(),
                         false, // floating panes are never borderless
                         p.invoked_with().clone(),
                         p.custom_title(),
-                        active_pane_id == Some(pane_id),
+                        !focused_clients.is_empty(),
                         if self.serialize_pane_viewport {
                             p.serialize(self.scrollback_lines_to_serialize)
                         } else {
                             None
                         },
+                        focused_clients,
                     )
                 })
                 .collect();
@@ -2655,6 +2668,18 @@ pub(crate) fn screen_thread_main(
                     .bus
                     .senders
                     .send_to_plugin(PluginInstruction::DumpLayout(
+                        session_layout_metadata,
+                        client_id,
+                    ))
+                    .with_context(err_context)?;
+            },
+            ScreenInstruction::ListClientsMetadata(default_shell, client_id) => {
+                let err_context = || format!("Failed to dump layout");
+                let session_layout_metadata = screen.get_layout_metadata(default_shell);
+                screen
+                    .bus
+                    .senders
+                    .send_to_plugin(PluginInstruction::ListClientsMetadata(
                         session_layout_metadata,
                         client_id,
                     ))

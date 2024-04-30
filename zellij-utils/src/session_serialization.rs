@@ -216,7 +216,7 @@ fn kdl_string_from_tiled_pane(
     kdl_string
 }
 
-fn extract_command_and_args(layout_run: &Option<Run>) -> (Option<String>, Vec<String>) {
+pub fn extract_command_and_args(layout_run: &Option<Run>) -> (Option<String>, Vec<String>) {
     match layout_run {
         Some(Run::Command(run_command)) => (
             Some(run_command.command.display().to_string()),
@@ -225,7 +225,7 @@ fn extract_command_and_args(layout_run: &Option<Run>) -> (Option<String>, Vec<St
         _ => (None, vec![]),
     }
 }
-fn extract_plugin_and_config(
+pub fn extract_plugin_and_config(
     layout_run: &Option<Run>,
 ) -> (Option<String>, Option<PluginUserConfiguration>) {
     match &layout_run {
@@ -246,7 +246,7 @@ fn extract_plugin_and_config(
         _ => (None, None),
     }
 }
-fn extract_edit_and_line_number(layout_run: &Option<Run>) -> (Option<String>, Option<usize>) {
+pub fn extract_edit_and_line_number(layout_run: &Option<Run>) -> (Option<String>, Option<usize>) {
     match &layout_run {
         // TODO: line number in layouts?
         Some(Run::EditFile(path, line_number, _cwd)) => {

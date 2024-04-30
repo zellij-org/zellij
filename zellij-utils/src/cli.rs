@@ -736,4 +736,5 @@ tail -f /tmp/my-live-logfile | zellij action pipe --name logs --plugin https://e
         #[clap(short('t'), long, value_parser, display_order(10))]
         plugin_title: Option<String>,
     },
+    ListClients,
 }

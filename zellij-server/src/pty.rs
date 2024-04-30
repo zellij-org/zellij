@@ -92,6 +92,7 @@ pub enum PtyInstruction {
         Option<PathBuf>, // if Some, will not fill cwd but just forward the message
         Option<FloatingPaneCoordinates>,
     ),
+    ListClientsMetadata(SessionLayoutMetadata, ClientId),
     Exit,
 }
 
@@ -114,6 +115,7 @@ impl From<&PtyInstruction> for PtyContext {
             PtyInstruction::DumpLayoutToPlugin(..) => PtyContext::DumpLayoutToPlugin,
             PtyInstruction::LogLayoutToHd(..) => PtyContext::LogLayoutToHd,
             PtyInstruction::FillPluginCwd(..) => PtyContext::FillPluginCwd,
+            PtyInstruction::ListClientsMetadata(..) => PtyContext::ListClientsMetadata,
             PtyInstruction::Exit => PtyContext::Exit,
         }
     }
@@ -631,6 +633,15 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                             .non_fatal();
                     },
                 }
+            },
+            PtyInstruction::ListClientsMetadata(mut session_layout_metadata, client_id) => {
+                let err_context = || format!("Failed to dump layout");
+                pty.populate_session_layout_metadata(&mut session_layout_metadata);
+                pty.bus
+                    .senders
+                    .send_to_server(ServerInstruction::Log(vec![format!("{}", session_layout_metadata.list_clients_metadata())], client_id))
+                    .with_context(err_context)
+                    .non_fatal();
             },
             PtyInstruction::DumpLayoutToPlugin(mut session_layout_metadata, plugin_id) => {
                 let err_context = || format!("Failed to dump layout");
@@ -1342,6 +1353,7 @@ impl Pty {
         session_layout_metadata.update_default_shell(get_default_shell());
         session_layout_metadata.update_terminal_commands(terminal_ids_to_commands);
         session_layout_metadata.update_terminal_cwds(terminal_ids_to_cwds);
+        session_layout_metadata.update_default_editor(&self.default_editor)
     }
     pub fn fill_plugin_cwd(
         &self,

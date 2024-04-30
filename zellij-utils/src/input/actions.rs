@@ -297,6 +297,7 @@ pub enum Action {
         cwd: Option<PathBuf>,
         pane_title: Option<String>,
     },
+    ListClients,
 }
 
 impl Action {
@@ -689,6 +690,9 @@ impl Action {
                     skip_cache,
                 }])
             },
+            CliAction::ListClients => {
+                Ok(vec![Action::ListClients])
+            }
         }
     }
 }
