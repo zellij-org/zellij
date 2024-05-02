@@ -21,7 +21,7 @@ use winapi::{
     um::{
         errhandlingapi::GetLastError,
         fileapi::{CreateFileW, FlushFileBuffers, ReadFile, WriteFile, OPEN_EXISTING},
-        handleapi::{DuplicateHandle, INVALID_HANDLE_VALUE},
+        handleapi::{CloseHandle, DuplicateHandle, INVALID_HANDLE_VALUE},
         ioapiset::GetOverlappedResult,
         minwinbase::OVERLAPPED,
         namedpipeapi::{ConnectNamedPipe, CreateNamedPipeW},
@@ -61,7 +61,7 @@ struct EventedOverlapped(OVERLAPPED);
 impl Drop for EventedOverlapped {
     fn drop(&mut self) {
         if (!self.0.hEvent.is_null()) {
-            unsafe { CloseHandle(self.0.hEvent) }
+            unsafe { CloseHandle(self.0.hEvent); }
         }
     }
 }
@@ -259,7 +259,7 @@ impl std::io::Read for PipeStream {
                     .clamp(u32::MIN as usize, usize::max(usize::MAX, u32::MAX as usize))
                     as u32,
                 &mut consumed,
-                &mut overlapped,
+                &mut overlapped.0,
             )
         });
         match result {
@@ -268,7 +268,7 @@ impl std::io::Read for PipeStream {
                 call_BOOL_with_last_error!(unsafe {
                     GetOverlappedResult(
                         self.0.as_raw_handle() as _,
-                        &mut overlapped,
+                        &mut overlapped.0 as *mut OVERLAPPED,
                         &mut consumed,
                         TRUE.into(),
                     )
@@ -292,7 +292,7 @@ impl std::io::Write for PipeStream {
                     .clamp(u32::MIN as usize, usize::max(usize::MAX, u32::MAX as usize))
                     as u32,
                 &mut consumed,
-                &mut overlapped,
+                &mut overlapped.0 as *mut OVERLAPPED,
             )
         });
         match result {
@@ -301,7 +301,7 @@ impl std::io::Write for PipeStream {
                 call_BOOL_with_last_error!(unsafe {
                     GetOverlappedResult(
                         self.0.as_raw_handle() as _,
-                        &mut overlapped,
+                        &mut overlapped.0 as *mut OVERLAPPED,
                         &mut consumed,
                         TRUE.into(),
                     )
