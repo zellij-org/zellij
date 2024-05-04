@@ -155,7 +155,12 @@ message PluginCommand {
     KillSessionsPayload kill_sessions_payload = 60;
     string scan_host_folder_payload = 61;
     NewTabsWithLayoutInfoPayload new_tabs_with_layout_info_payload = 62;
+    WatchFilesystemPayload watch_filesystem = 63;
   }
+}
+
+message WatchFilesystemPayload {
+  map<string, bool> files = 1;
 }
 
 message NewTabsWithLayoutInfoPayload {

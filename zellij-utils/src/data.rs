@@ -1377,7 +1377,7 @@ pub enum PluginCommand {
     DisconnectOtherClients,
     KillSessions(Vec<String>), // one or more session names
     ScanHostFolder(PathBuf),   // TODO: rename to ScanHostFolder
-    WatchFilesystem,
+    WatchFilesystem(HashMap<PathBuf, bool>),
     DumpSessionLayout,
     CloseSelf,
     NewTabsWithLayoutInfo(LayoutInfo),

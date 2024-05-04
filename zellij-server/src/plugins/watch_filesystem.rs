@@ -1,5 +1,6 @@
 use super::PluginInstruction;
 use std::path::PathBuf;
+use std::collections::HashMap;
 
 use crate::thread_bus::ThreadSenders;
 use std::path::Path;
@@ -17,9 +18,12 @@ const DEBOUNCE_DURATION_MS: u64 = 400;
 pub fn watch_filesystem(
     senders: ThreadSenders,
     zellij_cwd: &Path,
+    files_in: &HashMap<PathBuf, bool>,
 ) -> Result<Debouncer<RecommendedWatcher, FileIdMap>> {
     let path_prefix_in_plugins = PathBuf::from("/host");
     let current_dir = PathBuf::from(zellij_cwd);
+    let current_dir_clone = current_dir.clone();
+    let path_prefix_in_plugins_clone = path_prefix_in_plugins.clone();
     let mut debouncer = new_debouncer(
         Duration::from_millis(DEBOUNCE_DURATION_MS),
         None,
@@ -128,8 +132,39 @@ pub fn watch_filesystem(
         },
     )?;
 
-    debouncer
-        .watcher()
-        .watch(zellij_cwd, RecursiveMode::Recursive)?;
+    let default_files = HashMap::from([(PathBuf::from(zellij_cwd), true)]);
+    let files = match files_in.is_empty()
+    {
+        true => &default_files,
+        false => files_in
+    };
+
+    for (key, &value) in files
+    {
+        let path_buf = current_dir_clone.join(key.strip_prefix(&path_prefix_in_plugins_clone).unwrap_or_else(|_| key));
+        if path_buf.exists()
+        {
+            let path = Path::new(path_buf.to_str().unwrap());
+            if value
+            {
+                // If true, then we want to recurse
+                debouncer
+                    .watcher()
+                    .watch(&path, RecursiveMode::Recursive)?;
+            }
+            else
+            {
+                // If false, then we do not want to recurse
+                debouncer
+                    .watcher()
+                    .watch(&path, RecursiveMode::NonRecursive)?;
+            }
+        }
+        else
+        {
+            let path_str = path_buf.to_str().unwrap();
+            log::error!("Cannot watch file {path_str} since it does not exist.")
+        }
+    }
     Ok(debouncer)
 }

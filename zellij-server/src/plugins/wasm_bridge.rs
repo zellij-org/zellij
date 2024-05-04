@@ -1038,9 +1038,9 @@ impl WasmBridge {
         }
         Ok(())
     }
-    pub fn start_fs_watcher_if_not_started(&mut self) {
+    pub fn start_fs_watcher_if_not_started(&mut self, files: &HashMap<PathBuf, bool>) {
         if self.watcher.is_none() {
-            self.watcher = match watch_filesystem(self.senders.clone(), &self.zellij_cwd) {
+            self.watcher = match watch_filesystem(self.senders.clone(), &self.zellij_cwd, &files) {
                 Ok(watcher) => Some(watcher),
                 Err(e) => {
                     log::error!("Failed to watch filesystem: {:?}", e);

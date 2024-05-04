@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{HashMap, BTreeMap};
 use std::io::prelude::*;
 use zellij_tile::prelude::*;
 
@@ -67,7 +67,7 @@ impl ZellijPlugin for State {
             EventType::FileSystemUpdate,
             EventType::FileSystemDelete,
         ]);
-        watch_filesystem();
+        watch_filesystem(&HashMap::new());
     }
 
     fn update(&mut self, event: Event) -> bool {
