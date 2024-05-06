@@ -143,7 +143,13 @@ mod not_wasm {
                 }
             },
             KeyCode::Escape => Key::Esc,
-            KeyCode::Enter => Key::Char('\n'),
+            KeyCode::Enter => {
+                if modifiers.contains(Modifiers::ALT) {
+                    Key::Alt(CharOrArrow::Char('\n'))
+                } else {
+                    Key::Char('\n')
+                }
+            },
             _ => Key::Esc, // there are other keys we can implement here, but we might need additional terminal support to implement them, not just exhausting this enum
         }
     }

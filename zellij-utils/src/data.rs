@@ -94,6 +94,7 @@ impl FromStr for Key {
                     "Right" => Ok(Key::Alt(CharOrArrow::Direction(Direction::Right))),
                     "Up" => Ok(Key::Alt(CharOrArrow::Direction(Direction::Up))),
                     "Down" => Ok(Key::Alt(CharOrArrow::Direction(Direction::Down))),
+                    "Enter" => Ok(Key::Alt(CharOrArrow::Char('\n'))),
                     _ => parse_main_key(
                         main_key,
                         key_str,
