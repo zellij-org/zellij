@@ -244,6 +244,7 @@ impl ClientOsApi for ClientOsInputOutput {
     fn box_clone(&self) -> Box<dyn ClientOsApi> {
         Box::new((*self).clone())
     }
+
     fn update_session_name(&mut self, new_session_name: String) {
         *self.session_name.lock().unwrap() = Some(new_session_name);
     }
@@ -264,87 +265,6 @@ impl ClientOsApi for ClientOsInputOutput {
         let mut buffered_bytes = self.reading_from_stdin.lock().unwrap();
         match buffered_bytes.take() {
             Some(buffered_bytes) => Ok(buffered_bytes),
-            #[cfg(windows)]
-            None => {
-                let stdin = std::io::stdin().lock();
-                let stdin_handle = stdin.as_handle();
-                let mut buf = [INPUT_RECORD {
-                    EventType: FOCUS_EVENT as u16,
-                    Event: INPUT_RECORD_0 {
-                        FocusEvent: FOCUS_EVENT_RECORD { bSetFocus: 0 },
-                    },
-                }; 128];
-                let mut consumed: u32 = 0;
-                let mut read_bytes = Vec::new();
-                // SAFETY:
-                // see https://learn.microsoft.com/en-us/windows/console/readconsoleinput for details
-                // - hStdin: is the valid OS-Handle for Stdin of the current process so I expect the ACCESS_RIGHTS requirement to hold
-                // - lpbuffer: is a valid pointer to an initialized Array of INPUT_RECORD
-                // - nlength: is the length of the allocated Buffer
-                // - lpnumberofeventsread: this out-parameter returns the number of elements consumed from the input queue
-                if unsafe {
-                    ReadConsoleInputA(
-                        stdin_handle.as_raw_handle() as _,
-                        buf.as_mut_ptr(),
-                        buf.len() as u32,
-                        (&mut consumed) as _,
-                    )
-                } != 0
-                {
-                    let buf: &[INPUT_RECORD] = &buf[..consumed as usize];
-                    for event in buf {
-                        let _ = match event.EventType as u32 {
-                            windows_sys::Win32::System::Console::KEY_EVENT => {
-                                // SAFETY: We just matched the tag
-                                let args = unsafe { event.Event.KeyEvent };
-                                if args.bKeyDown == 1 && args.dwControlKeyState == 0 {
-                                    // SAFETY: ASCII is a subset of UTF16 and we called ReadConsoleInputA (the ascii version of the function)
-                                    read_bytes.push(unsafe { args.uChar.AsciiChar });
-                                }
-                                Ok(())
-                            },
-                            windows_sys::Win32::System::Console::MOUSE_EVENT => {
-                                // SAFETY: we just matched the tag
-                                let _args = unsafe { event.Event.MouseEvent };
-                                // TODO implement mouse support. Alacritty does not forward any mouse events in my configuration
-                                // So it is not clear how they arrive here and how they need to be treated.
-                                Ok(())
-                            },
-                            windows_sys::Win32::System::Console::WINDOW_BUFFER_SIZE_EVENT => {
-                                // SAFETY: we just matched the tag
-                                let args = unsafe { event.Event.WindowBufferSizeEvent };
-                                self.send_to_server(ClientToServerMsg::TerminalResize(Size {
-                                    rows: args.dwSize.Y as usize,
-                                    cols: args.dwSize.X as usize,
-                                }));
-                                Ok(())
-                            },
-                            windows_sys::Win32::System::Console::FOCUS_EVENT => {
-                                // Discard as the payload is undocumented: https://learn.microsoft.com/en-us/windows/console/focus-event-record-str
-                                Ok(())
-                            },
-                            windows_sys::Win32::System::Console::MENU_EVENT => {
-                                // Discard as the payload is undocumented: https://learn.microsoft.com/en-us/windows/console/menu-event-record-str
-                                Ok(())
-                            },
-                            x => Err(format!("Unknown Eventtype: {x}")),
-                        };
-                    }
-                    let session_name_after_reading_from_stdin =
-                        { self.session_name.lock().unwrap().clone() };
-                    if session_name_at_calltime.is_some()
-                        && session_name_at_calltime != session_name_after_reading_from_stdin
-                    {
-                        *buffered_bytes = Some(read_bytes);
-                        Err("Session ended")
-                    } else {
-                        Ok(read_bytes)
-                    }
-                } else {
-                    Err(std::io::Error::last_os_error().to_string().leak())
-                }
-            },
-            #[cfg(not(windows))]
             None => {
                 let stdin = std::io::stdin();
                 let mut stdin = stdin.lock();
