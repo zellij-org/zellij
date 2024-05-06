@@ -138,7 +138,7 @@ impl Pipe {
             CreateNamedPipeW(
                 self.pipe_name.as_ptr(),                   // pipe name
                 PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED, // read/write access
-                PIPE_TYPE_BYTE |       // message type pipe 
+                PIPE_TYPE_BYTE |       // message type pipe
                     PIPE_WAIT, // blocking mode
                 PIPE_UNLIMITED_INSTANCES,                  // max. instances
                 BUFSIZE,                                   // output buffer size
@@ -231,6 +231,10 @@ impl PipeStream {
             )
         })
         .map(|_| Self::from(dup_handle))
+    }
+
+    pub fn connect(path: impl AsRef<OsStr>)  -> io::Result<Self> {
+        Pipe::new(path).connect()
     }
 }
 

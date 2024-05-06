@@ -28,15 +28,15 @@ pub fn start_cli_client(os_input: Box<dyn ClientOsApi>, session_name: &str, acti
     }
     loop {
         match os_input.recv_from_server() {
-            Ok((ServerToClientMsg::UnblockInputThread, _)) => {
+            Some((ServerToClientMsg::UnblockInputThread, _)) => {
                 os_input.send_to_server(ClientToServerMsg::ClientExited);
                 process::exit(0);
             },
-            Ok((ServerToClientMsg::Log(log_lines), _)) => {
+            Some((ServerToClientMsg::Log(log_lines), _)) => {
                 log_lines.iter().for_each(|line| println!("{line}"));
                 process::exit(0);
             },
-            Ok((ServerToClientMsg::LogError(log_lines), _)) => {
+            Some((ServerToClientMsg::LogError(log_lines), _)) => {
                 log_lines.iter().for_each(|line| eprintln!("{line}"));
                 process::exit(2);
             },

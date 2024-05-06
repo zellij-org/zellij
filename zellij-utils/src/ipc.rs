@@ -1,21 +1,16 @@
 //! IPC stuff for starting to split things into a client and server model.
+
 #[cfg(windows)]
-use crate::ipc::named_pipe::PipeStream;
+use crate::windows_utils::named_pipe::{PipeStream, Pipe};
 use crate::{
     cli::CliArgs,
     data::{ClientId, ConnectToSession, InputMode, Style},
     errors::{get_current_ctx, prelude::*, ErrorContext},
-    input::keybinds::Keybinds,
-    input::{actions::Action, layout::Layout, options::Options, plugins::PluginsConfig},
+    input::{actions::Action, keybinds::Keybinds, layout::Layout, options::Options, plugins::PluginsConfig},
     pane_size::{Size, SizeInPixels},
 };
-use interprocess::local_socket::{LocalSocketListener, LocalSocketStream};
-use log::{debug, warn};
-use std::path::Path;
-use std::{fmt::Debug, io::Read, mem::MaybeUninit};
-
-#[cfg(windows)]
-use winapi::um::wincon::CONSOLE_CURSOR_INFO;
+use interprocess::{local_socket::LocalSocketStream, os::windows::named_pipe::DuplexBytePipeStream};
+use log::warn;
 
 #[cfg(unix)]
 use nix::unistd::dup;
@@ -23,11 +18,10 @@ use nix::unistd::dup;
 use serde::{Deserialize, Serialize};
 use std::{
     fmt::{Display, Error, Formatter},
-    io::{self, Write},
-    marker::PhantomData,
+    io::{self, Read, Write},
+    marker::PhantomData, path::Path,
 };
 
-use crate::shared::set_permissions;
 #[cfg(unix)]
 use std::os::unix::io::{AsRawFd, FromRawFd};
 
@@ -232,7 +226,7 @@ pub struct IpcSenderWithContext<T: Serialize> {
 }
 
 #[cfg(unix)]
-impl<T: Serialize + std::fmt::Debug> IpcSenderWithContext<T> {
+impl<T: Serialize> IpcSenderWithContext<T> {
     /// Returns a sender to the given [LocalSocketStream](interprocess::local_socket::LocalSocketStream).
     pub fn new(sender: LocalSocketStream) -> Self {
         Self {
@@ -241,20 +235,34 @@ impl<T: Serialize + std::fmt::Debug> IpcSenderWithContext<T> {
         }
     }
 
+    /// Sends an event, along with the current [`ErrorContext`], on this [`IpcSenderWithContext`]'s socket.
+    pub fn send(&mut self, msg: T) -> Result<()> {
+        let err_ctx = get_current_ctx();
+        if rmp_serde::encode::write(&mut self.sender, &(msg, err_ctx)).is_err() {
+            Err(anyhow!("failed to send message to client"))
+        } else {
+            // TODO: unwrapping here can cause issues when the server disconnects which we don't mind
+            // do we need to handle errors here in other cases?
+            let _ = self.sender.flush();
+            Ok(())
+        }
+    }
+
     /// Returns an [`IpcReceiverWithContext`] with the same socket as this sender.
     pub fn get_receiver<F>(&self) -> IpcReceiverWithContext<F>
     where
-        F: for<'de> Deserialize<'de> + Serialize + Debug,
+        F: for<'de> Deserialize<'de> + Serialize,
     {
         let sock_fd = self.sender.get_ref().as_raw_fd();
         let dup_sock = dup(sock_fd).unwrap();
         let socket = unsafe { LocalSocketStream::from_raw_fd(dup_sock) };
         IpcReceiverWithContext::new(socket)
     }
+
 }
 
 #[cfg(windows)]
-impl<T: Serialize + std::fmt::Debug> IpcSenderWithContext<T> {
+impl<T: Serialize> IpcSenderWithContext<T> {
     /// Returns a sender to the given [PipeStream](zellij_utils::ipc::named_pipe::PipeStream).
     pub fn new(sender: PipeStream) -> Self {
         Self {
@@ -266,7 +274,7 @@ impl<T: Serialize + std::fmt::Debug> IpcSenderWithContext<T> {
     ///Returns an [`IpcReceiverWithContext`] with the same socket as this sender.
     pub fn get_receiver<F>(&self) -> IpcReceiverWithContext<F>
     where
-        F: for<'de> Deserialize<'de> + Serialize + Debug,
+        F: for<'de> Deserialize<'de> + Serialize,
     {
         let socket = self
             .sender
@@ -275,9 +283,7 @@ impl<T: Serialize + std::fmt::Debug> IpcSenderWithContext<T> {
             .expect("Failed to duplicate pipe to obtain receiver");
         IpcReceiverWithContext::new(socket)
     }
-}
 
-impl<T: Serialize + std::fmt::Debug> IpcSenderWithContext<T> {
     /// Sends an event, along with the current [`ErrorContext`], on this [`IpcSenderWithContext`]'s socket.
     pub fn send(&mut self, msg: T) -> Result<()> {
         log::debug!("Sending message");
@@ -296,45 +302,52 @@ impl<T: Serialize + std::fmt::Debug> IpcSenderWithContext<T> {
 }
 
 /// Receives messages on a stream socket, along with an [`ErrorContext`].
-pub struct IpcReceiverWithContext<TData> {
-    receiver: IpcSocketStream,
-    _phantom: PhantomData<TData>,
-}
+pub struct IpcReceiverWithContext<T> {
 
-#[derive(Debug)]
-pub enum ReceiveError {
-    Disconnected,
-    IOError(io::Error),
-    ParseError(rmp_serde::decode::Error),
-    ReceiverLocked,
+    #[cfg(unix)]
+    receiver: io::BufReader<IpcSocketStream>,
+    #[cfg(windows)]
+    receiver: IpcSocketStream,
+    _phantom: PhantomData<T>,
 }
 
 #[cfg(unix)]
-impl<TData> IpcReceiverWithContext<TData>
+impl<T> IpcReceiverWithContext<T>
 where
-    TData: for<'de> Deserialize<'de> + Serialize,
+    T: for<'de> Deserialize<'de> + Serialize,
 {
     /// Returns a receiver to the given [LocalSocketStream](interprocess::local_socket::LocalSocketStream).
     pub fn new(receiver: LocalSocketStream) -> Self {
         Self {
-            receiver: receiver,
+            receiver: io::BufReader::new(receiver),
             _phantom: PhantomData,
         }
     }
 
+    /// Receives an event, along with the current [`ErrorContext`], on this [`IpcReceiverWithContext`]'s socket.
+    pub fn recv(&mut self) -> Option<(T, ErrorContext)> {
+        match rmp_serde::decode::from_read(&mut self.receiver) {
+            Ok(msg) => Some(msg),
+            Err(e) => {
+                warn!("Error in IpcReceiver.recv(): {:?}", e);
+                None
+            },
+        }
+    }
+
     /// Returns an [`IpcSenderWithContext`] with the same socket as this receiver.
-    pub fn get_sender<F: Serialize + Debug>(&self) -> IpcSenderWithContext<F> {
-        let sock_fd = self.receiver.as_raw_fd();
-        let dup_sock = dup(sock_fd).expect("Failed to duplicate pipe to obtain sender");
+    pub fn get_sender<F: Serialize>(&self) -> IpcSenderWithContext<F> {
+        let sock_fd = self.receiver.get_ref().as_raw_fd();
+        let dup_sock = dup(sock_fd).unwrap();
         let socket = unsafe { LocalSocketStream::from_raw_fd(dup_sock) };
         IpcSenderWithContext::new(socket)
     }
 }
 
 #[cfg(windows)]
-impl<TData> IpcReceiverWithContext<TData>
+impl<T> IpcReceiverWithContext<T>
 where
-    TData: for<'de> Deserialize<'de> + Serialize,
+    T: for<'de> Deserialize<'de> + Serialize,
 {
     /// Returns a receiver to the given [PipeStream](zellij_utils::ipc::named_pipe::PipeStream).
     pub fn new(receiver: PipeStream) -> Self {
@@ -345,21 +358,16 @@ where
     }
 
     /// Returns an [`IpcSenderWithContext`] with the same socket as this receiver.
-    pub fn get_sender<F: Serialize + Debug>(&self) -> IpcSenderWithContext<F> {
+    pub fn get_sender<F: Serialize>(&self) -> IpcSenderWithContext<F> {
         let socket = self
             .receiver
             .try_clone()
             .expect("Failed to duplicate pipe to obtain sender");
         IpcSenderWithContext::new(socket)
     }
-}
 
-impl<TData> IpcReceiverWithContext<TData>
-where
-    TData: for<'de> Deserialize<'de> + Serialize,
-{
     /// Receives an event, along with the current [`ErrorContext`], on this [`IpcReceiverWithContext`]'s socket.
-    pub fn recv(&mut self) -> Result<(TData, ErrorContext), ReceiveError> {
+    pub fn recv(&mut self) -> Option<(T, ErrorContext)> {
         let mut buf = Vec::with_capacity(512);
         let mut counter = 0;
         loop {
@@ -370,23 +378,14 @@ where
             let remaining_buffer: &mut [u8] = unsafe { std::mem::transmute(remaining_buffer) };
 
             log::info!("Reading from pipe");
-            let consumed = self.receiver.read(remaining_buffer);
-            let consumed = match consumed {
-                Ok(x) => {
-                    log::info!("Received {} bytes", x);
-                    x
-                },
-                Err(e) => {
-                    return Err(ReceiveError::IOError(e));
-                },
-            };
+            let consumed = self.receiver.read(remaining_buffer).unwrap();
             unsafe { buf.set_len(buf.len() + consumed) };
             let input = &buf;
             if consumed > 0 {
                 counter = 0;
             }
             match rmp_serde::decode::from_slice(input) {
-                Ok(msg) => break Ok(msg),
+                Ok(msg) => break Some(msg),
                 Err(e) => {
                     match e {
                         rmp_serde::decode::Error::LengthMismatch(expected) => {
@@ -408,77 +407,18 @@ where
                         {
                             counter += 1;
                             if counter > 5 {
-                                return Err(ReceiveError::Disconnected);
+                                return None;
                             }
                             log::warn!("Missing some content in {:x?}", input);
                             buf.reserve(1);
                             continue;
                         },
                         e => {
-                            return Err(ReceiveError::ParseError(e));
+                            return None;
                         },
                     }
                 },
             }
-        }
-    }
-}
-
-#[cfg(windows)]
-pub mod named_pipe;
-
-#[cfg(unix)]
-pub fn try_connect_to_server<TDataSender, TDataReceiver>(
-    path: &Path,
-) -> io::Result<(
-    IpcSenderWithContext<TDataSender>,
-    IpcReceiverWithContext<TDataReceiver>,
-)>
-where
-    TDataSender: Serialize + std::fmt::Debug,
-    TDataReceiver: Serialize + for<'de> Deserialize<'de>,
-{
-    let socket = LocalSocketStream::connect(path)?;
-    let receiver = IpcReceiverWithContext::new(socket);
-    let sender = receiver.get_sender();
-    Ok((sender, receiver))
-}
-
-#[cfg(windows)]
-pub fn try_connect_to_server<TDataSender, TDataReceiver>(
-    path: &Path,
-) -> io::Result<(
-    IpcSenderWithContext<TDataSender>,
-    IpcReceiverWithContext<TDataReceiver>,
-)>
-where
-    TDataSender: Serialize + std::fmt::Debug,
-    TDataReceiver: Serialize + for<'de> Deserialize<'de>,
-{
-    let pipe = named_pipe::Pipe::new(path);
-    let socket = pipe.connect()?;
-
-    let receiver = IpcReceiverWithContext::new(socket);
-    let sender = receiver.get_sender();
-    Ok((sender, receiver))
-}
-
-pub fn connect_to_server<TDataSender, TDataReceiver>(
-    path: &Path,
-) -> (
-    IpcSenderWithContext<TDataSender>,
-    IpcReceiverWithContext<TDataReceiver>,
-)
-where
-    TDataSender: Serialize + std::fmt::Debug,
-    TDataReceiver: Serialize + for<'de> Deserialize<'de>,
-{
-    loop {
-        match try_connect_to_server::<TDataSender, TDataReceiver>(path) {
-            Ok((sender, receiver)) => break (sender, receiver),
-            Err(_) => {
-                std::thread::sleep(std::time::Duration::from_millis(50));
-            },
         }
     }
 }
@@ -498,8 +438,8 @@ pub fn bind_server(name: &Path) -> Result<LocalSocketListener> {
 }
 
 #[cfg(windows)]
-pub fn bind_server(name: &Path) -> Result<named_pipe::Pipe> {
-    let pipe = named_pipe::Pipe::new(name);
+pub fn bind_server(name: &Path) -> Result<Pipe> {
+    let pipe = Pipe::new(name);
 
     Ok(pipe)
 }

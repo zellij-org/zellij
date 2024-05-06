@@ -1,28 +1,31 @@
 use std::collections::HashMap;
-use std::fs::DirEntry;
-use std::iter::empty;
 #[cfg(unix)]
 use std::os::unix::fs::FileTypeExt;
 use std::time::{Duration, SystemTime};
 use std::{fs, io, process};
 use suggest::Suggest;
 use zellij_utils::anyhow::Context;
-use zellij_utils::consts::ZELLIJ_SESSION_INFO_CACHE_DIR;
 use zellij_utils::errors::FatalError;
+use zellij_utils::ipc::IpcSocketStream;
 use zellij_utils::{
     anyhow,
-    consts::{session_info_folder_for_session, session_layout_cache_file_name, ZELLIJ_SOCK_DIR},
+    consts::{
+        session_info_folder_for_session, session_layout_cache_file_name,
+        ZELLIJ_SESSION_INFO_CACHE_DIR, ZELLIJ_SOCK_DIR,
+    },
     envs,
     humantime::format_duration,
     input::layout::Layout,
-    ipc::{ClientToServerMsg, ServerToClientMsg},
+    interprocess::local_socket::LocalSocketStream,
+    ipc::{ClientToServerMsg, IpcReceiverWithContext, IpcSenderWithContext, ServerToClientMsg},
 };
 
 pub(crate) fn get_sessions() -> Result<Vec<(String, Duration)>, io::ErrorKind> {
-    match iter_sessions() {
+    match fs::read_dir(&*ZELLIJ_SOCK_DIR) {
         Ok(files) => {
             let mut sessions = Vec::new();
             files.for_each(|file| {
+                let file = file.unwrap();
                 let file_name = file.file_name().into_string().unwrap();
                 let ctime = std::fs::metadata(&file.path())
                     .ok()
@@ -30,45 +33,17 @@ pub(crate) fn get_sessions() -> Result<Vec<(String, Duration)>, io::ErrorKind> {
                     .and_then(|d| d.elapsed().ok())
                     .unwrap_or_default();
                 let duration = Duration::from_secs(ctime.as_secs());
-                if is_socket(&file).unwrap() && assert_socket(&file_name) {
+                #[cfg(unix)]
+                if file.file_type().unwrap().is_socket() && assert_socket(&file_name) {
                     sessions.push((file_name, duration));
                 }
                 // TODO windows
             });
             Ok(sessions)
         },
-        Err(err) => Err(err.kind()),
+        Err(err) if io::ErrorKind::NotFound != err.kind() => Err(err.kind()),
+        Err(_) => Ok(Vec::with_capacity(0)),
     }
-}
-
-fn iter_sessions() -> Result<Box<dyn Iterator<Item = DirEntry>>, io::Error> {
-    #[cfg(windows)]
-    {
-        use std::path::PathBuf;
-
-        let path = PathBuf::from("\\\\.\\pipe\\");
-        match fs::read_dir(path) {
-            Ok(pipes) => Ok(Box::new(
-                pipes
-                    .map(|file| file.unwrap())
-                    .filter(|file| file.path().starts_with(&*ZELLIJ_SOCK_DIR)),
-            )),
-            Err(err) if io::ErrorKind::NotFound != err.kind() => Err(err),
-            Err(_) => Ok(Box::new(empty())),
-        }
-    }
-    #[cfg(unix)]
-    {
-        match fs::read_dir(&*ZELLIJ_SOCK_DIR) {
-            Ok(files) => Ok(files.map(|file| file.unwrap())),
-            Err(err) if io::ErrorKind::NotFound != err.kind() => Err(err),
-            Err(_) => Ok(empty()),
-        }
-    }
-}
-
-fn is_socket(file: &DirEntry) -> io::Result<bool> {
-    zellij_utils::is_socket(file)
 }
 
 pub(crate) fn get_resurrectable_sessions() -> Vec<(String, Duration, Layout)> {
@@ -84,11 +59,7 @@ pub(crate) fn get_resurrectable_sessions() -> Vec<(String, Duration, Layout)> {
                     let raw_layout = match std::fs::read_to_string(&layout_file_name) {
                         Ok(raw_layout) => raw_layout,
                         Err(e) => {
-                            log::error!(
-                                "Failed to read resurrection layout file: {:?} at {:?}",
-                                e,
-                                &layout_file_name
-                            );
+                            log::error!("Failed to read resurrection layout file: {:?} at {:?}", e, &layout_file_name);
                             return None;
                         },
                     };
@@ -140,31 +111,42 @@ pub(crate) fn get_resurrectable_sessions() -> Vec<(String, Duration, Layout)> {
 }
 
 pub(crate) fn get_sessions_sorted_by_mtime() -> anyhow::Result<Vec<String>> {
-    let mut sessions_with_mtime: Vec<(String, SystemTime)> = Vec::new();
-    for file in iter_sessions()? {
-        let file_name = file.file_name().into_string().unwrap();
-        let file_modified_at = file.metadata()?.modified()?;
-        if is_socket(&file)? && assert_socket(&file_name) {
-            sessions_with_mtime.push((file_name, file_modified_at));
-        }
+    match fs::read_dir(&*ZELLIJ_SOCK_DIR) {
+        Ok(files) => {
+            let mut sessions_with_mtime: Vec<(String, SystemTime)> = Vec::new();
+            for file in files {
+                let file = file?;
+                let file_name = file.file_name().into_string().unwrap();
+                let file_modified_at = file.metadata()?.modified()?;
+                #[cfg(unix)]
+                if file.file_type()?.is_socket() && assert_socket(&file_name) {
+                    sessions_with_mtime.push((file_name, file_modified_at));
+                }
+                // TODO windows
+            }
+            sessions_with_mtime.sort_by_key(|x| x.1); // the oldest one will be the first
+
+            let sessions = sessions_with_mtime.iter().map(|x| x.0.clone()).collect();
+            Ok(sessions)
+        },
+        Err(err) if io::ErrorKind::NotFound != err.kind() => Err(err.into()),
+        Err(_) => Ok(Vec::with_capacity(0)),
     }
-    sessions_with_mtime.sort_by_key(|x| x.1); // the oldest one will be the first
-    let sessions = sessions_with_mtime.iter().map(|x| x.0.clone()).collect();
-    Ok(sessions)
 }
 
 fn assert_socket(name: &str) -> bool {
     let path = &*ZELLIJ_SOCK_DIR.join(name);
-    match zellij_utils::ipc::try_connect_to_server::<ClientToServerMsg, ServerToClientMsg>(path) {
-        Ok((mut sender, mut receiver)) => {
-            sender
-                .send(ClientToServerMsg::ConnStatus)
+    match IpcSocketStream::connect(path) {
+        Ok(stream) => {
+            let mut receiver = IpcReceiverWithContext::new(stream);
+            let mut sender = receiver.get_sender();
+            sender.send(ClientToServerMsg::ConnStatus)
                 .with_context(|| "Query connection status")
                 .non_fatal();
+            let _ = sender.send(ClientToServerMsg::ConnStatus);
             match receiver.recv() {
-                Ok((ServerToClientMsg::Connected, _)) => true,
-                Err(_) => false,
-                Ok(x) => false,
+                Some((ServerToClientMsg::Connected, _)) => true,
+                None | Some((_, _)) => false,
             }
         },
         Err(e) if e.kind() == io::ErrorKind::ConnectionRefused => {
@@ -250,12 +232,9 @@ pub(crate) fn get_active_session() -> ActiveSession {
 
 pub(crate) fn kill_session(name: &str) {
     let path = &*ZELLIJ_SOCK_DIR.join(name);
-    match zellij_utils::ipc::try_connect_to_server::<ClientToServerMsg, ServerToClientMsg>(path) {
-        Ok((mut sender, _receiver)) => {
-            sender
-                .send(ClientToServerMsg::KillSession)
-                .with_context(|| format!("Killing session {name}"))
-                .non_fatal();
+    match IpcSocketStream::connect(path) {
+        Ok(stream) => {
+            let _ = IpcSenderWithContext::new(stream).send(ClientToServerMsg::KillSession);
         },
         Err(e) => {
             eprintln!("Error occurred: {:?}", e);
@@ -267,11 +246,11 @@ pub(crate) fn kill_session(name: &str) {
 pub(crate) fn delete_session(name: &str, force: bool) {
     if force {
         let path = &*ZELLIJ_SOCK_DIR.join(name);
-        let _ =
-            zellij_utils::ipc::try_connect_to_server::<ClientToServerMsg, ServerToClientMsg>(path)
-                .map(|(mut sender, _receiver)| {
-                    sender.send(ClientToServerMsg::KillSession).ok();
-                });
+        let _ = IpcSocketStream::connect(path).map(|stream| {
+            IpcSenderWithContext::new(stream)
+                .send(ClientToServerMsg::KillSession)
+                .ok();
+        });
     }
     if let Err(e) = std::fs::remove_dir_all(session_info_folder_for_session(name)) {
         if e.kind() == std::io::ErrorKind::NotFound {

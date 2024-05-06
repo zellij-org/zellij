@@ -1,7 +1,8 @@
 use zellij_utils::anyhow::{Context, Result};
-use zellij_utils::errors::FatalError;
-use zellij_utils::ipc::ReceiveError;
+use zellij_utils::interprocess::local_socket::LocalSocketListener;
+use zellij_utils::ipc::IpcSocketStream;
 use zellij_utils::pane_size::Size;
+use zellij_utils::windows_utils::named_pipe;
 use zellij_utils::{interprocess, signal_hook};
 
 use interprocess::local_socket::LocalSocketStream;
@@ -20,16 +21,17 @@ use std::io::prelude::*;
 #[cfg(not(windows))]
 use std::os::unix::io::RawFd;
 #[cfg(windows)]
-use std::os::windows::io::{FromRawHandle, RawHandle};
+use std::os::windows::io::{AsHandle, AsRawHandle, FromRawHandle, RawHandle};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, TryLockError};
+use std::sync::{Arc, Mutex};
 use std::{io, process, thread, time};
 #[cfg(windows)]
 use windows_sys::Win32::{
-    Foundation::{HANDLE, INVALID_HANDLE_VALUE},
+    Foundation::INVALID_HANDLE_VALUE,
     System::Console::{
-        GetConsoleMode, GetConsoleScreenBufferInfo, GetStdHandle, SetConsoleMode,
-        CONSOLE_SCREEN_BUFFER_INFO, COORD, SMALL_RECT,
+        GetConsoleMode, GetConsoleScreenBufferInfo, GetStdHandle, ReadConsoleInputA,
+        SetConsoleMode, CONSOLE_SCREEN_BUFFER_INFO, COORD, FOCUS_EVENT, FOCUS_EVENT_RECORD,
+        INPUT_RECORD, INPUT_RECORD_0, SMALL_RECT,
     },
 };
 use zellij_utils::{
@@ -41,6 +43,7 @@ use zellij_utils::{
 #[cfg(not(windows))]
 use zellij_utils::{libc, nix};
 
+#[cfg(not(windows))]
 const SIGWINCH_CB_THROTTLE_DURATION: time::Duration = time::Duration::from_millis(50);
 
 const ENABLE_MOUSE_SUPPORT: &str = "\u{1b}[?1000h\u{1b}[?1002h\u{1b}[?1015h\u{1b}[?1006h";
@@ -174,7 +177,7 @@ pub trait ClientOsApi: Send + Sync {
     /// Set the terminal associated to file descriptor `fd` to
     /// [raw mode](https://en.wikipedia.org/wiki/Terminal_mode).
     #[cfg(unix)]
-    fn set_raw_mode(&mut self, fd: RawFd, enable_mode: u32, disable_mode: u32);
+    fn set_raw_mode(&mut self, fd: RawFd);
     #[cfg(windows)]
     fn set_raw_mode(&mut self, handle_type: u32, enable_mode: u32, disable_mode: u32);
     /// Set the terminal associated to file descriptor `fd` to
@@ -193,7 +196,7 @@ pub trait ClientOsApi: Send + Sync {
     fn send_to_server(&self, msg: ClientToServerMsg);
     /// Receives a message on client-side IPC channel
     // This should be called from the client-side router thread only.
-    fn recv_from_server(&self) -> Result<(ServerToClientMsg, ErrorContext), ReceiveError>;
+    fn recv_from_server(&self) -> Option<(ServerToClientMsg, ErrorContext)>;
     fn handle_signals(&self, sigwinch_cb: Box<dyn Fn()>, quit_cb: Box<dyn Fn()>);
     /// Establish a connection with the server socket.
     fn connect_to_server(&self, path: &Path);
@@ -212,7 +215,7 @@ impl ClientOsApi for ClientOsInputOutput {
         get_terminal_size(handle_type)
     }
     #[cfg(unix)]
-    fn set_raw_mode(&mut self, fd: RawFd, _enable_mode: u32, _disable_mode: u32) {
+    fn set_raw_mode(&mut self, fd: RawFd) {
         into_raw_mode(fd);
     }
 
@@ -261,6 +264,87 @@ impl ClientOsApi for ClientOsInputOutput {
         let mut buffered_bytes = self.reading_from_stdin.lock().unwrap();
         match buffered_bytes.take() {
             Some(buffered_bytes) => Ok(buffered_bytes),
+            #[cfg(windows)]
+            None => {
+                let stdin = std::io::stdin().lock();
+                let stdin_handle = stdin.as_handle();
+                let mut buf = [INPUT_RECORD {
+                    EventType: FOCUS_EVENT as u16,
+                    Event: INPUT_RECORD_0 {
+                        FocusEvent: FOCUS_EVENT_RECORD { bSetFocus: 0 },
+                    },
+                }; 128];
+                let mut consumed: u32 = 0;
+                let mut read_bytes = Vec::new();
+                // SAFETY:
+                // see https://learn.microsoft.com/en-us/windows/console/readconsoleinput for details
+                // - hStdin: is the valid OS-Handle for Stdin of the current process so I expect the ACCESS_RIGHTS requirement to hold
+                // - lpbuffer: is a valid pointer to an initialized Array of INPUT_RECORD
+                // - nlength: is the length of the allocated Buffer
+                // - lpnumberofeventsread: this out-parameter returns the number of elements consumed from the input queue
+                if unsafe {
+                    ReadConsoleInputA(
+                        stdin_handle.as_raw_handle() as _,
+                        buf.as_mut_ptr(),
+                        buf.len() as u32,
+                        (&mut consumed) as _,
+                    )
+                } != 0
+                {
+                    let buf: &[INPUT_RECORD] = &buf[..consumed as usize];
+                    for event in buf {
+                        let _ = match event.EventType as u32 {
+                            windows_sys::Win32::System::Console::KEY_EVENT => {
+                                // SAFETY: We just matched the tag
+                                let args = unsafe { event.Event.KeyEvent };
+                                if args.bKeyDown == 1 && args.dwControlKeyState == 0 {
+                                    // SAFETY: ASCII is a subset of UTF16 and we called ReadConsoleInputA (the ascii version of the function)
+                                    read_bytes.push(unsafe { args.uChar.AsciiChar });
+                                }
+                                Ok(())
+                            },
+                            windows_sys::Win32::System::Console::MOUSE_EVENT => {
+                                // SAFETY: we just matched the tag
+                                let _args = unsafe { event.Event.MouseEvent };
+                                // TODO implement mouse support. Alacritty does not forward any mouse events in my configuration
+                                // So it is not clear how they arrive here and how they need to be treated.
+                                Ok(())
+                            },
+                            windows_sys::Win32::System::Console::WINDOW_BUFFER_SIZE_EVENT => {
+                                // SAFETY: we just matched the tag
+                                let args = unsafe { event.Event.WindowBufferSizeEvent };
+                                self.send_to_server(ClientToServerMsg::TerminalResize(Size {
+                                    rows: args.dwSize.Y as usize,
+                                    cols: args.dwSize.X as usize,
+                                }));
+                                Ok(())
+                            },
+                            windows_sys::Win32::System::Console::FOCUS_EVENT => {
+                                // Discard as the payload is undocumented: https://learn.microsoft.com/en-us/windows/console/focus-event-record-str
+                                Ok(())
+                            },
+                            windows_sys::Win32::System::Console::MENU_EVENT => {
+                                // Discard as the payload is undocumented: https://learn.microsoft.com/en-us/windows/console/menu-event-record-str
+                                Ok(())
+                            },
+                            x => Err(format!("Unknown Eventtype: {x}")),
+                        };
+                    }
+                    let session_name_after_reading_from_stdin =
+                        { self.session_name.lock().unwrap().clone() };
+                    if session_name_at_calltime.is_some()
+                        && session_name_at_calltime != session_name_after_reading_from_stdin
+                    {
+                        *buffered_bytes = Some(read_bytes);
+                        Err("Session ended")
+                    } else {
+                        Ok(read_bytes)
+                    }
+                } else {
+                    Err(std::io::Error::last_os_error().to_string().leak())
+                }
+            },
+            #[cfg(not(windows))]
             None => {
                 let stdin = std::io::stdin();
                 let mut stdin = stdin.lock();
@@ -299,28 +383,20 @@ impl ClientOsApi for ClientOsInputOutput {
             .unwrap()
             .as_mut()
             .unwrap()
-            .send(msg)
-            .with_context(|| "Failed to send message to server")
-            .non_fatal();
+            .send(msg);
     }
-    fn recv_from_server(&self) -> Result<(ServerToClientMsg, ErrorContext), ReceiveError> {
-        log::info!("Receiving from Server");
-        let receiver = self.receive_instructions_from_server.try_lock();
-        let result = match receiver {
-            Ok(mut receiver) => receiver
-                .as_mut()
-                .expect("Receiver should be initialized by now")
-                .recv(),
-            Err(TryLockError::WouldBlock) => Err(ReceiveError::ReceiverLocked),
-            Err(TryLockError::Poisoned(err)) => panic!("receiver has been poisoned"),
-        };
-        log::info!("{:?} received from server", &result);
-        result
+    fn recv_from_server(&self) -> Option<(ServerToClientMsg, ErrorContext)> {
+        self.receive_instructions_from_server
+            .lock()
+            .unwrap()
+            .as_mut()
+            .unwrap()
+            .recv()
     }
     fn handle_signals(&self, sigwinch_cb: Box<dyn Fn()>, quit_cb: Box<dyn Fn()>) {
-        let mut sigwinch_cb_timestamp = time::Instant::now();
         #[cfg(unix)]
         {
+            let mut sigwinch_cb_timestamp = time::Instant::now();
             let mut signals = Signals::new(&[SIGWINCH, SIGTERM, SIGINT, SIGQUIT, SIGHUP]).unwrap();
             for signal in signals.forever() {
                 match signal {
@@ -342,8 +418,20 @@ impl ClientOsApi for ClientOsInputOutput {
         }
     }
     fn connect_to_server(&self, path: &Path) {
-        let (sender, receiver) = zellij_utils::ipc::connect_to_server(path);
-
+        let socket;
+        loop {
+            match IpcSocketStream::connect(path) {
+                Ok(sock) => {
+                    socket = sock;
+                    break;
+                },
+                Err(_) => {
+                    std::thread::sleep(std::time::Duration::from_millis(50));
+                },
+            }
+        }
+        let receiver = IpcReceiverWithContext::new(socket);
+        let sender = receiver.get_sender();
         *self.send_instructions_to_server.lock().unwrap() = Some(sender);
         *self.receive_instructions_from_server.lock().unwrap() = Some(receiver);
     }

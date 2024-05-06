@@ -13,6 +13,9 @@ pub mod session_serialization;
 pub mod setup;
 pub mod shared;
 
+#[cfg(windows)]
+pub mod windows_utils;
+
 // The following modules can't be used when targeting wasm
 #[cfg(not(target_family = "wasm"))]
 pub mod channels; // Requires async_std
