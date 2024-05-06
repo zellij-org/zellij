@@ -23,7 +23,7 @@ use std::os::unix::io::RawFd;
 #[cfg(windows)]
 use std::os::windows::io::{AsHandle, AsRawHandle, FromRawHandle, RawHandle};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, TryLockError};
 use std::{io, process, thread, time};
 #[cfg(windows)]
 use windows_sys::Win32::{
@@ -386,12 +386,21 @@ impl ClientOsApi for ClientOsInputOutput {
             .send(msg);
     }
     fn recv_from_server(&self) -> Option<(ServerToClientMsg, ErrorContext)> {
-        self.receive_instructions_from_server
-            .lock()
-            .unwrap()
-            .as_mut()
-            .unwrap()
-            .recv()
+        log::info!("Receiving from Server");
+        let receiver = self.receive_instructions_from_server.try_lock();
+        let result = match receiver {
+            Ok(mut receiver) => receiver
+                .as_mut()
+                .expect("Receiver should be initialized by now")
+                .recv(),
+            Err(TryLockError::WouldBlock) => {
+                thread::sleep(std::time::Duration::from_secs_f32(0.1));
+                None
+            },
+            Err(TryLockError::Poisoned(err)) => panic!("receiver has been poisoned"),
+        };
+        log::info!("{:?} received from server", &result);
+        result
     }
     fn handle_signals(&self, sigwinch_cb: Box<dyn Fn()>, quit_cb: Box<dyn Fn()>) {
         #[cfg(unix)]

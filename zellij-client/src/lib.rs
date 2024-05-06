@@ -298,6 +298,9 @@ pub fn start_client(
             if let Ok(()) = os_input.unset_raw_mode(0) {
                 handle_panic(info, &send_client_instructions);
             }
+
+            #[cfg(windows)]
+            handle_panic(info, &send_client_instructions);
         })
     });
 
