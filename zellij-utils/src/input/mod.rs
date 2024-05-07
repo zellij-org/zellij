@@ -113,7 +113,6 @@ mod not_wasm {
             },
             KeyCode::UpArrow | KeyCode::ApplicationUpArrow => {
                 if modifiers.contains(Modifiers::ALT) {
-                    //Key::AltPlusUpArrow
                     Key::Alt(CharOrArrow::Direction(Direction::Up))
                 } else {
                     Key::Up

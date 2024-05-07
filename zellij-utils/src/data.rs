@@ -7,7 +7,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt;
 use std::fs::Metadata;
 use std::path::{Path, PathBuf};
-use std::str::FromStr;
+use std::str::{self, FromStr};
 use std::time::Duration;
 use strum_macros::{Display, EnumDiscriminants, EnumIter, EnumString, ToString};
 
@@ -199,6 +199,216 @@ impl fmt::Display for CharOrArrow {
         match self {
             CharOrArrow::Char(c) => write!(f, "{}", Key::Char(*c)),
             CharOrArrow::Direction(d) => write!(f, "{}", d),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KeyWithModifier {
+    bare_key: BareKey,
+    key_modifiers: HashSet<KeyModifier>
+}
+
+#[derive(Eq, Clone, Copy, Debug, PartialEq, Hash, Deserialize, Serialize, PartialOrd, Ord)]
+pub enum BareKey {
+    PageDown,
+    PageUp,
+    Left,
+    Down,
+    Up,
+    Right,
+    Home,
+    End,
+    Backspace,
+    Delete,
+    Insert,
+    F(u8),
+    Char(char),
+    Tab,
+    Esc,
+    Enter,
+    CapsLock,
+    ScrollLock,
+    NumLock,
+    PrintScreen,
+    Pause,
+    Menu,
+}
+
+#[derive(Eq, Clone, Copy, Debug, PartialEq, Hash, Deserialize, Serialize, PartialOrd, Ord)]
+pub enum KeyModifier {
+    Shift,
+    Alt,
+    Ctrl,
+    Super,
+    Hyper,
+    Meta,
+    CapsLock,
+    NumLock,
+}
+
+impl BareKey {
+    pub fn from_bytes_with_u(bytes: &[u8]) -> Option<Self> {
+        match str::from_utf8(bytes) {
+            Ok("27") => Some(BareKey::Esc),
+            Ok("13") => Some(BareKey::Enter),
+            Ok("9") => Some(BareKey::Tab),
+            Ok("127") => Some(BareKey::Backspace),
+            Ok("57358") => Some(BareKey::CapsLock),
+            Ok("57359") => Some(BareKey::ScrollLock),
+            Ok("57360") => Some(BareKey::NumLock),
+            Ok("57361") => Some(BareKey::PrintScreen),
+            Ok("57362") => Some(BareKey::Pause),
+            Ok("57363") => Some(BareKey::Menu),
+            Ok(num) => {
+                u8::from_str_radix(num, 10).ok().map(|n| BareKey::Char((n as char).to_ascii_lowercase()))
+            }
+            _ => None
+        }
+    }
+    pub fn from_bytes_with_tilde(bytes: &[u8]) -> Option<Self> {
+        match str::from_utf8(bytes) {
+            Ok("2") => Some(BareKey::Insert),
+            Ok("3") => Some(BareKey::Delete),
+            Ok("5") => Some(BareKey::PageUp),
+            Ok("6") => Some(BareKey::PageDown),
+            Ok("7") => Some(BareKey::Home),
+            Ok("8") => Some(BareKey::End),
+            Ok("11") => Some(BareKey::F(1)),
+            Ok("12") => Some(BareKey::F(2)),
+            Ok("13") => Some(BareKey::F(3)),
+            Ok("14") => Some(BareKey::F(4)),
+            Ok("15") => Some(BareKey::F(5)),
+            Ok("17") => Some(BareKey::F(6)),
+            Ok("18") => Some(BareKey::F(7)),
+            Ok("19") => Some(BareKey::F(8)),
+            Ok("20") => Some(BareKey::F(9)),
+            Ok("21") => Some(BareKey::F(10)),
+            Ok("23") => Some(BareKey::F(11)),
+            Ok("24") => Some(BareKey::F(12)),
+            _ => None
+        }
+    }
+    pub fn from_bytes_with_no_ending_byte(bytes: &[u8]) -> Option<Self> {
+        match str::from_utf8(bytes) {
+            Ok("1D") | Ok("D") => Some(BareKey::Left),
+            Ok("1C") | Ok("C") => Some(BareKey::Right),
+            Ok("1A") | Ok("A") => Some(BareKey::Up),
+            Ok("1B") | Ok("B") => Some(BareKey::Down),
+            Ok("1H") | Ok("H") => Some(BareKey::Home),
+            Ok("1F") | Ok("F") => Some(BareKey::End),
+            Ok("1P") | Ok("P") => Some(BareKey::F(1)),
+            Ok("1Q") | Ok("Q") => Some(BareKey::F(2)),
+            Ok("1S") | Ok("S") => Some(BareKey::F(4)),
+            _ => None
+        }
+    }
+}
+
+bitflags::bitflags! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    struct ModifierFlags: u8 {
+        const SHIFT   = 0b0000_0001;
+        const ALT     = 0b0000_0010;
+        const CONTROL = 0b0000_0100;
+        const SUPER   = 0b0000_1000;
+        const HYPER = 0b0001_0000;
+        const META = 0b0010_0000;
+        const CAPS_LOCK = 0b0100_0000;
+        const NUM_LOCK = 0b1000_0000;
+    }
+}
+
+impl KeyModifier {
+    pub fn from_bytes(bytes: &[u8]) -> HashSet<KeyModifier> {
+        let modifier_flags = str::from_utf8(bytes)
+            .ok() // convert to string: (eg. "16")
+            .and_then(|s| u8::from_str_radix(&s, 10).ok()) // convert to u8: (eg. 16)
+            .map(|s| s.saturating_sub(1)) // subtract 1: (eg. 15)
+            .and_then(|b| ModifierFlags::from_bits(b)); // bitflags: (0b0000_1111: Shift, Alt, Control, Super)
+        let mut key_modifiers = HashSet::new();
+        if let Some(modifier_flags) = modifier_flags {
+            for name in modifier_flags.iter() {
+                match name {
+                    ModifierFlags::SHIFT => key_modifiers.insert(KeyModifier::Shift),
+                    ModifierFlags::ALT => key_modifiers.insert(KeyModifier::Alt),
+                    ModifierFlags::CONTROL => key_modifiers.insert(KeyModifier::Ctrl),
+                    ModifierFlags::SUPER => key_modifiers.insert(KeyModifier::Super),
+                    ModifierFlags::HYPER => key_modifiers.insert(KeyModifier::Hyper),
+                    ModifierFlags::META => key_modifiers.insert(KeyModifier::Meta),
+                    ModifierFlags::CAPS_LOCK => key_modifiers.insert(KeyModifier::CapsLock),
+                    ModifierFlags::NUM_LOCK => key_modifiers.insert(KeyModifier::NumLock),
+                    _ => false
+                };
+            }
+        }
+        key_modifiers
+    }
+}
+
+impl KeyWithModifier {
+    pub fn new(bare_key: BareKey) -> Self {
+        KeyWithModifier {
+            bare_key,
+            key_modifiers: HashSet::new(),
+        }
+    }
+    pub fn with_shift_modifier(mut self) -> Self {
+        self.key_modifiers.insert(KeyModifier::Shift);
+        self
+    }
+    pub fn with_alt_modifier(mut self) -> Self {
+        self.key_modifiers.insert(KeyModifier::Alt);
+        self
+    }
+    pub fn with_ctrl_modifier(mut self) -> Self {
+        self.key_modifiers.insert(KeyModifier::Ctrl);
+        self
+    }
+    pub fn with_super_modifier(mut self) -> Self {
+        self.key_modifiers.insert(KeyModifier::Super);
+        self
+    }
+    pub fn from_bytes_with_u(number_bytes: &[u8], modifier_bytes: &[u8]) -> Option<Self> {
+        // CSI number ; modifiers u
+        let bare_key = BareKey::from_bytes_with_u(number_bytes);
+        match bare_key {
+            Some(bare_key) => {
+                let key_modifiers = KeyModifier::from_bytes(modifier_bytes);
+                Some(KeyWithModifier {
+                    bare_key,
+                    key_modifiers
+                })
+            }
+            _ => None
+        }
+    }
+    pub fn from_bytes_with_tilde(number_bytes: &[u8], modifier_bytes: &[u8]) -> Option<Self> {
+        // CSI number ; modifiers ~
+        let bare_key = BareKey::from_bytes_with_tilde(number_bytes);
+        match bare_key {
+            Some(bare_key) => {
+                let key_modifiers = KeyModifier::from_bytes(modifier_bytes);
+                Some(KeyWithModifier {
+                    bare_key,
+                    key_modifiers
+                })
+            }
+            _ => None
+        }
+    }
+    pub fn from_bytes_with_no_ending_byte(number_bytes: &[u8], modifier_bytes: &[u8]) -> Option<Self> {
+        // CSI 1; modifiers [ABCDEFHPQS]
+        let bare_key = BareKey::from_bytes_with_no_ending_byte(number_bytes);
+        match bare_key {
+            Some(bare_key) => {
+                let key_modifiers = KeyModifier::from_bytes(modifier_bytes);
+                Some(KeyWithModifier {
+                    bare_key,
+                    key_modifiers
+                })
+            }
+            _ => None
         }
     }
 }

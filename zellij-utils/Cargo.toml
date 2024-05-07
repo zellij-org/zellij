@@ -44,6 +44,7 @@ async-channel = "1.8.0"
 include_dir = "0.7.3"
 prost = "0.11.9"
 common-path = "1.0.0"
+bitflags = "2.5.0"
 
 #[cfg(not(target_family = "wasm"))]
 [target.'cfg(not(target_family = "wasm"))'.dependencies]

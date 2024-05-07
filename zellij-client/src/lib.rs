@@ -6,6 +6,7 @@ mod input_handler;
 pub mod old_config_converter;
 mod stdin_ansi_parser;
 mod stdin_handler;
+mod keyboard_parser;
 
 use log::info;
 use std::env::current_exe;
@@ -24,7 +25,7 @@ use crate::{
 use zellij_utils::{
     channels::{self, ChannelWithContext, SenderWithContext},
     consts::{set_permissions, ZELLIJ_SOCK_DIR},
-    data::{ClientId, ConnectToSession, InputMode, Style},
+    data::{ClientId, ConnectToSession, InputMode, Style, KeyWithModifier},
     envs,
     errors::{ClientContext, ContextType, ErrorInstruction},
     input::{config::Config, options::Options},
@@ -152,6 +153,7 @@ impl ClientInfo {
 #[derive(Debug, Clone)]
 pub(crate) enum InputInstruction {
     KeyEvent(InputEvent, Vec<u8>),
+    KeyWithModifierEvent(KeyWithModifier, Vec<u8>),
     SwitchToMode(InputMode),
     AnsiStdinInstructions(Vec<AnsiStdinInstruction>),
     StartedParsing,
@@ -181,12 +183,13 @@ pub fn start_client(
     let clear_client_terminal_attributes = "\u{1b}[?1l\u{1b}=\u{1b}[r\u{1b}[?1000l\u{1b}[?1002l\u{1b}[?1003l\u{1b}[?1005l\u{1b}[?1006l\u{1b}[?12l";
     let take_snapshot = "\u{1b}[?1049h";
     let bracketed_paste = "\u{1b}[?2004h";
+    let enter_kitty_keyboard_mode = "\u{1b}[>1u"; // TODO: also exit on app close!
     os_input.unset_raw_mode(0).unwrap();
 
     if !is_a_reconnect {
         // we don't do this for a reconnect because our controlling terminal already has the
         // attributes we want from it, and some terminals don't treat these atomically (looking at
-        // your Windows Terminal...)
+        // you Windows Terminal...)
         let _ = os_input
             .get_stdout_writer()
             .write(take_snapshot.as_bytes())
@@ -194,6 +197,10 @@ pub fn start_client(
         let _ = os_input
             .get_stdout_writer()
             .write(clear_client_terminal_attributes.as_bytes())
+            .unwrap();
+        let _ = os_input
+            .get_stdout_writer()
+            .write(enter_kitty_keyboard_mode.as_bytes())
             .unwrap();
     }
     envs::set_zellij("0".to_string());
