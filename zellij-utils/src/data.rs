@@ -3,7 +3,7 @@ use crate::input::config::ConversionError;
 use crate::input::layout::SplitSize;
 use clap::ArgEnum;
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt;
 use std::fs::Metadata;
 use std::path::{Path, PathBuf};
@@ -203,10 +203,10 @@ impl fmt::Display for CharOrArrow {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, PartialOrd, Ord)]
 pub struct KeyWithModifier {
     bare_key: BareKey,
-    key_modifiers: HashSet<KeyModifier>
+    key_modifiers: BTreeSet<KeyModifier>
 }
 
 #[derive(Eq, Clone, Copy, Debug, PartialEq, Hash, Deserialize, Serialize, PartialOrd, Ord)]
@@ -320,13 +320,13 @@ bitflags::bitflags! {
 }
 
 impl KeyModifier {
-    pub fn from_bytes(bytes: &[u8]) -> HashSet<KeyModifier> {
+    pub fn from_bytes(bytes: &[u8]) -> BTreeSet<KeyModifier> {
         let modifier_flags = str::from_utf8(bytes)
             .ok() // convert to string: (eg. "16")
             .and_then(|s| u8::from_str_radix(&s, 10).ok()) // convert to u8: (eg. 16)
             .map(|s| s.saturating_sub(1)) // subtract 1: (eg. 15)
             .and_then(|b| ModifierFlags::from_bits(b)); // bitflags: (0b0000_1111: Shift, Alt, Control, Super)
-        let mut key_modifiers = HashSet::new();
+        let mut key_modifiers = BTreeSet::new();
         if let Some(modifier_flags) = modifier_flags {
             for name in modifier_flags.iter() {
                 match name {
@@ -350,7 +350,7 @@ impl KeyWithModifier {
     pub fn new(bare_key: BareKey) -> Self {
         KeyWithModifier {
             bare_key,
-            key_modifiers: HashSet::new(),
+            key_modifiers: BTreeSet::new(),
         }
     }
     pub fn with_shift_modifier(mut self) -> Self {
@@ -410,6 +410,15 @@ impl KeyWithModifier {
             }
             _ => None
         }
+    }
+}
+
+impl TryInto<Key> for KeyWithModifier {
+    type Error = &'static str;
+    fn try_into(self) -> Result<Key, &'static str> {
+        // TODO: CONTINUE HERE (08/05) - do a `cargo check` and fix all the errors from moving the
+        // indexing to KeyWithModifier from Key and then implement this and other needed stuff
+        unimplemented!()
     }
 }
 
@@ -966,7 +975,7 @@ pub struct Style {
 }
 
 // FIXME: Poor devs hashtable since HashTable can't derive `Default`...
-pub type KeybindsVec = Vec<(InputMode, Vec<(Key, Vec<Action>)>)>;
+pub type KeybindsVec = Vec<(InputMode, Vec<(KeyWithModifier, Vec<Action>)>)>;
 
 /// Provides information helpful in rendering the Zellij controls for UI bars
 #[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -979,11 +988,11 @@ pub struct ModeInfo {
 }
 
 impl ModeInfo {
-    pub fn get_mode_keybinds(&self) -> Vec<(Key, Vec<Action>)> {
+    pub fn get_mode_keybinds(&self) -> Vec<(KeyWithModifier, Vec<Action>)> {
         self.get_keybinds_for_mode(self.mode)
     }
 
-    pub fn get_keybinds_for_mode(&self, mode: InputMode) -> Vec<(Key, Vec<Action>)> {
+    pub fn get_keybinds_for_mode(&self, mode: InputMode) -> Vec<(KeyWithModifier, Vec<Action>)> {
         for (vec_mode, map) in &self.keybinds {
             if mode == *vec_mode {
                 return map.to_vec();
