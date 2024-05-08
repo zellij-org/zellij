@@ -26,10 +26,6 @@ use std::{
 };
 use zellij_utils::envs;
 use zellij_utils::interprocess::local_socket::LocalSocketStream;
-#[cfg(windows)]
-use zellij_utils::interprocess::os::windows::named_pipe::{
-    PipeListener, PipeListenerOptions, PipeMode,
-};
 #[cfg(unix)]
 use zellij_utils::nix::sys::stat::{umask, Mode};
 use zellij_utils::pane_size::Size;

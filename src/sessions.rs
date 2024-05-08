@@ -151,7 +151,6 @@ pub(crate) fn get_sessions_sorted_by_mtime() -> anyhow::Result<Vec<String>> {
                 if is_socket(&file)? && assert_socket(&file_name) {
                     sessions_with_mtime.push((file_name, file_modified_at));
                 }
-                // TODO windows
             }
             sessions_with_mtime.sort_by_key(|x| x.1); // the oldest one will be the first
 

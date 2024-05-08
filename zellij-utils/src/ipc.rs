@@ -263,7 +263,7 @@ impl<T: Serialize> IpcSenderWithContext<T> {
 
 #[cfg(windows)]
 impl<T: Serialize> IpcSenderWithContext<T> {
-    /// Returns a sender to the given [PipeStream](zellij_utils::ipc::named_pipe::PipeStream).
+    /// Returns a sender to the given [PipeStream](zellij_utils::windows_utils::named_pipe::PipeStream).
     pub fn new(sender: PipeStream) -> Self {
         Self {
             sender: io::BufWriter::new(sender),
@@ -349,7 +349,7 @@ impl<T> IpcReceiverWithContext<T>
 where
     T: for<'de> Deserialize<'de> + Serialize,
 {
-    /// Returns a receiver to the given [PipeStream](zellij_utils::ipc::named_pipe::PipeStream).
+    /// Returns a receiver to the given [PipeStream](zellij_utils::windows_utils::named_pipe::PipeStream).
     pub fn new(receiver: PipeStream) -> Self {
         Self {
             receiver,
