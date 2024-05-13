@@ -15,7 +15,7 @@ use std::{
     str::FromStr,
     sync::{Arc, Mutex},
 };
-use wasmer::{Module, Store, Value};
+use wasmer::{Engine, Module, Value};
 use zellij_utils::async_channel::Sender;
 use zellij_utils::async_std::task::{self, JoinHandle};
 use zellij_utils::consts::ZELLIJ_CACHE_DIR;
@@ -77,7 +77,7 @@ impl PluginRenderAsset {
 pub struct WasmBridge {
     connected_clients: Arc<Mutex<Vec<ClientId>>>,
     senders: ThreadSenders,
-    store: Arc<Mutex<Store>>,
+    engine: Engine,
     plugin_dir: PathBuf,
     plugin_cache: Arc<Mutex<HashMap<PathBuf, Module>>>,
     plugin_map: Arc<Mutex<PluginMap>>,
@@ -107,7 +107,7 @@ pub struct WasmBridge {
 impl WasmBridge {
     pub fn new(
         senders: ThreadSenders,
-        store: Arc<Mutex<Store>>,
+        engine: Engine,
         plugin_dir: PathBuf,
         path_to_default_shell: PathBuf,
         zellij_cwd: PathBuf,
@@ -125,7 +125,7 @@ impl WasmBridge {
         WasmBridge {
             connected_clients,
             senders,
-            store,
+            engine,
             plugin_dir,
             plugin_cache,
             plugin_map,
@@ -192,7 +192,7 @@ impl WasmBridge {
                     let plugin_dir = self.plugin_dir.clone();
                     let plugin_cache = self.plugin_cache.clone();
                     let senders = self.senders.clone();
-                    let store = self.store.clone();
+                    let engine = self.engine.clone();
                     let plugin_map = self.plugin_map.clone();
                     let connected_clients = self.connected_clients.clone();
                     let path_to_default_shell = self.path_to_default_shell.clone();
@@ -236,7 +236,7 @@ impl WasmBridge {
                             plugin_dir,
                             plugin_cache,
                             senders.clone(),
-                            store,
+                            engine,
                             plugin_map,
                             size,
                             connected_clients.clone(),
@@ -330,7 +330,7 @@ impl WasmBridge {
             let plugin_dir = self.plugin_dir.clone();
             let plugin_cache = self.plugin_cache.clone();
             let senders = self.senders.clone();
-            let store = self.store.clone();
+            let engine = self.engine.clone();
             let plugin_map = self.plugin_map.clone();
             let connected_clients = self.connected_clients.clone();
             let path_to_default_shell = self.path_to_default_shell.clone();
@@ -346,7 +346,7 @@ impl WasmBridge {
                     plugin_dir.clone(),
                     plugin_cache.clone(),
                     senders.clone(),
-                    store.clone(),
+                    engine.clone(),
                     plugin_map.clone(),
                     connected_clients.clone(),
                     &mut loading_indication,
@@ -371,7 +371,7 @@ impl WasmBridge {
                                 plugin_dir.clone(),
                                 plugin_cache.clone(),
                                 senders.clone(),
-                                store.clone(),
+                                engine.clone(),
                                 plugin_map.clone(),
                                 connected_clients.clone(),
                                 &mut loading_indication,
@@ -423,7 +423,7 @@ impl WasmBridge {
             self.plugin_dir.clone(),
             self.plugin_cache.clone(),
             self.senders.clone(),
-            self.store.clone(),
+            self.engine.clone(),
             self.plugin_map.clone(),
             self.connected_clients.clone(),
             &mut loading_indication,

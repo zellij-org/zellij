@@ -1,4 +1,3 @@
-use crate::get_store;
 use crate::plugins::plugin_map::{PluginEnv, PluginMap, RunningPlugin};
 use crate::plugins::plugin_worker::{plugin_worker, RunningWorker};
 use crate::plugins::zellij_exports::{wasi_write_object, zellij_exports};
@@ -12,7 +11,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 use url::Url;
-use wasmer::{AsStoreRef, Instance, Module, Store};
+use wasmer::{Engine, Instance, Module, Store};
 use wasmer_wasi::{Pipe, WasiState};
 use zellij_utils::consts::ZELLIJ_PLUGIN_ARTIFACT_DIR;
 use zellij_utils::prost::Message;
@@ -53,7 +52,7 @@ pub struct PluginLoader<'a> {
     senders: ThreadSenders,
     plugin_id: PluginId,
     client_id: ClientId,
-    store: Arc<Mutex<Store>>,
+    engine: Engine,
     plugin: PluginConfig,
     plugin_dir: &'a PathBuf,
     tab_index: Option<usize>,
@@ -75,7 +74,7 @@ impl<'a> PluginLoader<'a> {
         plugin_dir: PathBuf,
         plugin_cache: Arc<Mutex<HashMap<PathBuf, Module>>>,
         senders: ThreadSenders,
-        store: Arc<Mutex<Store>>,
+        engine: Engine,
         plugin_map: Arc<Mutex<PluginMap>>,
         connected_clients: Arc<Mutex<Vec<ClientId>>>,
         loading_indication: &mut LoadingIndication,
@@ -102,7 +101,7 @@ impl<'a> PluginLoader<'a> {
             &senders,
             plugin_id,
             first_client_id,
-            store,
+            engine,
             &plugin_dir,
             path_to_default_shell,
             zellij_cwd,
@@ -134,7 +133,7 @@ impl<'a> PluginLoader<'a> {
         plugin_dir: PathBuf,
         plugin_cache: Arc<Mutex<HashMap<PathBuf, Module>>>,
         senders: ThreadSenders,
-        store: Arc<Mutex<Store>>,
+        engine: Engine,
         plugin_map: Arc<Mutex<PluginMap>>,
         size: Size,
         connected_clients: Arc<Mutex<Vec<ClientId>>>,
@@ -155,7 +154,7 @@ impl<'a> PluginLoader<'a> {
             &senders,
             plugin_id,
             client_id,
-            store.clone(),
+            engine,
             plugin.clone(),
             &plugin_dir,
             tab_index,
@@ -208,7 +207,7 @@ impl<'a> PluginLoader<'a> {
         plugin_dir: PathBuf,
         plugin_cache: Arc<Mutex<HashMap<PathBuf, Module>>>,
         senders: ThreadSenders,
-        store: Arc<Mutex<Store>>,
+        engine: Engine,
         plugin_map: Arc<Mutex<PluginMap>>,
         connected_clients: Arc<Mutex<Vec<ClientId>>>,
         loading_indication: &mut LoadingIndication,
@@ -232,7 +231,7 @@ impl<'a> PluginLoader<'a> {
                 &senders,
                 plugin_id,
                 existing_client_id,
-                store.clone(),
+                engine.clone(),
                 &plugin_dir,
                 path_to_default_shell.clone(),
                 zellij_cwd.clone(),
@@ -258,7 +257,7 @@ impl<'a> PluginLoader<'a> {
         plugin_dir: PathBuf,
         plugin_cache: Arc<Mutex<HashMap<PathBuf, Module>>>,
         senders: ThreadSenders,
-        store: Arc<Mutex<Store>>,
+        engine: Engine,
         plugin_map: Arc<Mutex<PluginMap>>,
         connected_clients: Arc<Mutex<Vec<ClientId>>>,
         loading_indication: &mut LoadingIndication,
@@ -286,7 +285,7 @@ impl<'a> PluginLoader<'a> {
             &senders,
             plugin_id,
             first_client_id,
-            store.clone(),
+            engine,
             &plugin_dir,
             path_to_default_shell,
             zellij_cwd,
@@ -315,7 +314,7 @@ impl<'a> PluginLoader<'a> {
         senders: &ThreadSenders,
         plugin_id: PluginId,
         client_id: ClientId,
-        store: Arc<Mutex<Store>>,
+        engine: Engine,
         plugin: PluginConfig,
         plugin_dir: &'a PathBuf,
         tab_index: Option<usize>,
@@ -340,7 +339,7 @@ impl<'a> PluginLoader<'a> {
             senders: senders.clone(),
             plugin_id,
             client_id,
-            store: store.clone(),
+            engine,
             plugin,
             plugin_dir,
             tab_index,
@@ -363,7 +362,7 @@ impl<'a> PluginLoader<'a> {
         senders: &ThreadSenders,
         plugin_id: PluginId,
         client_id: ClientId,
-        store: Arc<Mutex<Store>>,
+        engine: Engine,
         plugin_dir: &'a PathBuf,
         path_to_default_shell: PathBuf,
         zellij_cwd: PathBuf,
@@ -394,7 +393,7 @@ impl<'a> PluginLoader<'a> {
             senders,
             plugin_id,
             client_id,
-            store,
+            engine,
             plugin_config,
             plugin_dir,
             tab_index,
@@ -415,7 +414,7 @@ impl<'a> PluginLoader<'a> {
         senders: &ThreadSenders,
         plugin_id: PluginId,
         client_id: ClientId,
-        store: Arc<Mutex<Store>>,
+        engine: Engine,
         plugin_dir: &'a PathBuf,
         path_to_default_shell: PathBuf,
         zellij_cwd: PathBuf,
@@ -447,7 +446,7 @@ impl<'a> PluginLoader<'a> {
             senders,
             plugin_id,
             client_id,
-            store.clone(),
+            engine,
             plugin_config,
             plugin_dir,
             tab_index,
@@ -497,9 +496,8 @@ impl<'a> PluginLoader<'a> {
         );
         let (_wasm_bytes, cached_path) = self.plugin_bytes_and_cache_path()?;
         let timer = std::time::Instant::now();
-        let module = unsafe {
-            Module::deserialize_from_file(&self.store.lock().unwrap().as_store_ref(), &cached_path)?
-        };
+        let module =
+            unsafe { Module::deserialize_from_file(&Store::new(&self.engine), &cached_path)? };
         log::info!(
             "Loaded plugin '{}' from cache folder at '{}' in {:?}",
             self.plugin_path.display(),
@@ -535,8 +533,7 @@ impl<'a> PluginLoader<'a> {
             .map_err(anyError::new)
             .and_then(|_| {
                 // compile module
-                Module::new(&self.store.lock().unwrap().as_store_ref(), &wasm_bytes)
-                    .map_err(anyError::new)
+                Module::new(&self.engine, &wasm_bytes).map_err(anyError::new)
             })
             .and_then(|m| {
                 // serialize module to HD cache for faster loading in the future
@@ -711,7 +708,7 @@ impl<'a> PluginLoader<'a> {
                     &self.senders.clone(),
                     self.plugin_id,
                     *client_id,
-                    self.store.clone(),
+                    self.engine.clone(),
                     &self.plugin_dir,
                     self.path_to_default_shell.clone(),
                     self.zellij_cwd.clone(),
@@ -768,7 +765,7 @@ impl<'a> PluginLoader<'a> {
                 self.plugin_id
             )
         };
-        let mut store = get_store();
+        let mut store = Store::new(&self.engine);
         let store_mut = &mut store;
         let dirs = vec![
             ("/host".to_owned(), self.zellij_cwd.clone()),
