@@ -116,7 +116,7 @@ impl<'a> PluginLoader<'a> {
             .load_module_from_memory()
             .and_then(|module| plugin_loader.create_plugin_environment(module))
             .and_then(|(store, instance, plugin_env)| {
-                plugin_loader.load_plugin_instance(store, &instance, &plugin_env, &plugin_map)
+                plugin_loader.load_plugin_instance(store, &instance, plugin_env, &plugin_map)
             })
             .and_then(|_| {
                 plugin_loader.clone_instance_for_other_clients(&connected_clients, &plugin_map)
@@ -173,7 +173,7 @@ impl<'a> PluginLoader<'a> {
                 .compile_module()
                 .and_then(|module| plugin_loader.create_plugin_environment(module))
                 .and_then(|(store, instance, plugin_env)| {
-                    plugin_loader.load_plugin_instance(store, &instance, &plugin_env, &plugin_map)
+                    plugin_loader.load_plugin_instance(store, &instance, plugin_env, &plugin_map)
                 })
                 .and_then(|_| {
                     plugin_loader.clone_instance_for_other_clients(
@@ -189,7 +189,7 @@ impl<'a> PluginLoader<'a> {
                 .or_else(|_e| plugin_loader.compile_module())
                 .and_then(|module| plugin_loader.create_plugin_environment(module))
                 .and_then(|(store, instance, plugin_env)| {
-                    plugin_loader.load_plugin_instance(store, &instance, &plugin_env, &plugin_map)
+                    plugin_loader.load_plugin_instance(store, &instance, plugin_env, &plugin_map)
                 })
                 .and_then(|_| {
                     plugin_loader.clone_instance_for_other_clients(
@@ -246,7 +246,7 @@ impl<'a> PluginLoader<'a> {
                 .load_module_from_memory()
                 .and_then(|module| plugin_loader.create_plugin_environment(module))
                 .and_then(|(store, instance, plugin_env)| {
-                    plugin_loader.load_plugin_instance(store, &instance, &plugin_env, &plugin_map)
+                    plugin_loader.load_plugin_instance(store, &instance, plugin_env, &plugin_map)
                 })?
         }
         connected_clients.lock().unwrap().push(client_id);
@@ -300,7 +300,7 @@ impl<'a> PluginLoader<'a> {
             .compile_module()
             .and_then(|module| plugin_loader.create_plugin_environment(module))
             .and_then(|(store, instance, plugin_env)| {
-                plugin_loader.load_plugin_instance(store, &instance, &plugin_env, &plugin_map)
+                plugin_loader.load_plugin_instance(store, &instance, plugin_env, &plugin_map)
             })
             .and_then(|_| {
                 plugin_loader.clone_instance_for_other_clients(&connected_clients, &plugin_map)
@@ -587,7 +587,7 @@ impl<'a> PluginLoader<'a> {
         &mut self,
         store: Store,
         instance: &Instance,
-        plugin_env: &PluginEnv,
+        plugin_env: PluginEnv,
         plugin_map: &Arc<Mutex<PluginMap>>,
     ) -> Result<()> {
         let err_context = || format!("failed to load plugin from instance {instance:#?}");
@@ -725,12 +725,8 @@ impl<'a> PluginLoader<'a> {
                     .load_module_from_memory()
                     .and_then(|module| plugin_loader_for_client.create_plugin_environment(module))
                     .and_then(|(store, instance, plugin_env)| {
-                        plugin_loader_for_client.load_plugin_instance(
-                            store,
-                            &instance,
-                            &plugin_env,
-                            plugin_map,
-                        )
+                        plugin_loader_for_client
+                            .load_plugin_instance(store, &instance, plugin_env, plugin_map)
                     })?
             }
             display_loading_stage!(
