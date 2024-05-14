@@ -1,4 +1,6 @@
-use crate::plugins::plugin_map::{PluginEnv, PluginMap, RunningPlugin};
+use crate::plugins::plugin_map::{
+    PluginEnv, PluginMap, RunningPlugin, VecDequeInputStream, WriteOutputStream,
+};
 use crate::plugins::plugin_worker::{plugin_worker, RunningWorker};
 use crate::plugins::zellij_exports::{wasi_write_object, zellij_exports};
 use crate::plugins::PluginId;
@@ -8,12 +10,11 @@ use std::{
     collections::{HashMap, HashSet, VecDeque},
     fs,
     path::PathBuf,
-    sync::{Arc, Mutex, RwLock},
+    sync::{Arc, Mutex},
 };
 use url::Url;
-use wasi_common::pipe::{ReadPipe, WritePipe};
-use wasi_common::sync::{ambient_authority, Dir, WasiCtxBuilder};
 use wasmtime::{Engine, Instance, Linker, Module, Store};
+use wasmtime_wasi::{DirPerms, FilePerms, WasiCtxBuilder};
 use zellij_utils::consts::ZELLIJ_PLUGIN_ARTIFACT_DIR;
 use zellij_utils::prost::Message;
 
@@ -775,26 +776,22 @@ impl<'a> PluginLoader<'a> {
             dir.try_exists().ok().unwrap_or(false)
         });
         let mut wasi_ctx_builder = WasiCtxBuilder::new();
-        wasi_ctx_builder.env("CLICOLOR_FORCE", "1").unwrap();
+        wasi_ctx_builder.env("CLICOLOR_FORCE", "1");
         for (guest_path, host_path) in dirs {
             wasi_ctx_builder
-                .preopened_dir(
-                    Dir::open_ambient_dir(host_path, ambient_authority())
-                        .with_context(err_context)?,
-                    guest_path,
-                )
+                .preopened_dir(host_path, guest_path, DirPerms::all(), FilePerms::all())
                 .with_context(err_context)?;
         }
-        let stdin_pipe = Arc::new(RwLock::new(VecDeque::new()));
-        let stdout_pipe = Arc::new(RwLock::new(VecDeque::new()));
+        let stdin_pipe = Arc::new(Mutex::new(VecDeque::new()));
+        let stdout_pipe = Arc::new(Mutex::new(VecDeque::new()));
         wasi_ctx_builder
-            .stdin(Box::new(ReadPipe::from_shared(stdin_pipe.clone())))
-            .stdout(Box::new(WritePipe::from_shared(stdout_pipe.clone())))
-            .stderr(Box::new(WritePipe::new(LoggingPipe::new(
+            .stdin(VecDequeInputStream(stdin_pipe.clone()))
+            .stdout(WriteOutputStream(stdout_pipe.clone()))
+            .stderr(WriteOutputStream(Arc::new(Mutex::new(LoggingPipe::new(
                 &self.plugin.location.to_string(),
                 self.plugin_id,
-            ))));
-        let wasi_ctx = wasi_ctx_builder.build();
+            )))));
+        let wasi_ctx = wasi_ctx_builder.build_p1();
         let mut mut_plugin = self.plugin.clone();
         if let Some(tab_index) = self.tab_index {
             mut_plugin.set_tab_index(tab_index);
@@ -824,7 +821,7 @@ impl<'a> PluginLoader<'a> {
         let mut store = Store::new(&self.engine, plugin_env);
 
         let mut linker = Linker::new(&self.engine);
-        wasi_common::sync::add_to_linker(&mut linker, |plugin_env: &mut PluginEnv| {
+        wasmtime_wasi::preview1::add_to_linker_sync(&mut linker, |plugin_env: &mut PluginEnv| {
             &mut plugin_env.wasi_ctx
         })
         .unwrap();

@@ -1333,7 +1333,7 @@ pub fn wasi_read_string(plugin_env: &PluginEnv) -> Result<String> {
     let mut buf = vec![];
     plugin_env
         .stdout_pipe
-        .write()
+        .lock()
         .unwrap()
         .read_to_end(&mut buf)
         .map_err(anyError::new)
@@ -1345,7 +1345,7 @@ pub fn wasi_read_string(plugin_env: &PluginEnv) -> Result<String> {
 }
 
 pub fn wasi_write_string(plugin_env: &PluginEnv, buf: &str) -> Result<()> {
-    let mut stdin = plugin_env.stdin_pipe.write().unwrap();
+    let mut stdin = plugin_env.stdin_pipe.lock().unwrap();
     writeln!(stdin, "{}\r", buf)
         .map_err(anyError::new)
         .with_context(|| format!("failed to write string to WASI env"))

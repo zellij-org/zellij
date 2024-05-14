@@ -1,7 +1,4 @@
-use std::{
-    collections::VecDeque,
-    io::{Read, Seek, Write},
-};
+use std::{collections::VecDeque, io::Write};
 
 use crate::plugins::PluginId;
 use log::{debug, error};
@@ -37,15 +34,6 @@ impl LoggingPipe {
             format!("id: {}", self.plugin_id),
             message
         );
-    }
-}
-
-impl Read for LoggingPipe {
-    fn read(&mut self, _: &mut [u8]) -> std::io::Result<usize> {
-        Err(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            "Can not reed from a LoggingPipe",
-        ))
     }
 }
 
@@ -102,15 +90,6 @@ impl Write for LoggingPipe {
         }
 
         Ok(())
-    }
-}
-
-impl Seek for LoggingPipe {
-    fn seek(&mut self, _pos: std::io::SeekFrom) -> std::io::Result<u64> {
-        Err(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            "can not seek in a pipe",
-        ))
     }
 }
 

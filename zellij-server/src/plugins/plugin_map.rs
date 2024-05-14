@@ -1,12 +1,18 @@
 use crate::plugins::plugin_worker::MessageToWorker;
 use crate::plugins::PluginId;
+use bytes::Bytes;
+use std::io::Write;
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     path::PathBuf,
-    sync::{Arc, Mutex, RwLock},
+    sync::{Arc, Mutex},
 };
-use wasi_common::WasiCtx;
 use wasmtime::{Instance, Store};
+use wasmtime_wasi::preview1::WasiP1Ctx;
+use wasmtime_wasi::{
+    HostInputStream, HostOutputStream, StdinStream, StdoutStream, StreamError, StreamResult,
+    Subscribe,
+};
 
 use crate::{thread_bus::ThreadSenders, ClientId};
 
@@ -264,7 +270,7 @@ pub struct PluginEnv {
     pub plugin: PluginConfig,
     pub permissions: Arc<Mutex<Option<HashSet<PermissionType>>>>,
     pub senders: ThreadSenders,
-    pub wasi_ctx: WasiCtx,
+    pub wasi_ctx: WasiP1Ctx,
     pub tab_index: Option<usize>,
     pub client_id: ClientId,
     #[allow(dead_code)]
@@ -279,8 +285,79 @@ pub struct PluginEnv {
     pub input_pipes_to_unblock: Arc<Mutex<HashSet<String>>>,
     pub input_pipes_to_block: Arc<Mutex<HashSet<String>>>,
     pub subscriptions: Arc<Mutex<Subscriptions>>,
-    pub stdin_pipe: Arc<RwLock<VecDeque<u8>>>,
-    pub stdout_pipe: Arc<RwLock<VecDeque<u8>>>,
+    pub stdin_pipe: Arc<Mutex<VecDeque<u8>>>,
+    pub stdout_pipe: Arc<Mutex<VecDeque<u8>>>,
+}
+
+#[derive(Clone)]
+pub struct VecDequeInputStream(pub Arc<Mutex<VecDeque<u8>>>);
+
+impl StdinStream for VecDequeInputStream {
+    fn stream(&self) -> Box<dyn wasmtime_wasi::HostInputStream> {
+        Box::new(self.clone())
+    }
+
+    fn isatty(&self) -> bool {
+        false
+    }
+}
+
+impl HostInputStream for VecDequeInputStream {
+    fn read(&mut self, size: usize) -> StreamResult<Bytes> {
+        let mut inner = self.0.lock().unwrap();
+        let len = std::cmp::min(size, inner.len());
+        Ok(Bytes::from_iter(inner.drain(0..len)))
+    }
+}
+
+#[async_trait::async_trait]
+impl Subscribe for VecDequeInputStream {
+    async fn ready(&mut self) {}
+}
+
+pub struct WriteOutputStream<T>(pub Arc<Mutex<T>>);
+
+impl<T> Clone for WriteOutputStream<T> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
+
+impl<T: Write + Send + 'static> StdoutStream for WriteOutputStream<T> {
+    fn stream(&self) -> Box<dyn HostOutputStream> {
+        Box::new((*self).clone())
+    }
+
+    fn isatty(&self) -> bool {
+        false
+    }
+}
+
+impl<T: Write + Send + 'static> HostOutputStream for WriteOutputStream<T> {
+    fn write(&mut self, bytes: Bytes) -> StreamResult<()> {
+        self.0
+            .lock()
+            .unwrap()
+            .write_all(&*bytes)
+            .map_err(|e| StreamError::LastOperationFailed(e.into()))
+    }
+
+    fn flush(&mut self) -> StreamResult<()> {
+        self.0
+            .lock()
+            .unwrap()
+            .flush()
+            .map_err(|e| StreamError::LastOperationFailed(e.into()))
+    }
+
+    fn check_write(&mut self) -> StreamResult<usize> {
+        Ok(usize::MAX)
+    }
+}
+
+#[async_trait::async_trait]
+impl<T: Send + 'static> Subscribe for WriteOutputStream<T> {
+    async fn ready(&mut self) {}
 }
 
 impl PluginEnv {
