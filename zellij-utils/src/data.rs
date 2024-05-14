@@ -125,6 +125,22 @@ impl FromStr for Key {
     }
 }
 
+impl FromStr for KeyWithModifier {
+    type Err = Box<dyn std::error::Error>;
+    fn from_str(key_str: &str) -> Result<Self, Self::Err> {
+        let mut key_string_parts: Vec<&str> = key_str.split_ascii_whitespace().collect();
+        let bare_key: BareKey = BareKey::from_str(key_string_parts.pop().ok_or("empty key")?)?;
+        let mut key_modifiers: BTreeSet<KeyModifier> = BTreeSet::new();
+        for stringified_modifier in key_string_parts {
+            key_modifiers.insert(KeyModifier::from_str(stringified_modifier)?);
+        }
+        Ok(KeyWithModifier {
+            bare_key,
+            key_modifiers
+        })
+    }
+}
+
 fn parse_main_key(
     main_key: &str,
     key_str: &str,
@@ -205,8 +221,18 @@ impl fmt::Display for CharOrArrow {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, PartialOrd, Ord)]
 pub struct KeyWithModifier {
-    bare_key: BareKey,
-    key_modifiers: BTreeSet<KeyModifier>
+    pub bare_key: BareKey,
+    pub key_modifiers: BTreeSet<KeyModifier>
+}
+
+impl fmt::Display for KeyWithModifier {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.key_modifiers.is_empty() {
+            write!(f, "{}", self.bare_key)
+        } else {
+            write!(f, "{} {}", self.key_modifiers.iter().map(|m| m.to_string()).collect::<Vec<_>>().join("-"), self.bare_key)
+        }
+    }
 }
 
 #[derive(Eq, Clone, Copy, Debug, PartialEq, Hash, Deserialize, Serialize, PartialOrd, Ord)]
@@ -235,7 +261,85 @@ pub enum BareKey {
     Menu,
 }
 
-#[derive(Eq, Clone, Copy, Debug, PartialEq, Hash, Deserialize, Serialize, PartialOrd, Ord)]
+impl fmt::Display for BareKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            BareKey::PageDown => write!(f, "PageDown"),
+            BareKey::PageUp => write!(f, "PageUp"),
+            BareKey::Left => write!(f, "←"),
+            BareKey::Down => write!(f, "↓"),
+            BareKey::Up => write!(f, "↑"),
+            BareKey::Right => write!(f, "→"),
+            BareKey::Home => write!(f, "Home"),
+            BareKey::End => write!(f, "End"),
+            BareKey::Backspace => write!(f, "Backspace"),
+            BareKey::Delete => write!(f, "Delete"),
+            BareKey::Insert => write!(f, "Insert"),
+            BareKey::F(index) => write!(f, "F{}", index),
+            BareKey::Char(character) => write!(f, "{}", character),
+            BareKey::Tab => write!(f, "Tab"),
+            BareKey::Esc => write!(f, "Esc"),
+            BareKey::Enter => write!(f, "Enter"),
+            BareKey::CapsLock => write!(f, "CapsLock"),
+            BareKey::ScrollLock => write!(f, "ScrollLock"),
+            BareKey::NumLock => write!(f, "NumLock"),
+            BareKey::PrintScreen => write!(f, "PrintScreen"),
+            BareKey::Pause => write!(f, "Pause"),
+            BareKey::Menu => write!(f, "Menu"),
+        }
+    }
+}
+
+impl FromStr for BareKey {
+    type Err = Box<dyn std::error::Error>;
+    fn from_str(key_str: &str) -> Result<Self, Self::Err> {
+        match key_str.to_ascii_lowercase().as_str() {
+            "pagedown" => Ok(BareKey::PageDown),
+            "pageup" => Ok(BareKey::PageUp),
+            "left" => Ok(BareKey::Left),
+            "down" => Ok(BareKey::Down),
+            "up" => Ok(BareKey::Up),
+            "right" => Ok(BareKey::Right),
+            "home" => Ok(BareKey::Home),
+            "end" => Ok(BareKey::End),
+            "backspace" => Ok(BareKey::Backspace),
+            "delete" => Ok(BareKey::Delete),
+            "insert" => Ok(BareKey::Insert),
+            "f1" => Ok(BareKey::F(1)),
+            "f2" => Ok(BareKey::F(2)),
+            "f3" => Ok(BareKey::F(3)),
+            "f4" => Ok(BareKey::F(4)),
+            "f5" => Ok(BareKey::F(5)),
+            "f6" => Ok(BareKey::F(6)),
+            "f7" => Ok(BareKey::F(7)),
+            "f8" => Ok(BareKey::F(8)),
+            "f9" => Ok(BareKey::F(9)),
+            "f10" => Ok(BareKey::F(10)),
+            "f11" => Ok(BareKey::F(11)),
+            "f12" => Ok(BareKey::F(12)),
+            "tab" => Ok(BareKey::Tab),
+            "esc" => Ok(BareKey::Esc),
+            "enter" => Ok(BareKey::Enter),
+            "capsLock" => Ok(BareKey::CapsLock),
+            "scrollLock" => Ok(BareKey::ScrollLock),
+            "numlock" => Ok(BareKey::NumLock),
+            "printscreen" => Ok(BareKey::PrintScreen),
+            "pause" => Ok(BareKey::Pause),
+            "menu" => Ok(BareKey::Menu),
+            "space" => Ok(BareKey::Char(' ')),
+            _ => {
+                if key_str.chars().count() == 1 {
+                    if let Some(character) = key_str.chars().next() {
+                        return Ok(BareKey::Char(character));
+                    }
+                }
+                Err("unsupported key".into())
+            }
+        }
+    }
+}
+
+#[derive(Eq, Clone, Copy, Debug, PartialEq, Hash, Deserialize, Serialize, PartialOrd, Ord, ToString)]
 pub enum KeyModifier {
     Shift,
     Alt,
@@ -245,6 +349,19 @@ pub enum KeyModifier {
     Meta,
     CapsLock,
     NumLock,
+}
+
+impl FromStr for KeyModifier {
+    type Err = Box<dyn std::error::Error>;
+    fn from_str(key_str: &str) -> Result<Self, Self::Err> {
+        match key_str.to_ascii_lowercase().as_str() {
+            "shift" => Ok(KeyModifier::Shift),
+            "alt" => Ok(KeyModifier::Alt),
+            "ctrl" => Ok(KeyModifier::Ctrl),
+            "super" => Ok(KeyModifier::Super),
+            _ => Err("unsupported modifier".into())
+        }
+    }
 }
 
 impl BareKey {
@@ -411,16 +528,23 @@ impl KeyWithModifier {
             _ => None
         }
     }
-}
-
-impl TryInto<Key> for KeyWithModifier {
-    type Error = &'static str;
-    fn try_into(self) -> Result<Key, &'static str> {
-        // TODO: CONTINUE HERE (08/05) - do a `cargo check` and fix all the errors from moving the
-        // indexing to KeyWithModifier from Key and then implement this and other needed stuff
-        unimplemented!()
+    pub fn strip_common_modifiers(&self, common_modifiers: &Vec<KeyModifier>) -> Self {
+        let common_modifiers: BTreeSet<&KeyModifier> = common_modifiers.into_iter().collect();
+        KeyWithModifier {
+            bare_key: self.bare_key.clone(),
+            key_modifiers: self.key_modifiers.iter().filter(|m| !common_modifiers.contains(m)).cloned().collect()
+        }
     }
 }
+
+// impl TryInto<Key> for KeyWithModifier {
+//     type Error = &'static str;
+//     fn try_into(self) -> Result<Key, &'static str> {
+//         // TODO: CONTINUE HERE (08/05) - do a `cargo check` and fix all the errors from moving the
+//         // indexing to KeyWithModifier from Key and then implement this and other needed stuff
+//         unimplemented!()
+//     }
+// }
 
 #[derive(Eq, Clone, Copy, Debug, PartialEq, Hash, Deserialize, Serialize, PartialOrd, Ord)]
 pub enum Direction {
@@ -712,7 +836,7 @@ pub enum Event {
     TabUpdate(Vec<TabInfo>),
     PaneUpdate(PaneManifest),
     /// A key was pressed while the user is focused on this plugin's pane
-    Key(Key),
+    Key(KeyWithModifier),
     /// A mouse event happened while the user is focused on this plugin's pane
     Mouse(Mouse),
     /// A timer expired set by the `set_timeout` method exported by `zellij-tile`.

@@ -16,7 +16,7 @@ pub use super::generated_api::api::{
 };
 #[allow(hidden_glob_reexports)]
 use crate::data::{
-    CopyDestination, Event, EventType, FileMetadata, InputMode, Key, LayoutInfo, ModeInfo, Mouse,
+    CopyDestination, Event, EventType, FileMetadata, InputMode, Key, KeyWithModifier, LayoutInfo, ModeInfo, Mouse,
     PaneInfo, PaneManifest, PermissionStatus, PluginCapabilities, SessionInfo, Style, TabInfo,
 };
 
@@ -807,7 +807,7 @@ impl TryFrom<ProtobufModeUpdatePayload> for ModeInfo {
             ProtobufInputMode::from_i32(protobuf_mode_update_payload.current_mode)
                 .ok_or("Malformed InputMode in the ModeUpdate Event")?
                 .try_into()?;
-        let keybinds: Vec<(InputMode, Vec<(Key, Vec<Action>)>)> = protobuf_mode_update_payload
+        let keybinds: Vec<(InputMode, Vec<(KeyWithModifier, Vec<Action>)>)> = protobuf_mode_update_payload
             .keybinds
             .iter_mut()
             .filter_map(|k| {
@@ -816,9 +816,9 @@ impl TryFrom<ProtobufModeUpdatePayload> for ModeInfo {
                     .ok()?
                     .try_into()
                     .ok()?;
-                let mut keybinds: Vec<(Key, Vec<Action>)> = vec![];
+                let mut keybinds: Vec<(KeyWithModifier, Vec<Action>)> = vec![];
                 for mut protobuf_keybind in k.key_bind.drain(..) {
-                    let key: Key = protobuf_keybind.key.unwrap().try_into().ok()?;
+                    let key: KeyWithModifier = protobuf_keybind.key.unwrap().try_into().ok()?;
                     let mut actions: Vec<Action> = vec![];
                     for action in protobuf_keybind.action.drain(..) {
                         if let Ok(action) = action.try_into() {

@@ -141,7 +141,9 @@ impl InputHandler {
                     }
                 },
                 Ok((InputInstruction::KeyWithModifierEvent(key_with_modifier, raw_bytes), _error_context)) => {
-                    self.handle_key_with_modifier(&key_with_modifier, raw_bytes);
+                    // self.handle_key_with_modifier(&key_with_modifier, raw_bytes);
+                    log::info!("handling key with modifier: {:?}", key_with_modifier);
+                    self.handle_key(&key_with_modifier, raw_bytes);
 
                 }
                 Ok((InputInstruction::SwitchToMode(input_mode), _error_context)) => {
@@ -172,7 +174,7 @@ impl InputHandler {
             }
         }
     }
-    fn handle_key(&mut self, key: &Key, raw_bytes: Vec<u8>) {
+    fn handle_key(&mut self, key: &KeyWithModifier, raw_bytes: Vec<u8>) {
         let keybinds = &self.config.keybinds;
         for action in
             keybinds.get_actions_for_key_in_mode_or_default_action(&self.mode, key, raw_bytes)
@@ -182,10 +184,6 @@ impl InputHandler {
                 self.should_exit = true;
             }
         }
-    }
-    fn handle_key_with_modifier(&mut self, key_with_modifier: &KeyWithModifier, raw_bytes: Vec<u8>) {
-        log::info!("handling key with modifier: {:?}", key_with_modifier);
-        // TODO
     }
     fn handle_stdin_ansi_instruction(&mut self, ansi_stdin_instructions: AnsiStdinInstruction) {
         match ansi_stdin_instructions {

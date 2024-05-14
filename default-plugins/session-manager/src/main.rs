@@ -97,7 +97,9 @@ impl ZellijPlugin for State {
                 should_render = true;
             },
             Event::Key(key) => {
-                should_render = self.handle_key(key);
+                // TODO: BRING ME BACK!111oneoneone
+                // should_render = self.handle_key(key);
+                should_render = true
             },
             Event::PermissionRequestResult(_result) => {
                 should_render = true;

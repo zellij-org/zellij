@@ -6,6 +6,8 @@ message Key {
   enum KeyModifier {
     CTRL = 0;
     ALT = 1;
+    SHIFT = 2;
+    SUPER = 3;
   }
 
   enum NamedKey {
@@ -34,6 +36,13 @@ message Key {
     F12 = 22;
     Tab = 23;
     Esc = 24;
+    CapsLock = 25;
+    ScrollLock = 26;
+    NumLock = 27;
+    PrintScreen = 28;
+    Pause = 29;
+    Menu = 30;
+    Enter = 31;
   }
 
   enum Char {
@@ -80,4 +89,5 @@ message Key {
     NamedKey key = 2;
     Char char = 3;
   }
+  repeated KeyModifier additional_modifiers = 4;
 }

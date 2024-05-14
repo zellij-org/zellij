@@ -15,7 +15,7 @@ use crate::{
 
 fn full_length_shortcut(
     is_first_shortcut: bool,
-    key: Vec<Key>,
+    key: Vec<KeyWithModifier>,
     action: &str,
     palette: Palette,
 ) -> LinePart {
@@ -59,7 +59,7 @@ fn locked_interface_indication(palette: Palette) -> LinePart {
     }
 }
 
-fn add_shortcut(help: &ModeInfo, linepart: &LinePart, text: &str, keys: Vec<Key>) -> LinePart {
+fn add_shortcut(help: &ModeInfo, linepart: &LinePart, text: &str, keys: Vec<KeyWithModifier>) -> LinePart {
     let shortcut = if linepart.len == 0 {
         full_length_shortcut(true, keys, text, help.style.colors)
     } else {
@@ -106,7 +106,7 @@ fn full_shortcut_list_nonstandard_mode(help: &ModeInfo) -> LinePart {
 // three times the length and all the keybinding vectors we generate become virtually unreadable
 // for humans.
 #[rustfmt::skip]
-fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<Key>)> {
+fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<KeyWithModifier>)> {
     use Action as A;
     use InputMode as IM;
     use Direction as Dir;
@@ -119,8 +119,8 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<Key>)> {
     // Find a keybinding to get back to "Normal" input mode. In this case we prefer '\n' over other
     // choices. Do it here before we dedupe the keymap below!
     let to_normal_keys = action_key(&old_keymap, &[TO_NORMAL]);
-    let to_normal_key = if to_normal_keys.contains(&Key::Char('\n')) {
-        vec![Key::Char('\n')]
+    let to_normal_key = if to_normal_keys.contains(&KeyWithModifier::new(BareKey::Enter)) {
+        vec![KeyWithModifier::new(BareKey::Enter)]
     } else {
         // Yield `vec![key]` if `to_normal_keys` has at least one key, or an empty vec otherwise.
         to_normal_keys.into_iter().take(1).collect()
@@ -164,11 +164,11 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<Key>)> {
         // RightArrow.
         // FIXME: So for lack of a better idea we just check this case manually here.
         let old_keymap = mi.get_mode_keybinds();
-        let focus_keys_full: Vec<Key> = action_key_group(&old_keymap,
+        let focus_keys_full: Vec<KeyWithModifier> = action_key_group(&old_keymap,
             &[&[A::GoToPreviousTab], &[A::GoToNextTab]]);
-        let focus_keys = if focus_keys_full.contains(&Key::Left)
-            && focus_keys_full.contains(&Key::Right) {
-            vec![Key::Left, Key::Right]
+        let focus_keys = if focus_keys_full.contains(&KeyWithModifier::new(BareKey::Left))
+            && focus_keys_full.contains(&KeyWithModifier::new(BareKey::Right)) {
+            vec![KeyWithModifier::new(BareKey::Left), KeyWithModifier::new(BareKey::Right)]
         } else {
             action_key_group(&km, &[&[A::GoToPreviousTab], &[A::GoToNextTab]])
         };
@@ -429,7 +429,7 @@ pub fn floating_panes_are_visible(mode_info: &ModeInfo) -> LinePart {
         "{}",
         action_key(km, &[Action::SwitchToMode(InputMode::Pane)])
             .first()
-            .unwrap_or(&Key::Char('?'))
+            .unwrap_or(&KeyWithModifier::new(BareKey::Char('?')))
     );
     let plus = ", ";
     let p_left_separator = "<";
@@ -440,7 +440,7 @@ pub fn floating_panes_are_visible(mode_info: &ModeInfo) -> LinePart {
             &[Action::ToggleFloatingPanes, TO_NORMAL]
         )
         .first()
-        .unwrap_or(&Key::Char('?'))
+        .unwrap_or(&KeyWithModifier::new(BareKey::Char('?')))
     );
     let p_right_separator = "> ";
     let to_hide = "to hide.";

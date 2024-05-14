@@ -1,6 +1,6 @@
 mod kdl_layout_parser;
 use crate::data::{
-    Direction, FloatingPaneCoordinates, InputMode, Key, LayoutInfo, Palette, PaletteColor,
+    Direction, FloatingPaneCoordinates, InputMode, KeyWithModifier, LayoutInfo, Palette, PaletteColor,
     PaneInfo, PaneManifest, PermissionType, Resize, SessionInfo, TabInfo,
 };
 use crate::envs::EnvironmentVariables;
@@ -320,7 +320,7 @@ macro_rules! keys_from_kdl {
         kdl_string_arguments!($kdl_node)
             .iter()
             .map(|k| {
-                Key::from_str(k).map_err(|_| {
+                KeyWithModifier::from_str(k).map_err(|_| {
                     ConfigError::new_kdl_error(
                         format!("Invalid key: '{}'", k),
                         $kdl_node.span().offset(),
@@ -1735,7 +1735,7 @@ impl EnvironmentVariables {
 impl Keybinds {
     fn bind_keys_in_block(
         block: &KdlNode,
-        input_mode_keybinds: &mut HashMap<Key, Vec<Action>>,
+        input_mode_keybinds: &mut HashMap<KeyWithModifier, Vec<Action>>,
         config_options: &Options,
     ) -> Result<(), ConfigError> {
         let all_nodes = kdl_children_nodes_or_error!(block, "no keybinding block for mode");
@@ -1823,10 +1823,10 @@ impl Keybinds {
     }
     fn bind_actions_for_each_key(
         key_block: &KdlNode,
-        input_mode_keybinds: &mut HashMap<Key, Vec<Action>>,
+        input_mode_keybinds: &mut HashMap<KeyWithModifier, Vec<Action>>,
         config_options: &Options,
     ) -> Result<(), ConfigError> {
-        let keys: Vec<Key> = keys_from_kdl!(key_block);
+        let keys: Vec<KeyWithModifier> = keys_from_kdl!(key_block);
         let actions: Vec<Action> = actions_from_kdl!(key_block, config_options);
         for key in keys {
             input_mode_keybinds.insert(key, actions.clone());
@@ -1835,9 +1835,9 @@ impl Keybinds {
     }
     fn unbind_keys(
         key_block: &KdlNode,
-        input_mode_keybinds: &mut HashMap<Key, Vec<Action>>,
+        input_mode_keybinds: &mut HashMap<KeyWithModifier, Vec<Action>>,
     ) -> Result<(), ConfigError> {
-        let keys: Vec<Key> = keys_from_kdl!(key_block);
+        let keys: Vec<KeyWithModifier> = keys_from_kdl!(key_block);
         for key in keys {
             input_mode_keybinds.remove(&key);
         }
@@ -1847,7 +1847,7 @@ impl Keybinds {
         global_unbind: &KdlNode,
         keybinds_from_config: &mut Keybinds,
     ) -> Result<(), ConfigError> {
-        let keys: Vec<Key> = keys_from_kdl!(global_unbind);
+        let keys: Vec<KeyWithModifier> = keys_from_kdl!(global_unbind);
         for mode in keybinds_from_config.0.values_mut() {
             for key in &keys {
                 mode.remove(&key);
@@ -1858,7 +1858,7 @@ impl Keybinds {
     fn input_mode_keybindings<'a>(
         mode: &KdlNode,
         keybinds_from_config: &'a mut Keybinds,
-    ) -> Result<&'a mut HashMap<Key, Vec<Action>>, ConfigError> {
+    ) -> Result<&'a mut HashMap<KeyWithModifier, Vec<Action>>, ConfigError> {
         let mode_name = kdl_name!(mode);
         let input_mode = InputMode::from_str(mode_name).map_err(|_| {
             ConfigError::new_kdl_error(

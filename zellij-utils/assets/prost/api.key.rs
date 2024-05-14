@@ -3,6 +3,8 @@
 pub struct Key {
     #[prost(enumeration = "key::KeyModifier", optional, tag = "1")]
     pub modifier: ::core::option::Option<i32>,
+    #[prost(enumeration = "key::KeyModifier", repeated, tag = "4")]
+    pub additional_modifiers: ::prost::alloc::vec::Vec<i32>,
     #[prost(oneof = "key::MainKey", tags = "2, 3")]
     pub main_key: ::core::option::Option<key::MainKey>,
 }
@@ -23,6 +25,8 @@ pub mod key {
     pub enum KeyModifier {
         Ctrl = 0,
         Alt = 1,
+        Shift = 2,
+        Super = 3,
     }
     impl KeyModifier {
         /// String value of the enum field names used in the ProtoBuf definition.
@@ -33,6 +37,8 @@ pub mod key {
             match self {
                 KeyModifier::Ctrl => "CTRL",
                 KeyModifier::Alt => "ALT",
+                KeyModifier::Shift => "SHIFT",
+                KeyModifier::Super => "SUPER",
             }
         }
         /// Creates an enum from field names used in the ProtoBuf definition.
@@ -40,6 +46,8 @@ pub mod key {
             match value {
                 "CTRL" => Some(Self::Ctrl),
                 "ALT" => Some(Self::Alt),
+                "SHIFT" => Some(Self::Shift),
+                "SUPER" => Some(Self::Super),
                 _ => None,
             }
         }
@@ -82,6 +90,13 @@ pub mod key {
         F12 = 22,
         Tab = 23,
         Esc = 24,
+        CapsLock = 25,
+        ScrollLock = 26,
+        NumLock = 27,
+        PrintScreen = 28,
+        Pause = 29,
+        Menu = 30,
+        Enter = 31,
     }
     impl NamedKey {
         /// String value of the enum field names used in the ProtoBuf definition.
@@ -115,6 +130,13 @@ pub mod key {
                 NamedKey::F12 => "F12",
                 NamedKey::Tab => "Tab",
                 NamedKey::Esc => "Esc",
+                NamedKey::CapsLock => "CapsLock",
+                NamedKey::ScrollLock => "ScrollLock",
+                NamedKey::NumLock => "NumLock",
+                NamedKey::PrintScreen => "PrintScreen",
+                NamedKey::Pause => "Pause",
+                NamedKey::Menu => "Menu",
+                NamedKey::Enter => "Enter",
             }
         }
         /// Creates an enum from field names used in the ProtoBuf definition.
@@ -145,6 +167,13 @@ pub mod key {
                 "F12" => Some(Self::F12),
                 "Tab" => Some(Self::Tab),
                 "Esc" => Some(Self::Esc),
+                "CapsLock" => Some(Self::CapsLock),
+                "ScrollLock" => Some(Self::ScrollLock),
+                "NumLock" => Some(Self::NumLock),
+                "PrintScreen" => Some(Self::PrintScreen),
+                "Pause" => Some(Self::Pause),
+                "Menu" => Some(Self::Menu),
+                "Enter" => Some(Self::Enter),
                 _ => None,
             }
         }
