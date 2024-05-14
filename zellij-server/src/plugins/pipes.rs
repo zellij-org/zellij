@@ -158,7 +158,7 @@ pub fn apply_pipe_message_to_plugin(
         .map_err(|e| anyhow!("Failed to convert to protobuf: {:?}", e))?;
     match instance.exports.get_function("pipe") {
         Ok(pipe) => {
-            wasi_write_object(&plugin_env.wasi_env, &protobuf_pipe_message.encode_to_vec())
+            wasi_write_object(&plugin_env, &protobuf_pipe_message.encode_to_vec())
                 .with_context(err_context)?;
             let pipe_return = pipe
                 .call(&mut running_plugin.store, &[])
@@ -180,7 +180,7 @@ pub fn apply_pipe_message_to_plugin(
                             )
                             .map_err(anyError::new)
                     })
-                    .and_then(|_| wasi_read_string(&plugin_env.wasi_env))
+                    .and_then(|_| wasi_read_string(&plugin_env))
                     .with_context(err_context)?;
                 let pipes_to_block_or_unblock =
                     pipes_to_block_or_unblock(running_plugin, Some(&pipe_message.source));

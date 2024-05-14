@@ -46,7 +46,7 @@ impl RunningWorker {
             .exports
             .get_function(&self.name)
             .with_context(err_context)?;
-        wasi_write_object(&self.plugin_env.wasi_env, &protobuf_bytes).with_context(err_context)?;
+        wasi_write_object(&self.plugin_env, &protobuf_bytes).with_context(err_context)?;
         work_function
             .call(&mut self.store, &[])
             .with_context(err_context)?;

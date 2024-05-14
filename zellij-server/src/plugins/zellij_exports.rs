@@ -15,7 +15,6 @@ use std::{
     time::{Duration, Instant},
 };
 use wasmer::{imports, AsStoreMut, Function, FunctionEnv, FunctionEnvMut, Imports};
-use wasmer_wasi::WasiEnv;
 use zellij_utils::data::{
     CommandType, ConnectToSession, FloatingPaneCoordinates, HttpVerb, LayoutInfo, MessageToPlugin,
     PermissionStatus, PermissionType, PluginPermission,
@@ -81,7 +80,7 @@ pub fn zellij_exports(store: &mut impl AsStoreMut, plugin_env: &PluginEnv) -> Im
 fn host_run_plugin_command(env: FunctionEnvMut<PluginEnv>) {
     let env = env.data();
     let err_context = || format!("failed to run plugin command {}", env.name());
-    wasi_read_bytes(&env.wasi_env)
+    wasi_read_bytes(env)
         .and_then(|bytes| {
             let command: ProtobufPluginCommand = ProtobufPluginCommand::decode(bytes.as_slice())?;
             let command: PluginCommand = command
@@ -381,7 +380,7 @@ fn get_plugin_ids(env: &PluginEnv) {
     ProtobufPluginIds::try_from(ids)
         .map_err(|e| anyhow!("Failed to serialized plugin ids: {}", e))
         .and_then(|serialized| {
-            wasi_write_object(&env.wasi_env, &serialized.encode_to_vec())?;
+            wasi_write_object(env, &serialized.encode_to_vec())?;
             Ok(())
         })
         .with_context(|| {
@@ -397,7 +396,7 @@ fn get_zellij_version(env: &PluginEnv) {
     let protobuf_zellij_version = ProtobufZellijVersion {
         version: VERSION.to_owned(),
     };
-    wasi_write_object(&env.wasi_env, &protobuf_zellij_version.encode_to_vec())
+    wasi_write_object(env, &protobuf_zellij_version.encode_to_vec())
         .with_context(|| {
             format!(
                 "failed to request zellij version from host for plugin {}",
@@ -1332,11 +1331,12 @@ fn report_panic(env: &PluginEnv, msg: &str) {
 
 // Helper Functions ---------------------------------------------------------------------------------------------------
 
-pub fn wasi_read_string(wasi_env: &WasiEnv) -> Result<String> {
-    let err_context = || format!("failed to read string from WASI env '{wasi_env:?}'");
+pub fn wasi_read_string(plugin_env: &PluginEnv) -> Result<String> {
+    let err_context = || format!("failed to read string from WASI env");
 
     let mut buf = vec![];
-    wasi_env
+    plugin_env
+        .wasi_env
         .state()
         .stdout()
         .map_err(anyError::new)
@@ -1349,27 +1349,28 @@ pub fn wasi_read_string(wasi_env: &WasiEnv) -> Result<String> {
     Ok(buf.replace("\n", "\n\r"))
 }
 
-pub fn wasi_write_string(wasi_env: &WasiEnv, buf: &str) -> Result<()> {
-    wasi_env
+pub fn wasi_write_string(plugin_env: &PluginEnv, buf: &str) -> Result<()> {
+    plugin_env
+        .wasi_env
         .state()
         .stdin()
         .map_err(anyError::new)
         .and_then(|stdin| stdin.ok_or(anyhow!("failed to get mutable reference to stdin")))
         .and_then(|mut stdin| writeln!(stdin, "{}\r", buf).map_err(anyError::new))
-        .with_context(|| format!("failed to write string to WASI env '{wasi_env:?}'"))
+        .with_context(|| format!("failed to write string to WASI env"))
 }
 
-pub fn wasi_write_object(wasi_env: &WasiEnv, object: &(impl Serialize + ?Sized)) -> Result<()> {
+pub fn wasi_write_object(plugin_env: &PluginEnv, object: &(impl Serialize + ?Sized)) -> Result<()> {
     serde_json::to_string(&object)
         .map_err(anyError::new)
-        .and_then(|string| wasi_write_string(wasi_env, &string))
-        .with_context(|| format!("failed to serialize object for WASI env '{wasi_env:?}'"))
+        .and_then(|string| wasi_write_string(plugin_env, &string))
+        .with_context(|| format!("failed to serialize object for WASI env"))
 }
 
-pub fn wasi_read_bytes(wasi_env: &WasiEnv) -> Result<Vec<u8>> {
-    wasi_read_string(wasi_env)
+pub fn wasi_read_bytes(plugin_env: &PluginEnv) -> Result<Vec<u8>> {
+    wasi_read_string(plugin_env)
         .and_then(|string| serde_json::from_str(&string).map_err(anyError::new))
-        .with_context(|| format!("failed to deserialize object from WASI env '{wasi_env:?}'"))
+        .with_context(|| format!("failed to deserialize object from WASI env"))
 }
 
 // TODO: move to permissions?
