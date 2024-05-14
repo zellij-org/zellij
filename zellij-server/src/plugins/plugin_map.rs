@@ -1,12 +1,12 @@
 use crate::plugins::plugin_worker::MessageToWorker;
 use crate::plugins::PluginId;
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{HashMap, HashSet, VecDeque},
     path::PathBuf,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, RwLock},
 };
-use wasmer::{Instance, Store};
-use wasmer_wasi::WasiEnv;
+use wasi_common::WasiCtx;
+use wasmtime::{Instance, Store};
 
 use crate::{thread_bus::ThreadSenders, ClientId};
 
@@ -165,9 +165,9 @@ impl PluginMap {
             .iter()
             .filter(|(_, (running_plugin, _subscriptions, _workers))| {
                 let running_plugin = running_plugin.lock().unwrap();
-                let running_plugin_location = &running_plugin.plugin_env.plugin.location;
-                let running_plugin_configuration =
-                    &running_plugin.plugin_env.plugin.userspace_configuration;
+                let plugin_config = &running_plugin.store.data().plugin;
+                let running_plugin_location = &plugin_config.location;
+                let running_plugin_configuration = &plugin_config.userspace_configuration;
                 running_plugin_location == plugin_location
                     && running_plugin_configuration == plugin_configuration
             })
@@ -188,9 +188,9 @@ impl PluginMap {
         > = HashMap::new();
         for ((plugin_id, client_id), (running_plugin, _, _)) in self.plugin_assets.iter() {
             let running_plugin = running_plugin.lock().unwrap();
-            let running_plugin_location = &running_plugin.plugin_env.plugin.location;
-            let running_plugin_configuration =
-                &running_plugin.plugin_env.plugin.userspace_configuration;
+            let plugin_config = &running_plugin.store.data().plugin;
+            let running_plugin_location = &plugin_config.location;
+            let running_plugin_configuration = &plugin_config.userspace_configuration;
             match cloned_plugin_assets.get_mut(running_plugin_location) {
                 Some(location_map) => match location_map.get_mut(running_plugin_configuration) {
                     Some(plugin_instances_info) => {
@@ -240,13 +240,10 @@ impl PluginMap {
             .find_map(|((p_id, _), (running_plugin, _, _))| {
                 if *p_id == plugin_id {
                     let running_plugin = running_plugin.lock().unwrap();
-                    let run_plugin_location = running_plugin.plugin_env.plugin.location.clone();
-                    let run_plugin_configuration = running_plugin
-                        .plugin_env
-                        .plugin
-                        .userspace_configuration
-                        .clone();
-                    let initial_cwd = running_plugin.plugin_env.plugin.initial_cwd.clone();
+                    let plugin_config = &running_plugin.store.data().plugin;
+                    let run_plugin_location = plugin_config.location.clone();
+                    let run_plugin_configuration = plugin_config.userspace_configuration.clone();
+                    let initial_cwd = plugin_config.initial_cwd.clone();
                     Some(RunPlugin {
                         _allow_exec_host_cmd: false,
                         location: run_plugin_location,
@@ -262,13 +259,12 @@ impl PluginMap {
 
 pub type Subscriptions = HashSet<EventType>;
 
-#[derive(Clone)]
 pub struct PluginEnv {
     pub plugin_id: PluginId,
     pub plugin: PluginConfig,
     pub permissions: Arc<Mutex<Option<HashSet<PermissionType>>>>,
     pub senders: ThreadSenders,
-    pub wasi_env: WasiEnv,
+    pub wasi_ctx: WasiCtx,
     pub tab_index: Option<usize>,
     pub client_id: ClientId,
     #[allow(dead_code)]
@@ -283,6 +279,8 @@ pub struct PluginEnv {
     pub input_pipes_to_unblock: Arc<Mutex<HashSet<String>>>,
     pub input_pipes_to_block: Arc<Mutex<HashSet<String>>>,
     pub subscriptions: Arc<Mutex<Subscriptions>>,
+    pub stdin_pipe: Arc<RwLock<VecDeque<u8>>>,
+    pub stdout_pipe: Arc<RwLock<VecDeque<u8>>>,
 }
 
 impl PluginEnv {
@@ -306,9 +304,8 @@ pub enum AtomicEvent {
 }
 
 pub struct RunningPlugin {
-    pub store: Store,
+    pub store: Store<PluginEnv>,
     pub instance: Instance,
-    pub plugin_env: PluginEnv,
     pub rows: usize,
     pub columns: usize,
     next_event_ids: HashMap<AtomicEvent, usize>,
@@ -316,17 +313,10 @@ pub struct RunningPlugin {
 }
 
 impl RunningPlugin {
-    pub fn new(
-        store: Store,
-        instance: Instance,
-        plugin_env: PluginEnv,
-        rows: usize,
-        columns: usize,
-    ) -> Self {
+    pub fn new(store: Store<PluginEnv>, instance: Instance, rows: usize, columns: usize) -> Self {
         RunningPlugin {
             store,
             instance,
-            plugin_env,
             rows,
             columns,
             next_event_ids: HashMap::new(),

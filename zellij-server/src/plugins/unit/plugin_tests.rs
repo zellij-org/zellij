@@ -5,7 +5,7 @@ use insta::assert_snapshot;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use tempfile::tempdir;
-use wasmer::Engine;
+use wasmtime::Engine;
 use zellij_utils::data::{
     BareKey, Event, KeyWithModifier, PermissionStatus, PermissionType, PluginCapabilities,
 };
@@ -247,7 +247,7 @@ fn create_plugin_thread(
         None,
     )
     .should_silently_fail();
-    let engine: Engine = wasmer::Singlepass::default().into();
+    let engine = Engine::new(wasmtime::Config::new().strategy(wasmtime::Strategy::Winch)).unwrap();
     let data_dir = PathBuf::from(tempdir().unwrap().path());
     let default_shell = PathBuf::from(".");
     let plugin_capabilities = PluginCapabilities::default();
@@ -337,7 +337,7 @@ fn create_plugin_thread_with_server_receiver(
         None,
     )
     .should_silently_fail();
-    let engine: Engine = wasmer::Singlepass::default().into();
+    let engine = Engine::new(wasmtime::Config::new().strategy(wasmtime::Strategy::Winch)).unwrap();
     let data_dir = PathBuf::from(tempdir().unwrap().path());
     let default_shell = PathBuf::from(".");
     let plugin_capabilities = PluginCapabilities::default();
@@ -422,7 +422,7 @@ fn create_plugin_thread_with_pty_receiver(
         None,
     )
     .should_silently_fail();
-    let engine: Engine = wasmer::Singlepass::default().into();
+    let engine = Engine::new(wasmtime::Config::new().strategy(wasmtime::Strategy::Winch)).unwrap();
     let data_dir = PathBuf::from(tempdir().unwrap().path());
     let default_shell = PathBuf::from(".");
     let plugin_capabilities = PluginCapabilities::default();
@@ -502,7 +502,7 @@ fn create_plugin_thread_with_background_jobs_receiver(
         None,
     )
     .should_silently_fail();
-    let engine: Engine = wasmer::Singlepass::default().into();
+    let engine = Engine::new(wasmtime::Config::new().strategy(wasmtime::Strategy::Winch)).unwrap();
     let data_dir = PathBuf::from(tempdir().unwrap().path());
     let default_shell = PathBuf::from(".");
     let plugin_capabilities = PluginCapabilities::default();

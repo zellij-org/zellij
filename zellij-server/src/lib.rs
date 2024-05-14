@@ -28,7 +28,7 @@ use zellij_utils::envs;
 use zellij_utils::nix::sys::stat::{umask, Mode};
 use zellij_utils::pane_size::Size;
 
-use wasmer::Engine;
+use wasmtime::{Config, Engine, Strategy};
 
 use crate::{
     os_input_output::ServerOsApi,
@@ -1163,21 +1163,12 @@ fn init_session(
 
 #[cfg(not(feature = "singlepass"))]
 fn get_engine() -> Engine {
-    use wasmer::{BaseTunables, Cranelift, Pages, Target};
     log::info!("Compiling plugins using Cranelift");
-
-    // workaround for https://github.com/bytecodealliance/wasmtime/security/advisories/GHSA-ff4p-7xrq-q5r8
-    let mut tunables = BaseTunables::for_target(&Target::default());
-    tunables.static_memory_bound = Pages(0);
-    let compiler = Cranelift::default();
-    let mut engine: Engine = compiler.into();
-    engine.set_tunables(tunables);
-
-    engine
+    Engine::new(Config::new().strategy(Strategy::Cranelift)).unwrap()
 }
 
 #[cfg(feature = "singlepass")]
 fn get_engine() -> Engine {
     log::info!("Compiling plugins using Singlepass");
-    wasmer::Singlepass::default().into()
+    Engine::new(Config::new().strategy(Strategy::Winch)).unwrap()
 }

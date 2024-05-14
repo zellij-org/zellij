@@ -15,7 +15,7 @@ use std::{
     str::FromStr,
     sync::{Arc, Mutex},
 };
-use wasmer::{Engine, Module, Value};
+use wasmtime::{Engine, Module};
 use zellij_utils::async_channel::Sender;
 use zellij_utils::async_std::task::{self, JoinHandle};
 use zellij_utils::consts::ZELLIJ_CACHE_DIR;
@@ -291,7 +291,7 @@ impl WasmBridge {
                 drop(worker_sender.send(MessageToWorker::Exit));
             }
             let running_plugin = running_plugin.lock().unwrap();
-            let cache_dir = running_plugin.plugin_env.plugin_own_data_dir.clone();
+            let cache_dir = running_plugin.store.data().plugin_own_data_dir.clone();
             if let Err(e) = std::fs::remove_dir_all(cache_dir) {
                 log::error!("Failed to remove cache dir for plugin: {:?}", e);
             }
@@ -491,21 +491,17 @@ impl WasmBridge {
                                 let rendered_bytes = running_plugin
                                     .instance
                                     .clone()
-                                    .exports
-                                    .get_function("render")
-                                    .map_err(anyError::new)
+                                    .get_typed_func::<(i32, i32), ()>(
+                                        &mut running_plugin.store,
+                                        "render",
+                                    )
                                     .and_then(|render| {
-                                        render
-                                            .call(
-                                                &mut running_plugin.store,
-                                                &[
-                                                    Value::I32(new_rows as i32),
-                                                    Value::I32(new_columns as i32),
-                                                ],
-                                            )
-                                            .map_err(anyError::new)
+                                        render.call(
+                                            &mut running_plugin.store,
+                                            (new_rows as i32, new_columns as i32),
+                                        )
                                     })
-                                    .and_then(|_| wasi_read_string(&running_plugin.plugin_env))
+                                    .and_then(|_| wasi_read_string(running_plugin.store.data()))
                                     .with_context(err_context);
                                 match rendered_bytes {
                                     Ok(rendered_bytes) => {
@@ -1076,12 +1072,13 @@ impl WasmBridge {
         };
 
         running_plugin
-            .plugin_env
+            .store
+            .data_mut()
             .set_permissions(HashSet::from_iter(permissions.clone()));
 
         let mut permission_cache = PermissionCache::from_path_or_default(cache_path);
         permission_cache.cache(
-            running_plugin.plugin_env.plugin.location.to_string(),
+            running_plugin.store.data().plugin.location.to_string(),
             permissions,
         );
 
@@ -1276,30 +1273,25 @@ pub fn apply_event_to_plugin(
     senders: ThreadSenders,
 ) -> Result<()> {
     let instance = &running_plugin.instance;
-    let plugin_env = &running_plugin.plugin_env;
     let rows = running_plugin.rows;
     let columns = running_plugin.columns;
 
     let err_context = || format!("Failed to apply event to plugin {plugin_id}");
-    match check_event_permission(plugin_env, event) {
+    match check_event_permission(running_plugin.store.data(), event) {
         (PermissionStatus::Granted, _) => {
             let protobuf_event: ProtobufEvent = event
                 .clone()
                 .try_into()
                 .map_err(|e| anyhow!("Failed to convert to protobuf: {:?}", e))?;
             let update = instance
-                .exports
-                .get_function("update")
+                .get_typed_func::<(), i32>(&mut running_plugin.store, "update")
                 .with_context(err_context)?;
-            wasi_write_object(&plugin_env, &protobuf_event.encode_to_vec())
+            wasi_write_object(running_plugin.store.data(), &protobuf_event.encode_to_vec())
                 .with_context(err_context)?;
-            let update_return = update
-                .call(&mut running_plugin.store, &[])
+            let should_render = update
+                .call(&mut running_plugin.store, ())
                 .with_context(err_context)?;
-            let mut should_render = match update_return.get(0) {
-                Some(Value::I32(n)) => *n == 1,
-                _ => false,
-            };
+            let mut should_render = should_render == 1;
             if let Event::PermissionRequestResult(..) = event {
                 // we always render in this case, otherwise the request permission screen stays on
                 // screen
@@ -1307,18 +1299,11 @@ pub fn apply_event_to_plugin(
             }
             if rows > 0 && columns > 0 && should_render {
                 let rendered_bytes = instance
-                    .exports
-                    .get_function("render")
-                    .map_err(anyError::new)
+                    .get_typed_func::<(i32, i32), ()>(&mut running_plugin.store, "render")
                     .and_then(|render| {
-                        render
-                            .call(
-                                &mut running_plugin.store,
-                                &[Value::I32(rows as i32), Value::I32(columns as i32)],
-                            )
-                            .map_err(anyError::new)
+                        render.call(&mut running_plugin.store, (rows as i32, columns as i32))
                     })
-                    .and_then(|_| wasi_read_string(&plugin_env))
+                    .and_then(|_| wasi_read_string(running_plugin.store.data()))
                     .with_context(err_context)?;
                 let pipes_to_block_or_unblock = pipes_to_block_or_unblock(running_plugin, None);
                 let plugin_render_asset = PluginRenderAsset::new(

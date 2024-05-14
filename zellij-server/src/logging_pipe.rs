@@ -5,7 +5,6 @@ use std::{
 
 use crate::plugins::PluginId;
 use log::{debug, error};
-use wasmer_wasi::{WasiFile, WasiFsError};
 use zellij_utils::{errors::prelude::*, serde};
 
 use chrono::prelude::*;
@@ -112,31 +111,6 @@ impl Seek for LoggingPipe {
             std::io::ErrorKind::Other,
             "can not seek in a pipe",
         ))
-    }
-}
-
-impl WasiFile for LoggingPipe {
-    fn last_accessed(&self) -> u64 {
-        0
-    }
-    fn last_modified(&self) -> u64 {
-        0
-    }
-    fn created_time(&self) -> u64 {
-        0
-    }
-    fn size(&self) -> u64 {
-        self.buffer.len() as u64
-    }
-    fn set_len(&mut self, len: u64) -> Result<(), WasiFsError> {
-        self.buffer.resize(len as usize, 0);
-        Ok(())
-    }
-    fn unlink(&mut self) -> Result<(), WasiFsError> {
-        Ok(())
-    }
-    fn bytes_available(&self) -> Result<usize, WasiFsError> {
-        Ok(self.buffer.len())
     }
 }
 

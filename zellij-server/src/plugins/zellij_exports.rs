@@ -8,13 +8,14 @@ use log::{debug, warn};
 use serde::Serialize;
 use std::{
     collections::{BTreeMap, HashSet},
+    io::{Read, Write},
     path::PathBuf,
     process,
     str::FromStr,
     thread,
     time::{Duration, Instant},
 };
-use wasmer::{imports, AsStoreMut, Function, FunctionEnv, FunctionEnvMut, Imports};
+use wasmtime::{Caller, Linker};
 use zellij_utils::data::{
     CommandType, ConnectToSession, FloatingPaneCoordinates, HttpVerb, LayoutInfo, MessageToPlugin,
     PermissionStatus, PermissionType, PluginPermission,
@@ -66,19 +67,14 @@ macro_rules! apply_action {
     };
 }
 
-pub fn zellij_exports(store: &mut impl AsStoreMut, plugin_env: &PluginEnv) -> Imports {
-    let function_env = FunctionEnv::new(store, plugin_env.clone());
-    imports! {
-        "zellij" => {
-          "host_run_plugin_command" => {
-            Function::new_typed_with_env(store, &function_env, host_run_plugin_command)
-          }
-        }
-    }
+pub fn zellij_exports(linker: &mut Linker<PluginEnv>) {
+    linker
+        .func_wrap("zellij", "host_run_plugin_command", host_run_plugin_command)
+        .unwrap();
 }
 
-fn host_run_plugin_command(env: FunctionEnvMut<PluginEnv>) {
-    let env = env.data();
+fn host_run_plugin_command(caller: Caller<'_, PluginEnv>) {
+    let env = caller.data();
     let err_context = || format!("failed to run plugin command {}", env.name());
     wasi_read_bytes(env)
         .and_then(|bytes| {
@@ -1336,12 +1332,11 @@ pub fn wasi_read_string(plugin_env: &PluginEnv) -> Result<String> {
 
     let mut buf = vec![];
     plugin_env
-        .wasi_env
-        .state()
-        .stdout()
+        .stdout_pipe
+        .write()
+        .unwrap()
+        .read_to_end(&mut buf)
         .map_err(anyError::new)
-        .and_then(|stdout| stdout.ok_or(anyhow!("failed to get mutable reference to stdout")))
-        .and_then(|mut wasi_file| wasi_file.read_to_end(&mut buf).map_err(anyError::new))
         .with_context(err_context)?;
     let buf = String::from_utf8_lossy(&buf);
 
@@ -1350,13 +1345,9 @@ pub fn wasi_read_string(plugin_env: &PluginEnv) -> Result<String> {
 }
 
 pub fn wasi_write_string(plugin_env: &PluginEnv, buf: &str) -> Result<()> {
-    plugin_env
-        .wasi_env
-        .state()
-        .stdin()
+    let mut stdin = plugin_env.stdin_pipe.write().unwrap();
+    writeln!(stdin, "{}\r", buf)
         .map_err(anyError::new)
-        .and_then(|stdin| stdin.ok_or(anyhow!("failed to get mutable reference to stdin")))
-        .and_then(|mut stdin| writeln!(stdin, "{}\r", buf).map_err(anyError::new))
         .with_context(|| format!("failed to write string to WASI env"))
 }
 
