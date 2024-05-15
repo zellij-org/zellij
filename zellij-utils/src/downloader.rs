@@ -112,9 +112,8 @@ impl Downloader {
 
         Ok(())
     }
-    pub async fn download_without_cache(
-        url: &str,
-    ) -> Result<String, DownloaderError> { // result is the stringified body
+    pub async fn download_without_cache(url: &str) -> Result<String, DownloaderError> {
+        // result is the stringified body
         let client = surf::client().with(surf::middleware::Redirect::default());
 
         let res = client
@@ -131,7 +130,8 @@ impl Downloader {
         }
 
         log::debug!("Download complete");
-        let stringified = String::from_utf8(downloaded_bytes).map_err(|e| DownloaderError::InvalidUrlBody(format!("{}", e)))?;
+        let stringified = String::from_utf8(downloaded_bytes)
+            .map_err(|e| DownloaderError::InvalidUrlBody(format!("{}", e)))?;
 
         Ok(stringified)
     }

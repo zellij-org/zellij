@@ -671,7 +671,17 @@ impl Setup {
                     .and_then(|cli_options| cli_options.default_layout.clone())
             })
             .or_else(|| config.options.default_layout.clone());
-        if let Some(layout_url) = chosen_layout.as_ref().and_then(|l| l.to_str()).and_then(|l| if l.starts_with("http://") || l.starts_with("https://") { Some(l) } else { None }) {
+        if let Some(layout_url) = chosen_layout
+            .as_ref()
+            .and_then(|l| l.to_str())
+            .and_then(|l| {
+                if l.starts_with("http://") || l.starts_with("https://") {
+                    Some(l)
+                } else {
+                    None
+                }
+            })
+        {
             Layout::from_url(layout_url, config)
         } else {
             // we merge-override the config here because the layout might contain configuration
