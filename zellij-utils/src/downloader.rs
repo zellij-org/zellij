@@ -16,6 +16,8 @@ pub enum DownloaderError {
     Io(#[source] std::io::Error),
     #[error("File name cannot be found in URL: {0}")]
     NotFoundFileName(String),
+    #[error("Failed to parse URL body: {0}")]
+    InvalidUrlBody(String),
 }
 
 #[derive(Debug)]
@@ -109,6 +111,29 @@ impl Downloader {
             .map_err(|e| DownloaderError::Io(e))?;
 
         Ok(())
+    }
+    pub async fn download_without_cache(
+        url: &str,
+    ) -> Result<String, DownloaderError> { // result is the stringified body
+        let client = surf::client().with(surf::middleware::Redirect::default());
+
+        let res = client
+            .get(url)
+            .header("Content-Type", "application/octet-stream")
+            .await
+            .map_err(|e| DownloaderError::Request(e))?;
+
+        let mut downloaded_bytes: Vec<u8> = vec![];
+        let mut stream = res.bytes();
+        while let Some(byte) = stream.next().await {
+            let byte = byte.map_err(|e| DownloaderError::Io(e))?;
+            downloaded_bytes.push(byte);
+        }
+
+        log::debug!("Download complete");
+        let stringified = String::from_utf8(downloaded_bytes).map_err(|e| DownloaderError::InvalidUrlBody(format!("{}", e)))?;
+
+        Ok(stringified)
     }
 
     fn parse_name(&self, url: &str) -> Result<String, DownloaderError> {

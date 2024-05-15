@@ -671,9 +671,13 @@ impl Setup {
                     .and_then(|cli_options| cli_options.default_layout.clone())
             })
             .or_else(|| config.options.default_layout.clone());
-        // we merge-override the config here because the layout might contain configuration
-        // that needs to take precedence
-        Layout::from_path_or_default(chosen_layout.as_ref(), layout_dir.clone(), config)
+        if let Some(layout_url) = chosen_layout.as_ref().and_then(|l| l.to_str()).and_then(|l| if l.starts_with("http://") || l.starts_with("https://") { Some(l) } else { None }) {
+            Layout::from_url(layout_url, config)
+        } else {
+            // we merge-override the config here because the layout might contain configuration
+            // that needs to take precedence
+            Layout::from_path_or_default(chosen_layout.as_ref(), layout_dir.clone(), config)
+        }
     }
     fn handle_setup_commands(cli_args: &CliArgs) {
         if let Some(Command::Setup(ref setup)) = &cli_args.command {
