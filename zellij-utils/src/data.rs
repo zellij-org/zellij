@@ -797,6 +797,7 @@ pub struct SessionInfo {
 pub enum LayoutInfo {
     BuiltIn(String),
     File(String),
+    Url(String),
 }
 
 impl LayoutInfo {
@@ -804,12 +805,14 @@ impl LayoutInfo {
         match self {
             LayoutInfo::BuiltIn(name) => &name,
             LayoutInfo::File(name) => &name,
+            LayoutInfo::Url(url) => &url,
         }
     }
     pub fn is_builtin(&self) -> bool {
         match self {
             LayoutInfo::BuiltIn(_name) => true,
             LayoutInfo::File(_name) => false,
+            LayoutInfo::Url(_url) => false,
         }
     }
 }

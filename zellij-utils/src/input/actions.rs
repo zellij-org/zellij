@@ -529,9 +529,25 @@ impl Action {
                     let layout_dir = layout_dir
                         .or_else(|| config.and_then(|c| c.options.layout_dir))
                         .or_else(|| get_layout_dir(find_default_config_dir()));
-                    let (path_to_raw_layout, raw_layout, swap_layouts) =
+
+                    let (path_to_raw_layout, raw_layout, swap_layouts) = if let Some(layout_url) =
+                        layout_path.to_str().and_then(|l| {
+                            if l.starts_with("http://") || l.starts_with("https://") {
+                                Some(l)
+                            } else {
+                                None
+                            }
+                        }) {
+                        (
+                            layout_url.to_owned(),
+                            Layout::stringified_from_url(layout_url)
+                                .map_err(|e| format!("Failed to load layout: {}", e))?,
+                            None,
+                        )
+                    } else {
                         Layout::stringified_from_path_or_default(Some(&layout_path), layout_dir)
-                            .map_err(|e| format!("Failed to load layout: {}", e))?;
+                            .map_err(|e| format!("Failed to load layout: {}", e))?
+                    };
                     let layout = Layout::from_str(&raw_layout, path_to_raw_layout, swap_layouts.as_ref().map(|(f, p)| (f.as_str(), p.as_str())), cwd).map_err(|e| {
                         let stringified_error = match e {
                             ConfigError::KdlError(kdl_error) => {
