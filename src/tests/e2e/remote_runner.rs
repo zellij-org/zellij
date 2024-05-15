@@ -84,7 +84,7 @@ fn start_zellij(channel: &mut ssh2::Channel) {
         )
         .unwrap();
     channel.flush().unwrap();
-    std::thread::sleep(std::time::Duration::from_secs(1)); // wait until Zellij stops parsing startup ANSI codes from the terminal STDIN
+    std::thread::sleep(std::time::Duration::from_secs(3)); // wait until Zellij stops parsing startup ANSI codes from the terminal STDIN
 }
 
 fn start_zellij_mirrored_session(channel: &mut ssh2::Channel) {
@@ -99,7 +99,7 @@ fn start_zellij_mirrored_session(channel: &mut ssh2::Channel) {
         )
         .unwrap();
     channel.flush().unwrap();
-    std::thread::sleep(std::time::Duration::from_secs(1)); // wait until Zellij stops parsing startup ANSI codes from the terminal STDIN
+    std::thread::sleep(std::time::Duration::from_secs(3)); // wait until Zellij stops parsing startup ANSI codes from the terminal STDIN
 }
 
 fn start_zellij_mirrored_session_with_layout(channel: &mut ssh2::Channel, layout_file_name: &str) {
@@ -118,7 +118,7 @@ fn start_zellij_mirrored_session_with_layout(channel: &mut ssh2::Channel, layout
         )
         .unwrap();
     channel.flush().unwrap();
-    std::thread::sleep(std::time::Duration::from_secs(1)); // wait until Zellij stops parsing startup ANSI codes from the terminal STDIN
+    std::thread::sleep(std::time::Duration::from_secs(3)); // wait until Zellij stops parsing startup ANSI codes from the terminal STDIN
 }
 
 fn start_zellij_mirrored_session_with_layout_and_viewport_serialization(
@@ -140,7 +140,7 @@ fn start_zellij_mirrored_session_with_layout_and_viewport_serialization(
         )
         .unwrap();
     channel.flush().unwrap();
-    std::thread::sleep(std::time::Duration::from_secs(1)); // wait until Zellij stops parsing startup ANSI codes from the terminal STDIN
+    std::thread::sleep(std::time::Duration::from_secs(3)); // wait until Zellij stops parsing startup ANSI codes from the terminal STDIN
 }
 
 fn start_zellij_in_session(channel: &mut ssh2::Channel, session_name: &str, mirrored: bool) {
@@ -159,7 +159,7 @@ fn start_zellij_in_session(channel: &mut ssh2::Channel, session_name: &str, mirr
         )
         .unwrap();
     channel.flush().unwrap();
-    std::thread::sleep(std::time::Duration::from_secs(1)); // wait until Zellij stops parsing startup ANSI codes from the terminal STDIN
+    std::thread::sleep(std::time::Duration::from_secs(3)); // wait until Zellij stops parsing startup ANSI codes from the terminal STDIN
 }
 
 fn attach_to_existing_session(channel: &mut ssh2::Channel, session_name: &str) {
@@ -173,7 +173,7 @@ fn attach_to_existing_session(channel: &mut ssh2::Channel, session_name: &str) {
         )
         .unwrap();
     channel.flush().unwrap();
-    std::thread::sleep(std::time::Duration::from_secs(1)); // wait until Zellij stops parsing startup ANSI codes from the terminal STDIN
+    std::thread::sleep(std::time::Duration::from_secs(3)); // wait until Zellij stops parsing startup ANSI codes from the terminal STDIN
 }
 
 fn start_zellij_without_frames(channel: &mut ssh2::Channel) {
@@ -188,7 +188,7 @@ fn start_zellij_without_frames(channel: &mut ssh2::Channel) {
         )
         .unwrap();
     channel.flush().unwrap();
-    std::thread::sleep(std::time::Duration::from_secs(1)); // wait until Zellij stops parsing startup ANSI codes from the terminal STDIN
+    std::thread::sleep(std::time::Duration::from_secs(3)); // wait until Zellij stops parsing startup ANSI codes from the terminal STDIN
 }
 
 fn start_zellij_with_config(channel: &mut ssh2::Channel, config_path: &str) {
@@ -207,7 +207,7 @@ fn start_zellij_with_config(channel: &mut ssh2::Channel, config_path: &str) {
         )
         .unwrap();
     channel.flush().unwrap();
-    std::thread::sleep(std::time::Duration::from_secs(1)); // wait until Zellij stops parsing startup ANSI codes from the terminal STDIN
+    std::thread::sleep(std::time::Duration::from_secs(3)); // wait until Zellij stops parsing startup ANSI codes from the terminal STDIN
 }
 
 fn read_from_channel(
