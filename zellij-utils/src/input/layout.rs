@@ -19,7 +19,7 @@ use crate::{
     setup::{self},
 };
 #[cfg(not(target_family = "wasm"))]
-use async_std::task::{self, JoinHandle};
+use async_std::task;
 #[cfg(not(target_family = "wasm"))]
 use crate::downloader::Downloader;
 
@@ -1148,6 +1148,9 @@ impl Layout {
             },
             LayoutInfo::BuiltIn(layout_name) => {
                 Self::stringified_from_default_assets(&PathBuf::from(layout_name))?
+            },
+            LayoutInfo::Url(url) => {
+                (url.clone(), Self::stringified_from_url(&url)?, None)
             },
         };
         Layout::from_kdl(
