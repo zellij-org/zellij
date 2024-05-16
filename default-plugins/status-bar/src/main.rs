@@ -766,23 +766,23 @@ pub mod tests {
         let keyvec = vec![
             KeyWithModifier::new(BareKey::Char('a')).with_alt_modifier(),
             KeyWithModifier::new(BareKey::Char('b')).with_ctrl_modifier(),
-            KeyWithModifier::new(BareKey::Char('a')),
+            KeyWithModifier::new(BareKey::Char('c')),
         ];
         let palette = get_palette();
 
         let ret = style_key_with_modifier(&keyvec, &palette, None);
         let ret = unstyle(&ANSIStrings(&ret));
 
-        assert_eq!(ret, "<Alt+a|Ctrl+b|c>".to_string())
+        assert_eq!(ret, "<Alt a|Ctrl b|c>".to_string())
     }
 
     #[test]
     fn style_key_with_modifier_unprintables() {
         let keyvec = vec![
             KeyWithModifier::new(BareKey::Backspace),
-            KeyWithModifier::new(BareKey::Char('\n')),
+            KeyWithModifier::new(BareKey::Enter),
             KeyWithModifier::new(BareKey::Char(' ')),
-            KeyWithModifier::new(BareKey::Char('\t')),
+            KeyWithModifier::new(BareKey::Tab),
             KeyWithModifier::new(BareKey::PageDown),
             KeyWithModifier::new(BareKey::Delete),
             KeyWithModifier::new(BareKey::Home),

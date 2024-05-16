@@ -560,7 +560,7 @@ mod tests {
 
     #[test]
     fn full_length_shortcut_with_key() {
-        let keyvec = vec![Key::Char('a')];
+        let keyvec = vec![KeyWithModifier::new(BareKey::Char('a'))];
         let palette = get_palette();
 
         let ret = full_length_shortcut(false, keyvec, "Foobar", palette);
@@ -571,7 +571,7 @@ mod tests {
 
     #[test]
     fn full_length_shortcut_with_key_first_element() {
-        let keyvec = vec![Key::Char('a')];
+        let keyvec = vec![KeyWithModifier::new(BareKey::Char('a'))];
         let palette = get_palette();
 
         let ret = full_length_shortcut(true, keyvec, "Foobar", palette);
@@ -594,7 +594,7 @@ mod tests {
 
     #[test]
     fn full_length_shortcut_with_key_unprintable_1() {
-        let keyvec = vec![Key::Char('\n')];
+        let keyvec = vec![KeyWithModifier::new(BareKey::Enter)];
         let palette = get_palette();
 
         let ret = full_length_shortcut(false, keyvec, "Foobar", palette);
@@ -605,7 +605,7 @@ mod tests {
 
     #[test]
     fn full_length_shortcut_with_key_unprintable_2() {
-        let keyvec = vec![Key::Backspace];
+        let keyvec = vec![KeyWithModifier::new(BareKey::Backspace)];
         let palette = get_palette();
 
         let ret = full_length_shortcut(false, keyvec, "Foobar", palette);
@@ -616,7 +616,7 @@ mod tests {
 
     #[test]
     fn full_length_shortcut_with_ctrl_key() {
-        let keyvec = vec![Key::Ctrl('a')];
+        let keyvec = vec![KeyWithModifier::new(BareKey::Char('a')).with_ctrl_modifier()];
         let palette = get_palette();
 
         let ret = full_length_shortcut(false, keyvec, "Foobar", palette);
@@ -627,7 +627,7 @@ mod tests {
 
     #[test]
     fn full_length_shortcut_with_alt_key() {
-        let keyvec = vec![Key::Alt(CharOrArrow::Char('a'))];
+        let keyvec = vec![KeyWithModifier::new(BareKey::Char('a')).with_alt_modifier()];
         let palette = get_palette();
 
         let ret = full_length_shortcut(false, keyvec, "Foobar", palette);
@@ -638,7 +638,11 @@ mod tests {
 
     #[test]
     fn full_length_shortcut_with_homogenous_key_group() {
-        let keyvec = vec![Key::Char('a'), Key::Char('b'), Key::Char('c')];
+        let keyvec = vec![
+            KeyWithModifier::new(BareKey::Char('a')),
+            KeyWithModifier::new(BareKey::Char('b')),
+            KeyWithModifier::new(BareKey::Char('c')),
+        ];
         let palette = get_palette();
 
         let ret = full_length_shortcut(false, keyvec, "Foobar", palette);
@@ -649,18 +653,26 @@ mod tests {
 
     #[test]
     fn full_length_shortcut_with_heterogenous_key_group() {
-        let keyvec = vec![Key::Char('a'), Key::Ctrl('b'), Key::Char('\n')];
+        let keyvec = vec![
+            KeyWithModifier::new(BareKey::Char('a')),
+            KeyWithModifier::new(BareKey::Char('b')).with_ctrl_modifier(),
+            KeyWithModifier::new(BareKey::Enter),
+        ];
         let palette = get_palette();
 
         let ret = full_length_shortcut(false, keyvec, "Foobar", palette);
         let ret = unstyle(ret);
 
-        assert_eq!(ret, " / <a|Ctrl+b|ENTER> Foobar");
+        assert_eq!(ret, " / <a|Ctrl b|ENTER> Foobar");
     }
 
     #[test]
     fn full_length_shortcut_with_key_group_shared_ctrl_modifier() {
-        let keyvec = vec![Key::Ctrl('a'), Key::Ctrl('b'), Key::Ctrl('c')];
+        let keyvec = vec![
+            KeyWithModifier::new(BareKey::Char('a')).with_ctrl_modifier(),
+            KeyWithModifier::new(BareKey::Char('b')).with_ctrl_modifier(),
+            KeyWithModifier::new(BareKey::Char('c')).with_ctrl_modifier(),
+        ];
         let palette = get_palette();
 
         let ret = full_length_shortcut(false, keyvec, "Foobar", palette);
@@ -678,14 +690,14 @@ mod tests {
             keybinds: vec![(
                 InputMode::Pane,
                 vec![
-                    (Key::Left, vec![Action::MoveFocus(Direction::Left)]),
-                    (Key::Down, vec![Action::MoveFocus(Direction::Down)]),
-                    (Key::Up, vec![Action::MoveFocus(Direction::Up)]),
-                    (Key::Right, vec![Action::MoveFocus(Direction::Right)]),
-                    (Key::Char('n'), vec![Action::NewPane(None, None), TO_NORMAL]),
-                    (Key::Char('x'), vec![Action::CloseFocus, TO_NORMAL]),
+                    (KeyWithModifier::new(BareKey::Left), vec![Action::MoveFocus(Direction::Left)]),
+                    (KeyWithModifier::new(BareKey::Down), vec![Action::MoveFocus(Direction::Down)]),
+                    (KeyWithModifier::new(BareKey::Up), vec![Action::MoveFocus(Direction::Up)]),
+                    (KeyWithModifier::new(BareKey::Right), vec![Action::MoveFocus(Direction::Right)]),
+                    (KeyWithModifier::new(BareKey::Char('n')), vec![Action::NewPane(None, None), TO_NORMAL]),
+                    (KeyWithModifier::new(BareKey::Char('x')), vec![Action::CloseFocus, TO_NORMAL]),
                     (
-                        Key::Char('f'),
+                        KeyWithModifier::new(BareKey::Char('f')),
                         vec![Action::ToggleFocusFullscreen, TO_NORMAL],
                     ),
                 ],
@@ -710,14 +722,14 @@ mod tests {
             keybinds: vec![(
                 InputMode::Pane,
                 vec![
-                    (Key::Left, vec![Action::MoveFocus(Direction::Left)]),
-                    (Key::Down, vec![Action::MoveFocus(Direction::Down)]),
-                    (Key::Up, vec![Action::MoveFocus(Direction::Up)]),
-                    (Key::Right, vec![Action::MoveFocus(Direction::Right)]),
-                    (Key::Char('n'), vec![Action::NewPane(None, None), TO_NORMAL]),
-                    (Key::Char('x'), vec![Action::CloseFocus, TO_NORMAL]),
+                    (KeyWithModifier::new(BareKey::Left), vec![Action::MoveFocus(Direction::Left)]),
+                    (KeyWithModifier::new(BareKey::Down), vec![Action::MoveFocus(Direction::Down)]),
+                    (KeyWithModifier::new(BareKey::Up), vec![Action::MoveFocus(Direction::Up)]),
+                    (KeyWithModifier::new(BareKey::Right), vec![Action::MoveFocus(Direction::Right)]),
+                    (KeyWithModifier::new(BareKey::Char('n')), vec![Action::NewPane(None, None), TO_NORMAL]),
+                    (KeyWithModifier::new(BareKey::Char('x')), vec![Action::CloseFocus, TO_NORMAL]),
                     (
-                        Key::Char('f'),
+                        KeyWithModifier::new(BareKey::Char('f')),
                         vec![Action::ToggleFocusFullscreen, TO_NORMAL],
                     ),
                 ],
@@ -738,13 +750,13 @@ mod tests {
             keybinds: vec![(
                 InputMode::Pane,
                 vec![
-                    (Key::Ctrl('a'), vec![Action::MoveFocus(Direction::Left)]),
-                    (Key::Ctrl('\n'), vec![Action::MoveFocus(Direction::Down)]),
-                    (Key::Ctrl('1'), vec![Action::MoveFocus(Direction::Up)]),
-                    (Key::Ctrl(' '), vec![Action::MoveFocus(Direction::Right)]),
-                    (Key::Backspace, vec![Action::NewPane(None, None), TO_NORMAL]),
-                    (Key::Esc, vec![Action::CloseFocus, TO_NORMAL]),
-                    (Key::End, vec![Action::ToggleFocusFullscreen, TO_NORMAL]),
+                    (KeyWithModifier::new(BareKey::Char('a')).with_ctrl_modifier(), vec![Action::MoveFocus(Direction::Left)]),
+                    (KeyWithModifier::new(BareKey::Enter).with_ctrl_modifier(), vec![Action::MoveFocus(Direction::Down)]),
+                    (KeyWithModifier::new(BareKey::Char('1')).with_ctrl_modifier(), vec![Action::MoveFocus(Direction::Up)]),
+                    (KeyWithModifier::new(BareKey::Char(' ')).with_ctrl_modifier(), vec![Action::MoveFocus(Direction::Right)]),
+                    (KeyWithModifier::new(BareKey::Backspace), vec![Action::NewPane(None, None), TO_NORMAL]),
+                    (KeyWithModifier::new(BareKey::Esc), vec![Action::CloseFocus, TO_NORMAL]),
+                    (KeyWithModifier::new(BareKey::End), vec![Action::ToggleFocusFullscreen, TO_NORMAL]),
                 ],
             )],
             ..ModeInfo::default()
