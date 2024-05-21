@@ -133,7 +133,10 @@ impl<'a> PaneContentsAndUi<'a> {
                 .with_context(|| {
                     format!("failed to render fake cursor if needed for client {client_id}")
                 })?;
-            if let Some(colors) = client_id_to_colors(*fake_cursor_client_id) {
+            if let Some(colors) = client_id_to_colors(
+                *fake_cursor_client_id,
+                self.style.colors.multiplayer_user_colors,
+            ) {
                 if let Some(vte_output) = self.pane.render_fake_cursor(colors.0, colors.1) {
                     self.output.add_post_vte_instruction_to_client(
                         client_id,
@@ -259,7 +262,10 @@ impl<'a> PaneContentsAndUi<'a> {
                     if session_is_mirrored || !self.multiple_users_exist_in_session {
                         Some(self.style.colors.frame_selected.base)
                     } else {
-                        let colors = client_id_to_colors(client_id);
+                        let colors = client_id_to_colors(
+                            client_id,
+                            self.style.colors.multiplayer_user_colors,
+                        );
                         colors.map(|colors| colors.0)
                     }
                 },
