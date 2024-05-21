@@ -1144,7 +1144,7 @@ pub struct Style {
     pub hide_session_name: bool,
 }
 
-#[derive(Debug, Copy, Default, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub struct Styling {
     pub text_unselected: StyleDeclaration,
     pub text_selected: StyleDeclaration,
@@ -1186,9 +1186,136 @@ pub struct MultiplayerColors {
     pub player_10: PaletteColor,
 }
 
+const DEFAULT_STYLES: Styling = Styling {
+    text_unselected: StyleDeclaration {
+        base: PaletteColor::EightBit(default_colors::BRIGHT_GRAY),
+        emphasis_1: PaletteColor::EightBit(default_colors::ORANGE),
+        emphasis_2: PaletteColor::EightBit(default_colors::CYAN),
+        emphasis_3: PaletteColor::EightBit(default_colors::GREEN),
+        emphasis_4: PaletteColor::EightBit(default_colors::MAGENTA),
+        background: PaletteColor::EightBit(default_colors::GRAY),
+    },
+    text_selected: StyleDeclaration {
+        base: PaletteColor::EightBit(default_colors::BRIGHT_GRAY),
+        emphasis_1: PaletteColor::EightBit(default_colors::ORANGE),
+        emphasis_2: PaletteColor::EightBit(default_colors::CYAN),
+        emphasis_3: PaletteColor::EightBit(default_colors::GREEN),
+        emphasis_4: PaletteColor::EightBit(default_colors::MAGENTA),
+        background: PaletteColor::EightBit(default_colors::GRAY),
+    },
+    ribbon_unselected: StyleDeclaration {
+        base: PaletteColor::EightBit(default_colors::BLACK),
+        emphasis_1: PaletteColor::EightBit(default_colors::RED),
+        emphasis_2: PaletteColor::EightBit(default_colors::WHITE),
+        emphasis_3: PaletteColor::EightBit(default_colors::BLUE),
+        emphasis_4: PaletteColor::EightBit(default_colors::MAGENTA),
+        background: PaletteColor::EightBit(default_colors::GRAY),
+    },
+    ribbon_selected: StyleDeclaration {
+        base: PaletteColor::EightBit(default_colors::BLACK),
+        emphasis_1: PaletteColor::EightBit(default_colors::RED),
+        emphasis_2: PaletteColor::EightBit(default_colors::WHITE),
+        emphasis_3: PaletteColor::EightBit(default_colors::BLUE),
+        emphasis_4: PaletteColor::EightBit(default_colors::MAGENTA),
+        background: PaletteColor::EightBit(default_colors::GREEN),
+    },
+    exit_code_success: StyleDeclaration {
+        base: PaletteColor::EightBit(default_colors::GREEN),
+        emphasis_1: PaletteColor::EightBit(default_colors::CYAN),
+        emphasis_2: PaletteColor::EightBit(default_colors::BLACK),
+        emphasis_3: PaletteColor::EightBit(default_colors::MAGENTA),
+        emphasis_4: PaletteColor::EightBit(default_colors::BLUE),
+        background: PaletteColor::EightBit(default_colors::GRAY),
+    },
+    exit_code_error: StyleDeclaration {
+        base: PaletteColor::EightBit(default_colors::RED),
+        emphasis_1: PaletteColor::EightBit(default_colors::YELLOW),
+        emphasis_2: PaletteColor::EightBit(default_colors::GOLD),
+        emphasis_3: PaletteColor::EightBit(default_colors::SILVER),
+        emphasis_4: PaletteColor::EightBit(default_colors::PURPLE),
+        background: PaletteColor::EightBit(default_colors::GRAY),
+    },
+    frame_unselected: StyleDeclaration {
+        base: PaletteColor::EightBit(default_colors::ORANGE),
+        emphasis_1: PaletteColor::EightBit(default_colors::PINK),
+        emphasis_2: PaletteColor::EightBit(default_colors::GRAY),
+        emphasis_3: PaletteColor::EightBit(default_colors::BROWN),
+        emphasis_4: PaletteColor::EightBit(default_colors::BLACK),
+        background: PaletteColor::EightBit(default_colors::GRAY),
+    },
+    frame_selected: StyleDeclaration {
+        base: PaletteColor::EightBit(default_colors::GREEN),
+        emphasis_1: PaletteColor::EightBit(default_colors::ORANGE),
+        emphasis_2: PaletteColor::EightBit(default_colors::CYAN),
+        emphasis_3: PaletteColor::EightBit(default_colors::MAGENTA),
+        emphasis_4: PaletteColor::EightBit(default_colors::BROWN),
+        background: PaletteColor::EightBit(default_colors::GRAY),
+    },
+    table_title: StyleDeclaration {
+        base: PaletteColor::EightBit(default_colors::GREEN),
+        emphasis_1: PaletteColor::EightBit(default_colors::ORANGE),
+        emphasis_2: PaletteColor::EightBit(default_colors::CYAN),
+        emphasis_3: PaletteColor::EightBit(default_colors::GREEN),
+        emphasis_4: PaletteColor::EightBit(default_colors::MAGENTA),
+        background: PaletteColor::EightBit(default_colors::GRAY),
+    },
+    table_cell_unselected: StyleDeclaration {
+        base: PaletteColor::EightBit(default_colors::BRIGHT_GRAY),
+        emphasis_1: PaletteColor::EightBit(default_colors::ORANGE),
+        emphasis_2: PaletteColor::EightBit(default_colors::CYAN),
+        emphasis_3: PaletteColor::EightBit(default_colors::GREEN),
+        emphasis_4: PaletteColor::EightBit(default_colors::MAGENTA),
+        background: PaletteColor::EightBit(default_colors::GRAY),
+    },
+    table_cell_selected: StyleDeclaration {
+        base: PaletteColor::EightBit(default_colors::GREEN),
+        emphasis_1: PaletteColor::EightBit(default_colors::ORANGE),
+        emphasis_2: PaletteColor::EightBit(default_colors::CYAN),
+        emphasis_3: PaletteColor::EightBit(default_colors::RED),
+        emphasis_4: PaletteColor::EightBit(default_colors::MAGENTA),
+        background: PaletteColor::EightBit(default_colors::GRAY),
+    },
+    list_unselected: StyleDeclaration {
+        base: PaletteColor::EightBit(default_colors::BRIGHT_GRAY),
+        emphasis_1: PaletteColor::EightBit(default_colors::ORANGE),
+        emphasis_2: PaletteColor::EightBit(default_colors::CYAN),
+        emphasis_3: PaletteColor::EightBit(default_colors::GREEN),
+        emphasis_4: PaletteColor::EightBit(default_colors::MAGENTA),
+        background: PaletteColor::EightBit(default_colors::GRAY),
+    },
+    list_selected: StyleDeclaration {
+        base: PaletteColor::EightBit(default_colors::GREEN),
+        emphasis_1: PaletteColor::EightBit(default_colors::ORANGE),
+        emphasis_2: PaletteColor::EightBit(default_colors::CYAN),
+        emphasis_3: PaletteColor::EightBit(default_colors::RED),
+        emphasis_4: PaletteColor::EightBit(default_colors::MAGENTA),
+        background: PaletteColor::EightBit(default_colors::GRAY),
+    },
+    multiplayer_user_colors: MultiplayerColors {
+        player_1: PaletteColor::EightBit(default_colors::MAGENTA),
+        player_2: PaletteColor::EightBit(default_colors::BLUE),
+        player_3: PaletteColor::EightBit(default_colors::PURPLE),
+        player_4: PaletteColor::EightBit(default_colors::YELLOW),
+        player_5: PaletteColor::EightBit(default_colors::CYAN),
+        player_6: PaletteColor::EightBit(default_colors::GOLD),
+        player_7: PaletteColor::EightBit(default_colors::RED),
+        player_8: PaletteColor::EightBit(default_colors::SILVER),
+        player_9: PaletteColor::EightBit(default_colors::PINK),
+        player_10: PaletteColor::EightBit(default_colors::BROWN),
+    },
+};
+
+impl Default for Styling {
+    fn default() -> Self {
+        DEFAULT_STYLES
+    }
+}
+
 impl From<Styling> for Palette {
     fn from(styling: Styling) -> Self {
         Palette {
+            theme_hue: ThemeHue::Dark,
+            source: PaletteSource::Default,
             fg: styling.ribbon_unselected.background,
             bg: styling.text_unselected.background,
             red: styling.exit_code_error.base,
@@ -1200,7 +1327,12 @@ impl From<Styling> for Palette {
             cyan: styling.text_unselected.emphasis_2,
             black: styling.ribbon_unselected.base,
             white: styling.ribbon_selected.emphasis_2,
-            ..Default::default()
+            gray: styling.list_unselected.background,
+            purple: styling.multiplayer_user_colors.player_3,
+            gold: styling.multiplayer_user_colors.player_6,
+            silver: styling.multiplayer_user_colors.player_8,
+            pink: styling.multiplayer_user_colors.player_9,
+            brown: styling.multiplayer_user_colors.player_10,
         }
     }
 }
@@ -1276,6 +1408,46 @@ impl From<Palette> for Styling {
                 emphasis_4: palette.brown,
                 background: Default::default(),
             },
+            table_title: StyleDeclaration {
+                base: palette.green,
+                emphasis_1: palette.orange,
+                emphasis_2: palette.cyan,
+                emphasis_3: palette.red,
+                emphasis_4: palette.magenta,
+                background: palette.gray,
+            },
+            table_cell_unselected: StyleDeclaration {
+                base: palette.fg,
+                emphasis_1: palette.orange,
+                emphasis_2: palette.cyan,
+                emphasis_3: palette.green,
+                emphasis_4: palette.magenta,
+                background: palette.bg,
+            },
+            table_cell_selected: StyleDeclaration {
+                base: palette.green,
+                emphasis_1: palette.orange,
+                emphasis_2: palette.cyan,
+                emphasis_3: palette.red,
+                emphasis_4: palette.magenta,
+                background: palette.bg,
+            },
+            list_unselected: StyleDeclaration {
+                base: palette.fg,
+                emphasis_1: palette.orange,
+                emphasis_2: palette.cyan,
+                emphasis_3: palette.green,
+                emphasis_4: palette.magenta,
+                background: palette.bg,
+            },
+            list_selected: StyleDeclaration {
+                base: palette.green,
+                emphasis_1: palette.orange,
+                emphasis_2: palette.cyan,
+                emphasis_3: palette.red,
+                emphasis_4: palette.magenta,
+                background: palette.bg,
+            },
             multiplayer_user_colors: MultiplayerColors {
                 player_1: palette.magenta,
                 player_2: palette.blue,
@@ -1288,17 +1460,6 @@ impl From<Palette> for Styling {
                 player_9: palette.pink,
                 player_10: palette.brown,
             },
-            ..Default::default() /*
-                                 table_title: (),
-                                 table_cell_unselected: (),
-                                 table_cell_selected: (),
-                                 list_unselected: (),
-                                 list_selected: (),
-                                 frame_unselected: (),
-                                 frame_selected: (),
-                                 exit_code_success: (),
-                                 exit_code_error: (),
-                                 */
         }
     }
 }

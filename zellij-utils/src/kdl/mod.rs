@@ -3934,6 +3934,8 @@ impl Themes {
         style_node: &KdlNode,
         style_descriptor: &str,
     ) -> Result<StyleDeclaration, ConfigError> {
+        let descriptor_node = kdl_child_with_name!(style_node, style_descriptor);
+
         let colors = kdl_children_or_error!(
             kdl_child_with_name_or_error!(style_node, style_descriptor)?,
             format!("Missing colors for {}", style_descriptor)
@@ -3949,6 +3951,7 @@ impl Themes {
     }
 
     fn multiplayer_colors(style_node: &KdlNode) -> Result<MultiplayerColors, ConfigError> {
+        // TODO: make optional
         let colors = kdl_children_or_error!(
             kdl_child_with_name_or_error!(style_node, "multiplayer_user_colors")?,
             format!("Missing colors for {}", "multiplayer_user_colors")

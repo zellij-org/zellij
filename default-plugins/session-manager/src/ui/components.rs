@@ -85,7 +85,9 @@ impl ListItem {
                 span.render(
                     indices.clone().map(|i| {
                         (
-                            SpanStyle::ForegroundBold(self.colors.palette.text_unselected.emphasis_4),
+                            SpanStyle::ForegroundBold(
+                                self.colors.palette.text_unselected.emphasis_4,
+                            ),
                             i,
                         )
                     }),
@@ -107,7 +109,9 @@ impl ListItem {
                 span.render(
                     indices.clone().map(|i| {
                         (
-                            SpanStyle::ForegroundBold(self.colors.palette.text_unselected.emphasis_4),
+                            SpanStyle::ForegroundBold(
+                                self.colors.palette.text_unselected.emphasis_4,
+                            ),
                             i,
                         )
                     }),
@@ -124,7 +128,9 @@ impl ListItem {
                 span.render(
                     indices.clone().map(|i| {
                         (
-                            SpanStyle::ForegroundBold(self.colors.palette.text_unselected.emphasis_4),
+                            SpanStyle::ForegroundBold(
+                                self.colors.palette.text_unselected.emphasis_4,
+                            ),
                             i,
                         )
                     }),
@@ -310,7 +316,7 @@ impl LineToRender {
         } else {
             "      ".to_owned()
         };
-        match self.colors.palette.text_selected.background {
+        match self.colors.palette.list_selected.background {
             PaletteColor::EightBit(byte) => {
                 self.line = format!(
                     "\u{1b}[48;5;{byte}m\u{1b}[K\u{1b}[48;5;{byte}m{arrows}{}",
@@ -332,7 +338,7 @@ impl LineToRender {
         } else {
             "      ".to_owned()
         };
-        match self.colors.palette.text_selected.background {
+        match self.colors.palette.list_selected.background {
             PaletteColor::EightBit(byte) => {
                 self.line = format!(
                     "\u{1b}[48;5;{byte}m\u{1b}[K\u{1b}[48;5;{byte}m{arrows}{}",
