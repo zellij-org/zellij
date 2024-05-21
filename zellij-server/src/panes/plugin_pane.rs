@@ -13,7 +13,7 @@ use crate::ui::{
 use crate::ClientId;
 use std::cell::RefCell;
 use std::rc::Rc;
-use zellij_utils::data::{PermissionStatus, PermissionType, PluginPermission};
+use zellij_utils::data::{PermissionStatus, PermissionType, PluginPermission, KeyWithModifier};
 use zellij_utils::pane_size::{Offset, SizeInPixels};
 use zellij_utils::position::Position;
 use zellij_utils::{
@@ -232,10 +232,10 @@ impl Pane for PluginPane {
     fn cursor_coordinates(&self) -> Option<(usize, usize)> {
         None
     }
-    fn adjust_input_to_terminal(&mut self, input_bytes: Vec<u8>) -> Option<AdjustedInput> {
+    fn adjust_input_to_terminal(&mut self, key_with_modifier: &Option<KeyWithModifier>, raw_input_bytes: Vec<u8>, raw_input_bytes_are_kitty: bool) -> Option<AdjustedInput> {
         if let Some(requesting_permissions) = &self.requesting_permissions {
             let permissions = requesting_permissions.permissions.clone();
-            match input_bytes.as_slice() {
+            match raw_input_bytes.as_slice() {
                 // Y or y
                 &[89] | &[121] => Some(AdjustedInput::PermissionRequestResult(
                     permissions,
@@ -249,7 +249,7 @@ impl Pane for PluginPane {
                 _ => None,
             }
         } else {
-            Some(AdjustedInput::WriteBytesToTerminal(input_bytes))
+            Some(AdjustedInput::WriteBytesToTerminal(raw_input_bytes))
         }
     }
     fn position_and_size(&self) -> PaneGeom {

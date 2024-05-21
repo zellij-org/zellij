@@ -11,6 +11,12 @@ use std::str::{self, FromStr};
 use std::time::Duration;
 use strum_macros::{Display, EnumDiscriminants, EnumIter, EnumString, ToString};
 
+#[cfg(not(target_family = "wasm"))]
+use termwiz::{
+    input::{KeyCode, KeyboardEncoding, KeyCodeEncodeModes, Modifiers},
+    escape::csi::KittyKeyboardFlags,
+};
+
 pub type ClientId = u16; // TODO: merge with crate type?
 
 pub fn client_id_to_colors(
@@ -231,6 +237,22 @@ impl fmt::Display for KeyWithModifier {
             write!(f, "{}", self.bare_key)
         } else {
             write!(f, "{} {}", self.key_modifiers.iter().map(|m| m.to_string()).collect::<Vec<_>>().join("-"), self.bare_key)
+        }
+    }
+}
+
+#[cfg(not(target_family = "wasm"))]
+impl Into<Modifiers> for &KeyModifier {
+    fn into(self) -> Modifiers {
+        match self {
+            KeyModifier::Shift => Modifiers::SHIFT,
+            KeyModifier::Alt => Modifiers::ALT,
+            KeyModifier::Ctrl => Modifiers::CTRL,
+            KeyModifier::Super => Modifiers::SUPER,
+            KeyModifier::Hyper => Modifiers::NONE,
+            KeyModifier::Meta => Modifiers::NONE,
+            KeyModifier::CapsLock => Modifiers::NONE,
+            KeyModifier::NumLock => Modifiers::NONE,
         }
     }
 }
@@ -536,16 +558,105 @@ impl KeyWithModifier {
             key_modifiers: self.key_modifiers.iter().filter(|m| !common_modifiers.contains(m)).cloned().collect()
         }
     }
-}
+    pub fn is_key_without_modifier(&self, key: BareKey) -> bool {
+        self.bare_key == key && self.key_modifiers.is_empty()
+    }
+    pub fn is_key_with_ctrl_modifier(&self, key: BareKey) -> bool {
+        self.bare_key == key && self.key_modifiers.contains(&KeyModifier::Ctrl)
+    }
+    pub fn is_key_with_alt_modifier(&self, key: BareKey) -> bool {
+        self.bare_key == key && self.key_modifiers.contains(&KeyModifier::Alt)
+    }
+    pub fn is_key_with_shift_modifier(&self, key: BareKey) -> bool {
+        self.bare_key == key && self.key_modifiers.contains(&KeyModifier::Shift)
+    }
+    pub fn is_key_with_super_modifier(&self, key: BareKey) -> bool {
+        self.bare_key == key && self.key_modifiers.contains(&KeyModifier::Super)
+    }
+    fn serialize_modifiers_non_kitty(&self) -> Option<&str> {
+        if self.key_modifiers.contains(&KeyModifier::Ctrl) && self.key_modifiers.contains(&KeyModifier::Alt) && self.key_modifiers.contains(&KeyModifier::Shift) {
+            Some("8")
+        } else if self.key_modifiers.contains(&KeyModifier::Ctrl) && self.key_modifiers.contains(&KeyModifier::Alt) {
+            Some("7")
+        } else if self.key_modifiers.contains(&KeyModifier::Ctrl) && self.key_modifiers.contains(&KeyModifier::Shift) {
+            Some("6")
+        } else if self.key_modifiers.contains(&KeyModifier::Alt) && self.key_modifiers.contains(&KeyModifier::Shift) {
+            Some("4")
+        } else if self.key_modifiers.contains(&KeyModifier::Ctrl) {
+            Some("5")
+        } else if self.key_modifiers.contains(&KeyModifier::Alt) {
+            Some("3")
+        } else if self.key_modifiers.contains(&KeyModifier::Shift) {
+            Some("2")
+        } else {
+            None
+        }
 
-// impl TryInto<Key> for KeyWithModifier {
-//     type Error = &'static str;
-//     fn try_into(self) -> Result<Key, &'static str> {
-//         // TODO: CONTINUE HERE (08/05) - do a `cargo check` and fix all the errors from moving the
-//         // indexing to KeyWithModifier from Key and then implement this and other needed stuff
-//         unimplemented!()
-//     }
-// }
+    }
+    #[cfg(not(target_family = "wasm"))]
+    pub fn to_termwiz_modifiers(&self) -> Modifiers {
+        // TODO: CONTINUE HERE (17/05 evening) - implement this, then back to terminal_pane.rs
+        let mut modifiers = Modifiers::empty();
+        for modifier in &self.key_modifiers {
+            modifiers.set(modifier.into(), true);
+        }
+        modifiers
+    }
+    #[cfg(not(target_family = "wasm"))]
+    pub fn to_termwiz_keycode(&self) -> KeyCode {
+       match self.bare_key {
+           BareKey::PageDown => KeyCode::PageDown,
+           BareKey::PageUp => KeyCode::PageUp,
+           BareKey::Left => KeyCode::LeftArrow,
+           BareKey::Down => KeyCode::DownArrow,
+           BareKey::Up => KeyCode::UpArrow,
+           BareKey::Right => KeyCode::RightArrow,
+           BareKey::Home => KeyCode::Home,
+           BareKey::End => KeyCode::End,
+           BareKey::Backspace => KeyCode::Backspace,
+           BareKey::Delete => KeyCode::Delete,
+           BareKey::Insert => KeyCode::Insert,
+           BareKey::F(index) => KeyCode::Function(index),
+           BareKey::Char(character) => KeyCode::Char(character),
+           BareKey::Tab => KeyCode::Tab,
+           BareKey::Esc => KeyCode::Escape,
+           BareKey::Enter => KeyCode::Enter,
+           BareKey::CapsLock => KeyCode::CapsLock,
+           BareKey::ScrollLock => KeyCode::ScrollLock,
+           BareKey::NumLock => KeyCode::NumLock,
+           BareKey::PrintScreen => KeyCode::PrintScreen,
+           BareKey::Pause => KeyCode::Pause,
+           BareKey::Menu => KeyCode::Menu,
+       }
+    }
+    #[cfg(not(target_family = "wasm"))]
+    pub fn serialize_non_kitty(&self) -> Option<String> {
+        let modifiers = self.to_termwiz_modifiers();
+        let key_code_encode_modes = KeyCodeEncodeModes {
+            encoding: KeyboardEncoding::Xterm,
+            // all these flags are false because they have been dealt with before this
+            // serialization
+            application_cursor_keys: false,
+            newline_mode: false,
+            modify_other_keys: None
+        };
+        self.to_termwiz_keycode().encode(modifiers, key_code_encode_modes, true).ok()
+    }
+    #[cfg(not(target_family = "wasm"))]
+    pub fn serialize_kitty(&self) -> Option<String> {
+        let modifiers = self.to_termwiz_modifiers();
+        let key_code_encode_modes = KeyCodeEncodeModes {
+            encoding: KeyboardEncoding::Kitty(KittyKeyboardFlags::DISAMBIGUATE_ESCAPE_CODES),
+            // all these flags are false because they have been dealt with before this
+            // serialization
+            application_cursor_keys: false,
+            newline_mode: false,
+            modify_other_keys: None
+        };
+        log::info!("self: {:?}, to_termwiz_keycode: {:?}", self, self.to_termwiz_keycode());
+        self.to_termwiz_keycode().encode(modifiers, key_code_encode_modes, true).ok()
+    }
+}
 
 #[derive(Eq, Clone, Copy, Debug, PartialEq, Hash, Deserialize, Serialize, PartialOrd, Ord)]
 pub enum Direction {

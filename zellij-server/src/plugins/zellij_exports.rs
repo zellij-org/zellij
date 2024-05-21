@@ -1051,7 +1051,7 @@ fn edit_scrollback(env: &ForeignFunctionEnv) {
 
 fn write(env: &ForeignFunctionEnv, bytes: Vec<u8>) {
     let error_msg = || format!("failed to write in plugin {}", env.plugin_env.name());
-    let action = Action::Write(bytes);
+    let action = Action::Write(None, bytes, false);
     apply_action!(action, error_msg, env);
 }
 

@@ -45,6 +45,7 @@ mod not_wasm {
         }
     }
 
+    // used for parsing keys to plugins
     pub fn parse_keys(input_bytes: &[u8]) -> Vec<KeyWithModifier> {
         let mut ret = vec![];
         let mut input_parser = InputParser::new(); // this is the termwiz InputParser
@@ -89,15 +90,25 @@ mod not_wasm {
 
         match event.key {
             KeyCode::Char(c) => {
-                if modifiers.contains(Modifiers::CTRL) {
-                    KeyWithModifier::new(BareKey::Char(c.to_lowercase().next().unwrap_or_default())).with_ctrl_modifier()
-                    // Key::Ctrl(c.to_lowercase().next().unwrap_or_default())
+                // TODO CONTINUE HERE: we previously normalized all chars here to lowercase, but this is causing
+                // problems when serializing the keys to a kitty-keyboard supporting terminal,
+                // let's either make sure this doesn't cause any issue with eg. matching keybinds,
+                // international characters, etc. or find a different solution
+                let key = if modifiers.contains(Modifiers::CTRL) {
+                    KeyWithModifier::new(BareKey::Char(c)).with_ctrl_modifier()
+                    // KeyWithModifier::new(BareKey::Char(c.to_lowercase().next().unwrap_or_default())).with_ctrl_modifier()
                 } else if modifiers.contains(Modifiers::ALT) {
-                    KeyWithModifier::new(BareKey::Char(c.to_lowercase().next().unwrap_or_default())).with_alt_modifier()
-                    // Key::Alt(CharOrArrow::Char(c))
+                    KeyWithModifier::new(BareKey::Char(c)).with_alt_modifier()
+                    // KeyWithModifier::new(BareKey::Char(c.to_lowercase().next().unwrap_or_default())).with_alt_modifier()
                 } else {
-                    KeyWithModifier::new(BareKey::Char(c.to_lowercase().next().unwrap_or_default()))
-                    // Key::Char(c)
+                    KeyWithModifier::new(BareKey::Char(c))
+                    // KeyWithModifier::new(BareKey::Char(c.to_lowercase().next().unwrap_or_default()))
+                };
+                // TODO: let's do this properly
+                if modifiers.contains(Modifiers::SHIFT) {
+                    key.with_shift_modifier()
+                } else {
+                    key
                 }
             },
             KeyCode::Backspace => KeyWithModifier::new(BareKey::Backspace),

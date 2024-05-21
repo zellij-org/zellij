@@ -5,7 +5,7 @@ use crate::{
 };
 use zellij_utils::{
     channels::{Receiver, SenderWithContext, OPENCALLS},
-    data::{InputMode, Key, KeyWithModifier},
+    data::{InputMode, KeyWithModifier},
     errors::{ContextType, ErrorContext, FatalError},
     input::{
         actions::Action,
@@ -91,12 +91,14 @@ impl InputHandler {
                 Ok((InputInstruction::KeyEvent(input_event, raw_bytes), _error_context)) => {
                     match input_event {
                         InputEvent::Key(key_event) => {
+                            log::info!("key_event: {:?}", key_event);
                             let key = cast_termwiz_key(
                                 key_event,
                                 &raw_bytes,
                                 Some((&self.config.keybinds, &self.mode)),
                             );
-                            self.handle_key(&key, raw_bytes);
+                            log::info!("casted termwiz key: {:?}", key);
+                            self.handle_key(&key, raw_bytes, false);
                         },
                         InputEvent::Mouse(mouse_event) => {
                             let mouse_event =
@@ -106,15 +108,15 @@ impl InputHandler {
                         InputEvent::Paste(pasted_text) => {
                             if self.mode == InputMode::Normal || self.mode == InputMode::Locked {
                                 self.dispatch_action(
-                                    Action::Write(bracketed_paste_start.clone()),
+                                    Action::Write(None, bracketed_paste_start.clone(), false),
                                     None,
                                 );
                                 self.dispatch_action(
-                                    Action::Write(pasted_text.as_bytes().to_vec()),
+                                    Action::Write(None, pasted_text.as_bytes().to_vec(), false),
                                     None,
                                 );
                                 self.dispatch_action(
-                                    Action::Write(bracketed_paste_end.clone()),
+                                    Action::Write(None, bracketed_paste_end.clone(), false),
                                     None,
                                 );
                             }
@@ -143,7 +145,7 @@ impl InputHandler {
                 Ok((InputInstruction::KeyWithModifierEvent(key_with_modifier, raw_bytes), _error_context)) => {
                     // self.handle_key_with_modifier(&key_with_modifier, raw_bytes);
                     log::info!("handling key with modifier: {:?}", key_with_modifier);
-                    self.handle_key(&key_with_modifier, raw_bytes);
+                    self.handle_key(&key_with_modifier, raw_bytes, true);
 
                 }
                 Ok((InputInstruction::SwitchToMode(input_mode), _error_context)) => {
@@ -174,10 +176,10 @@ impl InputHandler {
             }
         }
     }
-    fn handle_key(&mut self, key: &KeyWithModifier, raw_bytes: Vec<u8>) {
+    fn handle_key(&mut self, key: &KeyWithModifier, raw_bytes: Vec<u8>, is_kitty_keyboard_protocol: bool) {
         let keybinds = &self.config.keybinds;
         for action in
-            keybinds.get_actions_for_key_in_mode_or_default_action(&self.mode, key, raw_bytes)
+            keybinds.get_actions_for_key_in_mode_or_default_action(&self.mode, key, raw_bytes, is_kitty_keyboard_protocol)
         {
             let should_exit = self.dispatch_action(action, None);
             if should_exit {

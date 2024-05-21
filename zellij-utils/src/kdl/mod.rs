@@ -388,7 +388,7 @@ impl Action {
         action_node: &KdlNode,
     ) -> Result<Self, ConfigError> {
         match action_name {
-            "Write" => Ok(Action::Write(bytes)),
+            "Write" => Ok(Action::Write(None, bytes, false)),
             "PaneNameInput" => Ok(Action::PaneNameInput(bytes)),
             "TabNameInput" => Ok(Action::TabNameInput(bytes)),
             "SearchInput" => Ok(Action::SearchInput(bytes)),
