@@ -88,64 +88,64 @@ pub struct SegmentStyle {
 // plus here we can add new sources in the future, like Theme
 // that can be defined in the config perhaps
 fn color_elements(palette: Styling, different_color_alternates: bool) -> ColoredElements {
-    let background = palette.text_unselected[5];
-    let foreground = palette.text_unselected[0];
+    let background = palette.text_unselected.background;
+    let foreground = palette.text_unselected.base;
     let alternate_background_color = if different_color_alternates {
-        palette.ribbon_unselected[0]
+        palette.ribbon_unselected.base
     } else {
-        palette.ribbon_unselected[5]
+        palette.ribbon_unselected.background
     };
     ColoredElements {
         selected: SegmentStyle {
-            prefix_separator: style!(background, palette.ribbon_selected[5]),
-            char_left_separator: style!(palette.ribbon_selected[0], palette.ribbon_selected[5])
+            prefix_separator: style!(background, palette.ribbon_selected.background),
+            char_left_separator: style!(palette.ribbon_selected.base, palette.ribbon_selected.background)
                 .bold(),
-            char_shortcut: style!(palette.ribbon_selected[1], palette.ribbon_selected[5]).bold(),
-            char_right_separator: style!(palette.ribbon_selected[0], palette.ribbon_selected[5])
+            char_shortcut: style!(palette.ribbon_selected.emphasis_1, palette.ribbon_selected.background).bold(),
+            char_right_separator: style!(palette.ribbon_selected.base, palette.ribbon_selected.background)
                 .bold(),
-            styled_text: style!(palette.ribbon_selected[0], palette.ribbon_selected[5]).bold(),
-            suffix_separator: style!(palette.ribbon_selected[5], background).bold(),
+            styled_text: style!(palette.ribbon_selected.base, palette.ribbon_selected.background).bold(),
+            suffix_separator: style!(palette.ribbon_selected.background, background).bold(),
         },
         unselected: SegmentStyle {
-            prefix_separator: style!(background, palette.ribbon_unselected[5]),
-            char_left_separator: style!(palette.ribbon_unselected[0], palette.ribbon_unselected[5])
+            prefix_separator: style!(background, palette.ribbon_unselected.background),
+            char_left_separator: style!(palette.ribbon_unselected.base, palette.ribbon_unselected.background)
                 .bold(),
-            char_shortcut: style!(palette.ribbon_unselected[1], palette.ribbon_unselected[5])
+            char_shortcut: style!(palette.ribbon_unselected.emphasis_1, palette.ribbon_unselected.background)
                 .bold(),
             char_right_separator: style!(
-                palette.ribbon_unselected[0],
-                palette.ribbon_unselected[5]
+                palette.ribbon_unselected.base,
+                palette.ribbon_unselected.background
             )
             .bold(),
-            styled_text: style!(palette.ribbon_unselected[0], palette.ribbon_unselected[5]).bold(),
-            suffix_separator: style!(palette.ribbon_unselected[5], background).bold(),
+            styled_text: style!(palette.ribbon_unselected.base, palette.ribbon_unselected.background).bold(),
+            suffix_separator: style!(palette.ribbon_unselected.background, background).bold(),
         },
         unselected_alternate: SegmentStyle {
             prefix_separator: style!(background, alternate_background_color),
             char_left_separator: style!(background, alternate_background_color).bold(),
-            char_shortcut: style!(palette.ribbon_unselected[1], alternate_background_color).bold(),
+            char_shortcut: style!(palette.ribbon_unselected.emphasis_1, alternate_background_color).bold(),
             char_right_separator: style!(background, alternate_background_color).bold(),
             styled_text: style!(background, alternate_background_color).bold(),
             suffix_separator: style!(alternate_background_color, background).bold(),
         },
         disabled: SegmentStyle {
-            prefix_separator: style!(background, palette.ribbon_unselected[5]),
-            char_left_separator: style!(palette.ribbon_unselected[0], palette.ribbon_unselected[5])
+            prefix_separator: style!(background, palette.ribbon_unselected.background),
+            char_left_separator: style!(palette.ribbon_unselected.base, palette.ribbon_unselected.background)
                 .dimmed()
                 .italic(),
-            char_shortcut: style!(palette.ribbon_unselected[0], palette.ribbon_unselected[5])
+            char_shortcut: style!(palette.ribbon_unselected.base, palette.ribbon_unselected.background)
                 .dimmed()
                 .italic(),
             char_right_separator: style!(
-                palette.ribbon_unselected[0],
-                palette.ribbon_unselected[5]
+                palette.ribbon_unselected.base,
+                palette.ribbon_unselected.background
             )
             .dimmed()
             .italic(),
-            styled_text: style!(palette.ribbon_unselected[0], palette.ribbon_unselected[5])
+            styled_text: style!(palette.ribbon_unselected.base, palette.ribbon_unselected.background)
                 .dimmed()
                 .italic(),
-            suffix_separator: style!(palette.ribbon_unselected[5], background),
+            suffix_separator: style!(palette.ribbon_unselected.background, background),
         },
         superkey_prefix: style!(foreground, background).bold(),
         superkey_suffix_separator: style!(background, background),
@@ -245,7 +245,7 @@ impl ZellijPlugin for State {
         let first_line = first_line(&self.mode_info, active_tab, cols, separator);
         let second_line = self.second_line(cols);
 
-        let background = self.mode_info.style.colors.text_unselected[5];
+        let background = self.mode_info.style.colors.text_unselected.background;
         // [48;5;238m is white background, [0K is so that it fills the rest of the line
         // [m is background reset, [0K is so that it clears the rest of the line
         match background {
@@ -401,9 +401,9 @@ pub fn style_key_with_modifier(
         return vec![];
     }
 
-    let text_color = palette_match!(palette.text_unselected[0]);
-    let green_color = palette_match!(palette.text_unselected[3]);
-    let orange_color = palette_match!(palette.text_unselected[1]);
+    let text_color = palette_match!(palette.text_unselected.base);
+    let green_color = palette_match!(palette.text_unselected.emphasis_3);
+    let orange_color = palette_match!(palette.text_unselected.emphasis_1);
     let mut ret = vec![];
 
     let common_modifiers = get_common_modifiers(keyvec.iter().collect());

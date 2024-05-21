@@ -574,7 +574,7 @@ pub fn start_server_detached(
 
     let palette = config
         .theme_config(&config_options)
-        .unwrap_or_else(|| os_input.load_palette());
+        .unwrap_or_else(|| os_input.load_palette().into());
 
     let client_attributes = ClientAttributes {
         size: Size { rows: 50, cols: 50 }, // just so size is not 0, it doesn't matter because we

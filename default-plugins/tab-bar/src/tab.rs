@@ -28,21 +28,21 @@ pub fn render_tab(
     let separator_width = separator.width();
 
     let alternate_tab_color = if is_alternate_tab {
-        palette.text_unselected[5]
+        palette.text_unselected.background
     } else {
-        palette.ribbon_unselected[5]
+        palette.ribbon_unselected.background
     };
     let background_color = if tab.active {
-        palette.ribbon_selected[5]
+        palette.ribbon_selected.background
     } else if is_alternate_tab {
         alternate_tab_color
     } else {
-        palette.ribbon_unselected[5]
+        palette.ribbon_unselected.background
     };
     let foreground_color = if tab.active {
-        palette.ribbon_selected[0]
+        palette.ribbon_selected.base
     } else {
-        palette.ribbon_unselected[0]
+        palette.ribbon_unselected.base
     };
     let left_separator = style!(foreground_color, background_color).paint(separator);
     let mut tab_text_len = text.width() + (separator_width * 2) + 2; // +2 for padding

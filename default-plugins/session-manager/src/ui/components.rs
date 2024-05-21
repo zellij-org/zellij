@@ -85,7 +85,7 @@ impl ListItem {
                 span.render(
                     indices.clone().map(|i| {
                         (
-                            SpanStyle::ForegroundBold(self.colors.palette.text_unselected[4]),
+                            SpanStyle::ForegroundBold(self.colors.palette.text_unselected.emphasis_4),
                             i,
                         )
                     }),
@@ -107,7 +107,7 @@ impl ListItem {
                 span.render(
                     indices.clone().map(|i| {
                         (
-                            SpanStyle::ForegroundBold(self.colors.palette.text_unselected[4]),
+                            SpanStyle::ForegroundBold(self.colors.palette.text_unselected.emphasis_4),
                             i,
                         )
                     }),
@@ -124,7 +124,7 @@ impl ListItem {
                 span.render(
                     indices.clone().map(|i| {
                         (
-                            SpanStyle::ForegroundBold(self.colors.palette.text_unselected[4]),
+                            SpanStyle::ForegroundBold(self.colors.palette.text_unselected.emphasis_4),
                             i,
                         )
                     }),
@@ -310,7 +310,7 @@ impl LineToRender {
         } else {
             "      ".to_owned()
         };
-        match self.colors.palette.text_selected[5] {
+        match self.colors.palette.text_selected.background {
             PaletteColor::EightBit(byte) => {
                 self.line = format!(
                     "\u{1b}[48;5;{byte}m\u{1b}[K\u{1b}[48;5;{byte}m{arrows}{}",
@@ -332,7 +332,7 @@ impl LineToRender {
         } else {
             "      ".to_owned()
         };
-        match self.colors.palette.text_selected[5] {
+        match self.colors.palette.text_selected.background {
             PaletteColor::EightBit(byte) => {
                 self.line = format!(
                     "\u{1b}[48;5;{byte}m\u{1b}[K\u{1b}[48;5;{byte}m{arrows}{}",
@@ -390,7 +390,7 @@ pub fn build_session_ui_line(session_ui_info: &SessionUiInfo, colors: Colors) ->
         )]));
     let session_name_span = UiSpan::TruncatableUiSpan(TruncatableUiSpan::new(
         session_name.clone(),
-        SpanStyle::ForegroundBold(colors.palette.exit_code_success[0]),
+        SpanStyle::ForegroundBold(colors.palette.exit_code_success.base),
     ));
     let tab_and_pane_count = UiSpan::UiSpanTelescope(UiSpanTelescope::new(vec![
         StringAndLength::new(
@@ -440,7 +440,7 @@ pub fn build_tab_ui_line(tab_ui_info: &TabUiInfo, colors: Colors) -> Vec<UiSpan>
         )]));
     let tab_name_span = UiSpan::TruncatableUiSpan(TruncatableUiSpan::new(
         tab_name.clone(),
-        SpanStyle::ForegroundBold(colors.palette.text_unselected[2]),
+        SpanStyle::ForegroundBold(colors.palette.text_unselected.emphasis_2),
     ));
     let connected_users_count_span = UiSpan::UiSpanTelescope(UiSpanTelescope::new(vec![
         StringAndLength::new(
@@ -963,27 +963,27 @@ impl Colors {
     }
 
     pub fn session_name(&self, text: &str) -> String {
-        self.color(&self.palette.exit_code_success[1], text)
+        self.color(&self.palette.exit_code_success.emphasis_1, text)
     }
 
     pub fn connected_users(&self, text: &str) -> String {
-        self.color(&self.palette.text_unselected[3], text)
+        self.color(&self.palette.text_unselected.emphasis_3, text)
     }
 
     pub fn pane_count_search_prompt(&self, text: &str) -> String {
-        self.color(&self.palette.text_unselected[3], text)
+        self.color(&self.palette.text_unselected.emphasis_3, text)
     }
 
     pub fn exit_code_error(&self, text: &str) -> String {
-        self.color(&self.palette.exit_code_error[0], text)
+        self.color(&self.palette.exit_code_error.base, text)
     }
 
     pub fn tab_count(&self, text: &str) -> String {
-        self.color(&self.palette.text_unselected[2], text)
+        self.color(&self.palette.text_unselected.emphasis_2, text)
     }
 
     pub fn shortcuts(&self, text: &str) -> String {
-        self.color(&self.palette.text_unselected[4], text)
+        self.color(&self.palette.text_unselected.emphasis_4, text)
     }
 }
 

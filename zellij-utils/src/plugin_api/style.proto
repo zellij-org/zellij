@@ -68,4 +68,5 @@ message Styling {
     repeated Color frame_selected = 11;
     repeated Color exit_code_success = 12;
     repeated Color exit_code_error = 13;
+    repeated Color multiplayer_user_colors = 14;
 }

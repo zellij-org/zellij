@@ -3,7 +3,9 @@ use super::generated_api::api::style::{
     Palette as ProtobufPalette, RgbColorPayload as ProtobufRgbColorPayload, Style as ProtobufStyle,
     Styling as ProtobufStyling, ThemeHue as ProtobufThemeHue,
 };
-use crate::data::{Palette, PaletteColor, Style, Styling, ThemeHue};
+use crate::data::{
+    MultiplayerColors, Palette, PaletteColor, Style, StyleDeclaration, Styling, ThemeHue,
+};
 use crate::errors::prelude::*;
 
 use std::convert::TryFrom;
@@ -42,16 +44,59 @@ fn to_array<T, const N: usize>(v: Vec<T>) -> std::result::Result<[T; N], &'stati
         .map_err(|_| "Could not obtain array from protobuf field")
 }
 
+fn to_style_declaration(
+    parsed_array: Result<[PaletteColor; 6], &'static str>,
+) -> Result<StyleDeclaration, &'static str> {
+    parsed_array.map(|arr| StyleDeclaration {
+        base: arr[0],
+        background: arr[1],
+        emphasis_1: arr[2],
+        emphasis_2: arr[3],
+        emphasis_3: arr[4],
+        emphasis_4: arr[5],
+    })
+}
+
+fn to_multiplayer_colors(
+    parsed_array: Result<[PaletteColor; 10], &'static str>,
+) -> Result<MultiplayerColors, &'static str> {
+    parsed_array.map(|arr| MultiplayerColors {
+        player_1: arr[0],
+        player_2: arr[1],
+        player_3: arr[2],
+        player_4: arr[3],
+        player_5: arr[4],
+        player_6: arr[5],
+        player_7: arr[6],
+        player_8: arr[7],
+        player_9: arr[8],
+        player_10: arr[9],
+    })
+}
+
 #[macro_export]
 macro_rules! color_definitions {
     ($proto:expr, $declaration:ident, $size:expr) => {
-        to_array::<PaletteColor, $size>(
+        to_style_declaration(to_array::<PaletteColor, $size>(
             $proto
                 .$declaration
                 .into_iter()
                 .map(PaletteColor::try_from)
                 .collect::<Result<Vec<PaletteColor>, _>>()?,
-        )?
+        ))?
+    };
+}
+
+#[macro_export]
+macro_rules! multiplayer_colors {
+    ($proto:expr, $size: expr) => {
+        to_multiplayer_colors(to_array::<PaletteColor, $size>(
+            $proto
+                .multiplayer_user_colors
+                .into_iter()
+                .map(PaletteColor::try_from)
+                .collect::<Result<Vec<PaletteColor>, _>>()?,
+        ))?
     };
 }
 
@@ -69,21 +114,47 @@ impl TryFrom<ProtobufStyling> for Styling {
             table_cell_selected: color_definitions!(proto, table_cell_selected, 6),
             list_unselected: color_definitions!(proto, list_unselected, 6),
             list_selected: color_definitions!(proto, list_selected, 6),
-            frame_unselected: color_definitions!(proto, frame_unselected, 5),
-            frame_selected: color_definitions!(proto, frame_selected, 5),
-            exit_code_success: color_definitions!(proto, exit_code_success, 5),
-            exit_code_error: color_definitions!(proto, exit_code_error, 5),
+            frame_unselected: color_definitions!(proto, frame_unselected, 6),
+            frame_selected: color_definitions!(proto, frame_selected, 6),
+            exit_code_success: color_definitions!(proto, exit_code_success, 6),
+            exit_code_error: color_definitions!(proto, exit_code_error, 6),
+            multiplayer_user_colors: multiplayer_colors!(proto, 10),
         })
     }
 }
 
-fn color_protos<const N: usize>(
-    colors: [PaletteColor; N],
-) -> Result<Vec<ProtobufColor>, &'static str> {
-    colors
-        .into_iter()
-        .map(ProtobufColor::try_from)
-        .collect::<Result<Vec<ProtobufColor>, _>>()
+impl TryFrom<StyleDeclaration> for Vec<ProtobufColor> {
+    type Error = &'static str;
+
+    fn try_from(colors: StyleDeclaration) -> std::result::Result<Self, Self::Error> {
+        Ok(vec![
+            colors.base.try_into()?,
+            colors.background.try_into()?,
+            colors.emphasis_1.try_into()?,
+            colors.emphasis_2.try_into()?,
+            colors.emphasis_3.try_into()?,
+            colors.emphasis_4.try_into()?,
+        ])
+    }
+}
+
+impl TryFrom<MultiplayerColors> for Vec<ProtobufColor> {
+    type Error = &'static str;
+
+    fn try_from(value: MultiplayerColors) -> std::result::Result<Self, Self::Error> {
+        Ok(vec![
+            value.player_1.try_into()?,
+            value.player_2.try_into()?,
+            value.player_3.try_into()?,
+            value.player_4.try_into()?,
+            value.player_5.try_into()?,
+            value.player_6.try_into()?,
+            value.player_7.try_into()?,
+            value.player_8.try_into()?,
+            value.player_9.try_into()?,
+            value.player_10.try_into()?,
+        ])
+    }
 }
 
 impl TryFrom<Styling> for ProtobufStyling {
@@ -91,19 +162,20 @@ impl TryFrom<Styling> for ProtobufStyling {
 
     fn try_from(style: Styling) -> std::result::Result<Self, Self::Error> {
         Ok(ProtobufStyling {
-            text_unselected: color_protos(style.text_unselected)?,
-            text_selected: color_protos(style.text_selected)?,
-            ribbon_unselected: color_protos(style.ribbon_unselected)?,
-            ribbon_selected: color_protos(style.ribbon_selected)?,
-            table_title: color_protos(style.table_title)?,
-            table_cell_unselected: color_protos(style.table_cell_unselected)?,
-            table_cell_selected: color_protos(style.table_cell_selected)?,
-            list_unselected: color_protos(style.list_unselected)?,
-            list_selected: color_protos(style.list_selected)?,
-            frame_unselected: color_protos(style.frame_unselected)?,
-            frame_selected: color_protos(style.frame_selected)?,
-            exit_code_success: color_protos(style.exit_code_success)?,
-            exit_code_error: color_protos(style.exit_code_error)?,
+            text_unselected: style.text_unselected.try_into()?,
+            text_selected: style.text_selected.try_into()?,
+            ribbon_unselected: style.ribbon_unselected.try_into()?,
+            ribbon_selected: style.ribbon_selected.try_into()?,
+            table_title: style.table_title.try_into()?,
+            table_cell_unselected: style.table_cell_unselected.try_into()?,
+            table_cell_selected: style.table_cell_selected.try_into()?,
+            list_unselected: style.list_unselected.try_into()?,
+            list_selected: style.list_selected.try_into()?,
+            frame_unselected: style.frame_unselected.try_into()?,
+            frame_selected: style.frame_selected.try_into()?,
+            exit_code_success: style.exit_code_success.try_into()?,
+            exit_code_error: style.exit_code_error.try_into()?,
+            multiplayer_user_colors: style.multiplayer_user_colors.try_into()?,
         })
     }
 }

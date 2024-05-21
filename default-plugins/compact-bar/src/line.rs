@@ -122,8 +122,8 @@ fn left_more_message(
     // 238
     // chars length plus separator length on both sides
     let more_text_len = more_text.width() + 2 * separator.width();
-    let (text_color, sep_color) = (palette.ribbon_unselected[0], palette.text_unselected[5]);
-    let plus_ribbon_bg = palette.text_selected[1];
+    let (text_color, sep_color) = (palette.ribbon_unselected.base, palette.text_unselected.background);
+    let plus_ribbon_bg = palette.text_selected.emphasis_1;
     let left_separator = style!(sep_color, plus_ribbon_bg).paint(separator);
     let more_styled_text = style!(text_color, plus_ribbon_bg).bold().paint(more_text);
     let right_separator = style!(plus_ribbon_bg, sep_color).paint(separator);
@@ -153,8 +153,8 @@ fn right_more_message(
     // chars length plus separator length on both sides
     let more_text_len = more_text.width() + 2 * separator.width();
 
-    let (text_color, sep_color) = (palette.ribbon_unselected[0], palette.text_unselected[5]);
-    let plus_ribbon_bg = palette.text_selected[1];
+    let (text_color, sep_color) = (palette.ribbon_unselected.base, palette.text_unselected.background);
+    let plus_ribbon_bg = palette.text_selected.emphasis_1;
     let left_separator = style!(sep_color, plus_ribbon_bg).paint(separator);
     let more_styled_text = style!(text_color, plus_ribbon_bg).bold().paint(more_text);
     let right_separator = style!(plus_ribbon_bg, sep_color).paint(separator);
@@ -176,11 +176,11 @@ fn tab_line_prefix(
     let prefix_text = " Zellij ".to_string();
 
     let prefix_text_len = prefix_text.chars().count();
-    let text_color = palette.text_unselected[0];
-    let bg_color = palette.text_unselected[5];
-    let locked_mode_color = palette.text_unselected[4];
-    let normal_mode_color = palette.text_unselected[3];
-    let other_modes_color = palette.text_unselected[1];
+    let text_color = palette.text_unselected.base;
+    let bg_color = palette.text_unselected.background;
+    let locked_mode_color = palette.text_unselected.emphasis_4;
+    let normal_mode_color = palette.text_unselected.emphasis_3;
+    let other_modes_color = palette.text_unselected.emphasis_1;
 
     let prefix_styled_text = style!(text_color, bg_color).bold().paint(prefix_text);
     let mut parts = vec![LinePart {
@@ -279,7 +279,7 @@ pub fn tab_line(
     let current_title_len = get_current_title_len(&prefix);
     if current_title_len < cols {
         let mut remaining_space = cols - current_title_len;
-        let remaining_bg = palette.text_unselected[5];
+        let remaining_bg = palette.text_unselected.background;
         if let Some(swap_layout_status) = swap_layout_status(
             remaining_space,
             active_swap_layout_name,
@@ -318,9 +318,9 @@ fn swap_layout_status(
             let mut swap_layout_name = format!(" {} ", swap_layout_name);
             swap_layout_name.make_ascii_uppercase();
             let swap_layout_name_len = swap_layout_name.len() + 3;
-            let bg = palette.text_unselected[5];
-            let fg = palette.ribbon_unselected[5];
-            let green = palette.ribbon_selected[5];
+            let bg = palette.text_unselected.background;
+            let fg = palette.ribbon_unselected.background;
+            let green = palette.ribbon_selected.background;
 
             let (prefix_separator, swap_layout_name, suffix_separator) =
                 if input_mode == InputMode::Locked {

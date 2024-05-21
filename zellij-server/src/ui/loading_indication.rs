@@ -143,25 +143,25 @@ impl Display for LoadingIndication {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         let cyan = match self.terminal_emulator_colors {
             Some(terminal_emulator_colors) => {
-                style!(terminal_emulator_colors.exit_code_success[1]).bold()
+                style!(terminal_emulator_colors.exit_code_success.emphasis_1).bold()
             },
             None => ansi_term::Style::new(),
         };
         let green = match self.terminal_emulator_colors {
             Some(terminal_emulator_colors) => {
-                style!(terminal_emulator_colors.exit_code_success[0]).bold()
+                style!(terminal_emulator_colors.exit_code_success.base).bold()
             },
             None => ansi_term::Style::new(),
         };
         let yellow = match self.terminal_emulator_colors {
             Some(terminal_emulator_colors) => {
-                style!(terminal_emulator_colors.exit_code_error[1]).bold()
+                style!(terminal_emulator_colors.exit_code_error.emphasis_1).bold()
             },
             None => ansi_term::Style::new(),
         };
         let red = match self.terminal_emulator_colors {
             Some(terminal_emulator_colors) => {
-                style!(terminal_emulator_colors.exit_code_error[0]).bold()
+                style!(terminal_emulator_colors.exit_code_error.base).bold()
             },
             None => ansi_term::Style::new(),
         };

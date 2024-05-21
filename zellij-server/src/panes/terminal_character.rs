@@ -977,7 +977,7 @@ pub fn render_first_run_banner(
         Some(run_command) => {
             let bold_text = RESET_STYLES.bold(Some(AnsiCode::On));
             let command_color_text = RESET_STYLES
-                .foreground(Some(AnsiCode::from(style.colors.text_unselected[3])))
+                .foreground(Some(AnsiCode::from(style.colors.text_unselected.emphasis_3)))
                 .bold(Some(AnsiCode::On));
             let waiting_to_run_text = "Waiting to run: ";
             let command_text = run_command.to_string();
@@ -1002,7 +1002,7 @@ pub fn render_first_run_banner(
             let ctrl_c_bare_text = "Ctrl-c";
             let controls_bare_text_fourth_part = "> exit";
             let controls_color = RESET_STYLES
-                .foreground(Some(AnsiCode::from(style.colors.text_unselected[1])))
+                .foreground(Some(AnsiCode::from(style.colors.text_unselected.emphasis_1)))
                 .bold(Some(AnsiCode::On));
             let controls_line_length = controls_bare_text_first_part.len()
                 + enter_bare_text.len()
@@ -1054,7 +1054,7 @@ pub fn render_first_run_banner(
             let ctrl_c_bare_text = "Ctrl-c";
             let controls_bare_text_fourth_part = "> exit";
             let controls_color = RESET_STYLES
-                .foreground(Some(AnsiCode::from(style.colors.text_unselected[1])))
+                .foreground(Some(AnsiCode::from(style.colors.text_unselected.emphasis_1)))
                 .bold(Some(AnsiCode::On));
             let controls_line_length = controls_bare_text_first_part.len()
                 + enter_bare_text.len()

@@ -128,12 +128,12 @@ fn left_more_message(
     // 238
     // chars length plus separator length on both sides
     let more_text_len = more_text.width() + 2 * separator.width();
-    let (text_color, sep_color) = (palette.text_unselected[0], palette.text_unselected[5]);
-    let left_separator = style!(sep_color, palette.ribbon_unselected[5]).paint(separator);
-    let more_styled_text = style!(text_color, palette.ribbon_unselected[5])
+    let (text_color, sep_color) = (palette.text_unselected.base, palette.text_unselected.background);
+    let left_separator = style!(sep_color, palette.ribbon_unselected.background).paint(separator);
+    let more_styled_text = style!(text_color, palette.ribbon_unselected.background)
         .bold()
         .paint(more_text);
-    let right_separator = style!(palette.ribbon_unselected[5], sep_color).paint(separator);
+    let right_separator = style!(palette.ribbon_unselected.background, sep_color).paint(separator);
     let more_styled_text =
         ANSIStrings(&[left_separator, more_styled_text, right_separator]).to_string();
     LinePart {
@@ -159,12 +159,12 @@ fn right_more_message(
     };
     // chars length plus separator length on both sides
     let more_text_len = more_text.width() + 2 * separator.width();
-    let (text_color, sep_color) = (palette.text_unselected[0], palette.text_unselected[5]);
-    let left_separator = style!(sep_color, palette.ribbon_unselected[5]).paint(separator);
-    let more_styled_text = style!(text_color, palette.ribbon_unselected[5])
+    let (text_color, sep_color) = (palette.text_unselected.base, palette.text_unselected.background);
+    let left_separator = style!(sep_color, palette.ribbon_unselected.background).paint(separator);
+    let more_styled_text = style!(text_color, palette.ribbon_unselected.background)
         .bold()
         .paint(more_text);
-    let right_separator = style!(palette.ribbon_unselected[5], sep_color).paint(separator);
+    let right_separator = style!(palette.ribbon_unselected.background, sep_color).paint(separator);
     let more_styled_text =
         ANSIStrings(&[left_separator, more_styled_text, right_separator]).to_string();
     LinePart {
@@ -178,8 +178,8 @@ fn tab_line_prefix(session_name: Option<&str>, palette: Styling, cols: usize) ->
     let prefix_text = " Zellij ".to_string();
 
     let prefix_text_len = prefix_text.chars().count();
-    let text_color = palette.text_unselected[0];
-    let bg_color = palette.text_unselected[5];
+    let text_color = palette.text_unselected.base;
+    let bg_color = palette.text_unselected.background;
     let prefix_styled_text = style!(text_color, bg_color).bold().paint(prefix_text);
     let mut parts = vec![LinePart {
         part: prefix_styled_text.to_string(),
@@ -189,7 +189,7 @@ fn tab_line_prefix(session_name: Option<&str>, palette: Styling, cols: usize) ->
     if let Some(name) = session_name {
         let name_part = format!("({}) ", name);
         let name_part_len = name_part.width();
-        let text_color = palette.text_unselected[0];
+        let text_color = palette.text_unselected.base;
         let name_part_styled_text = style!(text_color, bg_color).bold().paint(name_part);
         if cols.saturating_sub(prefix_text_len) >= name_part_len {
             parts.push(LinePart {

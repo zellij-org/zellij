@@ -1,4 +1,4 @@
-use crate::data::{Palette, Styling};
+use crate::data::Styling;
 use miette::{Diagnostic, LabeledSpan, NamedSource, SourceCode};
 use std::fs::File;
 use std::io::{self, Read};
@@ -810,6 +810,7 @@ mod config_test {
                         PaletteColor::Rgb((195, 64, 67)),
                         PaletteColor::Rgb((195, 64, 67)),
                     ],
+                    ..Default::default()
                 },
             },
         );

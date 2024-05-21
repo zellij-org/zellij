@@ -7,7 +7,7 @@ use std::{
     fmt,
 };
 
-use crate::data::{Palette, Styling};
+use crate::data::Styling;
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Deserialize, Serialize)]
 pub struct UiConfig {

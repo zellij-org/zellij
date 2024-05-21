@@ -1,7 +1,8 @@
 mod kdl_layout_parser;
 use crate::data::{
-    Direction, FloatingPaneCoordinates, InputMode, KeyWithModifier, LayoutInfo, Palette,
-    PaletteColor, PaneInfo, PaneManifest, PermissionType, Resize, SessionInfo, Styling, TabInfo,
+    Direction, FloatingPaneCoordinates, InputMode, KeyWithModifier, LayoutInfo, MultiplayerColors,
+    Palette, PaletteColor, PaneInfo, PaneManifest, PermissionType, Resize, SessionInfo,
+    StyleDeclaration, Styling, TabInfo,
 };
 use crate::envs::EnvironmentVariables;
 use crate::home::{find_default_config_dir, get_layout_dir};
@@ -1998,39 +1999,41 @@ impl UiConfig {
 }
 
 impl Themes {
-    fn colors_with_bg_from_node(
+    fn style_declaration_from_node(
         style_node: &KdlNode,
         style_descriptor: &str,
-    ) -> Result<[PaletteColor; 6], ConfigError> {
+    ) -> Result<StyleDeclaration, ConfigError> {
         let colors = kdl_children_or_error!(
             kdl_child_with_name_or_error!(style_node, style_descriptor)?,
             format!("Missing colors for {}", style_descriptor)
         );
-        Ok([
-            PaletteColor::try_from(("base", colors))?,
-            PaletteColor::try_from(("emphasis_1", colors))?,
-            PaletteColor::try_from(("emphasis_2", colors))?,
-            PaletteColor::try_from(("emphasis_3", colors))?,
-            PaletteColor::try_from(("emphasis_4", colors))?,
-            PaletteColor::try_from(("background", colors))?,
-        ])
+        Ok(StyleDeclaration {
+            base: PaletteColor::try_from(("base", colors))?,
+            background: PaletteColor::try_from(("background", colors))?,
+            emphasis_1: PaletteColor::try_from(("emphasis_1", colors))?,
+            emphasis_2: PaletteColor::try_from(("emphasis_2", colors))?,
+            emphasis_3: PaletteColor::try_from(("emphasis_3", colors))?,
+            emphasis_4: PaletteColor::try_from(("emphasis_4", colors))?,
+        })
     }
 
-    fn colors_from_node(
-        style_node: &KdlNode,
-        style_descriptor: &str,
-    ) -> Result<[PaletteColor; 5], ConfigError> {
+    fn multiplayer_colors(style_node: &KdlNode) -> Result<MultiplayerColors, ConfigError> {
         let colors = kdl_children_or_error!(
-            kdl_child_with_name_or_error!(style_node, style_descriptor)?,
-            format!("Missing colors for {}", style_descriptor)
+            kdl_child_with_name_or_error!(style_node, "mutliplayer_user_colors")?,
+            format!("Missing colors for {}", "mutliplayer_user_colors")
         );
-        Ok([
-            PaletteColor::try_from(("base", colors))?,
-            PaletteColor::try_from(("emphasis_1", colors))?,
-            PaletteColor::try_from(("emphasis_2", colors))?,
-            PaletteColor::try_from(("emphasis_3", colors))?,
-            PaletteColor::try_from(("emphasis_4", colors))?,
-        ])
+        Ok(MultiplayerColors {
+            player_1: PaletteColor::try_from(("player_1", colors))?,
+            player_2: PaletteColor::try_from(("player_2", colors))?,
+            player_3: PaletteColor::try_from(("player_3", colors))?,
+            player_4: PaletteColor::try_from(("player_4", colors))?,
+            player_5: PaletteColor::try_from(("player_5", colors))?,
+            player_6: PaletteColor::try_from(("player_6", colors))?,
+            player_7: PaletteColor::try_from(("player_7", colors))?,
+            player_8: PaletteColor::try_from(("player_8", colors))?,
+            player_9: PaletteColor::try_from(("player_9", colors))?,
+            player_10: PaletteColor::try_from(("player_10", colors))?,
+        })
     }
 
     pub fn from_kdl(themes_from_kdl: &KdlNode) -> Result<Self, ConfigError> {
@@ -2043,37 +2046,50 @@ impl Themes {
                 // Newer theme definition with named styles
                 Some(style) => {
                     let s = Styling {
-                        text_unselected: Themes::colors_with_bg_from_node(
+                        text_unselected: Themes::style_declaration_from_node(
                             style,
                             "text_unselected",
                         )?,
-                        text_selected: Themes::colors_with_bg_from_node(style, "text_selected")?,
-                        ribbon_unselected: Themes::colors_with_bg_from_node(
+                        text_selected: Themes::style_declaration_from_node(style, "text_selected")?,
+                        ribbon_unselected: Themes::style_declaration_from_node(
                             style,
                             "ribbon_unselected",
                         )?,
-                        ribbon_selected: Themes::colors_with_bg_from_node(
+                        ribbon_selected: Themes::style_declaration_from_node(
                             style,
                             "ribbon_selected",
                         )?,
-                        table_title: Themes::colors_with_bg_from_node(style, "table_title")?,
-                        table_cell_unselected: Themes::colors_with_bg_from_node(
+                        table_title: Themes::style_declaration_from_node(style, "table_title")?,
+                        table_cell_unselected: Themes::style_declaration_from_node(
                             style,
                             "table_cell_unselected",
                         )?,
-                        table_cell_selected: Themes::colors_with_bg_from_node(
+                        table_cell_selected: Themes::style_declaration_from_node(
                             style,
                             "table_cell_selected",
                         )?,
-                        list_unselected: Themes::colors_with_bg_from_node(
+                        list_unselected: Themes::style_declaration_from_node(
                             style,
                             "list_unselected",
                         )?,
-                        list_selected: Themes::colors_with_bg_from_node(style, "list_selected")?,
-                        frame_unselected: Themes::colors_from_node(style, "frame_unselected")?,
-                        frame_selected: Themes::colors_from_node(style, "frame_selected")?,
-                        exit_code_success: Themes::colors_from_node(style, "exit_code_success")?,
-                        exit_code_error: Themes::colors_from_node(style, "exit_code_error")?,
+                        list_selected: Themes::style_declaration_from_node(style, "list_selected")?,
+                        frame_unselected: Themes::style_declaration_from_node(
+                            style,
+                            "frame_unselected",
+                        )?,
+                        frame_selected: Themes::style_declaration_from_node(
+                            style,
+                            "frame_selected",
+                        )?,
+                        exit_code_success: Themes::style_declaration_from_node(
+                            style,
+                            "exit_code_success",
+                        )?,
+                        exit_code_error: Themes::style_declaration_from_node(
+                            style,
+                            "exit_code_error",
+                        )?,
+                        multiplayer_user_colors: Themes::multiplayer_colors(style)?,
                     };
 
                     Theme { palette: s }

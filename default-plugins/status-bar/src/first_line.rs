@@ -354,7 +354,7 @@ fn swap_layout_keycode(mode_info: &ModeInfo) -> LinePart {
     let prev_next_keys_indicator = style_key_with_modifier(
         &prev_next_keys,
         &mode_info.style.colors,
-        Some(mode_info.style.colors.text_unselected[5]),
+        Some(mode_info.style.colors.text_unselected.background),
     );
     let keycode = ANSIStrings(&prev_next_keys_indicator);
     let len = unstyled_len(&keycode);
