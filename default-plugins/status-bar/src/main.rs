@@ -98,53 +98,90 @@ fn color_elements(palette: Styling, different_color_alternates: bool) -> Colored
     ColoredElements {
         selected: SegmentStyle {
             prefix_separator: style!(background, palette.ribbon_selected.background),
-            char_left_separator: style!(palette.ribbon_selected.base, palette.ribbon_selected.background)
-                .bold(),
-            char_shortcut: style!(palette.ribbon_selected.emphasis_1, palette.ribbon_selected.background).bold(),
-            char_right_separator: style!(palette.ribbon_selected.base, palette.ribbon_selected.background)
-                .bold(),
-            styled_text: style!(palette.ribbon_selected.base, palette.ribbon_selected.background).bold(),
+            char_left_separator: style!(
+                palette.ribbon_selected.base,
+                palette.ribbon_selected.background
+            )
+            .bold(),
+            char_shortcut: style!(
+                palette.ribbon_selected.emphasis_1,
+                palette.ribbon_selected.background
+            )
+            .bold(),
+            char_right_separator: style!(
+                palette.ribbon_selected.base,
+                palette.ribbon_selected.background
+            )
+            .bold(),
+            styled_text: style!(
+                palette.ribbon_selected.base,
+                palette.ribbon_selected.background
+            )
+            .bold(),
             suffix_separator: style!(palette.ribbon_selected.background, background).bold(),
         },
         unselected: SegmentStyle {
             prefix_separator: style!(background, palette.ribbon_unselected.background),
-            char_left_separator: style!(palette.ribbon_unselected.base, palette.ribbon_unselected.background)
-                .bold(),
-            char_shortcut: style!(palette.ribbon_unselected.emphasis_1, palette.ribbon_unselected.background)
-                .bold(),
+            char_left_separator: style!(
+                palette.ribbon_unselected.base,
+                palette.ribbon_unselected.background
+            )
+            .bold(),
+            char_shortcut: style!(
+                palette.ribbon_unselected.emphasis_1,
+                palette.ribbon_unselected.background
+            )
+            .bold(),
             char_right_separator: style!(
                 palette.ribbon_unselected.base,
                 palette.ribbon_unselected.background
             )
             .bold(),
-            styled_text: style!(palette.ribbon_unselected.base, palette.ribbon_unselected.background).bold(),
+            styled_text: style!(
+                palette.ribbon_unselected.base,
+                palette.ribbon_unselected.background
+            )
+            .bold(),
             suffix_separator: style!(palette.ribbon_unselected.background, background).bold(),
         },
         unselected_alternate: SegmentStyle {
             prefix_separator: style!(background, alternate_background_color),
             char_left_separator: style!(background, alternate_background_color).bold(),
-            char_shortcut: style!(palette.ribbon_unselected.emphasis_1, alternate_background_color).bold(),
+            char_shortcut: style!(
+                palette.ribbon_unselected.emphasis_1,
+                alternate_background_color
+            )
+            .bold(),
             char_right_separator: style!(background, alternate_background_color).bold(),
-            styled_text: style!(background, alternate_background_color).bold(),
+            styled_text: style!(palette.ribbon_unselected.base, alternate_background_color).bold(),
             suffix_separator: style!(alternate_background_color, background).bold(),
         },
         disabled: SegmentStyle {
             prefix_separator: style!(background, palette.ribbon_unselected.background),
-            char_left_separator: style!(palette.ribbon_unselected.base, palette.ribbon_unselected.background)
-                .dimmed()
-                .italic(),
-            char_shortcut: style!(palette.ribbon_unselected.base, palette.ribbon_unselected.background)
-                .dimmed()
-                .italic(),
+            char_left_separator: style!(
+                palette.ribbon_unselected.base,
+                palette.ribbon_unselected.background
+            )
+            .dimmed()
+            .italic(),
+            char_shortcut: style!(
+                palette.ribbon_unselected.base,
+                palette.ribbon_unselected.background
+            )
+            .dimmed()
+            .italic(),
             char_right_separator: style!(
                 palette.ribbon_unselected.base,
                 palette.ribbon_unselected.background
             )
             .dimmed()
             .italic(),
-            styled_text: style!(palette.ribbon_unselected.base, palette.ribbon_unselected.background)
-                .dimmed()
-                .italic(),
+            styled_text: style!(
+                palette.ribbon_unselected.base,
+                palette.ribbon_unselected.background
+            )
+            .dimmed()
+            .italic(),
             suffix_separator: style!(palette.ribbon_unselected.background, background),
         },
         superkey_prefix: style!(foreground, background).bold(),
