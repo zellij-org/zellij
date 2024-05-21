@@ -9,7 +9,7 @@ fn cursors(focused_clients: &[ClientId], palette: Styling) -> (Vec<ANSIString>, 
     let mut len = 0;
     let mut cursors = vec![];
     for client_id in focused_clients.iter() {
-        if let Some(color) = client_id_to_colors(*client_id) {
+        if let Some(color) = client_id_to_colors(*client_id, palette.multiplayer_user_colors) {
             cursors.push(style!(color.1, color.0).paint(" "));
             len += 1;
         }

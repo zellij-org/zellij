@@ -3940,7 +3940,7 @@ impl Themes {
         );
         Ok(StyleDeclaration {
             base: PaletteColor::try_from(("base", colors))?,
-            background: PaletteColor::try_from(("background", colors))?,
+            background: PaletteColor::try_from(("background", colors)).unwrap_or_default(),
             emphasis_1: PaletteColor::try_from(("emphasis_1", colors))?,
             emphasis_2: PaletteColor::try_from(("emphasis_2", colors))?,
             emphasis_3: PaletteColor::try_from(("emphasis_3", colors))?,
@@ -3950,8 +3950,8 @@ impl Themes {
 
     fn multiplayer_colors(style_node: &KdlNode) -> Result<MultiplayerColors, ConfigError> {
         let colors = kdl_children_or_error!(
-            kdl_child_with_name_or_error!(style_node, "mutliplayer_user_colors")?,
-            format!("Missing colors for {}", "mutliplayer_user_colors")
+            kdl_child_with_name_or_error!(style_node, "multiplayer_user_colors")?,
+            format!("Missing colors for {}", "multiplayer_user_colors")
         );
         Ok(MultiplayerColors {
             player_1: PaletteColor::try_from(("player_1", colors))?,
@@ -4023,7 +4023,8 @@ impl Themes {
                             style,
                             "exit_code_error",
                         )?,
-                        multiplayer_user_colors: Themes::multiplayer_colors(style)?,
+                        multiplayer_user_colors: Themes::multiplayer_colors(style)
+                            .unwrap_or_default(),
                     };
 
                     Theme {

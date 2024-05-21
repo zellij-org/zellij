@@ -21,20 +21,23 @@ use termwiz::{
 
 pub type ClientId = u16; // TODO: merge with crate type?
 
-pub fn client_id_to_colors(client_id: ClientId) -> Option<(PaletteColor, PaletteColor)> {
+pub fn client_id_to_colors(
+    client_id: ClientId,
+    colors: MultiplayerColors,
+) -> Option<(PaletteColor, PaletteColor)> {
     // (primary color, secondary color)
     let black = PaletteColor::EightBit(default_colors::BLACK);
     match client_id {
-        1 => Some((PaletteColor::EightBit(default_colors::MAGENTA), black)),
-        2 => Some((PaletteColor::EightBit(default_colors::BLUE), black)),
-        3 => Some((PaletteColor::EightBit(default_colors::PURPLE), black)),
-        4 => Some((PaletteColor::EightBit(default_colors::YELLOW), black)),
-        5 => Some((PaletteColor::EightBit(default_colors::CYAN), black)),
-        6 => Some((PaletteColor::EightBit(default_colors::GOLD), black)),
-        7 => Some((PaletteColor::EightBit(default_colors::RED), black)),
-        8 => Some((PaletteColor::EightBit(default_colors::SILVER), black)),
-        9 => Some((PaletteColor::EightBit(default_colors::PINK), black)),
-        10 => Some((PaletteColor::EightBit(default_colors::BROWN), black)),
+        1 => Some((colors.player_1, black)),
+        2 => Some((colors.player_2, black)),
+        3 => Some((colors.player_3, black)),
+        4 => Some((colors.player_4, black)),
+        5 => Some((colors.player_5, black)),
+        6 => Some((colors.player_6, black)),
+        7 => Some((colors.player_7, black)),
+        8 => Some((colors.player_8, black)),
+        9 => Some((colors.player_9, black)),
+        10 => Some((colors.player_10, black)),
         _ => None,
     }
 }
@@ -1272,6 +1275,18 @@ impl From<Palette> for Styling {
                 emphasis_3: palette.magenta,
                 emphasis_4: palette.brown,
                 background: Default::default(),
+            },
+            multiplayer_user_colors: MultiplayerColors {
+                player_1: palette.magenta,
+                player_2: palette.blue,
+                player_3: palette.purple,
+                player_4: palette.yellow,
+                player_5: palette.cyan,
+                player_6: palette.gold,
+                player_7: palette.red,
+                player_8: palette.silver,
+                player_9: palette.pink,
+                player_10: palette.brown,
             },
             ..Default::default() /*
                                  table_title: (),

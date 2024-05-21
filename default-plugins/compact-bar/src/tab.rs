@@ -4,12 +4,12 @@ use unicode_width::UnicodeWidthStr;
 use zellij_tile::prelude::*;
 use zellij_tile_utils::style;
 
-fn cursors(focused_clients: &[ClientId]) -> (Vec<ANSIString>, usize) {
+fn cursors(focused_clients: &[ClientId], colors: MultiplayerColors) -> (Vec<ANSIString>, usize) {
     // cursor section, text length
     let mut len = 0;
     let mut cursors = vec![];
     for client_id in focused_clients.iter() {
-        if let Some(color) = client_id_to_colors(*client_id) {
+        if let Some(color) = client_id_to_colors(*client_id, colors) {
             cursors.push(style!(color.1, color.0).paint(" "));
             len += 1;
         }
@@ -52,7 +52,8 @@ pub fn render_tab(
 
     let right_separator = style!(background_color, foreground_color).paint(separator);
     let tab_styled_text = if !focused_clients.is_empty() {
-        let (cursor_section, extra_length) = cursors(focused_clients);
+        let (cursor_section, extra_length) =
+            cursors(focused_clients, palette.multiplayer_user_colors);
         tab_text_len += extra_length;
         let mut s = String::new();
         let cursor_beginning = style!(foreground_color, background_color)
