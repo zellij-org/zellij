@@ -152,6 +152,10 @@ pub struct Options {
     #[clap(long, value_parser)]
     pub serialization_interval: Option<u64>,
 
+    /// The interval at which sessions config is re-read and re-written back (in seconds)
+    #[clap(long, value_parser)]
+    pub session_read_interval: Option<u64>,
+
     /// If true, will disable writing session metadata to disk
     #[clap(long, value_parser)]
     pub disable_session_metadata: Option<bool>,
@@ -227,6 +231,7 @@ impl Options {
             .or(self.scrollback_lines_to_serialize);
         let styled_underlines = other.styled_underlines.or(self.styled_underlines);
         let serialization_interval = other.serialization_interval.or(self.serialization_interval);
+        let session_read_interval = other.session_read_interval.or(self.session_read_interval);
         let disable_session_metadata = other
             .disable_session_metadata
             .or(self.disable_session_metadata);
@@ -257,6 +262,7 @@ impl Options {
             scrollback_lines_to_serialize,
             styled_underlines,
             serialization_interval,
+            session_read_interval,
             disable_session_metadata,
         }
     }
@@ -310,6 +316,7 @@ impl Options {
             .or_else(|| self.scrollback_lines_to_serialize.clone());
         let styled_underlines = other.styled_underlines.or(self.styled_underlines);
         let serialization_interval = other.serialization_interval.or(self.serialization_interval);
+        let session_read_interval = other.session_read_interval.or(self.session_read_interval);
         let disable_session_metadata = other
             .disable_session_metadata
             .or(self.disable_session_metadata);
@@ -340,6 +347,7 @@ impl Options {
             scrollback_lines_to_serialize,
             styled_underlines,
             serialization_interval,
+            session_read_interval,
             disable_session_metadata,
         }
     }
@@ -405,6 +413,7 @@ impl From<CliOptions> for Options {
             scrollback_lines_to_serialize: opts.scrollback_lines_to_serialize,
             styled_underlines: opts.styled_underlines,
             serialization_interval: opts.serialization_interval,
+            session_read_interval: opts.session_read_interval,
             ..Default::default()
         }
     }

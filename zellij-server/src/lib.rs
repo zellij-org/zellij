@@ -889,6 +889,7 @@ fn init_session(
     };
 
     let serialization_interval = config_options.serialization_interval;
+    let session_read_interval = config_options.session_read_interval;
     let disable_session_metadata = config_options.disable_session_metadata.unwrap_or(false);
 
     let default_shell = config_options.default_shell.clone().map(|command| {
@@ -1033,6 +1034,7 @@ fn init_session(
                     background_jobs_bus,
                     serialization_interval,
                     disable_session_metadata,
+                    session_read_interval,
                 )
                 .fatal()
             }
