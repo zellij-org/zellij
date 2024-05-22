@@ -2443,7 +2443,6 @@ impl Perform for Grid {
     }
 
     fn csi_dispatch(&mut self, params: &Params, intermediates: &[u8], _ignore: bool, c: char) {
-        log::info!("csi_dispatch: params: {:?}, intermediates: {:?}, char: {:?}", params, intermediates, c);
         let mut params_iter = params.iter();
         let mut next_param_or = |default: u16| {
             params_iter

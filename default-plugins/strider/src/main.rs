@@ -64,44 +64,44 @@ impl ZellijPlugin for State {
                 should_render = true;
             },
             Event::Key(key) => match key.bare_key {
-                BareKey::Char(character) if key.key_modifiers.is_empty() => {
+                BareKey::Char(character) if key.has_no_modifiers() => {
                     self.update_search_term(character);
                     should_render = true;
                 },
-                BareKey::Backspace if key.key_modifiers.is_empty() => {
+                BareKey::Backspace if key.has_no_modifiers() => {
                     self.handle_backspace();
                     should_render = true;
                 },
-                BareKey::Esc if key.key_modifiers.is_empty() => {
+                BareKey::Esc if key.has_no_modifiers() => {
                     self.clear_search_term_or_descend();
                     should_render = true;
                 },
-                BareKey::Char('c') if key.key_modifiers.contains(&KeyModifier::Ctrl) => {
+                BareKey::Char('c') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
                     self.clear_search_term_or_descend();
                 }
-                BareKey::Up if key.key_modifiers.is_empty() => {
+                BareKey::Up if key.has_no_modifiers() => {
                     self.move_selection_up();
                     should_render = true;
                 },
-                BareKey::Down if key.key_modifiers.is_empty() => {
+                BareKey::Down if key.has_no_modifiers() => {
                     self.move_selection_down();
                     should_render = true;
                 },
-                BareKey::Enter if key.key_modifiers.is_empty() && self.handling_filepick_request_from.is_some() => {
+                BareKey::Enter if key.has_no_modifiers() && self.handling_filepick_request_from.is_some() => {
                     self.send_filepick_response();
                 },
-                BareKey::Enter if key.key_modifiers.is_empty() => {
+                BareKey::Enter if key.has_no_modifiers() => {
                     self.open_selected_path();
                 },
-                BareKey::Right | BareKey::Tab if key.key_modifiers.is_empty() => {
+                BareKey::Right | BareKey::Tab if key.has_no_modifiers() => {
                     self.traverse_dir();
                     should_render = true;
                 },
-                BareKey::Left if key.key_modifiers.is_empty() => {
+                BareKey::Left if key.has_no_modifiers() => {
                     self.descend_to_previous_path();
                     should_render = true;
                 },
-                BareKey::Char('e') if key.key_modifiers.contains(&KeyModifier::Ctrl)=> {
+                BareKey::Char('e') if key.has_modifiers(&[KeyModifier::Ctrl])=> {
                     should_render = true;
                     self.toggle_hidden_files();
                     refresh_directory(&self.file_list_view.path);

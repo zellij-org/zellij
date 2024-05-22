@@ -653,8 +653,18 @@ impl KeyWithModifier {
             newline_mode: false,
             modify_other_keys: None
         };
-        log::info!("self: {:?}, to_termwiz_keycode: {:?}", self, self.to_termwiz_keycode());
         self.to_termwiz_keycode().encode(modifiers, key_code_encode_modes, true).ok()
+    }
+    pub fn has_no_modifiers(&self) -> bool {
+        self.key_modifiers.is_empty()
+    }
+    pub fn has_modifiers(&self, modifiers: &[KeyModifier]) -> bool {
+        for modifier in modifiers {
+            if !self.key_modifiers.contains(modifier) {
+                return false;
+            }
+        }
+        true
     }
 }
 

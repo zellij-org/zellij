@@ -487,6 +487,7 @@ pub enum AdjustedInput {
     PermissionRequestResult(Vec<PermissionType>, PermissionStatus),
     CloseThisPane,
     DropToShellInThisPane { working_dir: Option<PathBuf> },
+    WriteKeyToPlugin(KeyWithModifier),
 }
 pub fn get_next_terminal_position(
     tiled_panes: &TiledPanes,
@@ -1765,13 +1766,17 @@ impl Tab {
                 }
             },
             PaneId::Plugin(pid) => match active_terminal.adjust_input_to_terminal(key_with_modifier, raw_input_bytes, raw_input_bytes_are_kitty) {
+                Some(AdjustedInput::WriteKeyToPlugin(key_with_modifier)) => {
+                    self.senders
+                        .send_to_plugin(PluginInstruction::Update(vec![(Some(pid), client_id, Event::Key(key_with_modifier))]))
+                        .with_context(err_context)?;
+                }
                 Some(AdjustedInput::WriteBytesToTerminal(adjusted_input)) => {
                     let mut plugin_updates = vec![];
-                    // TODO: instead of doing another parse here, let's just send key_with_modifier
-                    // directly in the event
                     for key in parse_keys(&adjusted_input) {
                         plugin_updates.push((Some(pid), client_id, Event::Key(key)));
                     }
+                    log::info!("plugin_updates: {:?}", plugin_updates);
                     self.senders
                         .send_to_plugin(PluginInstruction::Update(plugin_updates))
                         .with_context(err_context)?;
