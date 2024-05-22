@@ -267,6 +267,12 @@ impl State {
         } else if let Key::Up = key {
             self.sessions.move_selection_up();
             should_render = true;
+        } else if let Key::Ctrl('n') = key {
+            self.sessions.move_selection_down();
+            should_render = true;
+        } else if let Key::Ctrl('p') = key {
+            self.sessions.move_selection_up();
+            should_render = true;
         } else if let Key::Char(character) = key {
             if character == '\n' {
                 self.handle_selection();
