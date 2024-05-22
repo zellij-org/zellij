@@ -569,12 +569,16 @@ impl WasmBridge {
             let _s = shutdown_sender.clone();
             async move {
                 for (pid, cid, event) in updates.drain(..) {
-                    for (plugin_id, client_id, running_plugin, subscriptions) in &plugins_to_update {
+                    for (plugin_id, client_id, running_plugin, subscriptions) in &plugins_to_update
+                    {
                         let subs = subscriptions.lock().unwrap().clone();
                         // FIXME: This is very janky... Maybe I should write my own macro for Event -> EventType?
                         if let Ok(event_type) = EventType::from_str(&event.to_string()) {
-                            if (subs.contains(&event_type) || event_type == EventType::PermissionRequestResult)
-                                && Self::message_is_directed_at_plugin(pid, cid, plugin_id, client_id)
+                            if (subs.contains(&event_type)
+                                || event_type == EventType::PermissionRequestResult)
+                                && Self::message_is_directed_at_plugin(
+                                    pid, cid, plugin_id, client_id,
+                                )
                             {
                                 let mut running_plugin = running_plugin.lock().unwrap();
                                 let mut plugin_render_assets = vec![];
@@ -587,9 +591,9 @@ impl WasmBridge {
                                     senders.clone(),
                                 ) {
                                     Ok(()) => {
-                                        let _ = senders.send_to_screen(ScreenInstruction::PluginBytes(
-                                            plugin_render_assets,
-                                        ));
+                                        let _ = senders.send_to_screen(
+                                            ScreenInstruction::PluginBytes(plugin_render_assets),
+                                        );
                                     },
                                     Err(e) => {
                                         log::error!("{:?}", e);
