@@ -566,8 +566,9 @@ impl WasmBridge {
         task::spawn({
             let mut updates = updates.clone();
             let senders = self.senders.clone();
-            let _s = shutdown_sender.clone();
+            let s = shutdown_sender.clone();
             async move {
+                let _s = s;
                 for (pid, cid, event) in updates.drain(..) {
                     for (plugin_id, client_id, running_plugin, subscriptions) in &plugins_to_update
                     {
