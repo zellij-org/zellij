@@ -8,6 +8,8 @@
 //  place.
 //  If plugins should be able to depend on the layout system
 //  then [`zellij-utils`] could be a proper place.
+#[cfg(not(target_family = "wasm"))]
+use crate::downloader::Downloader;
 use crate::{
     data::{Direction, LayoutInfo},
     home::{default_layout_dir, find_default_config_dir},
@@ -18,6 +20,8 @@ use crate::{
     pane_size::{Constraint, Dimension, PaneGeom},
     setup::{self},
 };
+#[cfg(not(target_family = "wasm"))]
+use async_std::task;
 
 use std::cmp::Ordering;
 use std::fmt::{Display, Formatter};
@@ -1145,6 +1149,7 @@ impl Layout {
             LayoutInfo::BuiltIn(layout_name) => {
                 Self::stringified_from_default_assets(&PathBuf::from(layout_name))?
             },
+            LayoutInfo::Url(url) => (url.clone(), Self::stringified_from_url(&url)?, None),
         };
         Layout::from_kdl(
             &raw_layout,
@@ -1179,6 +1184,20 @@ impl Layout {
             ),
         }
     }
+    pub fn stringified_from_url(url: &str) -> Result<String, ConfigError> {
+        #[cfg(not(target_family = "wasm"))]
+        let raw_layout = task::block_on(async move {
+            let download = Downloader::download_without_cache(url).await;
+            match download {
+                Ok(stringified) => Ok(stringified),
+                Err(e) => Err(ConfigError::DownloadError(format!("{}", e))),
+            }
+        })?;
+        // silently fail - this should not happen in plugins and legacy architecture is hard
+        #[cfg(target_family = "wasm")]
+        let raw_layout = String::new();
+        Ok(raw_layout)
+    }
     pub fn from_path_or_default(
         layout_path: Option<&PathBuf>,
         layout_dir: Option<PathBuf>,
@@ -1196,6 +1215,25 @@ impl Layout {
         )?;
         let config = Config::from_kdl(&raw_layout, Some(config))?; // this merges the two config, with
         Ok((layout, config))
+    }
+    #[cfg(not(target_family = "wasm"))]
+    pub fn from_url(url: &str, config: Config) -> Result<(Layout, Config), ConfigError> {
+        let raw_layout = task::block_on(async move {
+            let download = Downloader::download_without_cache(url).await;
+            match download {
+                Ok(stringified) => Ok(stringified),
+                Err(e) => Err(ConfigError::DownloadError(format!("{}", e))),
+            }
+        })?;
+        let layout = Layout::from_kdl(&raw_layout, url.into(), None, None)?;
+        let config = Config::from_kdl(&raw_layout, Some(config))?; // this merges the two config, with
+        Ok((layout, config))
+    }
+    #[cfg(target_family = "wasm")]
+    pub fn from_url(url: &str, config: Config) -> Result<(Layout, Config), ConfigError> {
+        Err(ConfigError::DownloadError(format!(
+            "Unsupported platform, cannot download layout from the web"
+        )))
     }
     pub fn from_path_or_default_without_config(
         layout_path: Option<&PathBuf>,
