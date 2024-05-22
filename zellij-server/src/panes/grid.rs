@@ -2,6 +2,7 @@ use super::sixel::{PixelRect, SixelGrid, SixelImageStore};
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::mem;
 use std::rc::Rc;
 use zellij_utils::data::Style;
 use zellij_utils::errors::prelude::*;
@@ -2628,25 +2629,39 @@ impl Perform for Grid {
                         },
                         1049 => {
                             // enter alternate buffer
-                            let current_lines_above =
-                                std::mem::replace(&mut self.lines_above, VecDeque::new());
-                            let current_viewport =
-                                std::mem::replace(&mut self.viewport, vec![Row::new().canonical()]);
-                            let current_cursor = std::mem::replace(
-                                &mut self.cursor,
-                                Cursor::new(0, 0, self.styled_underlines),
-                            );
+                            let next_cursor = Cursor::new(0, 0, self.styled_underlines);
+                            let canonical_row = Row::new().canonical();
+                            let char_cell_size = self.character_cell_size.clone();
                             let sixel_image_store = self.sixel_grid.sixel_image_store.clone();
-                            let alternate_sixelgrid = std::mem::replace(
-                                &mut self.sixel_grid,
-                                SixelGrid::new(self.character_cell_size.clone(), sixel_image_store),
-                            );
-                            self.alternate_screen_state = Some(AlternateScreenState::new(
-                                current_lines_above,
-                                current_viewport,
-                                current_cursor,
-                                alternate_sixelgrid,
-                            ));
+
+                            let mut next_state =
+                                if let Some(mut alt_state) = self.alternate_screen_state.take() {
+                                    // Reuse the alternate state's allocations if available
+                                    alt_state.lines_above.clear();
+                                    alt_state.viewport.clear();
+                                    alt_state.viewport.push(canonical_row);
+                                    alt_state.cursor = next_cursor;
+                                    alt_state
+                                        .sixel_grid
+                                        .reset(char_cell_size, sixel_image_store);
+                                    alt_state
+                                } else {
+                                    // If not available, recreate a default state
+                                    AlternateScreenState::new(
+                                        VecDeque::new(),
+                                        vec![canonical_row],
+                                        next_cursor,
+                                        SixelGrid::new(char_cell_size, sixel_image_store),
+                                    )
+                                };
+
+                            // Swap the current state with the default state constructed above
+                            mem::swap(&mut self.lines_above, &mut next_state.lines_above);
+                            mem::swap(&mut self.viewport, &mut next_state.viewport);
+                            mem::swap(&mut self.cursor, &mut next_state.cursor);
+                            mem::swap(&mut self.sixel_grid, &mut next_state.sixel_grid);
+                            self.alternate_screen_state = Some(next_state);
+
                             self.clear_viewport_before_rendering = true;
                             self.scrollback_buffer_lines =
                                 self.recalculate_scrollback_buffer_count();

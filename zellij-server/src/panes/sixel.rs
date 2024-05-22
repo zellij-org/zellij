@@ -83,6 +83,28 @@ impl SixelGrid {
             ..Default::default()
         }
     }
+
+    /// Create the same structure as [`new`] but reuse allocations
+    pub fn reset(
+        &mut self,
+        character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
+        sixel_image_store: Rc<RefCell<SixelImageStore>>,
+    ) {
+        let previous_cell_size = *character_cell_size.borrow();
+
+        self.sixel_image_locations.clear();
+        self.image_ids_to_reap.clear();
+
+        *self = SixelGrid {
+            sixel_image_locations: std::mem::take(&mut self.sixel_image_locations),
+            image_ids_to_reap: std::mem::take(&mut self.image_ids_to_reap),
+            previous_cell_size,
+            character_cell_size,
+            sixel_image_store,
+            ..Default::default()
+        };
+    }
+
     pub fn handle_byte(&mut self, byte: u8) {
         self.sixel_parser
             .as_mut()
