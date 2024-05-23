@@ -364,9 +364,9 @@ impl FromStr for BareKey {
 
 #[derive(Eq, Clone, Copy, Debug, PartialEq, Hash, Deserialize, Serialize, PartialOrd, Ord, ToString)]
 pub enum KeyModifier {
-    Shift,
-    Alt,
     Ctrl,
+    Alt,
+    Shift,
     Super,
     Hyper,
     Meta,
