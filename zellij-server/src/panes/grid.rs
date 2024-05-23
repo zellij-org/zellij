@@ -363,6 +363,7 @@ pub struct Grid {
     arrow_fonts: bool,
     styled_underlines: bool,
     pub supports_kitty_keyboard_protocol: bool,
+    explicitly_disable_kitty_keyboard_protocol: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -451,6 +452,7 @@ impl Grid {
         debug: bool,
         arrow_fonts: bool,
         styled_underlines: bool,
+        explicitly_disable_kitty_keyboard_protocol: bool,
     ) -> Self {
         let sixel_grid = SixelGrid::new(character_cell_size.clone(), sixel_image_store);
         // make sure this is initialized as it is used internally
@@ -508,6 +510,7 @@ impl Grid {
             lock_renders: false,
             // supports_kitty_keyboard_protocol: true,
             supports_kitty_keyboard_protocol: false,
+            explicitly_disable_kitty_keyboard_protocol,
         }
     }
     pub fn render_full_viewport(&mut self) {
@@ -2834,11 +2837,15 @@ impl Perform for Grid {
         } else if c == 'u' && intermediates == &[b'>'] {
             // Zellij only supports the first "progressive enhancement" layer of the kitty keyboard
             // protocol
-            self.supports_kitty_keyboard_protocol = true;
+            if !self.explicitly_disable_kitty_keyboard_protocol {
+                self.supports_kitty_keyboard_protocol = true;
+            }
         } else if c == 'u' && intermediates == &[b'<'] {
             // Zellij only supports the first "progressive enhancement" layer of the kitty keyboard
             // protocol
-            self.supports_kitty_keyboard_protocol = false;
+            if !self.explicitly_disable_kitty_keyboard_protocol {
+                self.supports_kitty_keyboard_protocol = false;
+            }
         } else if c == 'u' && intermediates == &[b'?'] {
             // Zellij only supports the first "progressive enhancement" layer of the kitty keyboard
             // protocol

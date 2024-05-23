@@ -760,6 +760,7 @@ impl TerminalPane {
         debug: bool,
         arrow_fonts: bool,
         styled_underlines: bool,
+        explicitly_disable_keyboard_protocol: bool,
     ) -> TerminalPane {
         let initial_pane_title =
             initial_pane_title.unwrap_or_else(|| format!("Pane #{}", pane_index));
@@ -775,6 +776,7 @@ impl TerminalPane {
             debug,
             arrow_fonts,
             styled_underlines,
+            explicitly_disable_keyboard_protocol,
         );
         TerminalPane {
             frame: HashMap::new(),

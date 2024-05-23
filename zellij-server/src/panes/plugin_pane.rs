@@ -39,6 +39,7 @@ macro_rules! get_or_create_grid {
     ($self:ident, $client_id:ident) => {{
         let rows = $self.get_content_rows();
         let cols = $self.get_content_columns();
+        let explicitly_disable_kitty_keyboard_protocol = false; // N/A for plugins
 
         $self.grids.entry($client_id).or_insert_with(|| {
             let mut grid = Grid::new(
@@ -53,6 +54,7 @@ macro_rules! get_or_create_grid {
                 $self.debug,
                 $self.arrow_fonts,
                 $self.styled_underlines,
+                explicitly_disable_kitty_keyboard_protocol,
             );
             grid.hide_cursor();
             grid

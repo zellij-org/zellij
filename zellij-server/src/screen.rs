@@ -622,6 +622,7 @@ pub(crate) struct Screen {
     arrow_fonts: bool,
     layout_dir: Option<PathBuf>,
     default_layout_name: Option<String>,
+    explicitly_disable_kitty_keyboard_protocol: bool,
 }
 
 impl Screen {
@@ -645,6 +646,7 @@ impl Screen {
         styled_underlines: bool,
         arrow_fonts: bool,
         layout_dir: Option<PathBuf>,
+        explicitly_disable_kitty_keyboard_protocol: bool,
     ) -> Self {
         let session_name = mode_info.session_name.clone().unwrap_or_default();
         let session_info = SessionInfo::new(session_name.clone());
@@ -685,6 +687,7 @@ impl Screen {
             arrow_fonts,
             resurrectable_sessions,
             layout_dir,
+            explicitly_disable_kitty_keyboard_protocol,
         }
     }
 
@@ -1233,6 +1236,7 @@ impl Screen {
             self.debug,
             self.arrow_fonts,
             self.styled_underlines,
+            self.explicitly_disable_kitty_keyboard_protocol,
         );
         self.tabs.insert(tab_index, tab);
         Ok(())
@@ -2318,6 +2322,13 @@ pub(crate) fn screen_thread_main(
         config_options.copy_on_select.unwrap_or(true),
     );
     let styled_underlines = config_options.styled_underlines.unwrap_or(true);
+    let explicitly_disable_kitty_keyboard_protocol = config_options
+        .support_kitty_keyboard_protocol
+        .map(|e| !e) // this is due to the config options wording, if
+                     // "support_kitty_keyboard_protocol" is true,
+                     // explicitly_disable_kitty_keyboard_protocol is false and vice versa
+        .unwrap_or(false); // by default, we try to support this if the terminal supports it and
+                           // the program running inside a pane requests it
 
     let thread_senders = bus.senders.clone();
     let mut screen = Screen::new(
@@ -2346,6 +2357,7 @@ pub(crate) fn screen_thread_main(
         styled_underlines,
         arrow_fonts,
         layout_dir,
+        explicitly_disable_kitty_keyboard_protocol,
     );
 
     let mut pending_tab_ids: HashSet<usize> = HashSet::new();

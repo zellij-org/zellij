@@ -41,6 +41,7 @@ pub struct LayoutApplier<'a> {
     debug: bool,
     arrow_fonts: bool,
     styled_underlines: bool,
+    explicitly_disable_kitty_keyboard_protocol: bool,
 }
 
 impl<'a> LayoutApplier<'a> {
@@ -63,6 +64,7 @@ impl<'a> LayoutApplier<'a> {
         debug: bool,
         arrow_fonts: bool,
         styled_underlines: bool,
+        explicitly_disable_kitty_keyboard_protocol: bool,
     ) -> Self {
         let viewport = viewport.clone();
         let senders = senders.clone();
@@ -94,6 +96,7 @@ impl<'a> LayoutApplier<'a> {
             debug,
             arrow_fonts,
             styled_underlines,
+            explicitly_disable_kitty_keyboard_protocol,
         }
     }
     pub fn apply_layout(
@@ -330,6 +333,7 @@ impl<'a> LayoutApplier<'a> {
                         self.debug,
                         self.arrow_fonts,
                         self.styled_underlines,
+                        self.explicitly_disable_kitty_keyboard_protocol,
                     );
                     if let Some(pane_initial_contents) = &layout.pane_initial_contents {
                         new_pane.handle_pty_bytes(pane_initial_contents.as_bytes().into());
@@ -448,6 +452,7 @@ impl<'a> LayoutApplier<'a> {
                     self.debug,
                     self.arrow_fonts,
                     self.styled_underlines,
+                    self.explicitly_disable_kitty_keyboard_protocol,
                 );
                 if let Some(pane_initial_contents) = &floating_pane_layout.pane_initial_contents {
                     new_pane.handle_pty_bytes(pane_initial_contents.as_bytes().into());

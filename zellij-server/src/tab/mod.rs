@@ -187,6 +187,7 @@ pub(crate) struct Tab {
     debug: bool,
     arrow_fonts: bool,
     styled_underlines: bool,
+    explicitly_disable_kitty_keyboard_protocol: bool,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -538,6 +539,7 @@ impl Tab {
         debug: bool,
         arrow_fonts: bool,
         styled_underlines: bool,
+        explicitly_disable_kitty_keyboard_protocol: bool,
     ) -> Self {
         let name = if name.is_empty() {
             format!("Tab #{}", index + 1)
@@ -628,6 +630,7 @@ impl Tab {
             debug,
             arrow_fonts,
             styled_underlines,
+            explicitly_disable_kitty_keyboard_protocol,
         }
     }
 
@@ -661,6 +664,7 @@ impl Tab {
             self.debug,
             self.arrow_fonts,
             self.styled_underlines,
+            self.explicitly_disable_kitty_keyboard_protocol,
         )
         .apply_layout(
             layout,
@@ -724,6 +728,7 @@ impl Tab {
                 self.debug,
                 self.arrow_fonts,
                 self.styled_underlines,
+                self.explicitly_disable_kitty_keyboard_protocol,
             )
             .apply_floating_panes_layout_to_existing_panes(
                 &layout_candidate,
@@ -780,6 +785,7 @@ impl Tab {
                 self.debug,
                 self.arrow_fonts,
                 self.styled_underlines,
+                self.explicitly_disable_kitty_keyboard_protocol,
             )
             .apply_tiled_panes_layout_to_existing_panes(
                 &layout_candidate,
@@ -1085,6 +1091,7 @@ impl Tab {
                     self.debug,
                     self.arrow_fonts,
                     self.styled_underlines,
+                    self.explicitly_disable_kitty_keyboard_protocol,
                 )) as Box<dyn Pane>
             },
             PaneId::Plugin(plugin_pid) => {
@@ -1147,6 +1154,7 @@ impl Tab {
                     self.debug,
                     self.arrow_fonts,
                     self.styled_underlines,
+                    self.explicitly_disable_kitty_keyboard_protocol,
                 );
                 new_pane.update_name("EDITING SCROLLBACK"); // we do this here and not in the
                                                             // constructor so it won't be overrided
@@ -1221,6 +1229,7 @@ impl Tab {
                     self.debug,
                     self.arrow_fonts,
                     self.styled_underlines,
+                    self.explicitly_disable_kitty_keyboard_protocol,
                 );
                 let replaced_pane = if self.floating_panes.panes_contain(&old_pane_id) {
                     self.floating_panes
@@ -1345,6 +1354,7 @@ impl Tab {
                     self.debug,
                     self.arrow_fonts,
                     self.styled_underlines,
+                    self.explicitly_disable_kitty_keyboard_protocol,
                 );
                 self.tiled_panes
                     .split_pane_horizontally(pid, Box::new(new_terminal), client_id);
@@ -1404,6 +1414,7 @@ impl Tab {
                     self.debug,
                     self.arrow_fonts,
                     self.styled_underlines,
+                    self.explicitly_disable_kitty_keyboard_protocol,
                 );
                 self.tiled_panes
                     .split_pane_vertically(pid, Box::new(new_terminal), client_id);

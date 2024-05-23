@@ -1614,6 +1614,9 @@ impl Options {
         let disable_session_metadata =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "disable_session_metadata")
                 .map(|(v, _)| v);
+        let support_kitty_keyboard_protocol =
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "support_kitty_keyboard_protocol")
+                .map(|(v, _)| v);
         Ok(Options {
             simplified_ui,
             theme,
@@ -1641,6 +1644,7 @@ impl Options {
             styled_underlines,
             serialization_interval,
             disable_session_metadata,
+            support_kitty_keyboard_protocol,
         })
     }
 }
