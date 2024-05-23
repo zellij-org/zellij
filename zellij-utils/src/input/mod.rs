@@ -18,13 +18,14 @@ pub use not_wasm::*;
 #[cfg(not(target_family = "wasm"))]
 mod not_wasm {
     use crate::{
-        data::{CharOrArrow, Direction, InputMode, Key, KeyWithModifier, BareKey, ModeInfo, PluginCapabilities},
+        data::{CharOrArrow, Direction, InputMode, Key, KeyWithModifier, BareKey, KeyModifier, ModeInfo, PluginCapabilities},
         envs,
         ipc::ClientAttributes,
     };
     use termwiz::input::{InputEvent, InputParser, KeyCode, KeyEvent, Modifiers};
 
     use super::keybinds::Keybinds;
+    use std::collections::BTreeSet;
 
     /// Creates a [`ModeInfo`] struct indicating the current [`InputMode`] and its keybinds
     /// (as pairs of [`String`]s).
@@ -72,7 +73,7 @@ mod not_wasm {
         raw_bytes: &[u8],
         keybinds_mode: Option<(&Keybinds, &InputMode)>,
     ) -> KeyWithModifier {
-        let modifiers = event.modifiers;
+        let termwiz_modifiers = event.modifiers;
 
         // *** THIS IS WHERE WE SHOULD WORK AROUND ISSUES WITH TERMWIZ ***
         if raw_bytes == [8] {
@@ -87,91 +88,50 @@ mod not_wasm {
                 }
             }
         }
+        let mut modifiers = BTreeSet::new();
+        if termwiz_modifiers.contains(Modifiers::CTRL) {
+            modifiers.insert(KeyModifier::Ctrl);
+        }
+        if termwiz_modifiers.contains(Modifiers::ALT) {
+            modifiers.insert(KeyModifier::Alt);
+        }
+        if termwiz_modifiers.contains(Modifiers::SHIFT) {
+            modifiers.insert(KeyModifier::Shift);
+        }
 
         match event.key {
             KeyCode::Char(c) => {
-                // TODO CONTINUE HERE: we previously normalized all chars here to lowercase, but this is causing
-                // problems when serializing the keys to a kitty-keyboard supporting terminal,
-                // let's either make sure this doesn't cause any issue with eg. matching keybinds,
-                // international characters, etc. or find a different solution
-                let key = if modifiers.contains(Modifiers::CTRL) {
-                    KeyWithModifier::new(BareKey::Char(c)).with_ctrl_modifier()
-                    // KeyWithModifier::new(BareKey::Char(c.to_lowercase().next().unwrap_or_default())).with_ctrl_modifier()
-                } else if modifiers.contains(Modifiers::ALT) {
-                    KeyWithModifier::new(BareKey::Char(c)).with_alt_modifier()
-                    // KeyWithModifier::new(BareKey::Char(c.to_lowercase().next().unwrap_or_default())).with_alt_modifier()
+                if c == '\0' {
+                    // NUL character, probably ctrl-space
+                    KeyWithModifier::new(BareKey::Char(' ')).with_ctrl_modifier()
                 } else {
-                    KeyWithModifier::new(BareKey::Char(c))
-                    // KeyWithModifier::new(BareKey::Char(c.to_lowercase().next().unwrap_or_default()))
-                };
-                // TODO: let's do this properly
-                if modifiers.contains(Modifiers::SHIFT) {
-                    key.with_shift_modifier()
-                } else {
-                    key
+                    KeyWithModifier::new_with_modifiers(BareKey::Char(c), modifiers)
                 }
             },
-            KeyCode::Backspace => KeyWithModifier::new(BareKey::Backspace),
-            // KeyCode::Backspace => Key::Backspace,
+            KeyCode::Backspace => KeyWithModifier::new_with_modifiers(BareKey::Backspace, modifiers),
             KeyCode::LeftArrow | KeyCode::ApplicationLeftArrow => {
-                if modifiers.contains(Modifiers::ALT) {
-                    KeyWithModifier::new(BareKey::Left).with_alt_modifier()
-                    // Key::Alt(CharOrArrow::Direction(Direction::Left))
-                } else {
-                    KeyWithModifier::new(BareKey::Left)
-                    // Key::Left
-                }
+                KeyWithModifier::new_with_modifiers(BareKey::Left, modifiers)
             },
             KeyCode::RightArrow | KeyCode::ApplicationRightArrow => {
-                if modifiers.contains(Modifiers::ALT) {
-                    // Key::Alt(CharOrArrow::Direction(Direction::Right))
-                    KeyWithModifier::new(BareKey::Right).with_alt_modifier()
-                    // Key::Alt(CharOrArrow::Direction(Direction::Right))
-                } else {
-                    KeyWithModifier::new(BareKey::Right)
-                    // Key::Right
-                }
+                KeyWithModifier::new_with_modifiers(BareKey::Right, modifiers)
             },
             KeyCode::UpArrow | KeyCode::ApplicationUpArrow => {
-                if modifiers.contains(Modifiers::ALT) {
-                    // Key::Alt(CharOrArrow::Direction(Direction::Up))
-                    KeyWithModifier::new(BareKey::Up).with_alt_modifier()
-                } else {
-                    KeyWithModifier::new(BareKey::Up)
-                    // Key::Up
-                }
+                KeyWithModifier::new_with_modifiers(BareKey::Up, modifiers)
             },
             KeyCode::DownArrow | KeyCode::ApplicationDownArrow => {
-                if modifiers.contains(Modifiers::ALT) {
-                    // Key::Alt(CharOrArrow::Direction(Direction::Down))
-                    KeyWithModifier::new(BareKey::Down).with_alt_modifier()
-                } else {
-                    KeyWithModifier::new(BareKey::Down)
-                    // Key::Down
-                }
+                KeyWithModifier::new_with_modifiers(BareKey::Down, modifiers)
             },
-            KeyCode::Home => KeyWithModifier::new(BareKey::Home),
-            KeyCode::End => KeyWithModifier::new(BareKey::End),
-            KeyCode::PageUp => KeyWithModifier::new(BareKey::PageUp),
-            KeyCode::PageDown => KeyWithModifier::new(BareKey::PageDown),
-            KeyCode::Tab => KeyWithModifier::new(BareKey::Tab),
-            KeyCode::Delete => KeyWithModifier::new(BareKey::Delete),
-            KeyCode::Insert => KeyWithModifier::new(BareKey::Insert),
-            KeyCode::Function(n) => {
-                if modifiers.contains(Modifiers::ALT) {
-                    KeyWithModifier::new(BareKey::F(n)).with_alt_modifier()
-                    // Key::AltF(n)
-                } else if modifiers.contains(Modifiers::CTRL) {
-                    KeyWithModifier::new(BareKey::F(n)).with_ctrl_modifier()
-                    // Key::CtrlF(n)
-                } else {
-                    KeyWithModifier::new(BareKey::F(n))
-                    // Key::F(n)
-                }
-            },
-            KeyCode::Escape => KeyWithModifier::new(BareKey::Esc),
-            KeyCode::Enter => KeyWithModifier::new(BareKey::Enter),
-            _ => KeyWithModifier::new(BareKey::Esc), // there are other keys we can implement here, but we might need additional terminal support to implement them, not just exhausting this enum
+            KeyCode::Home => KeyWithModifier::new_with_modifiers(BareKey::Home, modifiers),
+            KeyCode::End => KeyWithModifier::new_with_modifiers(BareKey::End, modifiers),
+            KeyCode::PageUp => KeyWithModifier::new_with_modifiers(BareKey::PageUp, modifiers),
+            KeyCode::PageDown => KeyWithModifier::new_with_modifiers(BareKey::PageDown, modifiers),
+            KeyCode::Tab => KeyWithModifier::new_with_modifiers(BareKey::Tab, modifiers),
+            KeyCode::Delete => KeyWithModifier::new_with_modifiers(BareKey::Delete, modifiers),
+            KeyCode::Insert => KeyWithModifier::new_with_modifiers(BareKey::Insert, modifiers),
+            KeyCode::Function(n) => KeyWithModifier::new_with_modifiers(BareKey::F(n), modifiers),
+            KeyCode::Escape => KeyWithModifier::new_with_modifiers(BareKey::Esc, modifiers),
+            KeyCode::Enter => KeyWithModifier::new_with_modifiers(BareKey::Enter, modifiers),
+            _ => KeyWithModifier::new(BareKey::Esc),
         }
     }
 }

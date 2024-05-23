@@ -91,13 +91,11 @@ impl InputHandler {
                 Ok((InputInstruction::KeyEvent(input_event, raw_bytes), _error_context)) => {
                     match input_event {
                         InputEvent::Key(key_event) => {
-                            log::info!("key_event: {:?}", key_event);
                             let key = cast_termwiz_key(
                                 key_event,
                                 &raw_bytes,
                                 Some((&self.config.keybinds, &self.mode)),
                             );
-                            log::info!("casted termwiz key: {:?}", key);
                             self.handle_key(&key, raw_bytes, false);
                         },
                         InputEvent::Mouse(mouse_event) => {

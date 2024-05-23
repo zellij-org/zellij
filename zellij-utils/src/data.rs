@@ -493,6 +493,12 @@ impl KeyWithModifier {
             key_modifiers: BTreeSet::new(),
         }
     }
+    pub fn new_with_modifiers(bare_key: BareKey, key_modifiers: BTreeSet<KeyModifier>) -> Self {
+        KeyWithModifier {
+            bare_key,
+            key_modifiers,
+        }
+    }
     pub fn with_shift_modifier(mut self) -> Self {
         self.key_modifiers.insert(KeyModifier::Shift);
         self
