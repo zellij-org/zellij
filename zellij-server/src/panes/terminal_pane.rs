@@ -231,7 +231,6 @@ impl Pane for TerminalPane {
             } else {
                 self.adjust_input_to_terminal_without_kitty_keyboard_protocol(key_with_modifier, raw_input_bytes, raw_input_bytes_are_kitty)
             }
-            // Some(AdjustedInput::WriteBytesToTerminal(input_bytes))
         }
     }
     fn position_and_size(&self) -> PaneGeom {

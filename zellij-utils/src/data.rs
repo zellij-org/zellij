@@ -225,10 +225,49 @@ impl fmt::Display for CharOrArrow {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, PartialOrd, Ord)]
+#[derive(Debug, Clone, Eq, Serialize, Deserialize, PartialOrd, Ord)]
 pub struct KeyWithModifier {
     pub bare_key: BareKey,
     pub key_modifiers: BTreeSet<KeyModifier>
+}
+
+impl PartialEq for KeyWithModifier {
+    fn eq(&self, other: &Self) -> bool {
+        match (self.bare_key, other.bare_key) {
+            (BareKey::Char(self_char), BareKey::Char(other_char)) if self_char.to_ascii_lowercase() == other_char.to_ascii_lowercase() => {
+                let mut self_cloned = self.clone();
+                let mut other_cloned = other.clone();
+                if self_char.is_ascii_uppercase() {
+                    self_cloned.bare_key = BareKey::Char(self_char.to_ascii_lowercase());
+                    self_cloned.key_modifiers.insert(KeyModifier::Shift);
+                }
+                if other_char.is_ascii_uppercase() {
+                    other_cloned.bare_key = BareKey::Char(self_char.to_ascii_lowercase());
+                    other_cloned.key_modifiers.insert(KeyModifier::Shift);
+                }
+                self_cloned.bare_key == other_cloned.bare_key && self_cloned.key_modifiers == other_cloned.key_modifiers
+            },
+            _ => self.bare_key == other.bare_key && self.key_modifiers == other.key_modifiers
+        }
+    }
+}
+
+impl Hash for KeyWithModifier {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        match self.bare_key {
+            BareKey::Char(character) if character.is_ascii_uppercase() => {
+                let mut to_hash = self.clone();
+                to_hash.bare_key = BareKey::Char(character.to_ascii_lowercase());
+                to_hash.key_modifiers.insert(KeyModifier::Shift);
+                to_hash.bare_key.hash(state);
+                to_hash.key_modifiers.hash(state);
+            },
+            _ => {
+                self.bare_key.hash(state);
+                self.key_modifiers.hash(state);
+            }
+        }
+    }
 }
 
 impl fmt::Display for KeyWithModifier {
