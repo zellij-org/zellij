@@ -96,6 +96,8 @@ pub enum ConfigError {
     PluginsError(#[from] PluginsConfigError),
     #[error("{0}")]
     ConversionError(#[from] ConversionError),
+    #[error("{0}")]
+    DownloadError(String),
 }
 
 impl ConfigError {
