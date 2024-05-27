@@ -1068,7 +1068,7 @@ fn serialize_mode_update_event_with_non_default_values() {
                         KeyWithModifier::new(BareKey::Char('b')).with_ctrl_modifier(),
                         vec![
                             Action::SwitchToMode(InputMode::Tmux),
-                            Action::Write(vec![10]),
+                            Action::Write(None, vec![10], false),
                         ],
                     ),
                     (KeyWithModifier::new(BareKey::Char('a')), vec![Action::WriteChars("foo".to_owned())]),

@@ -32,6 +32,7 @@ fn vttest1_0() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         41,
         110,
@@ -44,6 +45,7 @@ fn vttest1_0() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "vttest1-0";
     let content = read_fixture(fixture_name);
@@ -61,6 +63,7 @@ fn vttest1_1() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         41,
         110,
@@ -73,6 +76,7 @@ fn vttest1_1() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "vttest1-1";
     let content = read_fixture(fixture_name);
@@ -90,6 +94,7 @@ fn vttest1_2() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         41,
         110,
@@ -102,6 +107,7 @@ fn vttest1_2() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "vttest1-2";
     let content = read_fixture(fixture_name);
@@ -119,6 +125,7 @@ fn vttest1_3() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         41,
         110,
@@ -131,6 +138,7 @@ fn vttest1_3() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "vttest1-3";
     let content = read_fixture(fixture_name);
@@ -148,6 +156,7 @@ fn vttest1_4() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         41,
         110,
@@ -160,6 +169,7 @@ fn vttest1_4() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "vttest1-4";
     let content = read_fixture(fixture_name);
@@ -177,6 +187,7 @@ fn vttest1_5() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         41,
         110,
@@ -189,6 +200,7 @@ fn vttest1_5() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "vttest1-5";
     let content = read_fixture(fixture_name);
@@ -206,6 +218,7 @@ fn vttest2_0() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         41,
         110,
@@ -218,6 +231,7 @@ fn vttest2_0() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "vttest2-0";
     let content = read_fixture(fixture_name);
@@ -235,6 +249,7 @@ fn vttest2_1() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         41,
         110,
@@ -247,6 +262,7 @@ fn vttest2_1() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "vttest2-1";
     let content = read_fixture(fixture_name);
@@ -264,6 +280,7 @@ fn vttest2_2() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         41,
         110,
@@ -276,6 +293,7 @@ fn vttest2_2() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "vttest2-2";
     let content = read_fixture(fixture_name);
@@ -293,6 +311,7 @@ fn vttest2_3() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         41,
         110,
@@ -305,6 +324,7 @@ fn vttest2_3() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "vttest2-3";
     let content = read_fixture(fixture_name);
@@ -322,6 +342,7 @@ fn vttest2_4() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         41,
         110,
@@ -334,6 +355,7 @@ fn vttest2_4() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "vttest2-4";
     let content = read_fixture(fixture_name);
@@ -351,6 +373,7 @@ fn vttest2_5() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         41,
         110,
@@ -363,6 +386,7 @@ fn vttest2_5() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "vttest2-5";
     let content = read_fixture(fixture_name);
@@ -380,6 +404,7 @@ fn vttest2_6() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         41,
         110,
@@ -392,6 +417,7 @@ fn vttest2_6() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "vttest2-6";
     let content = read_fixture(fixture_name);
@@ -409,6 +435,7 @@ fn vttest2_7() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         41,
         110,
@@ -421,6 +448,7 @@ fn vttest2_7() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "vttest2-7";
     let content = read_fixture(fixture_name);
@@ -438,6 +466,7 @@ fn vttest2_8() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         41,
         110,
@@ -450,6 +479,7 @@ fn vttest2_8() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "vttest2-8";
     let content = read_fixture(fixture_name);
@@ -467,6 +497,7 @@ fn vttest2_9() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         41,
         110,
@@ -479,6 +510,7 @@ fn vttest2_9() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "vttest2-9";
     let content = read_fixture(fixture_name);
@@ -496,6 +528,7 @@ fn vttest2_10() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         41,
         110,
@@ -508,6 +541,7 @@ fn vttest2_10() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "vttest2-10";
     let content = read_fixture(fixture_name);
@@ -525,6 +559,7 @@ fn vttest2_11() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         41,
         110,
@@ -537,6 +572,7 @@ fn vttest2_11() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "vttest2-11";
     let content = read_fixture(fixture_name);
@@ -554,6 +590,7 @@ fn vttest2_12() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         41,
         110,
@@ -566,6 +603,7 @@ fn vttest2_12() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "vttest2-12";
     let content = read_fixture(fixture_name);
@@ -583,6 +621,7 @@ fn vttest2_13() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         41,
         110,
@@ -595,6 +634,7 @@ fn vttest2_13() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "vttest2-13";
     let content = read_fixture(fixture_name);
@@ -612,6 +652,7 @@ fn vttest2_14() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         41,
         110,
@@ -624,6 +665,7 @@ fn vttest2_14() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "vttest2-14";
     let content = read_fixture(fixture_name);
@@ -641,6 +683,7 @@ fn vttest3_0() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         41,
         110,
@@ -653,6 +696,7 @@ fn vttest3_0() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "vttest3-0";
     let content = read_fixture(fixture_name);
@@ -670,6 +714,7 @@ fn vttest8_0() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         51,
         97,
@@ -682,6 +727,7 @@ fn vttest8_0() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "vttest8-0";
     let content = read_fixture(fixture_name);
@@ -699,6 +745,7 @@ fn vttest8_1() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         51,
         97,
@@ -711,6 +758,7 @@ fn vttest8_1() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "vttest8-1";
     let content = read_fixture(fixture_name);
@@ -728,6 +776,7 @@ fn vttest8_2() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         51,
         97,
@@ -740,6 +789,7 @@ fn vttest8_2() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "vttest8-2";
     let content = read_fixture(fixture_name);
@@ -757,6 +807,7 @@ fn vttest8_3() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         51,
         97,
@@ -769,6 +820,7 @@ fn vttest8_3() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "vttest8-3";
     let content = read_fixture(fixture_name);
@@ -786,6 +838,7 @@ fn vttest8_4() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         51,
         97,
@@ -798,6 +851,7 @@ fn vttest8_4() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "vttest8-4";
     let content = read_fixture(fixture_name);
@@ -815,6 +869,7 @@ fn vttest8_5() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         51,
         97,
@@ -827,6 +882,7 @@ fn vttest8_5() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "vttest8-5";
     let content = read_fixture(fixture_name);
@@ -844,6 +900,7 @@ fn csi_b() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         51,
         97,
@@ -856,6 +913,7 @@ fn csi_b() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "csi-b";
     let content = read_fixture(fixture_name);
@@ -873,6 +931,7 @@ fn csi_capital_i() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         51,
         97,
@@ -885,6 +944,7 @@ fn csi_capital_i() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "csi-capital-i";
     let content = read_fixture(fixture_name);
@@ -902,6 +962,7 @@ fn csi_capital_z() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         51,
         97,
@@ -914,6 +975,7 @@ fn csi_capital_z() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "csi-capital-z";
     let content = read_fixture(fixture_name);
@@ -931,6 +993,7 @@ fn terminal_reports() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         51,
         97,
@@ -943,6 +1006,7 @@ fn terminal_reports() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "terminal_reports";
     let content = read_fixture(fixture_name);
@@ -960,6 +1024,7 @@ fn wide_characters() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         21,
         104,
@@ -972,6 +1037,7 @@ fn wide_characters() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "wide_characters";
     let content = read_fixture(fixture_name);
@@ -989,6 +1055,7 @@ fn wide_characters_line_wrap() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         21,
         104,
@@ -1001,6 +1068,7 @@ fn wide_characters_line_wrap() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "wide_characters_line_wrap";
     let content = read_fixture(fixture_name);
@@ -1018,6 +1086,7 @@ fn insert_character_in_line_with_wide_character() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         21,
         104,
@@ -1030,6 +1099,7 @@ fn insert_character_in_line_with_wide_character() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "wide_characters_middle_line_insert";
     let content = read_fixture(fixture_name);
@@ -1047,6 +1117,7 @@ fn delete_char_in_middle_of_line_with_widechar() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         21,
         104,
@@ -1059,6 +1130,7 @@ fn delete_char_in_middle_of_line_with_widechar() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "wide-chars-delete-middle";
     let content = read_fixture(fixture_name);
@@ -1076,6 +1148,7 @@ fn delete_char_in_middle_of_line_with_multiple_widechars() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         21,
         104,
@@ -1088,6 +1161,7 @@ fn delete_char_in_middle_of_line_with_multiple_widechars() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "wide-chars-delete-middle-after-multi";
     let content = read_fixture(fixture_name);
@@ -1105,6 +1179,7 @@ fn fish_wide_characters_override_clock() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         21,
         104,
@@ -1117,6 +1192,7 @@ fn fish_wide_characters_override_clock() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "fish_wide_characters_override_clock";
     let content = read_fixture(fixture_name);
@@ -1134,6 +1210,7 @@ fn bash_delete_wide_characters() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         21,
         104,
@@ -1146,6 +1223,7 @@ fn bash_delete_wide_characters() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "bash_delete_wide_characters";
     let content = read_fixture(fixture_name);
@@ -1163,6 +1241,7 @@ fn delete_wide_characters_before_cursor() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         21,
         104,
@@ -1175,6 +1254,7 @@ fn delete_wide_characters_before_cursor() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "delete_wide_characters_before_cursor";
     let content = read_fixture(fixture_name);
@@ -1192,6 +1272,7 @@ fn delete_wide_characters_before_cursor_when_cursor_is_on_wide_character() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         21,
         104,
@@ -1204,6 +1285,7 @@ fn delete_wide_characters_before_cursor_when_cursor_is_on_wide_character() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "delete_wide_characters_before_cursor_when_cursor_is_on_wide_character";
     let content = read_fixture(fixture_name);
@@ -1221,6 +1303,7 @@ fn delete_wide_character_under_cursor() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         21,
         104,
@@ -1233,6 +1316,7 @@ fn delete_wide_character_under_cursor() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "delete_wide_character_under_cursor";
     let content = read_fixture(fixture_name);
@@ -1250,6 +1334,7 @@ fn replace_wide_character_under_cursor() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         21,
         104,
@@ -1262,6 +1347,7 @@ fn replace_wide_character_under_cursor() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "replace_wide_character_under_cursor";
     let content = read_fixture(fixture_name);
@@ -1279,6 +1365,7 @@ fn wrap_wide_characters() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         21,
         90,
@@ -1291,6 +1378,7 @@ fn wrap_wide_characters() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "wide_characters_full";
     let content = read_fixture(fixture_name);
@@ -1308,6 +1396,7 @@ fn wrap_wide_characters_on_size_change() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         21,
         93,
@@ -1320,6 +1409,7 @@ fn wrap_wide_characters_on_size_change() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "wide_characters_full";
     let content = read_fixture(fixture_name);
@@ -1338,6 +1428,7 @@ fn unwrap_wide_characters_on_size_change() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         21,
         93,
@@ -1350,6 +1441,7 @@ fn unwrap_wide_characters_on_size_change() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "wide_characters_full";
     let content = read_fixture(fixture_name);
@@ -1369,6 +1461,7 @@ fn wrap_wide_characters_in_the_middle_of_the_line() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         21,
         91,
@@ -1381,6 +1474,7 @@ fn wrap_wide_characters_in_the_middle_of_the_line() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "wide_characters_line_middle";
     let content = read_fixture(fixture_name);
@@ -1398,6 +1492,7 @@ fn wrap_wide_characters_at_the_end_of_the_line() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         21,
         90,
@@ -1410,6 +1505,7 @@ fn wrap_wide_characters_at_the_end_of_the_line() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "wide_characters_line_end";
     let content = read_fixture(fixture_name);
@@ -1427,6 +1523,7 @@ fn copy_selected_text_from_viewport() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         27,
         125,
@@ -1439,6 +1536,7 @@ fn copy_selected_text_from_viewport() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "grid_copy";
     let content = read_fixture(fixture_name);
@@ -1464,6 +1562,7 @@ fn copy_wrapped_selected_text_from_viewport() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         22,
         73,
@@ -1476,6 +1575,7 @@ fn copy_wrapped_selected_text_from_viewport() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "grid_copy_wrapped";
     let content = read_fixture(fixture_name);
@@ -1500,6 +1600,7 @@ fn copy_selected_text_from_lines_above() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         27,
         125,
@@ -1512,6 +1613,7 @@ fn copy_selected_text_from_lines_above() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "grid_copy";
     let content = read_fixture(fixture_name);
@@ -1537,6 +1639,7 @@ fn copy_selected_text_from_lines_below() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         27,
         125,
@@ -1549,6 +1652,7 @@ fn copy_selected_text_from_lines_below() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "grid_copy";
     let content = read_fixture(fixture_name);
@@ -1582,6 +1686,7 @@ fn run_bandwhich_from_fish_shell() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         28,
         116,
@@ -1594,6 +1699,7 @@ fn run_bandwhich_from_fish_shell() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "fish_and_bandwhich";
     let content = read_fixture(fixture_name);
@@ -1611,6 +1717,7 @@ fn fish_tab_completion_options() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         28,
         116,
@@ -1623,6 +1730,7 @@ fn fish_tab_completion_options() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "fish_tab_completion_options";
     let content = read_fixture(fixture_name);
@@ -1646,6 +1754,7 @@ pub fn fish_select_tab_completion_options() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         28,
         116,
@@ -1658,6 +1767,7 @@ pub fn fish_select_tab_completion_options() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "fish_select_tab_completion_options";
     let content = read_fixture(fixture_name);
@@ -1685,6 +1795,7 @@ pub fn vim_scroll_region_down() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         28,
         116,
@@ -1697,6 +1808,7 @@ pub fn vim_scroll_region_down() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "vim_scroll_region_down";
     let content = read_fixture(fixture_name);
@@ -1721,6 +1833,7 @@ pub fn vim_ctrl_d() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         28,
         116,
@@ -1733,6 +1846,7 @@ pub fn vim_ctrl_d() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "vim_ctrl_d";
     let content = read_fixture(fixture_name);
@@ -1756,6 +1870,7 @@ pub fn vim_ctrl_u() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         28,
         116,
@@ -1768,6 +1883,7 @@ pub fn vim_ctrl_u() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "vim_ctrl_u";
     let content = read_fixture(fixture_name);
@@ -1785,6 +1901,7 @@ pub fn htop() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         28,
         116,
@@ -1797,6 +1914,7 @@ pub fn htop() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "htop";
     let content = read_fixture(fixture_name);
@@ -1814,6 +1932,7 @@ pub fn htop_scrolling() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         28,
         116,
@@ -1826,6 +1945,7 @@ pub fn htop_scrolling() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "htop_scrolling";
     let content = read_fixture(fixture_name);
@@ -1843,6 +1963,7 @@ pub fn htop_right_scrolling() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         28,
         116,
@@ -1855,6 +1976,7 @@ pub fn htop_right_scrolling() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "htop_right_scrolling";
     let content = read_fixture(fixture_name);
@@ -1882,6 +2004,7 @@ pub fn vim_overwrite() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         28,
         116,
@@ -1894,6 +2017,7 @@ pub fn vim_overwrite() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "vim_overwrite";
     let content = read_fixture(fixture_name);
@@ -1913,6 +2037,7 @@ pub fn clear_scroll_region() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         28,
         116,
@@ -1925,6 +2050,7 @@ pub fn clear_scroll_region() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "clear_scroll_region";
     let content = read_fixture(fixture_name);
@@ -1942,6 +2068,7 @@ pub fn display_tab_characters_properly() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         28,
         116,
@@ -1954,6 +2081,7 @@ pub fn display_tab_characters_properly() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "tab_characters";
     let content = read_fixture(fixture_name);
@@ -1971,6 +2099,7 @@ pub fn neovim_insert_mode() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         28,
         116,
@@ -1983,6 +2112,7 @@ pub fn neovim_insert_mode() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "nvim_insert";
     let content = read_fixture(fixture_name);
@@ -2000,6 +2130,7 @@ pub fn bash_cursor_linewrap() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         28,
         116,
@@ -2012,6 +2143,7 @@ pub fn bash_cursor_linewrap() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "bash_cursor_linewrap";
     let content = read_fixture(fixture_name);
@@ -2031,6 +2163,7 @@ pub fn fish_paste_multiline() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         28,
         149,
@@ -2043,6 +2176,7 @@ pub fn fish_paste_multiline() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "fish_paste_multiline";
     let content = read_fixture(fixture_name);
@@ -2060,6 +2194,7 @@ pub fn git_log() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         28,
         149,
@@ -2072,6 +2207,7 @@ pub fn git_log() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "git_log";
     let content = read_fixture(fixture_name);
@@ -2091,6 +2227,7 @@ pub fn git_diff_scrollup() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         28,
         149,
@@ -2103,6 +2240,7 @@ pub fn git_diff_scrollup() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "git_diff_scrollup";
     let content = read_fixture(fixture_name);
@@ -2120,6 +2258,7 @@ pub fn emacs_longbuf() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         60,
         284,
@@ -2132,6 +2271,7 @@ pub fn emacs_longbuf() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "emacs_longbuf_tutorial";
     let content = read_fixture(fixture_name);
@@ -2149,6 +2289,7 @@ pub fn top_and_quit() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         56,
         235,
@@ -2161,6 +2302,7 @@ pub fn top_and_quit() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "top_and_quit";
     let content = read_fixture(fixture_name);
@@ -2185,6 +2327,7 @@ pub fn exa_plus_omf_theme() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         56,
         235,
@@ -2197,6 +2340,7 @@ pub fn exa_plus_omf_theme() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "exa_plus_omf_theme";
     let content = read_fixture(fixture_name);
@@ -2214,6 +2358,7 @@ pub fn scroll_up() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         10,
         50,
@@ -2226,6 +2371,7 @@ pub fn scroll_up() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "scrolling";
     let content = read_fixture(fixture_name);
@@ -2244,6 +2390,7 @@ pub fn scroll_down() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         10,
         50,
@@ -2256,6 +2403,7 @@ pub fn scroll_down() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "scrolling";
     let content = read_fixture(fixture_name);
@@ -2275,6 +2423,7 @@ pub fn scroll_up_with_line_wraps() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         10,
         25,
@@ -2287,6 +2436,7 @@ pub fn scroll_up_with_line_wraps() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "scrolling";
     let content = read_fixture(fixture_name);
@@ -2305,6 +2455,7 @@ pub fn scroll_down_with_line_wraps() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         10,
         25,
@@ -2317,6 +2468,7 @@ pub fn scroll_down_with_line_wraps() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "scrolling";
     let content = read_fixture(fixture_name);
@@ -2336,6 +2488,7 @@ pub fn scroll_up_decrease_width_and_scroll_down() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         10,
         50,
@@ -2348,6 +2501,7 @@ pub fn scroll_up_decrease_width_and_scroll_down() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "scrolling";
     let content = read_fixture(fixture_name);
@@ -2372,6 +2526,7 @@ pub fn scroll_up_increase_width_and_scroll_down() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         10,
         25,
@@ -2384,6 +2539,7 @@ pub fn scroll_up_increase_width_and_scroll_down() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "scrolling";
     let content = read_fixture(fixture_name);
@@ -2408,6 +2564,7 @@ fn saved_cursor_across_resize() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         4,
         20,
@@ -2420,6 +2577,7 @@ fn saved_cursor_across_resize() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let mut parse = |s, grid: &mut Grid| {
         for b in Vec::from(s) {
@@ -2453,6 +2611,7 @@ fn saved_cursor_across_resize_longline() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         4,
         20,
@@ -2465,6 +2624,7 @@ fn saved_cursor_across_resize_longline() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let mut parse = |s, grid: &mut Grid| {
         for b in Vec::from(s) {
@@ -2491,6 +2651,7 @@ fn saved_cursor_across_resize_rewrap() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         4,
         4 * 8,
@@ -2503,6 +2664,7 @@ fn saved_cursor_across_resize_rewrap() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let mut parse = |s, grid: &mut Grid| {
         for b in Vec::from(s) {
@@ -2529,6 +2691,7 @@ pub fn move_cursor_below_scroll_region() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         34,
         114,
@@ -2541,6 +2704,7 @@ pub fn move_cursor_below_scroll_region() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "move_cursor_below_scroll_region";
     let content = read_fixture(fixture_name);
@@ -2558,6 +2722,7 @@ pub fn insert_wide_characters_in_existing_line() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         21,
         86,
@@ -2570,6 +2735,7 @@ pub fn insert_wide_characters_in_existing_line() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "chinese_characters_line_middle";
     let content = read_fixture(fixture_name);
@@ -2593,6 +2759,7 @@ pub fn full_screen_scroll_region_and_scroll_up() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         54,
         80,
@@ -2605,6 +2772,7 @@ pub fn full_screen_scroll_region_and_scroll_up() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "scroll_region_full_screen";
     let content = read_fixture(fixture_name);
@@ -2625,6 +2793,7 @@ pub fn ring_bell() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         134,
         64,
@@ -2637,6 +2806,7 @@ pub fn ring_bell() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "ring_bell";
     let content = read_fixture(fixture_name);
@@ -2654,6 +2824,7 @@ pub fn alternate_screen_change_size() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         20,
         20,
@@ -2666,6 +2837,7 @@ pub fn alternate_screen_change_size() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "alternate_screen_change_size";
     let content = read_fixture(fixture_name);
@@ -2687,6 +2859,7 @@ pub fn fzf_fullscreen() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         51,
         112,
@@ -2699,6 +2872,7 @@ pub fn fzf_fullscreen() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "fzf_fullscreen";
     let content = read_fixture(fixture_name);
@@ -2720,6 +2894,7 @@ pub fn replace_multiple_wide_characters_under_cursor() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         51,
         112,
@@ -2732,6 +2907,7 @@ pub fn replace_multiple_wide_characters_under_cursor() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "replace_multiple_wide_characters";
     let content = read_fixture(fixture_name);
@@ -2753,6 +2929,7 @@ pub fn replace_non_wide_characters_with_wide_characters() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         51,
         112,
@@ -2765,6 +2942,7 @@ pub fn replace_non_wide_characters_with_wide_characters() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "replace_non_wide_characters_with_wide_characters";
     let content = read_fixture(fixture_name);
@@ -2782,6 +2960,7 @@ pub fn scroll_down_ansi() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         51,
         112,
@@ -2794,6 +2973,7 @@ pub fn scroll_down_ansi() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "scroll_down";
     let content = read_fixture(fixture_name);
@@ -2811,6 +2991,7 @@ pub fn ansi_capital_t() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         51,
         112,
@@ -2823,6 +3004,7 @@ pub fn ansi_capital_t() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let content = "foo\u{1b}[14Tbar".as_bytes();
     for byte in content {
@@ -2839,6 +3021,7 @@ pub fn ansi_capital_s() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         51,
         112,
@@ -2851,6 +3034,7 @@ pub fn ansi_capital_s() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let content = "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nfoo\u{1b}[14Sbar".as_bytes();
     for byte in content {
@@ -2867,6 +3051,7 @@ fn terminal_pixel_size_reports() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         51,
         97,
@@ -2882,6 +3067,7 @@ fn terminal_pixel_size_reports() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "terminal_pixel_size_reports";
     let content = read_fixture(fixture_name);
@@ -2905,6 +3091,7 @@ fn terminal_pixel_size_reports_in_unsupported_terminals() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         51,
         97,
@@ -2917,6 +3104,7 @@ fn terminal_pixel_size_reports_in_unsupported_terminals() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "terminal_pixel_size_reports";
     let content = read_fixture(fixture_name);
@@ -2941,6 +3129,7 @@ pub fn ansi_csi_at_sign() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         51,
         112,
@@ -2953,6 +3142,7 @@ pub fn ansi_csi_at_sign() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let content = "foo\u{1b}[2D\u{1b}[2@".as_bytes();
     for byte in content {
@@ -2973,6 +3163,7 @@ pub fn sixel_images_are_reaped_when_scrolled_off() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         51,
         112,
@@ -2985,6 +3176,7 @@ pub fn sixel_images_are_reaped_when_scrolled_off() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let pane_content = read_fixture("sixel-image-500px.six");
     for byte in pane_content {
@@ -3014,6 +3206,7 @@ pub fn sixel_images_are_reaped_when_resetting() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         51,
         112,
@@ -3026,6 +3219,7 @@ pub fn sixel_images_are_reaped_when_resetting() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let pane_content = read_fixture("sixel-image-500px.six");
     for byte in pane_content {
@@ -3052,6 +3246,7 @@ pub fn sixel_image_in_alternate_buffer() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         30,
         112,
@@ -3064,6 +3259,7 @@ pub fn sixel_image_in_alternate_buffer() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
 
     let move_to_alternate_screen = "\u{1b}[?1049h";
@@ -3101,6 +3297,7 @@ pub fn sixel_with_image_scrolling_decsdm() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         30,
         112,
@@ -3113,6 +3310,7 @@ pub fn sixel_with_image_scrolling_decsdm() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
 
     // enter DECSDM
@@ -3169,6 +3367,7 @@ pub fn osc_4_background_query() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         51,
         97,
@@ -3181,6 +3380,7 @@ pub fn osc_4_background_query() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let content = "\u{1b}]10;?\u{1b}\\";
     for byte in content.as_bytes() {
@@ -3205,6 +3405,7 @@ pub fn osc_4_foreground_query() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         51,
         97,
@@ -3217,6 +3418,7 @@ pub fn osc_4_foreground_query() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let content = "\u{1b}]11;?\u{1b}\\";
     for byte in content.as_bytes() {
@@ -3243,6 +3445,7 @@ pub fn osc_4_color_query() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         51,
         97,
@@ -3255,6 +3458,7 @@ pub fn osc_4_color_query() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let content = "\u{1b}]4;222;?\u{1b}\\";
     for byte in content.as_bytes() {
@@ -3279,6 +3483,7 @@ pub fn xtsmgraphics_color_register_count() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         51,
         97,
@@ -3291,6 +3496,7 @@ pub fn xtsmgraphics_color_register_count() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let content = "\u{1b}[?1;1;S\u{1b}\\";
     for byte in content.as_bytes() {
@@ -3319,6 +3525,7 @@ pub fn xtsmgraphics_pixel_graphics_geometry() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         51,
         97,
@@ -3331,6 +3538,7 @@ pub fn xtsmgraphics_pixel_graphics_geometry() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let content = "\u{1b}[?2;1;S\u{1b}\\";
     for byte in content.as_bytes() {
@@ -3359,6 +3567,7 @@ pub fn cursor_hide_persists_through_alternate_screen() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         30,
         112,
@@ -3371,6 +3580,7 @@ pub fn cursor_hide_persists_through_alternate_screen() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
 
     let hide_cursor = "\u{1b}[?25l";
@@ -3413,6 +3623,7 @@ fn table_ui_component() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         41,
         110,
@@ -3425,6 +3636,7 @@ fn table_ui_component() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "table-ui-component";
     let content = read_fixture(fixture_name);
@@ -3442,6 +3654,7 @@ fn table_ui_component_with_coordinates() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         41,
         110,
@@ -3454,6 +3667,7 @@ fn table_ui_component_with_coordinates() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "table-ui-component-with-coordinates";
     let content = read_fixture(fixture_name);
@@ -3471,6 +3685,7 @@ fn ribbon_ui_component() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         41,
         110,
@@ -3483,6 +3698,7 @@ fn ribbon_ui_component() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "ribbon-ui-component";
     let content = read_fixture(fixture_name);
@@ -3500,6 +3716,7 @@ fn ribbon_ui_component_with_coordinates() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         41,
         110,
@@ -3512,6 +3729,7 @@ fn ribbon_ui_component_with_coordinates() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "ribbon-ui-component-with-coordinates";
     let content = read_fixture(fixture_name);
@@ -3529,6 +3747,7 @@ fn nested_list_ui_component() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         41,
         120,
@@ -3541,6 +3760,7 @@ fn nested_list_ui_component() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "nested-list-ui-component";
     let content = read_fixture(fixture_name);
@@ -3558,6 +3778,7 @@ fn nested_list_ui_component_with_coordinates() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         41,
         120,
@@ -3570,6 +3791,7 @@ fn nested_list_ui_component_with_coordinates() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "nested-list-ui-component-with-coordinates";
     let content = read_fixture(fixture_name);
@@ -3587,6 +3809,7 @@ fn text_ui_component() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         41,
         120,
@@ -3599,6 +3822,7 @@ fn text_ui_component() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "text-ui-component";
     let content = read_fixture(fixture_name);
@@ -3616,6 +3840,7 @@ fn text_ui_component_with_coordinates() {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         41,
         120,
@@ -3628,6 +3853,7 @@ fn text_ui_component_with_coordinates() {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let fixture_name = "text-ui-component-with-coordinates";
     let content = read_fixture(fixture_name);

@@ -70,6 +70,7 @@ fn take_snapshots_and_cursor_coordinates_from_render_events<'a>(
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         screen_size.rows,
         screen_size.cols,
@@ -82,6 +83,7 @@ fn take_snapshots_and_cursor_coordinates_from_render_events<'a>(
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let snapshots: Vec<(Option<(usize, usize)>, String)> = all_events
         .filter_map(|server_instruction| {
@@ -252,6 +254,7 @@ fn create_new_screen(size: Size) -> Screen {
     let debug = false;
     let styled_underlines = true;
     let arrow_fonts = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let screen = Screen::new(
         bus,
         &client_attributes,
@@ -271,6 +274,7 @@ fn create_new_screen(size: Size) -> Screen {
         styled_underlines,
         arrow_fonts,
         layout_dir,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     screen
 }

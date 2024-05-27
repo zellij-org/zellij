@@ -237,6 +237,7 @@ fn read_from_channel(
                 let debug = false;
                 let arrow_fonts = true;
                 let styled_underlines = true;
+                let explicitly_disable_kitty_keyboard_protocol = false;
                 let mut terminal_output = TerminalPane::new(
                     0,
                     pane_geom,
@@ -253,6 +254,7 @@ fn read_from_channel(
                     debug,
                     arrow_fonts,
                     styled_underlines,
+                    explicitly_disable_kitty_keyboard_protocol,
                 ); // 0 is the pane index
                 loop {
                     if !should_keep_running.load(Ordering::SeqCst) {

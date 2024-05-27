@@ -226,6 +226,7 @@ fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut tab = Tab::new(
         index,
         position,
@@ -251,6 +252,7 @@ fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -303,6 +305,7 @@ fn create_new_tab_with_swap_layouts(
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut tab = Tab::new(
         index,
         position,
@@ -328,6 +331,7 @@ fn create_new_tab_with_swap_layouts(
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let (
         base_layout,
@@ -382,6 +386,7 @@ fn create_new_tab_with_os_api(
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut tab = Tab::new(
         index,
         position,
@@ -407,6 +412,7 @@ fn create_new_tab_with_os_api(
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -447,6 +453,7 @@ fn create_new_tab_with_layout(size: Size, default_mode: ModeInfo, layout: &str) 
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut tab = Tab::new(
         index,
         position,
@@ -472,6 +479,7 @@ fn create_new_tab_with_layout(size: Size, default_mode: ModeInfo, layout: &str) 
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let pane_ids = tab_layout
         .extract_run_instructions()
@@ -526,6 +534,7 @@ fn create_new_tab_with_mock_pty_writer(
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut tab = Tab::new(
         index,
         position,
@@ -551,6 +560,7 @@ fn create_new_tab_with_mock_pty_writer(
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -596,6 +606,7 @@ fn create_new_tab_with_sixel_support(
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut tab = Tab::new(
         index,
         position,
@@ -621,6 +632,7 @@ fn create_new_tab_with_sixel_support(
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -659,6 +671,7 @@ fn take_snapshot(ansi_instructions: &str, rows: usize, columns: usize, palette: 
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         rows,
         columns,
@@ -671,6 +684,7 @@ fn take_snapshot(ansi_instructions: &str, rows: usize, columns: usize, palette: 
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let mut vte_parser = vte::Parser::new();
     for &byte in ansi_instructions.as_bytes() {
@@ -694,6 +708,7 @@ fn take_snapshot_with_sixel(
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         rows,
         columns,
@@ -706,6 +721,7 @@ fn take_snapshot_with_sixel(
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let mut vte_parser = vte::Parser::new();
     for &byte in ansi_instructions.as_bytes() {
@@ -726,6 +742,7 @@ fn take_snapshot_and_cursor_position(
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         rows,
         columns,
@@ -738,6 +755,7 @@ fn take_snapshot_and_cursor_position(
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let mut vte_parser = vte::Parser::new();
     for &byte in ansi_instructions.as_bytes() {
@@ -2882,11 +2900,11 @@ fn pane_bracketed_paste_ignored_when_not_in_bracketed_paste_mode() {
 
     let bracketed_paste_start = vec![27, 91, 50, 48, 48, 126]; // \u{1b}[200~
     let bracketed_paste_end = vec![27, 91, 50, 48, 49, 126]; // \u{1b}[201
-    tab.write_to_active_terminal(bracketed_paste_start, client_id)
+    tab.write_to_active_terminal(&None, bracketed_paste_start, false, client_id)
         .unwrap();
-    tab.write_to_active_terminal("test".as_bytes().to_vec(), client_id)
+    tab.write_to_active_terminal(&None, "test".as_bytes().to_vec(), false, client_id)
         .unwrap();
-    tab.write_to_active_terminal(bracketed_paste_end, client_id)
+    tab.write_to_active_terminal(&None, bracketed_paste_end, false, client_id)
         .unwrap();
 
     pty_instruction_bus.exit();

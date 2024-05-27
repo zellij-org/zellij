@@ -134,11 +134,11 @@ Config {
                     'h',
                 ),
                 key_modifiers: {
-                    Alt,
+                    Ctrl,
                 },
             }: [
-                MoveFocusOrTab(
-                    Left,
+                SwitchToMode(
+                    Move,
                 ),
             ],
             KeyWithModifier {
@@ -146,11 +146,11 @@ Config {
                     'h',
                 ),
                 key_modifiers: {
-                    Ctrl,
+                    Alt,
                 },
             }: [
-                SwitchToMode(
-                    Move,
+                MoveFocusOrTab(
+                    Left,
                 ),
             ],
             KeyWithModifier {
@@ -206,19 +206,6 @@ Config {
                     'n',
                 ),
                 key_modifiers: {
-                    Alt,
-                },
-            }: [
-                NewPane(
-                    None,
-                    None,
-                ),
-            ],
-            KeyWithModifier {
-                bare_key: Char(
-                    'n',
-                ),
-                key_modifiers: {
                     Ctrl,
                 },
             }: [
@@ -228,14 +215,15 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Char(
-                    'o',
+                    'n',
                 ),
                 key_modifiers: {
                     Alt,
                 },
             }: [
-                MoveTab(
-                    Right,
+                NewPane(
+                    None,
+                    None,
                 ),
             ],
             KeyWithModifier {
@@ -248,6 +236,18 @@ Config {
             }: [
                 SwitchToMode(
                     Session,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'o',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveTab(
+                    Right,
                 ),
             ],
             KeyWithModifier {
@@ -582,11 +582,11 @@ Config {
                     'h',
                 ),
                 key_modifiers: {
-                    Alt,
+                    Ctrl,
                 },
             }: [
-                MoveFocusOrTab(
-                    Left,
+                SwitchToMode(
+                    Move,
                 ),
             ],
             KeyWithModifier {
@@ -594,11 +594,11 @@ Config {
                     'h',
                 ),
                 key_modifiers: {
-                    Ctrl,
+                    Alt,
                 },
             }: [
-                SwitchToMode(
-                    Move,
+                MoveFocusOrTab(
+                    Left,
                 ),
             ],
             KeyWithModifier {
@@ -693,19 +693,6 @@ Config {
                     'n',
                 ),
                 key_modifiers: {
-                    Alt,
-                },
-            }: [
-                NewPane(
-                    None,
-                    None,
-                ),
-            ],
-            KeyWithModifier {
-                bare_key: Char(
-                    'n',
-                ),
-                key_modifiers: {
                     Ctrl,
                 },
             }: [
@@ -715,14 +702,15 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Char(
-                    'o',
+                    'n',
                 ),
                 key_modifiers: {
                     Alt,
                 },
             }: [
-                MoveTab(
-                    Right,
+                NewPane(
+                    None,
+                    None,
                 ),
             ],
             KeyWithModifier {
@@ -735,6 +723,18 @@ Config {
             }: [
                 SwitchToMode(
                     Session,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'o',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveTab(
+                    Right,
                 ),
             ],
             KeyWithModifier {
@@ -1024,11 +1024,11 @@ Config {
                     'h',
                 ),
                 key_modifiers: {
-                    Alt,
+                    Ctrl,
                 },
             }: [
-                MoveFocusOrTab(
-                    Left,
+                SwitchToMode(
+                    Move,
                 ),
             ],
             KeyWithModifier {
@@ -1036,11 +1036,11 @@ Config {
                     'h',
                 ),
                 key_modifiers: {
-                    Ctrl,
+                    Alt,
                 },
             }: [
-                SwitchToMode(
-                    Move,
+                MoveFocusOrTab(
+                    Left,
                 ),
             ],
             KeyWithModifier {
@@ -1140,19 +1140,6 @@ Config {
                     'n',
                 ),
                 key_modifiers: {
-                    Alt,
-                },
-            }: [
-                NewPane(
-                    None,
-                    None,
-                ),
-            ],
-            KeyWithModifier {
-                bare_key: Char(
-                    'n',
-                ),
-                key_modifiers: {
                     Ctrl,
                 },
             }: [
@@ -1162,14 +1149,15 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Char(
-                    'o',
+                    'n',
                 ),
                 key_modifiers: {
                     Alt,
                 },
             }: [
-                MoveTab(
-                    Right,
+                NewPane(
+                    None,
+                    None,
                 ),
             ],
             KeyWithModifier {
@@ -1182,6 +1170,18 @@ Config {
             }: [
                 SwitchToMode(
                     Session,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'o',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveTab(
+                    Right,
                 ),
             ],
             KeyWithModifier {
@@ -1615,11 +1615,11 @@ Config {
                     'h',
                 ),
                 key_modifiers: {
-                    Alt,
+                    Ctrl,
                 },
             }: [
-                MoveFocusOrTab(
-                    Left,
+                SwitchToMode(
+                    Move,
                 ),
             ],
             KeyWithModifier {
@@ -1627,11 +1627,11 @@ Config {
                     'h',
                 ),
                 key_modifiers: {
-                    Ctrl,
+                    Alt,
                 },
             }: [
-                SwitchToMode(
-                    Move,
+                MoveFocusOrTab(
+                    Left,
                 ),
             ],
             KeyWithModifier {
@@ -1728,19 +1728,6 @@ Config {
                     'n',
                 ),
                 key_modifiers: {
-                    Alt,
-                },
-            }: [
-                NewPane(
-                    None,
-                    None,
-                ),
-            ],
-            KeyWithModifier {
-                bare_key: Char(
-                    'n',
-                ),
-                key_modifiers: {
                     Ctrl,
                 },
             }: [
@@ -1750,14 +1737,15 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Char(
-                    'o',
+                    'n',
                 ),
                 key_modifiers: {
                     Alt,
                 },
             }: [
-                MoveTab(
-                    Right,
+                NewPane(
+                    None,
+                    None,
                 ),
             ],
             KeyWithModifier {
@@ -1770,6 +1758,18 @@ Config {
             }: [
                 SwitchToMode(
                     Session,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'o',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveTab(
+                    Right,
                 ),
             ],
             KeyWithModifier {
@@ -2091,11 +2091,11 @@ Config {
                     'h',
                 ),
                 key_modifiers: {
-                    Alt,
+                    Ctrl,
                 },
             }: [
-                MoveFocusOrTab(
-                    Left,
+                SwitchToMode(
+                    Move,
                 ),
             ],
             KeyWithModifier {
@@ -2103,11 +2103,11 @@ Config {
                     'h',
                 ),
                 key_modifiers: {
-                    Ctrl,
+                    Alt,
                 },
             }: [
-                SwitchToMode(
-                    Move,
+                MoveFocusOrTab(
+                    Left,
                 ),
             ],
             KeyWithModifier {
@@ -2187,19 +2187,6 @@ Config {
                     'n',
                 ),
                 key_modifiers: {
-                    Alt,
-                },
-            }: [
-                NewPane(
-                    None,
-                    None,
-                ),
-            ],
-            KeyWithModifier {
-                bare_key: Char(
-                    'n',
-                ),
-                key_modifiers: {
                     Ctrl,
                 },
             }: [
@@ -2209,14 +2196,15 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Char(
-                    'o',
+                    'n',
                 ),
                 key_modifiers: {
                     Alt,
                 },
             }: [
-                MoveTab(
-                    Right,
+                NewPane(
+                    None,
+                    None,
                 ),
             ],
             KeyWithModifier {
@@ -2229,6 +2217,18 @@ Config {
             }: [
                 SwitchToMode(
                     Session,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'o',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveTab(
+                    Right,
                 ),
             ],
             KeyWithModifier {
@@ -2458,11 +2458,11 @@ Config {
                     'h',
                 ),
                 key_modifiers: {
-                    Alt,
+                    Ctrl,
                 },
             }: [
-                MoveFocusOrTab(
-                    Left,
+                SwitchToMode(
+                    Move,
                 ),
             ],
             KeyWithModifier {
@@ -2470,11 +2470,11 @@ Config {
                     'h',
                 ),
                 key_modifiers: {
-                    Ctrl,
+                    Alt,
                 },
             }: [
-                SwitchToMode(
-                    Move,
+                MoveFocusOrTab(
+                    Left,
                 ),
             ],
             KeyWithModifier {
@@ -2530,19 +2530,6 @@ Config {
                     'n',
                 ),
                 key_modifiers: {
-                    Alt,
-                },
-            }: [
-                NewPane(
-                    None,
-                    None,
-                ),
-            ],
-            KeyWithModifier {
-                bare_key: Char(
-                    'n',
-                ),
-                key_modifiers: {
                     Ctrl,
                 },
             }: [
@@ -2552,14 +2539,15 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Char(
-                    'o',
+                    'n',
                 ),
                 key_modifiers: {
                     Alt,
                 },
             }: [
-                MoveTab(
-                    Right,
+                NewPane(
+                    None,
+                    None,
                 ),
             ],
             KeyWithModifier {
@@ -2572,6 +2560,18 @@ Config {
             }: [
                 SwitchToMode(
                     Session,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'o',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveTab(
+                    Right,
                 ),
             ],
             KeyWithModifier {
@@ -2849,11 +2849,11 @@ Config {
                     'h',
                 ),
                 key_modifiers: {
-                    Alt,
+                    Ctrl,
                 },
             }: [
-                MoveFocusOrTab(
-                    Left,
+                SwitchToMode(
+                    Move,
                 ),
             ],
             KeyWithModifier {
@@ -2861,11 +2861,11 @@ Config {
                     'h',
                 ),
                 key_modifiers: {
-                    Ctrl,
+                    Alt,
                 },
             }: [
-                SwitchToMode(
-                    Move,
+                MoveFocusOrTab(
+                    Left,
                 ),
             ],
             KeyWithModifier {
@@ -2955,12 +2955,11 @@ Config {
                     'n',
                 ),
                 key_modifiers: {
-                    Alt,
+                    Ctrl,
                 },
             }: [
-                NewPane(
-                    None,
-                    None,
+                SwitchToMode(
+                    Resize,
                 ),
             ],
             KeyWithModifier {
@@ -2968,11 +2967,12 @@ Config {
                     'n',
                 ),
                 key_modifiers: {
-                    Ctrl,
+                    Alt,
                 },
             }: [
-                SwitchToMode(
-                    Resize,
+                NewPane(
+                    None,
+                    None,
                 ),
             ],
             KeyWithModifier {
@@ -2990,11 +2990,11 @@ Config {
                     'o',
                 ),
                 key_modifiers: {
-                    Alt,
+                    Ctrl,
                 },
             }: [
-                MoveTab(
-                    Right,
+                SwitchToMode(
+                    Session,
                 ),
             ],
             KeyWithModifier {
@@ -3002,11 +3002,11 @@ Config {
                     'o',
                 ),
                 key_modifiers: {
-                    Ctrl,
+                    Alt,
                 },
             }: [
-                SwitchToMode(
-                    Session,
+                MoveTab(
+                    Right,
                 ),
             ],
             KeyWithModifier {
@@ -3241,11 +3241,11 @@ Config {
                     'h',
                 ),
                 key_modifiers: {
-                    Alt,
+                    Ctrl,
                 },
             }: [
-                MoveFocusOrTab(
-                    Left,
+                SwitchToMode(
+                    Move,
                 ),
             ],
             KeyWithModifier {
@@ -3253,11 +3253,11 @@ Config {
                     'h',
                 ),
                 key_modifiers: {
-                    Ctrl,
+                    Alt,
                 },
             }: [
-                SwitchToMode(
-                    Move,
+                MoveFocusOrTab(
+                    Left,
                 ),
             ],
             KeyWithModifier {
@@ -3313,19 +3313,6 @@ Config {
                     'n',
                 ),
                 key_modifiers: {
-                    Alt,
-                },
-            }: [
-                NewPane(
-                    None,
-                    None,
-                ),
-            ],
-            KeyWithModifier {
-                bare_key: Char(
-                    'n',
-                ),
-                key_modifiers: {
                     Ctrl,
                 },
             }: [
@@ -3335,14 +3322,15 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Char(
-                    'o',
+                    'n',
                 ),
                 key_modifiers: {
                     Alt,
                 },
             }: [
-                MoveTab(
-                    Right,
+                NewPane(
+                    None,
+                    None,
                 ),
             ],
             KeyWithModifier {
@@ -3355,6 +3343,18 @@ Config {
             }: [
                 SwitchToMode(
                     Session,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'o',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveTab(
+                    Right,
                 ),
             ],
             KeyWithModifier {
@@ -3562,11 +3562,11 @@ Config {
                     'h',
                 ),
                 key_modifiers: {
-                    Alt,
+                    Ctrl,
                 },
             }: [
-                MoveFocusOrTab(
-                    Left,
+                SwitchToMode(
+                    Move,
                 ),
             ],
             KeyWithModifier {
@@ -3574,11 +3574,11 @@ Config {
                     'h',
                 ),
                 key_modifiers: {
-                    Ctrl,
+                    Alt,
                 },
             }: [
-                SwitchToMode(
-                    Move,
+                MoveFocusOrTab(
+                    Left,
                 ),
             ],
             KeyWithModifier {
@@ -3634,19 +3634,6 @@ Config {
                     'n',
                 ),
                 key_modifiers: {
-                    Alt,
-                },
-            }: [
-                NewPane(
-                    None,
-                    None,
-                ),
-            ],
-            KeyWithModifier {
-                bare_key: Char(
-                    'n',
-                ),
-                key_modifiers: {
                     Ctrl,
                 },
             }: [
@@ -3656,14 +3643,15 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Char(
-                    'o',
+                    'n',
                 ),
                 key_modifiers: {
                     Alt,
                 },
             }: [
-                MoveTab(
-                    Right,
+                NewPane(
+                    None,
+                    None,
                 ),
             ],
             KeyWithModifier {
@@ -3676,6 +3664,18 @@ Config {
             }: [
                 SwitchToMode(
                     Session,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'o',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveTab(
+                    Right,
                 ),
             ],
             KeyWithModifier {
@@ -3879,11 +3879,11 @@ Config {
                     'h',
                 ),
                 key_modifiers: {
-                    Alt,
+                    Ctrl,
                 },
             }: [
-                MoveFocusOrTab(
-                    Left,
+                SwitchToMode(
+                    Move,
                 ),
             ],
             KeyWithModifier {
@@ -3891,11 +3891,11 @@ Config {
                     'h',
                 ),
                 key_modifiers: {
-                    Ctrl,
+                    Alt,
                 },
             }: [
-                SwitchToMode(
-                    Move,
+                MoveFocusOrTab(
+                    Left,
                 ),
             ],
             KeyWithModifier {
@@ -3951,19 +3951,6 @@ Config {
                     'n',
                 ),
                 key_modifiers: {
-                    Alt,
-                },
-            }: [
-                NewPane(
-                    None,
-                    None,
-                ),
-            ],
-            KeyWithModifier {
-                bare_key: Char(
-                    'n',
-                ),
-                key_modifiers: {
                     Ctrl,
                 },
             }: [
@@ -3973,14 +3960,15 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Char(
-                    'o',
+                    'n',
                 ),
                 key_modifiers: {
                     Alt,
                 },
             }: [
-                MoveTab(
-                    Right,
+                NewPane(
+                    None,
+                    None,
                 ),
             ],
             KeyWithModifier {
@@ -3993,6 +3981,18 @@ Config {
             }: [
                 SwitchToMode(
                     Normal,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'o',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveTab(
+                    Right,
                 ),
             ],
             KeyWithModifier {
@@ -4267,11 +4267,11 @@ Config {
                     'h',
                 ),
                 key_modifiers: {
-                    Alt,
+                    Ctrl,
                 },
             }: [
-                MoveFocusOrTab(
-                    Left,
+                SwitchToMode(
+                    Normal,
                 ),
             ],
             KeyWithModifier {
@@ -4279,11 +4279,11 @@ Config {
                     'h',
                 ),
                 key_modifiers: {
-                    Ctrl,
+                    Alt,
                 },
             }: [
-                SwitchToMode(
-                    Normal,
+                MoveFocusOrTab(
+                    Left,
                 ),
             ],
             KeyWithModifier {
@@ -4385,19 +4385,6 @@ Config {
                     'n',
                 ),
                 key_modifiers: {
-                    Alt,
-                },
-            }: [
-                NewPane(
-                    None,
-                    None,
-                ),
-            ],
-            KeyWithModifier {
-                bare_key: Char(
-                    'n',
-                ),
-                key_modifiers: {
                     Ctrl,
                 },
             }: [
@@ -4407,14 +4394,15 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Char(
-                    'o',
+                    'n',
                 ),
                 key_modifiers: {
                     Alt,
                 },
             }: [
-                MoveTab(
-                    Right,
+                NewPane(
+                    None,
+                    None,
                 ),
             ],
             KeyWithModifier {
@@ -4427,6 +4415,18 @@ Config {
             }: [
                 SwitchToMode(
                     Session,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'o',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveTab(
+                    Right,
                 ),
             ],
             KeyWithModifier {
@@ -4637,11 +4637,11 @@ Config {
                     'h',
                 ),
                 key_modifiers: {
-                    Alt,
+                    Ctrl,
                 },
             }: [
-                MoveFocusOrTab(
-                    Left,
+                SwitchToMode(
+                    Move,
                 ),
             ],
             KeyWithModifier {
@@ -4649,11 +4649,11 @@ Config {
                     'h',
                 ),
                 key_modifiers: {
-                    Ctrl,
+                    Alt,
                 },
             }: [
-                SwitchToMode(
-                    Move,
+                MoveFocusOrTab(
+                    Left,
                 ),
             ],
             KeyWithModifier {
@@ -4709,19 +4709,6 @@ Config {
                     'n',
                 ),
                 key_modifiers: {
-                    Alt,
-                },
-            }: [
-                NewPane(
-                    None,
-                    None,
-                ),
-            ],
-            KeyWithModifier {
-                bare_key: Char(
-                    'n',
-                ),
-                key_modifiers: {
                     Ctrl,
                 },
             }: [
@@ -4731,14 +4718,15 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Char(
-                    'o',
+                    'n',
                 ),
                 key_modifiers: {
                     Alt,
                 },
             }: [
-                MoveTab(
-                    Right,
+                NewPane(
+                    None,
+                    None,
                 ),
             ],
             KeyWithModifier {
@@ -4751,6 +4739,18 @@ Config {
             }: [
                 SwitchToMode(
                     Session,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'o',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveTab(
+                    Right,
                 ),
             ],
             KeyWithModifier {
@@ -5029,9 +5029,11 @@ Config {
                 },
             }: [
                 Write(
+                    None,
                     [
                         2,
                     ],
+                    false,
                 ),
                 SwitchToMode(
                     Normal,
@@ -5092,11 +5094,11 @@ Config {
                     'h',
                 ),
                 key_modifiers: {
-                    Alt,
+                    Ctrl,
                 },
             }: [
-                MoveFocusOrTab(
-                    Left,
+                SwitchToMode(
+                    Move,
                 ),
             ],
             KeyWithModifier {
@@ -5104,11 +5106,11 @@ Config {
                     'h',
                 ),
                 key_modifiers: {
-                    Ctrl,
+                    Alt,
                 },
             }: [
-                SwitchToMode(
-                    Move,
+                MoveFocusOrTab(
+                    Left,
                 ),
             ],
             KeyWithModifier {
@@ -5214,12 +5216,11 @@ Config {
                     'n',
                 ),
                 key_modifiers: {
-                    Alt,
+                    Ctrl,
                 },
             }: [
-                NewPane(
-                    None,
-                    None,
+                SwitchToMode(
+                    Resize,
                 ),
             ],
             KeyWithModifier {
@@ -5227,11 +5228,12 @@ Config {
                     'n',
                 ),
                 key_modifiers: {
-                    Ctrl,
+                    Alt,
                 },
             }: [
-                SwitchToMode(
-                    Resize,
+                NewPane(
+                    None,
+                    None,
                 ),
             ],
             KeyWithModifier {
@@ -5247,11 +5249,11 @@ Config {
                     'o',
                 ),
                 key_modifiers: {
-                    Alt,
+                    Ctrl,
                 },
             }: [
-                MoveTab(
-                    Right,
+                SwitchToMode(
+                    Session,
                 ),
             ],
             KeyWithModifier {
@@ -5259,11 +5261,11 @@ Config {
                     'o',
                 ),
                 key_modifiers: {
-                    Ctrl,
+                    Alt,
                 },
             }: [
-                SwitchToMode(
-                    Session,
+                MoveTab(
+                    Right,
                 ),
             ],
             KeyWithModifier {
@@ -5390,6 +5392,7 @@ Config {
         styled_underlines: None,
         serialization_interval: None,
         disable_session_metadata: None,
+        support_kitty_keyboard_protocol: None,
     },
     themes: {
         "other-theme-from-config": Theme {
