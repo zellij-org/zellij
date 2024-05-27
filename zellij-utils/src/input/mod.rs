@@ -18,7 +18,7 @@ pub use not_wasm::*;
 #[cfg(not(target_family = "wasm"))]
 mod not_wasm {
     use crate::{
-        data::{InputMode, KeyWithModifier, BareKey, KeyModifier, ModeInfo, PluginCapabilities},
+        data::{BareKey, InputMode, KeyModifier, KeyWithModifier, ModeInfo, PluginCapabilities},
         envs,
         ipc::ClientAttributes,
     };
@@ -108,7 +108,9 @@ mod not_wasm {
                     KeyWithModifier::new_with_modifiers(BareKey::Char(c), modifiers)
                 }
             },
-            KeyCode::Backspace => KeyWithModifier::new_with_modifiers(BareKey::Backspace, modifiers),
+            KeyCode::Backspace => {
+                KeyWithModifier::new_with_modifiers(BareKey::Backspace, modifiers)
+            },
             KeyCode::LeftArrow | KeyCode::ApplicationLeftArrow => {
                 KeyWithModifier::new_with_modifiers(BareKey::Left, modifiers)
             },

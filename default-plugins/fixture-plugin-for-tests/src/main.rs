@@ -144,7 +144,9 @@ impl ZellijPlugin for State {
                 BareKey::Char('6') if key.has_no_modifiers() => close_focused_tab(),
                 BareKey::Char('7') if key.has_no_modifiers() => undo_rename_tab(),
                 BareKey::Char('8') if key.has_no_modifiers() => quit_zellij(),
-                BareKey::Char('a') if key.has_modifiers(&[KeyModifier::Ctrl]) => previous_swap_layout(),
+                BareKey::Char('a') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
+                    previous_swap_layout()
+                },
                 BareKey::Char('b') if key.has_modifiers(&[KeyModifier::Ctrl]) => next_swap_layout(),
                 BareKey::Char('c') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
                     let tab_name = "my tab name";
@@ -295,7 +297,9 @@ impl ZellijPlugin for State {
                 BareKey::Char('5') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
                     switch_session(Some("my_new_session"));
                 },
-                BareKey::Char('6') if key.has_modifiers(&[KeyModifier::Ctrl]) => disconnect_other_clients(),
+                BareKey::Char('6') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
+                    disconnect_other_clients()
+                },
                 BareKey::Char('7') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
                     switch_session_with_layout(
                         Some("my_other_new_session"),

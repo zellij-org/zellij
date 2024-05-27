@@ -16,7 +16,10 @@ use std::time::{self, Instant};
 use zellij_utils::input::command::RunCommand;
 use zellij_utils::pane_size::Offset;
 use zellij_utils::{
-    data::{InputMode, Palette, PaletteColor, PaneId as ZellijUtilsPaneId, Style, KeyWithModifier, BareKey},
+    data::{
+        BareKey, InputMode, KeyWithModifier, Palette, PaletteColor, PaneId as ZellijUtilsPaneId,
+        Style,
+    },
     errors::prelude::*,
     input::layout::Run,
     pane_size::PaneGeom,
@@ -190,12 +193,16 @@ impl Pane for TerminalPane {
             .cursor_coordinates()
             .map(|(x, y)| (x + left, y + top))
     }
-    fn adjust_input_to_terminal(&mut self, key_with_modifier: &Option<KeyWithModifier>, raw_input_bytes: Vec<u8>, raw_input_bytes_are_kitty: bool) -> Option<AdjustedInput> {
+    fn adjust_input_to_terminal(
+        &mut self,
+        key_with_modifier: &Option<KeyWithModifier>,
+        raw_input_bytes: Vec<u8>,
+        raw_input_bytes_are_kitty: bool,
+    ) -> Option<AdjustedInput> {
         // there are some cases in which the terminal state means that input sent to it
         // needs to be adjusted.
         // here we match against those cases - if need be, we adjust the input and if not
         // we send back the original input
-
 
         if !self.grid.bracketed_paste_mode {
             // Zellij itself operates in bracketed paste mode, so the terminal sends these
@@ -211,11 +218,23 @@ impl Pane for TerminalPane {
         }
 
         if self.is_held.is_some() {
-            if key_with_modifier.as_ref().map(|k| k.is_key_without_modifier(BareKey::Enter)).unwrap_or(false) {
+            if key_with_modifier
+                .as_ref()
+                .map(|k| k.is_key_without_modifier(BareKey::Enter))
+                .unwrap_or(false)
+            {
                 self.handle_held_run()
-            } else if key_with_modifier.as_ref().map(|k| k.is_key_without_modifier(BareKey::Esc)).unwrap_or(false) {
+            } else if key_with_modifier
+                .as_ref()
+                .map(|k| k.is_key_without_modifier(BareKey::Esc))
+                .unwrap_or(false)
+            {
                 self.handle_held_drop_to_shell()
-            } else if key_with_modifier.as_ref().map(|k| k.is_key_with_ctrl_modifier(BareKey::Char('c'))).unwrap_or(false) {
+            } else if key_with_modifier
+                .as_ref()
+                .map(|k| k.is_key_with_ctrl_modifier(BareKey::Char('c')))
+                .unwrap_or(false)
+            {
                 Some(AdjustedInput::CloseThisPane)
             } else {
                 match raw_input_bytes.as_slice() {
@@ -227,9 +246,17 @@ impl Pane for TerminalPane {
             }
         } else {
             if self.grid.supports_kitty_keyboard_protocol {
-                self.adjust_input_to_terminal_with_kitty_keyboard_protocol(key_with_modifier, raw_input_bytes, raw_input_bytes_are_kitty)
+                self.adjust_input_to_terminal_with_kitty_keyboard_protocol(
+                    key_with_modifier,
+                    raw_input_bytes,
+                    raw_input_bytes_are_kitty,
+                )
             } else {
-                self.adjust_input_to_terminal_without_kitty_keyboard_protocol(key_with_modifier, raw_input_bytes, raw_input_bytes_are_kitty)
+                self.adjust_input_to_terminal_without_kitty_keyboard_protocol(
+                    key_with_modifier,
+                    raw_input_bytes,
+                    raw_input_bytes_are_kitty,
+                )
             }
         }
     }
@@ -867,20 +894,35 @@ impl TerminalPane {
             self.banner = None;
         }
     }
-    fn adjust_input_to_terminal_with_kitty_keyboard_protocol(&self, key: &Option<KeyWithModifier>, raw_input_bytes: Vec<u8>, raw_input_bytes_are_kitty: bool) -> Option<AdjustedInput> {
+    fn adjust_input_to_terminal_with_kitty_keyboard_protocol(
+        &self,
+        key: &Option<KeyWithModifier>,
+        raw_input_bytes: Vec<u8>,
+        raw_input_bytes_are_kitty: bool,
+    ) -> Option<AdjustedInput> {
         if raw_input_bytes_are_kitty {
             Some(AdjustedInput::WriteBytesToTerminal(raw_input_bytes))
         } else {
             // here what happens is that the host terminal is operating in non "kitty keys" mode, but
             // this terminal pane *is* operating in "kitty keys" mode - so we need to serialize the "non kitty"
             // key to a "kitty key"
-            key.as_ref().and_then(|k| k.serialize_kitty()).map(|s| AdjustedInput::WriteBytesToTerminal(s.as_bytes().to_vec()))
+            key.as_ref()
+                .and_then(|k| k.serialize_kitty())
+                .map(|s| AdjustedInput::WriteBytesToTerminal(s.as_bytes().to_vec()))
         }
-
     }
-    fn adjust_input_to_terminal_without_kitty_keyboard_protocol(&self, key: &Option<KeyWithModifier>, raw_input_bytes: Vec<u8>, raw_input_bytes_are_kitty: bool) -> Option<AdjustedInput> {
+    fn adjust_input_to_terminal_without_kitty_keyboard_protocol(
+        &self,
+        key: &Option<KeyWithModifier>,
+        raw_input_bytes: Vec<u8>,
+        raw_input_bytes_are_kitty: bool,
+    ) -> Option<AdjustedInput> {
         if self.grid.new_line_mode {
-            let key_is_enter = raw_input_bytes.as_slice() == &[13] || key.as_ref().map(|k| k.is_key_without_modifier(BareKey::Enter)).unwrap_or(false);
+            let key_is_enter = raw_input_bytes.as_slice() == &[13]
+                || key
+                    .as_ref()
+                    .map(|k| k.is_key_without_modifier(BareKey::Enter))
+                    .unwrap_or(false);
             if key_is_enter {
                 // LNM - carriage return is followed by linefeed
                 return Some(AdjustedInput::WriteBytesToTerminal(
@@ -889,12 +931,36 @@ impl TerminalPane {
             };
         }
         if self.grid.cursor_key_mode {
-            let key_is_left_arrow = raw_input_bytes.as_slice() == LEFT_ARROW || key.as_ref().map(|k| k.is_key_without_modifier(BareKey::Left)).unwrap_or(false);
-            let key_is_right_arrow = raw_input_bytes.as_slice() == RIGHT_ARROW || key.as_ref().map(|k| k.is_key_without_modifier(BareKey::Right)).unwrap_or(false);
-            let key_is_up_arrow = raw_input_bytes.as_slice() == UP_ARROW || key.as_ref().map(|k| k.is_key_without_modifier(BareKey::Up)).unwrap_or(false);
-            let key_is_down_arrow = raw_input_bytes.as_slice() == DOWN_ARROW || key.as_ref().map(|k| k.is_key_without_modifier(BareKey::Down)).unwrap_or(false);
-            let key_is_home_key = raw_input_bytes.as_slice() == HOME_KEY || key.as_ref().map(|k| k.is_key_without_modifier(BareKey::Home)).unwrap_or(false);
-            let key_is_end_key = raw_input_bytes.as_slice() == END_KEY || key.as_ref().map(|k| k.is_key_without_modifier(BareKey::End)).unwrap_or(false);
+            let key_is_left_arrow = raw_input_bytes.as_slice() == LEFT_ARROW
+                || key
+                    .as_ref()
+                    .map(|k| k.is_key_without_modifier(BareKey::Left))
+                    .unwrap_or(false);
+            let key_is_right_arrow = raw_input_bytes.as_slice() == RIGHT_ARROW
+                || key
+                    .as_ref()
+                    .map(|k| k.is_key_without_modifier(BareKey::Right))
+                    .unwrap_or(false);
+            let key_is_up_arrow = raw_input_bytes.as_slice() == UP_ARROW
+                || key
+                    .as_ref()
+                    .map(|k| k.is_key_without_modifier(BareKey::Up))
+                    .unwrap_or(false);
+            let key_is_down_arrow = raw_input_bytes.as_slice() == DOWN_ARROW
+                || key
+                    .as_ref()
+                    .map(|k| k.is_key_without_modifier(BareKey::Down))
+                    .unwrap_or(false);
+            let key_is_home_key = raw_input_bytes.as_slice() == HOME_KEY
+                || key
+                    .as_ref()
+                    .map(|k| k.is_key_without_modifier(BareKey::Home))
+                    .unwrap_or(false);
+            let key_is_end_key = raw_input_bytes.as_slice() == END_KEY
+                || key
+                    .as_ref()
+                    .map(|k| k.is_key_without_modifier(BareKey::End))
+                    .unwrap_or(false);
             if key_is_left_arrow {
                 return Some(AdjustedInput::WriteBytesToTerminal(
                     AnsiEncoding::Left.as_vec_bytes(),
@@ -926,7 +992,9 @@ impl TerminalPane {
             // this terminal pane is not - so we need to serialize the kitty key to "non kitty" if
             // possible - if not possible (eg. with multiple modifiers), we'll return a None here
             // and write nothing to the terminal pane
-            key.as_ref().and_then(|k| k.serialize_non_kitty()).map(|s| AdjustedInput::WriteBytesToTerminal(s.as_bytes().to_vec()))
+            key.as_ref()
+                .and_then(|k| k.serialize_non_kitty())
+                .map(|s| AdjustedInput::WriteBytesToTerminal(s.as_bytes().to_vec()))
         } else {
             Some(AdjustedInput::WriteBytesToTerminal(raw_input_bytes))
         }

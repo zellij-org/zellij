@@ -59,7 +59,12 @@ fn locked_interface_indication(palette: Palette) -> LinePart {
     }
 }
 
-fn add_shortcut(help: &ModeInfo, linepart: &LinePart, text: &str, keys: Vec<KeyWithModifier>) -> LinePart {
+fn add_shortcut(
+    help: &ModeInfo,
+    linepart: &LinePart,
+    text: &str,
+    keys: Vec<KeyWithModifier>,
+) -> LinePart {
     let shortcut = if linepart.len == 0 {
         full_length_shortcut(true, keys, text, help.style.colors)
     } else {
@@ -690,12 +695,30 @@ mod tests {
             keybinds: vec![(
                 InputMode::Pane,
                 vec![
-                    (KeyWithModifier::new(BareKey::Left), vec![Action::MoveFocus(Direction::Left)]),
-                    (KeyWithModifier::new(BareKey::Down), vec![Action::MoveFocus(Direction::Down)]),
-                    (KeyWithModifier::new(BareKey::Up), vec![Action::MoveFocus(Direction::Up)]),
-                    (KeyWithModifier::new(BareKey::Right), vec![Action::MoveFocus(Direction::Right)]),
-                    (KeyWithModifier::new(BareKey::Char('n')), vec![Action::NewPane(None, None), TO_NORMAL]),
-                    (KeyWithModifier::new(BareKey::Char('x')), vec![Action::CloseFocus, TO_NORMAL]),
+                    (
+                        KeyWithModifier::new(BareKey::Left),
+                        vec![Action::MoveFocus(Direction::Left)],
+                    ),
+                    (
+                        KeyWithModifier::new(BareKey::Down),
+                        vec![Action::MoveFocus(Direction::Down)],
+                    ),
+                    (
+                        KeyWithModifier::new(BareKey::Up),
+                        vec![Action::MoveFocus(Direction::Up)],
+                    ),
+                    (
+                        KeyWithModifier::new(BareKey::Right),
+                        vec![Action::MoveFocus(Direction::Right)],
+                    ),
+                    (
+                        KeyWithModifier::new(BareKey::Char('n')),
+                        vec![Action::NewPane(None, None), TO_NORMAL],
+                    ),
+                    (
+                        KeyWithModifier::new(BareKey::Char('x')),
+                        vec![Action::CloseFocus, TO_NORMAL],
+                    ),
                     (
                         KeyWithModifier::new(BareKey::Char('f')),
                         vec![Action::ToggleFocusFullscreen, TO_NORMAL],
@@ -722,12 +745,30 @@ mod tests {
             keybinds: vec![(
                 InputMode::Pane,
                 vec![
-                    (KeyWithModifier::new(BareKey::Left), vec![Action::MoveFocus(Direction::Left)]),
-                    (KeyWithModifier::new(BareKey::Down), vec![Action::MoveFocus(Direction::Down)]),
-                    (KeyWithModifier::new(BareKey::Up), vec![Action::MoveFocus(Direction::Up)]),
-                    (KeyWithModifier::new(BareKey::Right), vec![Action::MoveFocus(Direction::Right)]),
-                    (KeyWithModifier::new(BareKey::Char('n')), vec![Action::NewPane(None, None), TO_NORMAL]),
-                    (KeyWithModifier::new(BareKey::Char('x')), vec![Action::CloseFocus, TO_NORMAL]),
+                    (
+                        KeyWithModifier::new(BareKey::Left),
+                        vec![Action::MoveFocus(Direction::Left)],
+                    ),
+                    (
+                        KeyWithModifier::new(BareKey::Down),
+                        vec![Action::MoveFocus(Direction::Down)],
+                    ),
+                    (
+                        KeyWithModifier::new(BareKey::Up),
+                        vec![Action::MoveFocus(Direction::Up)],
+                    ),
+                    (
+                        KeyWithModifier::new(BareKey::Right),
+                        vec![Action::MoveFocus(Direction::Right)],
+                    ),
+                    (
+                        KeyWithModifier::new(BareKey::Char('n')),
+                        vec![Action::NewPane(None, None), TO_NORMAL],
+                    ),
+                    (
+                        KeyWithModifier::new(BareKey::Char('x')),
+                        vec![Action::CloseFocus, TO_NORMAL],
+                    ),
                     (
                         KeyWithModifier::new(BareKey::Char('f')),
                         vec![Action::ToggleFocusFullscreen, TO_NORMAL],
@@ -750,13 +791,34 @@ mod tests {
             keybinds: vec![(
                 InputMode::Pane,
                 vec![
-                    (KeyWithModifier::new(BareKey::Char('a')).with_ctrl_modifier(), vec![Action::MoveFocus(Direction::Left)]),
-                    (KeyWithModifier::new(BareKey::Enter).with_ctrl_modifier(), vec![Action::MoveFocus(Direction::Down)]),
-                    (KeyWithModifier::new(BareKey::Char('1')).with_ctrl_modifier(), vec![Action::MoveFocus(Direction::Up)]),
-                    (KeyWithModifier::new(BareKey::Char(' ')).with_ctrl_modifier(), vec![Action::MoveFocus(Direction::Right)]),
-                    (KeyWithModifier::new(BareKey::Backspace), vec![Action::NewPane(None, None), TO_NORMAL]),
-                    (KeyWithModifier::new(BareKey::Esc), vec![Action::CloseFocus, TO_NORMAL]),
-                    (KeyWithModifier::new(BareKey::End), vec![Action::ToggleFocusFullscreen, TO_NORMAL]),
+                    (
+                        KeyWithModifier::new(BareKey::Char('a')).with_ctrl_modifier(),
+                        vec![Action::MoveFocus(Direction::Left)],
+                    ),
+                    (
+                        KeyWithModifier::new(BareKey::Enter).with_ctrl_modifier(),
+                        vec![Action::MoveFocus(Direction::Down)],
+                    ),
+                    (
+                        KeyWithModifier::new(BareKey::Char('1')).with_ctrl_modifier(),
+                        vec![Action::MoveFocus(Direction::Up)],
+                    ),
+                    (
+                        KeyWithModifier::new(BareKey::Char(' ')).with_ctrl_modifier(),
+                        vec![Action::MoveFocus(Direction::Right)],
+                    ),
+                    (
+                        KeyWithModifier::new(BareKey::Backspace),
+                        vec![Action::NewPane(None, None), TO_NORMAL],
+                    ),
+                    (
+                        KeyWithModifier::new(BareKey::Esc),
+                        vec![Action::CloseFocus, TO_NORMAL],
+                    ),
+                    (
+                        KeyWithModifier::new(BareKey::End),
+                        vec![Action::ToggleFocusFullscreen, TO_NORMAL],
+                    ),
                 ],
             )],
             ..ModeInfo::default()

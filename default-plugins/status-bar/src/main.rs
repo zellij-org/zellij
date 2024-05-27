@@ -330,7 +330,10 @@ pub fn get_common_modifiers(mut keyvec: Vec<&KeyWithModifier>) -> Vec<KeyModifie
     }
     let mut common_modifiers = keyvec.pop().unwrap().key_modifiers.clone();
     for key in keyvec {
-        common_modifiers = common_modifiers.intersection(&key.key_modifiers).cloned().collect();
+        common_modifiers = common_modifiers
+            .intersection(&key.key_modifiers)
+            .cloned()
+            .collect();
     }
     common_modifiers.into_iter().collect()
 }
@@ -341,7 +344,10 @@ pub fn get_common_modifiers(mut keyvec: Vec<&KeyWithModifier>) -> Vec<KeyModifie
 /// all keybindings for the current mode and one or more `p` patterns which match a sequence of
 /// actions to search for. If within the keymap a sequence of actions matching `p` is found, all
 /// keys that trigger the action pattern are returned as vector of `Vec<Key>`.
-pub fn action_key(keymap: &[(KeyWithModifier, Vec<Action>)], action: &[Action]) -> Vec<KeyWithModifier> {
+pub fn action_key(
+    keymap: &[(KeyWithModifier, Vec<Action>)],
+    action: &[Action],
+) -> Vec<KeyWithModifier> {
     keymap
         .iter()
         .filter_map(|(key, acvec)| {
@@ -363,7 +369,10 @@ pub fn action_key(keymap: &[(KeyWithModifier, Vec<Action>)], action: &[Action]) 
 /// Get multiple keys for multiple actions.
 ///
 /// An extension of [`action_key`] that iterates over all action tuples and collects the results.
-pub fn action_key_group(keymap: &[(KeyWithModifier, Vec<Action>)], actions: &[&[Action]]) -> Vec<KeyWithModifier> {
+pub fn action_key_group(
+    keymap: &[(KeyWithModifier, Vec<Action>)],
+    actions: &[&[Action]],
+) -> Vec<KeyWithModifier> {
     let mut ret = vec![];
     for action in actions {
         ret.extend(action_key(keymap, action));
@@ -409,12 +418,16 @@ pub fn style_key_with_modifier(
 
     let common_modifiers = get_common_modifiers(keyvec.iter().collect());
 
-//     let modifier_str = match get_common_modifier(keyvec.iter().collect()) {
-//         Some(modifier) => modifier,
-//         None => "".to_string(),
-//     };
+    //     let modifier_str = match get_common_modifier(keyvec.iter().collect()) {
+    //         Some(modifier) => modifier,
+    //         None => "".to_string(),
+    //     };
     let no_common_modifier = common_modifiers.is_empty();
-    let modifier_str = common_modifiers.iter().map(|m| m.to_string()).collect::<Vec<_>>().join("-");
+    let modifier_str = common_modifiers
+        .iter()
+        .map(|m| m.to_string())
+        .collect::<Vec<_>>()
+        .join("-");
     let painted_modifier = if modifier_str.is_empty() {
         Style::new().paint("")
     } else {
@@ -452,7 +465,13 @@ pub fn style_key_with_modifier(
             if no_common_modifier {
                 format!("{}", key)
             } else {
-                let key_modifier_for_key = key.key_modifiers.iter().filter(|m| !common_modifiers.contains(m)).map(|m| m.to_string()).collect::<Vec<_>>().join(" ");
+                let key_modifier_for_key = key
+                    .key_modifiers
+                    .iter()
+                    .filter(|m| !common_modifiers.contains(m))
+                    .map(|m| m.to_string())
+                    .collect::<Vec<_>>()
+                    .join(" ");
                 if key_modifier_for_key.is_empty() {
                     format!("{}", key.bare_key)
                 } else {
@@ -527,8 +546,14 @@ pub mod tests {
     fn big_keymap() -> Vec<(KeyWithModifier, Vec<Action>)> {
         vec![
             (KeyWithModifier::new(BareKey::Char('a')), vec![Action::Quit]),
-            (KeyWithModifier::new(BareKey::Char('b')).with_ctrl_modifier(), vec![Action::ScrollUp]),
-            (KeyWithModifier::new(BareKey::Char('d')).with_ctrl_modifier(), vec![Action::ScrollDown]),
+            (
+                KeyWithModifier::new(BareKey::Char('b')).with_ctrl_modifier(),
+                vec![Action::ScrollUp],
+            ),
+            (
+                KeyWithModifier::new(BareKey::Char('d')).with_ctrl_modifier(),
+                vec![Action::ScrollDown],
+            ),
             (
                 KeyWithModifier::new(BareKey::Char('c')).with_alt_modifier(),
                 vec![Action::ScrollDown, Action::SwitchToMode(InputMode::Normal)],
@@ -609,7 +634,10 @@ pub mod tests {
     fn action_key_long_pattern_match_exact() {
         let keymap = big_keymap();
         let ret = action_key(&keymap, &[Action::ScrollDown, TO_NORMAL]);
-        assert_eq!(ret, vec![KeyWithModifier::new(BareKey::Char('c')).with_alt_modifier()]);
+        assert_eq!(
+            ret,
+            vec![KeyWithModifier::new(BareKey::Char('c')).with_alt_modifier()]
+        );
     }
 
     #[test]
@@ -631,7 +659,13 @@ pub mod tests {
         let keymap = big_keymap();
         let ret = action_key_group(&keymap, &[&[Action::ScrollDown], &[Action::ScrollUp]]);
         // Mind the order!
-        assert_eq!(ret, vec![KeyWithModifier::new(BareKey::Char('d')).with_ctrl_modifier(), KeyWithModifier::new(BareKey::Char('b')).with_ctrl_modifier()]);
+        assert_eq!(
+            ret,
+            vec![
+                KeyWithModifier::new(BareKey::Char('d')).with_ctrl_modifier(),
+                KeyWithModifier::new(BareKey::Char('b')).with_ctrl_modifier()
+            ]
+        );
     }
 
     fn get_palette() -> Palette {

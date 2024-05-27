@@ -9,7 +9,7 @@ use std::time::Duration;
 
 use log::{debug, warn};
 use zellij_utils::data::{
-    Direction, PaneManifest, PluginPermission, Resize, ResizeStrategy, SessionInfo, KeyWithModifier,
+    Direction, KeyWithModifier, PaneManifest, PluginPermission, Resize, ResizeStrategy, SessionInfo,
 };
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
@@ -159,7 +159,7 @@ pub enum ScreenInstruction {
     HorizontalSplit(PaneId, Option<InitialTitle>, HoldForCommand, ClientId),
     VerticalSplit(PaneId, Option<InitialTitle>, HoldForCommand, ClientId),
     WriteCharacter(Option<KeyWithModifier>, Vec<u8>, bool, ClientId), // bool ->
-                                                                      // is_kitty_keyboard_protocol
+    // is_kitty_keyboard_protocol
     Resize(ClientId, ResizeStrategy),
     SwitchFocus(ClientId),
     FocusNextPane(ClientId),
@@ -2325,8 +2325,8 @@ pub(crate) fn screen_thread_main(
     let explicitly_disable_kitty_keyboard_protocol = config_options
         .support_kitty_keyboard_protocol
         .map(|e| !e) // this is due to the config options wording, if
-                     // "support_kitty_keyboard_protocol" is true,
-                     // explicitly_disable_kitty_keyboard_protocol is false and vice versa
+        // "support_kitty_keyboard_protocol" is true,
+        // explicitly_disable_kitty_keyboard_protocol is false and vice versa
         .unwrap_or(false); // by default, we try to support this if the terminal supports it and
                            // the program running inside a pane requests it
 
@@ -2549,7 +2549,12 @@ pub(crate) fn screen_thread_main(
                 screen.log_and_report_session_state()?;
                 screen.render(None)?;
             },
-            ScreenInstruction::WriteCharacter(key_with_modifier, raw_bytes, is_kitty_keyboard_protocol, client_id) => {
+            ScreenInstruction::WriteCharacter(
+                key_with_modifier,
+                raw_bytes,
+                is_kitty_keyboard_protocol,
+                client_id,
+            ) => {
                 let mut state_changed = false;
                 active_tab_and_connected_client_id!(
                     screen,

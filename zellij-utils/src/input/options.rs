@@ -236,7 +236,9 @@ impl Options {
         let disable_session_metadata = other
             .disable_session_metadata
             .or(self.disable_session_metadata);
-        let support_kitty_keyboard_protocol = other.support_kitty_keyboard_protocol.or(self.support_kitty_keyboard_protocol);
+        let support_kitty_keyboard_protocol = other
+            .support_kitty_keyboard_protocol
+            .or(self.support_kitty_keyboard_protocol);
 
         Options {
             simplified_ui,
@@ -321,7 +323,9 @@ impl Options {
         let disable_session_metadata = other
             .disable_session_metadata
             .or(self.disable_session_metadata);
-        let support_kitty_keyboard_protocol = other.support_kitty_keyboard_protocol.or(self.support_kitty_keyboard_protocol);
+        let support_kitty_keyboard_protocol = other
+            .support_kitty_keyboard_protocol
+            .or(self.support_kitty_keyboard_protocol);
 
         Options {
             simplified_ui,

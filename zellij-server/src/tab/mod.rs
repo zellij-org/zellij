@@ -11,7 +11,8 @@ use std::env::temp_dir;
 use std::path::PathBuf;
 use uuid::Uuid;
 use zellij_utils::data::{
-    Direction, PaneInfo, PermissionStatus, PermissionType, PluginPermission, ResizeStrategy, KeyWithModifier
+    Direction, KeyWithModifier, PaneInfo, PermissionStatus, PermissionType, PluginPermission,
+    ResizeStrategy,
 };
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
@@ -216,7 +217,12 @@ pub trait Pane {
     fn handle_pty_bytes(&mut self, _bytes: VteBytes) {}
     fn handle_plugin_bytes(&mut self, _client_id: ClientId, _bytes: VteBytes) {}
     fn cursor_coordinates(&self) -> Option<(usize, usize)>;
-    fn adjust_input_to_terminal(&mut self, _key_with_modifier: &Option<KeyWithModifier>, _raw_input_bytes: Vec<u8>, _raw_input_bytes_are_kitty: bool) -> Option<AdjustedInput> {
+    fn adjust_input_to_terminal(
+        &mut self,
+        _key_with_modifier: &Option<KeyWithModifier>,
+        _raw_input_bytes: Vec<u8>,
+        _raw_input_bytes_are_kitty: bool,
+    ) -> Option<AdjustedInput> {
         None
     }
     fn position_and_size(&self) -> PaneGeom;
@@ -1627,7 +1633,13 @@ impl Tab {
         let pane_ids = self.get_static_and_floating_pane_ids();
         for pane_id in pane_ids {
             let ui_change_triggered = self
-                .write_to_pane_id(key_with_modifier, raw_input_bytes.clone(), raw_input_bytes_are_kitty, pane_id, Some(client_id))
+                .write_to_pane_id(
+                    key_with_modifier,
+                    raw_input_bytes.clone(),
+                    raw_input_bytes_are_kitty,
+                    pane_id,
+                    Some(client_id),
+                )
                 .context("failed to write to terminals on current tab")?;
             if ui_change_triggered {
                 should_trigger_ui_change = true;
@@ -1668,8 +1680,14 @@ impl Tab {
                 .with_context(err_context)?
         };
         // Can't use 'err_context' here since it borrows 'raw_input_bytes'
-        self.write_to_pane_id(key_with_modifier, raw_input_bytes, raw_input_bytes_are_kitty, pane_id, Some(client_id))
-            .with_context(|| format!("failed to write to active terminal for client {client_id}"))
+        self.write_to_pane_id(
+            key_with_modifier,
+            raw_input_bytes,
+            raw_input_bytes_are_kitty,
+            pane_id,
+            Some(client_id),
+        )
+        .with_context(|| format!("failed to write to active terminal for client {client_id}"))
     }
 
     pub fn write_to_terminal_at(
@@ -1738,7 +1756,11 @@ impl Tab {
 
         match pane_id {
             PaneId::Terminal(active_terminal_id) => {
-                match active_terminal.adjust_input_to_terminal(key_with_modifier, raw_input_bytes, raw_input_bytes_are_kitty) {
+                match active_terminal.adjust_input_to_terminal(
+                    key_with_modifier,
+                    raw_input_bytes,
+                    raw_input_bytes_are_kitty,
+                ) {
                     Some(AdjustedInput::WriteBytesToTerminal(adjusted_input)) => {
                         self.senders
                             .send_to_pty_writer(PtyWriteInstruction::Write(
@@ -1776,12 +1798,20 @@ impl Tab {
                     None => {},
                 }
             },
-            PaneId::Plugin(pid) => match active_terminal.adjust_input_to_terminal(key_with_modifier, raw_input_bytes, raw_input_bytes_are_kitty) {
+            PaneId::Plugin(pid) => match active_terminal.adjust_input_to_terminal(
+                key_with_modifier,
+                raw_input_bytes,
+                raw_input_bytes_are_kitty,
+            ) {
                 Some(AdjustedInput::WriteKeyToPlugin(key_with_modifier)) => {
                     self.senders
-                        .send_to_plugin(PluginInstruction::Update(vec![(Some(pid), client_id, Event::Key(key_with_modifier))]))
+                        .send_to_plugin(PluginInstruction::Update(vec![(
+                            Some(pid),
+                            client_id,
+                            Event::Key(key_with_modifier),
+                        )]))
                         .with_context(err_context)?;
-                }
+                },
                 Some(AdjustedInput::WriteBytesToTerminal(adjusted_input)) => {
                     let mut plugin_updates = vec![];
                     for key in parse_keys(&adjusted_input) {
@@ -2939,8 +2969,13 @@ impl Tab {
             let relative_position = pane.relative_position(position);
             if let Some(mouse_event) = pane.mouse_left_click(&relative_position, false) {
                 if !pane.position_is_on_frame(position) {
-                    self.write_to_active_terminal(&None, mouse_event.into_bytes(), false, client_id)
-                        .with_context(err_context)?;
+                    self.write_to_active_terminal(
+                        &None,
+                        mouse_event.into_bytes(),
+                        false,
+                        client_id,
+                    )
+                    .with_context(err_context)?;
                 }
             } else {
                 pane.start_selection(&relative_position, client_id);
@@ -2969,8 +3004,13 @@ impl Tab {
             let relative_position = pane.relative_position(position);
             if let Some(mouse_event) = pane.mouse_right_click(&relative_position, false) {
                 if !pane.position_is_on_frame(position) {
-                    self.write_to_active_terminal(&None, mouse_event.into_bytes(), false, client_id)
-                        .with_context(err_context)?;
+                    self.write_to_active_terminal(
+                        &None,
+                        mouse_event.into_bytes(),
+                        false,
+                        client_id,
+                    )
+                    .with_context(err_context)?;
                 }
             } else {
                 pane.handle_right_click(&relative_position, client_id);
@@ -2996,8 +3036,13 @@ impl Tab {
             let relative_position = pane.relative_position(position);
             if let Some(mouse_event) = pane.mouse_middle_click(&relative_position, false) {
                 if !pane.position_is_on_frame(position) {
-                    self.write_to_active_terminal(&None, mouse_event.into_bytes(), false, client_id)
-                        .with_context(err_context)?;
+                    self.write_to_active_terminal(
+                        &None,
+                        mouse_event.into_bytes(),
+                        false,
+                        client_id,
+                    )
+                    .with_context(err_context)?;
                 }
             }
         };
@@ -3213,8 +3258,13 @@ impl Tab {
                         .min(active_pane.get_content_rows() as isize),
                 );
                 if let Some(mouse_event) = active_pane.mouse_left_click(&relative_position, true) {
-                    self.write_to_active_terminal(&None, mouse_event.into_bytes(), false, client_id)
-                        .with_context(err_context)?;
+                    self.write_to_active_terminal(
+                        &None,
+                        mouse_event.into_bytes(),
+                        false,
+                        client_id,
+                    )
+                    .with_context(err_context)?;
                     return Ok(true); // we need to re-render in this case so the selection disappears
                 }
             } else if selecting {
@@ -3260,8 +3310,13 @@ impl Tab {
                         .min(active_pane.get_content_rows() as isize),
                 );
                 if let Some(mouse_event) = active_pane.mouse_right_click(&relative_position, true) {
-                    self.write_to_active_terminal(&None, mouse_event.into_bytes(), false, client_id)
-                        .with_context(err_context)?;
+                    self.write_to_active_terminal(
+                        &None,
+                        mouse_event.into_bytes(),
+                        false,
+                        client_id,
+                    )
+                    .with_context(err_context)?;
                     return Ok(true); // we need to re-render in this case so the selection disappears
                 }
             }
@@ -3304,8 +3359,13 @@ impl Tab {
                 );
                 if let Some(mouse_event) = active_pane.mouse_middle_click(&relative_position, true)
                 {
-                    self.write_to_active_terminal(&None, mouse_event.into_bytes(), false, client_id)
-                        .with_context(err_context)?;
+                    self.write_to_active_terminal(
+                        &None,
+                        mouse_event.into_bytes(),
+                        false,
+                        client_id,
+                    )
+                    .with_context(err_context)?;
                     return Ok(true); // we need to re-render in this case so the selection disappears
                 }
             }

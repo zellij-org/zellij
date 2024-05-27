@@ -1,6 +1,6 @@
 use super::super::actions::*;
 use super::super::keybinds::*;
-use crate::data::{Direction, KeyWithModifier, BareKey};
+use crate::data::{BareKey, Direction, KeyWithModifier};
 use crate::input::config::Config;
 use insta::assert_snapshot;
 use strum::IntoEnumIterator;
@@ -15,9 +15,10 @@ fn can_define_keybindings_in_configfile() {
         }
     "#;
     let config = Config::from_kdl(config_contents, None).unwrap();
-    let ctrl_g_normal_mode_action = config
-        .keybinds
-        .get_actions_for_key_in_mode(&InputMode::Normal, &KeyWithModifier::new(BareKey::Char('g')).with_ctrl_modifier());
+    let ctrl_g_normal_mode_action = config.keybinds.get_actions_for_key_in_mode(
+        &InputMode::Normal,
+        &KeyWithModifier::new(BareKey::Char('g')).with_ctrl_modifier(),
+    );
     assert_eq!(
         ctrl_g_normal_mode_action,
         Some(&vec![Action::SwitchToMode(InputMode::Locked)]),
@@ -39,9 +40,10 @@ fn can_define_multiple_keybinds_for_same_action() {
         &InputMode::Normal,
         &KeyWithModifier::new(BareKey::Left).with_alt_modifier(),
     );
-    let alt_left_normal_mode_action = config
-        .keybinds
-        .get_actions_for_key_in_mode(&InputMode::Normal, &KeyWithModifier::new(BareKey::Char('h')).with_alt_modifier());
+    let alt_left_normal_mode_action = config.keybinds.get_actions_for_key_in_mode(
+        &InputMode::Normal,
+        &KeyWithModifier::new(BareKey::Char('h')).with_alt_modifier(),
+    );
     assert_eq!(
         alt_h_normal_mode_action,
         Some(&vec![Action::MoveFocusOrTab(Direction::Left)]),
@@ -223,15 +225,17 @@ fn can_clear_default_keybindings() {
     "#;
     let default_config = Config::from_kdl(default_config_contents, None).unwrap();
     let config = Config::from_kdl(config_contents, Some(default_config)).unwrap();
-    let ctrl_g_normal_mode_action = config
-        .keybinds
-        .get_actions_for_key_in_mode(&InputMode::Normal, &KeyWithModifier::new(BareKey::Char('g')).with_ctrl_modifier());
+    let ctrl_g_normal_mode_action = config.keybinds.get_actions_for_key_in_mode(
+        &InputMode::Normal,
+        &KeyWithModifier::new(BareKey::Char('g')).with_ctrl_modifier(),
+    );
     let z_in_pane_mode = config
         .keybinds
         .get_actions_for_key_in_mode(&InputMode::Pane, &KeyWithModifier::new(BareKey::Char('z')));
-    let ctrl_r_in_normal_mode = config
-        .keybinds
-        .get_actions_for_key_in_mode(&InputMode::Normal, &KeyWithModifier::new(BareKey::Char('r')).with_ctrl_modifier());
+    let ctrl_r_in_normal_mode = config.keybinds.get_actions_for_key_in_mode(
+        &InputMode::Normal,
+        &KeyWithModifier::new(BareKey::Char('r')).with_ctrl_modifier(),
+    );
     let r_in_pane_mode = config
         .keybinds
         .get_actions_for_key_in_mode(&InputMode::Pane, &KeyWithModifier::new(BareKey::Char('r')));
@@ -276,9 +280,10 @@ fn can_clear_default_keybindings_per_single_mode() {
     "#;
     let default_config = Config::from_kdl(default_config_contents, None).unwrap();
     let config = Config::from_kdl(config_contents, Some(default_config)).unwrap();
-    let ctrl_g_normal_mode_action = config
-        .keybinds
-        .get_actions_for_key_in_mode(&InputMode::Normal, &KeyWithModifier::new(BareKey::Char('g')).with_ctrl_modifier());
+    let ctrl_g_normal_mode_action = config.keybinds.get_actions_for_key_in_mode(
+        &InputMode::Normal,
+        &KeyWithModifier::new(BareKey::Char('g')).with_ctrl_modifier(),
+    );
     let z_in_pane_mode = config
         .keybinds
         .get_actions_for_key_in_mode(&InputMode::Pane, &KeyWithModifier::new(BareKey::Char('z')));
@@ -325,12 +330,14 @@ fn can_unbind_multiple_keys_globally() {
     "#;
     let default_config = Config::from_kdl(default_config_contents, None).unwrap();
     let config = Config::from_kdl(config_contents, Some(default_config)).unwrap();
-    let ctrl_g_normal_mode_action = config
-        .keybinds
-        .get_actions_for_key_in_mode(&InputMode::Normal, &KeyWithModifier::new(BareKey::Char('g')).with_ctrl_modifier());
-    let ctrl_g_pane_mode_action = config
-        .keybinds
-        .get_actions_for_key_in_mode(&InputMode::Pane, &KeyWithModifier::new(BareKey::Char('g')).with_ctrl_modifier());
+    let ctrl_g_normal_mode_action = config.keybinds.get_actions_for_key_in_mode(
+        &InputMode::Normal,
+        &KeyWithModifier::new(BareKey::Char('g')).with_ctrl_modifier(),
+    );
+    let ctrl_g_pane_mode_action = config.keybinds.get_actions_for_key_in_mode(
+        &InputMode::Pane,
+        &KeyWithModifier::new(BareKey::Char('g')).with_ctrl_modifier(),
+    );
     let r_in_pane_mode = config
         .keybinds
         .get_actions_for_key_in_mode(&InputMode::Pane, &KeyWithModifier::new(BareKey::Char('r')));
@@ -385,12 +392,14 @@ fn can_unbind_multiple_keys_per_single_mode() {
     "#;
     let default_config = Config::from_kdl(default_config_contents, None).unwrap();
     let config = Config::from_kdl(config_contents, Some(default_config)).unwrap();
-    let ctrl_g_normal_mode_action = config
-        .keybinds
-        .get_actions_for_key_in_mode(&InputMode::Normal, &KeyWithModifier::new(BareKey::Char('g')).with_ctrl_modifier());
-    let ctrl_g_pane_mode_action = config
-        .keybinds
-        .get_actions_for_key_in_mode(&InputMode::Pane, &KeyWithModifier::new(BareKey::Char('g')).with_ctrl_modifier());
+    let ctrl_g_normal_mode_action = config.keybinds.get_actions_for_key_in_mode(
+        &InputMode::Normal,
+        &KeyWithModifier::new(BareKey::Char('g')).with_ctrl_modifier(),
+    );
+    let ctrl_g_pane_mode_action = config.keybinds.get_actions_for_key_in_mode(
+        &InputMode::Pane,
+        &KeyWithModifier::new(BareKey::Char('g')).with_ctrl_modifier(),
+    );
     let r_in_pane_mode = config
         .keybinds
         .get_actions_for_key_in_mode(&InputMode::Pane, &KeyWithModifier::new(BareKey::Char('r')));
@@ -436,9 +445,10 @@ fn can_define_shared_keybinds_for_all_modes() {
     "#;
     let config = Config::from_kdl(config_contents, None).unwrap();
     for mode in InputMode::iter() {
-        let action_in_mode = config
-            .keybinds
-            .get_actions_for_key_in_mode(&mode, &KeyWithModifier::new(BareKey::Char('g')).with_ctrl_modifier());
+        let action_in_mode = config.keybinds.get_actions_for_key_in_mode(
+            &mode,
+            &KeyWithModifier::new(BareKey::Char('g')).with_ctrl_modifier(),
+        );
         assert_eq!(
             action_in_mode,
             Some(&vec![Action::SwitchToMode(InputMode::Locked)]),
@@ -458,9 +468,10 @@ fn can_define_shared_keybinds_with_exclusion() {
     "#;
     let config = Config::from_kdl(config_contents, None).unwrap();
     for mode in InputMode::iter() {
-        let action_in_mode = config
-            .keybinds
-            .get_actions_for_key_in_mode(&mode, &KeyWithModifier::new(BareKey::Char('g')).with_ctrl_modifier());
+        let action_in_mode = config.keybinds.get_actions_for_key_in_mode(
+            &mode,
+            &KeyWithModifier::new(BareKey::Char('g')).with_ctrl_modifier(),
+        );
         if mode == InputMode::Locked {
             assert_eq!(action_in_mode, None, "Keybind unbound in excluded mode");
         } else {
@@ -484,9 +495,10 @@ fn can_define_shared_keybinds_with_inclusion() {
     "#;
     let config = Config::from_kdl(config_contents, None).unwrap();
     for mode in InputMode::iter() {
-        let action_in_mode = config
-            .keybinds
-            .get_actions_for_key_in_mode(&mode, &KeyWithModifier::new(BareKey::Char('g')).with_ctrl_modifier());
+        let action_in_mode = config.keybinds.get_actions_for_key_in_mode(
+            &mode,
+            &KeyWithModifier::new(BareKey::Char('g')).with_ctrl_modifier(),
+        );
         if mode == InputMode::Normal || mode == InputMode::Resize || mode == InputMode::Pane {
             assert_eq!(
                 action_in_mode,

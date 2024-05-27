@@ -6,7 +6,9 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 use tempfile::tempdir;
 use wasmer::Store;
-use zellij_utils::data::{Event, KeyWithModifier, BareKey, PermissionStatus, PermissionType, PluginCapabilities};
+use zellij_utils::data::{
+    BareKey, Event, KeyWithModifier, PermissionStatus, PermissionType, PluginCapabilities,
+};
 use zellij_utils::errors::ErrorContext;
 use zellij_utils::input::layout::{
     Layout, PluginAlias, PluginUserConfiguration, RunPlugin, RunPluginLocation, RunPluginOrAlias,
@@ -1017,7 +1019,7 @@ pub fn switch_to_mode_plugin_command() {
         None,
         Some(client_id),
         Event::Key(KeyWithModifier::new(BareKey::Char('a'))), // this triggers a SwitchToMode(Tab) command in the fixture
-                                    // plugin
+                                                              // plugin
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
@@ -1089,7 +1091,7 @@ pub fn switch_to_mode_plugin_command_permission_denied() {
         None,
         Some(client_id),
         Event::Key(KeyWithModifier::new(BareKey::Char('a'))), // this triggers a SwitchToMode(Tab) command in the fixture
-                                    // plugin
+                                                              // plugin
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
@@ -1161,7 +1163,7 @@ pub fn new_tabs_with_layout_plugin_command() {
         None,
         Some(client_id),
         Event::Key(KeyWithModifier::new(BareKey::Char('b'))), // this triggers a new_tabs_with_layout command in the fixture
-                                    // plugin
+                                                              // plugin
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
@@ -1247,7 +1249,7 @@ pub fn new_tab_plugin_command() {
         None,
         Some(client_id),
         Event::Key(KeyWithModifier::new(BareKey::Char('c'))), // this triggers a new_tab command in the fixture
-                                    // plugin
+                                                              // plugin
     )]));
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();

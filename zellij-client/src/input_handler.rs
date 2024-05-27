@@ -140,9 +140,12 @@ impl InputHandler {
                         _ => {},
                     }
                 },
-                Ok((InputInstruction::KeyWithModifierEvent(key_with_modifier, raw_bytes), _error_context)) => {
+                Ok((
+                    InputInstruction::KeyWithModifierEvent(key_with_modifier, raw_bytes),
+                    _error_context,
+                )) => {
                     self.handle_key(&key_with_modifier, raw_bytes, true);
-                }
+                },
                 Ok((InputInstruction::SwitchToMode(input_mode), _error_context)) => {
                     self.mode = input_mode;
                 },
@@ -171,11 +174,19 @@ impl InputHandler {
             }
         }
     }
-    fn handle_key(&mut self, key: &KeyWithModifier, raw_bytes: Vec<u8>, is_kitty_keyboard_protocol: bool) {
+    fn handle_key(
+        &mut self,
+        key: &KeyWithModifier,
+        raw_bytes: Vec<u8>,
+        is_kitty_keyboard_protocol: bool,
+    ) {
         let keybinds = &self.config.keybinds;
-        for action in
-            keybinds.get_actions_for_key_in_mode_or_default_action(&self.mode, key, raw_bytes, is_kitty_keyboard_protocol)
-        {
+        for action in keybinds.get_actions_for_key_in_mode_or_default_action(
+            &self.mode,
+            key,
+            raw_bytes,
+            is_kitty_keyboard_protocol,
+        ) {
             let should_exit = self.dispatch_action(action, None);
             if should_exit {
                 self.should_exit = true;

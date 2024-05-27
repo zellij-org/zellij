@@ -3,10 +3,10 @@ pub mod os_input_output;
 pub mod cli_client;
 mod command_is_executing;
 mod input_handler;
+mod keyboard_parser;
 pub mod old_config_converter;
 mod stdin_ansi_parser;
 mod stdin_handler;
-mod keyboard_parser;
 
 use log::info;
 use std::env::current_exe;
@@ -25,7 +25,7 @@ use crate::{
 use zellij_utils::{
     channels::{self, ChannelWithContext, SenderWithContext},
     consts::{set_permissions, ZELLIJ_SOCK_DIR},
-    data::{ClientId, ConnectToSession, InputMode, Style, KeyWithModifier},
+    data::{ClientId, ConnectToSession, InputMode, KeyWithModifier, Style},
     envs,
     errors::{ClientContext, ContextType, ErrorInstruction},
     input::{config::Config, options::Options},
@@ -179,7 +179,10 @@ pub fn start_client(
     }
     info!("Starting Zellij client!");
 
-    let explicitly_disable_kitty_keyboard_protocol = config_options.support_kitty_keyboard_protocol.map(|e| !e).unwrap_or(false);
+    let explicitly_disable_kitty_keyboard_protocol = config_options
+        .support_kitty_keyboard_protocol
+        .map(|e| !e)
+        .unwrap_or(false);
     let mut reconnect_to_session = None;
     let clear_client_terminal_attributes = "\u{1b}[?1l\u{1b}=\u{1b}[r\u{1b}[?1000l\u{1b}[?1002l\u{1b}[?1003l\u{1b}[?1005l\u{1b}[?1006l\u{1b}[?12l";
     let take_snapshot = "\u{1b}[?1049h";
@@ -309,7 +312,14 @@ pub fn start_client(
             let os_input = os_input.clone();
             let send_input_instructions = send_input_instructions.clone();
             let stdin_ansi_parser = stdin_ansi_parser.clone();
-            move || stdin_loop(os_input, send_input_instructions, stdin_ansi_parser, explicitly_disable_kitty_keyboard_protocol)
+            move || {
+                stdin_loop(
+                    os_input,
+                    send_input_instructions,
+                    stdin_ansi_parser,
+                    explicitly_disable_kitty_keyboard_protocol,
+                )
+            }
         });
 
     let _input_thread = thread::Builder::new()

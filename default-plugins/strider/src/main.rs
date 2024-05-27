@@ -78,7 +78,7 @@ impl ZellijPlugin for State {
                 },
                 BareKey::Char('c') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
                     self.clear_search_term_or_descend();
-                }
+                },
                 BareKey::Up if key.has_no_modifiers() => {
                     self.move_selection_up();
                     should_render = true;
@@ -87,7 +87,9 @@ impl ZellijPlugin for State {
                     self.move_selection_down();
                     should_render = true;
                 },
-                BareKey::Enter if key.has_no_modifiers() && self.handling_filepick_request_from.is_some() => {
+                BareKey::Enter
+                    if key.has_no_modifiers() && self.handling_filepick_request_from.is_some() =>
+                {
                     self.send_filepick_response();
                 },
                 BareKey::Enter if key.has_no_modifiers() => {
@@ -101,7 +103,7 @@ impl ZellijPlugin for State {
                     self.descend_to_previous_path();
                     should_render = true;
                 },
-                BareKey::Char('e') if key.has_modifiers(&[KeyModifier::Ctrl])=> {
+                BareKey::Char('e') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
                     should_render = true;
                     self.toggle_hidden_files();
                     refresh_directory(&self.file_list_view.path);

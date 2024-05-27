@@ -364,7 +364,7 @@ pub struct Grid {
     styled_underlines: bool,
     pub supports_kitty_keyboard_protocol: bool, // has the app requested kitty keyboard support?
     explicitly_disable_kitty_keyboard_protocol: bool, // has kitty keyboard support been explicitly
-                                                      // disabled by user config?
+                                                // disabled by user config?
 }
 
 #[derive(Clone, Debug)]
@@ -2643,7 +2643,10 @@ impl Perform for Grid {
                                 &mut self.cursor,
                                 Cursor::new(0, 0, self.styled_underlines),
                             );
-                            let current_supports_kitty_keyboard_protocol = std::mem::replace(&mut self.supports_kitty_keyboard_protocol, false);
+                            let current_supports_kitty_keyboard_protocol = std::mem::replace(
+                                &mut self.supports_kitty_keyboard_protocol,
+                                false,
+                            );
                             let sixel_image_store = self.sixel_grid.sixel_image_store.clone();
                             let alternate_sixelgrid = std::mem::replace(
                                 &mut self.sixel_grid,
@@ -2849,9 +2852,12 @@ impl Perform for Grid {
         } else if c == 'u' && intermediates == &[b'?'] {
             // Zellij only supports the first "progressive enhancement" layer of the kitty keyboard
             // protocol
-            let reply = if self.supports_kitty_keyboard_protocol { "\u{1b}[?1u" } else { "\u{1b}[?0u" };
-            self.pending_messages_to_pty
-                .push(reply.as_bytes().to_vec());
+            let reply = if self.supports_kitty_keyboard_protocol {
+                "\u{1b}[?1u"
+            } else {
+                "\u{1b}[?0u"
+            };
+            self.pending_messages_to_pty.push(reply.as_bytes().to_vec());
         } else if c == 'u' {
             self.restore_cursor_position();
         } else if c == '@' {
@@ -3141,7 +3147,10 @@ impl AlternateScreenState {
         std::mem::swap(&mut self.viewport, viewport);
         std::mem::swap(&mut self.cursor, cursor);
         std::mem::swap(&mut self.sixel_grid, sixel_grid);
-        std::mem::swap(&mut self.supports_kitty_keyboard_protocol, supports_kitty_keyboard_protocol);
+        std::mem::swap(
+            &mut self.supports_kitty_keyboard_protocol,
+            supports_kitty_keyboard_protocol,
+        );
     }
 }
 

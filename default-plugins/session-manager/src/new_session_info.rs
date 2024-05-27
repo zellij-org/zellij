@@ -77,7 +77,7 @@ impl NewSessionInfo {
             },
             BareKey::Char('c') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
                 self.handle_break();
-            }
+            },
             BareKey::Esc if key.has_no_modifiers() => {
                 self.handle_break();
             },

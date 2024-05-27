@@ -13,8 +13,8 @@ use strum_macros::{Display, EnumDiscriminants, EnumIter, EnumString, ToString};
 
 #[cfg(not(target_family = "wasm"))]
 use termwiz::{
-    input::{KeyCode, KeyboardEncoding, KeyCodeEncodeModes, Modifiers},
     escape::csi::KittyKeyboardFlags,
+    input::{KeyCode, KeyCodeEncodeModes, KeyboardEncoding, Modifiers},
 };
 
 pub type ClientId = u16; // TODO: merge with crate type?
@@ -54,7 +54,7 @@ impl FromStr for KeyWithModifier {
         }
         Ok(KeyWithModifier {
             bare_key,
-            key_modifiers
+            key_modifiers,
         })
     }
 }
@@ -62,13 +62,15 @@ impl FromStr for KeyWithModifier {
 #[derive(Debug, Clone, Eq, Serialize, Deserialize, PartialOrd, Ord)]
 pub struct KeyWithModifier {
     pub bare_key: BareKey,
-    pub key_modifiers: BTreeSet<KeyModifier>
+    pub key_modifiers: BTreeSet<KeyModifier>,
 }
 
 impl PartialEq for KeyWithModifier {
     fn eq(&self, other: &Self) -> bool {
         match (self.bare_key, other.bare_key) {
-            (BareKey::Char(self_char), BareKey::Char(other_char)) if self_char.to_ascii_lowercase() == other_char.to_ascii_lowercase() => {
+            (BareKey::Char(self_char), BareKey::Char(other_char))
+                if self_char.to_ascii_lowercase() == other_char.to_ascii_lowercase() =>
+            {
                 let mut self_cloned = self.clone();
                 let mut other_cloned = other.clone();
                 if self_char.is_ascii_uppercase() {
@@ -79,9 +81,10 @@ impl PartialEq for KeyWithModifier {
                     other_cloned.bare_key = BareKey::Char(self_char.to_ascii_lowercase());
                     other_cloned.key_modifiers.insert(KeyModifier::Shift);
                 }
-                self_cloned.bare_key == other_cloned.bare_key && self_cloned.key_modifiers == other_cloned.key_modifiers
+                self_cloned.bare_key == other_cloned.bare_key
+                    && self_cloned.key_modifiers == other_cloned.key_modifiers
             },
-            _ => self.bare_key == other.bare_key && self.key_modifiers == other.key_modifiers
+            _ => self.bare_key == other.bare_key && self.key_modifiers == other.key_modifiers,
         }
     }
 }
@@ -99,7 +102,7 @@ impl Hash for KeyWithModifier {
             _ => {
                 self.bare_key.hash(state);
                 self.key_modifiers.hash(state);
-            }
+            },
         }
     }
 }
@@ -109,7 +112,16 @@ impl fmt::Display for KeyWithModifier {
         if self.key_modifiers.is_empty() {
             write!(f, "{}", self.bare_key)
         } else {
-            write!(f, "{} {}", self.key_modifiers.iter().map(|m| m.to_string()).collect::<Vec<_>>().join("-"), self.bare_key)
+            write!(
+                f,
+                "{} {}",
+                self.key_modifiers
+                    .iter()
+                    .map(|m| m.to_string())
+                    .collect::<Vec<_>>()
+                    .join("-"),
+                self.bare_key
+            )
         }
     }
 }
@@ -230,12 +242,14 @@ impl FromStr for BareKey {
                     }
                 }
                 Err("unsupported key".into())
-            }
+            },
         }
     }
 }
 
-#[derive(Eq, Clone, Copy, Debug, PartialEq, Hash, Deserialize, Serialize, PartialOrd, Ord, ToString)]
+#[derive(
+    Eq, Clone, Copy, Debug, PartialEq, Hash, Deserialize, Serialize, PartialOrd, Ord, ToString,
+)]
 pub enum KeyModifier {
     Ctrl,
     Alt,
@@ -255,7 +269,7 @@ impl FromStr for KeyModifier {
             "alt" => Ok(KeyModifier::Alt),
             "ctrl" => Ok(KeyModifier::Ctrl),
             "super" => Ok(KeyModifier::Super),
-            _ => Err("unsupported modifier".into())
+            _ => Err("unsupported modifier".into()),
         }
     }
 }
@@ -273,10 +287,10 @@ impl BareKey {
             Ok("57361") => Some(BareKey::PrintScreen),
             Ok("57362") => Some(BareKey::Pause),
             Ok("57363") => Some(BareKey::Menu),
-            Ok(num) => {
-                u8::from_str_radix(num, 10).ok().map(|n| BareKey::Char((n as char).to_ascii_lowercase()))
-            }
-            _ => None
+            Ok(num) => u8::from_str_radix(num, 10)
+                .ok()
+                .map(|n| BareKey::Char((n as char).to_ascii_lowercase())),
+            _ => None,
         }
     }
     pub fn from_bytes_with_tilde(bytes: &[u8]) -> Option<Self> {
@@ -299,7 +313,7 @@ impl BareKey {
             Ok("21") => Some(BareKey::F(10)),
             Ok("23") => Some(BareKey::F(11)),
             Ok("24") => Some(BareKey::F(12)),
-            _ => None
+            _ => None,
         }
     }
     pub fn from_bytes_with_no_ending_byte(bytes: &[u8]) -> Option<Self> {
@@ -313,7 +327,7 @@ impl BareKey {
             Ok("1P") | Ok("P") => Some(BareKey::F(1)),
             Ok("1Q") | Ok("Q") => Some(BareKey::F(2)),
             Ok("1S") | Ok("S") => Some(BareKey::F(4)),
-            _ => None
+            _ => None,
         }
     }
 }
@@ -351,7 +365,7 @@ impl KeyModifier {
                     ModifierFlags::META => key_modifiers.insert(KeyModifier::Meta),
                     ModifierFlags::CAPS_LOCK => key_modifiers.insert(KeyModifier::CapsLock),
                     ModifierFlags::NUM_LOCK => key_modifiers.insert(KeyModifier::NumLock),
-                    _ => false
+                    _ => false,
                 };
             }
         }
@@ -396,10 +410,10 @@ impl KeyWithModifier {
                 let key_modifiers = KeyModifier::from_bytes(modifier_bytes);
                 Some(KeyWithModifier {
                     bare_key,
-                    key_modifiers
+                    key_modifiers,
                 })
-            }
-            _ => None
+            },
+            _ => None,
         }
     }
     pub fn from_bytes_with_tilde(number_bytes: &[u8], modifier_bytes: &[u8]) -> Option<Self> {
@@ -410,13 +424,16 @@ impl KeyWithModifier {
                 let key_modifiers = KeyModifier::from_bytes(modifier_bytes);
                 Some(KeyWithModifier {
                     bare_key,
-                    key_modifiers
+                    key_modifiers,
                 })
-            }
-            _ => None
+            },
+            _ => None,
         }
     }
-    pub fn from_bytes_with_no_ending_byte(number_bytes: &[u8], modifier_bytes: &[u8]) -> Option<Self> {
+    pub fn from_bytes_with_no_ending_byte(
+        number_bytes: &[u8],
+        modifier_bytes: &[u8],
+    ) -> Option<Self> {
         // CSI 1; modifiers [ABCDEFHPQS]
         let bare_key = BareKey::from_bytes_with_no_ending_byte(number_bytes);
         match bare_key {
@@ -424,17 +441,22 @@ impl KeyWithModifier {
                 let key_modifiers = KeyModifier::from_bytes(modifier_bytes);
                 Some(KeyWithModifier {
                     bare_key,
-                    key_modifiers
+                    key_modifiers,
                 })
-            }
-            _ => None
+            },
+            _ => None,
         }
     }
     pub fn strip_common_modifiers(&self, common_modifiers: &Vec<KeyModifier>) -> Self {
         let common_modifiers: BTreeSet<&KeyModifier> = common_modifiers.into_iter().collect();
         KeyWithModifier {
             bare_key: self.bare_key.clone(),
-            key_modifiers: self.key_modifiers.iter().filter(|m| !common_modifiers.contains(m)).cloned().collect()
+            key_modifiers: self
+                .key_modifiers
+                .iter()
+                .filter(|m| !common_modifiers.contains(m))
+                .cloned()
+                .collect(),
         }
     }
     pub fn is_key_without_modifier(&self, key: BareKey) -> bool {
@@ -462,30 +484,30 @@ impl KeyWithModifier {
     }
     #[cfg(not(target_family = "wasm"))]
     pub fn to_termwiz_keycode(&self) -> KeyCode {
-       match self.bare_key {
-           BareKey::PageDown => KeyCode::PageDown,
-           BareKey::PageUp => KeyCode::PageUp,
-           BareKey::Left => KeyCode::LeftArrow,
-           BareKey::Down => KeyCode::DownArrow,
-           BareKey::Up => KeyCode::UpArrow,
-           BareKey::Right => KeyCode::RightArrow,
-           BareKey::Home => KeyCode::Home,
-           BareKey::End => KeyCode::End,
-           BareKey::Backspace => KeyCode::Backspace,
-           BareKey::Delete => KeyCode::Delete,
-           BareKey::Insert => KeyCode::Insert,
-           BareKey::F(index) => KeyCode::Function(index),
-           BareKey::Char(character) => KeyCode::Char(character),
-           BareKey::Tab => KeyCode::Tab,
-           BareKey::Esc => KeyCode::Escape,
-           BareKey::Enter => KeyCode::Enter,
-           BareKey::CapsLock => KeyCode::CapsLock,
-           BareKey::ScrollLock => KeyCode::ScrollLock,
-           BareKey::NumLock => KeyCode::NumLock,
-           BareKey::PrintScreen => KeyCode::PrintScreen,
-           BareKey::Pause => KeyCode::Pause,
-           BareKey::Menu => KeyCode::Menu,
-       }
+        match self.bare_key {
+            BareKey::PageDown => KeyCode::PageDown,
+            BareKey::PageUp => KeyCode::PageUp,
+            BareKey::Left => KeyCode::LeftArrow,
+            BareKey::Down => KeyCode::DownArrow,
+            BareKey::Up => KeyCode::UpArrow,
+            BareKey::Right => KeyCode::RightArrow,
+            BareKey::Home => KeyCode::Home,
+            BareKey::End => KeyCode::End,
+            BareKey::Backspace => KeyCode::Backspace,
+            BareKey::Delete => KeyCode::Delete,
+            BareKey::Insert => KeyCode::Insert,
+            BareKey::F(index) => KeyCode::Function(index),
+            BareKey::Char(character) => KeyCode::Char(character),
+            BareKey::Tab => KeyCode::Tab,
+            BareKey::Esc => KeyCode::Escape,
+            BareKey::Enter => KeyCode::Enter,
+            BareKey::CapsLock => KeyCode::CapsLock,
+            BareKey::ScrollLock => KeyCode::ScrollLock,
+            BareKey::NumLock => KeyCode::NumLock,
+            BareKey::PrintScreen => KeyCode::PrintScreen,
+            BareKey::Pause => KeyCode::Pause,
+            BareKey::Menu => KeyCode::Menu,
+        }
     }
     #[cfg(not(target_family = "wasm"))]
     pub fn serialize_non_kitty(&self) -> Option<String> {
@@ -496,9 +518,11 @@ impl KeyWithModifier {
             // serialization
             application_cursor_keys: false,
             newline_mode: false,
-            modify_other_keys: None
+            modify_other_keys: None,
         };
-        self.to_termwiz_keycode().encode(modifiers, key_code_encode_modes, true).ok()
+        self.to_termwiz_keycode()
+            .encode(modifiers, key_code_encode_modes, true)
+            .ok()
     }
     #[cfg(not(target_family = "wasm"))]
     pub fn serialize_kitty(&self) -> Option<String> {
@@ -509,9 +533,11 @@ impl KeyWithModifier {
             // serialization
             application_cursor_keys: false,
             newline_mode: false,
-            modify_other_keys: None
+            modify_other_keys: None,
         };
-        self.to_termwiz_keycode().encode(modifiers, key_code_encode_modes, true).ok()
+        self.to_termwiz_keycode()
+            .encode(modifiers, key_code_encode_modes, true)
+            .ok()
     }
     pub fn has_no_modifiers(&self) -> bool {
         self.key_modifiers.is_empty()

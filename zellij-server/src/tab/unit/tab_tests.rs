@@ -358,8 +358,14 @@ fn write_to_suppressed_pane() {
     // Make sure it's suppressed now
     tab.suppressed_panes.get(&PaneId::Terminal(2)).unwrap();
     // Write content to it
-    tab.write_to_pane_id(&None, vec![34, 127, 31, 82, 17, 182], false, PaneId::Terminal(2), None)
-        .unwrap();
+    tab.write_to_pane_id(
+        &None,
+        vec![34, 127, 31, 82, 17, 182],
+        false,
+        PaneId::Terminal(2),
+        None,
+    )
+    .unwrap();
 }
 
 #[test]

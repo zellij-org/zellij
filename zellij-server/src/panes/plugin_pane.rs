@@ -2,7 +2,12 @@ use std::collections::{BTreeSet, HashMap};
 use std::time::Instant;
 
 use crate::output::{CharacterChunk, SixelImageChunk};
-use crate::panes::{grid::Grid, sixel::SixelImageStore, LinkHandler, PaneId, terminal_pane::{BRACKETED_PASTE_BEGIN, BRACKETED_PASTE_END}};
+use crate::panes::{
+    grid::Grid,
+    sixel::SixelImageStore,
+    terminal_pane::{BRACKETED_PASTE_BEGIN, BRACKETED_PASTE_END},
+    LinkHandler, PaneId,
+};
 use crate::plugins::PluginInstruction;
 use crate::pty::VteBytes;
 use crate::tab::{AdjustedInput, Pane};
@@ -13,7 +18,9 @@ use crate::ui::{
 use crate::ClientId;
 use std::cell::RefCell;
 use std::rc::Rc;
-use zellij_utils::data::{PermissionStatus, PermissionType, PluginPermission, KeyWithModifier, BareKey};
+use zellij_utils::data::{
+    BareKey, KeyWithModifier, PermissionStatus, PermissionType, PluginPermission,
+};
 use zellij_utils::pane_size::{Offset, SizeInPixels};
 use zellij_utils::position::Position;
 use zellij_utils::{
@@ -234,10 +241,11 @@ impl Pane for PluginPane {
     fn cursor_coordinates(&self) -> Option<(usize, usize)> {
         None
     }
-    fn adjust_input_to_terminal(&mut self,
+    fn adjust_input_to_terminal(
+        &mut self,
         key_with_modifier: &Option<KeyWithModifier>,
         raw_input_bytes: Vec<u8>,
-        _raw_input_bytes_are_kitty: bool
+        _raw_input_bytes_are_kitty: bool,
     ) -> Option<AdjustedInput> {
         if let Some(requesting_permissions) = &self.requesting_permissions {
             let permissions = requesting_permissions.permissions.clone();
@@ -254,11 +262,8 @@ impl Pane for PluginPane {
                             permissions,
                             PermissionStatus::Denied,
                         ))
-                    }
-                    _ => {
-                        None
-                    }
-
+                    },
+                    _ => None,
                 }
             } else {
                 match raw_input_bytes.as_slice() {
@@ -277,7 +282,9 @@ impl Pane for PluginPane {
             }
         } else if let Some(key_with_modifier) = key_with_modifier {
             Some(AdjustedInput::WriteKeyToPlugin(key_with_modifier.clone()))
-        } else if raw_input_bytes.as_slice() == BRACKETED_PASTE_BEGIN || raw_input_bytes.as_slice() ==  BRACKETED_PASTE_END {
+        } else if raw_input_bytes.as_slice() == BRACKETED_PASTE_BEGIN
+            || raw_input_bytes.as_slice() == BRACKETED_PASTE_END
+        {
             // plugins do not need bracketed paste
             None
         } else {

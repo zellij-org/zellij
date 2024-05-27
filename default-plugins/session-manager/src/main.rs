@@ -238,7 +238,7 @@ impl State {
                         .with_args(args),
                 );
                 should_render = true;
-            }
+            },
             BareKey::Char('c') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
                 self.new_session_info.new_session_folder = None;
                 should_render = true;
@@ -247,7 +247,7 @@ impl State {
                 self.new_session_info.handle_key(key);
                 should_render = true;
             },
-            _ => {}
+            _ => {},
         }
         should_render
     }
@@ -264,35 +264,35 @@ impl State {
                         .update_search_term(&self.search_term, &self.colors);
                     self.show_kill_all_sessions_warning = false;
                     should_render = true;
-                }
+                },
                 BareKey::Char('n') | BareKey::Esc if key.has_no_modifiers() => {
                     self.show_kill_all_sessions_warning = false;
                     should_render = true;
-                }
+                },
                 BareKey::Char('c') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
                     self.show_kill_all_sessions_warning = false;
                     should_render = true;
-                }
-                _ => {}
+                },
+                _ => {},
             }
         } else {
             match key.bare_key {
                 BareKey::Right if key.has_no_modifiers() => {
                     self.sessions.result_expand();
                     should_render = true;
-                }
+                },
                 BareKey::Left if key.has_no_modifiers() => {
                     self.sessions.result_shrink();
                     should_render = true;
-                }
+                },
                 BareKey::Down if key.has_no_modifiers() => {
                     self.sessions.move_selection_down();
                     should_render = true;
-                }
+                },
                 BareKey::Up if key.has_no_modifiers() => {
                     self.sessions.move_selection_up();
                     should_render = true;
-                }
+                },
                 BareKey::Char(character) if key.has_no_modifiers() => {
                     if character == '\n' {
                         self.handle_selection();
@@ -304,7 +304,7 @@ impl State {
                             .update_search_term(&self.search_term, &self.colors);
                     }
                     should_render = true;
-                }
+                },
                 BareKey::Backspace if key.has_no_modifiers() => {
                     if let Some(new_session_name) = self.renaming_session_name.as_mut() {
                         if new_session_name.is_empty() {
@@ -318,15 +318,15 @@ impl State {
                             .update_search_term(&self.search_term, &self.colors);
                     }
                     should_render = true;
-                }
+                },
                 BareKey::Char('w') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
                     self.active_screen = ActiveScreen::NewSession;
                     should_render = true;
-                }
+                },
                 BareKey::Char('r') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
                     self.renaming_session_name = Some(String::new());
                     should_render = true;
-                }
+                },
                 BareKey::Delete if key.has_no_modifiers() => {
                     if let Some(selected_session_name) = self.sessions.get_selected_session_name() {
                         kill_sessions(&[selected_session_name]);
@@ -338,7 +338,7 @@ impl State {
                         self.show_error("Must select session before killing it.");
                     }
                     should_render = true;
-                }
+                },
                 BareKey::Char('d') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
                     let all_other_sessions = self.sessions.all_other_sessions();
                     if all_other_sessions.is_empty() {
@@ -347,8 +347,10 @@ impl State {
                         self.show_kill_all_sessions_warning = true;
                     }
                     should_render = true;
-                }
-                BareKey::Char('x') if key.has_modifiers(&[KeyModifier::Ctrl]) => disconnect_other_clients(),
+                },
+                BareKey::Char('x') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
+                    disconnect_other_clients()
+                },
                 BareKey::Char('c') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
                     if !self.search_term.is_empty() {
                         self.search_term.clear();
@@ -360,11 +362,11 @@ impl State {
                         hide_self();
                     }
                     should_render = true;
-                }
+                },
                 BareKey::Tab if key.has_no_modifiers() => {
                     self.toggle_active_screen();
                     should_render = true;
-                }
+                },
                 BareKey::Esc if key.has_no_modifiers() => {
                     if self.renaming_session_name.is_some() {
                         self.renaming_session_name = None;
@@ -372,8 +374,8 @@ impl State {
                     } else if !self.is_welcome_screen {
                         hide_self();
                     }
-                }
-                _ => {}
+                },
+                _ => {},
             }
         }
         should_render
@@ -381,14 +383,14 @@ impl State {
     fn handle_resurrect_session_key(&mut self, key: KeyWithModifier) -> bool {
         let mut should_render = false;
         match key.bare_key {
-            BareKey::Down if key.has_no_modifiers() =>  {
+            BareKey::Down if key.has_no_modifiers() => {
                 self.resurrectable_sessions.move_selection_down();
                 should_render = true;
-            }
+            },
             BareKey::Up if key.has_no_modifiers() => {
                 self.resurrectable_sessions.move_selection_up();
                 should_render = true;
-            }
+            },
             BareKey::Char(character) if key.has_no_modifiers() => {
                 if character == '\n' {
                     self.handle_selection();
@@ -396,34 +398,34 @@ impl State {
                     self.resurrectable_sessions.handle_character(character);
                 }
                 should_render = true;
-            }
+            },
             BareKey::Backspace if key.has_no_modifiers() => {
                 self.resurrectable_sessions.handle_backspace();
                 should_render = true;
-            }
+            },
             BareKey::Char('w') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
                 self.active_screen = ActiveScreen::NewSession;
                 should_render = true;
-            }
+            },
             BareKey::Tab if key.has_no_modifiers() => {
                 self.toggle_active_screen();
                 should_render = true;
-            }
+            },
             BareKey::Delete if key.has_no_modifiers() => {
                 self.resurrectable_sessions.delete_selected_session();
                 should_render = true;
-            }
+            },
             BareKey::Char('d') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
                 self.resurrectable_sessions
                     .show_delete_all_sessions_warning();
                 should_render = true;
-            }
+            },
             BareKey::Esc if key.has_no_modifiers() => {
                 if !self.is_welcome_screen {
                     hide_self();
                 }
-            }
-            _ => {}
+            },
+            _ => {},
         }
         should_render
     }

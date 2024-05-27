@@ -1,8 +1,11 @@
 pub use super::generated_api::api::key::{
-    key::{KeyModifier as ProtobufKeyModifier, MainKey as ProtobufMainKey, NamedKey as ProtobufNamedKey},
+    key::{
+        KeyModifier as ProtobufKeyModifier, MainKey as ProtobufMainKey,
+        NamedKey as ProtobufNamedKey,
+    },
     Key as ProtobufKey,
 };
-use crate::data::{KeyWithModifier, BareKey, KeyModifier};
+use crate::data::{BareKey, KeyModifier, KeyWithModifier};
 
 use std::collections::BTreeSet;
 use std::convert::TryFrom;
@@ -15,7 +18,7 @@ impl TryFrom<ProtobufMainKey> for BareKey {
             ProtobufMainKey::Key(key_index) => {
                 let key = ProtobufNamedKey::from_i32(key_index).ok_or("invalid_key")?;
                 Ok(named_key_to_bare_key(key))
-            }
+            },
         }
     }
 }
@@ -79,17 +82,28 @@ impl TryFrom<KeyModifier> for ProtobufKeyModifier {
 impl TryFrom<ProtobufKey> for KeyWithModifier {
     type Error = &'static str;
     fn try_from(protobuf_key: ProtobufKey) -> Result<Self, &'static str> {
-        let bare_key = protobuf_key.main_key.ok_or("Key must have main_key")?.try_into()?;
+        let bare_key = protobuf_key
+            .main_key
+            .ok_or("Key must have main_key")?
+            .try_into()?;
         let mut key_modifiers = BTreeSet::new();
         if let Some(main_modifier) = protobuf_key.modifier {
-            key_modifiers.insert(ProtobufKeyModifier::from_i32(main_modifier).ok_or("invalid key modifier")?.try_into()?);
+            key_modifiers.insert(
+                ProtobufKeyModifier::from_i32(main_modifier)
+                    .ok_or("invalid key modifier")?
+                    .try_into()?,
+            );
         }
         for key_modifier in protobuf_key.additional_modifiers {
-            key_modifiers.insert(ProtobufKeyModifier::from_i32(key_modifier).ok_or("invalid key modifier")?.try_into()?);
+            key_modifiers.insert(
+                ProtobufKeyModifier::from_i32(key_modifier)
+                    .ok_or("invalid key modifier")?
+                    .try_into()?,
+            );
         }
         Ok(KeyWithModifier {
             bare_key,
-            key_modifiers
+            key_modifiers,
         })
     }
 }
@@ -109,7 +123,6 @@ impl TryFrom<KeyWithModifier> for ProtobufKey {
         })
     }
 }
-
 
 fn fn_index_to_main_key(index: u8) -> Result<ProtobufMainKey, &'static str> {
     match index {

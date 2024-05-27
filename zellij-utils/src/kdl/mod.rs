@@ -1,7 +1,7 @@
 mod kdl_layout_parser;
 use crate::data::{
-    Direction, FloatingPaneCoordinates, InputMode, KeyWithModifier, LayoutInfo, Palette, PaletteColor,
-    PaneInfo, PaneManifest, PermissionType, Resize, SessionInfo, TabInfo,
+    Direction, FloatingPaneCoordinates, InputMode, KeyWithModifier, LayoutInfo, Palette,
+    PaletteColor, PaneInfo, PaneManifest, PermissionType, Resize, SessionInfo, TabInfo,
 };
 use crate::envs::EnvironmentVariables;
 use crate::home::{find_default_config_dir, get_layout_dir};
@@ -1614,9 +1614,11 @@ impl Options {
         let disable_session_metadata =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "disable_session_metadata")
                 .map(|(v, _)| v);
-        let support_kitty_keyboard_protocol =
-            kdl_property_first_arg_as_bool_or_error!(kdl_options, "support_kitty_keyboard_protocol")
-                .map(|(v, _)| v);
+        let support_kitty_keyboard_protocol = kdl_property_first_arg_as_bool_or_error!(
+            kdl_options,
+            "support_kitty_keyboard_protocol"
+        )
+        .map(|(v, _)| v);
         Ok(Options {
             simplified_ui,
             theme,

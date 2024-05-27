@@ -1,7 +1,7 @@
+use crate::keyboard_parser::KittyKeyboardParser;
 use crate::os_input_output::ClientOsApi;
 use crate::stdin_ansi_parser::StdinAnsiParser;
 use crate::InputInstruction;
-use crate::keyboard_parser::KittyKeyboardParser;
 use std::sync::{Arc, Mutex};
 use zellij_utils::channels::SenderWithContext;
 use zellij_utils::termwiz::input::{InputEvent, InputParser, MouseButtons};
@@ -101,7 +101,7 @@ pub(crate) fn stdin_loop(
                                 .unwrap();
                             continue;
                         },
-                        None => {}
+                        None => {},
                     }
                 }
 
