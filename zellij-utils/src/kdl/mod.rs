@@ -2172,6 +2172,7 @@ impl SessionInfo {
             let (layout_name, layout_source) = match layout_info {
                 LayoutInfo::File(name) => (name.clone(), "file"),
                 LayoutInfo::BuiltIn(name) => (name.clone(), "built-in"),
+                LayoutInfo::Url(url) => (url.clone(), "url"),
             };
             let mut layout_node = KdlNode::new(format!("{}", layout_name));
             let layout_source = KdlEntry::new_prop("source", layout_source);

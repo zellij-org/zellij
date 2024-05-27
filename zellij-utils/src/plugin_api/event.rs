@@ -546,6 +546,10 @@ impl TryFrom<LayoutInfo> for ProtobufLayoutInfo {
                 source: "built-in".to_owned(),
                 name,
             }),
+            LayoutInfo::Url(name) => Ok(ProtobufLayoutInfo {
+                source: "url".to_owned(),
+                name,
+            }),
         }
     }
 }
@@ -556,6 +560,7 @@ impl TryFrom<ProtobufLayoutInfo> for LayoutInfo {
         match protobuf_layout_info.source.as_str() {
             "file" => Ok(LayoutInfo::File(protobuf_layout_info.name)),
             "built-in" => Ok(LayoutInfo::BuiltIn(protobuf_layout_info.name)),
+            "url" => Ok(LayoutInfo::Url(protobuf_layout_info.name)),
             _ => Err("Unknown source for layout"),
         }
     }
