@@ -43,6 +43,7 @@ thiserror = "1.0.30"
 unicode-width = "0.1.8"
 url = { version = "2.2.2", features = ["serde"] }
 uuid = { version = "1.4.1", features = ["serde", "v4"] }
+bitflags = "2.5.0"
 vte = { version = "0.11.0", default-features = false }
 
 #[cfg(not(target_family = "wasm"))]

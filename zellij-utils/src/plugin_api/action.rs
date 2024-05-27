@@ -37,7 +37,7 @@ impl TryFrom<ProtobufAction> for Action {
             },
             Some(ProtobufActionName::Write) => match protobuf_action.optional_payload {
                 Some(OptionalPayload::WritePayload(write_payload)) => {
-                    Ok(Action::Write(write_payload.bytes_to_write))
+                    Ok(Action::Write(None, write_payload.bytes_to_write, false))
                 },
                 _ => Err("Wrong payload for Action::Write"),
             },
@@ -719,7 +719,7 @@ impl TryFrom<Action> for ProtobufAction {
                 name: ProtobufActionName::Quit as i32,
                 optional_payload: None,
             }),
-            Action::Write(bytes) => Ok(ProtobufAction {
+            Action::Write(_, bytes, _) => Ok(ProtobufAction {
                 name: ProtobufActionName::Write as i32,
                 optional_payload: Some(OptionalPayload::WritePayload(WritePayload {
                     bytes_to_write: bytes,

@@ -1,3 +1,4 @@
+use crate::keyboard_parser::KittyKeyboardParser;
 use crate::os_input_output::ClientOsApi;
 use crate::stdin_ansi_parser::StdinAnsiParser;
 use crate::InputInstruction;
@@ -23,6 +24,7 @@ pub(crate) fn stdin_loop(
     mut os_input: Box<dyn ClientOsApi>,
     send_input_instructions: SenderWithContext<InputInstruction>,
     stdin_ansi_parser: Arc<Mutex<StdinAnsiParser>>,
+    explicitly_disable_kitty_keyboard_protocol: bool,
 ) {
     let mut holding_mouse = false;
     let mut input_parser = InputParser::new();
@@ -85,6 +87,24 @@ pub(crate) fn stdin_loop(
                         .write_cache(ansi_stdin_events.drain(..).collect());
                 }
                 current_buffer.append(&mut buf.to_vec());
+
+                if !explicitly_disable_kitty_keyboard_protocol {
+                    // first we try to parse with the KittyKeyboardParser
+                    // if we fail, we try to parse normally
+                    match KittyKeyboardParser::new().parse(&buf) {
+                        Some(key_with_modifier) => {
+                            send_input_instructions
+                                .send(InputInstruction::KeyWithModifierEvent(
+                                    key_with_modifier,
+                                    current_buffer.drain(..).collect(),
+                                ))
+                                .unwrap();
+                            continue;
+                        },
+                        None => {},
+                    }
+                }
+
                 let maybe_more = false; // read_from_stdin should (hopefully) always empty the STDIN buffer completely
                 let mut events = vec![];
                 input_parser.parse(

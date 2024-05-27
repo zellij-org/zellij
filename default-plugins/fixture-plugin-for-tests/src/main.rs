@@ -72,11 +72,11 @@ impl ZellijPlugin for State {
 
     fn update(&mut self, event: Event) -> bool {
         match &event {
-            Event::Key(key) => match key {
-                Key::Char('a') => {
+            Event::Key(key) => match key.bare_key {
+                BareKey::Char('a') if key.has_no_modifiers() => {
                     switch_to_input_mode(&InputMode::Tab);
                 },
-                Key::Char('b') => {
+                BareKey::Char('b') if key.has_no_modifiers() => {
                     new_tabs_with_layout(
                         "layout {
                         tab {
@@ -90,85 +90,87 @@ impl ZellijPlugin for State {
                     }",
                     );
                 },
-                Key::Char('c') => new_tab(),
-                Key::Char('d') => go_to_next_tab(),
-                Key::Char('e') => go_to_previous_tab(),
-                Key::Char('f') => {
+                BareKey::Char('c') if key.has_no_modifiers() => new_tab(),
+                BareKey::Char('d') if key.has_no_modifiers() => go_to_next_tab(),
+                BareKey::Char('e') if key.has_no_modifiers() => go_to_previous_tab(),
+                BareKey::Char('f') if key.has_no_modifiers() => {
                     let resize = Resize::Increase;
                     resize_focused_pane(resize)
                 },
-                Key::Char('g') => {
+                BareKey::Char('g') if key.has_no_modifiers() => {
                     let resize = Resize::Increase;
                     let direction = Direction::Left;
                     resize_focused_pane_with_direction(resize, direction);
                 },
-                Key::Char('h') => focus_next_pane(),
-                Key::Char('i') => focus_previous_pane(),
-                Key::Char('j') => {
+                BareKey::Char('h') if key.has_no_modifiers() => focus_next_pane(),
+                BareKey::Char('i') if key.has_no_modifiers() => focus_previous_pane(),
+                BareKey::Char('j') if key.has_no_modifiers() => {
                     let direction = Direction::Left;
                     move_focus(direction)
                 },
-                Key::Char('k') => {
+                BareKey::Char('k') if key.has_no_modifiers() => {
                     let direction = Direction::Left;
                     move_focus_or_tab(direction)
                 },
-                Key::Char('l') => detach(),
-                Key::Char('m') => edit_scrollback(),
-                Key::Char('n') => {
+                BareKey::Char('l') if key.has_no_modifiers() => detach(),
+                BareKey::Char('m') if key.has_no_modifiers() => edit_scrollback(),
+                BareKey::Char('n') if key.has_no_modifiers() => {
                     let bytes = vec![102, 111, 111];
                     write(bytes)
                 },
-                Key::Char('o') => {
+                BareKey::Char('o') if key.has_no_modifiers() => {
                     let chars = "foo";
                     write_chars(chars);
                 },
-                Key::Char('p') => toggle_tab(),
-                Key::Char('q') => move_pane(),
-                Key::Char('r') => {
+                BareKey::Char('p') if key.has_no_modifiers() => toggle_tab(),
+                BareKey::Char('q') if key.has_no_modifiers() => move_pane(),
+                BareKey::Char('r') if key.has_no_modifiers() => {
                     let direction = Direction::Left;
                     move_pane_with_direction(direction)
                 },
-                Key::Char('s') => clear_screen(),
-                Key::Char('t') => scroll_up(),
-                Key::Char('u') => scroll_down(),
-                Key::Char('v') => scroll_to_top(),
-                Key::Char('w') => scroll_to_bottom(),
-                Key::Char('x') => page_scroll_up(),
-                Key::Char('y') => page_scroll_down(),
-                Key::Char('z') => toggle_focus_fullscreen(),
-                Key::Char('1') => toggle_pane_frames(),
-                Key::Char('2') => toggle_pane_embed_or_eject(),
-                Key::Char('3') => undo_rename_pane(),
-                Key::Char('4') => close_focus(),
-                Key::Char('5') => toggle_active_tab_sync(),
-                Key::Char('6') => close_focused_tab(),
-                Key::Char('7') => undo_rename_tab(),
-                Key::Char('8') => quit_zellij(),
-                Key::Ctrl('a') => previous_swap_layout(),
-                Key::Ctrl('b') => next_swap_layout(),
-                Key::Ctrl('c') => {
+                BareKey::Char('s') if key.has_no_modifiers() => clear_screen(),
+                BareKey::Char('t') if key.has_no_modifiers() => scroll_up(),
+                BareKey::Char('u') if key.has_no_modifiers() => scroll_down(),
+                BareKey::Char('v') if key.has_no_modifiers() => scroll_to_top(),
+                BareKey::Char('w') if key.has_no_modifiers() => scroll_to_bottom(),
+                BareKey::Char('x') if key.has_no_modifiers() => page_scroll_up(),
+                BareKey::Char('y') if key.has_no_modifiers() => page_scroll_down(),
+                BareKey::Char('z') if key.has_no_modifiers() => toggle_focus_fullscreen(),
+                BareKey::Char('1') if key.has_no_modifiers() => toggle_pane_frames(),
+                BareKey::Char('2') if key.has_no_modifiers() => toggle_pane_embed_or_eject(),
+                BareKey::Char('3') if key.has_no_modifiers() => undo_rename_pane(),
+                BareKey::Char('4') if key.has_no_modifiers() => close_focus(),
+                BareKey::Char('5') if key.has_no_modifiers() => toggle_active_tab_sync(),
+                BareKey::Char('6') if key.has_no_modifiers() => close_focused_tab(),
+                BareKey::Char('7') if key.has_no_modifiers() => undo_rename_tab(),
+                BareKey::Char('8') if key.has_no_modifiers() => quit_zellij(),
+                BareKey::Char('a') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
+                    previous_swap_layout()
+                },
+                BareKey::Char('b') if key.has_modifiers(&[KeyModifier::Ctrl]) => next_swap_layout(),
+                BareKey::Char('c') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
                     let tab_name = "my tab name";
                     go_to_tab_name(tab_name)
                 },
-                Key::Ctrl('d') => {
+                BareKey::Char('d') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
                     let tab_name = "my tab name";
                     focus_or_create_tab(tab_name)
                 },
-                Key::Ctrl('e') => {
+                BareKey::Char('e') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
                     let tab_index = 2;
                     go_to_tab(tab_index)
                 },
-                Key::Ctrl('f') => {
+                BareKey::Char('f') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
                     let plugin_url = "file:/path/to/my/plugin.wasm";
                     start_or_reload_plugin(plugin_url)
                 },
-                Key::Ctrl('g') => {
+                BareKey::Char('g') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
                     open_file(FileToOpen {
                         path: std::path::PathBuf::from("/path/to/my/file.rs"),
                         ..Default::default()
                     });
                 },
-                Key::Ctrl('h') => {
+                BareKey::Char('h') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
                     open_file_floating(
                         FileToOpen {
                             path: std::path::PathBuf::from("/path/to/my/file.rs"),
@@ -177,14 +179,14 @@ impl ZellijPlugin for State {
                         None,
                     );
                 },
-                Key::Ctrl('i') => {
+                BareKey::Char('i') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
                     open_file(FileToOpen {
                         path: std::path::PathBuf::from("/path/to/my/file.rs"),
                         line_number: Some(42),
                         ..Default::default()
                     });
                 },
-                Key::Ctrl('j') => {
+                BareKey::Char('j') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
                     open_file_floating(
                         FileToOpen {
                             path: std::path::PathBuf::from("/path/to/my/file.rs"),
@@ -194,23 +196,23 @@ impl ZellijPlugin for State {
                         None,
                     );
                 },
-                Key::Ctrl('k') => {
+                BareKey::Char('k') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
                     open_terminal(std::path::PathBuf::from("/path/to/my/file.rs").as_path());
                 },
-                Key::Ctrl('l') => {
+                BareKey::Char('l') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
                     open_terminal_floating(
                         std::path::PathBuf::from("/path/to/my/file.rs").as_path(),
                         None,
                     );
                 },
-                Key::Ctrl('m') => {
+                BareKey::Char('m') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
                     open_command_pane(CommandToRun {
                         path: std::path::PathBuf::from("/path/to/my/file.rs"),
                         args: vec!["arg1".to_owned(), "arg2".to_owned()],
                         ..Default::default()
                     });
                 },
-                Key::Ctrl('n') => {
+                BareKey::Char('n') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
                     open_command_pane_floating(
                         CommandToRun {
                             path: std::path::PathBuf::from("/path/to/my/file.rs"),
@@ -220,51 +222,51 @@ impl ZellijPlugin for State {
                         None,
                     );
                 },
-                Key::Ctrl('o') => {
+                BareKey::Char('o') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
                     switch_tab_to(1);
                 },
-                Key::Ctrl('p') => {
+                BareKey::Char('p') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
                     hide_self();
                 },
-                Key::Ctrl('q') => {
+                BareKey::Char('q') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
                     let should_float_if_hidden = false;
                     show_self(should_float_if_hidden);
                 },
-                Key::Ctrl('r') => {
+                BareKey::Char('r') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
                     close_terminal_pane(1);
                 },
-                Key::Ctrl('s') => {
+                BareKey::Char('s') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
                     close_plugin_pane(1);
                 },
-                Key::Ctrl('t') => {
+                BareKey::Char('t') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
                     let should_float_if_hidden = false;
                     focus_terminal_pane(1, should_float_if_hidden);
                 },
-                Key::Ctrl('u') => {
+                BareKey::Char('u') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
                     let should_float_if_hidden = false;
                     focus_plugin_pane(1, should_float_if_hidden);
                 },
-                Key::Ctrl('v') => {
+                BareKey::Char('v') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
                     rename_terminal_pane(1, "new terminal_pane_name");
                 },
-                Key::Ctrl('w') => {
+                BareKey::Char('w') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
                     rename_plugin_pane(1, "new plugin_pane_name");
                 },
-                Key::Ctrl('x') => {
+                BareKey::Char('x') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
                     rename_tab(1, "new tab name");
                 },
-                Key::Ctrl('z') => {
+                BareKey::Char('z') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
                     go_to_tab_name(&format!("{:?}", self.configuration));
                 },
-                Key::Ctrl('1') => {
+                BareKey::Char('1') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
                     request_permission(&[PermissionType::ReadApplicationState]);
                 },
-                Key::Ctrl('2') => {
+                BareKey::Char('2') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
                     let mut context = BTreeMap::new();
                     context.insert("user_key_1".to_owned(), "user_value_1".to_owned());
                     run_command(&["ls", "-l"], context);
                 },
-                Key::Ctrl('3') => {
+                BareKey::Char('3') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
                     let mut context = BTreeMap::new();
                     context.insert("user_key_2".to_owned(), "user_value_2".to_owned());
                     let mut env_vars = BTreeMap::new();
@@ -276,7 +278,7 @@ impl ZellijPlugin for State {
                         context,
                     );
                 },
-                Key::Ctrl('4') => {
+                BareKey::Char('4') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
                     let mut headers = BTreeMap::new();
                     let mut context = BTreeMap::new();
                     let body = vec![1, 2, 3];
@@ -292,22 +294,24 @@ impl ZellijPlugin for State {
                         context,
                     );
                 },
-                Key::Ctrl('5') => {
+                BareKey::Char('5') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
                     switch_session(Some("my_new_session"));
                 },
-                Key::Ctrl('6') => disconnect_other_clients(),
-                Key::Ctrl('7') => {
+                BareKey::Char('6') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
+                    disconnect_other_clients()
+                },
+                BareKey::Char('7') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
                     switch_session_with_layout(
                         Some("my_other_new_session"),
                         LayoutInfo::BuiltIn("compact".to_owned()),
                         None,
                     );
                 },
-                Key::Ctrl('8') => {
+                BareKey::Char('8') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
                     let mut file = std::fs::File::create("/host/hi-from-plugin.txt").unwrap();
                     file.write_all(b"Hi there!").unwrap();
                 },
-                Key::Ctrl('9') => {
+                BareKey::Char('9') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
                     switch_session_with_layout(
                         Some("my_other_new_session_with_cwd"),
                         LayoutInfo::BuiltIn("compact".to_owned()),

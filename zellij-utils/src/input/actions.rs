@@ -6,7 +6,7 @@ use super::layout::{
     SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,
 };
 use crate::cli::CliAction;
-use crate::data::{Direction, Resize};
+use crate::data::{Direction, KeyWithModifier, Resize};
 use crate::data::{FloatingPaneCoordinates, InputMode};
 use crate::home::{find_default_config_dir, get_layout_dir};
 use crate::input::config::{Config, ConfigError, KdlError};
@@ -102,7 +102,7 @@ pub enum Action {
     /// Quit Zellij.
     Quit,
     /// Write to the terminal.
-    Write(Vec<u8>),
+    Write(Option<KeyWithModifier>, Vec<u8>, bool), // bool -> is_kitty_keyboard_protocol
     /// Write Characters to the terminal.
     WriteChars(String),
     /// Switch to the specified input mode.
@@ -317,7 +317,7 @@ impl Action {
         config: Option<Config>,
     ) -> Result<Vec<Action>, String> {
         match cli_action {
-            CliAction::Write { bytes } => Ok(vec![Action::Write(bytes)]),
+            CliAction::Write { bytes } => Ok(vec![Action::Write(None, bytes, false)]),
             CliAction::WriteChars { chars } => Ok(vec![Action::WriteChars(chars)]),
             CliAction::Resize { resize, direction } => Ok(vec![Action::Resize(resize, direction)]),
             CliAction::FocusNextPane => Ok(vec![Action::FocusNextPane]),

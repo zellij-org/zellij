@@ -1,228 +1,321 @@
 ---
 source: zellij-utils/src/setup.rs
-assertion_line: 784
+assertion_line: 811
 expression: "format!(\"{:#?}\", config)"
 ---
 Config {
     keybinds: {
         Normal: {
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Left,
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocusOrTab(
+                    Left,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Down,
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocus(
+                    Down,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Up,
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocus(
+                    Up,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Right,
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocusOrTab(
+                    Right,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
                     '+',
                 ),
-            ): [
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
                 Resize(
                     Increase,
                     None,
                 ),
             ],
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Char(
                     '-',
                 ),
-            ): [
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
                 Resize(
                     Decrease,
                     None,
                 ),
             ],
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Char(
                     '=',
                 ),
-            ): [
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
                 Resize(
                     Increase,
                     None,
                 ),
             ],
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Char(
                     '[',
                 ),
-            ): [
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
                 PreviousSwapLayout,
             ],
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Char(
                     ']',
                 ),
-            ): [
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
                 NextSwapLayout,
             ],
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Char(
+                    'b',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
+                SwitchToMode(
+                    Tmux,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'g',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
+                SwitchToMode(
+                    Locked,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
                     'h',
                 ),
-            ): [
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
+                SwitchToMode(
+                    Move,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'h',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
                 MoveFocusOrTab(
                     Left,
                 ),
             ],
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Char(
                     'i',
                 ),
-            ): [
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
                 MoveTab(
                     Left,
                 ),
             ],
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Char(
                     'j',
                 ),
-            ): [
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
                 MoveFocus(
                     Down,
                 ),
             ],
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Char(
                     'k',
                 ),
-            ): [
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
                 MoveFocus(
                     Up,
                 ),
             ],
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Char(
                     'l',
                 ),
-            ): [
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
                 MoveFocusOrTab(
                     Right,
                 ),
             ],
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Char(
                     'n',
                 ),
-            ): [
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
+                SwitchToMode(
+                    Resize,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'n',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
                 NewPane(
                     None,
                     None,
                 ),
             ],
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Char(
                     'o',
                 ),
-            ): [
-                MoveTab(
-                    Right,
-                ),
-            ],
-            Alt(
-                Direction(
-                    Left,
-                ),
-            ): [
-                MoveFocusOrTab(
-                    Left,
-                ),
-            ],
-            Alt(
-                Direction(
-                    Right,
-                ),
-            ): [
-                MoveFocusOrTab(
-                    Right,
-                ),
-            ],
-            Alt(
-                Direction(
-                    Up,
-                ),
-            ): [
-                MoveFocus(
-                    Up,
-                ),
-            ],
-            Alt(
-                Direction(
-                    Down,
-                ),
-            ): [
-                MoveFocus(
-                    Down,
-                ),
-            ],
-            Ctrl(
-                'b',
-            ): [
-                SwitchToMode(
-                    Tmux,
-                ),
-            ],
-            Ctrl(
-                'g',
-            ): [
-                SwitchToMode(
-                    Locked,
-                ),
-            ],
-            Ctrl(
-                'h',
-            ): [
-                SwitchToMode(
-                    Move,
-                ),
-            ],
-            Ctrl(
-                'n',
-            ): [
-                SwitchToMode(
-                    Resize,
-                ),
-            ],
-            Ctrl(
-                'o',
-            ): [
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
                 SwitchToMode(
                     Session,
                 ),
             ],
-            Ctrl(
-                'p',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    'o',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveTab(
+                    Right,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'p',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
                 SwitchToMode(
                     Pane,
                 ),
             ],
-            Ctrl(
-                'q',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    'q',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
                 Quit,
             ],
-            Ctrl(
-                's',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    's',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
                 SwitchToMode(
                     Scroll,
                 ),
             ],
-            Ctrl(
-                't',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    't',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
                 SwitchToMode(
                     Tab,
                 ),
             ],
         },
         Locked: {
-            Ctrl(
-                'g',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    'g',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
                 SwitchToMode(
                     Normal,
                 ),
             ],
         },
         Resize: {
-            Left: [
+            KeyWithModifier {
+                bare_key: Left,
+                key_modifiers: {},
+            }: [
                 Resize(
                     Increase,
                     Some(
@@ -230,383 +323,633 @@ Config {
                     ),
                 ),
             ],
-            Down: [
-                Resize(
-                    Increase,
-                    Some(
-                        Down,
-                    ),
-                ),
-            ],
-            Up: [
-                Resize(
-                    Increase,
-                    Some(
-                        Up,
-                    ),
-                ),
-            ],
-            Right: [
-                Resize(
-                    Increase,
-                    Some(
-                        Right,
-                    ),
-                ),
-            ],
-            Char(
-                '\n',
-            ): [
-                SwitchToMode(
-                    Normal,
-                ),
-            ],
-            Char(
-                '+',
-            ): [
-                Resize(
-                    Increase,
-                    None,
-                ),
-            ],
-            Char(
-                '-',
-            ): [
-                Resize(
-                    Decrease,
-                    None,
-                ),
-            ],
-            Char(
-                '=',
-            ): [
-                Resize(
-                    Increase,
-                    None,
-                ),
-            ],
-            Char(
-                'H',
-            ): [
-                Resize(
-                    Decrease,
-                    Some(
-                        Left,
-                    ),
-                ),
-            ],
-            Char(
-                'J',
-            ): [
-                Resize(
-                    Decrease,
-                    Some(
-                        Down,
-                    ),
-                ),
-            ],
-            Char(
-                'K',
-            ): [
-                Resize(
-                    Decrease,
-                    Some(
-                        Up,
-                    ),
-                ),
-            ],
-            Char(
-                'L',
-            ): [
-                Resize(
-                    Decrease,
-                    Some(
-                        Right,
-                    ),
-                ),
-            ],
-            Char(
-                'h',
-            ): [
-                Resize(
-                    Increase,
-                    Some(
-                        Left,
-                    ),
-                ),
-            ],
-            Char(
-                'j',
-            ): [
-                Resize(
-                    Increase,
-                    Some(
-                        Down,
-                    ),
-                ),
-            ],
-            Char(
-                'k',
-            ): [
-                Resize(
-                    Increase,
-                    Some(
-                        Up,
-                    ),
-                ),
-            ],
-            Char(
-                'l',
-            ): [
-                Resize(
-                    Increase,
-                    Some(
-                        Right,
-                    ),
-                ),
-            ],
-            Alt(
-                Char(
-                    '+',
-                ),
-            ): [
-                Resize(
-                    Increase,
-                    None,
-                ),
-            ],
-            Alt(
-                Char(
-                    '-',
-                ),
-            ): [
-                Resize(
-                    Decrease,
-                    None,
-                ),
-            ],
-            Alt(
-                Char(
-                    '=',
-                ),
-            ): [
-                Resize(
-                    Increase,
-                    None,
-                ),
-            ],
-            Alt(
-                Char(
-                    '[',
-                ),
-            ): [
-                PreviousSwapLayout,
-            ],
-            Alt(
-                Char(
-                    ']',
-                ),
-            ): [
-                NextSwapLayout,
-            ],
-            Alt(
-                Char(
-                    'h',
-                ),
-            ): [
+            KeyWithModifier {
+                bare_key: Left,
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
                 MoveFocusOrTab(
                     Left,
                 ),
             ],
-            Alt(
-                Char(
-                    'i',
-                ),
-            ): [
-                MoveTab(
-                    Left,
+            KeyWithModifier {
+                bare_key: Down,
+                key_modifiers: {},
+            }: [
+                Resize(
+                    Increase,
+                    Some(
+                        Down,
+                    ),
                 ),
             ],
-            Alt(
-                Char(
-                    'j',
-                ),
-            ): [
+            KeyWithModifier {
+                bare_key: Down,
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
                 MoveFocus(
                     Down,
                 ),
             ],
-            Alt(
-                Char(
-                    'k',
+            KeyWithModifier {
+                bare_key: Up,
+                key_modifiers: {},
+            }: [
+                Resize(
+                    Increase,
+                    Some(
+                        Up,
+                    ),
                 ),
-            ): [
+            ],
+            KeyWithModifier {
+                bare_key: Up,
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
                 MoveFocus(
                     Up,
                 ),
             ],
-            Alt(
-                Char(
-                    'l',
+            KeyWithModifier {
+                bare_key: Right,
+                key_modifiers: {},
+            }: [
+                Resize(
+                    Increase,
+                    Some(
+                        Right,
+                    ),
                 ),
-            ): [
+            ],
+            KeyWithModifier {
+                bare_key: Right,
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
                 MoveFocusOrTab(
                     Right,
                 ),
             ],
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Char(
+                    '+',
+                ),
+                key_modifiers: {},
+            }: [
+                Resize(
+                    Increase,
+                    None,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    '+',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                Resize(
+                    Increase,
+                    None,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    '-',
+                ),
+                key_modifiers: {},
+            }: [
+                Resize(
+                    Decrease,
+                    None,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    '-',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                Resize(
+                    Decrease,
+                    None,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    '=',
+                ),
+                key_modifiers: {},
+            }: [
+                Resize(
+                    Increase,
+                    None,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    '=',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                Resize(
+                    Increase,
+                    None,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'H',
+                ),
+                key_modifiers: {},
+            }: [
+                Resize(
+                    Decrease,
+                    Some(
+                        Left,
+                    ),
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'J',
+                ),
+                key_modifiers: {},
+            }: [
+                Resize(
+                    Decrease,
+                    Some(
+                        Down,
+                    ),
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'K',
+                ),
+                key_modifiers: {},
+            }: [
+                Resize(
+                    Decrease,
+                    Some(
+                        Up,
+                    ),
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'L',
+                ),
+                key_modifiers: {},
+            }: [
+                Resize(
+                    Decrease,
+                    Some(
+                        Right,
+                    ),
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    '[',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                PreviousSwapLayout,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    ']',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                NextSwapLayout,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'b',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
+                SwitchToMode(
+                    Tmux,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'g',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
+                SwitchToMode(
+                    Locked,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'h',
+                ),
+                key_modifiers: {},
+            }: [
+                Resize(
+                    Increase,
+                    Some(
+                        Left,
+                    ),
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'h',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
+                SwitchToMode(
+                    Move,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'h',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocusOrTab(
+                    Left,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'i',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveTab(
+                    Left,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'j',
+                ),
+                key_modifiers: {},
+            }: [
+                Resize(
+                    Increase,
+                    Some(
+                        Down,
+                    ),
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'j',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocus(
+                    Down,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'k',
+                ),
+                key_modifiers: {},
+            }: [
+                Resize(
+                    Increase,
+                    Some(
+                        Up,
+                    ),
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'k',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocus(
+                    Up,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'l',
+                ),
+                key_modifiers: {},
+            }: [
+                Resize(
+                    Increase,
+                    Some(
+                        Right,
+                    ),
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'l',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocusOrTab(
+                    Right,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
                     'n',
                 ),
-            ): [
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'n',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
                 NewPane(
                     None,
                     None,
                 ),
             ],
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Char(
                     'o',
                 ),
-            ): [
-                MoveTab(
-                    Right,
-                ),
-            ],
-            Alt(
-                Direction(
-                    Left,
-                ),
-            ): [
-                MoveFocusOrTab(
-                    Left,
-                ),
-            ],
-            Alt(
-                Direction(
-                    Right,
-                ),
-            ): [
-                MoveFocusOrTab(
-                    Right,
-                ),
-            ],
-            Alt(
-                Direction(
-                    Up,
-                ),
-            ): [
-                MoveFocus(
-                    Up,
-                ),
-            ],
-            Alt(
-                Direction(
-                    Down,
-                ),
-            ): [
-                MoveFocus(
-                    Down,
-                ),
-            ],
-            Ctrl(
-                'b',
-            ): [
-                SwitchToMode(
-                    Tmux,
-                ),
-            ],
-            Ctrl(
-                'g',
-            ): [
-                SwitchToMode(
-                    Locked,
-                ),
-            ],
-            Ctrl(
-                'h',
-            ): [
-                SwitchToMode(
-                    Move,
-                ),
-            ],
-            Ctrl(
-                'n',
-            ): [
-                SwitchToMode(
-                    Normal,
-                ),
-            ],
-            Ctrl(
-                'o',
-            ): [
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
                 SwitchToMode(
                     Session,
                 ),
             ],
-            Ctrl(
-                'p',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    'o',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveTab(
+                    Right,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'p',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
                 SwitchToMode(
                     Pane,
                 ),
             ],
-            Ctrl(
-                'q',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    'q',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
                 Quit,
             ],
-            Ctrl(
-                's',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    's',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
                 SwitchToMode(
                     Scroll,
                 ),
             ],
-            Ctrl(
-                't',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    't',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
                 SwitchToMode(
                     Tab,
                 ),
             ],
-            Esc: [
+            KeyWithModifier {
+                bare_key: Esc,
+                key_modifiers: {},
+            }: [
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Enter,
+                key_modifiers: {},
+            }: [
                 SwitchToMode(
                     Normal,
                 ),
             ],
         },
         Pane: {
-            Left: [
+            KeyWithModifier {
+                bare_key: Left,
+                key_modifiers: {},
+            }: [
                 MoveFocus(
                     Left,
                 ),
             ],
-            Down: [
+            KeyWithModifier {
+                bare_key: Left,
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocusOrTab(
+                    Left,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Down,
+                key_modifiers: {},
+            }: [
                 MoveFocus(
                     Down,
                 ),
             ],
-            Up: [
+            KeyWithModifier {
+                bare_key: Down,
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocus(
+                    Down,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Up,
+                key_modifiers: {},
+            }: [
                 MoveFocus(
                     Up,
                 ),
             ],
-            Right: [
+            KeyWithModifier {
+                bare_key: Up,
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocus(
+                    Up,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Right,
+                key_modifiers: {},
+            }: [
                 MoveFocus(
                     Right,
                 ),
             ],
-            Char(
-                '\n',
-            ): [
-                SwitchToMode(
-                    Normal,
+            KeyWithModifier {
+                bare_key: Right,
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocusOrTab(
+                    Right,
                 ),
             ],
-            Char(
-                'c',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    '+',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                Resize(
+                    Increase,
+                    None,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    '-',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                Resize(
+                    Decrease,
+                    None,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    '=',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                Resize(
+                    Increase,
+                    None,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    '[',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                PreviousSwapLayout,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    ']',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                NextSwapLayout,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'b',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
+                SwitchToMode(
+                    Tmux,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'c',
+                ),
+                key_modifiers: {},
+            }: [
                 SwitchToMode(
                     RenamePane,
                 ),
@@ -616,9 +959,12 @@ Config {
                     ],
                 ),
             ],
-            Char(
-                'd',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    'd',
+                ),
+                key_modifiers: {},
+            }: [
                 NewPane(
                     Some(
                         Down,
@@ -629,53 +975,158 @@ Config {
                     Normal,
                 ),
             ],
-            Char(
-                'e',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    'e',
+                ),
+                key_modifiers: {},
+            }: [
                 TogglePaneEmbedOrFloating,
                 SwitchToMode(
                     Normal,
                 ),
             ],
-            Char(
-                'f',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    'f',
+                ),
+                key_modifiers: {},
+            }: [
                 ToggleFocusFullscreen,
                 SwitchToMode(
                     Normal,
                 ),
             ],
-            Char(
-                'h',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    'g',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
+                SwitchToMode(
+                    Locked,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'h',
+                ),
+                key_modifiers: {},
+            }: [
                 MoveFocus(
                     Left,
                 ),
             ],
-            Char(
-                'j',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    'h',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
+                SwitchToMode(
+                    Move,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'h',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocusOrTab(
+                    Left,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'i',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveTab(
+                    Left,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'j',
+                ),
+                key_modifiers: {},
+            }: [
                 MoveFocus(
                     Down,
                 ),
             ],
-            Char(
-                'k',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    'j',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocus(
+                    Down,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'k',
+                ),
+                key_modifiers: {},
+            }: [
                 MoveFocus(
                     Up,
                 ),
             ],
-            Char(
-                'l',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    'k',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocus(
+                    Up,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'l',
+                ),
+                key_modifiers: {},
+            }: [
                 MoveFocus(
                     Right,
                 ),
             ],
-            Char(
-                'n',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    'l',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocusOrTab(
+                    Right,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'n',
+                ),
+                key_modifiers: {},
+            }: [
                 NewPane(
                     None,
                     None,
@@ -684,14 +1135,91 @@ Config {
                     Normal,
                 ),
             ],
-            Char(
-                'p',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    'n',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
+                SwitchToMode(
+                    Resize,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'n',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                NewPane(
+                    None,
+                    None,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'o',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
+                SwitchToMode(
+                    Session,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'o',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveTab(
+                    Right,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'p',
+                ),
+                key_modifiers: {},
+            }: [
                 SwitchFocus,
             ],
-            Char(
-                'r',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    'p',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'q',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
+                Quit,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'r',
+                ),
+                key_modifiers: {},
+            }: [
                 NewPane(
                     Some(
                         Right,
@@ -702,264 +1230,177 @@ Config {
                     Normal,
                 ),
             ],
-            Char(
-                'w',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    's',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
+                SwitchToMode(
+                    Scroll,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    't',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
+                SwitchToMode(
+                    Tab,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'w',
+                ),
+                key_modifiers: {},
+            }: [
                 ToggleFloatingPanes,
                 SwitchToMode(
                     Normal,
                 ),
             ],
-            Char(
-                'x',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    'x',
+                ),
+                key_modifiers: {},
+            }: [
                 CloseFocus,
                 SwitchToMode(
                     Normal,
                 ),
             ],
-            Char(
-                'z',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    'z',
+                ),
+                key_modifiers: {},
+            }: [
                 TogglePaneFrames,
                 SwitchToMode(
                     Normal,
                 ),
             ],
-            Alt(
-                Char(
-                    '+',
-                ),
-            ): [
-                Resize(
-                    Increase,
-                    None,
-                ),
-            ],
-            Alt(
-                Char(
-                    '-',
-                ),
-            ): [
-                Resize(
-                    Decrease,
-                    None,
-                ),
-            ],
-            Alt(
-                Char(
-                    '=',
-                ),
-            ): [
-                Resize(
-                    Increase,
-                    None,
-                ),
-            ],
-            Alt(
-                Char(
-                    '[',
-                ),
-            ): [
-                PreviousSwapLayout,
-            ],
-            Alt(
-                Char(
-                    ']',
-                ),
-            ): [
-                NextSwapLayout,
-            ],
-            Alt(
-                Char(
-                    'h',
-                ),
-            ): [
-                MoveFocusOrTab(
-                    Left,
-                ),
-            ],
-            Alt(
-                Char(
-                    'i',
-                ),
-            ): [
-                MoveTab(
-                    Left,
-                ),
-            ],
-            Alt(
-                Char(
-                    'j',
-                ),
-            ): [
-                MoveFocus(
-                    Down,
-                ),
-            ],
-            Alt(
-                Char(
-                    'k',
-                ),
-            ): [
-                MoveFocus(
-                    Up,
-                ),
-            ],
-            Alt(
-                Char(
-                    'l',
-                ),
-            ): [
-                MoveFocusOrTab(
-                    Right,
-                ),
-            ],
-            Alt(
-                Char(
-                    'n',
-                ),
-            ): [
-                NewPane(
-                    None,
-                    None,
-                ),
-            ],
-            Alt(
-                Char(
-                    'o',
-                ),
-            ): [
-                MoveTab(
-                    Right,
-                ),
-            ],
-            Alt(
-                Direction(
-                    Left,
-                ),
-            ): [
-                MoveFocusOrTab(
-                    Left,
-                ),
-            ],
-            Alt(
-                Direction(
-                    Right,
-                ),
-            ): [
-                MoveFocusOrTab(
-                    Right,
-                ),
-            ],
-            Alt(
-                Direction(
-                    Up,
-                ),
-            ): [
-                MoveFocus(
-                    Up,
-                ),
-            ],
-            Alt(
-                Direction(
-                    Down,
-                ),
-            ): [
-                MoveFocus(
-                    Down,
-                ),
-            ],
-            Ctrl(
-                'b',
-            ): [
-                SwitchToMode(
-                    Tmux,
-                ),
-            ],
-            Ctrl(
-                'g',
-            ): [
-                SwitchToMode(
-                    Locked,
-                ),
-            ],
-            Ctrl(
-                'h',
-            ): [
-                SwitchToMode(
-                    Move,
-                ),
-            ],
-            Ctrl(
-                'n',
-            ): [
-                SwitchToMode(
-                    Resize,
-                ),
-            ],
-            Ctrl(
-                'o',
-            ): [
-                SwitchToMode(
-                    Session,
-                ),
-            ],
-            Ctrl(
-                'p',
-            ): [
+            KeyWithModifier {
+                bare_key: Esc,
+                key_modifiers: {},
+            }: [
                 SwitchToMode(
                     Normal,
                 ),
             ],
-            Ctrl(
-                'q',
-            ): [
-                Quit,
-            ],
-            Ctrl(
-                's',
-            ): [
-                SwitchToMode(
-                    Scroll,
-                ),
-            ],
-            Ctrl(
-                't',
-            ): [
-                SwitchToMode(
-                    Tab,
-                ),
-            ],
-            Esc: [
+            KeyWithModifier {
+                bare_key: Enter,
+                key_modifiers: {},
+            }: [
                 SwitchToMode(
                     Normal,
                 ),
             ],
         },
         Tab: {
-            Left: [
+            KeyWithModifier {
+                bare_key: Left,
+                key_modifiers: {},
+            }: [
                 GoToPreviousTab,
             ],
-            Down: [
-                GoToNextTab,
-            ],
-            Up: [
-                GoToPreviousTab,
-            ],
-            Right: [
-                GoToNextTab,
-            ],
-            Char(
-                '\n',
-            ): [
-                SwitchToMode(
-                    Normal,
+            KeyWithModifier {
+                bare_key: Left,
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocusOrTab(
+                    Left,
                 ),
             ],
-            Char(
-                '1',
-            ): [
+            KeyWithModifier {
+                bare_key: Down,
+                key_modifiers: {},
+            }: [
+                GoToNextTab,
+            ],
+            KeyWithModifier {
+                bare_key: Down,
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocus(
+                    Down,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Up,
+                key_modifiers: {},
+            }: [
+                GoToPreviousTab,
+            ],
+            KeyWithModifier {
+                bare_key: Up,
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocus(
+                    Up,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Right,
+                key_modifiers: {},
+            }: [
+                GoToNextTab,
+            ],
+            KeyWithModifier {
+                bare_key: Right,
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocusOrTab(
+                    Right,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    '+',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                Resize(
+                    Increase,
+                    None,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    '-',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                Resize(
+                    Decrease,
+                    None,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    '1',
+                ),
+                key_modifiers: {},
+            }: [
                 GoToTab(
                     1,
                 ),
@@ -967,9 +1408,12 @@ Config {
                     Normal,
                 ),
             ],
-            Char(
-                '2',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    '2',
+                ),
+                key_modifiers: {},
+            }: [
                 GoToTab(
                     2,
                 ),
@@ -977,9 +1421,12 @@ Config {
                     Normal,
                 ),
             ],
-            Char(
-                '3',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    '3',
+                ),
+                key_modifiers: {},
+            }: [
                 GoToTab(
                     3,
                 ),
@@ -987,9 +1434,12 @@ Config {
                     Normal,
                 ),
             ],
-            Char(
-                '4',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    '4',
+                ),
+                key_modifiers: {},
+            }: [
                 GoToTab(
                     4,
                 ),
@@ -997,9 +1447,12 @@ Config {
                     Normal,
                 ),
             ],
-            Char(
-                '5',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    '5',
+                ),
+                key_modifiers: {},
+            }: [
                 GoToTab(
                     5,
                 ),
@@ -1007,9 +1460,12 @@ Config {
                     Normal,
                 ),
             ],
-            Char(
-                '6',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    '6',
+                ),
+                key_modifiers: {},
+            }: [
                 GoToTab(
                     6,
                 ),
@@ -1017,9 +1473,12 @@ Config {
                     Normal,
                 ),
             ],
-            Char(
-                '7',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    '7',
+                ),
+                key_modifiers: {},
+            }: [
                 GoToTab(
                     7,
                 ),
@@ -1027,9 +1486,12 @@ Config {
                     Normal,
                 ),
             ],
-            Char(
-                '8',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    '8',
+                ),
+                key_modifiers: {},
+            }: [
                 GoToTab(
                     8,
                 ),
@@ -1037,9 +1499,12 @@ Config {
                     Normal,
                 ),
             ],
-            Char(
-                '9',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    '9',
+                ),
+                key_modifiers: {},
+            }: [
                 GoToTab(
                     9,
                 ),
@@ -1047,53 +1512,206 @@ Config {
                     Normal,
                 ),
             ],
-            Char(
-                '[',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    '=',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                Resize(
+                    Increase,
+                    None,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    '[',
+                ),
+                key_modifiers: {},
+            }: [
                 BreakPaneLeft,
                 SwitchToMode(
                     Normal,
                 ),
             ],
-            Char(
-                ']',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    '[',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                PreviousSwapLayout,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    ']',
+                ),
+                key_modifiers: {},
+            }: [
                 BreakPaneRight,
                 SwitchToMode(
                     Normal,
                 ),
             ],
-            Char(
-                'b',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    ']',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                NextSwapLayout,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'b',
+                ),
+                key_modifiers: {},
+            }: [
                 BreakPane,
                 SwitchToMode(
                     Normal,
                 ),
             ],
-            Char(
-                'h',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    'b',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
+                SwitchToMode(
+                    Tmux,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'g',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
+                SwitchToMode(
+                    Locked,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'h',
+                ),
+                key_modifiers: {},
+            }: [
                 GoToPreviousTab,
             ],
-            Char(
-                'j',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    'h',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
+                SwitchToMode(
+                    Move,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'h',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocusOrTab(
+                    Left,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'i',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveTab(
+                    Left,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'j',
+                ),
+                key_modifiers: {},
+            }: [
                 GoToNextTab,
             ],
-            Char(
-                'k',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    'j',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocus(
+                    Down,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'k',
+                ),
+                key_modifiers: {},
+            }: [
                 GoToPreviousTab,
             ],
-            Char(
-                'l',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    'k',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocus(
+                    Up,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'l',
+                ),
+                key_modifiers: {},
+            }: [
                 GoToNextTab,
             ],
-            Char(
-                'n',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    'l',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocusOrTab(
+                    Right,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'n',
+                ),
+                key_modifiers: {},
+            }: [
                 NewTab(
                     None,
                     [],
@@ -1105,9 +1723,83 @@ Config {
                     Normal,
                 ),
             ],
-            Char(
-                'r',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    'n',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
+                SwitchToMode(
+                    Resize,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'n',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                NewPane(
+                    None,
+                    None,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'o',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
+                SwitchToMode(
+                    Session,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'o',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveTab(
+                    Right,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'p',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
+                SwitchToMode(
+                    Pane,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'q',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
+                Quit,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'r',
+                ),
+                key_modifiers: {},
+            }: [
                 SwitchToMode(
                     RenameTab,
                 ),
@@ -1117,298 +1809,456 @@ Config {
                     ],
                 ),
             ],
-            Char(
-                's',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    's',
+                ),
+                key_modifiers: {},
+            }: [
                 ToggleActiveSyncTab,
                 SwitchToMode(
                     Normal,
                 ),
             ],
-            Char(
-                'x',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    's',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
+                SwitchToMode(
+                    Scroll,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    't',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'x',
+                ),
+                key_modifiers: {},
+            }: [
                 CloseTab,
                 SwitchToMode(
                     Normal,
                 ),
             ],
-            Alt(
-                Char(
-                    '+',
-                ),
-            ): [
-                Resize(
-                    Increase,
-                    None,
-                ),
+            KeyWithModifier {
+                bare_key: Tab,
+                key_modifiers: {},
+            }: [
+                ToggleTab,
             ],
-            Alt(
-                Char(
-                    '-',
-                ),
-            ): [
-                Resize(
-                    Decrease,
-                    None,
-                ),
-            ],
-            Alt(
-                Char(
-                    '=',
-                ),
-            ): [
-                Resize(
-                    Increase,
-                    None,
-                ),
-            ],
-            Alt(
-                Char(
-                    '[',
-                ),
-            ): [
-                PreviousSwapLayout,
-            ],
-            Alt(
-                Char(
-                    ']',
-                ),
-            ): [
-                NextSwapLayout,
-            ],
-            Alt(
-                Char(
-                    'h',
-                ),
-            ): [
-                MoveFocusOrTab(
-                    Left,
-                ),
-            ],
-            Alt(
-                Char(
-                    'i',
-                ),
-            ): [
-                MoveTab(
-                    Left,
-                ),
-            ],
-            Alt(
-                Char(
-                    'j',
-                ),
-            ): [
-                MoveFocus(
-                    Down,
-                ),
-            ],
-            Alt(
-                Char(
-                    'k',
-                ),
-            ): [
-                MoveFocus(
-                    Up,
-                ),
-            ],
-            Alt(
-                Char(
-                    'l',
-                ),
-            ): [
-                MoveFocusOrTab(
-                    Right,
-                ),
-            ],
-            Alt(
-                Char(
-                    'n',
-                ),
-            ): [
-                NewPane(
-                    None,
-                    None,
-                ),
-            ],
-            Alt(
-                Char(
-                    'o',
-                ),
-            ): [
-                MoveTab(
-                    Right,
-                ),
-            ],
-            Alt(
-                Direction(
-                    Left,
-                ),
-            ): [
-                MoveFocusOrTab(
-                    Left,
-                ),
-            ],
-            Alt(
-                Direction(
-                    Right,
-                ),
-            ): [
-                MoveFocusOrTab(
-                    Right,
-                ),
-            ],
-            Alt(
-                Direction(
-                    Up,
-                ),
-            ): [
-                MoveFocus(
-                    Up,
-                ),
-            ],
-            Alt(
-                Direction(
-                    Down,
-                ),
-            ): [
-                MoveFocus(
-                    Down,
-                ),
-            ],
-            Ctrl(
-                'b',
-            ): [
-                SwitchToMode(
-                    Tmux,
-                ),
-            ],
-            Ctrl(
-                'g',
-            ): [
-                SwitchToMode(
-                    Locked,
-                ),
-            ],
-            Ctrl(
-                'h',
-            ): [
-                SwitchToMode(
-                    Move,
-                ),
-            ],
-            Ctrl(
-                'n',
-            ): [
-                SwitchToMode(
-                    Resize,
-                ),
-            ],
-            Ctrl(
-                'o',
-            ): [
-                SwitchToMode(
-                    Session,
-                ),
-            ],
-            Ctrl(
-                'p',
-            ): [
-                SwitchToMode(
-                    Pane,
-                ),
-            ],
-            Ctrl(
-                'q',
-            ): [
-                Quit,
-            ],
-            Ctrl(
-                's',
-            ): [
-                SwitchToMode(
-                    Scroll,
-                ),
-            ],
-            Ctrl(
-                't',
-            ): [
+            KeyWithModifier {
+                bare_key: Esc,
+                key_modifiers: {},
+            }: [
                 SwitchToMode(
                     Normal,
                 ),
             ],
-            BackTab: [
-                ToggleTab,
-            ],
-            Esc: [
+            KeyWithModifier {
+                bare_key: Enter,
+                key_modifiers: {},
+            }: [
                 SwitchToMode(
                     Normal,
                 ),
             ],
         },
         Scroll: {
-            PageDown: [
+            KeyWithModifier {
+                bare_key: PageDown,
+                key_modifiers: {},
+            }: [
                 PageScrollDown,
             ],
-            PageUp: [
+            KeyWithModifier {
+                bare_key: PageUp,
+                key_modifiers: {},
+            }: [
                 PageScrollUp,
             ],
-            Left: [
+            KeyWithModifier {
+                bare_key: Left,
+                key_modifiers: {},
+            }: [
                 PageScrollUp,
             ],
-            Down: [
+            KeyWithModifier {
+                bare_key: Left,
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocusOrTab(
+                    Left,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Down,
+                key_modifiers: {},
+            }: [
                 ScrollDown,
             ],
-            Up: [
+            KeyWithModifier {
+                bare_key: Down,
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocus(
+                    Down,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Up,
+                key_modifiers: {},
+            }: [
                 ScrollUp,
             ],
-            Right: [
+            KeyWithModifier {
+                bare_key: Up,
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocus(
+                    Up,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Right,
+                key_modifiers: {},
+            }: [
                 PageScrollDown,
             ],
-            Char(
-                '\n',
-            ): [
+            KeyWithModifier {
+                bare_key: Right,
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocusOrTab(
+                    Right,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    '+',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                Resize(
+                    Increase,
+                    None,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    '-',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                Resize(
+                    Decrease,
+                    None,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    '=',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                Resize(
+                    Increase,
+                    None,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    '[',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                PreviousSwapLayout,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    ']',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                NextSwapLayout,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'b',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
+                PageScrollUp,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'c',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
+                ScrollToBottom,
                 SwitchToMode(
                     Normal,
                 ),
             ],
-            Char(
-                'd',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    'd',
+                ),
+                key_modifiers: {},
+            }: [
                 HalfPageScrollDown,
             ],
-            Char(
-                'e',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    'e',
+                ),
+                key_modifiers: {},
+            }: [
                 EditScrollback,
                 SwitchToMode(
                     Normal,
                 ),
             ],
-            Char(
-                'h',
-            ): [
-                PageScrollUp,
-            ],
-            Char(
-                'j',
-            ): [
-                ScrollDown,
-            ],
-            Char(
-                'k',
-            ): [
-                ScrollUp,
-            ],
-            Char(
-                'l',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    'f',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
                 PageScrollDown,
             ],
-            Char(
-                's',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    'g',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
+                SwitchToMode(
+                    Locked,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'h',
+                ),
+                key_modifiers: {},
+            }: [
+                PageScrollUp,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'h',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
+                SwitchToMode(
+                    Move,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'h',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocusOrTab(
+                    Left,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'i',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveTab(
+                    Left,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'j',
+                ),
+                key_modifiers: {},
+            }: [
+                ScrollDown,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'j',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocus(
+                    Down,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'k',
+                ),
+                key_modifiers: {},
+            }: [
+                ScrollUp,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'k',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocus(
+                    Up,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'l',
+                ),
+                key_modifiers: {},
+            }: [
+                PageScrollDown,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'l',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocusOrTab(
+                    Right,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'n',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
+                SwitchToMode(
+                    Resize,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'n',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                NewPane(
+                    None,
+                    None,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'o',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
+                SwitchToMode(
+                    Session,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'o',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveTab(
+                    Right,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'p',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
+                SwitchToMode(
+                    Pane,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'q',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
+                Quit,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    's',
+                ),
+                key_modifiers: {},
+            }: [
                 SwitchToMode(
                     EnterSearch,
                 ),
@@ -1418,1242 +2268,1785 @@ Config {
                     ],
                 ),
             ],
-            Char(
-                'u',
-            ): [
-                HalfPageScrollUp,
-            ],
-            Alt(
-                Char(
-                    '+',
+            KeyWithModifier {
+                bare_key: Char(
+                    's',
                 ),
-            ): [
-                Resize(
-                    Increase,
-                    None,
-                ),
-            ],
-            Alt(
-                Char(
-                    '-',
-                ),
-            ): [
-                Resize(
-                    Decrease,
-                    None,
-                ),
-            ],
-            Alt(
-                Char(
-                    '=',
-                ),
-            ): [
-                Resize(
-                    Increase,
-                    None,
-                ),
-            ],
-            Alt(
-                Char(
-                    '[',
-                ),
-            ): [
-                PreviousSwapLayout,
-            ],
-            Alt(
-                Char(
-                    ']',
-                ),
-            ): [
-                NextSwapLayout,
-            ],
-            Alt(
-                Char(
-                    'h',
-                ),
-            ): [
-                MoveFocusOrTab(
-                    Left,
-                ),
-            ],
-            Alt(
-                Char(
-                    'i',
-                ),
-            ): [
-                MoveTab(
-                    Left,
-                ),
-            ],
-            Alt(
-                Char(
-                    'j',
-                ),
-            ): [
-                MoveFocus(
-                    Down,
-                ),
-            ],
-            Alt(
-                Char(
-                    'k',
-                ),
-            ): [
-                MoveFocus(
-                    Up,
-                ),
-            ],
-            Alt(
-                Char(
-                    'l',
-                ),
-            ): [
-                MoveFocusOrTab(
-                    Right,
-                ),
-            ],
-            Alt(
-                Char(
-                    'n',
-                ),
-            ): [
-                NewPane(
-                    None,
-                    None,
-                ),
-            ],
-            Alt(
-                Char(
-                    'o',
-                ),
-            ): [
-                MoveTab(
-                    Right,
-                ),
-            ],
-            Alt(
-                Direction(
-                    Left,
-                ),
-            ): [
-                MoveFocusOrTab(
-                    Left,
-                ),
-            ],
-            Alt(
-                Direction(
-                    Right,
-                ),
-            ): [
-                MoveFocusOrTab(
-                    Right,
-                ),
-            ],
-            Alt(
-                Direction(
-                    Up,
-                ),
-            ): [
-                MoveFocus(
-                    Up,
-                ),
-            ],
-            Alt(
-                Direction(
-                    Down,
-                ),
-            ): [
-                MoveFocus(
-                    Down,
-                ),
-            ],
-            Ctrl(
-                'b',
-            ): [
-                PageScrollUp,
-            ],
-            Ctrl(
-                'c',
-            ): [
-                ScrollToBottom,
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
                 SwitchToMode(
                     Normal,
                 ),
             ],
-            Ctrl(
-                'f',
-            ): [
-                PageScrollDown,
-            ],
-            Ctrl(
-                'g',
-            ): [
-                SwitchToMode(
-                    Locked,
+            KeyWithModifier {
+                bare_key: Char(
+                    't',
                 ),
-            ],
-            Ctrl(
-                'h',
-            ): [
-                SwitchToMode(
-                    Move,
-                ),
-            ],
-            Ctrl(
-                'n',
-            ): [
-                SwitchToMode(
-                    Resize,
-                ),
-            ],
-            Ctrl(
-                'o',
-            ): [
-                SwitchToMode(
-                    Session,
-                ),
-            ],
-            Ctrl(
-                'p',
-            ): [
-                SwitchToMode(
-                    Pane,
-                ),
-            ],
-            Ctrl(
-                'q',
-            ): [
-                Quit,
-            ],
-            Ctrl(
-                's',
-            ): [
-                SwitchToMode(
-                    Normal,
-                ),
-            ],
-            Ctrl(
-                't',
-            ): [
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
                 SwitchToMode(
                     Tab,
                 ),
             ],
-            Esc: [
+            KeyWithModifier {
+                bare_key: Char(
+                    'u',
+                ),
+                key_modifiers: {},
+            }: [
+                HalfPageScrollUp,
+            ],
+            KeyWithModifier {
+                bare_key: Esc,
+                key_modifiers: {},
+            }: [
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Enter,
+                key_modifiers: {},
+            }: [
                 SwitchToMode(
                     Normal,
                 ),
             ],
         },
         EnterSearch: {
-            Char(
-                '\n',
-            ): [
-                SwitchToMode(
-                    Search,
+            KeyWithModifier {
+                bare_key: Left,
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocusOrTab(
+                    Left,
                 ),
             ],
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Down,
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocus(
+                    Down,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Up,
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocus(
+                    Up,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Right,
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocusOrTab(
+                    Right,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
                     '+',
                 ),
-            ): [
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
                 Resize(
                     Increase,
                     None,
                 ),
             ],
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Char(
                     '-',
                 ),
-            ): [
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
                 Resize(
                     Decrease,
                     None,
                 ),
             ],
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Char(
                     '=',
                 ),
-            ): [
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
                 Resize(
                     Increase,
                     None,
                 ),
             ],
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Char(
                     '[',
                 ),
-            ): [
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
                 PreviousSwapLayout,
             ],
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Char(
                     ']',
                 ),
-            ): [
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
                 NextSwapLayout,
             ],
-            Alt(
-                Char(
-                    'h',
+            KeyWithModifier {
+                bare_key: Char(
+                    'b',
                 ),
-            ): [
-                MoveFocusOrTab(
-                    Left,
-                ),
-            ],
-            Alt(
-                Char(
-                    'i',
-                ),
-            ): [
-                MoveTab(
-                    Left,
-                ),
-            ],
-            Alt(
-                Char(
-                    'j',
-                ),
-            ): [
-                MoveFocus(
-                    Down,
-                ),
-            ],
-            Alt(
-                Char(
-                    'k',
-                ),
-            ): [
-                MoveFocus(
-                    Up,
-                ),
-            ],
-            Alt(
-                Char(
-                    'l',
-                ),
-            ): [
-                MoveFocusOrTab(
-                    Right,
-                ),
-            ],
-            Alt(
-                Char(
-                    'n',
-                ),
-            ): [
-                NewPane(
-                    None,
-                    None,
-                ),
-            ],
-            Alt(
-                Char(
-                    'o',
-                ),
-            ): [
-                MoveTab(
-                    Right,
-                ),
-            ],
-            Alt(
-                Direction(
-                    Left,
-                ),
-            ): [
-                MoveFocusOrTab(
-                    Left,
-                ),
-            ],
-            Alt(
-                Direction(
-                    Right,
-                ),
-            ): [
-                MoveFocusOrTab(
-                    Right,
-                ),
-            ],
-            Alt(
-                Direction(
-                    Up,
-                ),
-            ): [
-                MoveFocus(
-                    Up,
-                ),
-            ],
-            Alt(
-                Direction(
-                    Down,
-                ),
-            ): [
-                MoveFocus(
-                    Down,
-                ),
-            ],
-            Ctrl(
-                'b',
-            ): [
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
                 SwitchToMode(
                     Tmux,
                 ),
             ],
-            Ctrl(
-                'c',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    'c',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
                 SwitchToMode(
                     Scroll,
                 ),
             ],
-            Ctrl(
-                'g',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    'g',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
                 SwitchToMode(
                     Locked,
                 ),
             ],
-            Ctrl(
-                'h',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    'h',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
                 SwitchToMode(
                     Move,
                 ),
             ],
-            Ctrl(
-                'n',
-            ): [
-                SwitchToMode(
-                    Resize,
-                ),
-            ],
-            Ctrl(
-                'o',
-            ): [
-                SwitchToMode(
-                    Session,
-                ),
-            ],
-            Ctrl(
-                'p',
-            ): [
-                SwitchToMode(
-                    Pane,
-                ),
-            ],
-            Ctrl(
-                'q',
-            ): [
-                Quit,
-            ],
-            Ctrl(
-                's',
-            ): [
-                SwitchToMode(
-                    Scroll,
-                ),
-            ],
-            Ctrl(
-                't',
-            ): [
-                SwitchToMode(
-                    Tab,
-                ),
-            ],
-            Esc: [
-                SwitchToMode(
-                    Scroll,
-                ),
-            ],
-        },
-        Search: {
-            PageDown: [
-                PageScrollDown,
-            ],
-            PageUp: [
-                PageScrollUp,
-            ],
-            Left: [
-                PageScrollUp,
-            ],
-            Down: [
-                ScrollDown,
-            ],
-            Up: [
-                ScrollUp,
-            ],
-            Right: [
-                PageScrollDown,
-            ],
-            Char(
-                '\n',
-            ): [
-                SwitchToMode(
-                    Normal,
-                ),
-            ],
-            Char(
-                'c',
-            ): [
-                SearchToggleOption(
-                    CaseSensitivity,
-                ),
-            ],
-            Char(
-                'd',
-            ): [
-                HalfPageScrollDown,
-            ],
-            Char(
-                'h',
-            ): [
-                PageScrollUp,
-            ],
-            Char(
-                'j',
-            ): [
-                ScrollDown,
-            ],
-            Char(
-                'k',
-            ): [
-                ScrollUp,
-            ],
-            Char(
-                'l',
-            ): [
-                PageScrollDown,
-            ],
-            Char(
-                'n',
-            ): [
-                Search(
-                    Down,
-                ),
-            ],
-            Char(
-                'o',
-            ): [
-                SearchToggleOption(
-                    WholeWord,
-                ),
-            ],
-            Char(
-                'p',
-            ): [
-                Search(
-                    Up,
-                ),
-            ],
-            Char(
-                'u',
-            ): [
-                HalfPageScrollUp,
-            ],
-            Char(
-                'w',
-            ): [
-                SearchToggleOption(
-                    Wrap,
-                ),
-            ],
-            Alt(
-                Char(
-                    '+',
-                ),
-            ): [
-                Resize(
-                    Increase,
-                    None,
-                ),
-            ],
-            Alt(
-                Char(
-                    '-',
-                ),
-            ): [
-                Resize(
-                    Decrease,
-                    None,
-                ),
-            ],
-            Alt(
-                Char(
-                    '=',
-                ),
-            ): [
-                Resize(
-                    Increase,
-                    None,
-                ),
-            ],
-            Alt(
-                Char(
-                    '[',
-                ),
-            ): [
-                PreviousSwapLayout,
-            ],
-            Alt(
-                Char(
-                    ']',
-                ),
-            ): [
-                NextSwapLayout,
-            ],
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Char(
                     'h',
                 ),
-            ): [
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
                 MoveFocusOrTab(
                     Left,
                 ),
             ],
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Char(
                     'i',
                 ),
-            ): [
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
                 MoveTab(
                     Left,
                 ),
             ],
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Char(
                     'j',
                 ),
-            ): [
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
                 MoveFocus(
                     Down,
                 ),
             ],
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Char(
                     'k',
                 ),
-            ): [
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
                 MoveFocus(
                     Up,
                 ),
             ],
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Char(
                     'l',
                 ),
-            ): [
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
                 MoveFocusOrTab(
                     Right,
                 ),
             ],
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Char(
                     'n',
                 ),
-            ): [
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
+                SwitchToMode(
+                    Resize,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'n',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
                 NewPane(
                     None,
                     None,
                 ),
             ],
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Char(
                     'o',
                 ),
-            ): [
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
+                SwitchToMode(
+                    Session,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'o',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
                 MoveTab(
                     Right,
                 ),
             ],
-            Alt(
-                Direction(
-                    Left,
+            KeyWithModifier {
+                bare_key: Char(
+                    'p',
                 ),
-            ): [
-                MoveFocusOrTab(
-                    Left,
-                ),
-            ],
-            Alt(
-                Direction(
-                    Right,
-                ),
-            ): [
-                MoveFocusOrTab(
-                    Right,
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
+                SwitchToMode(
+                    Pane,
                 ),
             ],
-            Alt(
-                Direction(
-                    Up,
+            KeyWithModifier {
+                bare_key: Char(
+                    'q',
                 ),
-            ): [
-                MoveFocus(
-                    Up,
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
+                Quit,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    's',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
+                SwitchToMode(
+                    Scroll,
                 ),
             ],
-            Alt(
-                Direction(
-                    Down,
+            KeyWithModifier {
+                bare_key: Char(
+                    't',
                 ),
-            ): [
-                MoveFocus(
-                    Down,
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
+                SwitchToMode(
+                    Tab,
                 ),
             ],
-            Ctrl(
-                'b',
-            ): [
+            KeyWithModifier {
+                bare_key: Esc,
+                key_modifiers: {},
+            }: [
+                SwitchToMode(
+                    Scroll,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Enter,
+                key_modifiers: {},
+            }: [
+                SwitchToMode(
+                    Search,
+                ),
+            ],
+        },
+        Search: {
+            KeyWithModifier {
+                bare_key: PageDown,
+                key_modifiers: {},
+            }: [
+                PageScrollDown,
+            ],
+            KeyWithModifier {
+                bare_key: PageUp,
+                key_modifiers: {},
+            }: [
                 PageScrollUp,
             ],
-            Ctrl(
-                'c',
-            ): [
+            KeyWithModifier {
+                bare_key: Left,
+                key_modifiers: {},
+            }: [
+                PageScrollUp,
+            ],
+            KeyWithModifier {
+                bare_key: Left,
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocusOrTab(
+                    Left,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Down,
+                key_modifiers: {},
+            }: [
+                ScrollDown,
+            ],
+            KeyWithModifier {
+                bare_key: Down,
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocus(
+                    Down,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Up,
+                key_modifiers: {},
+            }: [
+                ScrollUp,
+            ],
+            KeyWithModifier {
+                bare_key: Up,
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocus(
+                    Up,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Right,
+                key_modifiers: {},
+            }: [
+                PageScrollDown,
+            ],
+            KeyWithModifier {
+                bare_key: Right,
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocusOrTab(
+                    Right,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    '+',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                Resize(
+                    Increase,
+                    None,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    '-',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                Resize(
+                    Decrease,
+                    None,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    '=',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                Resize(
+                    Increase,
+                    None,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    '[',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                PreviousSwapLayout,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    ']',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                NextSwapLayout,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'b',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
+                PageScrollUp,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'c',
+                ),
+                key_modifiers: {},
+            }: [
+                SearchToggleOption(
+                    CaseSensitivity,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'c',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
                 ScrollToBottom,
                 SwitchToMode(
                     Normal,
                 ),
             ],
-            Ctrl(
-                'f',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    'd',
+                ),
+                key_modifiers: {},
+            }: [
+                HalfPageScrollDown,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'f',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
                 PageScrollDown,
             ],
-            Ctrl(
-                'g',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    'g',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
                 SwitchToMode(
                     Locked,
                 ),
             ],
-            Ctrl(
-                'h',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    'h',
+                ),
+                key_modifiers: {},
+            }: [
+                PageScrollUp,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'h',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
                 SwitchToMode(
                     Move,
                 ),
             ],
-            Ctrl(
-                'n',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    'h',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocusOrTab(
+                    Left,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'i',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveTab(
+                    Left,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'j',
+                ),
+                key_modifiers: {},
+            }: [
+                ScrollDown,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'j',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocus(
+                    Down,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'k',
+                ),
+                key_modifiers: {},
+            }: [
+                ScrollUp,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'k',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocus(
+                    Up,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'l',
+                ),
+                key_modifiers: {},
+            }: [
+                PageScrollDown,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'l',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocusOrTab(
+                    Right,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'n',
+                ),
+                key_modifiers: {},
+            }: [
+                Search(
+                    Down,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'n',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
                 SwitchToMode(
                     Resize,
                 ),
             ],
-            Ctrl(
-                'o',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    'n',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                NewPane(
+                    None,
+                    None,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'o',
+                ),
+                key_modifiers: {},
+            }: [
+                SearchToggleOption(
+                    WholeWord,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'o',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
                 SwitchToMode(
                     Session,
                 ),
             ],
-            Ctrl(
-                'p',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    'o',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveTab(
+                    Right,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'p',
+                ),
+                key_modifiers: {},
+            }: [
+                Search(
+                    Up,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'p',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
                 SwitchToMode(
                     Pane,
                 ),
             ],
-            Ctrl(
-                'q',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    'q',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
                 Quit,
             ],
-            Ctrl(
-                's',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    's',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
                 SwitchToMode(
                     Normal,
                 ),
             ],
-            Ctrl(
-                't',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    't',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
                 SwitchToMode(
                     Tab,
                 ),
             ],
-            Esc: [
+            KeyWithModifier {
+                bare_key: Char(
+                    'u',
+                ),
+                key_modifiers: {},
+            }: [
+                HalfPageScrollUp,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'w',
+                ),
+                key_modifiers: {},
+            }: [
+                SearchToggleOption(
+                    Wrap,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Esc,
+                key_modifiers: {},
+            }: [
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Enter,
+                key_modifiers: {},
+            }: [
                 SwitchToMode(
                     Normal,
                 ),
             ],
         },
         RenameTab: {
-            Char(
-                '\n',
-            ): [
-                SwitchToMode(
-                    Normal,
+            KeyWithModifier {
+                bare_key: Left,
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocusOrTab(
+                    Left,
                 ),
             ],
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Down,
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocus(
+                    Down,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Up,
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocus(
+                    Up,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Right,
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocusOrTab(
+                    Right,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
                     '+',
                 ),
-            ): [
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
                 Resize(
                     Increase,
                     None,
                 ),
             ],
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Char(
                     '-',
                 ),
-            ): [
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
                 Resize(
                     Decrease,
                     None,
                 ),
             ],
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Char(
                     '=',
                 ),
-            ): [
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
                 Resize(
                     Increase,
                     None,
                 ),
             ],
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Char(
                     '[',
                 ),
-            ): [
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
                 PreviousSwapLayout,
             ],
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Char(
                     ']',
                 ),
-            ): [
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
                 NextSwapLayout,
             ],
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Char(
+                    'b',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
+                SwitchToMode(
+                    Tmux,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'c',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'g',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
+                SwitchToMode(
+                    Locked,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
                     'h',
                 ),
-            ): [
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
+                SwitchToMode(
+                    Move,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'h',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
                 MoveFocusOrTab(
                     Left,
                 ),
             ],
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Char(
                     'i',
                 ),
-            ): [
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
                 MoveTab(
                     Left,
                 ),
             ],
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Char(
                     'j',
                 ),
-            ): [
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
                 MoveFocus(
                     Down,
                 ),
             ],
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Char(
                     'k',
                 ),
-            ): [
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
                 MoveFocus(
                     Up,
                 ),
             ],
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Char(
                     'l',
                 ),
-            ): [
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
                 MoveFocusOrTab(
                     Right,
                 ),
             ],
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Char(
                     'n',
                 ),
-            ): [
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
+                SwitchToMode(
+                    Resize,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'n',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
                 NewPane(
                     None,
                     None,
                 ),
             ],
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Char(
                     'o',
                 ),
-            ): [
-                MoveTab(
-                    Right,
-                ),
-            ],
-            Alt(
-                Direction(
-                    Left,
-                ),
-            ): [
-                MoveFocusOrTab(
-                    Left,
-                ),
-            ],
-            Alt(
-                Direction(
-                    Right,
-                ),
-            ): [
-                MoveFocusOrTab(
-                    Right,
-                ),
-            ],
-            Alt(
-                Direction(
-                    Up,
-                ),
-            ): [
-                MoveFocus(
-                    Up,
-                ),
-            ],
-            Alt(
-                Direction(
-                    Down,
-                ),
-            ): [
-                MoveFocus(
-                    Down,
-                ),
-            ],
-            Ctrl(
-                'b',
-            ): [
-                SwitchToMode(
-                    Tmux,
-                ),
-            ],
-            Ctrl(
-                'c',
-            ): [
-                SwitchToMode(
-                    Normal,
-                ),
-            ],
-            Ctrl(
-                'g',
-            ): [
-                SwitchToMode(
-                    Locked,
-                ),
-            ],
-            Ctrl(
-                'h',
-            ): [
-                SwitchToMode(
-                    Move,
-                ),
-            ],
-            Ctrl(
-                'n',
-            ): [
-                SwitchToMode(
-                    Resize,
-                ),
-            ],
-            Ctrl(
-                'o',
-            ): [
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
                 SwitchToMode(
                     Session,
                 ),
             ],
-            Ctrl(
-                'p',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    'o',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveTab(
+                    Right,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'p',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
                 SwitchToMode(
                     Pane,
                 ),
             ],
-            Ctrl(
-                'q',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    'q',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
                 Quit,
             ],
-            Ctrl(
-                's',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    's',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
                 SwitchToMode(
                     Scroll,
                 ),
             ],
-            Ctrl(
-                't',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    't',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
                 SwitchToMode(
                     Tab,
                 ),
             ],
-            Esc: [
+            KeyWithModifier {
+                bare_key: Esc,
+                key_modifiers: {},
+            }: [
                 UndoRenameTab,
                 SwitchToMode(
                     Tab,
                 ),
             ],
-        },
-        RenamePane: {
-            Char(
-                '\n',
-            ): [
+            KeyWithModifier {
+                bare_key: Enter,
+                key_modifiers: {},
+            }: [
                 SwitchToMode(
                     Normal,
                 ),
             ],
-            Alt(
-                Char(
+        },
+        RenamePane: {
+            KeyWithModifier {
+                bare_key: Left,
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocusOrTab(
+                    Left,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Down,
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocus(
+                    Down,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Up,
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocus(
+                    Up,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Right,
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocusOrTab(
+                    Right,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
                     '+',
                 ),
-            ): [
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
                 Resize(
                     Increase,
                     None,
                 ),
             ],
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Char(
                     '-',
                 ),
-            ): [
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
                 Resize(
                     Decrease,
                     None,
                 ),
             ],
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Char(
                     '=',
                 ),
-            ): [
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
                 Resize(
                     Increase,
                     None,
                 ),
             ],
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Char(
                     '[',
                 ),
-            ): [
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
                 PreviousSwapLayout,
             ],
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Char(
                     ']',
                 ),
-            ): [
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
                 NextSwapLayout,
             ],
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Char(
+                    'b',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
+                SwitchToMode(
+                    Tmux,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'c',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'g',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
+                SwitchToMode(
+                    Locked,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
                     'h',
                 ),
-            ): [
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
+                SwitchToMode(
+                    Move,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'h',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
                 MoveFocusOrTab(
                     Left,
                 ),
             ],
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Char(
                     'i',
                 ),
-            ): [
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
                 MoveTab(
                     Left,
                 ),
             ],
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Char(
                     'j',
                 ),
-            ): [
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
                 MoveFocus(
                     Down,
                 ),
             ],
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Char(
                     'k',
                 ),
-            ): [
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
                 MoveFocus(
                     Up,
                 ),
             ],
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Char(
                     'l',
                 ),
-            ): [
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
                 MoveFocusOrTab(
                     Right,
                 ),
             ],
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Char(
                     'n',
                 ),
-            ): [
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
+                SwitchToMode(
+                    Resize,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'n',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
                 NewPane(
                     None,
                     None,
                 ),
             ],
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Char(
                     'o',
                 ),
-            ): [
-                MoveTab(
-                    Right,
-                ),
-            ],
-            Alt(
-                Direction(
-                    Left,
-                ),
-            ): [
-                MoveFocusOrTab(
-                    Left,
-                ),
-            ],
-            Alt(
-                Direction(
-                    Right,
-                ),
-            ): [
-                MoveFocusOrTab(
-                    Right,
-                ),
-            ],
-            Alt(
-                Direction(
-                    Up,
-                ),
-            ): [
-                MoveFocus(
-                    Up,
-                ),
-            ],
-            Alt(
-                Direction(
-                    Down,
-                ),
-            ): [
-                MoveFocus(
-                    Down,
-                ),
-            ],
-            Ctrl(
-                'b',
-            ): [
-                SwitchToMode(
-                    Tmux,
-                ),
-            ],
-            Ctrl(
-                'c',
-            ): [
-                SwitchToMode(
-                    Normal,
-                ),
-            ],
-            Ctrl(
-                'g',
-            ): [
-                SwitchToMode(
-                    Locked,
-                ),
-            ],
-            Ctrl(
-                'h',
-            ): [
-                SwitchToMode(
-                    Move,
-                ),
-            ],
-            Ctrl(
-                'n',
-            ): [
-                SwitchToMode(
-                    Resize,
-                ),
-            ],
-            Ctrl(
-                'o',
-            ): [
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
                 SwitchToMode(
                     Session,
                 ),
             ],
-            Ctrl(
-                'p',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    'o',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveTab(
+                    Right,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'p',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
                 SwitchToMode(
                     Pane,
                 ),
             ],
-            Ctrl(
-                'q',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    'q',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
                 Quit,
             ],
-            Ctrl(
-                's',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    's',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
                 SwitchToMode(
                     Scroll,
                 ),
             ],
-            Ctrl(
-                't',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    't',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
                 SwitchToMode(
                     Tab,
                 ),
             ],
-            Esc: [
+            KeyWithModifier {
+                bare_key: Esc,
+                key_modifiers: {},
+            }: [
                 UndoRenamePane,
                 SwitchToMode(
                     Pane,
                 ),
             ],
-        },
-        Session: {
-            Char(
-                '\n',
-            ): [
+            KeyWithModifier {
+                bare_key: Enter,
+                key_modifiers: {},
+            }: [
                 SwitchToMode(
                     Normal,
                 ),
             ],
-            Char(
-                'd',
-            ): [
+        },
+        Session: {
+            KeyWithModifier {
+                bare_key: Left,
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocusOrTab(
+                    Left,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Down,
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocus(
+                    Down,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Up,
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocus(
+                    Up,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Right,
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocusOrTab(
+                    Right,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    '+',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                Resize(
+                    Increase,
+                    None,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    '-',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                Resize(
+                    Decrease,
+                    None,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    '=',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                Resize(
+                    Increase,
+                    None,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    '[',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                PreviousSwapLayout,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    ']',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                NextSwapLayout,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'b',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
+                SwitchToMode(
+                    Tmux,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'd',
+                ),
+                key_modifiers: {},
+            }: [
                 Detach,
             ],
-            Char(
-                'w',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    'g',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
+                SwitchToMode(
+                    Locked,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'h',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
+                SwitchToMode(
+                    Move,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'h',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocusOrTab(
+                    Left,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'i',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveTab(
+                    Left,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'j',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocus(
+                    Down,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'k',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocus(
+                    Up,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'l',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocusOrTab(
+                    Right,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'n',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
+                SwitchToMode(
+                    Resize,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'n',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                NewPane(
+                    None,
+                    None,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'o',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'o',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveTab(
+                    Right,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'p',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
+                SwitchToMode(
+                    Pane,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'q',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
+                Quit,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    's',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
+                SwitchToMode(
+                    Scroll,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    't',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
+                SwitchToMode(
+                    Tab,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'w',
+                ),
+                key_modifiers: {},
+            }: [
                 LaunchOrFocusPlugin(
                     Alias(
                         PluginAlias {
@@ -2676,738 +4069,758 @@ Config {
                     Normal,
                 ),
             ],
-            Alt(
-                Char(
-                    '+',
-                ),
-            ): [
-                Resize(
-                    Increase,
-                    None,
-                ),
-            ],
-            Alt(
-                Char(
-                    '-',
-                ),
-            ): [
-                Resize(
-                    Decrease,
-                    None,
-                ),
-            ],
-            Alt(
-                Char(
-                    '=',
-                ),
-            ): [
-                Resize(
-                    Increase,
-                    None,
-                ),
-            ],
-            Alt(
-                Char(
-                    '[',
-                ),
-            ): [
-                PreviousSwapLayout,
-            ],
-            Alt(
-                Char(
-                    ']',
-                ),
-            ): [
-                NextSwapLayout,
-            ],
-            Alt(
-                Char(
-                    'h',
-                ),
-            ): [
-                MoveFocusOrTab(
-                    Left,
-                ),
-            ],
-            Alt(
-                Char(
-                    'i',
-                ),
-            ): [
-                MoveTab(
-                    Left,
-                ),
-            ],
-            Alt(
-                Char(
-                    'j',
-                ),
-            ): [
-                MoveFocus(
-                    Down,
-                ),
-            ],
-            Alt(
-                Char(
-                    'k',
-                ),
-            ): [
-                MoveFocus(
-                    Up,
-                ),
-            ],
-            Alt(
-                Char(
-                    'l',
-                ),
-            ): [
-                MoveFocusOrTab(
-                    Right,
-                ),
-            ],
-            Alt(
-                Char(
-                    'n',
-                ),
-            ): [
-                NewPane(
-                    None,
-                    None,
-                ),
-            ],
-            Alt(
-                Char(
-                    'o',
-                ),
-            ): [
-                MoveTab(
-                    Right,
-                ),
-            ],
-            Alt(
-                Direction(
-                    Left,
-                ),
-            ): [
-                MoveFocusOrTab(
-                    Left,
-                ),
-            ],
-            Alt(
-                Direction(
-                    Right,
-                ),
-            ): [
-                MoveFocusOrTab(
-                    Right,
-                ),
-            ],
-            Alt(
-                Direction(
-                    Up,
-                ),
-            ): [
-                MoveFocus(
-                    Up,
-                ),
-            ],
-            Alt(
-                Direction(
-                    Down,
-                ),
-            ): [
-                MoveFocus(
-                    Down,
-                ),
-            ],
-            Ctrl(
-                'b',
-            ): [
-                SwitchToMode(
-                    Tmux,
-                ),
-            ],
-            Ctrl(
-                'g',
-            ): [
-                SwitchToMode(
-                    Locked,
-                ),
-            ],
-            Ctrl(
-                'h',
-            ): [
-                SwitchToMode(
-                    Move,
-                ),
-            ],
-            Ctrl(
-                'n',
-            ): [
-                SwitchToMode(
-                    Resize,
-                ),
-            ],
-            Ctrl(
-                'o',
-            ): [
+            KeyWithModifier {
+                bare_key: Esc,
+                key_modifiers: {},
+            }: [
                 SwitchToMode(
                     Normal,
                 ),
             ],
-            Ctrl(
-                'p',
-            ): [
-                SwitchToMode(
-                    Pane,
-                ),
-            ],
-            Ctrl(
-                'q',
-            ): [
-                Quit,
-            ],
-            Ctrl(
-                's',
-            ): [
-                SwitchToMode(
-                    Scroll,
-                ),
-            ],
-            Ctrl(
-                't',
-            ): [
-                SwitchToMode(
-                    Tab,
-                ),
-            ],
-            Esc: [
+            KeyWithModifier {
+                bare_key: Enter,
+                key_modifiers: {},
+            }: [
                 SwitchToMode(
                     Normal,
                 ),
             ],
         },
         Move: {
-            Left: [
+            KeyWithModifier {
+                bare_key: Left,
+                key_modifiers: {},
+            }: [
                 MovePane(
                     Some(
                         Left,
                     ),
                 ),
             ],
-            Down: [
+            KeyWithModifier {
+                bare_key: Left,
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocusOrTab(
+                    Left,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Down,
+                key_modifiers: {},
+            }: [
                 MovePane(
                     Some(
                         Down,
                     ),
                 ),
             ],
-            Up: [
+            KeyWithModifier {
+                bare_key: Down,
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocus(
+                    Down,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Up,
+                key_modifiers: {},
+            }: [
                 MovePane(
                     Some(
                         Up,
                     ),
                 ),
             ],
-            Right: [
+            KeyWithModifier {
+                bare_key: Up,
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocus(
+                    Up,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Right,
+                key_modifiers: {},
+            }: [
                 MovePane(
                     Some(
                         Right,
                     ),
                 ),
             ],
-            Char(
-                '\n',
-            ): [
-                SwitchToMode(
-                    Normal,
+            KeyWithModifier {
+                bare_key: Right,
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocusOrTab(
+                    Right,
                 ),
             ],
-            Char(
-                'h',
-            ): [
-                MovePane(
-                    Some(
-                        Left,
-                    ),
-                ),
-            ],
-            Char(
-                'j',
-            ): [
-                MovePane(
-                    Some(
-                        Down,
-                    ),
-                ),
-            ],
-            Char(
-                'k',
-            ): [
-                MovePane(
-                    Some(
-                        Up,
-                    ),
-                ),
-            ],
-            Char(
-                'l',
-            ): [
-                MovePane(
-                    Some(
-                        Right,
-                    ),
-                ),
-            ],
-            Char(
-                'n',
-            ): [
-                MovePane(
-                    None,
-                ),
-            ],
-            Char(
-                'p',
-            ): [
-                MovePaneBackwards,
-            ],
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Char(
                     '+',
                 ),
-            ): [
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
                 Resize(
                     Increase,
                     None,
                 ),
             ],
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Char(
                     '-',
                 ),
-            ): [
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
                 Resize(
                     Decrease,
                     None,
                 ),
             ],
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Char(
                     '=',
                 ),
-            ): [
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
                 Resize(
                     Increase,
                     None,
                 ),
             ],
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Char(
                     '[',
                 ),
-            ): [
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
                 PreviousSwapLayout,
             ],
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Char(
                     ']',
                 ),
-            ): [
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
                 NextSwapLayout,
             ],
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Char(
+                    'b',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
+                SwitchToMode(
+                    Tmux,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'g',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
+                SwitchToMode(
+                    Locked,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
                     'h',
                 ),
-            ): [
+                key_modifiers: {},
+            }: [
+                MovePane(
+                    Some(
+                        Left,
+                    ),
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'h',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'h',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
                 MoveFocusOrTab(
                     Left,
                 ),
             ],
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Char(
                     'i',
                 ),
-            ): [
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
                 MoveTab(
                     Left,
                 ),
             ],
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Char(
                     'j',
                 ),
-            ): [
+                key_modifiers: {},
+            }: [
+                MovePane(
+                    Some(
+                        Down,
+                    ),
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'j',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
                 MoveFocus(
                     Down,
                 ),
             ],
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Char(
                     'k',
                 ),
-            ): [
+                key_modifiers: {},
+            }: [
+                MovePane(
+                    Some(
+                        Up,
+                    ),
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'k',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
                 MoveFocus(
                     Up,
                 ),
             ],
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Char(
                     'l',
                 ),
-            ): [
+                key_modifiers: {},
+            }: [
+                MovePane(
+                    Some(
+                        Right,
+                    ),
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'l',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
                 MoveFocusOrTab(
                     Right,
                 ),
             ],
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Char(
                     'n',
                 ),
-            ): [
+                key_modifiers: {},
+            }: [
+                MovePane(
+                    None,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'n',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
+                SwitchToMode(
+                    Resize,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'n',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
                 NewPane(
                     None,
                     None,
                 ),
             ],
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Char(
                     'o',
                 ),
-            ): [
-                MoveTab(
-                    Right,
-                ),
-            ],
-            Alt(
-                Direction(
-                    Left,
-                ),
-            ): [
-                MoveFocusOrTab(
-                    Left,
-                ),
-            ],
-            Alt(
-                Direction(
-                    Right,
-                ),
-            ): [
-                MoveFocusOrTab(
-                    Right,
-                ),
-            ],
-            Alt(
-                Direction(
-                    Up,
-                ),
-            ): [
-                MoveFocus(
-                    Up,
-                ),
-            ],
-            Alt(
-                Direction(
-                    Down,
-                ),
-            ): [
-                MoveFocus(
-                    Down,
-                ),
-            ],
-            Ctrl(
-                'b',
-            ): [
-                SwitchToMode(
-                    Tmux,
-                ),
-            ],
-            Ctrl(
-                'g',
-            ): [
-                SwitchToMode(
-                    Locked,
-                ),
-            ],
-            Ctrl(
-                'h',
-            ): [
-                SwitchToMode(
-                    Normal,
-                ),
-            ],
-            Ctrl(
-                'n',
-            ): [
-                SwitchToMode(
-                    Resize,
-                ),
-            ],
-            Ctrl(
-                'o',
-            ): [
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
                 SwitchToMode(
                     Session,
                 ),
             ],
-            Ctrl(
-                'p',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    'o',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveTab(
+                    Right,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'p',
+                ),
+                key_modifiers: {},
+            }: [
+                MovePaneBackwards,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'p',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
                 SwitchToMode(
                     Pane,
                 ),
             ],
-            Ctrl(
-                'q',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    'q',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
                 Quit,
             ],
-            Ctrl(
-                's',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    's',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
                 SwitchToMode(
                     Scroll,
                 ),
             ],
-            Ctrl(
-                't',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    't',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
                 SwitchToMode(
                     Tab,
                 ),
             ],
-            BackTab: [
+            KeyWithModifier {
+                bare_key: Tab,
+                key_modifiers: {},
+            }: [
                 MovePane(
                     None,
                 ),
             ],
-            Esc: [
+            KeyWithModifier {
+                bare_key: Esc,
+                key_modifiers: {},
+            }: [
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Enter,
+                key_modifiers: {},
+            }: [
                 SwitchToMode(
                     Normal,
                 ),
             ],
         },
         Prompt: {
-            Char(
-                '\n',
-            ): [
-                SwitchToMode(
-                    Normal,
+            KeyWithModifier {
+                bare_key: Left,
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocusOrTab(
+                    Left,
                 ),
             ],
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Down,
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocus(
+                    Down,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Up,
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocus(
+                    Up,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Right,
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocusOrTab(
+                    Right,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
                     '+',
                 ),
-            ): [
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
                 Resize(
                     Increase,
                     None,
                 ),
             ],
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Char(
                     '-',
                 ),
-            ): [
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
                 Resize(
                     Decrease,
                     None,
                 ),
             ],
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Char(
                     '=',
                 ),
-            ): [
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
                 Resize(
                     Increase,
                     None,
                 ),
             ],
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Char(
                     '[',
                 ),
-            ): [
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
                 PreviousSwapLayout,
             ],
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Char(
                     ']',
                 ),
-            ): [
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
                 NextSwapLayout,
             ],
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Char(
+                    'b',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
+                SwitchToMode(
+                    Tmux,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'g',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
+                SwitchToMode(
+                    Locked,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
                     'h',
                 ),
-            ): [
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
+                SwitchToMode(
+                    Move,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'h',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
                 MoveFocusOrTab(
                     Left,
                 ),
             ],
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Char(
                     'i',
                 ),
-            ): [
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
                 MoveTab(
                     Left,
                 ),
             ],
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Char(
                     'j',
                 ),
-            ): [
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
                 MoveFocus(
                     Down,
                 ),
             ],
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Char(
                     'k',
                 ),
-            ): [
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
                 MoveFocus(
                     Up,
                 ),
             ],
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Char(
                     'l',
                 ),
-            ): [
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
                 MoveFocusOrTab(
                     Right,
                 ),
             ],
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Char(
                     'n',
                 ),
-            ): [
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
+                SwitchToMode(
+                    Resize,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'n',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
                 NewPane(
                     None,
                     None,
                 ),
             ],
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Char(
                     'o',
                 ),
-            ): [
-                MoveTab(
-                    Right,
-                ),
-            ],
-            Alt(
-                Direction(
-                    Left,
-                ),
-            ): [
-                MoveFocusOrTab(
-                    Left,
-                ),
-            ],
-            Alt(
-                Direction(
-                    Right,
-                ),
-            ): [
-                MoveFocusOrTab(
-                    Right,
-                ),
-            ],
-            Alt(
-                Direction(
-                    Up,
-                ),
-            ): [
-                MoveFocus(
-                    Up,
-                ),
-            ],
-            Alt(
-                Direction(
-                    Down,
-                ),
-            ): [
-                MoveFocus(
-                    Down,
-                ),
-            ],
-            Ctrl(
-                'b',
-            ): [
-                SwitchToMode(
-                    Tmux,
-                ),
-            ],
-            Ctrl(
-                'g',
-            ): [
-                SwitchToMode(
-                    Locked,
-                ),
-            ],
-            Ctrl(
-                'h',
-            ): [
-                SwitchToMode(
-                    Move,
-                ),
-            ],
-            Ctrl(
-                'n',
-            ): [
-                SwitchToMode(
-                    Resize,
-                ),
-            ],
-            Ctrl(
-                'o',
-            ): [
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
                 SwitchToMode(
                     Session,
                 ),
             ],
-            Ctrl(
-                'p',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    'o',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveTab(
+                    Right,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'p',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
                 SwitchToMode(
                     Pane,
                 ),
             ],
-            Ctrl(
-                'q',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    'q',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
                 Quit,
             ],
-            Ctrl(
-                's',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    's',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
                 SwitchToMode(
                     Scroll,
                 ),
             ],
-            Ctrl(
-                't',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    't',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
                 SwitchToMode(
                     Tab,
                 ),
             ],
-            Esc: [
+            KeyWithModifier {
+                bare_key: Esc,
+                key_modifiers: {},
+            }: [
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Enter,
+                key_modifiers: {},
+            }: [
                 SwitchToMode(
                     Normal,
                 ),
             ],
         },
         Tmux: {
-            Left: [
+            KeyWithModifier {
+                bare_key: Left,
+                key_modifiers: {},
+            }: [
                 MoveFocus(
                     Left,
                 ),
@@ -3415,7 +4828,20 @@ Config {
                     Normal,
                 ),
             ],
-            Down: [
+            KeyWithModifier {
+                bare_key: Left,
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocusOrTab(
+                    Left,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Down,
+                key_modifiers: {},
+            }: [
                 MoveFocus(
                     Down,
                 ),
@@ -3423,7 +4849,20 @@ Config {
                     Normal,
                 ),
             ],
-            Up: [
+            KeyWithModifier {
+                bare_key: Down,
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocus(
+                    Down,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Up,
+                key_modifiers: {},
+            }: [
                 MoveFocus(
                     Up,
                 ),
@@ -3431,7 +4870,20 @@ Config {
                     Normal,
                 ),
             ],
-            Right: [
+            KeyWithModifier {
+                bare_key: Up,
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocus(
+                    Up,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Right,
+                key_modifiers: {},
+            }: [
                 MoveFocus(
                     Right,
                 ),
@@ -3439,21 +4891,30 @@ Config {
                     Normal,
                 ),
             ],
-            Char(
-                '\n',
-            ): [
-                SwitchToMode(
-                    Normal,
+            KeyWithModifier {
+                bare_key: Right,
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocusOrTab(
+                    Right,
                 ),
             ],
-            Char(
-                ' ',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    ' ',
+                ),
+                key_modifiers: {},
+            }: [
                 NextSwapLayout,
             ],
-            Char(
-                '"',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    '"',
+                ),
+                key_modifiers: {},
+            }: [
                 NewPane(
                     Some(
                         Down,
@@ -3464,9 +4925,12 @@ Config {
                     Normal,
                 ),
             ],
-            Char(
-                '%',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    '%',
+                ),
+                key_modifiers: {},
+            }: [
                 NewPane(
                     Some(
                         Right,
@@ -3477,23 +4941,110 @@ Config {
                     Normal,
                 ),
             ],
-            Char(
-                ',',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    '+',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                Resize(
+                    Increase,
+                    None,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    ',',
+                ),
+                key_modifiers: {},
+            }: [
                 SwitchToMode(
                     RenameTab,
                 ),
             ],
-            Char(
-                '[',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    '-',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                Resize(
+                    Decrease,
+                    None,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    '=',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                Resize(
+                    Increase,
+                    None,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    '[',
+                ),
+                key_modifiers: {},
+            }: [
                 SwitchToMode(
                     Scroll,
                 ),
             ],
-            Char(
-                'c',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    '[',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                PreviousSwapLayout,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    ']',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                NextSwapLayout,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'b',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
+                Write(
+                    None,
+                    [
+                        2,
+                    ],
+                    false,
+                ),
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'c',
+                ),
+                key_modifiers: {},
+            }: [
                 NewTab(
                     None,
                     [],
@@ -3505,14 +5056,32 @@ Config {
                     Normal,
                 ),
             ],
-            Char(
-                'd',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    'd',
+                ),
+                key_modifiers: {},
+            }: [
                 Detach,
             ],
-            Char(
-                'h',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    'g',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
+                SwitchToMode(
+                    Locked,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'h',
+                ),
+                key_modifiers: {},
+            }: [
                 MoveFocus(
                     Left,
                 ),
@@ -3520,9 +5089,48 @@ Config {
                     Normal,
                 ),
             ],
-            Char(
-                'j',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    'h',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
+                SwitchToMode(
+                    Move,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'h',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocusOrTab(
+                    Left,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'i',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveTab(
+                    Left,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'j',
+                ),
+                key_modifiers: {},
+            }: [
                 MoveFocus(
                     Down,
                 ),
@@ -3530,9 +5138,24 @@ Config {
                     Normal,
                 ),
             ],
-            Char(
-                'k',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    'j',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocus(
+                    Down,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'k',
+                ),
+                key_modifiers: {},
+            }: [
                 MoveFocus(
                     Up,
                 ),
@@ -3540,9 +5163,24 @@ Config {
                     Normal,
                 ),
             ],
-            Char(
-                'l',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    'k',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocus(
+                    Up,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'l',
+                ),
+                key_modifiers: {},
+            }: [
                 MoveFocus(
                     Right,
                 ),
@@ -3550,254 +5188,177 @@ Config {
                     Normal,
                 ),
             ],
-            Char(
-                'n',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    'l',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveFocusOrTab(
+                    Right,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'n',
+                ),
+                key_modifiers: {},
+            }: [
                 GoToNextTab,
                 SwitchToMode(
                     Normal,
                 ),
             ],
-            Char(
-                'o',
-            ): [
-                FocusNextPane,
-            ],
-            Char(
-                'p',
-            ): [
-                GoToPreviousTab,
-                SwitchToMode(
-                    Normal,
-                ),
-            ],
-            Char(
-                'x',
-            ): [
-                CloseFocus,
-                SwitchToMode(
-                    Normal,
-                ),
-            ],
-            Char(
-                'z',
-            ): [
-                ToggleFocusFullscreen,
-                SwitchToMode(
-                    Normal,
-                ),
-            ],
-            Alt(
-                Char(
-                    '+',
-                ),
-            ): [
-                Resize(
-                    Increase,
-                    None,
-                ),
-            ],
-            Alt(
-                Char(
-                    '-',
-                ),
-            ): [
-                Resize(
-                    Decrease,
-                    None,
-                ),
-            ],
-            Alt(
-                Char(
-                    '=',
-                ),
-            ): [
-                Resize(
-                    Increase,
-                    None,
-                ),
-            ],
-            Alt(
-                Char(
-                    '[',
-                ),
-            ): [
-                PreviousSwapLayout,
-            ],
-            Alt(
-                Char(
-                    ']',
-                ),
-            ): [
-                NextSwapLayout,
-            ],
-            Alt(
-                Char(
-                    'h',
-                ),
-            ): [
-                MoveFocusOrTab(
-                    Left,
-                ),
-            ],
-            Alt(
-                Char(
-                    'i',
-                ),
-            ): [
-                MoveTab(
-                    Left,
-                ),
-            ],
-            Alt(
-                Char(
-                    'j',
-                ),
-            ): [
-                MoveFocus(
-                    Down,
-                ),
-            ],
-            Alt(
-                Char(
-                    'k',
-                ),
-            ): [
-                MoveFocus(
-                    Up,
-                ),
-            ],
-            Alt(
-                Char(
-                    'l',
-                ),
-            ): [
-                MoveFocusOrTab(
-                    Right,
-                ),
-            ],
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Char(
                     'n',
                 ),
-            ): [
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
+                SwitchToMode(
+                    Resize,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'n',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
                 NewPane(
                     None,
                     None,
                 ),
             ],
-            Alt(
-                Char(
+            KeyWithModifier {
+                bare_key: Char(
                     'o',
                 ),
-            ): [
-                MoveTab(
-                    Right,
-                ),
+                key_modifiers: {},
+            }: [
+                FocusNextPane,
             ],
-            Alt(
-                Direction(
-                    Left,
+            KeyWithModifier {
+                bare_key: Char(
+                    'o',
                 ),
-            ): [
-                MoveFocusOrTab(
-                    Left,
-                ),
-            ],
-            Alt(
-                Direction(
-                    Right,
-                ),
-            ): [
-                MoveFocusOrTab(
-                    Right,
-                ),
-            ],
-            Alt(
-                Direction(
-                    Up,
-                ),
-            ): [
-                MoveFocus(
-                    Up,
-                ),
-            ],
-            Alt(
-                Direction(
-                    Down,
-                ),
-            ): [
-                MoveFocus(
-                    Down,
-                ),
-            ],
-            Ctrl(
-                'b',
-            ): [
-                Write(
-                    [
-                        2,
-                    ],
-                ),
-                SwitchToMode(
-                    Normal,
-                ),
-            ],
-            Ctrl(
-                'g',
-            ): [
-                SwitchToMode(
-                    Locked,
-                ),
-            ],
-            Ctrl(
-                'h',
-            ): [
-                SwitchToMode(
-                    Move,
-                ),
-            ],
-            Ctrl(
-                'n',
-            ): [
-                SwitchToMode(
-                    Resize,
-                ),
-            ],
-            Ctrl(
-                'o',
-            ): [
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
                 SwitchToMode(
                     Session,
                 ),
             ],
-            Ctrl(
-                'p',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    'o',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                MoveTab(
+                    Right,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'p',
+                ),
+                key_modifiers: {},
+            }: [
+                GoToPreviousTab,
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'p',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
                 SwitchToMode(
                     Pane,
                 ),
             ],
-            Ctrl(
-                'q',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    'q',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
                 Quit,
             ],
-            Ctrl(
-                's',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    's',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
                 SwitchToMode(
                     Scroll,
                 ),
             ],
-            Ctrl(
-                't',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    't',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
                 SwitchToMode(
                     Tab,
                 ),
             ],
-            Esc: [
+            KeyWithModifier {
+                bare_key: Char(
+                    'x',
+                ),
+                key_modifiers: {},
+            }: [
+                CloseFocus,
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'z',
+                ),
+                key_modifiers: {},
+            }: [
+                ToggleFocusFullscreen,
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Esc,
+                key_modifiers: {},
+            }: [
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Enter,
+                key_modifiers: {},
+            }: [
                 SwitchToMode(
                     Normal,
                 ),
@@ -3831,6 +5392,7 @@ Config {
         styled_underlines: None,
         serialization_interval: None,
         disable_session_metadata: None,
+        support_kitty_keyboard_protocol: None,
     },
     themes: {
         "other-theme-from-config": Theme {

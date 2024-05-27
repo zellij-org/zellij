@@ -16,8 +16,9 @@ pub use super::generated_api::api::{
 };
 #[allow(hidden_glob_reexports)]
 use crate::data::{
-    CopyDestination, Event, EventType, FileMetadata, InputMode, Key, LayoutInfo, ModeInfo, Mouse,
-    PaneInfo, PaneManifest, PermissionStatus, PluginCapabilities, SessionInfo, Style, TabInfo,
+    CopyDestination, Event, EventType, FileMetadata, InputMode, KeyWithModifier, LayoutInfo,
+    ModeInfo, Mouse, PaneInfo, PaneManifest, PermissionStatus, PluginCapabilities, SessionInfo,
+    Style, TabInfo,
 };
 
 use crate::errors::prelude::*;
@@ -812,29 +813,30 @@ impl TryFrom<ProtobufModeUpdatePayload> for ModeInfo {
             ProtobufInputMode::from_i32(protobuf_mode_update_payload.current_mode)
                 .ok_or("Malformed InputMode in the ModeUpdate Event")?
                 .try_into()?;
-        let keybinds: Vec<(InputMode, Vec<(Key, Vec<Action>)>)> = protobuf_mode_update_payload
-            .keybinds
-            .iter_mut()
-            .filter_map(|k| {
-                let input_mode: InputMode = ProtobufInputMode::from_i32(k.mode)
-                    .ok_or("Malformed InputMode in the ModeUpdate Event")
-                    .ok()?
-                    .try_into()
-                    .ok()?;
-                let mut keybinds: Vec<(Key, Vec<Action>)> = vec![];
-                for mut protobuf_keybind in k.key_bind.drain(..) {
-                    let key: Key = protobuf_keybind.key.unwrap().try_into().ok()?;
-                    let mut actions: Vec<Action> = vec![];
-                    for action in protobuf_keybind.action.drain(..) {
-                        if let Ok(action) = action.try_into() {
-                            actions.push(action);
+        let keybinds: Vec<(InputMode, Vec<(KeyWithModifier, Vec<Action>)>)> =
+            protobuf_mode_update_payload
+                .keybinds
+                .iter_mut()
+                .filter_map(|k| {
+                    let input_mode: InputMode = ProtobufInputMode::from_i32(k.mode)
+                        .ok_or("Malformed InputMode in the ModeUpdate Event")
+                        .ok()?
+                        .try_into()
+                        .ok()?;
+                    let mut keybinds: Vec<(KeyWithModifier, Vec<Action>)> = vec![];
+                    for mut protobuf_keybind in k.key_bind.drain(..) {
+                        let key: KeyWithModifier = protobuf_keybind.key.unwrap().try_into().ok()?;
+                        let mut actions: Vec<Action> = vec![];
+                        for action in protobuf_keybind.action.drain(..) {
+                            if let Ok(action) = action.try_into() {
+                                actions.push(action);
+                            }
                         }
+                        keybinds.push((key, actions));
                     }
-                    keybinds.push((key, actions));
-                }
-                Some((input_mode, keybinds))
-            })
-            .collect();
+                    Some((input_mode, keybinds))
+                })
+                .collect();
         let style: Style = protobuf_mode_update_payload
             .style
             .and_then(|m| m.try_into().ok())
@@ -1047,7 +1049,7 @@ fn serialize_mode_update_event() {
 
 #[test]
 fn serialize_mode_update_event_with_non_default_values() {
-    use crate::data::{Direction, Palette, PaletteColor, ThemeHue};
+    use crate::data::{BareKey, Palette, PaletteColor, ThemeHue};
     use prost::Message;
     let mode_update_event = Event::ModeUpdate(ModeInfo {
         mode: InputMode::Locked,
@@ -1055,14 +1057,14 @@ fn serialize_mode_update_event_with_non_default_values() {
             (
                 InputMode::Locked,
                 vec![(
-                    Key::Alt(crate::data::CharOrArrow::Char('b')),
+                    KeyWithModifier::new(BareKey::Char('b')).with_alt_modifier(),
                     vec![Action::SwitchToMode(InputMode::Normal)],
                 )],
             ),
             (
                 InputMode::Tab,
                 vec![(
-                    Key::Alt(crate::data::CharOrArrow::Direction(Direction::Up)),
+                    KeyWithModifier::new(BareKey::Up).with_alt_modifier(),
                     vec![Action::SwitchToMode(InputMode::Pane)],
                 )],
             ),
@@ -1070,13 +1072,16 @@ fn serialize_mode_update_event_with_non_default_values() {
                 InputMode::Pane,
                 vec![
                     (
-                        Key::Ctrl('b'),
+                        KeyWithModifier::new(BareKey::Char('b')).with_ctrl_modifier(),
                         vec![
                             Action::SwitchToMode(InputMode::Tmux),
-                            Action::Write(vec![10]),
+                            Action::Write(None, vec![10], false),
                         ],
                     ),
-                    (Key::Char('a'), vec![Action::WriteChars("foo".to_owned())]),
+                    (
+                        KeyWithModifier::new(BareKey::Char('a')),
+                        vec![Action::WriteChars("foo".to_owned())],
+                    ),
                 ],
             ),
         ],
@@ -1192,8 +1197,9 @@ fn serialize_pane_update_event() {
 
 #[test]
 fn serialize_key_event() {
+    use crate::data::BareKey;
     use prost::Message;
-    let key_event = Event::Key(Key::Ctrl('a'));
+    let key_event = Event::Key(KeyWithModifier::new(BareKey::Char('a')).with_ctrl_modifier());
     let protobuf_event: ProtobufEvent = key_event.clone().try_into().unwrap();
     let serialized_protobuf_event = protobuf_event.encode_to_vec();
     let deserialized_protobuf_event: ProtobufEvent =

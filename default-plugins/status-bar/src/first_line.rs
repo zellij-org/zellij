@@ -4,14 +4,14 @@ use zellij_tile::prelude::*;
 
 use crate::color_elements;
 use crate::{
-    action_key, action_key_group, get_common_modifier, style_key_with_modifier, TO_NORMAL,
+    action_key, action_key_group, get_common_modifiers, style_key_with_modifier, TO_NORMAL,
 };
 use crate::{ColoredElements, LinePart};
 
 struct KeyShortcut {
     mode: KeyMode,
     action: KeyAction,
-    key: Option<Key>,
+    key: Option<KeyWithModifier>,
 }
 
 #[derive(PartialEq)]
@@ -35,7 +35,7 @@ enum KeyMode {
 }
 
 impl KeyShortcut {
-    pub fn new(mode: KeyMode, action: KeyAction, key: Option<Key>) -> Self {
+    pub fn new(mode: KeyMode, action: KeyAction, key: Option<KeyWithModifier>) -> Self {
         KeyShortcut { mode, action, key }
     }
 
@@ -52,24 +52,35 @@ impl KeyShortcut {
             KeyAction::Tmux => String::from("TMUX"),
         }
     }
-    pub fn letter_shortcut(&self, with_prefix: bool) -> String {
-        let key = match self.key {
-            Some(k) => k,
+    pub fn with_shortened_modifiers(&self, common_modifiers: &Vec<KeyModifier>) -> String {
+        let key = match &self.key {
+            Some(k) => k.strip_common_modifiers(common_modifiers),
             None => return String::from("?"),
         };
-        if with_prefix {
+        let shortened_modifiers = key
+            .key_modifiers
+            .iter()
+            .map(|m| match m {
+                KeyModifier::Ctrl => "^C",
+                KeyModifier::Alt => "^A",
+                KeyModifier::Super => "^Su",
+                KeyModifier::Shift => "^Sh",
+                _ => "",
+            })
+            .collect::<Vec<_>>()
+            .join("-");
+        if shortened_modifiers.is_empty() {
             format!("{}", key)
         } else {
-            match key {
-                Key::F(c) => format!("{}", c),
-                Key::CtrlF(n) => format!("F{}", n),
-                Key::AltF(n) => format!("F{}", n),
-                Key::Ctrl(c) => format!("{}", c),
-                Key::Char(_) => format!("{}", key),
-                Key::Alt(c) => format!("{}", c),
-                _ => String::from("??"),
-            }
+            format!("{} {}", shortened_modifiers, key.bare_key)
         }
+    }
+    pub fn letter_shortcut(&self, common_modifiers: &Vec<KeyModifier>) -> String {
+        let key = match &self.key {
+            Some(k) => k.strip_common_modifiers(common_modifiers),
+            None => return String::from("?"),
+        };
+        format!("{}", key)
     }
 }
 
@@ -96,14 +107,15 @@ fn long_mode_shortcut(
     key: &KeyShortcut,
     palette: ColoredElements,
     separator: &str,
-    shared_super: bool,
+    common_modifiers: &Vec<KeyModifier>,
     first_tile: bool,
 ) -> LinePart {
     let key_hint = key.full_text();
+    let has_common_modifiers = !common_modifiers.is_empty();
     let key_binding = match (&key.mode, &key.key) {
         (KeyMode::Disabled, None) => "".to_string(),
         (_, None) => return LinePart::default(),
-        (_, Some(_)) => key.letter_shortcut(!shared_super),
+        (_, Some(_)) => key.letter_shortcut(common_modifiers),
     };
 
     let colors = match key.mode {
@@ -112,7 +124,59 @@ fn long_mode_shortcut(
         KeyMode::Selected => palette.selected,
         KeyMode::Disabled => palette.disabled,
     };
-    let start_separator = if !shared_super && first_tile {
+    let start_separator = if !has_common_modifiers && first_tile {
+        ""
+    } else {
+        separator
+    };
+    let prefix_separator = colors.prefix_separator.paint(start_separator);
+    let char_left_separator = colors.char_left_separator.paint(" <".to_string());
+    let char_shortcut = colors.char_shortcut.paint(key_binding.to_string());
+    let char_right_separator = colors.char_right_separator.paint("> ".to_string());
+    let styled_text = colors.styled_text.paint(format!("{} ", key_hint));
+    let suffix_separator = colors.suffix_separator.paint(separator);
+    LinePart {
+        part: ANSIStrings(&[
+            prefix_separator,
+            char_left_separator,
+            char_shortcut,
+            char_right_separator,
+            styled_text,
+            suffix_separator,
+        ])
+        .to_string(),
+        len: start_separator.chars().count() // Separator
+            + 2                              // " <"
+            + key_binding.chars().count()    // Key binding
+            + 2                              // "> "
+            + key_hint.chars().count()       // Key hint (mode)
+            + 1                              // " "
+            + separator.chars().count(), // Separator
+    }
+}
+
+fn shortened_modifier_shortcut(
+    key: &KeyShortcut,
+    palette: ColoredElements,
+    separator: &str,
+    common_modifiers: &Vec<KeyModifier>,
+    first_tile: bool,
+) -> LinePart {
+    let key_hint = key.full_text();
+    let has_common_modifiers = !common_modifiers.is_empty();
+    let key_binding = match (&key.mode, &key.key) {
+        (KeyMode::Disabled, None) => "".to_string(),
+        (_, None) => return LinePart::default(),
+        (_, Some(_)) => key.with_shortened_modifiers(common_modifiers),
+    };
+
+    let colors = match key.mode {
+        KeyMode::Unselected => palette.unselected,
+        KeyMode::UnselectedAlternate => palette.unselected_alternate,
+        KeyMode::Selected => palette.selected,
+        KeyMode::Disabled => palette.disabled,
+    };
+    let start_separator = if !has_common_modifiers && first_tile {
         ""
     } else {
         separator
@@ -165,13 +229,14 @@ fn short_mode_shortcut(
     key: &KeyShortcut,
     palette: ColoredElements,
     separator: &str,
-    shared_super: bool,
+    common_modifiers: &Vec<KeyModifier>,
     first_tile: bool,
 ) -> LinePart {
+    let has_common_modifiers = !common_modifiers.is_empty();
     let key_binding = match (&key.mode, &key.key) {
         (KeyMode::Disabled, None) => "".to_string(),
         (_, None) => return LinePart::default(),
-        (_, Some(_)) => key.letter_shortcut(!shared_super),
+        (_, Some(_)) => key.letter_shortcut(common_modifiers),
     };
 
     let colors = match key.mode {
@@ -180,7 +245,7 @@ fn short_mode_shortcut(
         KeyMode::Selected => palette.selected,
         KeyMode::Disabled => palette.disabled,
     };
-    let start_separator = if !shared_super && first_tile {
+    let start_separator = if !has_common_modifiers && first_tile {
         ""
     } else {
         separator
@@ -206,11 +271,23 @@ fn key_indicators(
     mode_info: &ModeInfo,
 ) -> LinePart {
     // Print full-width hints
-    let mut line_part = superkey(palette, separator, mode_info);
-    let shared_super = line_part.len > 0;
-    for ctrl_key in keys {
+    let (shared_modifiers, mut line_part) = superkey(palette, separator, mode_info);
+    for key in keys {
         let line_empty = line_part.len == 0;
-        let key = long_mode_shortcut(ctrl_key, palette, separator, shared_super, line_empty);
+        let key = long_mode_shortcut(key, palette, separator, &shared_modifiers, line_empty);
+        line_part.part = format!("{}{}", line_part.part, key.part);
+        line_part.len += key.len;
+    }
+    if line_part.len < max_len {
+        return line_part;
+    }
+
+    // Full-width doesn't fit, try shortened modifiers (eg. "^C" instead of "Ctrl")
+    line_part = superkey(palette, separator, mode_info).1;
+    for key in keys {
+        let line_empty = line_part.len == 0;
+        let key =
+            shortened_modifier_shortcut(key, palette, separator, &shared_modifiers, line_empty);
         line_part.part = format!("{}{}", line_part.part, key.part);
         line_part.len += key.len;
     }
@@ -219,11 +296,10 @@ fn key_indicators(
     }
 
     // Full-width doesn't fit, try shortened hints (just keybindings, no meanings/actions)
-    line_part = superkey(palette, separator, mode_info);
-    let shared_super = line_part.len > 0;
-    for ctrl_key in keys {
+    line_part = superkey(palette, separator, mode_info).1;
+    for key in keys {
         let line_empty = line_part.len == 0;
-        let key = short_mode_shortcut(ctrl_key, palette, separator, shared_super, line_empty);
+        let key = short_mode_shortcut(key, palette, separator, &shared_modifiers, line_empty);
         line_part.part = format!("{}{}", line_part.part, key.part);
         line_part.len += key.len;
     }
@@ -345,7 +421,7 @@ fn swap_layout_status(
 ///   to get back to normal mode from any input mode, but they aren't of interest when searching
 ///   for the super key. If for any input mode the user has bound only these keys to switching back
 ///   to `InputMode::Normal`, a '?' will be displayed as keybinding instead.
-pub fn mode_switch_keys(mode_info: &ModeInfo) -> Vec<Key> {
+pub fn mode_switch_keys(mode_info: &ModeInfo) -> Vec<KeyWithModifier> {
     mode_info
         .get_mode_keybinds()
         .iter()
@@ -355,7 +431,19 @@ pub fn mode_switch_keys(mode_info: &ModeInfo) -> Vec<Key> {
             Some(vac) => {
                 // We ignore certain "default" keybindings that switch back to normal InputMode.
                 // These include: ' ', '\n', 'Esc'
-                if matches!(key, Key::Char(' ') | Key::Char('\n') | Key::Esc) {
+                if matches!(
+                    key,
+                    KeyWithModifier {
+                        bare_key: BareKey::Char(' '),
+                        ..
+                    } | KeyWithModifier {
+                        bare_key: BareKey::Enter,
+                        ..
+                    } | KeyWithModifier {
+                        bare_key: BareKey::Esc,
+                        ..
+                    }
+                ) {
                     return None;
                 }
                 if let actions::Action::SwitchToMode(mode) = vac {
@@ -368,12 +456,12 @@ pub fn mode_switch_keys(mode_info: &ModeInfo) -> Vec<Key> {
                         | InputMode::Resize
                         | InputMode::Move
                         | InputMode::Scroll
-                        | InputMode::Session => Some(*key),
+                        | InputMode::Session => Some(key.clone()),
                         _ => None,
                     };
                 }
                 if let actions::Action::Quit = vac {
-                    return Some(*key);
+                    return Some(key.clone());
                 }
                 // Not a `SwitchToMode` or `Quit` action, ignore
                 None
@@ -382,36 +470,69 @@ pub fn mode_switch_keys(mode_info: &ModeInfo) -> Vec<Key> {
         .collect()
 }
 
-pub fn superkey(palette: ColoredElements, separator: &str, mode_info: &ModeInfo) -> LinePart {
+pub fn superkey(
+    palette: ColoredElements,
+    separator: &str,
+    mode_info: &ModeInfo,
+) -> (Vec<KeyModifier>, LinePart) {
     // Find a common modifier if any
-    let prefix_text = match get_common_modifier(mode_switch_keys(mode_info).iter().collect()) {
-        Some(text) => {
-            if mode_info.capabilities.arrow_fonts {
-                // Add extra space in simplified ui
-                format!(" {} + ", text)
-            } else {
-                format!(" {} +", text)
-            }
-        },
-        _ => return LinePart::default(),
+    let common_modifiers = get_common_modifiers(mode_switch_keys(mode_info).iter().collect());
+    if common_modifiers.is_empty() {
+        return (common_modifiers, LinePart::default());
+    }
+
+    let prefix_text = if mode_info.capabilities.arrow_fonts {
+        // Add extra space in simplified ui
+        format!(
+            " {} + ",
+            common_modifiers
+                .iter()
+                .map(|m| m.to_string())
+                .collect::<Vec<_>>()
+                .join("-")
+        )
+    } else {
+        format!(
+            " {} +",
+            common_modifiers
+                .iter()
+                .map(|m| m.to_string())
+                .collect::<Vec<_>>()
+                .join("-")
+        )
     };
 
     let prefix = palette.superkey_prefix.paint(&prefix_text);
     let suffix_separator = palette.superkey_suffix_separator.paint(separator);
-    LinePart {
-        part: ANSIStrings(&[prefix, suffix_separator]).to_string(),
-        len: prefix_text.chars().count() + separator.chars().count(),
-    }
+    (
+        common_modifiers,
+        LinePart {
+            part: ANSIStrings(&[prefix, suffix_separator]).to_string(),
+            len: prefix_text.chars().count() + separator.chars().count(),
+        },
+    )
 }
 
-pub fn to_char(kv: Vec<Key>) -> Option<Key> {
+pub fn to_char(kv: Vec<KeyWithModifier>) -> Option<KeyWithModifier> {
     let key = kv
         .iter()
         .filter(|key| {
             // These are general "keybindings" to get back to normal, they aren't interesting here.
-            !matches!(key, Key::Char('\n') | Key::Char(' ') | Key::Esc)
+            !matches!(
+                key,
+                KeyWithModifier {
+                    bare_key: BareKey::Enter,
+                    ..
+                } | KeyWithModifier {
+                    bare_key: BareKey::Char(' '),
+                    ..
+                } | KeyWithModifier {
+                    bare_key: BareKey::Esc,
+                    ..
+                }
+            )
         })
-        .collect::<Vec<&Key>>()
+        .collect::<Vec<&KeyWithModifier>>()
         .into_iter()
         .next();
     // Maybe the user bound one of the ignored keys?
@@ -593,10 +714,14 @@ mod tests {
 
     #[test]
     fn long_mode_shortcut_selected_with_binding() {
-        let key = KeyShortcut::new(KeyMode::Selected, KeyAction::Session, Some(Key::Char('0')));
+        let key = KeyShortcut::new(
+            KeyMode::Selected,
+            KeyAction::Session,
+            Some(KeyWithModifier::new(BareKey::Char('0'))),
+        );
         let color = colored_elements();
 
-        let ret = long_mode_shortcut(&key, color, "+", false, false);
+        let ret = long_mode_shortcut(&key, color, "+", &vec![], false);
         let ret = unstyle(ret);
 
         assert_eq!(ret, "+ <0> SESSION +".to_string());
@@ -608,11 +733,11 @@ mod tests {
         let key = KeyShortcut::new(
             KeyMode::Unselected,
             KeyAction::Session,
-            Some(Key::Char('0')),
+            Some(KeyWithModifier::new(BareKey::Char('0'))),
         );
         let color = colored_elements();
 
-        let ret = long_mode_shortcut(&key, color, "+", false, false);
+        let ret = long_mode_shortcut(&key, color, "+", &vec![], false);
         let ret = unstyle(ret);
 
         assert_eq!(ret, "+ <0> SESSION +".to_string());
@@ -624,11 +749,11 @@ mod tests {
         let key = KeyShortcut::new(
             KeyMode::UnselectedAlternate,
             KeyAction::Session,
-            Some(Key::Char('0')),
+            Some(KeyWithModifier::new(BareKey::Char('0'))),
         );
         let color = colored_elements();
 
-        let ret = long_mode_shortcut(&key, color, "+", false, false);
+        let ret = long_mode_shortcut(&key, color, "+", &vec![], false);
         let ret = unstyle(ret);
 
         assert_eq!(ret, "+ <0> SESSION +".to_string());
@@ -640,7 +765,7 @@ mod tests {
         let key = KeyShortcut::new(KeyMode::Selected, KeyAction::Session, None);
         let color = colored_elements();
 
-        let ret = long_mode_shortcut(&key, color, "+", false, false);
+        let ret = long_mode_shortcut(&key, color, "+", &vec![], false);
         let ret = unstyle(ret);
 
         assert_eq!(ret, "".to_string());
@@ -649,10 +774,14 @@ mod tests {
     #[test]
     // First tile doesn't print a starting separator
     fn long_mode_shortcut_selected_with_binding_first_tile() {
-        let key = KeyShortcut::new(KeyMode::Selected, KeyAction::Session, Some(Key::Char('0')));
+        let key = KeyShortcut::new(
+            KeyMode::Selected,
+            KeyAction::Session,
+            Some(KeyWithModifier::new(BareKey::Char('0'))),
+        );
         let color = colored_elements();
 
-        let ret = long_mode_shortcut(&key, color, "+", false, true);
+        let ret = long_mode_shortcut(&key, color, "+", &vec![], true);
         let ret = unstyle(ret);
 
         assert_eq!(ret, " <0> SESSION +".to_string());
@@ -661,10 +790,14 @@ mod tests {
     #[test]
     // Modifier is the superkey, mustn't appear in angled brackets
     fn long_mode_shortcut_selected_with_ctrl_binding_shared_superkey() {
-        let key = KeyShortcut::new(KeyMode::Selected, KeyAction::Session, Some(Key::Ctrl('0')));
+        let key = KeyShortcut::new(
+            KeyMode::Selected,
+            KeyAction::Session,
+            Some(KeyWithModifier::new(BareKey::Char('0')).with_ctrl_modifier()),
+        );
         let color = colored_elements();
 
-        let ret = long_mode_shortcut(&key, color, "+", true, false);
+        let ret = long_mode_shortcut(&key, color, "+", &vec![KeyModifier::Ctrl], false);
         let ret = unstyle(ret);
 
         assert_eq!(ret, "+ <0> SESSION +".to_string());
@@ -673,22 +806,30 @@ mod tests {
     #[test]
     // Modifier must be in the angled brackets
     fn long_mode_shortcut_selected_with_ctrl_binding_no_shared_superkey() {
-        let key = KeyShortcut::new(KeyMode::Selected, KeyAction::Session, Some(Key::Ctrl('0')));
+        let key = KeyShortcut::new(
+            KeyMode::Selected,
+            KeyAction::Session,
+            Some(KeyWithModifier::new(BareKey::Char('0')).with_ctrl_modifier()),
+        );
         let color = colored_elements();
 
-        let ret = long_mode_shortcut(&key, color, "+", false, false);
+        let ret = long_mode_shortcut(&key, color, "+", &vec![], false);
         let ret = unstyle(ret);
 
-        assert_eq!(ret, "+ <Ctrl+0> SESSION +".to_string());
+        assert_eq!(ret, "+ <Ctrl 0> SESSION +".to_string());
     }
 
     #[test]
     // Must be displayed as usual, but it is styled to be greyed out which we don't test here
     fn long_mode_shortcut_disabled_with_binding() {
-        let key = KeyShortcut::new(KeyMode::Disabled, KeyAction::Session, Some(Key::Char('0')));
+        let key = KeyShortcut::new(
+            KeyMode::Disabled,
+            KeyAction::Session,
+            Some(KeyWithModifier::new(BareKey::Char('0'))),
+        );
         let color = colored_elements();
 
-        let ret = long_mode_shortcut(&key, color, "+", false, false);
+        let ret = long_mode_shortcut(&key, color, "+", &vec![], false);
         let ret = unstyle(ret);
 
         assert_eq!(ret, "+ <0> SESSION +".to_string());
@@ -700,7 +841,7 @@ mod tests {
         let key = KeyShortcut::new(KeyMode::Disabled, KeyAction::Session, None);
         let color = colored_elements();
 
-        let ret = long_mode_shortcut(&key, color, "+", false, false);
+        let ret = long_mode_shortcut(&key, color, "+", &vec![], false);
         let ret = unstyle(ret);
 
         assert_eq!(ret, "+ <> SESSION +".to_string());
@@ -711,10 +852,14 @@ mod tests {
     // Note that when "shared_super" is true, the tile **cannot** be the first on the line, so we
     // ignore **first** here.
     fn long_mode_shortcut_selected_with_ctrl_binding_and_shared_super_and_first_tile() {
-        let key = KeyShortcut::new(KeyMode::Selected, KeyAction::Session, Some(Key::Ctrl('0')));
+        let key = KeyShortcut::new(
+            KeyMode::Selected,
+            KeyAction::Session,
+            Some(KeyWithModifier::new(BareKey::Char('0')).with_ctrl_modifier()),
+        );
         let color = colored_elements();
 
-        let ret = long_mode_shortcut(&key, color, "+", true, true);
+        let ret = long_mode_shortcut(&key, color, "+", &vec![KeyModifier::Ctrl], true);
         let ret = unstyle(ret);
 
         assert_eq!(ret, "+ <0> SESSION +".to_string());
@@ -722,10 +867,14 @@ mod tests {
 
     #[test]
     fn short_mode_shortcut_selected_with_binding() {
-        let key = KeyShortcut::new(KeyMode::Selected, KeyAction::Session, Some(Key::Char('0')));
+        let key = KeyShortcut::new(
+            KeyMode::Selected,
+            KeyAction::Session,
+            Some(KeyWithModifier::new(BareKey::Char('0'))),
+        );
         let color = colored_elements();
 
-        let ret = short_mode_shortcut(&key, color, "+", false, false);
+        let ret = short_mode_shortcut(&key, color, "+", &vec![], false);
         let ret = unstyle(ret);
 
         assert_eq!(ret, "+ 0 +".to_string());
@@ -733,21 +882,29 @@ mod tests {
 
     #[test]
     fn short_mode_shortcut_selected_with_ctrl_binding_no_shared_super() {
-        let key = KeyShortcut::new(KeyMode::Selected, KeyAction::Session, Some(Key::Ctrl('0')));
+        let key = KeyShortcut::new(
+            KeyMode::Selected,
+            KeyAction::Session,
+            Some(KeyWithModifier::new(BareKey::Char('0')).with_ctrl_modifier()),
+        );
         let color = colored_elements();
 
-        let ret = short_mode_shortcut(&key, color, "+", false, false);
+        let ret = short_mode_shortcut(&key, color, "+", &vec![], false);
         let ret = unstyle(ret);
 
-        assert_eq!(ret, "+ Ctrl+0 +".to_string());
+        assert_eq!(ret, "+ Ctrl 0 +".to_string());
     }
 
     #[test]
     fn short_mode_shortcut_selected_with_ctrl_binding_shared_super() {
-        let key = KeyShortcut::new(KeyMode::Selected, KeyAction::Session, Some(Key::Ctrl('0')));
+        let key = KeyShortcut::new(
+            KeyMode::Selected,
+            KeyAction::Session,
+            Some(KeyWithModifier::new(BareKey::Char('0')).with_ctrl_modifier()),
+        );
         let color = colored_elements();
 
-        let ret = short_mode_shortcut(&key, color, "+", true, false);
+        let ret = short_mode_shortcut(&key, color, "+", &vec![KeyModifier::Ctrl], false);
         let ret = unstyle(ret);
 
         assert_eq!(ret, "+ 0 +".to_string());
@@ -755,10 +912,14 @@ mod tests {
 
     #[test]
     fn short_mode_shortcut_selected_with_binding_first_tile() {
-        let key = KeyShortcut::new(KeyMode::Selected, KeyAction::Session, Some(Key::Char('0')));
+        let key = KeyShortcut::new(
+            KeyMode::Selected,
+            KeyAction::Session,
+            Some(KeyWithModifier::new(BareKey::Char('0'))),
+        );
         let color = colored_elements();
 
-        let ret = short_mode_shortcut(&key, color, "+", false, true);
+        let ret = short_mode_shortcut(&key, color, "+", &vec![], true);
         let ret = unstyle(ret);
 
         assert_eq!(ret, " 0 +".to_string());
@@ -769,11 +930,11 @@ mod tests {
         let key = KeyShortcut::new(
             KeyMode::Unselected,
             KeyAction::Session,
-            Some(Key::Char('0')),
+            Some(KeyWithModifier::new(BareKey::Char('0'))),
         );
         let color = colored_elements();
 
-        let ret = short_mode_shortcut(&key, color, "+", false, false);
+        let ret = short_mode_shortcut(&key, color, "+", &vec![], false);
         let ret = unstyle(ret);
 
         assert_eq!(ret, "+ 0 +".to_string());
@@ -784,11 +945,11 @@ mod tests {
         let key = KeyShortcut::new(
             KeyMode::UnselectedAlternate,
             KeyAction::Session,
-            Some(Key::Char('0')),
+            Some(KeyWithModifier::new(BareKey::Char('0'))),
         );
         let color = colored_elements();
 
-        let ret = short_mode_shortcut(&key, color, "+", false, false);
+        let ret = short_mode_shortcut(&key, color, "+", &vec![], false);
         let ret = unstyle(ret);
 
         assert_eq!(ret, "+ 0 +".to_string());
@@ -796,10 +957,14 @@ mod tests {
 
     #[test]
     fn short_mode_shortcut_disabled_with_binding() {
-        let key = KeyShortcut::new(KeyMode::Selected, KeyAction::Session, Some(Key::Char('0')));
+        let key = KeyShortcut::new(
+            KeyMode::Selected,
+            KeyAction::Session,
+            Some(KeyWithModifier::new(BareKey::Char('0'))),
+        );
         let color = colored_elements();
 
-        let ret = short_mode_shortcut(&key, color, "+", false, false);
+        let ret = short_mode_shortcut(&key, color, "+", &vec![], false);
         let ret = unstyle(ret);
 
         assert_eq!(ret, "+ 0 +".to_string());
@@ -810,7 +975,7 @@ mod tests {
         let key = KeyShortcut::new(KeyMode::Selected, KeyAction::Session, None);
         let color = colored_elements();
 
-        let ret = short_mode_shortcut(&key, color, "+", false, false);
+        let ret = short_mode_shortcut(&key, color, "+", &vec![], false);
         let ret = unstyle(ret);
 
         assert_eq!(ret, "".to_string());
@@ -821,7 +986,7 @@ mod tests {
         let key = KeyShortcut::new(KeyMode::Unselected, KeyAction::Session, None);
         let color = colored_elements();
 
-        let ret = short_mode_shortcut(&key, color, "+", false, false);
+        let ret = short_mode_shortcut(&key, color, "+", &vec![], false);
         let ret = unstyle(ret);
 
         assert_eq!(ret, "".to_string());
@@ -832,7 +997,7 @@ mod tests {
         let key = KeyShortcut::new(KeyMode::UnselectedAlternate, KeyAction::Session, None);
         let color = colored_elements();
 
-        let ret = short_mode_shortcut(&key, color, "+", false, false);
+        let ret = short_mode_shortcut(&key, color, "+", &vec![], false);
         let ret = unstyle(ret);
 
         assert_eq!(ret, "".to_string());
@@ -843,7 +1008,7 @@ mod tests {
         let key = KeyShortcut::new(KeyMode::Selected, KeyAction::Session, None);
         let color = colored_elements();
 
-        let ret = short_mode_shortcut(&key, color, "+", false, false);
+        let ret = short_mode_shortcut(&key, color, "+", &vec![], false);
         let ret = unstyle(ret);
 
         assert_eq!(ret, "".to_string());
@@ -857,9 +1022,9 @@ mod tests {
             mode: InputMode::Normal,
             keybinds : vec![
                 (InputMode::Normal, vec![
-                    (Key::Ctrl('a'), vec![Action::SwitchToMode(InputMode::Pane)]),
-                    (Key::Ctrl('b'), vec![Action::SwitchToMode(InputMode::Resize)]),
-                    (Key::Ctrl('c'), vec![Action::SwitchToMode(InputMode::Move)]),
+                    (KeyWithModifier::new(BareKey::Char('a')).with_ctrl_modifier(), vec![Action::SwitchToMode(InputMode::Pane)]),
+                    (KeyWithModifier::new(BareKey::Char('b')).with_ctrl_modifier(), vec![Action::SwitchToMode(InputMode::Resize)]),
+                    (KeyWithModifier::new(BareKey::Char('c')).with_ctrl_modifier(), vec![Action::SwitchToMode(InputMode::Move)]),
                 ]),
             ],
             ..ModeInfo::default()
@@ -881,9 +1046,9 @@ mod tests {
             mode: InputMode::Normal,
             keybinds : vec![
                 (InputMode::Normal, vec![
-                    (Key::Ctrl('a'), vec![Action::SwitchToMode(InputMode::Pane)]),
-                    (Key::Ctrl('b'), vec![Action::SwitchToMode(InputMode::Resize)]),
-                    (Key::Char('c'), vec![Action::SwitchToMode(InputMode::Move)]),
+                    (KeyWithModifier::new(BareKey::Char('a')).with_ctrl_modifier(), vec![Action::SwitchToMode(InputMode::Pane)]),
+                    (KeyWithModifier::new(BareKey::Char('b')).with_ctrl_modifier(), vec![Action::SwitchToMode(InputMode::Resize)]),
+                    (KeyWithModifier::new(BareKey::Char('c')), vec![Action::SwitchToMode(InputMode::Move)]),
                 ]),
             ],
             ..ModeInfo::default()
@@ -894,7 +1059,7 @@ mod tests {
 
         assert_eq!(
             ret,
-            " <Ctrl+a> PANE >> <Ctrl+b> RESIZE >> <c> MOVE >".to_string()
+            " <Ctrl a> PANE >> <Ctrl b> RESIZE >> <c> MOVE >".to_string()
         );
     }
 
@@ -905,11 +1070,11 @@ mod tests {
             mode: InputMode::Normal,
             keybinds : vec![
                 (InputMode::Normal, vec![
-                    (Key::Ctrl('a'), vec![Action::SwitchToMode(InputMode::Locked)]),
-                    (Key::Backspace, vec![Action::SwitchToMode(InputMode::Pane)]),
-                    (Key::Char('\n'), vec![Action::SwitchToMode(InputMode::Tab)]),
-                    (Key::Char('\t'), vec![Action::SwitchToMode(InputMode::Resize)]),
-                    (Key::Left, vec![Action::SwitchToMode(InputMode::Move)]),
+                    (KeyWithModifier::new(BareKey::Char('a')).with_ctrl_modifier(), vec![Action::SwitchToMode(InputMode::Locked)]),
+                    (KeyWithModifier::new(BareKey::Backspace), vec![Action::SwitchToMode(InputMode::Pane)]),
+                    (KeyWithModifier::new(BareKey::Enter), vec![Action::SwitchToMode(InputMode::Tab)]),
+                    (KeyWithModifier::new(BareKey::Tab), vec![Action::SwitchToMode(InputMode::Resize)]),
+                    (KeyWithModifier::new(BareKey::Left), vec![Action::SwitchToMode(InputMode::Move)]),
                 ]),
             ],
             ..ModeInfo::default()
@@ -920,7 +1085,7 @@ mod tests {
 
         assert_eq!(
             ret,
-            " <Ctrl+a> LOCK >> <BACKSPACE> PANE >> <ENTER> TAB >> <TAB> RESIZE >> <←> MOVE >"
+            " <Ctrl a> LOCK >> <BACKSPACE> PANE >> <ENTER> TAB >> <TAB> RESIZE >> <←> MOVE >"
                 .to_string()
         );
     }
@@ -932,11 +1097,11 @@ mod tests {
             mode: InputMode::Normal,
             keybinds : vec![
                 (InputMode::Normal, vec![
-                    (Key::Ctrl('a'), vec![Action::SwitchToMode(InputMode::Locked)]),
-                    (Key::Ctrl('b'), vec![Action::SwitchToMode(InputMode::Pane)]),
-                    (Key::Ctrl('c'), vec![Action::SwitchToMode(InputMode::Tab)]),
-                    (Key::Ctrl('d'), vec![Action::SwitchToMode(InputMode::Resize)]),
-                    (Key::Ctrl('e'), vec![Action::SwitchToMode(InputMode::Move)]),
+                    (KeyWithModifier::new(BareKey::Char('a')).with_ctrl_modifier(), vec![Action::SwitchToMode(InputMode::Locked)]),
+                    (KeyWithModifier::new(BareKey::Char('b')).with_ctrl_modifier(), vec![Action::SwitchToMode(InputMode::Pane)]),
+                    (KeyWithModifier::new(BareKey::Char('c')).with_ctrl_modifier(), vec![Action::SwitchToMode(InputMode::Tab)]),
+                    (KeyWithModifier::new(BareKey::Char('d')).with_ctrl_modifier(), vec![Action::SwitchToMode(InputMode::Resize)]),
+                    (KeyWithModifier::new(BareKey::Char('e')).with_ctrl_modifier(), vec![Action::SwitchToMode(InputMode::Move)]),
                 ]),
             ],
             ..ModeInfo::default()
@@ -955,9 +1120,9 @@ mod tests {
             mode: InputMode::Normal,
             keybinds : vec![
                 (InputMode::Normal, vec![
-                    (Key::Ctrl('a'), vec![Action::SwitchToMode(InputMode::Pane)]),
-                    (Key::Ctrl('b'), vec![Action::SwitchToMode(InputMode::Resize)]),
-                    (Key::Ctrl('c'), vec![Action::SwitchToMode(InputMode::Move)]),
+                    (KeyWithModifier::new(BareKey::Char('a')).with_ctrl_modifier(), vec![Action::SwitchToMode(InputMode::Pane)]),
+                    (KeyWithModifier::new(BareKey::Char('b')).with_ctrl_modifier(), vec![Action::SwitchToMode(InputMode::Resize)]),
+                    (KeyWithModifier::new(BareKey::Char('c')).with_ctrl_modifier(), vec![Action::SwitchToMode(InputMode::Move)]),
                 ]),
             ],
             ..ModeInfo::default()

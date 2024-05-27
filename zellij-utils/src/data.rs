@@ -3,13 +3,19 @@ use crate::input::config::ConversionError;
 use crate::input::layout::SplitSize;
 use clap::ArgEnum;
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt;
 use std::fs::Metadata;
 use std::path::{Path, PathBuf};
-use std::str::FromStr;
+use std::str::{self, FromStr};
 use std::time::Duration;
 use strum_macros::{Display, EnumDiscriminants, EnumIter, EnumString, ToString};
+
+#[cfg(not(target_family = "wasm"))]
+use termwiz::{
+    escape::csi::KittyKeyboardFlags,
+    input::{KeyCode, KeyCodeEncodeModes, KeyboardEncoding, Modifiers},
+};
 
 pub type ClientId = u16; // TODO: merge with crate type?
 
@@ -37,13 +43,107 @@ pub fn single_client_color(colors: Palette) -> (PaletteColor, PaletteColor) {
     (colors.green, colors.black)
 }
 
-// TODO: Add a shortened string representation (beyond `Display::fmt` below) that can be used when
-// screen space is scarce. Useful for e.g. "ENTER", "SPACE", "TAB" to display as Unicode
-// representations instead.
-// NOTE: Do not reorder the key variants since that influences what the `status_bar` plugin
-// displays!
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, PartialOrd, Ord)]
-pub enum Key {
+impl FromStr for KeyWithModifier {
+    type Err = Box<dyn std::error::Error>;
+    fn from_str(key_str: &str) -> Result<Self, Self::Err> {
+        let mut key_string_parts: Vec<&str> = key_str.split_ascii_whitespace().collect();
+        let bare_key: BareKey = BareKey::from_str(key_string_parts.pop().ok_or("empty key")?)?;
+        let mut key_modifiers: BTreeSet<KeyModifier> = BTreeSet::new();
+        for stringified_modifier in key_string_parts {
+            key_modifiers.insert(KeyModifier::from_str(stringified_modifier)?);
+        }
+        Ok(KeyWithModifier {
+            bare_key,
+            key_modifiers,
+        })
+    }
+}
+
+#[derive(Debug, Clone, Eq, Serialize, Deserialize, PartialOrd, Ord)]
+pub struct KeyWithModifier {
+    pub bare_key: BareKey,
+    pub key_modifiers: BTreeSet<KeyModifier>,
+}
+
+impl PartialEq for KeyWithModifier {
+    fn eq(&self, other: &Self) -> bool {
+        match (self.bare_key, other.bare_key) {
+            (BareKey::Char(self_char), BareKey::Char(other_char))
+                if self_char.to_ascii_lowercase() == other_char.to_ascii_lowercase() =>
+            {
+                let mut self_cloned = self.clone();
+                let mut other_cloned = other.clone();
+                if self_char.is_ascii_uppercase() {
+                    self_cloned.bare_key = BareKey::Char(self_char.to_ascii_lowercase());
+                    self_cloned.key_modifiers.insert(KeyModifier::Shift);
+                }
+                if other_char.is_ascii_uppercase() {
+                    other_cloned.bare_key = BareKey::Char(self_char.to_ascii_lowercase());
+                    other_cloned.key_modifiers.insert(KeyModifier::Shift);
+                }
+                self_cloned.bare_key == other_cloned.bare_key
+                    && self_cloned.key_modifiers == other_cloned.key_modifiers
+            },
+            _ => self.bare_key == other.bare_key && self.key_modifiers == other.key_modifiers,
+        }
+    }
+}
+
+impl Hash for KeyWithModifier {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        match self.bare_key {
+            BareKey::Char(character) if character.is_ascii_uppercase() => {
+                let mut to_hash = self.clone();
+                to_hash.bare_key = BareKey::Char(character.to_ascii_lowercase());
+                to_hash.key_modifiers.insert(KeyModifier::Shift);
+                to_hash.bare_key.hash(state);
+                to_hash.key_modifiers.hash(state);
+            },
+            _ => {
+                self.bare_key.hash(state);
+                self.key_modifiers.hash(state);
+            },
+        }
+    }
+}
+
+impl fmt::Display for KeyWithModifier {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.key_modifiers.is_empty() {
+            write!(f, "{}", self.bare_key)
+        } else {
+            write!(
+                f,
+                "{} {}",
+                self.key_modifiers
+                    .iter()
+                    .map(|m| m.to_string())
+                    .collect::<Vec<_>>()
+                    .join("-"),
+                self.bare_key
+            )
+        }
+    }
+}
+
+#[cfg(not(target_family = "wasm"))]
+impl Into<Modifiers> for &KeyModifier {
+    fn into(self) -> Modifiers {
+        match self {
+            KeyModifier::Shift => Modifiers::SHIFT,
+            KeyModifier::Alt => Modifiers::ALT,
+            KeyModifier::Ctrl => Modifiers::CTRL,
+            KeyModifier::Super => Modifiers::SUPER,
+            KeyModifier::Hyper => Modifiers::NONE,
+            KeyModifier::Meta => Modifiers::NONE,
+            KeyModifier::CapsLock => Modifiers::NONE,
+            KeyModifier::NumLock => Modifiers::NONE,
+        }
+    }
+}
+
+#[derive(Eq, Clone, Copy, Debug, PartialEq, Hash, Deserialize, Serialize, PartialOrd, Ord)]
+pub enum BareKey {
     PageDown,
     PageUp,
     Left,
@@ -57,149 +157,398 @@ pub enum Key {
     Insert,
     F(u8),
     Char(char),
-    Alt(CharOrArrow),
-    Ctrl(char),
-    BackTab,
-    Null,
+    Tab,
     Esc,
-    AltF(u8),
-    CtrlF(u8),
+    Enter,
+    CapsLock,
+    ScrollLock,
+    NumLock,
+    PrintScreen,
+    Pause,
+    Menu,
 }
 
-impl FromStr for Key {
+impl fmt::Display for BareKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            BareKey::PageDown => write!(f, "PgDn"),
+            BareKey::PageUp => write!(f, "PgUp"),
+            BareKey::Left => write!(f, "←"),
+            BareKey::Down => write!(f, "↓"),
+            BareKey::Up => write!(f, "↑"),
+            BareKey::Right => write!(f, "→"),
+            BareKey::Home => write!(f, "HOME"),
+            BareKey::End => write!(f, "END"),
+            BareKey::Backspace => write!(f, "BACKSPACE"),
+            BareKey::Delete => write!(f, "DEL"),
+            BareKey::Insert => write!(f, "INS"),
+            BareKey::F(index) => write!(f, "F{}", index),
+            BareKey::Char(' ') => write!(f, "SPACE"),
+            BareKey::Char(character) => write!(f, "{}", character),
+            BareKey::Tab => write!(f, "TAB"),
+            BareKey::Esc => write!(f, "ESC"),
+            BareKey::Enter => write!(f, "ENTER"),
+            BareKey::CapsLock => write!(f, "CAPSlOCK"),
+            BareKey::ScrollLock => write!(f, "SCROLLlOCK"),
+            BareKey::NumLock => write!(f, "NUMLOCK"),
+            BareKey::PrintScreen => write!(f, "PRINTSCREEN"),
+            BareKey::Pause => write!(f, "PAUSE"),
+            BareKey::Menu => write!(f, "MENU"),
+        }
+    }
+}
+
+impl FromStr for BareKey {
     type Err = Box<dyn std::error::Error>;
     fn from_str(key_str: &str) -> Result<Self, Self::Err> {
-        let mut modifier: Option<&str> = None;
-        let mut main_key: Option<&str> = None;
-        for (index, part) in key_str.split_ascii_whitespace().enumerate() {
-            if index == 0 && (part == "Ctrl" || part == "Alt") {
-                modifier = Some(part);
-            } else if main_key.is_none() {
-                main_key = Some(part)
+        match key_str.to_ascii_lowercase().as_str() {
+            "pagedown" => Ok(BareKey::PageDown),
+            "pageup" => Ok(BareKey::PageUp),
+            "left" => Ok(BareKey::Left),
+            "down" => Ok(BareKey::Down),
+            "up" => Ok(BareKey::Up),
+            "right" => Ok(BareKey::Right),
+            "home" => Ok(BareKey::Home),
+            "end" => Ok(BareKey::End),
+            "backspace" => Ok(BareKey::Backspace),
+            "delete" => Ok(BareKey::Delete),
+            "insert" => Ok(BareKey::Insert),
+            "f1" => Ok(BareKey::F(1)),
+            "f2" => Ok(BareKey::F(2)),
+            "f3" => Ok(BareKey::F(3)),
+            "f4" => Ok(BareKey::F(4)),
+            "f5" => Ok(BareKey::F(5)),
+            "f6" => Ok(BareKey::F(6)),
+            "f7" => Ok(BareKey::F(7)),
+            "f8" => Ok(BareKey::F(8)),
+            "f9" => Ok(BareKey::F(9)),
+            "f10" => Ok(BareKey::F(10)),
+            "f11" => Ok(BareKey::F(11)),
+            "f12" => Ok(BareKey::F(12)),
+            "tab" => Ok(BareKey::Tab),
+            "esc" => Ok(BareKey::Esc),
+            "enter" => Ok(BareKey::Enter),
+            "capsLock" => Ok(BareKey::CapsLock),
+            "scrollLock" => Ok(BareKey::ScrollLock),
+            "numlock" => Ok(BareKey::NumLock),
+            "printscreen" => Ok(BareKey::PrintScreen),
+            "pause" => Ok(BareKey::Pause),
+            "menu" => Ok(BareKey::Menu),
+            "space" => Ok(BareKey::Char(' ')),
+            _ => {
+                if key_str.chars().count() == 1 {
+                    if let Some(character) = key_str.chars().next() {
+                        return Ok(BareKey::Char(character));
+                    }
+                }
+                Err("unsupported key".into())
+            },
+        }
+    }
+}
+
+#[derive(
+    Eq, Clone, Copy, Debug, PartialEq, Hash, Deserialize, Serialize, PartialOrd, Ord, ToString,
+)]
+pub enum KeyModifier {
+    Ctrl,
+    Alt,
+    Shift,
+    Super,
+    Hyper,
+    Meta,
+    CapsLock,
+    NumLock,
+}
+
+impl FromStr for KeyModifier {
+    type Err = Box<dyn std::error::Error>;
+    fn from_str(key_str: &str) -> Result<Self, Self::Err> {
+        match key_str.to_ascii_lowercase().as_str() {
+            "shift" => Ok(KeyModifier::Shift),
+            "alt" => Ok(KeyModifier::Alt),
+            "ctrl" => Ok(KeyModifier::Ctrl),
+            "super" => Ok(KeyModifier::Super),
+            _ => Err("unsupported modifier".into()),
+        }
+    }
+}
+
+impl BareKey {
+    pub fn from_bytes_with_u(bytes: &[u8]) -> Option<Self> {
+        match str::from_utf8(bytes) {
+            Ok("27") => Some(BareKey::Esc),
+            Ok("13") => Some(BareKey::Enter),
+            Ok("9") => Some(BareKey::Tab),
+            Ok("127") => Some(BareKey::Backspace),
+            Ok("57358") => Some(BareKey::CapsLock),
+            Ok("57359") => Some(BareKey::ScrollLock),
+            Ok("57360") => Some(BareKey::NumLock),
+            Ok("57361") => Some(BareKey::PrintScreen),
+            Ok("57362") => Some(BareKey::Pause),
+            Ok("57363") => Some(BareKey::Menu),
+            Ok(num) => u8::from_str_radix(num, 10)
+                .ok()
+                .map(|n| BareKey::Char((n as char).to_ascii_lowercase())),
+            _ => None,
+        }
+    }
+    pub fn from_bytes_with_tilde(bytes: &[u8]) -> Option<Self> {
+        match str::from_utf8(bytes) {
+            Ok("2") => Some(BareKey::Insert),
+            Ok("3") => Some(BareKey::Delete),
+            Ok("5") => Some(BareKey::PageUp),
+            Ok("6") => Some(BareKey::PageDown),
+            Ok("7") => Some(BareKey::Home),
+            Ok("8") => Some(BareKey::End),
+            Ok("11") => Some(BareKey::F(1)),
+            Ok("12") => Some(BareKey::F(2)),
+            Ok("13") => Some(BareKey::F(3)),
+            Ok("14") => Some(BareKey::F(4)),
+            Ok("15") => Some(BareKey::F(5)),
+            Ok("17") => Some(BareKey::F(6)),
+            Ok("18") => Some(BareKey::F(7)),
+            Ok("19") => Some(BareKey::F(8)),
+            Ok("20") => Some(BareKey::F(9)),
+            Ok("21") => Some(BareKey::F(10)),
+            Ok("23") => Some(BareKey::F(11)),
+            Ok("24") => Some(BareKey::F(12)),
+            _ => None,
+        }
+    }
+    pub fn from_bytes_with_no_ending_byte(bytes: &[u8]) -> Option<Self> {
+        match str::from_utf8(bytes) {
+            Ok("1D") | Ok("D") => Some(BareKey::Left),
+            Ok("1C") | Ok("C") => Some(BareKey::Right),
+            Ok("1A") | Ok("A") => Some(BareKey::Up),
+            Ok("1B") | Ok("B") => Some(BareKey::Down),
+            Ok("1H") | Ok("H") => Some(BareKey::Home),
+            Ok("1F") | Ok("F") => Some(BareKey::End),
+            Ok("1P") | Ok("P") => Some(BareKey::F(1)),
+            Ok("1Q") | Ok("Q") => Some(BareKey::F(2)),
+            Ok("1S") | Ok("S") => Some(BareKey::F(4)),
+            _ => None,
+        }
+    }
+}
+
+bitflags::bitflags! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    struct ModifierFlags: u8 {
+        const SHIFT   = 0b0000_0001;
+        const ALT     = 0b0000_0010;
+        const CONTROL = 0b0000_0100;
+        const SUPER   = 0b0000_1000;
+        const HYPER = 0b0001_0000;
+        const META = 0b0010_0000;
+        const CAPS_LOCK = 0b0100_0000;
+        const NUM_LOCK = 0b1000_0000;
+    }
+}
+
+impl KeyModifier {
+    pub fn from_bytes(bytes: &[u8]) -> BTreeSet<KeyModifier> {
+        let modifier_flags = str::from_utf8(bytes)
+            .ok() // convert to string: (eg. "16")
+            .and_then(|s| u8::from_str_radix(&s, 10).ok()) // convert to u8: (eg. 16)
+            .map(|s| s.saturating_sub(1)) // subtract 1: (eg. 15)
+            .and_then(|b| ModifierFlags::from_bits(b)); // bitflags: (0b0000_1111: Shift, Alt, Control, Super)
+        let mut key_modifiers = BTreeSet::new();
+        if let Some(modifier_flags) = modifier_flags {
+            for name in modifier_flags.iter() {
+                match name {
+                    ModifierFlags::SHIFT => key_modifiers.insert(KeyModifier::Shift),
+                    ModifierFlags::ALT => key_modifiers.insert(KeyModifier::Alt),
+                    ModifierFlags::CONTROL => key_modifiers.insert(KeyModifier::Ctrl),
+                    ModifierFlags::SUPER => key_modifiers.insert(KeyModifier::Super),
+                    ModifierFlags::HYPER => key_modifiers.insert(KeyModifier::Hyper),
+                    ModifierFlags::META => key_modifiers.insert(KeyModifier::Meta),
+                    ModifierFlags::CAPS_LOCK => key_modifiers.insert(KeyModifier::CapsLock),
+                    ModifierFlags::NUM_LOCK => key_modifiers.insert(KeyModifier::NumLock),
+                    _ => false,
+                };
             }
         }
-        match (modifier, main_key) {
-            (Some("Ctrl"), Some(main_key)) if main_key == "@" || main_key == "Space" => {
-                Ok(Key::Char('\x00'))
-            },
-            (Some("Ctrl"), Some(main_key)) => {
-                parse_main_key(main_key, key_str, Key::Ctrl, Key::CtrlF)
-            },
-            (Some("Alt"), Some(main_key)) => {
-                match main_key {
-                    // why crate::data::Direction and not just Direction?
-                    // Because it's a different type that we export in this wasm mandated soup - we
-                    // don't like it either! This will be solved as we chip away at our tech-debt
-                    "Left" => Ok(Key::Alt(CharOrArrow::Direction(Direction::Left))),
-                    "Right" => Ok(Key::Alt(CharOrArrow::Direction(Direction::Right))),
-                    "Up" => Ok(Key::Alt(CharOrArrow::Direction(Direction::Up))),
-                    "Down" => Ok(Key::Alt(CharOrArrow::Direction(Direction::Down))),
-                    _ => parse_main_key(
-                        main_key,
-                        key_str,
-                        |c| Key::Alt(CharOrArrow::Char(c)),
-                        Key::AltF,
-                    ),
-                }
-            },
-            (None, Some(main_key)) => match main_key {
-                "Backspace" => Ok(Key::Backspace),
-                "Left" => Ok(Key::Left),
-                "Right" => Ok(Key::Right),
-                "Up" => Ok(Key::Up),
-                "Down" => Ok(Key::Down),
-                "Home" => Ok(Key::Home),
-                "End" => Ok(Key::End),
-                "PageUp" => Ok(Key::PageUp),
-                "PageDown" => Ok(Key::PageDown),
-                "Tab" => Ok(Key::BackTab),
-                "Delete" => Ok(Key::Delete),
-                "Insert" => Ok(Key::Insert),
-                "Space" => Ok(Key::Char(' ')),
-                "Enter" => Ok(Key::Char('\n')),
-                "Esc" => Ok(Key::Esc),
-                _ => parse_main_key(main_key, key_str, Key::Char, Key::F),
-            },
-            _ => Err(format!("Failed to parse key: {}", key_str).into()),
-        }
+        key_modifiers
     }
 }
 
-fn parse_main_key(
-    main_key: &str,
-    key_str: &str,
-    to_char_key: impl FnOnce(char) -> Key,
-    to_fn_key: impl FnOnce(u8) -> Key,
-) -> Result<Key, Box<dyn std::error::Error>> {
-    let mut key_chars = main_key.chars();
-    let key_count = main_key.chars().count();
-    if key_count == 1 {
-        let key_char = key_chars.next().unwrap();
-        Ok(to_char_key(key_char))
-    } else if key_count > 1 {
-        if let Some(first_char) = key_chars.next() {
-            if first_char == 'F' {
-                let f_index: String = key_chars.collect();
-                let f_index: u8 = f_index
-                    .parse()
-                    .map_err(|e| format!("Failed to parse F index: {}", e))?;
-                if f_index >= 1 && f_index <= 12 {
-                    return Ok(to_fn_key(f_index));
-                }
+impl KeyWithModifier {
+    pub fn new(bare_key: BareKey) -> Self {
+        KeyWithModifier {
+            bare_key,
+            key_modifiers: BTreeSet::new(),
+        }
+    }
+    pub fn new_with_modifiers(bare_key: BareKey, key_modifiers: BTreeSet<KeyModifier>) -> Self {
+        KeyWithModifier {
+            bare_key,
+            key_modifiers,
+        }
+    }
+    pub fn with_shift_modifier(mut self) -> Self {
+        self.key_modifiers.insert(KeyModifier::Shift);
+        self
+    }
+    pub fn with_alt_modifier(mut self) -> Self {
+        self.key_modifiers.insert(KeyModifier::Alt);
+        self
+    }
+    pub fn with_ctrl_modifier(mut self) -> Self {
+        self.key_modifiers.insert(KeyModifier::Ctrl);
+        self
+    }
+    pub fn with_super_modifier(mut self) -> Self {
+        self.key_modifiers.insert(KeyModifier::Super);
+        self
+    }
+    pub fn from_bytes_with_u(number_bytes: &[u8], modifier_bytes: &[u8]) -> Option<Self> {
+        // CSI number ; modifiers u
+        let bare_key = BareKey::from_bytes_with_u(number_bytes);
+        match bare_key {
+            Some(bare_key) => {
+                let key_modifiers = KeyModifier::from_bytes(modifier_bytes);
+                Some(KeyWithModifier {
+                    bare_key,
+                    key_modifiers,
+                })
+            },
+            _ => None,
+        }
+    }
+    pub fn from_bytes_with_tilde(number_bytes: &[u8], modifier_bytes: &[u8]) -> Option<Self> {
+        // CSI number ; modifiers ~
+        let bare_key = BareKey::from_bytes_with_tilde(number_bytes);
+        match bare_key {
+            Some(bare_key) => {
+                let key_modifiers = KeyModifier::from_bytes(modifier_bytes);
+                Some(KeyWithModifier {
+                    bare_key,
+                    key_modifiers,
+                })
+            },
+            _ => None,
+        }
+    }
+    pub fn from_bytes_with_no_ending_byte(
+        number_bytes: &[u8],
+        modifier_bytes: &[u8],
+    ) -> Option<Self> {
+        // CSI 1; modifiers [ABCDEFHPQS]
+        let bare_key = BareKey::from_bytes_with_no_ending_byte(number_bytes);
+        match bare_key {
+            Some(bare_key) => {
+                let key_modifiers = KeyModifier::from_bytes(modifier_bytes);
+                Some(KeyWithModifier {
+                    bare_key,
+                    key_modifiers,
+                })
+            },
+            _ => None,
+        }
+    }
+    pub fn strip_common_modifiers(&self, common_modifiers: &Vec<KeyModifier>) -> Self {
+        let common_modifiers: BTreeSet<&KeyModifier> = common_modifiers.into_iter().collect();
+        KeyWithModifier {
+            bare_key: self.bare_key.clone(),
+            key_modifiers: self
+                .key_modifiers
+                .iter()
+                .filter(|m| !common_modifiers.contains(m))
+                .cloned()
+                .collect(),
+        }
+    }
+    pub fn is_key_without_modifier(&self, key: BareKey) -> bool {
+        self.bare_key == key && self.key_modifiers.is_empty()
+    }
+    pub fn is_key_with_ctrl_modifier(&self, key: BareKey) -> bool {
+        self.bare_key == key && self.key_modifiers.contains(&KeyModifier::Ctrl)
+    }
+    pub fn is_key_with_alt_modifier(&self, key: BareKey) -> bool {
+        self.bare_key == key && self.key_modifiers.contains(&KeyModifier::Alt)
+    }
+    pub fn is_key_with_shift_modifier(&self, key: BareKey) -> bool {
+        self.bare_key == key && self.key_modifiers.contains(&KeyModifier::Shift)
+    }
+    pub fn is_key_with_super_modifier(&self, key: BareKey) -> bool {
+        self.bare_key == key && self.key_modifiers.contains(&KeyModifier::Super)
+    }
+    #[cfg(not(target_family = "wasm"))]
+    pub fn to_termwiz_modifiers(&self) -> Modifiers {
+        let mut modifiers = Modifiers::empty();
+        for modifier in &self.key_modifiers {
+            modifiers.set(modifier.into(), true);
+        }
+        modifiers
+    }
+    #[cfg(not(target_family = "wasm"))]
+    pub fn to_termwiz_keycode(&self) -> KeyCode {
+        match self.bare_key {
+            BareKey::PageDown => KeyCode::PageDown,
+            BareKey::PageUp => KeyCode::PageUp,
+            BareKey::Left => KeyCode::LeftArrow,
+            BareKey::Down => KeyCode::DownArrow,
+            BareKey::Up => KeyCode::UpArrow,
+            BareKey::Right => KeyCode::RightArrow,
+            BareKey::Home => KeyCode::Home,
+            BareKey::End => KeyCode::End,
+            BareKey::Backspace => KeyCode::Backspace,
+            BareKey::Delete => KeyCode::Delete,
+            BareKey::Insert => KeyCode::Insert,
+            BareKey::F(index) => KeyCode::Function(index),
+            BareKey::Char(character) => KeyCode::Char(character),
+            BareKey::Tab => KeyCode::Tab,
+            BareKey::Esc => KeyCode::Escape,
+            BareKey::Enter => KeyCode::Enter,
+            BareKey::CapsLock => KeyCode::CapsLock,
+            BareKey::ScrollLock => KeyCode::ScrollLock,
+            BareKey::NumLock => KeyCode::NumLock,
+            BareKey::PrintScreen => KeyCode::PrintScreen,
+            BareKey::Pause => KeyCode::Pause,
+            BareKey::Menu => KeyCode::Menu,
+        }
+    }
+    #[cfg(not(target_family = "wasm"))]
+    pub fn serialize_non_kitty(&self) -> Option<String> {
+        let modifiers = self.to_termwiz_modifiers();
+        let key_code_encode_modes = KeyCodeEncodeModes {
+            encoding: KeyboardEncoding::Xterm,
+            // all these flags are false because they have been dealt with before this
+            // serialization
+            application_cursor_keys: false,
+            newline_mode: false,
+            modify_other_keys: None,
+        };
+        self.to_termwiz_keycode()
+            .encode(modifiers, key_code_encode_modes, true)
+            .ok()
+    }
+    #[cfg(not(target_family = "wasm"))]
+    pub fn serialize_kitty(&self) -> Option<String> {
+        let modifiers = self.to_termwiz_modifiers();
+        let key_code_encode_modes = KeyCodeEncodeModes {
+            encoding: KeyboardEncoding::Kitty(KittyKeyboardFlags::DISAMBIGUATE_ESCAPE_CODES),
+            // all these flags are false because they have been dealt with before this
+            // serialization
+            application_cursor_keys: false,
+            newline_mode: false,
+            modify_other_keys: None,
+        };
+        self.to_termwiz_keycode()
+            .encode(modifiers, key_code_encode_modes, true)
+            .ok()
+    }
+    pub fn has_no_modifiers(&self) -> bool {
+        self.key_modifiers.is_empty()
+    }
+    pub fn has_modifiers(&self, modifiers: &[KeyModifier]) -> bool {
+        for modifier in modifiers {
+            if !self.key_modifiers.contains(modifier) {
+                return false;
             }
         }
-        Err(format!("Failed to parse key: {}", key_str).into())
-    } else {
-        Err(format!("Failed to parse key: {}", key_str).into())
-    }
-}
-
-impl fmt::Display for Key {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Key::Backspace => write!(f, "BACKSPACE"),
-            Key::Left => write!(f, "{}", Direction::Left),
-            Key::Right => write!(f, "{}", Direction::Right),
-            Key::Up => write!(f, "{}", Direction::Up),
-            Key::Down => write!(f, "{}", Direction::Down),
-            Key::Home => write!(f, "HOME"),
-            Key::End => write!(f, "END"),
-            Key::PageUp => write!(f, "PgUp"),
-            Key::PageDown => write!(f, "PgDn"),
-            Key::BackTab => write!(f, "TAB"),
-            Key::Delete => write!(f, "DEL"),
-            Key::Insert => write!(f, "INS"),
-            Key::F(n) => write!(f, "F{}", n),
-            Key::Char(c) => match c {
-                '\n' => write!(f, "ENTER"),
-                '\t' => write!(f, "TAB"),
-                ' ' => write!(f, "SPACE"),
-                '\x00' => write!(f, "Ctrl+SPACE"),
-                _ => write!(f, "{}", c),
-            },
-            Key::Alt(c) => write!(f, "Alt+{}", c),
-            Key::Ctrl(c) => write!(f, "Ctrl+{}", Key::Char(*c)),
-            Key::AltF(n) => write!(f, "Alt+F{}", n),
-            Key::CtrlF(n) => write!(f, "Ctrl+F{}", n),
-            Key::Null => write!(f, "NULL"),
-            Key::Esc => write!(f, "ESC"),
-        }
-    }
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, PartialOrd, Ord)]
-#[serde(untagged)]
-pub enum CharOrArrow {
-    Char(char),
-    Direction(Direction),
-}
-
-impl fmt::Display for CharOrArrow {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            CharOrArrow::Char(c) => write!(f, "{}", Key::Char(*c)),
-            CharOrArrow::Direction(d) => write!(f, "{}", d),
-        }
+        true
     }
 }
 
@@ -493,7 +842,7 @@ pub enum Event {
     TabUpdate(Vec<TabInfo>),
     PaneUpdate(PaneManifest),
     /// A key was pressed while the user is focused on this plugin's pane
-    Key(Key),
+    Key(KeyWithModifier),
     /// A mouse event happened while the user is focused on this plugin's pane
     Mouse(Mouse),
     /// A timer expired set by the `set_timeout` method exported by `zellij-tile`.
@@ -756,7 +1105,7 @@ pub struct Style {
 }
 
 // FIXME: Poor devs hashtable since HashTable can't derive `Default`...
-pub type KeybindsVec = Vec<(InputMode, Vec<(Key, Vec<Action>)>)>;
+pub type KeybindsVec = Vec<(InputMode, Vec<(KeyWithModifier, Vec<Action>)>)>;
 
 /// Provides information helpful in rendering the Zellij controls for UI bars
 #[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -769,11 +1118,11 @@ pub struct ModeInfo {
 }
 
 impl ModeInfo {
-    pub fn get_mode_keybinds(&self) -> Vec<(Key, Vec<Action>)> {
+    pub fn get_mode_keybinds(&self) -> Vec<(KeyWithModifier, Vec<Action>)> {
         self.get_keybinds_for_mode(self.mode)
     }
 
-    pub fn get_keybinds_for_mode(&self, mode: InputMode) -> Vec<(Key, Vec<Action>)> {
+    pub fn get_keybinds_for_mode(&self, mode: InputMode) -> Vec<(KeyWithModifier, Vec<Action>)> {
         for (vec_mode, map) in &self.keybinds {
             if mode == *vec_mode {
                 return map.to_vec();

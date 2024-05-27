@@ -5306,6 +5306,7 @@ dependencies = [
  "async-channel",
  "async-std",
  "backtrace",
+ "bitflags 2.5.0",
  "clap",
  "clap_complete",
  "colored",

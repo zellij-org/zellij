@@ -167,6 +167,7 @@ fn create_new_tab(size: Size) -> Tab {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut tab = Tab::new(
         index,
         position,
@@ -192,6 +193,7 @@ fn create_new_tab(size: Size) -> Tab {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -229,6 +231,7 @@ fn create_new_tab_with_layout(size: Size, layout: TiledPaneLayout) -> Tab {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut tab = Tab::new(
         index,
         position,
@@ -254,6 +257,7 @@ fn create_new_tab_with_layout(size: Size, layout: TiledPaneLayout) -> Tab {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let mut new_terminal_ids = vec![];
     for i in 0..layout.extract_run_instructions().len() {
@@ -297,6 +301,7 @@ fn create_new_tab_with_cell_size(
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut tab = Tab::new(
         index,
         position,
@@ -322,6 +327,7 @@ fn create_new_tab_with_cell_size(
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -352,8 +358,14 @@ fn write_to_suppressed_pane() {
     // Make sure it's suppressed now
     tab.suppressed_panes.get(&PaneId::Terminal(2)).unwrap();
     // Write content to it
-    tab.write_to_pane_id(vec![34, 127, 31, 82, 17, 182], PaneId::Terminal(2), None)
-        .unwrap();
+    tab.write_to_pane_id(
+        &None,
+        vec![34, 127, 31, 82, 17, 182],
+        false,
+        PaneId::Terminal(2),
+        None,
+    )
+    .unwrap();
 }
 
 #[test]

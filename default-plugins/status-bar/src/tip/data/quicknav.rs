@@ -76,10 +76,10 @@ fn add_keybinds(help: &ModeInfo) -> Keygroups {
             &[Action::Resize(Resize::Decrease, None)],
         ],
     );
-    if resize_keys.contains(&Key::Alt(CharOrArrow::Char('=')))
-        && resize_keys.contains(&Key::Alt(CharOrArrow::Char('+')))
+    if resize_keys.contains(&KeyWithModifier::new(BareKey::Char('=')).with_alt_modifier())
+        && resize_keys.contains(&KeyWithModifier::new(BareKey::Char('+')).with_alt_modifier())
     {
-        resize_keys.retain(|k| k != &Key::Alt(CharOrArrow::Char('=')));
+        resize_keys.retain(|k| k != &KeyWithModifier::new(BareKey::Char('=')).with_alt_modifier())
     }
     let resize = if resize_keys.is_empty() {
         vec![Style::new().bold().paint("UNBOUND")]

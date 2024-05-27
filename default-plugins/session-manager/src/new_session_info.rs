@@ -70,21 +70,24 @@ impl NewSessionInfo {
             },
         }
     }
-    pub fn handle_key(&mut self, key: Key) {
-        match key {
-            Key::Backspace => {
+    pub fn handle_key(&mut self, key: KeyWithModifier) {
+        match key.bare_key {
+            BareKey::Backspace if key.has_no_modifiers() => {
                 self.handle_backspace();
             },
-            Key::Ctrl('c') | Key::Esc => {
+            BareKey::Char('c') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
                 self.handle_break();
             },
-            Key::Char(character) => {
+            BareKey::Esc if key.has_no_modifiers() => {
+                self.handle_break();
+            },
+            BareKey::Char(character) if key.has_no_modifiers() => {
                 self.add_char(character);
             },
-            Key::Up => {
+            BareKey::Up if key.has_no_modifiers() => {
                 self.move_selection_up();
             },
-            Key::Down => {
+            BareKey::Down if key.has_no_modifiers() => {
                 self.move_selection_down();
             },
             _ => {},

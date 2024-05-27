@@ -543,8 +543,6 @@ impl WasmBridge {
         mut updates: Vec<(Option<PluginId>, Option<ClientId>, Event)>,
         shutdown_sender: Sender<()>,
     ) -> Result<()> {
-        let err_context = || "failed to update plugin state".to_string();
-
         let plugins_to_update: Vec<(
             PluginId,
             ClientId,

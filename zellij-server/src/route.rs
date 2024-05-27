@@ -64,12 +64,17 @@ pub(crate) fn route_action(
                 .send_to_screen(ScreenInstruction::ToggleTab(client_id))
                 .with_context(err_context)?;
         },
-        Action::Write(val) => {
+        Action::Write(key_with_modifier, raw_bytes, is_kitty_keyboard_protocol) => {
             senders
                 .send_to_screen(ScreenInstruction::ClearScroll(client_id))
                 .with_context(err_context)?;
             senders
-                .send_to_screen(ScreenInstruction::WriteCharacter(val, client_id))
+                .send_to_screen(ScreenInstruction::WriteCharacter(
+                    key_with_modifier,
+                    raw_bytes,
+                    is_kitty_keyboard_protocol,
+                    client_id,
+                ))
                 .with_context(err_context)?;
         },
         Action::WriteChars(val) => {
@@ -78,7 +83,9 @@ pub(crate) fn route_action(
                 .with_context(err_context)?;
             let val = val.into_bytes();
             senders
-                .send_to_screen(ScreenInstruction::WriteCharacter(val, client_id))
+                .send_to_screen(ScreenInstruction::WriteCharacter(
+                    None, val, false, client_id,
+                ))
                 .with_context(err_context)?;
         },
         Action::SwitchToMode(mode) => {

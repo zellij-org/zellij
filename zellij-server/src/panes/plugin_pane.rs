@@ -2,7 +2,12 @@ use std::collections::{BTreeSet, HashMap};
 use std::time::Instant;
 
 use crate::output::{CharacterChunk, SixelImageChunk};
-use crate::panes::{grid::Grid, sixel::SixelImageStore, LinkHandler, PaneId};
+use crate::panes::{
+    grid::Grid,
+    sixel::SixelImageStore,
+    terminal_pane::{BRACKETED_PASTE_BEGIN, BRACKETED_PASTE_END},
+    LinkHandler, PaneId,
+};
 use crate::plugins::PluginInstruction;
 use crate::pty::VteBytes;
 use crate::tab::{AdjustedInput, Pane};
@@ -13,7 +18,9 @@ use crate::ui::{
 use crate::ClientId;
 use std::cell::RefCell;
 use std::rc::Rc;
-use zellij_utils::data::{PermissionStatus, PermissionType, PluginPermission};
+use zellij_utils::data::{
+    BareKey, KeyWithModifier, PermissionStatus, PermissionType, PluginPermission,
+};
 use zellij_utils::pane_size::{Offset, SizeInPixels};
 use zellij_utils::position::Position;
 use zellij_utils::{
@@ -39,6 +46,7 @@ macro_rules! get_or_create_grid {
     ($self:ident, $client_id:ident) => {{
         let rows = $self.get_content_rows();
         let cols = $self.get_content_columns();
+        let explicitly_disable_kitty_keyboard_protocol = false; // N/A for plugins
 
         $self.grids.entry($client_id).or_insert_with(|| {
             let mut grid = Grid::new(
@@ -53,6 +61,7 @@ macro_rules! get_or_create_grid {
                 $self.debug,
                 $self.arrow_fonts,
                 $self.styled_underlines,
+                explicitly_disable_kitty_keyboard_protocol,
             );
             grid.hide_cursor();
             grid
@@ -232,24 +241,54 @@ impl Pane for PluginPane {
     fn cursor_coordinates(&self) -> Option<(usize, usize)> {
         None
     }
-    fn adjust_input_to_terminal(&mut self, input_bytes: Vec<u8>) -> Option<AdjustedInput> {
+    fn adjust_input_to_terminal(
+        &mut self,
+        key_with_modifier: &Option<KeyWithModifier>,
+        raw_input_bytes: Vec<u8>,
+        _raw_input_bytes_are_kitty: bool,
+    ) -> Option<AdjustedInput> {
         if let Some(requesting_permissions) = &self.requesting_permissions {
             let permissions = requesting_permissions.permissions.clone();
-            match input_bytes.as_slice() {
-                // Y or y
-                &[89] | &[121] => Some(AdjustedInput::PermissionRequestResult(
-                    permissions,
-                    PermissionStatus::Granted,
-                )),
-                // N or n
-                &[78] | &[110] => Some(AdjustedInput::PermissionRequestResult(
-                    permissions,
-                    PermissionStatus::Denied,
-                )),
-                _ => None,
+            if let Some(key_with_modifier) = key_with_modifier {
+                match key_with_modifier.bare_key {
+                    BareKey::Char('y') if key_with_modifier.has_no_modifiers() => {
+                        Some(AdjustedInput::PermissionRequestResult(
+                            permissions,
+                            PermissionStatus::Granted,
+                        ))
+                    },
+                    BareKey::Char('n') if key_with_modifier.has_no_modifiers() => {
+                        Some(AdjustedInput::PermissionRequestResult(
+                            permissions,
+                            PermissionStatus::Denied,
+                        ))
+                    },
+                    _ => None,
+                }
+            } else {
+                match raw_input_bytes.as_slice() {
+                    // Y or y
+                    &[89] | &[121] => Some(AdjustedInput::PermissionRequestResult(
+                        permissions,
+                        PermissionStatus::Granted,
+                    )),
+                    // N or n
+                    &[78] | &[110] => Some(AdjustedInput::PermissionRequestResult(
+                        permissions,
+                        PermissionStatus::Denied,
+                    )),
+                    _ => None,
+                }
             }
+        } else if let Some(key_with_modifier) = key_with_modifier {
+            Some(AdjustedInput::WriteKeyToPlugin(key_with_modifier.clone()))
+        } else if raw_input_bytes.as_slice() == BRACKETED_PASTE_BEGIN
+            || raw_input_bytes.as_slice() == BRACKETED_PASTE_END
+        {
+            // plugins do not need bracketed paste
+            None
         } else {
-            Some(AdjustedInput::WriteBytesToTerminal(input_bytes))
+            Some(AdjustedInput::WriteBytesToTerminal(raw_input_bytes))
         }
     }
     fn position_and_size(&self) -> PaneGeom {

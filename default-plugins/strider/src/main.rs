@@ -63,42 +63,47 @@ impl ZellijPlugin for State {
                 self.update_files(paths);
                 should_render = true;
             },
-            Event::Key(key) => match key {
-                Key::Char(character) if character != '\n' => {
+            Event::Key(key) => match key.bare_key {
+                BareKey::Char(character) if key.has_no_modifiers() => {
                     self.update_search_term(character);
                     should_render = true;
                 },
-                Key::Backspace => {
+                BareKey::Backspace if key.has_no_modifiers() => {
                     self.handle_backspace();
                     should_render = true;
                 },
-                Key::Esc | Key::Ctrl('c') => {
+                BareKey::Esc if key.has_no_modifiers() => {
                     self.clear_search_term_or_descend();
                     should_render = true;
                 },
-                Key::Up => {
+                BareKey::Char('c') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
+                    self.clear_search_term_or_descend();
+                },
+                BareKey::Up if key.has_no_modifiers() => {
                     self.move_selection_up();
                     should_render = true;
                 },
-                Key::Down => {
+                BareKey::Down if key.has_no_modifiers() => {
                     self.move_selection_down();
                     should_render = true;
                 },
-                Key::Char('\n') if self.handling_filepick_request_from.is_some() => {
+                BareKey::Enter
+                    if key.has_no_modifiers() && self.handling_filepick_request_from.is_some() =>
+                {
                     self.send_filepick_response();
                 },
-                Key::Char('\n') => {
+                BareKey::Enter if key.has_no_modifiers() => {
                     self.open_selected_path();
                 },
-                Key::Right | Key::BackTab => {
+                BareKey::Right | BareKey::Tab if key.has_no_modifiers() => {
                     self.traverse_dir();
                     should_render = true;
                 },
-                Key::Left => {
+                BareKey::Left if key.has_no_modifiers() => {
                     self.descend_to_previous_path();
                     should_render = true;
                 },
-                Key::Ctrl('e') => {
+                BareKey::Char('e') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
                     should_render = true;
                     self.toggle_hidden_files();
                     refresh_directory(&self.file_list_view.path);

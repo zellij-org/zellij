@@ -363,3 +363,8 @@ plugins {
 // Default: false
 //
 // disable_session_metadata true
+
+// Enable or disable support for the enhanced Kitty Keyboard Protocol (the host terminal must also support it)
+// Default: true (if the host terminal supports it)
+//
+// support_kitty_keyboard_protocol false
