@@ -2740,13 +2740,21 @@ impl Perform for Grid {
                 self.clear_scroll_region();
             }
         } else if c == 'M' {
-            // delete lines if currently inside scroll region
+            // delete lines if currently inside scroll region, or otherwise
+            // delete lines in the entire viewport
+            if self.scroll_region.is_none() {
+                self.set_scroll_region_to_viewport_size();
+            }
             let line_count_to_delete = next_param_or(1);
             let mut pad_character = EMPTY_TERMINAL_CHARACTER;
             pad_character.styles = self.cursor.pending_styles.clone();
             self.delete_lines_in_scroll_region(line_count_to_delete, pad_character);
         } else if c == 'L' {
-            // insert blank lines if inside scroll region
+            // insert blank lines if inside scroll region, or otherwise insert
+            // blank lines in the entire viewport
+            if self.scroll_region.is_none() {
+                self.set_scroll_region_to_viewport_size();
+            }
             let line_count_to_add = next_param_or(1);
             let mut pad_character = EMPTY_TERMINAL_CHARACTER;
             pad_character.styles = self.cursor.pending_styles.clone();
