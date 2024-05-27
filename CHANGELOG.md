@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * dependencies: eliminate future incompatibility warnings (https://github.com/zellij-org/zellij/pull/3315)
 * fix(plugins): occasional out of order events on startup (https://github.com/zellij-org/zellij/pull/3367)
 * feat(keybinds): support multiple modifiers (eg. Ctrl+Alt) and the kitty keyboard protocol (https://github.com/zellij-org/zellij/pull/3383)
+* fix(terminal): properly set and handle scroll region in various instances (https://github.com/zellij-org/zellij/pull/3381 and https://github.com/zellij-org/zellij/pull/3382)
 
 ## [0.40.1] - 2024-05-02
 * fix(sessions): issue where sessions would occasionally become unresponsive (https://github.com/zellij-org/zellij/pull/3281)
