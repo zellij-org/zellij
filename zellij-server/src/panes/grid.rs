@@ -1573,7 +1573,7 @@ impl Grid {
         self.cursor_is_hidden = false;
     }
     pub fn set_scroll_region(&mut self, top_line_index: usize, bottom_line_index: Option<usize>) {
-        let bottom_line_index = bottom_line_index.unwrap_or(self.height);
+        let bottom_line_index = bottom_line_index.unwrap_or(self.height.saturating_sub(1));
         self.scroll_region = Some((top_line_index, bottom_line_index));
         let mut pad_character = EMPTY_TERMINAL_CHARACTER;
         pad_character.styles = self.cursor.pending_styles.clone();
