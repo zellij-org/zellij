@@ -2,7 +2,7 @@ pub use super::generated_api::api::key::{
     key::{KeyModifier as ProtobufKeyModifier, MainKey as ProtobufMainKey, NamedKey as ProtobufNamedKey},
     Key as ProtobufKey,
 };
-use crate::data::{CharOrArrow, Direction, Key, KeyWithModifier, BareKey, KeyModifier};
+use crate::data::{KeyWithModifier, BareKey, KeyModifier};
 
 use std::collections::BTreeSet;
 use std::convert::TryFrom;
@@ -94,9 +94,9 @@ impl TryFrom<ProtobufKey> for KeyWithModifier {
     }
 }
 
-impl TryFrom<KeyWithModifier> for ProtobufKey{
+impl TryFrom<KeyWithModifier> for ProtobufKey {
     type Error = &'static str;
-    fn try_from(mut key_with_modifier: KeyWithModifier) -> Result<Self, &'static str> {
+    fn try_from(key_with_modifier: KeyWithModifier) -> Result<Self, &'static str> {
         let mut modifiers: Vec<ProtobufKeyModifier> = vec![];
         for key_modifier in key_with_modifier.key_modifiers {
             modifiers.push(key_modifier.try_into()?);
@@ -129,97 +129,8 @@ fn fn_index_to_main_key(index: u8) -> Result<ProtobufMainKey, &'static str> {
     }
 }
 
-impl CharOrArrow {
-    pub fn from_main_key(
-        main_key: std::option::Option<ProtobufMainKey>,
-    ) -> Result<CharOrArrow, &'static str> {
-        match main_key {
-            Some(ProtobufMainKey::Char(encoded_key)) => {
-                Ok(CharOrArrow::Char(char_index_to_char(encoded_key)))
-            },
-            Some(ProtobufMainKey::Key(key_index)) => match ProtobufNamedKey::from_i32(key_index) {
-                Some(ProtobufNamedKey::LeftArrow) => Ok(CharOrArrow::Direction(Direction::Left)),
-                Some(ProtobufNamedKey::RightArrow) => Ok(CharOrArrow::Direction(Direction::Right)),
-                Some(ProtobufNamedKey::UpArrow) => Ok(CharOrArrow::Direction(Direction::Up)),
-                Some(ProtobufNamedKey::DownArrow) => Ok(CharOrArrow::Direction(Direction::Down)),
-                _ => Err("Unsupported key"),
-            },
-            _ => {
-                return Err("Unsupported key");
-            },
-        }
-    }
-}
-
-fn parse_optional_modifier(m: &ProtobufKey) -> Option<ProtobufKeyModifier> {
-    match m.modifier {
-        Some(modifier) => ProtobufKeyModifier::from_i32(modifier),
-        _ => None,
-    }
-}
-
 fn char_index_to_char(char_index: i32) -> char {
     char_index as u8 as char
-}
-
-fn char_from_main_key(main_key: Option<ProtobufMainKey>) -> Result<char, &'static str> {
-    match main_key {
-        Some(ProtobufMainKey::Char(encoded_key)) => {
-            return Ok(char_index_to_char(encoded_key));
-        },
-        _ => {
-            return Err("Unsupported key");
-        },
-    }
-}
-
-fn fn_index_from_main_key(main_key: Option<ProtobufMainKey>) -> Result<u8, &'static str> {
-    match main_key {
-        Some(ProtobufMainKey::Key(n)) if n == ProtobufNamedKey::F1 as i32 => Ok(1),
-        Some(ProtobufMainKey::Key(n)) if n == ProtobufNamedKey::F2 as i32 => Ok(2),
-        Some(ProtobufMainKey::Key(n)) if n == ProtobufNamedKey::F3 as i32 => Ok(3),
-        Some(ProtobufMainKey::Key(n)) if n == ProtobufNamedKey::F4 as i32 => Ok(4),
-        Some(ProtobufMainKey::Key(n)) if n == ProtobufNamedKey::F5 as i32 => Ok(5),
-        Some(ProtobufMainKey::Key(n)) if n == ProtobufNamedKey::F6 as i32 => Ok(6),
-        Some(ProtobufMainKey::Key(n)) if n == ProtobufNamedKey::F7 as i32 => Ok(7),
-        Some(ProtobufMainKey::Key(n)) if n == ProtobufNamedKey::F8 as i32 => Ok(8),
-        Some(ProtobufMainKey::Key(n)) if n == ProtobufNamedKey::F9 as i32 => Ok(9),
-        Some(ProtobufMainKey::Key(n)) if n == ProtobufNamedKey::F10 as i32 => Ok(10),
-        Some(ProtobufMainKey::Key(n)) if n == ProtobufNamedKey::F11 as i32 => Ok(11),
-        Some(ProtobufMainKey::Key(n)) if n == ProtobufNamedKey::F12 as i32 => Ok(12),
-        _ => Err("Unsupported key"),
-    }
-}
-
-fn named_key_to_key(named_key: ProtobufNamedKey) -> Key {
-    match named_key {
-        ProtobufNamedKey::PageDown => Key::PageDown,
-        ProtobufNamedKey::PageUp => Key::PageUp,
-        ProtobufNamedKey::LeftArrow => Key::Left,
-        ProtobufNamedKey::DownArrow => Key::Down,
-        ProtobufNamedKey::UpArrow => Key::Up,
-        ProtobufNamedKey::RightArrow => Key::Right,
-        ProtobufNamedKey::Home => Key::Home,
-        ProtobufNamedKey::End => Key::End,
-        ProtobufNamedKey::Backspace => Key::Backspace,
-        ProtobufNamedKey::Delete => Key::Delete,
-        ProtobufNamedKey::Insert => Key::Insert,
-        ProtobufNamedKey::F1 => Key::F(1),
-        ProtobufNamedKey::F2 => Key::F(2),
-        ProtobufNamedKey::F3 => Key::F(3),
-        ProtobufNamedKey::F4 => Key::F(4),
-        ProtobufNamedKey::F5 => Key::F(5),
-        ProtobufNamedKey::F6 => Key::F(6),
-        ProtobufNamedKey::F7 => Key::F(7),
-        ProtobufNamedKey::F8 => Key::F(8),
-        ProtobufNamedKey::F9 => Key::F(9),
-        ProtobufNamedKey::F10 => Key::F(10),
-        ProtobufNamedKey::F11 => Key::F(11),
-        ProtobufNamedKey::F12 => Key::F(12),
-        ProtobufNamedKey::Tab => Key::BackTab,
-        ProtobufNamedKey::Esc => Key::Esc,
-        _ => unimplemented!() // TODO: can we remove this whole function?
-    }
 }
 
 fn named_key_to_bare_key(named_key: ProtobufNamedKey) -> BareKey {

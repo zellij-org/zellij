@@ -216,7 +216,7 @@ pub trait Pane {
     fn handle_pty_bytes(&mut self, _bytes: VteBytes) {}
     fn handle_plugin_bytes(&mut self, _client_id: ClientId, _bytes: VteBytes) {}
     fn cursor_coordinates(&self) -> Option<(usize, usize)>;
-    fn adjust_input_to_terminal(&mut self, key_with_modifier: &Option<KeyWithModifier>, raw_input_bytes: Vec<u8>, raw_input_bytes_are_kitty: bool) -> Option<AdjustedInput> {
+    fn adjust_input_to_terminal(&mut self, _key_with_modifier: &Option<KeyWithModifier>, _raw_input_bytes: Vec<u8>, _raw_input_bytes_are_kitty: bool) -> Option<AdjustedInput> {
         None
     }
     fn position_and_size(&self) -> PaneGeom;

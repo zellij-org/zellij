@@ -16,7 +16,7 @@ pub use super::generated_api::api::{
 };
 #[allow(hidden_glob_reexports)]
 use crate::data::{
-    CopyDestination, Event, EventType, FileMetadata, InputMode, KeyWithModifier, BareKey, LayoutInfo, ModeInfo, Mouse,
+    CopyDestination, Event, EventType, FileMetadata, InputMode, KeyWithModifier, LayoutInfo, ModeInfo, Mouse,
     PaneInfo, PaneManifest, PermissionStatus, PluginCapabilities, SessionInfo, Style, TabInfo,
 };
 
@@ -1042,7 +1042,7 @@ fn serialize_mode_update_event() {
 
 #[test]
 fn serialize_mode_update_event_with_non_default_values() {
-    use crate::data::{Palette, PaletteColor, ThemeHue};
+    use crate::data::{Palette, PaletteColor, ThemeHue, BareKey};
     use prost::Message;
     let mode_update_event = Event::ModeUpdate(ModeInfo {
         mode: InputMode::Locked,
@@ -1188,6 +1188,7 @@ fn serialize_pane_update_event() {
 #[test]
 fn serialize_key_event() {
     use prost::Message;
+    use crate::data::BareKey;
     let key_event = Event::Key(KeyWithModifier::new(BareKey::Char('a')).with_ctrl_modifier());
     let protobuf_event: ProtobufEvent = key_event.clone().try_into().unwrap();
     let serialized_protobuf_event = protobuf_event.encode_to_vec();

@@ -76,20 +76,6 @@ impl KeyShortcut {
             None => return String::from("?"),
         };
         format!("{}", key)
-//         if with_prefix {
-//             format!("{}", key)
-//         } else {
-//             format!("{}", key.bare_key)
-// //             match key {
-// //                 Key::F(c) => format!("{}", c),
-// //                 Key::CtrlF(n) => format!("F{}", n),
-// //                 Key::AltF(n) => format!("F{}", n),
-// //                 Key::Ctrl(c) => format!("{}", c),
-// //                 Key::Char(_) => format!("{}", key),
-// //                 Key::Alt(c) => format!("{}", c),
-// //                 _ => String::from("??"),
-// //             }
-//         }
     }
 }
 
@@ -281,7 +267,6 @@ fn key_indicators(
 ) -> LinePart {
     // Print full-width hints
     let (shared_modifiers, mut line_part) = superkey(palette, separator, mode_info);
-    // let shared_super = line_part.len > 0;
     for key in keys {
         let line_empty = line_part.len == 0;
         let key = long_mode_shortcut(key, palette, separator, &shared_modifiers, line_empty);
@@ -300,7 +285,6 @@ fn key_indicators(
         line_part.part = format!("{}{}", line_part.part, key.part);
         line_part.len += key.len;
     }
-    eprintln!("line_part: {}", line_part.part);
     if line_part.len < max_len {
         return line_part;
     }

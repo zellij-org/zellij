@@ -18,7 +18,7 @@ pub use not_wasm::*;
 #[cfg(not(target_family = "wasm"))]
 mod not_wasm {
     use crate::{
-        data::{CharOrArrow, Direction, InputMode, Key, KeyWithModifier, BareKey, KeyModifier, ModeInfo, PluginCapabilities},
+        data::{InputMode, KeyWithModifier, BareKey, KeyModifier, ModeInfo, PluginCapabilities},
         envs,
         ipc::ClientAttributes,
     };

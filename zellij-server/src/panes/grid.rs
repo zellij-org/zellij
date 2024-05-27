@@ -362,8 +362,9 @@ pub struct Grid {
     debug: bool,
     arrow_fonts: bool,
     styled_underlines: bool,
-    pub supports_kitty_keyboard_protocol: bool,
-    explicitly_disable_kitty_keyboard_protocol: bool,
+    pub supports_kitty_keyboard_protocol: bool, // has the app requested kitty keyboard support?
+    explicitly_disable_kitty_keyboard_protocol: bool, // has kitty keyboard support been explicitly
+                                                      // disabled by user config?
 }
 
 #[derive(Clone, Debug)]
@@ -508,7 +509,6 @@ impl Grid {
             arrow_fonts,
             styled_underlines,
             lock_renders: false,
-            // supports_kitty_keyboard_protocol: true,
             supports_kitty_keyboard_protocol: false,
             explicitly_disable_kitty_keyboard_protocol,
         }

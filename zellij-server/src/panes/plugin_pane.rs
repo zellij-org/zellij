@@ -234,7 +234,11 @@ impl Pane for PluginPane {
     fn cursor_coordinates(&self) -> Option<(usize, usize)> {
         None
     }
-    fn adjust_input_to_terminal(&mut self, key_with_modifier: &Option<KeyWithModifier>, raw_input_bytes: Vec<u8>, raw_input_bytes_are_kitty: bool) -> Option<AdjustedInput> {
+    fn adjust_input_to_terminal(&mut self,
+        key_with_modifier: &Option<KeyWithModifier>,
+        raw_input_bytes: Vec<u8>,
+        _raw_input_bytes_are_kitty: bool
+    ) -> Option<AdjustedInput> {
         if let Some(requesting_permissions) = &self.requesting_permissions {
             let permissions = requesting_permissions.permissions.clone();
             if let Some(key_with_modifier) = key_with_modifier {

@@ -141,10 +141,7 @@ impl InputHandler {
                     }
                 },
                 Ok((InputInstruction::KeyWithModifierEvent(key_with_modifier, raw_bytes), _error_context)) => {
-                    // self.handle_key_with_modifier(&key_with_modifier, raw_bytes);
-                    log::info!("handling key with modifier: {:?}", key_with_modifier);
                     self.handle_key(&key_with_modifier, raw_bytes, true);
-
                 }
                 Ok((InputInstruction::SwitchToMode(input_mode), _error_context)) => {
                     self.mode = input_mode;
