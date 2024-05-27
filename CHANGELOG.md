@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat(layouts): allow consuming a layout through a url (https://github.com/zellij-org/zellij/pull/3351)
 * dependencies: eliminate future incompatibility warnings (https://github.com/zellij-org/zellij/pull/3315)
 * fix(plugins): occasional out of order events on startup (https://github.com/zellij-org/zellij/pull/3367)
+* feat(keybinds): support multiple modifiers (eg. Ctrl+Alt) and the kitty keyboard protocol (https://github.com/zellij-org/zellij/pull/3383)
 
 ## [0.40.1] - 2024-05-02
 * fix(sessions): issue where sessions would occasionally become unresponsive (https://github.com/zellij-org/zellij/pull/3281)
