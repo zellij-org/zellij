@@ -84,6 +84,9 @@ These are issues that are either being actively worked on or are planned for the
 
 [![roadmap](https://github.com/zellij-org/zellij/assets/795598/9c5b573b-20f5-41c6-908b-6b21c5fd456e)](https://zellij.dev/roadmap)
 
+## Name
+
+Zellij, also spelled zelige or zillij, is a form of Islamic art that involves creating intricate mosaics using individually hand-chiseled pieces of tile. This traditional art form is commonly found in Morocco, and it has been used for centuries to decorate walls, floors, fountains, and other architectural elements.
 
 ## License
 
