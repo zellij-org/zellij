@@ -1,5 +1,6 @@
 use super::{
     emphasis_variants_for_ribbon, emphasis_variants_for_selected_ribbon, is_too_wide,
+    nested_list::{emphasis_variants_for_nested_list, emphasis_variants_for_selected_nested_list},
     parse_indices, parse_selected, Coordinates,
 };
 use crate::panes::terminal_character::{AnsiCode, CharacterStyles, RESET_STYLES};
@@ -21,8 +22,14 @@ pub fn text(content: Text, style: &Style, component_coordinates: Option<Coordina
             .background(Some(style.colors.text_selected.background.into()))
             .foreground(Some(style.colors.text_selected.base.into()));
     }
-    let (text, _text_width) =
-        stringify_text(&content, None, &component_coordinates, style, text_style);
+    let (text, _text_width) = stringify_text(
+        &content,
+        None,
+        &component_coordinates,
+        style,
+        text_style,
+        TextComponentSite::Text,
+    );
     match component_coordinates {
         Some(component_coordinates) => format!("{}{}{}", component_coordinates, text_style, text)
             .as_bytes()
@@ -37,6 +44,7 @@ pub fn stringify_text(
     coordinates: &Option<Coordinates>,
     style: &Style,
     text_style: CharacterStyles,
+    site: TextComponentSite,
 ) -> (String, usize) {
     let mut text_width = 0;
     let mut stringified = String::new();
@@ -52,7 +60,7 @@ pub fn stringify_text(
         text_width += character_width;
         if !text.indices.is_empty() {
             let character_with_styling =
-                color_index_character(character, i, &text, style, text_style);
+                color_index_character(character, i, &text, style, text_style, site);
             stringified.push_str(&character_with_styling);
         } else {
             stringified.push(character);
@@ -67,9 +75,10 @@ pub fn color_index_character(
     text: &Text,
     style: &Style,
     base_text_style: CharacterStyles,
+    site: TextComponentSite,
 ) -> String {
     let character_style = text
-        .style_of_index(index, style)
+        .style_of_index_for_component_site(index, style, site)
         .map(|foreground_style| base_text_style.foreground(Some(foreground_style.into())))
         .unwrap_or(base_text_style);
     format!("{}{}{}", character_style, character, base_text_style)
@@ -81,6 +90,15 @@ pub fn emphasis_variants(style: &Style) -> [PaletteColor; 4] {
         style.colors.text_unselected.emphasis_2,
         style.colors.text_unselected.emphasis_3,
         style.colors.text_unselected.emphasis_4,
+    ]
+}
+
+pub fn emphasis_variants_selected(style: &Style) -> [PaletteColor; 4] {
+    [
+        style.colors.text_selected.emphasis_1,
+        style.colors.text_selected.emphasis_2,
+        style.colors.text_selected.emphasis_3,
+        style.colors.text_selected.emphasis_4,
     ]
 }
 
@@ -106,6 +124,14 @@ pub struct Text {
     pub indices: Vec<Vec<usize>>,
 }
 
+#[derive(Debug, Clone)]
+pub enum TextComponentSite {
+    Text,
+    Ribbon,
+    NestedList,
+    Table,
+}
+
 impl Text {
     pub fn pad_text(&mut self, max_column_width: usize) {
         for _ in ansi_len(&self.text)..max_column_width {
@@ -125,8 +151,25 @@ impl Text {
         }
         None
     }
-    pub fn style_of_index_for_ribbon(&self, index: usize, style: &Style) -> Option<PaletteColor> {
-        let index_variant_styles = emphasis_variants_for_ribbon(style);
+
+    pub fn style_of_index_for_component_site(
+        &self,
+        index: usize,
+        style: &Style,
+        site: TextComponentSite,
+    ) -> Option<PaletteColor> {
+        let index_variant_styles = match (site, self.selected) {
+            (TextComponentSite::Text, true) => emphasis_variants(style),
+            (TextComponentSite::Text, false) => emphasis_variants_selected(style),
+            (TextComponentSite::Ribbon, true) => emphasis_variants_for_selected_ribbon(style),
+            (TextComponentSite::Ribbon, false) => emphasis_variants_for_ribbon(style),
+            (TextComponentSite::NestedList, true) => {
+                emphasis_variants_for_selected_nested_list(style)
+            },
+            (TextComponentSite::NestedList, false) => emphasis_variants_for_nested_list(style),
+            (TextComponentSite::Table, true) => emphasis_variants_for_selected_ribbon(style),
+            (TextComponentSite::Table, false) => emphasis_variants_for_ribbon(style),
+        };
         for i in (0..=3).rev() {
             // we do this in reverse to give precedence to the last applied
             // style
@@ -138,22 +181,16 @@ impl Text {
         }
         None
     }
+
+    pub fn style_of_index_for_ribbon(&self, index: usize, style: &Style) -> Option<PaletteColor> {
+        self.style_of_index_for_component_site(index, style, TextComponentSite::Ribbon)
+    }
     pub fn style_of_index_for_selected_ribbon(
         &self,
         index: usize,
         style: &Style,
     ) -> Option<PaletteColor> {
-        let index_variant_styles = emphasis_variants_for_selected_ribbon(style);
-        for i in (0..=3).rev() {
-            // we do this in reverse to give precedence to the last applied
-            // style
-            if let Some(indices) = self.indices.get(i) {
-                if indices.contains(&index) {
-                    return Some(index_variant_styles[i]);
-                }
-            }
-        }
-        None
+        self.style_of_index_for_component_site(index, style, TextComponentSite::Ribbon)
     }
 }
 

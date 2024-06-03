@@ -1,8 +1,15 @@
 use super::{
-    is_too_high, parse_indices, parse_selected, parse_text, stringify_text, Coordinates, Text,
+    is_too_high, is_too_wide, parse_indices, parse_selected, parse_text, stringify_text,
+    Coordinates, Text,
 };
-use crate::panes::terminal_character::{AnsiCode, RESET_STYLES};
-use zellij_utils::data::Style;
+use crate::{
+    panes::{
+        terminal_character::{AnsiCode, RESET_STYLES},
+        CharacterStyles,
+    },
+    ui::components::text::TextComponentSite,
+};
+use zellij_utils::data::{PaletteColor, Style};
 
 use unicode_width::UnicodeWidthChar;
 
@@ -43,6 +50,7 @@ pub fn nested_list(
             &coordinates,
             style,
             text_style,
+            TextComponentSite::NestedList,
         );
         text = pad_line(text, max_width, padding, text_width);
         let go_to_row_instruction = coordinates
@@ -75,6 +83,24 @@ pub fn nested_list(
         }
     }
     stringified.as_bytes().to_vec()
+}
+
+pub fn emphasis_variants_for_nested_list(style: &Style) -> [PaletteColor; 4] {
+    [
+        style.colors.list_unselected.emphasis_1,
+        style.colors.list_unselected.emphasis_2,
+        style.colors.list_unselected.emphasis_3,
+        style.colors.list_unselected.emphasis_4,
+    ]
+}
+
+pub fn emphasis_variants_for_selected_nested_list(style: &Style) -> [PaletteColor; 4] {
+    [
+        style.colors.list_selected.emphasis_1,
+        style.colors.list_selected.emphasis_2,
+        style.colors.list_selected.emphasis_3,
+        style.colors.list_selected.emphasis_4,
+    ]
 }
 
 pub fn parse_nested_list_items<'a>(
