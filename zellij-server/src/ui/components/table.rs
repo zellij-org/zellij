@@ -1,4 +1,4 @@
-use super::{is_too_high, is_too_wide, stringify_text, Coordinates, Text};
+use super::{is_too_high, is_too_wide, stringify_text, text::TextComponentSite, Coordinates, Text};
 use crate::panes::terminal_character::{AnsiCode, RESET_STYLES};
 use std::collections::BTreeMap;
 use zellij_utils::{
@@ -10,7 +10,6 @@ pub fn table(
     columns: usize,
     _rows: usize,
     contents: Vec<Text>,
-    title_color: Option<PaletteColor>,
     style: &Style,
     coordinates: Option<Coordinates>,
 ) -> Vec<u8> {
@@ -19,7 +18,8 @@ pub fn table(
     let stringified_columns = stringify_table_columns(contents, columns);
     let stringified_rows = stringify_table_rows(stringified_columns, &coordinates);
     let title_styles = RESET_STYLES
-        .foreground(title_color.map(|t| t.into()))
+        .background(Some(style.colors.table_title.background.into()))
+        .foreground(Some(style.colors.table_title.base.into()))
         .bold(Some(AnsiCode::On));
     let cell_styles = RESET_STYLES
         .bold(Some(AnsiCode::On))
@@ -39,12 +39,17 @@ pub fn table(
             };
             if cell.selected {
                 reset_styles_for_item.background = None;
-                text_style =
-                    text_style.background(Some(style.colors.table_cell_selected.background.into()));
+                text_style = text_style
+                    .background(Some(style.colors.table_cell_selected.background.into()))
+                    .foreground(Some(style.colors.table_cell_selected.base.into()));
             }
+            let site = match is_title_row {
+                True => TextComponentSite::TableTitle,
+                False => TextComponentSite::TableCell,
+            };
             // here we intentionally don't pass our coordinates even if we have them, because
             // these cells have already been padded and truncated
-            let (text, _text_width) = stringify_text(&cell, None, &None, style, text_style);
+            let (text, _text_width) = stringify_text(&cell, None, &None, style, text_style, site);
             stringified.push_str(&format!("{}{}{} ", text_style, text, reset_styles_for_item));
         }
         let next_row_instruction = coordinates
@@ -72,6 +77,33 @@ fn stringify_table_columns(contents: Vec<Text>, columns: usize) -> BTreeMap<usiz
             .push(cell);
     }
     stringified_columns
+}
+
+pub fn emphasis_variants_for_table_cell(style: &Style) -> [PaletteColor; 4] {
+    [
+        style.colors.table_cell_unselected.emphasis_1,
+        style.colors.table_cell_unselected.emphasis_2,
+        style.colors.table_cell_unselected.emphasis_3,
+        style.colors.table_cell_unselected.emphasis_4,
+    ]
+}
+
+pub fn emphasis_variants_for_selected_table_cell(style: &Style) -> [PaletteColor; 4] {
+    [
+        style.colors.table_cell_selected.emphasis_1,
+        style.colors.table_cell_selected.emphasis_2,
+        style.colors.table_cell_selected.emphasis_3,
+        style.colors.table_cell_selected.emphasis_4,
+    ]
+}
+
+pub fn emphasis_variants_for_table_title(style: &Style) -> [PaletteColor; 4] {
+    [
+        style.colors.table_title.emphasis_1,
+        style.colors.table_title.emphasis_2,
+        style.colors.table_title.emphasis_3,
+        style.colors.table_title.emphasis_4,
+    ]
 }
 
 fn max_table_column_width(column: &Vec<Text>) -> usize {
