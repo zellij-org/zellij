@@ -1,7 +1,12 @@
 use super::{
     emphasis_variants_for_ribbon, emphasis_variants_for_selected_ribbon, is_too_wide,
     nested_list::{emphasis_variants_for_nested_list, emphasis_variants_for_selected_nested_list},
-    parse_indices, parse_selected, Coordinates,
+    parse_indices, parse_selected,
+    table::{
+        emphasis_variants_for_selected_table_cell, emphasis_variants_for_table_cell,
+        emphasis_variants_for_table_title,
+    },
+    Coordinates,
 };
 use crate::panes::terminal_character::{AnsiCode, CharacterStyles, RESET_STYLES};
 use zellij_utils::{
@@ -84,7 +89,7 @@ pub fn color_index_character(
     format!("{}{}{}", character_style, character, base_text_style)
 }
 
-pub fn emphasis_variants(style: &Style) -> [PaletteColor; 4] {
+fn emphasis_variants(style: &Style) -> [PaletteColor; 4] {
     [
         style.colors.text_unselected.emphasis_1,
         style.colors.text_unselected.emphasis_2,
@@ -93,7 +98,7 @@ pub fn emphasis_variants(style: &Style) -> [PaletteColor; 4] {
     ]
 }
 
-pub fn emphasis_variants_selected(style: &Style) -> [PaletteColor; 4] {
+fn emphasis_variants_selected(style: &Style) -> [PaletteColor; 4] {
     [
         style.colors.text_selected.emphasis_1,
         style.colors.text_selected.emphasis_2,
@@ -124,12 +129,13 @@ pub struct Text {
     pub indices: Vec<Vec<usize>>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum TextComponentSite {
     Text,
     Ribbon,
     NestedList,
-    Table,
+    TableCell,
+    TableTitle,
 }
 
 impl Text {
@@ -159,16 +165,19 @@ impl Text {
         site: TextComponentSite,
     ) -> Option<PaletteColor> {
         let index_variant_styles = match (site, self.selected) {
-            (TextComponentSite::Text, true) => emphasis_variants(style),
-            (TextComponentSite::Text, false) => emphasis_variants_selected(style),
-            (TextComponentSite::Ribbon, true) => emphasis_variants_for_selected_ribbon(style),
-            (TextComponentSite::Ribbon, false) => emphasis_variants_for_ribbon(style),
-            (TextComponentSite::NestedList, true) => {
+            (TextComponentSite::Text, True) => emphasis_variants(style),
+            (TextComponentSite::Text, False) => emphasis_variants_selected(style),
+            (TextComponentSite::Ribbon, True) => emphasis_variants_for_selected_ribbon(style),
+            (TextComponentSite::Ribbon, False) => emphasis_variants_for_ribbon(style),
+            (TextComponentSite::NestedList, True) => {
                 emphasis_variants_for_selected_nested_list(style)
             },
-            (TextComponentSite::NestedList, false) => emphasis_variants_for_nested_list(style),
-            (TextComponentSite::Table, true) => emphasis_variants_for_selected_ribbon(style),
-            (TextComponentSite::Table, false) => emphasis_variants_for_ribbon(style),
+            (TextComponentSite::NestedList, False) => emphasis_variants_for_nested_list(style),
+            (TextComponentSite::TableCell, True) => {
+                emphasis_variants_for_selected_table_cell(style)
+            },
+            (TextComponentSite::TableCell, False) => emphasis_variants_for_table_cell(style),
+            (TextComponentSite::TableTitle, _) => emphasis_variants_for_table_title(style),
         };
         for i in (0..=3).rev() {
             // we do this in reverse to give precedence to the last applied
