@@ -2,7 +2,7 @@ mod kdl_layout_parser;
 use crate::data::{
     BareKey, Direction, FloatingPaneCoordinates, InputMode, KeyWithModifier, LayoutInfo,
     MultiplayerColors, Palette, PaletteColor, PaneInfo, PaneManifest, PermissionType, Resize,
-    SessionInfo, StyleDeclaration, Styling, TabInfo,
+    SessionInfo, StyleDeclaration, Styling, TabInfo, DEFAULT_STYLES,
 };
 use crate::envs::EnvironmentVariables;
 use crate::home::{find_default_config_dir, get_layout_dir};
@@ -3933,41 +3933,62 @@ impl Themes {
     fn style_declaration_from_node(
         style_node: &KdlNode,
         style_descriptor: &str,
+        default: StyleDeclaration,
     ) -> Result<StyleDeclaration, ConfigError> {
         let descriptor_node = kdl_child_with_name!(style_node, style_descriptor);
 
-        let colors = kdl_children_or_error!(
-            kdl_child_with_name_or_error!(style_node, style_descriptor)?,
-            format!("Missing colors for {}", style_descriptor)
-        );
-        Ok(StyleDeclaration {
-            base: PaletteColor::try_from(("base", colors))?,
-            background: PaletteColor::try_from(("background", colors)).unwrap_or_default(),
-            emphasis_1: PaletteColor::try_from(("emphasis_1", colors))?,
-            emphasis_2: PaletteColor::try_from(("emphasis_2", colors))?,
-            emphasis_3: PaletteColor::try_from(("emphasis_3", colors))?,
-            emphasis_4: PaletteColor::try_from(("emphasis_4", colors))?,
-        })
+        match descriptor_node {
+            Some(descriptor) => {
+                let colors = kdl_children_or_error!(
+                    descriptor,
+                    format!("Missing colors for {}", style_descriptor)
+                );
+                Ok(StyleDeclaration {
+                    base: PaletteColor::try_from(("base", colors))?,
+                    background: PaletteColor::try_from(("background", colors)).unwrap_or_default(),
+                    emphasis_1: PaletteColor::try_from(("emphasis_1", colors))?,
+                    emphasis_2: PaletteColor::try_from(("emphasis_2", colors))?,
+                    emphasis_3: PaletteColor::try_from(("emphasis_3", colors))?,
+                    emphasis_4: PaletteColor::try_from(("emphasis_4", colors))?,
+                })
+            },
+            None => Ok(default),
+        }
     }
 
     fn multiplayer_colors(style_node: &KdlNode) -> Result<MultiplayerColors, ConfigError> {
-        // TODO: make optional
-        let colors = kdl_children_or_error!(
-            kdl_child_with_name_or_error!(style_node, "multiplayer_user_colors")?,
-            format!("Missing colors for {}", "multiplayer_user_colors")
-        );
-        Ok(MultiplayerColors {
-            player_1: PaletteColor::try_from(("player_1", colors))?,
-            player_2: PaletteColor::try_from(("player_2", colors))?,
-            player_3: PaletteColor::try_from(("player_3", colors))?,
-            player_4: PaletteColor::try_from(("player_4", colors))?,
-            player_5: PaletteColor::try_from(("player_5", colors))?,
-            player_6: PaletteColor::try_from(("player_6", colors))?,
-            player_7: PaletteColor::try_from(("player_7", colors))?,
-            player_8: PaletteColor::try_from(("player_8", colors))?,
-            player_9: PaletteColor::try_from(("player_9", colors))?,
-            player_10: PaletteColor::try_from(("player_10", colors))?,
-        })
+        let descriptor_node = kdl_child_with_name!(style_node, "multiplayer_user_colors");
+        match descriptor_node {
+            Some(descriptor) => {
+                let colors = kdl_children_or_error!(
+                    descriptor,
+                    format!("Missing colors for {}", "multiplayer_user_colors")
+                );
+                Ok(MultiplayerColors {
+                    player_1: PaletteColor::try_from(("player_1", colors))
+                        .unwrap_or(DEFAULT_STYLES.multiplayer_user_colors.player_1),
+                    player_2: PaletteColor::try_from(("player_2", colors))
+                        .unwrap_or(DEFAULT_STYLES.multiplayer_user_colors.player_2),
+                    player_3: PaletteColor::try_from(("player_3", colors))
+                        .unwrap_or(DEFAULT_STYLES.multiplayer_user_colors.player_3),
+                    player_4: PaletteColor::try_from(("player_4", colors))
+                        .unwrap_or(DEFAULT_STYLES.multiplayer_user_colors.player_4),
+                    player_5: PaletteColor::try_from(("player_5", colors))
+                        .unwrap_or(DEFAULT_STYLES.multiplayer_user_colors.player_5),
+                    player_6: PaletteColor::try_from(("player_6", colors))
+                        .unwrap_or(DEFAULT_STYLES.multiplayer_user_colors.player_6),
+                    player_7: PaletteColor::try_from(("player_7", colors))
+                        .unwrap_or(DEFAULT_STYLES.multiplayer_user_colors.player_7),
+                    player_8: PaletteColor::try_from(("player_8", colors))
+                        .unwrap_or(DEFAULT_STYLES.multiplayer_user_colors.player_8),
+                    player_9: PaletteColor::try_from(("player_9", colors))
+                        .unwrap_or(DEFAULT_STYLES.multiplayer_user_colors.player_9),
+                    player_10: PaletteColor::try_from(("player_10", colors))
+                        .unwrap_or(DEFAULT_STYLES.multiplayer_user_colors.player_10),
+                })
+            },
+            None => Ok(DEFAULT_STYLES.multiplayer_user_colors),
+        }
     }
 
     pub fn from_kdl(
@@ -3986,45 +4007,67 @@ impl Themes {
                         text_unselected: Themes::style_declaration_from_node(
                             style,
                             "text_unselected",
+                            DEFAULT_STYLES.text_unselected,
                         )?,
-                        text_selected: Themes::style_declaration_from_node(style, "text_selected")?,
+                        text_selected: Themes::style_declaration_from_node(
+                            style,
+                            "text_selected",
+                            DEFAULT_STYLES.text_selected,
+                        )?,
                         ribbon_unselected: Themes::style_declaration_from_node(
                             style,
                             "ribbon_unselected",
+                            DEFAULT_STYLES.ribbon_unselected,
                         )?,
                         ribbon_selected: Themes::style_declaration_from_node(
                             style,
                             "ribbon_selected",
+                            DEFAULT_STYLES.ribbon_selected,
                         )?,
-                        table_title: Themes::style_declaration_from_node(style, "table_title")?,
+                        table_title: Themes::style_declaration_from_node(
+                            style,
+                            "table_title",
+                            DEFAULT_STYLES.table_title,
+                        )?,
                         table_cell_unselected: Themes::style_declaration_from_node(
                             style,
                             "table_cell_unselected",
+                            DEFAULT_STYLES.table_cell_unselected,
                         )?,
                         table_cell_selected: Themes::style_declaration_from_node(
                             style,
                             "table_cell_selected",
+                            DEFAULT_STYLES.table_cell_selected,
                         )?,
                         list_unselected: Themes::style_declaration_from_node(
                             style,
                             "list_unselected",
+                            DEFAULT_STYLES.list_unselected,
                         )?,
-                        list_selected: Themes::style_declaration_from_node(style, "list_selected")?,
+                        list_selected: Themes::style_declaration_from_node(
+                            style,
+                            "list_selected",
+                            DEFAULT_STYLES.list_selected,
+                        )?,
                         frame_unselected: Themes::style_declaration_from_node(
                             style,
                             "frame_unselected",
+                            DEFAULT_STYLES.frame_unselected,
                         )?,
                         frame_selected: Themes::style_declaration_from_node(
                             style,
                             "frame_selected",
+                            DEFAULT_STYLES.frame_selected,
                         )?,
                         exit_code_success: Themes::style_declaration_from_node(
                             style,
                             "exit_code_success",
+                            DEFAULT_STYLES.exit_code_success,
                         )?,
                         exit_code_error: Themes::style_declaration_from_node(
                             style,
                             "exit_code_error",
+                            DEFAULT_STYLES.exit_code_error,
                         )?,
                         multiplayer_user_colors: Themes::multiplayer_colors(style)
                             .unwrap_or_default(),

@@ -1186,7 +1186,7 @@ pub struct MultiplayerColors {
     pub player_10: PaletteColor,
 }
 
-const DEFAULT_STYLES: Styling = Styling {
+pub const DEFAULT_STYLES: Styling = Styling {
     text_unselected: StyleDeclaration {
         base: PaletteColor::EightBit(default_colors::BRIGHT_GRAY),
         emphasis_1: PaletteColor::EightBit(default_colors::ORANGE),

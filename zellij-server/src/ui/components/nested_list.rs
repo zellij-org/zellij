@@ -1,12 +1,8 @@
 use super::{
-    is_too_high, is_too_wide, parse_indices, parse_selected, parse_text, stringify_text,
-    Coordinates, Text,
+    is_too_high, parse_indices, parse_selected, parse_text, stringify_text, Coordinates, Text,
 };
 use crate::{
-    panes::{
-        terminal_character::{AnsiCode, RESET_STYLES},
-        CharacterStyles,
-    },
+    panes::terminal_character::{AnsiCode, RESET_STYLES},
     ui::components::text::TextComponentSite,
 };
 use zellij_utils::data::{PaletteColor, Style};
