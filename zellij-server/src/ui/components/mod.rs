@@ -10,7 +10,7 @@ use zellij_utils::{data::Style, lazy_static::lazy_static, regex::Regex, vte};
 
 use component_coordinates::{is_too_high, is_too_wide, Coordinates};
 use nested_list::{nested_list, parse_nested_list_items};
-use ribbon::{emphasis_variants_for_ribbon, emphasis_variants_for_selected_ribbon, ribbon};
+use ribbon::ribbon;
 use table::table;
 use text::{parse_text, parse_text_params, stringify_text, text, Text};
 
