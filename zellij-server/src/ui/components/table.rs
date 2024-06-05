@@ -1,10 +1,10 @@
-use super::{is_too_high, is_too_wide, stringify_text, text::TextComponentSite, Coordinates, Text};
-use crate::panes::terminal_character::{AnsiCode, RESET_STYLES};
-use std::collections::BTreeMap;
-use zellij_utils::{
-    data::{PaletteColor, Style},
-    shared::ansi_len,
+use super::{is_too_high, is_too_wide, stringify_text, Coordinates, Text};
+use crate::panes::{
+    terminal_character::{AnsiCode, RESET_STYLES},
+    CharacterStyles,
 };
+use std::collections::BTreeMap;
+use zellij_utils::{data::Style, shared::ansi_len};
 
 pub fn table(
     columns: usize,
@@ -17,40 +17,30 @@ pub fn table(
     // we first arrange the data by columns so that we can pad them by the widest one
     let stringified_columns = stringify_table_columns(contents, columns);
     let stringified_rows = stringify_table_rows(stringified_columns, &coordinates);
-    let title_styles = RESET_STYLES
-        .background(Some(style.colors.table_title.background.into()))
-        .foreground(Some(style.colors.table_title.base.into()))
-        .bold(Some(AnsiCode::On));
-    let cell_styles = RESET_STYLES
-        .bold(Some(AnsiCode::On))
-        .background(Some(style.colors.table_cell_unselected.background.into()))
-        .foreground(Some(style.colors.table_cell_unselected.base.into()));
     for (row_index, (_, row)) in stringified_rows.into_iter().enumerate() {
         let is_title_row = row_index == 0;
         if is_too_high(row_index + 1, &coordinates) {
             break;
         }
         for cell in row {
-            let mut reset_styles_for_item = RESET_STYLES;
-            let mut text_style = if is_title_row {
-                title_styles
+            let reset_styles_for_item = RESET_STYLES;
+            let declaration = if is_title_row {
+                style.colors.table_title
             } else {
-                cell_styles
-            };
-            if cell.selected {
-                reset_styles_for_item.background = None;
-                text_style = text_style
-                    .background(Some(style.colors.table_cell_selected.background.into()))
-                    .foreground(Some(style.colors.table_cell_selected.base.into()));
-            }
-            let site = match is_title_row {
-                True => TextComponentSite::TableTitle,
-                False => TextComponentSite::TableCell,
+                if cell.selected {
+                    style.colors.table_cell_selected
+                } else {
+                    style.colors.table_cell_unselected
+                }
             };
             // here we intentionally don't pass our coordinates even if we have them, because
             // these cells have already been padded and truncated
-            let (text, _text_width) = stringify_text(&cell, None, &None, style, text_style, site);
-            stringified.push_str(&format!("{}{}{} ", text_style, text, reset_styles_for_item));
+            let text_styles = CharacterStyles::from(declaration).bold(Some(AnsiCode::On));
+            let (text, _text_width) = stringify_text(&cell, None, &None, &declaration, text_styles);
+            stringified.push_str(&format!(
+                "{}{}{} ",
+                text_styles, text, reset_styles_for_item
+            ));
         }
         let next_row_instruction = coordinates
             .as_ref()
@@ -77,33 +67,6 @@ fn stringify_table_columns(contents: Vec<Text>, columns: usize) -> BTreeMap<usiz
             .push(cell);
     }
     stringified_columns
-}
-
-pub fn emphasis_variants_for_table_cell(style: &Style) -> [PaletteColor; 4] {
-    [
-        style.colors.table_cell_unselected.emphasis_1,
-        style.colors.table_cell_unselected.emphasis_2,
-        style.colors.table_cell_unselected.emphasis_3,
-        style.colors.table_cell_unselected.emphasis_4,
-    ]
-}
-
-pub fn emphasis_variants_for_selected_table_cell(style: &Style) -> [PaletteColor; 4] {
-    [
-        style.colors.table_cell_selected.emphasis_1,
-        style.colors.table_cell_selected.emphasis_2,
-        style.colors.table_cell_selected.emphasis_3,
-        style.colors.table_cell_selected.emphasis_4,
-    ]
-}
-
-pub fn emphasis_variants_for_table_title(style: &Style) -> [PaletteColor; 4] {
-    [
-        style.colors.table_title.emphasis_1,
-        style.colors.table_title.emphasis_2,
-        style.colors.table_title.emphasis_3,
-        style.colors.table_title.emphasis_4,
-    ]
 }
 
 fn max_table_column_width(column: &Vec<Text>) -> usize {
