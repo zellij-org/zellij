@@ -189,7 +189,7 @@ fn main() {
     {
         commands::delete_session(target_session, force);
     } else if let Some(path) = opts.server {
-        commands::start_server(path, opts.debug);
+        commands::start_server(path, opts.debug, opts.socket_group);
     } else {
         commands::start_client(opts);
     }

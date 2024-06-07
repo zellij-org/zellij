@@ -10,6 +10,7 @@ use uuid::Uuid;
 pub const ZELLIJ_CONFIG_FILE_ENV: &str = "ZELLIJ_CONFIG_FILE";
 pub const ZELLIJ_CONFIG_DIR_ENV: &str = "ZELLIJ_CONFIG_DIR";
 pub const ZELLIJ_LAYOUT_DIR_ENV: &str = "ZELLIJ_LAYOUT_DIR";
+pub const ZELLIJ_SOCKET_GROUP_ENV: &str = "ZELLIJ_SOCKET_GROUP";
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const DEFAULT_SCROLL_BUFFER_SIZE: usize = 10_000;
 pub static SCROLL_BUFFER_SIZE: OnceCell<usize> = OnceCell::new();
@@ -122,7 +123,7 @@ pub use unix_only::*;
 mod unix_only {
     use super::*;
     use crate::envs;
-    pub use crate::shared::set_permissions;
+    pub use crate::shared::{get_group, set_permissions};
     use lazy_static::lazy_static;
     use nix::unistd::Uid;
     use std::env::temp_dir;

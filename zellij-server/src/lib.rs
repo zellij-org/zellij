@@ -280,7 +280,11 @@ impl SessionState {
     }
 }
 
-pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
+pub fn start_server(
+    mut os_input: Box<dyn ServerOsApi>,
+    socket_path: PathBuf,
+    socket_gid: Option<u32>,
+) {
     info!("Starting Zellij server!");
 
     // preserve the current umask: read current value by setting to another mode, and then restoring it
@@ -311,7 +315,8 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
         .name("server_listener".to_string())
         .spawn({
             use zellij_utils::{
-                interprocess::local_socket::LocalSocketListener, shared::set_permissions,
+                interprocess::local_socket::LocalSocketListener, shared::set_group,
+                shared::set_permissions,
             };
 
             let os_input = os_input.clone();
@@ -326,7 +331,12 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 // https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html states that for XDG_RUNTIME_DIR:
                 // "To ensure that your files are not removed, they should have their access time timestamp modified at least once every 6 hours of monotonic time or the 'sticky' bit should be set on the file. "
                 // It is not guaranteed that all platforms allow setting the sticky bit on sockets!
-                drop(set_permissions(&socket_path, 0o1700));
+                if let Some(gid) = socket_gid {
+                    drop(set_permissions(&socket_path, 0o1770));
+                    drop(set_group(&socket_path, gid));
+                } else {
+                    drop(set_permissions(&socket_path, 0o1700));
+                }
                 for stream in listener.incoming() {
                     match stream {
                         Ok(stream) => {

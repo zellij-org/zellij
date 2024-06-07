@@ -24,7 +24,7 @@ use crate::{
 };
 use zellij_utils::{
     channels::{self, ChannelWithContext, SenderWithContext},
-    consts::{set_permissions, ZELLIJ_SOCK_DIR},
+    consts::{get_group, set_permissions, ZELLIJ_SOCK_DIR},
     data::{ClientId, ConnectToSession, InputMode, KeyWithModifier, Style},
     envs,
     errors::{ClientContext, ContextType, ErrorInstruction},
@@ -230,7 +230,15 @@ pub fn start_client(
     let create_ipc_pipe = || -> std::path::PathBuf {
         let mut sock_dir = ZELLIJ_SOCK_DIR.clone();
         std::fs::create_dir_all(&sock_dir).unwrap();
-        set_permissions(&sock_dir, 0o700).unwrap();
+        if let Some(expected_gid) = opts.socket_group {
+            let gid = get_group(&sock_dir).unwrap();
+            if expected_gid != gid {
+                panic!("socket dir owned by wrong group")
+            }
+        } else {
+            set_permissions(&sock_dir, 0o700).unwrap();
+        }
+
         sock_dir.push(envs::get_session_name().unwrap());
         sock_dir
     };
