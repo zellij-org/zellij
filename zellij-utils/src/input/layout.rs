@@ -395,7 +395,7 @@ impl Run {
     }
 }
 
-#[allow(clippy::derive_hash_xor_eq)]
+#[allow(clippy::derived_hash_with_manual_eq)]
 #[derive(Debug, Serialize, Deserialize, Clone, Hash, Default)]
 pub struct RunPlugin {
     #[serde(default)]
@@ -481,7 +481,7 @@ impl PluginAlias {
     }
 }
 
-#[allow(clippy::derive_hash_xor_eq)]
+#[allow(clippy::derived_hash_with_manual_eq)]
 impl PartialEq for RunPlugin {
     fn eq(&self, other: &Self) -> bool {
         // TODO: normalize paths here if the location is a file so that relative/absolute paths
