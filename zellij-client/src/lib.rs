@@ -42,7 +42,6 @@ pub(crate) enum ClientInstruction {
     Render(String),
     UnblockInputThread,
     Exit(ExitReason),
-    SwitchToMode(InputMode),
     Connected,
     ActiveClients(Vec<ClientId>),
     StartedParsingStdinQuery,
@@ -62,9 +61,6 @@ impl From<ServerToClientMsg> for ClientInstruction {
             ServerToClientMsg::Exit(e) => ClientInstruction::Exit(e),
             ServerToClientMsg::Render(buffer) => ClientInstruction::Render(buffer),
             ServerToClientMsg::UnblockInputThread => ClientInstruction::UnblockInputThread,
-            ServerToClientMsg::SwitchToMode(input_mode) => {
-                ClientInstruction::SwitchToMode(input_mode)
-            },
             ServerToClientMsg::Connected => ClientInstruction::Connected,
             ServerToClientMsg::ActiveClients(clients) => ClientInstruction::ActiveClients(clients),
             ServerToClientMsg::Log(log_lines) => ClientInstruction::Log(log_lines),
@@ -90,7 +86,6 @@ impl From<&ClientInstruction> for ClientContext {
             ClientInstruction::Error(_) => ClientContext::Error,
             ClientInstruction::Render(_) => ClientContext::Render,
             ClientInstruction::UnblockInputThread => ClientContext::UnblockInputThread,
-            ClientInstruction::SwitchToMode(_) => ClientContext::SwitchToMode,
             ClientInstruction::Connected => ClientContext::Connected,
             ClientInstruction::ActiveClients(_) => ClientContext::ActiveClients,
             ClientInstruction::Log(_) => ClientContext::Log,
@@ -154,7 +149,6 @@ impl ClientInfo {
 pub(crate) enum InputInstruction {
     KeyEvent(InputEvent, Vec<u8>),
     KeyWithModifierEvent(KeyWithModifier, Vec<u8>),
-    SwitchToMode(InputMode),
     AnsiStdinInstructions(Vec<AnsiStdinInstruction>),
     StartedParsing,
     DoneParsing,
@@ -505,11 +499,6 @@ pub fn start_client(
             ClientInstruction::UnblockInputThread => {
                 command_is_executing.unblock_input_thread();
             },
-            ClientInstruction::SwitchToMode(input_mode) => {
-                send_input_instructions
-                    .send(InputInstruction::SwitchToMode(input_mode))
-                    .unwrap();
-            },
             ClientInstruction::Log(lines_to_log) => {
                 for line in lines_to_log {
                     log::info!("{line}");
@@ -634,7 +623,3 @@ pub fn start_server_detached(
     os_input.connect_to_server(&*ipc_pipe);
     os_input.send_to_server(first_msg);
 }
-
-#[cfg(test)]
-#[path = "./unit/stdin_tests.rs"]
-mod stdin_tests;

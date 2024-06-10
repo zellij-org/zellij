@@ -1770,12 +1770,6 @@ impl Screen {
             tab.mark_active_pane_for_rerender(client_id);
             tab.update_input_modes()?;
         }
-
-        if let Some(os_input) = &mut self.bus.os_input {
-            let _ =
-                os_input.send_to_client(client_id, ServerToClientMsg::SwitchToMode(mode_info.mode));
-        }
-
         Ok(())
     }
     pub fn change_mode_for_all_clients(&mut self, mode_info: ModeInfo) -> Result<()> {
