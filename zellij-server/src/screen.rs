@@ -1038,15 +1038,19 @@ impl Screen {
     pub fn resize_to_screen(&mut self, new_screen_size: Size) -> Result<()> {
         let err_context = || format!("failed to resize to screen size: {new_screen_size:#?}");
 
-        self.size = new_screen_size;
-        for tab in self.tabs.values_mut() {
-            tab.resize_whole_tab(new_screen_size)
+        if self.size != new_screen_size {
+            self.size = new_screen_size;
+            for tab in self.tabs.values_mut() {
+                tab.resize_whole_tab(new_screen_size)
+                    .with_context(err_context)?;
+                tab.set_force_render();
+            }
+            self.log_and_report_session_state()
                 .with_context(err_context)?;
-            tab.set_force_render();
+            self.render(None).with_context(err_context)
+        } else {
+            Ok(())
         }
-        self.log_and_report_session_state()
-            .with_context(err_context)?;
-        self.render(None).with_context(err_context)
     }
 
     pub fn update_pixel_dimensions(&mut self, pixel_dimensions: PixelDimensions) {
