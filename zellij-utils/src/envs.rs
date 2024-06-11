@@ -31,6 +31,11 @@ pub fn get_socket_dir() -> Result<String> {
     Ok(var(SOCKET_DIR_ENV_KEY)?)
 }
 
+pub const SOCKET_GROUP_ENV_KEY: &str = "ZELLIJ_SOCKET_GROUP";
+pub fn get_socket_group() -> Result<String> {
+    Ok(var(SOCKET_GROUP_ENV_KEY)?)
+}
+
 /// Manage ENVIRONMENT VARIABLES from the configuration and the layout files
 #[derive(Default, Clone, PartialEq, Serialize, Deserialize)]
 pub struct EnvironmentVariables {

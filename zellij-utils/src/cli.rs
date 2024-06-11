@@ -1,7 +1,7 @@
 use crate::data::{Direction, InputMode, Resize};
 use crate::setup::Setup;
 use crate::{
-    consts::{ZELLIJ_CONFIG_DIR_ENV, ZELLIJ_CONFIG_FILE_ENV},
+    consts::{ZELLIJ_CONFIG_DIR_ENV, ZELLIJ_CONFIG_FILE_ENV, ZELLIJ_SOCKET_GROUP_ENV},
     input::{layout::PluginUserConfiguration, options::CliOptions},
 };
 use clap::{Parser, Subcommand};
@@ -31,6 +31,32 @@ fn validate_session(name: &str) -> Result<String, String> {
     };
 
     Ok(name.to_owned())
+}
+
+#[cfg(unix)]
+fn validate_group(name: &str) -> Result<u32, String> {
+    use nix::unistd::Group;
+
+    let maybe_group = match Group::from_name(name) {
+        Ok(maybe_group) => maybe_group,
+        Err(errno) => {
+            return Err(format!(
+                "could not determine group ID for group {} {:?}",
+                name, errno
+            ))
+        },
+    };
+
+    if let Some(group) = maybe_group {
+        Ok(group.gid.as_raw())
+    } else {
+        Err(format!("no group named {}", name))
+    }
+}
+
+#[cfg(not(unix))]
+fn validate_group(name: &str) -> Result<u32, String> {
+    Err("group membership not supported on this platform".to_string())
 }
 
 #[derive(Parser, Default, Debug, Clone, Serialize, Deserialize)]
@@ -70,6 +96,10 @@ pub struct CliArgs {
     /// Specify emitting additional debug information
     #[clap(short, long, value_parser)]
     pub debug: bool,
+
+    /// The group that will own sockets for multi-user collaboration (On Unix-like platforms only)
+    #[clap(long, overrides_with = "socket_group", hide = true, env = ZELLIJ_SOCKET_GROUP_ENV, value_parser = validate_group)]
+    pub socket_group: Option<u32>,
 }
 
 #[derive(Debug, Subcommand, Clone, Serialize, Deserialize)]

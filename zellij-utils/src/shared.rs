@@ -13,20 +13,39 @@ pub use unix_only::*;
 
 #[cfg(unix)]
 mod unix_only {
-    use std::os::unix::fs::PermissionsExt;
+    use std::os::unix::fs::{MetadataExt, PermissionsExt};
     use std::path::Path;
-    use std::{fs, io};
+    use std::{fs, io, os::unix};
 
     pub fn set_permissions(path: &Path, mode: u32) -> io::Result<()> {
         let mut permissions = fs::metadata(path)?.permissions();
         permissions.set_mode(mode);
         fs::set_permissions(path, permissions)
     }
+
+    pub fn set_group(path: &Path, gid: u32) -> io::Result<()> {
+        unix::fs::chown(path, None, Some(gid))
+    }
+
+    pub fn get_group(path: &Path) -> io::Result<u32> {
+        let metadata = fs::metadata(path)?;
+        Ok(metadata.gid())
+    }
 }
 
 #[cfg(not(unix))]
 pub fn set_permissions(_path: &std::path::Path, _mode: u32) -> std::io::Result<()> {
     Ok(())
+}
+
+#[cfg(not(unix))]
+pub fn set_group(_path: &std::path::Path, _gid: u32) -> std::io::Result<()> {
+    Ok(())
+}
+
+#[cfg(not(unix))]
+pub fn get_group(_path: &std::path::Path, _gid: u32) -> std::io::Result<u32> {
+    Ok(0)
 }
 
 pub fn ansi_len(s: &str) -> usize {
