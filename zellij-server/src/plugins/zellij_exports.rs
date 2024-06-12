@@ -7,7 +7,7 @@ use crate::ServerInstruction;
 use log::{debug, warn};
 use serde::Serialize;
 use std::{
-    collections::{BTreeMap, HashSet},
+    collections::{BTreeMap, HashSet, HashMap},
     path::PathBuf,
     process,
     str::FromStr,
@@ -265,7 +265,7 @@ fn host_run_plugin_command(env: FunctionEnvMut<ForeignFunctionEnv>) {
                     PluginCommand::ScanHostFolder(folder_to_scan) => {
                         scan_host_folder(env, folder_to_scan)
                     },
-                    PluginCommand::WatchFilesystem => watch_filesystem(env),
+                    PluginCommand::WatchFilesystem(files) => watch_filesystem(env, &files),
                     PluginCommand::DumpSessionLayout => dump_session_layout(env),
                     PluginCommand::CloseSelf => close_self(env),
                 },
@@ -1373,13 +1373,13 @@ fn kill_sessions(session_names: Vec<String>) {
     }
 }
 
-fn watch_filesystem(env: &ForeignFunctionEnv) {
+fn watch_filesystem(env: &ForeignFunctionEnv, files: &HashMap<PathBuf, bool>) {
     let _ = env
         .plugin_env
         .senders
         .to_plugin
         .as_ref()
-        .map(|sender| sender.send(PluginInstruction::WatchFilesystem));
+        .map(|sender| sender.send(PluginInstruction::WatchFilesystem(files.clone())));
 }
 
 fn dump_session_layout(env: &ForeignFunctionEnv) {

@@ -1,5 +1,5 @@
 use serde::{de::DeserializeOwned, Serialize};
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashSet, HashMap};
 use std::{
     io,
     path::{Path, PathBuf},
@@ -791,10 +791,12 @@ pub fn scan_host_folder<S: AsRef<Path>>(folder_to_scan: &S) {
     unsafe { host_run_plugin_command() };
 }
 
-/// Start watching the host folder for filesystem changes (Note: somewhat unstable at the time
-/// being)
-pub fn watch_filesystem() {
-    let plugin_command = PluginCommand::WatchFilesystem;
+/// Start watching specified folders given by the hashmap. (Note: somewhat unstable at the time
+/// being) The hashmap key gives the folder and the boolean value defines whether to recurse
+/// through the file tree or not true = recurse through the file tree and false = do not recurse.
+/// If the hashmap is emtpy, then the host folder will be watched with recurse = true.
+pub fn watch_filesystem(files: &HashMap<PathBuf, bool>) {
+    let plugin_command = PluginCommand::WatchFilesystem(files.clone());
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
