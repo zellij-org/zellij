@@ -25,7 +25,7 @@ use crate::{
 use zellij_utils::{
     channels::{self, ChannelWithContext, SenderWithContext},
     consts::{set_permissions, ZELLIJ_SOCK_DIR},
-    data::{ClientId, ConnectToSession, InputMode, KeyWithModifier, Style},
+    data::{ClientId, ConnectToSession, KeyWithModifier, Style},
     envs,
     errors::{ClientContext, ContextType, ErrorInstruction},
     input::{config::Config, options::Options},

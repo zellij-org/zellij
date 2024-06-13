@@ -1885,10 +1885,11 @@ impl Keybinds {
         if let Some(kdl_keybinds) = document.get("keybinds") {
             Keybinds::from_kdl(&kdl_keybinds, base_keybinds, config_options)
         } else {
-            Err(ConfigError::DownloadError("Failed to parse kdl document".to_owned())) // TODO:
-                                                                                       // better
-                                                                                       // error
-                                                                                       // type
+            Err(ConfigError::new_kdl_error(
+                format!("Could not find keybinds node"),
+                document.span().offset(),
+                document.span().len(),
+            ))
         }
     }
 }

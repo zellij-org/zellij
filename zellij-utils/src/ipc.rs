@@ -1,7 +1,7 @@
 //! IPC stuff for starting to split things into a client and server model.
 use crate::{
     cli::CliArgs,
-    data::{ClientId, ConnectToSession, InputMode, Style, KeyWithModifier},
+    data::{ClientId, ConnectToSession, Style, KeyWithModifier},
     errors::{get_current_ctx, prelude::*, ErrorContext},
     input::keybinds::Keybinds,
     input::{actions::Action, layout::Layout, options::Options, plugins::PluginAliases},

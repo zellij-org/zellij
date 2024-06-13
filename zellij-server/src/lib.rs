@@ -178,8 +178,7 @@ impl SessionMetaData {
         }
 
     }
-    pub fn rebind_keys(&mut self, client_id: ClientId, new_keybinds: String) -> Option<Keybinds> { // TODO:
-                                                                                                   // Result
+    pub fn rebind_keys(&mut self, client_id: ClientId, new_keybinds: String) -> Option<Keybinds> {
         if let Some(current_keybinds) = self.client_keybinds.get_mut(&client_id) {
             match Keybinds::from_string(new_keybinds, current_keybinds.clone(), &self.config_options) {
                 Ok(new_keybinds) => {
@@ -558,7 +557,6 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .unwrap();
                 let default_mode = options.default_mode.unwrap_or_default();
                 let mode_info = get_mode_info(default_mode, &attrs, session_data.capabilities);
-                let mode = mode_info.mode;
                 session_data
                     .senders
                     .send_to_screen(ScreenInstruction::ChangeMode(mode_info.clone(), client_id))
@@ -899,8 +897,6 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .change_mode_for_all_clients(input_mode);
             },
             ServerInstruction::RebindKeys(client_id, new_keybinds) => {
-                // TODO: CONTINUE HERE (12/06) - also update screen and its mode-info so that it
-                // sends an update to the plugins
                 let new_keybinds = session_data.write().unwrap().as_mut().unwrap().rebind_keys(client_id, new_keybinds).clone();
                 if let Some(new_keybinds) = new_keybinds {
                     session_data

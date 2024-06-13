@@ -1001,29 +1001,32 @@ pub(crate) fn route_thread_main(
                     match instruction {
                         ClientToServerMsg::Key(key, raw_bytes, is_kitty_keyboard_protocol) => {
                             if let Some(rlocked_sessions) = rlocked_sessions.as_ref() {
-                                if let Some((keybinds, input_mode)) = rlocked_sessions.get_client_keybinds_and_mode(&client_id) {
-                                    for action in keybinds.get_actions_for_key_in_mode_or_default_action(
-                                        &input_mode,
-                                        &key,
-                                        raw_bytes,
-                                        is_kitty_keyboard_protocol,
-                                    ) {
-                                        if route_action(
-                                            action,
-                                            client_id,
-                                            None,
-                                            rlocked_sessions.senders.clone(),
-                                            rlocked_sessions.capabilities.clone(),
-                                            rlocked_sessions.client_attributes.clone(),
-                                            rlocked_sessions.default_shell.clone(),
-                                            rlocked_sessions.layout.clone(),
-                                            Some(&mut seen_cli_pipes),
-                                        )? {
-                                            should_break = true;
+                                match rlocked_sessions.get_client_keybinds_and_mode(&client_id) {
+                                    Some((keybinds, input_mode)) => {
+                                        for action in keybinds.get_actions_for_key_in_mode_or_default_action(
+                                            &input_mode,
+                                            &key,
+                                            raw_bytes,
+                                            is_kitty_keyboard_protocol,
+                                        ) {
+                                            if route_action(
+                                                action,
+                                                client_id,
+                                                None,
+                                                rlocked_sessions.senders.clone(),
+                                                rlocked_sessions.capabilities.clone(),
+                                                rlocked_sessions.client_attributes.clone(),
+                                                rlocked_sessions.default_shell.clone(),
+                                                rlocked_sessions.layout.clone(),
+                                                Some(&mut seen_cli_pipes),
+                                            )? {
+                                                should_break = true;
+                                            }
                                         }
+                                    },
+                                    None => {
+                                        log::error!("Failed to get keybindings for client");
                                     }
-                                } else {
-                                    log::error!("Failed to get keybindings for client");
                                 }
                             }
                         }

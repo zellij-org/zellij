@@ -915,6 +915,7 @@ pub enum Permission {
     WebAccess,
     ReadCliPipes,
     MessageAndLaunchOtherPlugins,
+    RebindKeys,
 }
 
 impl PermissionType {
@@ -935,6 +936,9 @@ impl PermissionType {
             PermissionType::MessageAndLaunchOtherPlugins => {
                 "Send messages to and launch other plugins".to_owned()
             },
+            PermissionType::RebindKeys => {
+                "Rebind keys".to_owned()
+            }
         }
     }
 }

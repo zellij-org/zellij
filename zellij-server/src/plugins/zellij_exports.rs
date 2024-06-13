@@ -1609,6 +1609,7 @@ fn check_command_permission(
         | PluginCommand::CliPipeOutput(..) => PermissionType::ReadCliPipes,
         PluginCommand::MessageToPlugin(..) => PermissionType::MessageAndLaunchOtherPlugins,
         PluginCommand::DumpSessionLayout => PermissionType::ReadApplicationState,
+        PluginCommand::RebindKeys(..) => PermissionType::RebindKeys,
         _ => return (PermissionStatus::Granted, None),
     };
 

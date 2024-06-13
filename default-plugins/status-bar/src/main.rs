@@ -187,7 +187,6 @@ impl ZellijPlugin for State {
             EventType::CopyToClipboard,
             EventType::InputReceived,
             EventType::SystemClipboardFailure,
-            EventType::Timer,
         ]);
     }
 
