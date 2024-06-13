@@ -97,6 +97,7 @@ pub enum ServerInstruction {
     DisconnectAllClientsExcept(ClientId),
     ChangeMode(ClientId, InputMode),
     ChangeModeForAllClients(InputMode),
+    RebindKeys(ClientId, String), // String -> stringified keybindings
 }
 
 impl From<&ServerInstruction> for ServerContext {
@@ -130,6 +131,7 @@ impl From<&ServerInstruction> for ServerContext {
             ServerInstruction::ChangeModeForAllClients(..) => {
                 ServerContext::ChangeModeForAllClients
             },
+            ServerInstruction::RebindKeys(..) => ServerContext::RebindKeys,
         }
     }
 }
@@ -175,6 +177,23 @@ impl SessionMetaData {
             self.client_input_modes.insert(client_id, input_mode);
         }
 
+    }
+    pub fn rebind_keys(&mut self, client_id: ClientId, new_keybinds: String) -> Option<Keybinds> { // TODO:
+                                                                                                   // Result
+        if let Some(current_keybinds) = self.client_keybinds.get_mut(&client_id) {
+            match Keybinds::from_string(new_keybinds, current_keybinds.clone(), &self.config_options) {
+                Ok(new_keybinds) => {
+                    *current_keybinds = new_keybinds.clone();
+                    return Some(new_keybinds);
+                },
+                Err(e) => {
+                    log::error!("Failed to parse keybindings: {}", e);
+                }
+            }
+        } else {
+            log::error!("Failed to bind keys for client: {client_id}");
+        }
+        None
     }
 }
 
@@ -879,6 +898,21 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .unwrap()
                     .change_mode_for_all_clients(input_mode);
             },
+            ServerInstruction::RebindKeys(client_id, new_keybinds) => {
+                // TODO: CONTINUE HERE (12/06) - also update screen and its mode-info so that it
+                // sends an update to the plugins
+                let new_keybinds = session_data.write().unwrap().as_mut().unwrap().rebind_keys(client_id, new_keybinds).clone();
+                if let Some(new_keybinds) = new_keybinds {
+                    session_data
+                        .write()
+                        .unwrap()
+                        .as_ref()
+                        .unwrap()
+                        .senders
+                        .send_to_screen(ScreenInstruction::RebindKeys(new_keybinds, client_id))
+                        .unwrap();
+                }
+            }
         }
     }
 

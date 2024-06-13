@@ -5,7 +5,7 @@ pub struct PluginCommand {
     pub name: i32,
     #[prost(
         oneof = "plugin_command::Payload",
-        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 60, 61, 62"
+        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 60, 61, 62, 63"
     )]
     pub payload: ::core::option::Option<plugin_command::Payload>,
 }
@@ -118,6 +118,8 @@ pub mod plugin_command {
         ScanHostFolderPayload(::prost::alloc::string::String),
         #[prost(message, tag = "62")]
         NewTabsWithLayoutInfoPayload(super::NewTabsWithLayoutInfoPayload),
+        #[prost(string, tag = "63")]
+        RebindKeysPayload(::prost::alloc::string::String),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -431,6 +433,7 @@ pub enum CommandName {
     DumpSessionLayout = 84,
     CloseSelf = 85,
     NewTabsWithLayoutInfo = 86,
+    RebindKeys = 87,
 }
 impl CommandName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -526,6 +529,7 @@ impl CommandName {
             CommandName::DumpSessionLayout => "DumpSessionLayout",
             CommandName::CloseSelf => "CloseSelf",
             CommandName::NewTabsWithLayoutInfo => "NewTabsWithLayoutInfo",
+            CommandName::RebindKeys => "RebindKeys",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -618,6 +622,7 @@ impl CommandName {
             "DumpSessionLayout" => Some(Self::DumpSessionLayout),
             "CloseSelf" => Some(Self::CloseSelf),
             "NewTabsWithLayoutInfo" => Some(Self::NewTabsWithLayoutInfo),
+            "RebindKeys" => Some(Self::RebindKeys),
             _ => None,
         }
     }

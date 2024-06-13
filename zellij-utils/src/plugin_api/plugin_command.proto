@@ -98,6 +98,7 @@ enum CommandName {
   DumpSessionLayout = 84;
   CloseSelf = 85;
   NewTabsWithLayoutInfo = 86;
+  RebindKeys = 87;
 }
 
 message PluginCommand {
@@ -155,6 +156,7 @@ message PluginCommand {
     KillSessionsPayload kill_sessions_payload = 60;
     string scan_host_folder_payload = 61;
     NewTabsWithLayoutInfoPayload new_tabs_with_layout_info_payload = 62;
+    string rebind_keys_payload = 63;
   }
 }
 

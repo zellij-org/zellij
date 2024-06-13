@@ -14,6 +14,7 @@ use zellij_utils::data::{
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
 use zellij_utils::input::options::Clipboard;
+use zellij_utils::input::keybinds::Keybinds;
 use zellij_utils::pane_size::{Size, SizeInPixels};
 use zellij_utils::{
     consts::{session_info_folder_for_session, ZELLIJ_SOCK_DIR},
@@ -360,6 +361,7 @@ pub enum ScreenInstruction {
     DumpLayoutToHd,
     RenameSession(String, ClientId), // String -> new name
     ListClientsMetadata(Option<PathBuf>, ClientId), // Option<PathBuf> - default shell
+    RebindKeys(Keybinds, ClientId),
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -544,6 +546,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::DumpLayoutToHd => ScreenContext::DumpLayoutToHd,
             ScreenInstruction::RenameSession(..) => ScreenContext::RenameSession,
             ScreenInstruction::ListClientsMetadata(..) => ScreenContext::ListClientsMetadata,
+            ScreenInstruction::RebindKeys(..) => ScreenContext::RebindKeys,
         }
     }
 }
@@ -2144,6 +2147,20 @@ impl Screen {
         }
         Ok(())
     }
+    pub fn rebind_keys(&mut self, new_keybinds: Keybinds, client_id: ClientId) -> Result<()> {
+        if self.connected_clients_contains(&client_id) {
+            let mode_info = self.mode_info.entry(client_id).or_insert_with(|| self.default_mode_info.clone()) ;
+            mode_info.update_keybinds(new_keybinds);
+            for tab in self.tabs.values_mut() {
+                tab.change_mode_info(mode_info.clone(), client_id);
+                tab.mark_active_pane_for_rerender(client_id);
+                tab.update_input_modes()?;
+            }
+        } else {
+            log::error!("Could not find client_id {client_id} to rebind keys");
+        }
+        Ok(())
+    }
     fn unblock_input(&self) -> Result<()> {
         self.bus
             .senders
@@ -2284,6 +2301,9 @@ impl Screen {
             }
         }
         found_plugin
+    }
+    fn connected_clients_contains(&self, client_id: &ClientId) -> bool {
+        self.connected_clients.borrow().contains(client_id)
     }
 }
 
@@ -4000,6 +4020,9 @@ pub(crate) fn screen_thread_main(
                 }
                 screen.unblock_input()?;
             },
+            ScreenInstruction::RebindKeys(new_keybinds, client_id) => {
+                screen.rebind_keys(new_keybinds, client_id).non_fatal();
+            }
         }
     }
     Ok(())

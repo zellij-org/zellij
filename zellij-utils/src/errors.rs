@@ -353,6 +353,7 @@ pub enum ScreenContext {
     RenameSession,
     DumpLayoutToPlugin,
     ListClientsMetadata,
+    RebindKeys,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.
@@ -456,6 +457,7 @@ pub enum ServerContext {
     DisconnectAllClientsExcept,
     ChangeMode,
     ChangeModeForAllClients,
+    RebindKeys,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]

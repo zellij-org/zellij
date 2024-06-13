@@ -808,6 +808,14 @@ pub fn dump_session_layout() {
     unsafe { host_run_plugin_command() };
 }
 
+/// Rebind keys for the current user
+pub fn rebind_keys(keys: String) {
+    let plugin_command = PluginCommand::RebindKeys(keys);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 // Utility Functions
 
 #[allow(unused)]

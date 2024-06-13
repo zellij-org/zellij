@@ -1880,6 +1880,17 @@ impl Keybinds {
         }
         Ok(input_mode_keybinds)
     }
+    pub fn from_string(stringified_keybindings: String, base_keybinds: Keybinds, config_options: &Options) -> Result<Self, ConfigError> {
+        let document: KdlDocument = stringified_keybindings.parse()?;
+        if let Some(kdl_keybinds) = document.get("keybinds") {
+            Keybinds::from_kdl(&kdl_keybinds, base_keybinds, config_options)
+        } else {
+            Err(ConfigError::DownloadError("Failed to parse kdl document".to_owned())) // TODO:
+                                                                                       // better
+                                                                                       // error
+                                                                                       // type
+        }
+    }
 }
 
 impl Config {

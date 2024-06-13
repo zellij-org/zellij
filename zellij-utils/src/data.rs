@@ -1,6 +1,7 @@
 use crate::input::actions::Action;
 use crate::input::config::ConversionError;
 use crate::input::layout::SplitSize;
+use crate::input::keybinds::Keybinds;
 use clap::ArgEnum;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
@@ -1130,6 +1131,9 @@ impl ModeInfo {
         }
         vec![]
     }
+    pub fn update_keybinds(&mut self, keybinds: Keybinds) {
+        self.keybinds = keybinds.to_keybinds_vec();
+    }
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -1733,4 +1737,5 @@ pub enum PluginCommand {
     DumpSessionLayout,
     CloseSelf,
     NewTabsWithLayoutInfo(LayoutInfo),
+    RebindKeys(String), // String -> stringified keybindings
 }
