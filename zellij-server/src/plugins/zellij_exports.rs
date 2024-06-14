@@ -843,7 +843,6 @@ fn close_self(env: &ForeignFunctionEnv) {
         .non_fatal();
 }
 
-// TODO: permissions!!
 fn rebind_keys(env: &ForeignFunctionEnv, new_keybinds: String) -> Result<()> {
     let err_context = || "Failed to rebind keys";
     let client_id = env.plugin_env.client_id;
