@@ -27,7 +27,7 @@
 
 # What is this?
 
-[Zellij](https://en.wikipedia.org/wiki/Zellij) is a workspace aimed at developers, ops-oriented people and anyone who loves the terminal. Similar programs are sometimes called "Terminal Multiplexers".
+[Zellij](#origin-of-the-name) is a workspace aimed at developers, ops-oriented people and anyone who loves the terminal. Similar programs are sometimes called "Terminal Multiplexers".
 
 Zellij is designed around the philosophy that one must not sacrifice simplicity for power, taking pride in its great experience out of the box as well as the advanced features it places at its users' fingertips.
 
@@ -84,6 +84,10 @@ These are issues that are either being actively worked on or are planned for the
 
 [![roadmap](https://github.com/zellij-org/zellij/assets/795598/9c5b573b-20f5-41c6-908b-6b21c5fd456e)](https://zellij.dev/roadmap)
 
+## Origin of the Name
+[From Wikipedia, the free encyclopedia](https://en.wikipedia.org/wiki/Zellij)
+
+Zellij (Arabic: الزليج, romanized: zillīj; also spelled zillij or zellige) is a style of mosaic tilework made from individually hand-chiseled tile pieces. The pieces were typically of different colours and fitted together to form various patterns on the basis of tessellations, most notably elaborate Islamic geometric motifs such as radiating star patterns composed of various polygons. This form of Islamic art is one of the main characteristics of architecture in the western Islamic world. It is found in the architecture of Morocco, the architecture of Algeria, early Islamic sites in Tunisia, and in the historic monuments of al-Andalus (in the Iberian Peninsula).
 
 ## License
 
