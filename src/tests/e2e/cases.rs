@@ -2162,7 +2162,9 @@ pub fn undo_rename_tab() {
             name: "Wait for tab name to apper on screen",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.snapshot_contains("Tab #1") && remote_terminal.snapshot_contains("Tip:") {
+                if remote_terminal.snapshot_contains("Tab #1")
+                    && remote_terminal.snapshot_contains("Tip:")
+                {
                     step_is_complete = true
                 }
                 step_is_complete
@@ -2217,7 +2219,9 @@ pub fn undo_rename_pane() {
             name: "Wait for pane name to apper on screen",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.snapshot_contains("Pane #1") && remote_terminal.snapshot_contains("Tip:") {
+                if remote_terminal.snapshot_contains("Pane #1")
+                    && remote_terminal.snapshot_contains("Tip:")
+                {
                     step_is_complete = true
                 }
                 step_is_complete
