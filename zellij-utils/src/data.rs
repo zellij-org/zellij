@@ -1,5 +1,6 @@
 use crate::input::actions::Action;
 use crate::input::config::ConversionError;
+use crate::input::keybinds::Keybinds;
 use crate::input::layout::SplitSize;
 use clap::ArgEnum;
 use serde::{Deserialize, Serialize};
@@ -914,6 +915,7 @@ pub enum Permission {
     WebAccess,
     ReadCliPipes,
     MessageAndLaunchOtherPlugins,
+    RebindKeys,
 }
 
 impl PermissionType {
@@ -934,6 +936,7 @@ impl PermissionType {
             PermissionType::MessageAndLaunchOtherPlugins => {
                 "Send messages to and launch other plugins".to_owned()
             },
+            PermissionType::RebindKeys => "Rebind keys".to_owned(),
         }
     }
 }
@@ -1129,6 +1132,9 @@ impl ModeInfo {
             }
         }
         vec![]
+    }
+    pub fn update_keybinds(&mut self, keybinds: Keybinds) {
+        self.keybinds = keybinds.to_keybinds_vec();
     }
 }
 
@@ -1733,4 +1739,5 @@ pub enum PluginCommand {
     DumpSessionLayout,
     CloseSelf,
     NewTabsWithLayoutInfo(LayoutInfo),
+    RebindKeys(String), // String -> stringified keybindings
 }

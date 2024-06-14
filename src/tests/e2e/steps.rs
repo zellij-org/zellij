@@ -11,6 +11,7 @@ pub fn new_tab() -> Step {
             let mut step_is_complete = false;
             if remote_terminal.tip_appears() && remote_terminal.status_bar_appears() {
                 remote_terminal.send_key(&TAB_MODE);
+                std::thread::sleep(std::time::Duration::from_millis(100));
                 remote_terminal.send_key(&NEW_TAB_IN_TAB_MODE);
                 step_is_complete = true;
             }
@@ -37,6 +38,7 @@ pub fn move_tab_left() -> Step {
             let mut step_is_complete = false;
             if remote_terminal.tip_appears() && remote_terminal.status_bar_appears() {
                 remote_terminal.send_key(&MOVE_TAB_LEFT);
+                std::thread::sleep(std::time::Duration::from_millis(100));
                 step_is_complete = true;
             }
             step_is_complete

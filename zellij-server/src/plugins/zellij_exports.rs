@@ -268,6 +268,7 @@ fn host_run_plugin_command(env: FunctionEnvMut<ForeignFunctionEnv>) {
                     PluginCommand::WatchFilesystem => watch_filesystem(env),
                     PluginCommand::DumpSessionLayout => dump_session_layout(env),
                     PluginCommand::CloseSelf => close_self(env),
+                    PluginCommand::RebindKeys(new_keybinds) => rebind_keys(env, new_keybinds)?,
                 },
                 (PermissionStatus::Denied, permission) => {
                     log::error!(
@@ -840,6 +841,16 @@ fn close_self(env: &ForeignFunctionEnv) {
         .send_to_plugin(PluginInstruction::Unload(env.plugin_env.plugin_id))
         .with_context(|| format!("failed to close self"))
         .non_fatal();
+}
+
+fn rebind_keys(env: &ForeignFunctionEnv, new_keybinds: String) -> Result<()> {
+    let err_context = || "Failed to rebind keys";
+    let client_id = env.plugin_env.client_id;
+    env.plugin_env
+        .senders
+        .send_to_server(ServerInstruction::RebindKeys(client_id, new_keybinds))
+        .with_context(err_context)?;
+    Ok(())
 }
 
 fn switch_to_mode(env: &ForeignFunctionEnv, input_mode: InputMode) {
@@ -1594,6 +1605,7 @@ fn check_command_permission(
         | PluginCommand::CliPipeOutput(..) => PermissionType::ReadCliPipes,
         PluginCommand::MessageToPlugin(..) => PermissionType::MessageAndLaunchOtherPlugins,
         PluginCommand::DumpSessionLayout => PermissionType::ReadApplicationState,
+        PluginCommand::RebindKeys(..) => PermissionType::RebindKeys,
         _ => return (PermissionStatus::Granted, None),
     };
 

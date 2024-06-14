@@ -12,4 +12,5 @@ enum PermissionType {
   WebAccess = 6;
   ReadCliPipes = 7;
   MessageAndLaunchOtherPlugins = 8;
+  RebindKeys = 9;
 }

@@ -162,6 +162,7 @@ pub fn split_terminals_vertically() {
                 if remote_terminal.status_bar_appears() && remote_terminal.cursor_position_is(3, 2)
                 {
                     remote_terminal.send_key(&PANE_MODE);
+                    std::thread::sleep(std::time::Duration::from_millis(100));
                     remote_terminal.send_key(&SPLIT_RIGHT_IN_PANE_MODE);
                     // back to normal mode after split
                     step_is_complete = true;
@@ -205,6 +206,7 @@ pub fn cannot_split_terminals_vertically_when_active_terminal_is_too_small() {
                 let mut step_is_complete = false;
                 if remote_terminal.cursor_position_is(3, 2) {
                     remote_terminal.send_key(&PANE_MODE);
+                    std::thread::sleep(std::time::Duration::from_millis(100));
                     remote_terminal.send_key(&SPLIT_RIGHT_IN_PANE_MODE);
                     // back to normal mode after split
                     step_is_complete = true;
@@ -259,6 +261,7 @@ pub fn scrolling_inside_a_pane() {
                         && remote_terminal.cursor_position_is(3, 2)
                     {
                         remote_terminal.send_key(&PANE_MODE);
+                        std::thread::sleep(std::time::Duration::from_millis(100));
                         remote_terminal.send_key(&SPLIT_RIGHT_IN_PANE_MODE);
                         step_is_complete = true;
                     }
@@ -286,6 +289,7 @@ pub fn scrolling_inside_a_pane() {
                     {
                         // all lines have been written to the pane
                         remote_terminal.send_key(&SCROLL_MODE);
+                        std::thread::sleep(std::time::Duration::from_millis(100));
                         remote_terminal.send_key(&SCROLL_UP_IN_SCROLL_MODE);
                         step_is_complete = true;
                     }
@@ -337,6 +341,7 @@ pub fn toggle_pane_fullscreen() {
                         && remote_terminal.cursor_position_is(3, 2)
                     {
                         remote_terminal.send_key(&PANE_MODE);
+                        std::thread::sleep(std::time::Duration::from_millis(100));
                         remote_terminal.send_key(&SPLIT_RIGHT_IN_PANE_MODE);
                         step_is_complete = true;
                     }
@@ -350,6 +355,7 @@ pub fn toggle_pane_fullscreen() {
                     if remote_terminal.cursor_position_is(63, 2) && remote_terminal.tip_appears() {
                         // cursor is in the newly opened second pane
                         remote_terminal.send_key(&PANE_MODE);
+                        std::thread::sleep(std::time::Duration::from_millis(100));
                         remote_terminal.send_key(&TOGGLE_ACTIVE_TERMINAL_FULLSCREEN_IN_PANE_MODE);
                         step_is_complete = true;
                     }
@@ -398,6 +404,7 @@ pub fn open_new_tab() {
                         && remote_terminal.cursor_position_is(3, 2)
                     {
                         remote_terminal.send_key(&PANE_MODE);
+                        std::thread::sleep(std::time::Duration::from_millis(100));
                         remote_terminal.send_key(&SPLIT_RIGHT_IN_PANE_MODE);
                         step_is_complete = true;
                     }
@@ -411,6 +418,7 @@ pub fn open_new_tab() {
                     if remote_terminal.cursor_position_is(63, 2) && remote_terminal.tip_appears() {
                         // cursor is in the newly opened second pane
                         remote_terminal.send_key(&TAB_MODE);
+                        std::thread::sleep(std::time::Duration::from_millis(100));
                         remote_terminal.send_key(&NEW_TAB_IN_TAB_MODE);
                         step_is_complete = true;
                     }
@@ -463,6 +471,7 @@ pub fn close_tab() {
                         && remote_terminal.cursor_position_is(3, 2)
                     {
                         remote_terminal.send_key(&PANE_MODE);
+                        std::thread::sleep(std::time::Duration::from_millis(100));
                         remote_terminal.send_key(&SPLIT_RIGHT_IN_PANE_MODE);
                         step_is_complete = true;
                     }
@@ -476,6 +485,7 @@ pub fn close_tab() {
                     if remote_terminal.cursor_position_is(63, 2) && remote_terminal.tip_appears() {
                         // cursor is in the newly opened second pane
                         remote_terminal.send_key(&TAB_MODE);
+                        std::thread::sleep(std::time::Duration::from_millis(100));
                         remote_terminal.send_key(&NEW_TAB_IN_TAB_MODE);
                         step_is_complete = true;
                     }
@@ -493,6 +503,7 @@ pub fn close_tab() {
                     {
                         // cursor is in the newly opened second tab
                         remote_terminal.send_key(&TAB_MODE);
+                        std::thread::sleep(std::time::Duration::from_millis(100));
                         remote_terminal.send_key(&CLOSE_TAB_IN_TAB_MODE);
                         step_is_complete = true;
                     }
@@ -653,6 +664,7 @@ pub fn close_pane() {
                         && remote_terminal.cursor_position_is(3, 2)
                     {
                         remote_terminal.send_key(&PANE_MODE);
+                        std::thread::sleep(std::time::Duration::from_millis(100));
                         remote_terminal.send_key(&SPLIT_RIGHT_IN_PANE_MODE);
                         step_is_complete = true;
                     }
@@ -666,6 +678,7 @@ pub fn close_pane() {
                     if remote_terminal.cursor_position_is(63, 2) && remote_terminal.tip_appears() {
                         // cursor is in the newly opened second pane
                         remote_terminal.send_key(&PANE_MODE);
+                        std::thread::sleep(std::time::Duration::from_millis(100));
                         remote_terminal.send_key(&CLOSE_PANE_IN_PANE_MODE);
                         step_is_complete = true;
                     }
@@ -751,6 +764,7 @@ pub fn closing_last_pane_exits_zellij() {
                 if remote_terminal.status_bar_appears() && remote_terminal.cursor_position_is(3, 2)
                 {
                     remote_terminal.send_key(&PANE_MODE);
+                    std::thread::sleep(std::time::Duration::from_millis(100));
                     remote_terminal.send_key(&CLOSE_PANE_IN_PANE_MODE);
                     step_is_complete = true;
                 }
@@ -795,6 +809,7 @@ pub fn typing_exit_closes_pane() {
                         && remote_terminal.cursor_position_is(3, 2)
                     {
                         remote_terminal.send_key(&PANE_MODE);
+                        std::thread::sleep(std::time::Duration::from_millis(100));
                         remote_terminal.send_key(&SPLIT_RIGHT_IN_PANE_MODE);
                         step_is_complete = true;
                     }
@@ -807,9 +822,13 @@ pub fn typing_exit_closes_pane() {
                     let mut step_is_complete = false;
                     if remote_terminal.cursor_position_is(63, 2) && remote_terminal.tip_appears() {
                         remote_terminal.send_key("e".as_bytes());
+                        std::thread::sleep(std::time::Duration::from_millis(100));
                         remote_terminal.send_key("x".as_bytes());
+                        std::thread::sleep(std::time::Duration::from_millis(100));
                         remote_terminal.send_key("i".as_bytes());
+                        std::thread::sleep(std::time::Duration::from_millis(100));
                         remote_terminal.send_key("t".as_bytes());
+                        std::thread::sleep(std::time::Duration::from_millis(100));
                         remote_terminal.send_key("\n".as_bytes());
                         step_is_complete = true;
                     }
@@ -859,6 +878,7 @@ pub fn resize_pane() {
                         && remote_terminal.cursor_position_is(3, 2)
                     {
                         remote_terminal.send_key(&PANE_MODE);
+                        std::thread::sleep(std::time::Duration::from_millis(100));
                         remote_terminal.send_key(&SPLIT_RIGHT_IN_PANE_MODE);
                         step_is_complete = true;
                     }
@@ -872,6 +892,7 @@ pub fn resize_pane() {
                     if remote_terminal.cursor_position_is(63, 2) && remote_terminal.tip_appears() {
                         // cursor is in the newly opened second pane
                         remote_terminal.send_key(&RESIZE_MODE);
+                        std::thread::sleep(std::time::Duration::from_millis(100));
                         remote_terminal.send_key(&RESIZE_LEFT_IN_RESIZE_MODE);
                         // back to normal mode
                         remote_terminal.send_key(&ENTER);
@@ -933,7 +954,9 @@ pub fn lock_mode() {
                     let mut step_is_complete = false;
                     if remote_terminal.snapshot_contains("INTERFACE LOCKED") {
                         remote_terminal.send_key(&TAB_MODE);
+                        std::thread::sleep(std::time::Duration::from_millis(100));
                         remote_terminal.send_key(&NEW_TAB_IN_TAB_MODE);
+                        std::thread::sleep(std::time::Duration::from_millis(100));
                         remote_terminal.send_key("abc".as_bytes());
                         step_is_complete = true;
                     }
@@ -983,6 +1006,7 @@ pub fn resize_terminal_window() {
                         && remote_terminal.cursor_position_is(3, 2)
                     {
                         remote_terminal.send_key(&PANE_MODE);
+                        std::thread::sleep(std::time::Duration::from_millis(100));
                         remote_terminal.send_key(&SPLIT_RIGHT_IN_PANE_MODE);
                         step_is_complete = true;
                     }
@@ -1046,6 +1070,7 @@ pub fn detach_and_attach_session() {
                         && remote_terminal.cursor_position_is(3, 2)
                     {
                         remote_terminal.send_key(&PANE_MODE);
+                        std::thread::sleep(std::time::Duration::from_millis(100));
                         remote_terminal.send_key(&SPLIT_RIGHT_IN_PANE_MODE);
                         step_is_complete = true;
                     }
@@ -1070,6 +1095,7 @@ pub fn detach_and_attach_session() {
                     let mut step_is_complete = false;
                     if remote_terminal.cursor_position_is(77, 2) {
                         remote_terminal.send_key(&SESSION_MODE);
+                        std::thread::sleep(std::time::Duration::from_millis(100));
                         remote_terminal.send_key(&DETACH_IN_SESSION_MODE);
                         // text has been entered
                         step_is_complete = true;
@@ -1286,6 +1312,7 @@ fn focus_pane_with_mouse() {
                         && remote_terminal.cursor_position_is(3, 2)
                     {
                         remote_terminal.send_key(&PANE_MODE);
+                        std::thread::sleep(std::time::Duration::from_millis(100));
                         remote_terminal.send_key(&SPLIT_RIGHT_IN_PANE_MODE);
                         step_is_complete = true;
                     }
@@ -1345,6 +1372,7 @@ pub fn scrolling_inside_a_pane_with_mouse() {
                         && remote_terminal.cursor_position_is(3, 2)
                     {
                         remote_terminal.send_key(&PANE_MODE);
+                        std::thread::sleep(std::time::Duration::from_millis(100));
                         remote_terminal.send_key(&SPLIT_RIGHT_IN_PANE_MODE);
                         step_is_complete = true;
                     }
@@ -1420,6 +1448,7 @@ pub fn start_without_pane_frames() {
                 if remote_terminal.status_bar_appears() && remote_terminal.cursor_position_is(2, 1)
                 {
                     remote_terminal.send_key(&PANE_MODE);
+                    std::thread::sleep(std::time::Duration::from_millis(100));
                     remote_terminal.send_key(&SPLIT_RIGHT_IN_PANE_MODE);
                     step_is_complete = true;
                 }
@@ -1489,6 +1518,7 @@ pub fn mirrored_sessions() {
                         && remote_terminal.cursor_position_is(3, 2)
                     {
                         remote_terminal.send_key(&PANE_MODE);
+                        std::thread::sleep(std::time::Duration::from_millis(100));
                         remote_terminal.send_key(&SPLIT_RIGHT_IN_PANE_MODE);
                         step_is_complete = true;
                     }
@@ -1502,6 +1532,7 @@ pub fn mirrored_sessions() {
                     if remote_terminal.cursor_position_is(63, 2) && remote_terminal.tip_appears() {
                         // cursor is in the newly opened second pane
                         remote_terminal.send_key(&TAB_MODE);
+                        std::thread::sleep(std::time::Duration::from_millis(100));
                         remote_terminal.send_key(&NEW_TAB_IN_TAB_MODE);
                         step_is_complete = true;
                     }
@@ -1544,6 +1575,7 @@ pub fn mirrored_sessions() {
                     let mut step_is_complete = false;
                     if remote_terminal.snapshot_contains("some text") {
                         remote_terminal.send_key(&TAB_MODE);
+                        std::thread::sleep(std::time::Duration::from_millis(100));
                         remote_terminal.send_key(&MOVE_FOCUS_LEFT_IN_PANE_MODE); // same key as tab mode
                         step_is_complete = true;
                     }
@@ -1726,6 +1758,7 @@ pub fn multiple_users_in_different_panes_and_same_tab() {
                         && remote_terminal.cursor_position_is(3, 2)
                     {
                         remote_terminal.send_key(&PANE_MODE);
+                        std::thread::sleep(std::time::Duration::from_millis(100));
                         remote_terminal.send_key(&SPLIT_RIGHT_IN_PANE_MODE);
                         step_is_complete = true;
                     }
@@ -1817,6 +1850,7 @@ pub fn multiple_users_in_different_tabs() {
                     if remote_terminal.cursor_position_is(3, 2) && remote_terminal.tip_appears() {
                         // cursor is in the newly opened second pane
                         remote_terminal.send_key(&TAB_MODE);
+                        std::thread::sleep(std::time::Duration::from_millis(100));
                         remote_terminal.send_key(&NEW_TAB_IN_TAB_MODE);
                         step_is_complete = true;
                     }
@@ -1839,6 +1873,7 @@ pub fn multiple_users_in_different_tabs() {
                     && remote_terminal.snapshot_contains("Tab #1 [ ]")
                     && remote_terminal.snapshot_contains("Tab #2")
                     && remote_terminal.status_bar_appears()
+                    && !remote_terminal.snapshot_contains("AND:")
                 {
                     // cursor is in the newly opened second tab
                     step_is_complete = true;
@@ -1899,11 +1934,17 @@ pub fn bracketed_paste() {
                     && remote_terminal.cursor_position_is(3, 2)
                 {
                     remote_terminal.send_key(&BRACKETED_PASTE_START);
+                    std::thread::sleep(std::time::Duration::from_millis(100));
                     remote_terminal.send_key(&TAB_MODE);
+                    std::thread::sleep(std::time::Duration::from_millis(100));
                     remote_terminal.send_key(&NEW_TAB_IN_TAB_MODE);
+                    std::thread::sleep(std::time::Duration::from_millis(100));
                     remote_terminal.send_key("a".as_bytes());
+                    std::thread::sleep(std::time::Duration::from_millis(100));
                     remote_terminal.send_key("b".as_bytes());
+                    std::thread::sleep(std::time::Duration::from_millis(100));
                     remote_terminal.send_key("c".as_bytes());
+                    std::thread::sleep(std::time::Duration::from_millis(100));
                     remote_terminal.send_key(&BRACKETED_PASTE_END);
                     step_is_complete = true;
                 }
@@ -1952,6 +1993,7 @@ pub fn toggle_floating_panes() {
                 if remote_terminal.status_bar_appears() && remote_terminal.cursor_position_is(3, 2)
                 {
                     remote_terminal.send_key(&PANE_MODE);
+                    std::thread::sleep(std::time::Duration::from_millis(100));
                     remote_terminal.send_key(&TOGGLE_FLOATING_PANES);
                     // back to normal mode after split
                     step_is_complete = true;
@@ -2002,6 +2044,7 @@ pub fn tmux_mode() {
                 if remote_terminal.status_bar_appears() && remote_terminal.cursor_position_is(3, 2)
                 {
                     remote_terminal.send_key(&TMUX_MODE);
+                    std::thread::sleep(std::time::Duration::from_millis(100));
                     remote_terminal.send_key(&SPLIT_RIGHT_IN_TMUX_MODE);
                     // back to normal mode after split
                     step_is_complete = true;
@@ -2050,6 +2093,7 @@ pub fn edit_scrollback() {
                 if remote_terminal.status_bar_appears() && remote_terminal.cursor_position_is(3, 2)
                 {
                     remote_terminal.send_key(&SCROLL_MODE);
+                    std::thread::sleep(std::time::Duration::from_millis(100));
                     remote_terminal.send_key(&EDIT_SCROLLBACK);
                     step_is_complete = true;
                 }
@@ -2099,8 +2143,13 @@ pub fn undo_rename_tab() {
                     && remote_terminal.snapshot_contains("Tab #1")
                 {
                     remote_terminal.send_key(&TAB_MODE);
+                    std::thread::sleep(std::time::Duration::from_millis(100));
                     remote_terminal.send_key(&RENAME_TAB_MODE);
+                    std::thread::sleep(std::time::Duration::from_millis(100));
                     remote_terminal.send_key(&[97, 97]);
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                    remote_terminal.send_key(&ESC);
+                    std::thread::sleep(std::time::Duration::from_millis(100));
                     remote_terminal.send_key(&ESC);
                     step_is_complete = true;
                 }
@@ -2113,7 +2162,9 @@ pub fn undo_rename_tab() {
             name: "Wait for tab name to apper on screen",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.snapshot_contains("Tab #1") {
+                if remote_terminal.snapshot_contains("Tab #1")
+                    && remote_terminal.snapshot_contains("Tip:")
+                {
                     step_is_complete = true
                 }
                 step_is_complete
@@ -2149,8 +2200,13 @@ pub fn undo_rename_pane() {
                 if remote_terminal.status_bar_appears() && remote_terminal.cursor_position_is(3, 2)
                 {
                     remote_terminal.send_key(&PANE_MODE);
+                    std::thread::sleep(std::time::Duration::from_millis(100));
                     remote_terminal.send_key(&RENAME_PANE_MODE);
+                    std::thread::sleep(std::time::Duration::from_millis(100));
                     remote_terminal.send_key(&[97, 97]);
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                    remote_terminal.send_key(&ESC);
+                    std::thread::sleep(std::time::Duration::from_millis(100));
                     remote_terminal.send_key(&ESC);
                     step_is_complete = true;
                 }
@@ -2163,7 +2219,9 @@ pub fn undo_rename_pane() {
             name: "Wait for pane name to apper on screen",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.snapshot_contains("Pane #1") {
+                if remote_terminal.snapshot_contains("Pane #1")
+                    && remote_terminal.snapshot_contains("Tip:")
+                {
                     step_is_complete = true
                 }
                 step_is_complete
@@ -2212,6 +2270,7 @@ pub fn send_command_through_the_cli() {
                             "{}/append-echo-script.sh",
                             fixture_folder
                         ));
+                        std::thread::sleep(std::time::Duration::from_millis(100));
                         step_is_complete = true;
                     }
                     step_is_complete
@@ -2221,11 +2280,7 @@ pub fn send_command_through_the_cli() {
                 name: "Initial run of suspended command",
                 instruction: |mut remote_terminal: RemoteTerminal| -> bool {
                     let mut step_is_complete = false;
-                    if remote_terminal.snapshot_contains("<Ctrl-c>")
-                        && remote_terminal.cursor_position_is(0, 0)
-                    // cursor does not appear in
-                    // suspend_start panes
-                    {
+                    if remote_terminal.snapshot_contains("<Ctrl-c>") {
                         std::thread::sleep(std::time::Duration::from_millis(100));
                         remote_terminal.send_key(&SPACE); // run script - here we use SPACE
                                                           // instead of the default ENTER because

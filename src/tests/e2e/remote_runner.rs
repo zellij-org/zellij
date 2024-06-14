@@ -261,7 +261,7 @@ fn read_from_channel(
                         break;
                     }
                     if should_sleep {
-                        std::thread::sleep(std::time::Duration::from_millis(10));
+                        std::thread::sleep(std::time::Duration::from_millis(100));
                         should_sleep = false;
                     }
                     let mut buf = [0u8; 1280000];

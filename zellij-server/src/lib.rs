@@ -42,12 +42,13 @@ use zellij_utils::{
     channels::{self, ChannelWithContext, SenderWithContext},
     cli::CliArgs,
     consts::{DEFAULT_SCROLL_BUFFER_SIZE, SCROLL_BUFFER_SIZE},
-    data::{ConnectToSession, Event, PluginCapabilities},
+    data::{ConnectToSession, Event, InputMode, PluginCapabilities},
     errors::{prelude::*, ContextType, ErrorInstruction, FatalError, ServerContext},
     home::{default_layout_dir, get_default_data_dir},
     input::{
         command::{RunCommand, TerminalAction},
         get_mode_info,
+        keybinds::Keybinds,
         layout::Layout,
         options::Options,
         plugins::PluginAliases,
@@ -94,6 +95,9 @@ pub enum ServerInstruction {
         client_id: ClientId,
     },
     DisconnectAllClientsExcept(ClientId),
+    ChangeMode(ClientId, InputMode),
+    ChangeModeForAllClients(InputMode),
+    RebindKeys(ClientId, String), // String -> stringified keybindings
 }
 
 impl From<&ServerInstruction> for ServerContext {
@@ -121,6 +125,11 @@ impl From<&ServerInstruction> for ServerContext {
             ServerInstruction::DisconnectAllClientsExcept(..) => {
                 ServerContext::DisconnectAllClientsExcept
             },
+            ServerInstruction::ChangeMode(..) => ServerContext::ChangeMode,
+            ServerInstruction::ChangeModeForAllClients(..) => {
+                ServerContext::ChangeModeForAllClients
+            },
+            ServerInstruction::RebindKeys(..) => ServerContext::RebindKeys,
         }
     }
 }
@@ -138,11 +147,63 @@ pub(crate) struct SessionMetaData {
     pub default_shell: Option<TerminalAction>,
     pub layout: Box<Layout>,
     pub config_options: Box<Options>,
+    pub client_keybinds: HashMap<ClientId, Keybinds>,
+    pub client_input_modes: HashMap<ClientId, InputMode>,
     screen_thread: Option<thread::JoinHandle<()>>,
     pty_thread: Option<thread::JoinHandle<()>>,
     plugin_thread: Option<thread::JoinHandle<()>>,
     pty_writer_thread: Option<thread::JoinHandle<()>>,
     background_jobs_thread: Option<thread::JoinHandle<()>>,
+}
+
+impl SessionMetaData {
+    pub fn set_client_keybinds(&mut self, client_id: ClientId, keybinds: Keybinds) {
+        self.client_keybinds.insert(client_id, keybinds);
+        self.client_input_modes.insert(
+            client_id,
+            self.config_options.default_mode.unwrap_or_default(),
+        );
+    }
+    pub fn get_client_keybinds_and_mode(
+        &self,
+        client_id: &ClientId,
+    ) -> Option<(&Keybinds, &InputMode)> {
+        match (
+            self.client_keybinds.get(client_id),
+            self.client_input_modes.get(client_id),
+        ) {
+            (Some(client_keybinds), Some(client_input_mode)) => {
+                Some((client_keybinds, client_input_mode))
+            },
+            _ => None,
+        }
+    }
+    pub fn change_mode_for_all_clients(&mut self, input_mode: InputMode) {
+        let all_clients: Vec<ClientId> = self.client_input_modes.keys().copied().collect();
+        for client_id in all_clients {
+            self.client_input_modes.insert(client_id, input_mode);
+        }
+    }
+    pub fn rebind_keys(&mut self, client_id: ClientId, new_keybinds: String) -> Option<Keybinds> {
+        if let Some(current_keybinds) = self.client_keybinds.get_mut(&client_id) {
+            match Keybinds::from_string(
+                new_keybinds,
+                current_keybinds.clone(),
+                &self.config_options,
+            ) {
+                Ok(new_keybinds) => {
+                    *current_keybinds = new_keybinds.clone();
+                    return Some(new_keybinds);
+                },
+                Err(e) => {
+                    log::error!("Failed to parse keybindings: {}", e);
+                },
+            }
+        } else {
+            log::error!("Failed to bind keys for client: {client_id}");
+        }
+        None
+    }
 }
 
 impl Drop for SessionMetaData {
@@ -383,6 +444,12 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     plugin_aliases,
                 );
                 *session_data.write().unwrap() = Some(session);
+                session_data
+                    .write()
+                    .unwrap()
+                    .as_mut()
+                    .unwrap()
+                    .set_client_keybinds(client_id, client_attributes.keybinds.clone());
                 session_state
                     .write()
                     .unwrap()
@@ -469,8 +536,9 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 pane_id_to_focus,
                 client_id,
             ) => {
-                let rlock = session_data.read().unwrap();
-                let session_data = rlock.as_ref().unwrap();
+                let mut rlock = session_data.write().unwrap();
+                let session_data = rlock.as_mut().unwrap();
+                session_data.set_client_keybinds(client_id, attrs.keybinds.clone());
                 session_state
                     .write()
                     .unwrap()
@@ -498,7 +566,6 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .unwrap();
                 let default_mode = options.default_mode.unwrap_or_default();
                 let mode_info = get_mode_info(default_mode, &attrs, session_data.capabilities);
-                let mode = mode_info.mode;
                 session_data
                     .senders
                     .send_to_screen(ScreenInstruction::ChangeMode(mode_info.clone(), client_id))
@@ -511,12 +578,6 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                         Event::ModeUpdate(mode_info),
                     )]))
                     .unwrap();
-                send_to_client!(
-                    client_id,
-                    os_input,
-                    ServerToClientMsg::SwitchToMode(mode),
-                    session_state
-                );
             },
             ServerInstruction::UnblockInputThread => {
                 let client_ids = session_state.read().unwrap().client_ids();
@@ -827,6 +888,42 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .unwrap()
                     .associate_pipe_with_client(pipe_id, client_id);
             },
+            ServerInstruction::ChangeMode(client_id, input_mode) => {
+                session_data
+                    .write()
+                    .unwrap()
+                    .as_mut()
+                    .unwrap()
+                    .client_input_modes
+                    .insert(client_id, input_mode);
+            },
+            ServerInstruction::ChangeModeForAllClients(input_mode) => {
+                session_data
+                    .write()
+                    .unwrap()
+                    .as_mut()
+                    .unwrap()
+                    .change_mode_for_all_clients(input_mode);
+            },
+            ServerInstruction::RebindKeys(client_id, new_keybinds) => {
+                let new_keybinds = session_data
+                    .write()
+                    .unwrap()
+                    .as_mut()
+                    .unwrap()
+                    .rebind_keys(client_id, new_keybinds)
+                    .clone();
+                if let Some(new_keybinds) = new_keybinds {
+                    session_data
+                        .write()
+                        .unwrap()
+                        .as_ref()
+                        .unwrap()
+                        .senders
+                        .send_to_screen(ScreenInstruction::RebindKeys(new_keybinds, client_id))
+                        .unwrap();
+                }
+            },
         }
     }
 
@@ -1054,6 +1151,8 @@ fn init_session(
         client_attributes,
         layout,
         config_options: config_options.clone(),
+        client_keybinds: HashMap::new(),
+        client_input_modes: HashMap::new(),
         screen_thread: Some(screen_thread),
         pty_thread: Some(pty_thread),
         plugin_thread: Some(plugin_thread),

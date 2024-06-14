@@ -146,9 +146,6 @@ impl InputHandler {
                 )) => {
                     self.handle_key(&key_with_modifier, raw_bytes, true);
                 },
-                Ok((InputInstruction::SwitchToMode(input_mode), _error_context)) => {
-                    self.mode = input_mode;
-                },
                 Ok((
                     InputInstruction::AnsiStdinInstructions(ansi_stdin_instructions),
                     _error_context,
@@ -180,18 +177,13 @@ impl InputHandler {
         raw_bytes: Vec<u8>,
         is_kitty_keyboard_protocol: bool,
     ) {
-        let keybinds = &self.config.keybinds;
-        for action in keybinds.get_actions_for_key_in_mode_or_default_action(
-            &self.mode,
-            key,
+        // we interpret the keys into actions on the server side so that we can change the
+        // keybinds at runtime
+        self.os_input.send_to_server(ClientToServerMsg::Key(
+            key.clone(),
             raw_bytes,
             is_kitty_keyboard_protocol,
-        ) {
-            let should_exit = self.dispatch_action(action, None);
-            if should_exit {
-                self.should_exit = true;
-            }
-        }
+        ));
     }
     fn handle_stdin_ansi_instruction(&mut self, ansi_stdin_instructions: AnsiStdinInstruction) {
         match ansi_stdin_instructions {
@@ -316,14 +308,8 @@ impl InputHandler {
                 self.exit(ExitReason::NormalDetached);
                 should_break = true;
             },
-            Action::SwitchToMode(mode) => {
-                // this is an optimistic update, we should get a SwitchMode instruction from the
-                // server later that atomically changes the mode as well
-                self.mode = mode;
-                self.os_input
-                    .send_to_server(ClientToServerMsg::Action(action, None, None));
-            },
             Action::CloseFocus
+            | Action::SwitchToMode(..)
             | Action::ClearScreen
             | Action::NewPane(..)
             | Action::Run(_)

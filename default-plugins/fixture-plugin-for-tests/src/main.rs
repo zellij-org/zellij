@@ -56,6 +56,7 @@ impl ZellijPlugin for State {
             PermissionType::WebAccess,
             PermissionType::ReadCliPipes,
             PermissionType::MessageAndLaunchOtherPlugins,
+            PermissionType::RebindKeys,
         ]);
         self.configuration = configuration;
         subscribe(&[
@@ -316,6 +317,18 @@ impl ZellijPlugin for State {
                         Some("my_other_new_session_with_cwd"),
                         LayoutInfo::BuiltIn("compact".to_owned()),
                         Some(std::path::PathBuf::from("/tmp")),
+                    );
+                },
+                BareKey::Char('0') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
+                    rebind_keys(
+                        "
+                        keybinds {
+                            locked {
+                                bind \"a\" { NewTab; }
+                            }
+                        }
+                    "
+                        .to_owned(),
                     );
                 },
                 _ => {},
