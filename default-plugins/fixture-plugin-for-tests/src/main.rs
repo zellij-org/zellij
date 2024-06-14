@@ -320,13 +320,16 @@ impl ZellijPlugin for State {
                     );
                 },
                 BareKey::Char('0') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
-                    rebind_keys("
+                    rebind_keys(
+                        "
                         keybinds {
                             locked {
                                 bind \"a\" { NewTab; }
                             }
                         }
-                    ".to_owned());
+                    "
+                        .to_owned(),
+                    );
                 },
                 _ => {},
             },

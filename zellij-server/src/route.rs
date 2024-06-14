@@ -102,10 +102,7 @@ pub(crate) fn route_action(
                 )]))
                 .with_context(err_context)?;
             senders
-                .send_to_server(ServerInstruction::ChangeMode(
-                    client_id,
-                    mode,
-                ))
+                .send_to_server(ServerInstruction::ChangeMode(client_id, mode))
                 .with_context(err_context)?;
             senders
                 .send_to_screen(ScreenInstruction::ChangeMode(
@@ -1003,12 +1000,14 @@ pub(crate) fn route_thread_main(
                             if let Some(rlocked_sessions) = rlocked_sessions.as_ref() {
                                 match rlocked_sessions.get_client_keybinds_and_mode(&client_id) {
                                     Some((keybinds, input_mode)) => {
-                                        for action in keybinds.get_actions_for_key_in_mode_or_default_action(
-                                            &input_mode,
-                                            &key,
-                                            raw_bytes,
-                                            is_kitty_keyboard_protocol,
-                                        ) {
+                                        for action in keybinds
+                                            .get_actions_for_key_in_mode_or_default_action(
+                                                &input_mode,
+                                                &key,
+                                                raw_bytes,
+                                                is_kitty_keyboard_protocol,
+                                            )
+                                        {
                                             if route_action(
                                                 action,
                                                 client_id,
@@ -1026,10 +1025,10 @@ pub(crate) fn route_thread_main(
                                     },
                                     None => {
                                         log::error!("Failed to get keybindings for client");
-                                    }
+                                    },
                                 }
                             }
-                        }
+                        },
                         ClientToServerMsg::Action(action, maybe_pane_id, maybe_client_id) => {
                             let client_id = maybe_client_id.unwrap_or(client_id);
                             if let Some(rlocked_sessions) = rlocked_sessions.as_ref() {

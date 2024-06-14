@@ -13,8 +13,8 @@ use zellij_utils::data::{
 };
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
-use zellij_utils::input::options::Clipboard;
 use zellij_utils::input::keybinds::Keybinds;
+use zellij_utils::input::options::Clipboard;
 use zellij_utils::pane_size::{Size, SizeInPixels};
 use zellij_utils::{
     consts::{session_info_folder_for_session, ZELLIJ_SOCK_DIR},
@@ -2153,7 +2153,10 @@ impl Screen {
     }
     pub fn rebind_keys(&mut self, new_keybinds: Keybinds, client_id: ClientId) -> Result<()> {
         if self.connected_clients_contains(&client_id) {
-            let mode_info = self.mode_info.entry(client_id).or_insert_with(|| self.default_mode_info.clone()) ;
+            let mode_info = self
+                .mode_info
+                .entry(client_id)
+                .or_insert_with(|| self.default_mode_info.clone());
             mode_info.update_keybinds(new_keybinds);
             for tab in self.tabs.values_mut() {
                 tab.change_mode_info(mode_info.clone(), client_id);
@@ -4026,7 +4029,7 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::RebindKeys(new_keybinds, client_id) => {
                 screen.rebind_keys(new_keybinds, client_id).non_fatal();
-            }
+            },
         }
     }
     Ok(())

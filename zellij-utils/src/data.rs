@@ -1,7 +1,7 @@
 use crate::input::actions::Action;
 use crate::input::config::ConversionError;
-use crate::input::layout::SplitSize;
 use crate::input::keybinds::Keybinds;
+use crate::input::layout::SplitSize;
 use clap::ArgEnum;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
@@ -936,9 +936,7 @@ impl PermissionType {
             PermissionType::MessageAndLaunchOtherPlugins => {
                 "Send messages to and launch other plugins".to_owned()
             },
-            PermissionType::RebindKeys => {
-                "Rebind keys".to_owned()
-            }
+            PermissionType::RebindKeys => "Rebind keys".to_owned(),
         }
     }
 }

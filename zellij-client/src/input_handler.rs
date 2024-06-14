@@ -179,8 +179,11 @@ impl InputHandler {
     ) {
         // we interpret the keys into actions on the server side so that we can change the
         // keybinds at runtime
-        self.os_input
-            .send_to_server(ClientToServerMsg::Key(key.clone(), raw_bytes, is_kitty_keyboard_protocol));
+        self.os_input.send_to_server(ClientToServerMsg::Key(
+            key.clone(),
+            raw_bytes,
+            is_kitty_keyboard_protocol,
+        ));
     }
     fn handle_stdin_ansi_instruction(&mut self, ansi_stdin_instructions: AnsiStdinInstruction) {
         match ansi_stdin_instructions {

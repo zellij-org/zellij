@@ -2477,17 +2477,15 @@ pub fn send_cli_switch_mode_action() {
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![server_instruction, screen_thread]);
 
-    let switch_mode_action =
-        received_server_instructions
-            .lock()
-            .unwrap()
-            .iter()
-            .find(|instruction| match instruction {
-                ServerInstruction::ChangeModeForAllClients(..) => true,
-                _ => false,
-            }).cloned();
-
-
+    let switch_mode_action = received_server_instructions
+        .lock()
+        .unwrap()
+        .iter()
+        .find(|instruction| match instruction {
+            ServerInstruction::ChangeModeForAllClients(..) => true,
+            _ => false,
+        })
+        .cloned();
 
     assert_snapshot!(format!("{:?}", switch_mode_action));
 }

@@ -42,16 +42,16 @@ use zellij_utils::{
     channels::{self, ChannelWithContext, SenderWithContext},
     cli::CliArgs,
     consts::{DEFAULT_SCROLL_BUFFER_SIZE, SCROLL_BUFFER_SIZE},
-    data::{ConnectToSession, Event, PluginCapabilities, InputMode},
+    data::{ConnectToSession, Event, InputMode, PluginCapabilities},
     errors::{prelude::*, ContextType, ErrorInstruction, FatalError, ServerContext},
     home::{default_layout_dir, get_default_data_dir},
     input::{
         command::{RunCommand, TerminalAction},
         get_mode_info,
+        keybinds::Keybinds,
         layout::Layout,
         options::Options,
         plugins::PluginAliases,
-        keybinds::Keybinds,
     },
     ipc::{ClientAttributes, ExitReason, ServerToClientMsg},
 };
@@ -125,9 +125,7 @@ impl From<&ServerInstruction> for ServerContext {
             ServerInstruction::DisconnectAllClientsExcept(..) => {
                 ServerContext::DisconnectAllClientsExcept
             },
-            ServerInstruction::ChangeMode(..) => {
-                ServerContext::ChangeMode
-            },
+            ServerInstruction::ChangeMode(..) => ServerContext::ChangeMode,
             ServerInstruction::ChangeModeForAllClients(..) => {
                 ServerContext::ChangeModeForAllClients
             },
@@ -161,14 +159,23 @@ pub(crate) struct SessionMetaData {
 impl SessionMetaData {
     pub fn set_client_keybinds(&mut self, client_id: ClientId, keybinds: Keybinds) {
         self.client_keybinds.insert(client_id, keybinds);
-        self.client_input_modes.insert(client_id, self.config_options.default_mode.unwrap_or_default());
+        self.client_input_modes.insert(
+            client_id,
+            self.config_options.default_mode.unwrap_or_default(),
+        );
     }
-    pub fn get_client_keybinds_and_mode(&self, client_id: &ClientId) -> Option<(&Keybinds, &InputMode)> {
-        match (self.client_keybinds.get(client_id), self.client_input_modes.get(client_id)) {
+    pub fn get_client_keybinds_and_mode(
+        &self,
+        client_id: &ClientId,
+    ) -> Option<(&Keybinds, &InputMode)> {
+        match (
+            self.client_keybinds.get(client_id),
+            self.client_input_modes.get(client_id),
+        ) {
             (Some(client_keybinds), Some(client_input_mode)) => {
                 Some((client_keybinds, client_input_mode))
             },
-            _ => None
+            _ => None,
         }
     }
     pub fn change_mode_for_all_clients(&mut self, input_mode: InputMode) {
@@ -176,18 +183,21 @@ impl SessionMetaData {
         for client_id in all_clients {
             self.client_input_modes.insert(client_id, input_mode);
         }
-
     }
     pub fn rebind_keys(&mut self, client_id: ClientId, new_keybinds: String) -> Option<Keybinds> {
         if let Some(current_keybinds) = self.client_keybinds.get_mut(&client_id) {
-            match Keybinds::from_string(new_keybinds, current_keybinds.clone(), &self.config_options) {
+            match Keybinds::from_string(
+                new_keybinds,
+                current_keybinds.clone(),
+                &self.config_options,
+            ) {
                 Ok(new_keybinds) => {
                     *current_keybinds = new_keybinds.clone();
                     return Some(new_keybinds);
                 },
                 Err(e) => {
                     log::error!("Failed to parse keybindings: {}", e);
-                }
+                },
             }
         } else {
             log::error!("Failed to bind keys for client: {client_id}");
@@ -528,8 +538,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
             ) => {
                 let mut rlock = session_data.write().unwrap();
                 let session_data = rlock.as_mut().unwrap();
-                session_data
-                    .set_client_keybinds(client_id, attrs.keybinds.clone());
+                session_data.set_client_keybinds(client_id, attrs.keybinds.clone());
                 session_state
                     .write()
                     .unwrap()
@@ -897,7 +906,13 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .change_mode_for_all_clients(input_mode);
             },
             ServerInstruction::RebindKeys(client_id, new_keybinds) => {
-                let new_keybinds = session_data.write().unwrap().as_mut().unwrap().rebind_keys(client_id, new_keybinds).clone();
+                let new_keybinds = session_data
+                    .write()
+                    .unwrap()
+                    .as_mut()
+                    .unwrap()
+                    .rebind_keys(client_id, new_keybinds)
+                    .clone();
                 if let Some(new_keybinds) = new_keybinds {
                     session_data
                         .write()
@@ -908,7 +923,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                         .send_to_screen(ScreenInstruction::RebindKeys(new_keybinds, client_id))
                         .unwrap();
                 }
-            }
+            },
         }
     }
 

@@ -1426,12 +1426,10 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     )),
                 })
             },
-            PluginCommand::RebindKeys(rebind_keys_payload) => {
-                Ok(ProtobufPluginCommand {
-                    name: CommandName::RebindKeys as i32,
-                    payload: Some(Payload::RebindKeysPayload(rebind_keys_payload)),
-                })
-            },
+            PluginCommand::RebindKeys(rebind_keys_payload) => Ok(ProtobufPluginCommand {
+                name: CommandName::RebindKeys as i32,
+                payload: Some(Payload::RebindKeysPayload(rebind_keys_payload)),
+            }),
         }
     }
 }

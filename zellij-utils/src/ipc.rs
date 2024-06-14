@@ -1,7 +1,7 @@
 //! IPC stuff for starting to split things into a client and server model.
 use crate::{
     cli::CliArgs,
-    data::{ClientId, ConnectToSession, Style, KeyWithModifier},
+    data::{ClientId, ConnectToSession, KeyWithModifier, Style},
     errors::{get_current_ctx, prelude::*, ErrorContext},
     input::keybinds::Keybinds,
     input::{actions::Action, layout::Layout, options::Options, plugins::PluginAliases},
@@ -85,7 +85,7 @@ pub enum ClientToServerMsg {
         Option<(u32, bool)>, // (pane_id, is_plugin) => pane id to focus
     ),
     Action(Action, Option<u32>, Option<ClientId>), // u32 is the terminal id
-    Key(KeyWithModifier, Vec<u8>, bool), // key, raw_bytes, is_kitty_keyboard_protocol
+    Key(KeyWithModifier, Vec<u8>, bool),           // key, raw_bytes, is_kitty_keyboard_protocol
     ClientExited,
     KillSession,
     ConnStatus,

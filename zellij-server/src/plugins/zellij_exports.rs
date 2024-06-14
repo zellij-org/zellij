@@ -848,10 +848,7 @@ fn rebind_keys(env: &ForeignFunctionEnv, new_keybinds: String) -> Result<()> {
     let client_id = env.plugin_env.client_id;
     env.plugin_env
         .senders
-        .send_to_server(ServerInstruction::RebindKeys(
-            client_id,
-            new_keybinds,
-        ))
+        .send_to_server(ServerInstruction::RebindKeys(client_id, new_keybinds))
         .with_context(err_context)?;
     Ok(())
 }
