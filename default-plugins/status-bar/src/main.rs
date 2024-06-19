@@ -246,7 +246,6 @@ impl ZellijPlugin for State {
 
         let active_tab = self.tabs.iter().find(|t| t.active);
         let first_line = first_line(&self.mode_info, active_tab, cols, separator);
-        let second_line = self.second_line(cols);
 
         let background = match self.mode_info.style.colors.theme_hue {
             ThemeHue::Dark => self.mode_info.style.colors.black,
@@ -257,31 +256,11 @@ impl ZellijPlugin for State {
         // [m is background reset, [0K is so that it clears the rest of the line
         match background {
             PaletteColor::Rgb((r, g, b)) => {
-                if rows > 1 {
-                    println!("{}\u{1b}[48;2;{};{};{}m\u{1b}[0K", first_line, r, g, b);
-                } else {
-                    if self.mode_info.mode == InputMode::Normal {
-                        print!("{}\u{1b}[48;2;{};{};{}m\u{1b}[0K", first_line, r, g, b);
-                    } else {
-                        print!("\u{1b}[m{}\u{1b}[0K", second_line);
-                    }
-                }
+                print!("{}\u{1b}[48;2;{};{};{}m\u{1b}[0K", first_line, r, g, b);
             },
             PaletteColor::EightBit(color) => {
-                if rows > 1 {
-                    println!("{}\u{1b}[48;5;{}m\u{1b}[0K", first_line, color);
-                } else {
-                    if self.mode_info.mode == InputMode::Normal {
-                        print!("{}\u{1b}[48;5;{}m\u{1b}[0K", first_line, color);
-                    } else {
-                        print!("\u{1b}[m{}\u{1b}[0K", second_line);
-                    }
-                }
+                print!("{}\u{1b}[48;5;{}m\u{1b}[0K", first_line, color);
             },
-        }
-
-        if rows > 1 {
-            print!("\u{1b}[m{}\u{1b}[0K", second_line);
         }
     }
 }
@@ -366,6 +345,49 @@ pub fn action_key(
         .collect::<Vec<KeyWithModifier>>()
 }
 
+pub fn single_action_key(
+    keymap: &[(KeyWithModifier, Vec<Action>)],
+    action: &[Action],
+) -> Vec<KeyWithModifier> {
+    let mut matching = keymap
+        .iter()
+        .find_map(|(key, acvec)| {
+            if acvec.iter().next() == action.iter().next() {
+                Some(key.clone())
+            } else {
+                None
+            }
+        });
+    if let Some(matching) = matching.take() {
+        vec![matching]
+    } else {
+        vec![]
+    }
+}
+
+pub fn session_manager_key(
+    keymap: &[(KeyWithModifier, Vec<Action>)],
+) -> Vec<KeyWithModifier> {
+    let mut matching = keymap
+        .iter()
+        .find_map(|(key, acvec)| {
+            let has_match = acvec
+                .iter()
+                .find(|a| a.launches_plugin("session-manager"))
+                .is_some();
+            if has_match {
+                Some(key.clone())
+            } else {
+                None
+            }
+        });
+    if let Some(matching) = matching.take() {
+        vec![matching]
+    } else {
+        vec![]
+    }
+}
+
 /// Get multiple keys for multiple actions.
 ///
 /// An extension of [`action_key`] that iterates over all action tuples and collects the results.
@@ -445,7 +467,8 @@ pub fn style_key_with_modifier(
     ret.push(painted_modifier);
 
     // Prints key group start
-    let group_start_str = if no_common_modifier { "<" } else { " + <" };
+    // let group_start_str = if no_common_modifier { "<" } else { " + <" };
+    let group_start_str = if no_common_modifier { " " } else { " + " };
     if let Some(background) = background {
         let background = palette_match!(background);
         ret.push(
@@ -521,7 +544,8 @@ pub fn style_key_with_modifier(
         }
     }
 
-    let group_end_str = ">";
+    // let group_end_str = ">";
+    let group_end_str = " ";
     if let Some(background) = background {
         let background = palette_match!(background);
         ret.push(

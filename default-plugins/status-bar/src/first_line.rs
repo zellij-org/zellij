@@ -1,21 +1,25 @@
 use ansi_term::{unstyled_len, ANSIStrings};
 use zellij_tile::prelude::actions::Action;
 use zellij_tile::prelude::*;
+use zellij_tile_utils::style;
 
 use crate::color_elements;
 use crate::{
     action_key, action_key_group, get_common_modifiers, style_key_with_modifier, TO_NORMAL,
+    second_line::keybinds,
 };
 use crate::{ColoredElements, LinePart};
 
+#[derive(Debug)]
 struct KeyShortcut {
     mode: KeyMode,
     action: KeyAction,
     key: Option<KeyWithModifier>,
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Debug)]
 enum KeyAction {
+    Normal,
     Lock,
     Pane,
     Tab,
@@ -27,6 +31,24 @@ enum KeyAction {
     Tmux,
 }
 
+impl From<InputMode> for KeyAction {
+    fn from(input_mode: InputMode) -> Self {
+        match input_mode {
+            InputMode::Normal => KeyAction::Normal,
+            InputMode::Locked => KeyAction::Lock,
+            InputMode::Pane => KeyAction::Pane,
+            InputMode::Tab => KeyAction::Tab,
+            InputMode::Resize => KeyAction::Resize,
+            InputMode::Search => KeyAction::Search,
+            InputMode::Session => KeyAction::Session,
+            InputMode::Move => KeyAction::Move,
+            InputMode::Tmux => KeyAction::Tmux,
+            _ => KeyAction::Normal, // TODO: NO!!
+        }
+    }
+}
+
+#[derive(Debug)]
 enum KeyMode {
     Unselected,
     UnselectedAlternate,
@@ -41,6 +63,7 @@ impl KeyShortcut {
 
     pub fn full_text(&self) -> String {
         match self.action {
+            KeyAction::Normal => String::from("UNLOCK"),
             KeyAction::Lock => String::from("LOCK"),
             KeyAction::Pane => String::from("PANE"),
             KeyAction::Tab => String::from("TAB"),
@@ -269,21 +292,28 @@ fn key_indicators(
     palette: ColoredElements,
     separator: &str,
     mode_info: &ModeInfo,
-) -> LinePart {
+    line_part_to_render: &mut LinePart,
+) {
+    if keys.is_empty() {
+        return;
+    }
     // Print full-width hints
-    let (shared_modifiers, mut line_part) = superkey(palette, separator, mode_info);
+    let shared_modifiers = superkey(palette, separator, mode_info, line_part_to_render);
+    let mut line_part = LinePart::default();
     for key in keys {
-        let line_empty = line_part.len == 0;
+        let line_empty = line_part_to_render.len == 0;
         let key = long_mode_shortcut(key, palette, separator, &shared_modifiers, line_empty);
         line_part.part = format!("{}{}", line_part.part, key.part);
         line_part.len += key.len;
     }
-    if line_part.len < max_len {
-        return line_part;
+    if line_part_to_render.len + line_part.len < max_len {
+        line_part_to_render.part = format!("{}{}", line_part_to_render.part, line_part.part);
+        line_part_to_render.len += line_part.len;
+        return;
     }
 
     // Full-width doesn't fit, try shortened modifiers (eg. "^C" instead of "Ctrl")
-    line_part = superkey(palette, separator, mode_info).1;
+    let mut line_part = LinePart::default();
     for key in keys {
         let line_empty = line_part.len == 0;
         let key =
@@ -291,25 +321,27 @@ fn key_indicators(
         line_part.part = format!("{}{}", line_part.part, key.part);
         line_part.len += key.len;
     }
-    if line_part.len < max_len {
-        return line_part;
+    if line_part_to_render.len + line_part.len < max_len {
+        line_part_to_render.part  = format!("{}{}", line_part_to_render.part, line_part.part);
+        line_part_to_render.len += line_part.len;
+        return;
     }
 
     // Full-width doesn't fit, try shortened hints (just keybindings, no meanings/actions)
-    line_part = superkey(palette, separator, mode_info).1;
+    let mut line_part = LinePart::default();
     for key in keys {
         let line_empty = line_part.len == 0;
         let key = short_mode_shortcut(key, palette, separator, &shared_modifiers, line_empty);
         line_part.part = format!("{}{}", line_part.part, key.part);
         line_part.len += key.len;
     }
-    if line_part.len < max_len {
-        return line_part;
+    if line_part_to_render.len + line_part.len < max_len {
+        line_part_to_render.part  = format!("{}{}", line_part_to_render.part, line_part.part);
+        line_part_to_render.len += line_part.len;
+        return;
     }
 
-    // Shortened doesn't fit, print nothing
-    line_part = LinePart::default();
-    line_part
+    // nothing fits, print nothing
 }
 
 fn swap_layout_keycode(mode_info: &ModeInfo, palette: &Palette) -> LinePart {
@@ -474,11 +506,12 @@ pub fn superkey(
     palette: ColoredElements,
     separator: &str,
     mode_info: &ModeInfo,
-) -> (Vec<KeyModifier>, LinePart) {
+    line_part_to_render: &mut LinePart,
+) -> Vec<KeyModifier> {
     // Find a common modifier if any
     let common_modifiers = get_common_modifiers(mode_switch_keys(mode_info).iter().collect());
     if common_modifiers.is_empty() {
-        return (common_modifiers, LinePart::default());
+        return common_modifiers;
     }
 
     let prefix_text = if mode_info.capabilities.arrow_fonts {
@@ -504,13 +537,9 @@ pub fn superkey(
 
     let prefix = palette.superkey_prefix.paint(&prefix_text);
     let suffix_separator = palette.superkey_suffix_separator.paint(separator);
-    (
-        common_modifiers,
-        LinePart {
-            part: ANSIStrings(&[prefix, suffix_separator]).to_string(),
-            len: prefix_text.chars().count() + separator.chars().count(),
-        },
-    )
+    line_part_to_render.part = format!("{}{}", line_part_to_render.part, ANSIStrings(&[prefix, suffix_separator]).to_string());
+    line_part_to_render.len += prefix_text.chars().count() + separator.chars().count();
+    common_modifiers
 }
 
 pub fn to_char(kv: Vec<KeyWithModifier>) -> Option<KeyWithModifier> {
@@ -572,118 +601,164 @@ fn get_key_shortcut_for_mode<'a>(
     None
 }
 
+fn render_mode_key_indicators(help: &ModeInfo, max_len: usize, separator: &str, line_part_to_render: &mut LinePart) {
+    // TODO:
+    // * if the mode is Normal: Ctrl g > LOCK > Ctrl + > <p> PANE, etc.
+    // * if the mode is Locked: Ctrl g > LOCK (selected)
+    // * if the mode is (eg.) Pane: ESC > PANE (selected), shortcuts
+    let supports_arrow_fonts = !help.capabilities.arrow_fonts;
+    let colored_elements = color_elements(help.style.colors, !supports_arrow_fonts);
+    let binds = &help.get_mode_keybinds();
+
+    let mut default_keys = if help.mode == InputMode::Normal {
+        vec![
+            KeyShortcut::new(
+                KeyMode::Unselected,
+                KeyAction::Lock,
+                to_char(action_key(
+                    binds,
+                    &[Action::SwitchToMode(InputMode::Locked)],
+                )),
+            ),
+            KeyShortcut::new(
+                KeyMode::UnselectedAlternate,
+                KeyAction::Pane,
+                to_char(action_key(binds, &[Action::SwitchToMode(InputMode::Pane)])),
+            ),
+            KeyShortcut::new(
+                KeyMode::Unselected,
+                KeyAction::Tab,
+                to_char(action_key(binds, &[Action::SwitchToMode(InputMode::Tab)])),
+            ),
+            KeyShortcut::new(
+                KeyMode::UnselectedAlternate,
+                KeyAction::Resize,
+                to_char(action_key(
+                    binds,
+                    &[Action::SwitchToMode(InputMode::Resize)],
+                )),
+            ),
+            KeyShortcut::new(
+                KeyMode::Unselected,
+                KeyAction::Move,
+                to_char(action_key(binds, &[Action::SwitchToMode(InputMode::Move)])),
+            ),
+            KeyShortcut::new(
+                KeyMode::UnselectedAlternate,
+                KeyAction::Search,
+                to_char(action_key(
+                    binds,
+                    &[Action::SwitchToMode(InputMode::Scroll)],
+                )),
+            ),
+            KeyShortcut::new(
+                KeyMode::Unselected,
+                KeyAction::Session,
+                to_char(action_key(
+                    binds,
+                    &[Action::SwitchToMode(InputMode::Session)],
+                )),
+            ),
+            KeyShortcut::new(
+                KeyMode::UnselectedAlternate,
+                KeyAction::Quit,
+                to_char(action_key(binds, &[Action::Quit])),
+            ),
+        ]
+    } else if help.mode == InputMode::Locked {
+        vec![
+            KeyShortcut::new(
+                KeyMode::Unselected,
+                KeyAction::Normal,
+                to_char(action_key(binds, &[TO_NORMAL])),
+            )
+        ]
+    } else {
+        vec![]
+    };
+    key_indicators(max_len, &default_keys, colored_elements, separator, help, line_part_to_render);
+}
+
+fn render_swap_layout_indicator(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usize, separator: &str, key_indicators: &mut LinePart) {
+    if let Some(tab_info) = tab_info {
+        let supports_arrow_fonts = !help.capabilities.arrow_fonts;
+        let colored_elements = color_elements(help.style.colors, !supports_arrow_fonts);
+        let mut remaining_space = max_len - key_indicators.len;
+        if let Some(swap_layout_status) = swap_layout_status(
+            remaining_space,
+            &tab_info.active_swap_layout_name,
+            tab_info.is_swap_layout_dirty,
+            help,
+            colored_elements,
+            &help.style.colors,
+            separator,
+        ) {
+            remaining_space -= swap_layout_status.len;
+            for _ in 0..remaining_space {
+                key_indicators.part.push_str(
+                    &ANSIStrings(&[colored_elements.superkey_prefix.paint(" ")]).to_string(),
+                );
+                key_indicators.len += 1;
+            }
+            key_indicators.append(&swap_layout_status);
+        }
+    }
+}
+
+fn render_current_mode(help: &ModeInfo, max_len: usize, line_part: &mut LinePart) {
+    let palette = help.style.colors;
+    let mode = help.mode;
+    let mode_text = format!(" {:^7} ", format!("{:?}", mode)).to_uppercase();
+
+    let bg_color = match palette.theme_hue {
+        ThemeHue::Dark => palette.black,
+        ThemeHue::Light => palette.white,
+    };
+
+    let locked_mode_color = palette.magenta;
+    let normal_mode_color = palette.green;
+    let other_modes_color = palette.orange;
+
+    let mode_part_styled_text = if mode == InputMode::Locked {
+        style!(locked_mode_color, bg_color)
+            .bold()
+            .paint(&mode_text)
+    } else if mode == InputMode::Normal {
+        style!(normal_mode_color, bg_color)
+            .bold()
+            .paint(&mode_text)
+    } else {
+        style!(other_modes_color, bg_color)
+            .bold()
+            .paint(&mode_text)
+    };
+    let mode_text_len = mode_text.chars().count();
+
+    if mode_text_len <= max_len {
+        line_part.len += mode_text.chars().count();
+        line_part.part = format!("{}{}", line_part.part, mode_part_styled_text);
+    }
+}
+
 pub fn first_line(
     help: &ModeInfo,
     tab_info: Option<&TabInfo>,
     max_len: usize,
     separator: &str,
 ) -> LinePart {
-    let supports_arrow_fonts = !help.capabilities.arrow_fonts;
-    let colored_elements = color_elements(help.style.colors, !supports_arrow_fonts);
-    let binds = &help.get_mode_keybinds();
-    // Unselect all by default
-    let mut default_keys = vec![
-        KeyShortcut::new(
-            KeyMode::Unselected,
-            KeyAction::Lock,
-            to_char(action_key(
-                binds,
-                &[Action::SwitchToMode(InputMode::Locked)],
-            )),
-        ),
-        KeyShortcut::new(
-            KeyMode::UnselectedAlternate,
-            KeyAction::Pane,
-            to_char(action_key(binds, &[Action::SwitchToMode(InputMode::Pane)])),
-        ),
-        KeyShortcut::new(
-            KeyMode::Unselected,
-            KeyAction::Tab,
-            to_char(action_key(binds, &[Action::SwitchToMode(InputMode::Tab)])),
-        ),
-        KeyShortcut::new(
-            KeyMode::UnselectedAlternate,
-            KeyAction::Resize,
-            to_char(action_key(
-                binds,
-                &[Action::SwitchToMode(InputMode::Resize)],
-            )),
-        ),
-        KeyShortcut::new(
-            KeyMode::Unselected,
-            KeyAction::Move,
-            to_char(action_key(binds, &[Action::SwitchToMode(InputMode::Move)])),
-        ),
-        KeyShortcut::new(
-            KeyMode::UnselectedAlternate,
-            KeyAction::Search,
-            to_char(action_key(
-                binds,
-                &[Action::SwitchToMode(InputMode::Scroll)],
-            )),
-        ),
-        KeyShortcut::new(
-            KeyMode::Unselected,
-            KeyAction::Session,
-            to_char(action_key(
-                binds,
-                &[Action::SwitchToMode(InputMode::Session)],
-            )),
-        ),
-        KeyShortcut::new(
-            KeyMode::UnselectedAlternate,
-            KeyAction::Quit,
-            to_char(action_key(binds, &[Action::Quit])),
-        ),
-    ];
-
-    if let Some(key_shortcut) = get_key_shortcut_for_mode(&mut default_keys, &help.mode) {
-        key_shortcut.mode = KeyMode::Selected;
-        key_shortcut.key = to_char(action_key(binds, &[TO_NORMAL]));
+    // TODO: decrement max_len as we go, there are probably errors here
+    let mut line_part_to_render = LinePart::default();
+    // render_current_mode(help, max_len, &mut line_part_to_render);
+    render_mode_key_indicators(help, max_len, separator, &mut line_part_to_render);
+    let secondary_info = keybinds(help, "quicknav", max_len.saturating_sub(line_part_to_render.len));
+    if line_part_to_render.len + secondary_info.len <= max_len {
+        line_part_to_render.part = format!("{}{}", line_part_to_render.part, secondary_info.part);
+        line_part_to_render.len += secondary_info.len;
     }
-
-    // In locked mode we must disable all other mode keybindings
-    if help.mode == InputMode::Locked {
-        for key in default_keys.iter_mut().skip(1) {
-            key.mode = KeyMode::Disabled;
-        }
+    if line_part_to_render.len < max_len {
+        render_swap_layout_indicator(help, tab_info, max_len, separator, &mut line_part_to_render);
     }
-
-    if help.mode == InputMode::Tmux {
-        // Tmux tile is hidden by default
-        default_keys.push(KeyShortcut::new(
-            KeyMode::Selected,
-            KeyAction::Tmux,
-            to_char(action_key(binds, &[TO_NORMAL])),
-        ));
-    }
-
-    let mut key_indicators =
-        key_indicators(max_len, &default_keys, colored_elements, separator, help);
-    if key_indicators.len < max_len {
-        if let Some(tab_info) = tab_info {
-            let mut remaining_space = max_len - key_indicators.len;
-            if let Some(swap_layout_status) = swap_layout_status(
-                remaining_space,
-                &tab_info.active_swap_layout_name,
-                tab_info.is_swap_layout_dirty,
-                help,
-                colored_elements,
-                &help.style.colors,
-                separator,
-            ) {
-                remaining_space -= swap_layout_status.len;
-                for _ in 0..remaining_space {
-                    key_indicators.part.push_str(
-                        &ANSIStrings(&[colored_elements.superkey_prefix.paint(" ")]).to_string(),
-                    );
-                    key_indicators.len += 1;
-                }
-                key_indicators.append(&swap_layout_status);
-            }
-        }
-    }
-    key_indicators
+    line_part_to_render
 }
 
 #[cfg(test)]
