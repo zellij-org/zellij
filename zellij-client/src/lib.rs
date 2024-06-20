@@ -182,6 +182,7 @@ pub fn start_client(
     let take_snapshot = "\u{1b}[?1049h";
     let bracketed_paste = "\u{1b}[?2004h";
     let enter_kitty_keyboard_mode = "\u{1b}[>1u";
+    let simple_ui = config_options.simplified_ui.unwrap_or_default();
     os_input.unset_raw_mode(0).unwrap();
 
     if !is_a_reconnect {
@@ -425,10 +426,12 @@ pub fn start_client(
     };
 
     let mut stdout = os_input.get_stdout_writer();
-    stdout
-        .write_all("\u{1b}[1m\u{1b}[HLoading Zellij\u{1b}[m\n\r".as_bytes())
-        .expect("cannot write to stdout");
-    stdout.flush().expect("could not flush");
+    if !simple_ui {
+        stdout
+            .write_all("\u{1b}[1m\u{1b}[HLoading Zellij\u{1b}[m\n\r".as_bytes())
+            .expect("cannot write to stdout");
+        stdout.flush().expect("could not flush");
+    }
 
     loop {
         let (client_instruction, mut err_ctx) = if !loading && !pending_instructions.is_empty() {
@@ -444,17 +447,19 @@ pub fn start_client(
         if loading {
             // when the app is still loading, we buffer instructions and show a loading screen
             match client_instruction {
-                ClientInstruction::StartedParsingStdinQuery => {
+                ClientInstruction::StartedParsingStdinQuery if !simple_ui => {
                     stdout
                         .write_all("Querying terminal emulator for \u{1b}[32;1mdefault colors\u{1b}[m and \u{1b}[32;1mpixel/cell\u{1b}[m ratio...".as_bytes())
                         .expect("cannot write to stdout");
                     stdout.flush().expect("could not flush");
                 },
                 ClientInstruction::DoneParsingStdinQuery => {
-                    stdout
-                        .write_all("done".as_bytes())
-                        .expect("cannot write to stdout");
-                    stdout.flush().expect("could not flush");
+                    if !simple_ui {
+                        stdout
+                            .write_all("done".as_bytes())
+                            .expect("cannot write to stdout");
+                        stdout.flush().expect("could not flush");
+                    }
                     loading = false;
                 },
                 instruction => {
@@ -473,7 +478,11 @@ pub fn start_client(
                 if let ExitReason::Error(_) = reason {
                     handle_error(reason.to_string());
                 }
-                exit_msg = reason.to_string();
+                exit_msg = if !simple_ui {
+                    reason.to_string()
+                } else {
+                    "".to_string()
+                };
                 break;
             },
             ClientInstruction::Error(backtrace) => {
