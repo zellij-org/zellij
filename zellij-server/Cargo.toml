@@ -19,7 +19,6 @@ daemonize = "0.5"
 serde_json = "1.0"
 unicode-width = "0.1.8"
 url = "2.2.2"
-wasmtime = "20.0.2"
 wasmtime-wasi = "20.0.2"
 cassowary = "0.3.0"
 zellij-utils = { path = "../zellij-utils/", version = "0.41.0" }
@@ -33,6 +32,21 @@ sixel-image = "0.1.0"
 arrayvec = "0.7.2"
 uuid = { version = "1.4.1", features = ["serde", "v4"] }
 semver = "0.11.0"
+
+[dependencies.wasmtime]
+version = "20.0.2"
+default-features = false
+features = [
+  'async',
+  'cache',
+  'parallel-compilation',
+  'cranelift',
+  'demangle',
+  'addr2line',
+  'debug-builtins',
+  'runtime',
+  'component-model',
+]
 
 [dev-dependencies]
 insta = "1.6.0"
