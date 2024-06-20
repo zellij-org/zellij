@@ -834,12 +834,15 @@ pub(crate) fn route_thread_main(
         match receiver.recv() {
             Some((instruction, err_ctx)) => {
                 err_ctx.update_thread_ctx();
+                log::debug!("Received message {}", instruction);
                 let rlocked_sessions = session_data.read().to_anyhow().with_context(err_context)?;
+                log::debug!("Session obtained");
                 let handle_instruction = |instruction: ClientToServerMsg,
                                           mut retry_queue: Option<
                     &mut VecDeque<ClientToServerMsg>,
                 >|
                  -> Result<bool> {
+                    log::debug!("Processing message {}", instruction);
                     let mut should_break = false;
                     match instruction {
                         ClientToServerMsg::Action(action, maybe_pane_id, maybe_client_id) => {
@@ -876,22 +879,23 @@ pub(crate) fn route_thread_main(
                                 .to_anyhow()
                                 .with_context(err_context)?
                                 .set_client_size(client_id, new_size);
-                            session_state
-                                .read()
-                                .to_anyhow()
-                                .and_then(|state| {
-                                    state.min_client_terminal_size().ok_or(anyhow!(
-                                        "failed to determine minimal client terminal size"
-                                    ))
-                                })
-                                .and_then(|min_size| {
-                                    rlocked_sessions
-                                        .as_ref()
-                                        .context("couldn't get reference to read-locked session")?
-                                        .senders
-                                        .send_to_screen(ScreenInstruction::TerminalResize(min_size))
-                                })
-                                .with_context(err_context)?;
+
+                            if let Some(rlocked_sessions) = rlocked_sessions.as_ref() {
+                                session_state
+                                    .read()
+                                    .to_anyhow()
+                                    .and_then(|state| {
+                                        state.min_client_terminal_size().ok_or(anyhow!(
+                                            "failed to determine minimal client terminal size"
+                                        ))
+                                    })
+                                    .and_then(|min_size| {
+                                        rlocked_sessions
+                                            .senders
+                                            .send_to_screen(ScreenInstruction::TerminalResize(min_size))
+                                    })
+                                    .with_context(err_context)?;
+                            }
                         },
                         ClientToServerMsg::TerminalPixelDimensions(pixel_dimensions) => {
                             send_to_screen_or_retry_queue!(
@@ -1007,7 +1011,9 @@ pub(crate) fn route_thread_main(
                 }
             },
             None => {
-                log::error!("Received empty message from client, logging client out.");
+                log::error!(
+                    "Error receiving Message from client, logging client out."
+                );
                 let _ = os_input.send_to_client(
                     client_id,
                     ServerToClientMsg::Exit(ExitReason::Error(
@@ -1019,5 +1025,6 @@ pub(crate) fn route_thread_main(
             },
         }
     }
+    log::info!("Terminating server_router");
     Ok(())
 }

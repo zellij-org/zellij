@@ -1,4 +1,5 @@
 use crate::background_jobs::BackgroundJob;
+#[cfg(windows)]
 use crate::os_input_output::WinPtyReference;
 use crate::terminal_bytes::TerminalBytes;
 use crate::{
@@ -117,6 +118,45 @@ impl From<&PtyInstruction> for PtyContext {
             PtyInstruction::LogLayoutToHd(..) => PtyContext::LogLayoutToHd,
             PtyInstruction::FillPluginCwd(..) => PtyContext::FillPluginCwd,
             PtyInstruction::Exit => PtyContext::Exit,
+        }
+    }
+}
+
+impl std::fmt::Display for PtyInstruction {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PtyInstruction::SpawnTerminal(_, _, _, _) => write!(f, "PtyInstruction::SpawnTerminal"),
+            PtyInstruction::OpenInPlaceEditor(_, _, _) => {
+                write!(f, "PtyInstruction::OpenInPlaceEditor")
+            },
+            PtyInstruction::SpawnTerminalVertically(_, _, _) => {
+                write!(f, "PtyInstruction::SpawnTerminalVertically")
+            },
+            PtyInstruction::SpawnTerminalHorizontally(_, _, _) => {
+                write!(f, "PtyInstruction::SpawnTerminalHorizontally")
+            },
+            PtyInstruction::UpdateActivePane(_, _) => write!(f, "PtyInstruction::UpdateActivePane"),
+            PtyInstruction::GoToTab(_, _) => write!(f, "PtyInstruction::GoToTab"),
+            PtyInstruction::NewTab(_, _, _, _, _, _, _) => write!(f, "PtyInstruction::NewTab"),
+            PtyInstruction::ClosePane(_) => write!(f, "PtyInstruction::ClosePane"),
+            PtyInstruction::CloseTab(_) => write!(f, "PtyInstruction::CloseTab"),
+            PtyInstruction::ReRunCommandInPane(_, _) => {
+                write!(f, "PtyInstruction::ReRunCommandInPane")
+            },
+            PtyInstruction::DropToShellInPane {
+                pane_id,
+                shell,
+                working_dir,
+            } => write!(f, "PtyInstruction::DropToShellInPane"),
+            PtyInstruction::SpawnInPlaceTerminal(_, _, _) => {
+                write!(f, "PtyInstruction::SpawnInPlaceTerminal")
+            },
+            PtyInstruction::DumpLayout(_, _) => write!(f, "PtyInstruction::DumpLayout"),
+            PtyInstruction::LogLayoutToHd(_) => write!(f, "PtyInstruction::LogLayoutToHd"),
+            PtyInstruction::FillPluginCwd(_, _, _, _, _, _, _, _) => {
+                write!(f, "PtyInstruction::FillPluginCwd")
+            },
+            PtyInstruction::Exit => write!(f, "PtyInstruction::Exit"),
         }
     }
 }
@@ -822,10 +862,9 @@ impl Pty {
         if let TerminalAction::RunCommand(run_command) = terminal_action {
             if run_command.cwd.is_none() {
                 run_command.cwd = self.id_to_child_pid.get(pane_id).and_then(|winpty| {
-                    self.bus
-                        .os_input
-                        .as_ref()
-                        .and_then(|input| input.get_cwd(Pid::from(winpty.pty.read().unwrap().get_pid() as usize)))
+                    self.bus.os_input.as_ref().and_then(|input| {
+                        input.get_cwd(Pid::from(winpty.pty.read().unwrap().get_pid() as usize))
+                    })
                 });
             };
         };
@@ -1187,19 +1226,13 @@ impl Pty {
             .iter()
             .filter(|f| !f.already_running)
             .map(|f| f.run.clone());
-        let mut new_pane_pids: Vec<(u32, bool, Option<RunCommand>, Result<u32>)> =
-            vec![]; // (terminal_id,
-                    // starts_held,
-                    // run_command,
-                    // file_descriptor)
-        let mut new_floating_panes_pids: Vec<(
-            u32,
-            bool,
-            Option<RunCommand>,
-            Result<u32>,
-        )> = vec![]; // same
-                     // as
-                     // new_pane_pids
+        let mut new_pane_pids: Vec<(u32, bool, Option<RunCommand>, Result<u32>)> = vec![]; // (terminal_id,
+                                                                                           // starts_held,
+                                                                                           // run_command,
+                                                                                           // file_descriptor)
+        let mut new_floating_panes_pids: Vec<(u32, bool, Option<RunCommand>, Result<u32>)> = vec![]; // same
+                                                                                                     // as
+                                                                                                     // new_pane_pids
         for run_instruction in extracted_run_instructions {
             if let Some(new_pane_data) =
                 self.apply_run_instruction(run_instruction, default_shell.clone(), tab_index)?
@@ -1716,7 +1749,12 @@ impl Pty {
                 {
                     Ok((terminal_id, reference)) => {
                         self.id_to_child_pid.insert(terminal_id, reference.clone());
-                        Ok(Some((terminal_id, starts_held, None, Ok(reference.pty.read().unwrap().get_pid()))))
+                        Ok(Some((
+                            terminal_id,
+                            starts_held,
+                            None,
+                            Ok(reference.pty.read().unwrap().get_pid()),
+                        )))
                     },
                     Err(err) => match err.downcast_ref::<ZellijError>() {
                         Some(ZellijError::CommandNotFound { terminal_id, .. }) => {
@@ -1898,13 +1936,11 @@ impl Pty {
         let mut terminal_ids_to_commands: HashMap<u32, Vec<String>> = HashMap::new();
         let mut terminal_ids_to_cwds: HashMap<u32, PathBuf> = HashMap::new();
 
-        #[cfg(unix)]
         let pids: Vec<_> = terminal_ids
             .iter()
             .filter_map(|id| self.id_to_child_pid.get(&id))
-            .map(|pid| Pid::from_raw(*pid))
+            .map(|pid| Self::child_to_pid(pid))
             .collect();
-        #[cfg(unix)]
         let pids_to_cwds = self
             .bus
             .os_input
@@ -1918,15 +1954,14 @@ impl Pty {
             .map(|os_input| os_input.get_all_cmds_by_ppid())
             .unwrap_or_default();
 
-        #[cfg(unix)]
         for terminal_id in terminal_ids {
             let process_id = self.id_to_child_pid.get(&terminal_id);
             let cwd = process_id
                 .as_ref()
-                .and_then(|pid| pids_to_cwds.get(&Pid::from_raw(**pid)));
+                .and_then(|pid| pids_to_cwds.get(&Self::child_to_pid(&pid)));
             let cmd = process_id
                 .as_ref()
-                .and_then(|pid| ppids_to_cmds.get(&format!("{}", pid)));
+                .and_then(|pid| ppids_to_cmds.get(&format!("{}", Self::child_to_pid(pid))));
             if let Some(cmd) = cmd {
                 terminal_ids_to_commands.insert(terminal_id, cmd.clone());
             }
@@ -1977,6 +2012,17 @@ impl Pty {
             cwd,
         ))?;
         Ok(())
+    }
+
+    #[cfg(windows)]
+    fn child_to_pid(child: &WinPtyReference) -> Pid {
+        /// TODO somehow support `Pid::from(WinPtyReference)`. This eliminates this special casing
+        Pid::from(child.pty.read().unwrap().get_pid() as usize)
+    }
+
+    #[cfg(unix)]
+    fn child_to_pid(child: &RawFd) -> Pid {
+        Pid::from(child)
     }
 }
 

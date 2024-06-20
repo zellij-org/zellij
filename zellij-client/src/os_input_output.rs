@@ -1,6 +1,8 @@
 use zellij_utils::anyhow::{Context, Result};
 use zellij_utils::interprocess::local_socket::LocalSocketListener;
+use zellij_utils::ipc::IpcSocketStream;
 use zellij_utils::pane_size::Size;
+use zellij_utils::windows_utils::named_pipe;
 use zellij_utils::{interprocess, signal_hook};
 
 use interprocess::local_socket::LocalSocketStream;
@@ -21,7 +23,7 @@ use std::os::unix::io::RawFd;
 #[cfg(windows)]
 use std::os::windows::io::{AsHandle, AsRawHandle, FromRawHandle, RawHandle};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, TryLockError};
 use std::{io, process, thread, time};
 #[cfg(windows)]
 use windows_sys::Win32::{
@@ -384,12 +386,21 @@ impl ClientOsApi for ClientOsInputOutput {
             .send(msg);
     }
     fn recv_from_server(&self) -> Option<(ServerToClientMsg, ErrorContext)> {
-        self.receive_instructions_from_server
-            .lock()
-            .unwrap()
-            .as_mut()
-            .unwrap()
-            .recv()
+        log::info!("Receiving from Server");
+        let receiver = self.receive_instructions_from_server.try_lock();
+        let result = match receiver {
+            Ok(mut receiver) => receiver
+                .as_mut()
+                .expect("Receiver should be initialized by now")
+                .recv(),
+            Err(TryLockError::WouldBlock) => {
+                thread::sleep(std::time::Duration::from_secs_f32(0.1));
+                None
+            },
+            Err(TryLockError::Poisoned(err)) => panic!("receiver has been poisoned"),
+        };
+        log::info!("{:?} received from server", &result);
+        result
     }
     fn handle_signals(&self, sigwinch_cb: Box<dyn Fn()>, quit_cb: Box<dyn Fn()>) {
         #[cfg(unix)]
@@ -418,7 +429,7 @@ impl ClientOsApi for ClientOsInputOutput {
     fn connect_to_server(&self, path: &Path) {
         let socket;
         loop {
-            match LocalSocketStream::connect(path) {
+            match IpcSocketStream::connect(path) {
                 Ok(sock) => {
                     socket = sock;
                     break;
@@ -428,22 +439,8 @@ impl ClientOsApi for ClientOsInputOutput {
                 },
             }
         }
-        let socket2;
-        loop {
-            let listener_path =
-                PathBuf::from(format!("{}{}", path.to_string_lossy(), process::id()));
-            match LocalSocketListener::bind(listener_path) {
-                Ok(listener) => {
-                    socket2 = listener.accept().unwrap();
-                    break;
-                },
-                Err(_) => {
-                    std::thread::sleep(std::time::Duration::from_millis(50));
-                },
-            }
-        }
-        let sender = IpcSenderWithContext::new(socket);
-        let receiver = IpcReceiverWithContext::new(socket2);
+        let receiver = IpcReceiverWithContext::new(socket);
+        let sender = receiver.get_sender();
         *self.send_instructions_to_server.lock().unwrap() = Some(sender);
         *self.receive_instructions_from_server.lock().unwrap() = Some(receiver);
     }

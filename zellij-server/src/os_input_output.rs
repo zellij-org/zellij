@@ -9,15 +9,15 @@ use std::io::Error;
 
 use sysinfo::{ProcessExt, ProcessRefreshKind, SystemExt};
 use zellij_utils::{
-    async_std, channels,
-    channels::TrySendError,
+    async_std,
+    channels::{self, TrySendError},
     data::Palette,
     errors::prelude::*,
     input::command::{RunCommand, TerminalAction},
     interprocess,
     ipc::{
         ClientToServerMsg, ExitReason, IpcReceiverWithContext, IpcSenderWithContext,
-        ServerToClientMsg,
+        IpcSocketStream, ServerToClientMsg,
     },
     shared::default_palette,
     signal_hook,
@@ -538,11 +538,17 @@ impl ClientSender {
         // We, the zellij maintainers, have decided against an unbounded
         // queue for the time being because we want to prevent e.g. the whole session being killed
         // (by OOM-killers or some other mechanism) just because a single client doesn't respond.
-        let (client_buffer_sender, client_buffer_receiver) = channels::bounded(5000);
+        let (client_buffer_sender, client_buffer_receiver) =
+            channels::bounded::<ServerToClientMsg>(5000);
         std::thread::spawn(move || {
-            let err_context = || format!("failed to send message to client {client_id}");
             for msg in client_buffer_receiver.iter() {
-                sender.send(msg).with_context(err_context).non_fatal();
+                log::debug!("transmit message {} to client", msg);
+                sender
+                    .send(msg.clone())
+                    .with_context(|| {
+                        format!("failed to send message {msg:?} to client {client_id}")
+                    })
+                    .non_fatal();
             }
             // If we're here, the message buffer is broken for some reason
             let _ = sender.send(ServerToClientMsg::Exit(ExitReason::Disconnect));
@@ -705,8 +711,7 @@ pub trait ServerOsApi: Send + Sync {
     fn new_client(
         &mut self,
         client_id: ClientId,
-        stream: LocalSocketStream,
-        sender: LocalSocketStream,
+        stream: IpcSocketStream,
     ) -> Result<IpcReceiverWithContext<ClientToServerMsg>>;
     fn remove_client(&mut self, client_id: ClientId) -> Result<()>;
     fn load_palette(&self) -> Palette;
@@ -771,7 +776,8 @@ impl ServerOsApi for ServerOsInputOutput {
                         .read()
                         .unwrap()
                         .set_size(cols as i32, rows as i32)
-                        .map_err(|err| anyhow!("failed to set size: {:?}", err));
+                        .map_err(|err| anyhow!("failed to set size: {:?}", err))
+                        .non_fatal();
                 }
             },
             _ => {
@@ -971,7 +977,7 @@ impl ServerOsApi for ServerOsInputOutput {
         let s = unsafe { std::ffi::OsStr::from_encoded_bytes_unchecked(buf) };
         let err_context = || format!("failed to write to stdin of TTY ID {}", terminal_id);
 
-        if (buf.len() == 0) {
+        if buf.len() == 0 {
             return Ok(0);
         }
 
@@ -1066,6 +1072,7 @@ impl ServerOsApi for ServerOsInputOutput {
         Ok(())
     }
     fn send_to_client(&self, client_id: ClientId, msg: ServerToClientMsg) -> Result<()> {
+        log::debug!("Sending message {} to client {}", &msg, &client_id);
         let err_context = || format!("failed to send message to client {client_id}");
 
         if let Some(sender) = self
@@ -1077,6 +1084,7 @@ impl ServerOsApi for ServerOsInputOutput {
         {
             sender.send_or_buffer(msg).with_context(err_context)
         } else {
+            log::warn!("Could not find client {}", client_id);
             Ok(())
         }
     }
@@ -1084,11 +1092,10 @@ impl ServerOsApi for ServerOsInputOutput {
     fn new_client(
         &mut self,
         client_id: ClientId,
-        stream: LocalSocketStream,
-        sender: LocalSocketStream,
+        stream: IpcSocketStream,
     ) -> Result<IpcReceiverWithContext<ClientToServerMsg>> {
         let receiver = IpcReceiverWithContext::new(stream);
-        let sender = ClientSender::new(client_id, IpcSenderWithContext::new(sender));
+        let sender = ClientSender::new(client_id, receiver.get_sender());
         self.client_senders
             .lock()
             .to_anyhow()

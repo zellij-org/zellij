@@ -18,7 +18,6 @@ mod ui;
 use background_jobs::{background_jobs_main, BackgroundJob};
 use log::info;
 use pty_writer::{pty_writer_main, PtyWriteInstruction};
-use zellij_utils::interprocess::local_socket::LocalSocketStream;
 use std::collections::{HashMap, HashSet};
 use std::{
     path::PathBuf,
@@ -26,11 +25,10 @@ use std::{
     thread,
 };
 use zellij_utils::envs;
-use zellij_utils::pane_size::Size;
+use zellij_utils::interprocess::local_socket::LocalSocketStream;
 #[cfg(unix)]
 use zellij_utils::nix::sys::stat::{umask, Mode};
-#[cfg(windows)]
-use zellij_utils::interprocess::os::windows::named_pipe::{PipeListener, PipeListenerOptions, PipeMode, DuplexBytePipeStream};
+use zellij_utils::pane_size::Size;
 
 use wasmer::Store;
 
@@ -115,6 +113,32 @@ impl From<&ServerInstruction> for ServerContext {
 impl ErrorInstruction for ServerInstruction {
     fn error(err: String) -> Self {
         ServerInstruction::Error(err)
+    }
+}
+
+impl std::fmt::Display for ServerInstruction {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ServerInstruction::NewClient(_, _, _, _, _, _) => {
+                write!(f, "ServerInstruction::NewClient")
+            },
+            ServerInstruction::Render(_) => write!(f, "ServerInstruction::Render"),
+            ServerInstruction::UnblockInputThread => {
+                write!(f, "ServerInstruction::UnblockInputThread")
+            },
+            ServerInstruction::ClientExit(_) => write!(f, "ServerInstruction::ClientExit"),
+            ServerInstruction::RemoveClient(_) => write!(f, "ServerInstruction::RemoveClient"),
+            ServerInstruction::Error(_) => write!(f, "ServerInstruction::Error"),
+            ServerInstruction::KillSession => write!(f, "ServerInstruction::KillSession"),
+            ServerInstruction::DetachSession(_) => write!(f, "ServerInstruction::DetachSession"),
+            ServerInstruction::AttachClient(_, _, _, _, _) => {
+                write!(f, "ServerInstruction::AttachClient")
+            },
+            ServerInstruction::ConnStatus(_) => write!(f, "ServerInstruction::ConnStatus"),
+            ServerInstruction::ActiveClients(_) => write!(f, "ServerInstruction::ActiveClients"),
+            ServerInstruction::Log(_, _) => write!(f, "ServerInstruction::Log"),
+            ServerInstruction::SwitchSession(_, _) => write!(f, "ServerInstruction::SwitchSession"),
+        }
     }
 }
 
@@ -261,8 +285,6 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
             .expect("could not daemonize the server process");
     }
 
-    // TODO: Windows "daemonize"
-
     envs::set_zellij("0".to_string());
 
     let (to_server, server_receiver): ChannelWithContext<ServerInstruction> = channels::bounded(50);
@@ -281,32 +303,19 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
     let _ = thread::Builder::new()
         .name("server_listener".to_string())
         .spawn({
-            use zellij_utils::{
-                interprocess::local_socket::LocalSocketListener, shared::set_permissions,
-            };
-
             let os_input = os_input.clone();
             let session_data = session_data.clone();
             let session_state = session_state.clone();
             let to_server = to_server.clone();
             let socket_path = socket_path.clone();
             move || {
-                drop(std::fs::remove_file(&socket_path));
-                let listener = LocalSocketListener::bind(&*socket_path).unwrap();
-                // set the sticky bit to avoid the socket file being potentially cleaned up
-                // https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html states that for XDG_RUNTIME_DIR:
-                // "To ensure that your files are not removed, they should have their access time timestamp modified at least once every 6 hours of monotonic time or the 'sticky' bit should be set on the file. "
-                // It is not guaranteed that all platforms allow setting the sticky bit on sockets!
-                drop(set_permissions(&socket_path, 0o1700));
+                let listener = zellij_utils::ipc::bind_server(&socket_path).unwrap();
                 for stream in listener.incoming() {
                     match stream {
                         Ok(stream) => {
                             let mut os_input = os_input.clone();
                             let client_id = session_state.write().unwrap().new_client();
-                            let client_pid = stream.peer_pid().unwrap();
-                            let client_connection_path: PathBuf = PathBuf::from(format!("{}{}", socket_path.to_string_lossy(), client_pid));
-                            let sender = LocalSocketStream::connect(client_connection_path).unwrap();
-                            let receiver = os_input.new_client(client_id, stream, sender).unwrap();
+                            let receiver = os_input.new_client(client_id, stream).unwrap();
                             let session_data = session_data.clone();
                             let session_state = session_state.clone();
                             let to_server = to_server.clone();
@@ -336,6 +345,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
     loop {
         let (instruction, mut err_ctx) = server_receiver.recv().unwrap();
         err_ctx.add_call(ContextType::IPCServer((&instruction).into()));
+        log::debug!("Received ServerInstruction: {}", instruction);
         match instruction {
             ServerInstruction::NewClient(
                 client_attributes,

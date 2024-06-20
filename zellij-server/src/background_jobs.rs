@@ -5,6 +5,7 @@ use zellij_utils::consts::{
 };
 use zellij_utils::data::{Event, HttpVerb, SessionInfo};
 use zellij_utils::errors::{prelude::*, BackgroundJobContext, ContextType};
+use zellij_utils::is_socket;
 use zellij_utils::surf::{
     http::{Method, Url},
     RequestBuilder,
@@ -392,8 +393,7 @@ fn read_other_live_session_states(current_session_name: &str) -> BTreeMap<String
         files.for_each(|file| {
             if let Ok(file) = file {
                 if let Ok(file_name) = file.file_name().into_string() {
-                    #[cfg(unix)]
-                    if file.file_type().unwrap().is_socket() {
+                    if is_socket(&file).expect("Could not check for pipe") {
                         other_session_names.push(file_name);
                     }
                 }
