@@ -19,6 +19,7 @@ fn full_length_shortcut(
     action: &str,
     palette: Palette,
     arrow_separator: &str,
+    selected: bool,
 ) -> LinePart {
     if key.is_empty() {
         return LinePart::default();
@@ -34,8 +35,8 @@ fn full_length_shortcut(
         ThemeHue::Light => palette_match!(palette.white),
     };
     let fg_color = match palette.theme_hue {
-        ThemeHue::Dark => palette_match!(palette.fg),
-        ThemeHue::Light => palette_match!(palette.fg),
+        ThemeHue::Dark => if selected { palette_match!(palette.green) } else { palette_match!(palette.fg) },
+        ThemeHue::Light => if selected { palette_match!(palette.green) } else { palette_match!(palette.fg) },
     };
 
 
@@ -87,17 +88,38 @@ fn locked_interface_indication(palette: Palette) -> LinePart {
     }
 }
 
-fn add_shortcut(
+pub fn add_shortcut(
     help: &ModeInfo,
     linepart: &LinePart,
     text: &str,
     keys: Vec<KeyWithModifier>,
 ) -> LinePart {
     let separator = crate::ARROW_SEPARATOR; // TODO: from args
+    let selected = false;
     let shortcut = if linepart.len == 0 {
-        full_length_shortcut(true, keys, text, help.style.colors, separator)
+        full_length_shortcut(true, keys, text, help.style.colors, separator, selected)
     } else {
-        full_length_shortcut(false, keys, text, help.style.colors, separator)
+        full_length_shortcut(false, keys, text, help.style.colors, separator, selected)
+    };
+
+    let mut new_linepart = LinePart::default();
+    new_linepart.len += linepart.len + shortcut.len;
+    new_linepart.part = format!("{}{}", linepart.part, shortcut);
+    new_linepart
+}
+
+pub fn add_shortcut_selected(
+    help: &ModeInfo,
+    linepart: &LinePart,
+    text: &str,
+    keys: Vec<KeyWithModifier>,
+) -> LinePart {
+    let separator = crate::ARROW_SEPARATOR; // TODO: from args
+    let selected = true;
+    let shortcut = if linepart.len == 0 {
+        full_length_shortcut(true, keys, text, help.style.colors, separator, selected)
+    } else {
+        full_length_shortcut(false, keys, text, help.style.colors, separator, selected)
     };
 
     let mut new_linepart = LinePart::default();
@@ -279,8 +301,6 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<KeyWithModifier
             action_key(&km, &[A::SearchToggleOption(SOpt::WholeWord)])),
     ]} else if mi.mode == IM::Session { vec![
         (s("Detach"), s("Detach"), action_key(&km, &[Action::Detach])),
-        // TODO: CONTINUE HERE - get this to appear in both types of keybindings config
-        // (experimental and not)
         (s("Session Manager"), s("Manager"), session_manager_key(&km)),
         (s("Select pane"), s("Select"), to_normal_key),
     ]} else if mi.mode == IM::Tmux { vec![

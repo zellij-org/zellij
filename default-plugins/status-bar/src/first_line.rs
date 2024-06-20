@@ -6,7 +6,7 @@ use zellij_tile_utils::style;
 use crate::color_elements;
 use crate::{
     action_key, action_key_group, get_common_modifiers, style_key_with_modifier, TO_NORMAL,
-    second_line::keybinds,
+    second_line::{keybinds, add_shortcut, add_shortcut_selected},
 };
 use crate::{ColoredElements, LinePart};
 
@@ -601,8 +601,80 @@ fn get_key_shortcut_for_mode<'a>(
     None
 }
 
+fn render_current_mode_keybinding(help: &ModeInfo, max_len: usize, separator: &str, line_part_to_render: &mut LinePart) {
+    let binds = &help.get_mode_keybinds();
+    match help.mode {
+        InputMode::Normal => {
+            let action_key = action_key(
+                binds,
+                &[Action::SwitchToMode(InputMode::Locked)],
+            );
+            let mut key_to_display = action_key
+                .iter()
+                .find(|k| k.is_key_with_ctrl_modifier(BareKey::Char('g')))
+                .or_else(|| action_key.iter().next());
+            let key_to_display = if let Some(key_to_display) = key_to_display.take() {
+                vec![key_to_display.clone()]
+            } else {
+                vec![]
+            };
+            let keybinding = add_shortcut(help, &line_part_to_render, "LOCK", key_to_display);
+            if line_part_to_render.len + keybinding.len <= max_len {
+                line_part_to_render.part = format!("{}{}", line_part_to_render.part, keybinding.part);
+                line_part_to_render.len += keybinding.len;
+            }
+            // * if the mode is Normal: Ctrl g > LOCK > Ctrl + > <p> PANE, etc.
+
+        }
+        InputMode::Locked => {
+            let action_key = action_key(
+                binds,
+                &[Action::SwitchToMode(InputMode::Normal)],
+            );
+            let mut key_to_display = action_key
+                .iter()
+                .find(|k| k.is_key_with_ctrl_modifier(BareKey::Char('g')))
+                .or_else(|| action_key.iter().next());
+            let key_to_display = if let Some(key_to_display) = key_to_display.take() {
+                vec![key_to_display.clone()]
+            } else {
+                vec![]
+            };
+            let keybinding = add_shortcut_selected(help, &line_part_to_render, "LOCK", key_to_display); // TODO:
+                                                                                             // color
+                                                                                             // selected
+                                                                                             // LOCK
+            if line_part_to_render.len + keybinding.len <= max_len {
+                line_part_to_render.part = format!("{}{}", line_part_to_render.part, keybinding.part);
+                line_part_to_render.len += keybinding.len;
+            }
+        }
+        _ => {
+            let action_key = action_key(
+                binds,
+                &[Action::SwitchToMode(InputMode::Locked)], // needs to be base mode
+            );
+            let mut key_to_display = action_key
+                .iter()
+                .find(|k| k.is_key_without_modifier(BareKey::Esc))
+                .or_else(|| action_key.iter().next());
+            let key_to_display = if let Some(key_to_display) = key_to_display.take() {
+                vec![key_to_display.clone()]
+            } else {
+                vec![]
+            };
+            let keybinding = add_shortcut(help, &line_part_to_render, &format!("{:?}", help.mode).to_uppercase(), key_to_display);
+            if line_part_to_render.len + keybinding.len <= max_len {
+                line_part_to_render.part = format!("{}{}", line_part_to_render.part, keybinding.part);
+                line_part_to_render.len += keybinding.len;
+            }
+
+        }
+    }
+}
+
 fn render_mode_key_indicators(help: &ModeInfo, max_len: usize, separator: &str, line_part_to_render: &mut LinePart) {
-    // TODO:
+    // TODO CONTINUE HERE:
     // * if the mode is Normal: Ctrl g > LOCK > Ctrl + > <p> PANE, etc.
     // * if the mode is Locked: Ctrl g > LOCK (selected)
     // * if the mode is (eg.) Pane: ESC > PANE (selected), shortcuts
@@ -610,16 +682,18 @@ fn render_mode_key_indicators(help: &ModeInfo, max_len: usize, separator: &str, 
     let colored_elements = color_elements(help.style.colors, !supports_arrow_fonts);
     let binds = &help.get_mode_keybinds();
 
+    render_current_mode_keybinding(help, max_len, separator, line_part_to_render);
+
     let mut default_keys = if help.mode == InputMode::Normal {
         vec![
-            KeyShortcut::new(
-                KeyMode::Unselected,
-                KeyAction::Lock,
-                to_char(action_key(
-                    binds,
-                    &[Action::SwitchToMode(InputMode::Locked)],
-                )),
-            ),
+//             KeyShortcut::new(
+//                 KeyMode::Unselected,
+//                 KeyAction::Lock,
+//                 to_char(action_key(
+//                     binds,
+//                     &[Action::SwitchToMode(InputMode::Locked)],
+//                 )),
+//             ),
             KeyShortcut::new(
                 KeyMode::UnselectedAlternate,
                 KeyAction::Pane,
@@ -665,17 +739,10 @@ fn render_mode_key_indicators(help: &ModeInfo, max_len: usize, separator: &str, 
                 to_char(action_key(binds, &[Action::Quit])),
             ),
         ]
-    } else if help.mode == InputMode::Locked {
-        vec![
-            KeyShortcut::new(
-                KeyMode::Unselected,
-                KeyAction::Normal,
-                to_char(action_key(binds, &[TO_NORMAL])),
-            )
-        ]
     } else {
         vec![]
     };
+    // TODO: CONTINUE HERE - instead of doing this, use the add_shortcut method for each mode
     key_indicators(max_len, &default_keys, colored_elements, separator, help, line_part_to_render);
 }
 
