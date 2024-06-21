@@ -900,7 +900,7 @@ impl TerminalPane {
         raw_input_bytes: Vec<u8>,
         raw_input_bytes_are_kitty: bool,
     ) -> Option<AdjustedInput> {
-        if raw_input_bytes_are_kitty {
+        if raw_input_bytes_are_kitty || key.is_none() {
             Some(AdjustedInput::WriteBytesToTerminal(raw_input_bytes))
         } else {
             // here what happens is that the host terminal is operating in non "kitty keys" mode, but
