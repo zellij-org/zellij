@@ -55,7 +55,7 @@ bash/zsh:
 ```bash
 bash <(curl -L zellij.dev/launch)
 ```
-fish/xonsh:
+fish/xonsh/nushell:
 ```bash
 bash -c 'bash <(curl -L zellij.dev/launch)'
 ```
