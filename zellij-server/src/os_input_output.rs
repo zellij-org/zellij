@@ -373,7 +373,7 @@ impl ClientSender {
         // client. If it fills up, the client is disconnected with a "Buffer full" sort of error
         // message. It was previously found to be too small (with depth 50), so it was increased to
         // 5000 instead. This decision was made because it was found that a queue of depth 5000
-        // doesn't cause noticable increase in RAM usage, but there's no reason beyond that. If in
+        // doesn't cause noticeable increase in RAM usage, but there's no reason beyond that. If in
         // the future this is found to fill up too quickly again, it may be worthwhile to increase
         // the size even further (or better yet, implement a redraw-on-backpressure mechanism).
         // We, the zellij maintainers, have decided against an unbounded

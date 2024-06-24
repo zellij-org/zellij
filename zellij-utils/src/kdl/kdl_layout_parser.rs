@@ -167,7 +167,7 @@ impl<'a> KdlLayoutParser<'a> {
             ))
         } else if name.contains(')') || name.contains('(') {
             Err(ConfigError::new_layout_kdl_error(
-                format!("Template names cannot contain parantheses"),
+                format!("Template names cannot contain parentheses"),
                 kdl_node.span().offset(),
                 kdl_node.span().len(),
             ))
