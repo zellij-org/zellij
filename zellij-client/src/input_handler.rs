@@ -45,6 +45,7 @@ struct InputHandler {
     receive_input_instructions: Receiver<(InputInstruction, ErrorContext)>,
     holding_mouse: Option<HeldMouseButton>,
     mouse_mode_active: bool,
+    is_kitty_keyboard_protocol: bool,
 }
 
 impl InputHandler {
@@ -57,6 +58,7 @@ impl InputHandler {
         send_client_instructions: SenderWithContext<ClientInstruction>,
         mode: InputMode,
         receive_input_instructions: Receiver<(InputInstruction, ErrorContext)>,
+        is_kitty_keyboard_protocol: bool,
     ) -> Self {
         InputHandler {
             mode,
@@ -69,6 +71,7 @@ impl InputHandler {
             receive_input_instructions,
             holding_mouse: None,
             mouse_mode_active: false,
+            is_kitty_keyboard_protocol,
         }
     }
 
@@ -106,15 +109,27 @@ impl InputHandler {
                         InputEvent::Paste(pasted_text) => {
                             if self.mode == InputMode::Normal || self.mode == InputMode::Locked {
                                 self.dispatch_action(
-                                    Action::Write(None, bracketed_paste_start.clone(), false),
+                                    Action::Write(
+                                        None,
+                                        bracketed_paste_start.clone(),
+                                        self.is_kitty_keyboard_protocol,
+                                    ),
                                     None,
                                 );
                                 self.dispatch_action(
-                                    Action::Write(None, pasted_text.as_bytes().to_vec(), false),
+                                    Action::Write(
+                                        None,
+                                        pasted_text.as_bytes().to_vec(),
+                                        self.is_kitty_keyboard_protocol,
+                                    ),
                                     None,
                                 );
                                 self.dispatch_action(
-                                    Action::Write(None, bracketed_paste_end.clone(), false),
+                                    Action::Write(
+                                        None,
+                                        bracketed_paste_end.clone(),
+                                        self.is_kitty_keyboard_protocol,
+                                    ),
                                     None,
                                 );
                             }
@@ -368,6 +383,7 @@ pub(crate) fn input_loop(
     send_client_instructions: SenderWithContext<ClientInstruction>,
     default_mode: InputMode,
     receive_input_instructions: Receiver<(InputInstruction, ErrorContext)>,
+    is_kitty_keyboard_protocol: bool,
 ) {
     let _handler = InputHandler::new(
         os_input,
@@ -377,6 +393,7 @@ pub(crate) fn input_loop(
         send_client_instructions,
         default_mode,
         receive_input_instructions,
+        is_kitty_keyboard_protocol,
     )
     .handle_input();
 }

@@ -332,6 +332,7 @@ pub fn start_client(
                     send_client_instructions,
                     default_mode,
                     receive_input_instructions,
+                    !explicitly_disable_kitty_keyboard_protocol,
                 )
             }
         });
