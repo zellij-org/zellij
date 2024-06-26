@@ -1,5 +1,5 @@
 use ansi_term::{
-    unstyled_len, ANSIString, ANSIStrings,
+    ANSIString, ANSIStrings,
     Color::{Fixed, RGB},
     Style,
 };
@@ -21,8 +21,9 @@ fn full_length_shortcut(
     arrow_separator: &str,
     selected: bool,
 ) -> LinePart {
+    let mut ret = LinePart::default();
     if key.is_empty() {
-        return LinePart::default();
+        return ret;
     }
 
     let text_color = palette_match!(match palette.theme_hue {
@@ -39,12 +40,9 @@ fn full_length_shortcut(
         ThemeHue::Light => if selected { palette_match!(palette.green) } else { palette_match!(palette.fg) },
     };
 
+    ret.append(&style_key_with_modifier(&key, &palette, None)); // TODO: alternate
 
-
-    // let separator = if is_first_shortcut { " " } else { " / " };
-    // let mut bits: Vec<ANSIString> = vec![Style::new().fg(text_color).paint(separator)];
     let mut bits: Vec<ANSIString> = vec![];
-    bits.extend(style_key_with_modifier(&key, &palette, None));
     bits.push(
         Style::new()
             .fg(bg_color)
@@ -66,12 +64,10 @@ fn full_length_shortcut(
             .bold()
             .paint(format!("{}", arrow_separator)),
     );
-    let part = ANSIStrings(&bits);
+    ret.part = format!("{}{}", ret.part, ANSIStrings(&bits));
+    ret.len += action.chars().count() + 4; // padding and arrow fonts
 
-    LinePart {
-        part: part.to_string(),
-        len: unstyled_len(&part),
-    }
+    ret
 }
 
 fn locked_interface_indication(palette: Palette) -> LinePart {
@@ -104,7 +100,8 @@ pub fn add_shortcut(
 
     let mut new_linepart = LinePart::default();
     new_linepart.len += linepart.len + shortcut.len;
-    new_linepart.part = format!("{}{}", linepart.part, shortcut);
+    // new_linepart.part = format!("{}{}", linepart.part, shortcut);
+    new_linepart.part = format!("{}{}", linepart.part, shortcut.part);
     new_linepart
 }
 
@@ -126,6 +123,143 @@ pub fn add_shortcut_selected(
     new_linepart.len += linepart.len + shortcut.len;
     new_linepart.part = format!("{}{}", linepart.part, shortcut);
     new_linepart
+}
+
+pub fn add_shortcut_with_inline_key(
+    help: &ModeInfo,
+    linepart: &LinePart,
+    text: &str,
+    key: Vec<KeyWithModifier>,
+    is_selected: bool,
+) -> LinePart {
+    let arrow_separator = crate::ARROW_SEPARATOR; // TODO: from args
+    let palette = help.style.colors;
+
+    let mut ret = LinePart::default();
+    if key.is_empty() {
+        return ret;
+    }
+
+    let text_color = palette_match!(match palette.theme_hue {
+        ThemeHue::Dark => palette.black,
+        ThemeHue::Light => palette.white,
+    });
+
+    let bg_color = match palette.theme_hue {
+        ThemeHue::Dark => if is_selected { palette_match!(palette.green) } else { palette_match!(palette.fg) },
+        ThemeHue::Light => if is_selected { palette_match!(palette.green) } else { palette_match!(palette.fg) },
+    };
+    let shortcut_color = match palette.theme_hue {
+        ThemeHue::Dark => palette_match!(palette.red),
+        ThemeHue::Light => palette_match!(palette.red),
+    };
+
+    // ret.append(&style_key_with_modifier(&key, &palette, None)); // TODO: alternate
+
+    let mut bits: Vec<ANSIString> = vec![];
+    bits.push(
+        Style::new()
+            .fg(text_color)
+            .on(bg_color)
+            .bold()
+            .paint(format!("{}", arrow_separator)),
+    );
+    bits.push(
+        Style::new()
+            .fg(text_color)
+            .on(bg_color)
+            .bold()
+            .paint(format!(" <")),
+    );
+    bits.push(
+        Style::new()
+            .fg(shortcut_color)
+            .on(bg_color)
+            .bold()
+            .paint(format!("{}", key.iter().map(|k| k.to_string()).collect::<Vec<_>>().join("-"))),
+    );
+    bits.push(
+        Style::new()
+            .fg(text_color)
+            .on(bg_color)
+            .bold()
+            .paint(format!("> ")),
+    );
+    bits.push(
+        Style::new()
+            .fg(text_color)
+            .on(bg_color)
+            .bold()
+            .paint(format!("{} ", text)),
+    );
+    bits.push(
+        Style::new()
+            .fg(bg_color)
+            .on(text_color)
+            .bold()
+            .paint(format!("{}", arrow_separator)),
+    );
+    // TODO: check line length and max length and stuff
+    ret.part = format!("{}{}", ret.part, ANSIStrings(&bits));
+    ret.len += text.chars().count() + 8; // padding, group boundaries and arrow fonts
+
+    ret
+
+
+
+
+
+//     let separator = crate::ARROW_SEPARATOR; // TODO: from args
+//     let selected = true;
+//     let shortcut = if linepart.len == 0 {
+//         full_length_shortcut(true, keys, text, help.style.colors, separator, selected)
+//     } else {
+//         full_length_shortcut(false, keys, text, help.style.colors, separator, selected)
+//     };
+// 
+//     let mut new_linepart = LinePart::default();
+//     new_linepart.len += linepart.len + shortcut.len;
+//     new_linepart.part = format!("{}{}", linepart.part, shortcut);
+//     new_linepart
+}
+
+pub fn add_keygroup_separator (
+    help: &ModeInfo,
+) -> LinePart {
+    let arrow_separator = crate::ARROW_SEPARATOR; // TODO: from args
+    let palette = help.style.colors;
+
+    let mut ret = LinePart::default();
+
+    let separator_color = palette_match!(palette.orange);
+    let bg_color = palette_match!(palette.black);
+    let mut bits: Vec<ANSIString> = vec![];
+    bits.push(
+        Style::new()
+            .fg(bg_color)
+            .on(separator_color)
+            .bold()
+            .paint(format!("{}", arrow_separator)),
+    );
+    bits.push(
+        Style::new()
+            .fg(separator_color)
+            .on(separator_color)
+            .bold()
+            .paint(format!(" ")),
+    );
+    bits.push(
+        Style::new()
+            .fg(separator_color)
+            .on(bg_color)
+            .bold()
+            .paint(format!("{}", arrow_separator)),
+    );
+    // TODO: check line length and max length and stuff
+    ret.part = format!("{}{}", ret.part, ANSIStrings(&bits));
+    ret.len += 3; // padding, group boundaries and arrow fonts
+
+    ret
 }
 
 fn full_shortcut_list_nonstandard_mode(help: &ModeInfo) -> LinePart {
@@ -324,7 +458,7 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<KeyWithModifier
     ]} else { vec![] }
 }
 
-fn full_shortcut_list(help: &ModeInfo, tip: TipFn) -> LinePart {
+fn full_shortcut_list(help: &ModeInfo) -> LinePart {
     match help.mode {
         InputMode::Normal => LinePart::default(),
         InputMode::Locked => LinePart::default(),
@@ -342,7 +476,7 @@ fn shortened_shortcut_list_nonstandard_mode(help: &ModeInfo) -> LinePart {
     line_part
 }
 
-fn shortened_shortcut_list(help: &ModeInfo, tip: TipFn) -> LinePart {
+fn shortened_shortcut_list(help: &ModeInfo) -> LinePart {
     match help.mode {
         InputMode::Normal => LinePart::default(),
         InputMode::Locked => LinePart::default(),
@@ -366,10 +500,10 @@ fn best_effort_shortcut_list_nonstandard_mode(help: &ModeInfo, max_len: usize) -
     line_part
 }
 
-fn best_effort_shortcut_list(help: &ModeInfo, tip: TipFn, max_len: usize) -> LinePart {
+fn best_effort_shortcut_list(help: &ModeInfo, max_len: usize) -> LinePart {
     match help.mode {
         InputMode::Normal => {
-            let line_part = tip(help);
+            let line_part = LinePart::default();
             if line_part.len <= max_len {
                 line_part
             } else {
@@ -390,19 +524,19 @@ fn best_effort_shortcut_list(help: &ModeInfo, tip: TipFn, max_len: usize) -> Lin
 
 pub fn keybinds(help: &ModeInfo, tip_name: &str, max_width: usize) -> LinePart {
     // It is assumed that there is at least one TIP data in the TIPS HasMap.
-    let tip_body = TIPS
-        .get(tip_name)
-        .unwrap_or_else(|| TIPS.get("quicknav").unwrap());
+//     let tip_body = TIPS
+//         .get(tip_name)
+//         .unwrap_or_else(|| TIPS.get("quicknav").unwrap());
 
-    let full_shortcut_list = full_shortcut_list(help, tip_body.full);
+    let full_shortcut_list = full_shortcut_list(help);
     if full_shortcut_list.len <= max_width {
         return full_shortcut_list;
     }
-    let shortened_shortcut_list = shortened_shortcut_list(help, tip_body.medium);
+    let shortened_shortcut_list = shortened_shortcut_list(help);
     if shortened_shortcut_list.len <= max_width {
         return shortened_shortcut_list;
     }
-    best_effort_shortcut_list(help, tip_body.short, max_width)
+    best_effort_shortcut_list(help, max_width)
 }
 
 pub fn text_copied_hint(palette: &Palette, copy_destination: CopyDestination) -> LinePart {
