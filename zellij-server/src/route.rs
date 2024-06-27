@@ -13,7 +13,7 @@ use crate::{
 use uuid::Uuid;
 use zellij_utils::{
     channels::SenderWithContext,
-    data::{Direction, Event, PluginCapabilities, ResizeStrategy},
+    data::{Direction, Event, PluginCapabilities, ResizeStrategy, InputMode},
     errors::prelude::*,
     input::{
         actions::{Action, SearchDirection, SearchOption},
@@ -38,6 +38,7 @@ pub(crate) fn route_action(
     default_shell: Option<TerminalAction>,
     default_layout: Box<Layout>,
     mut seen_cli_pipes: Option<&mut HashSet<String>>,
+    default_mode: InputMode,
 ) -> Result<bool> {
     let mut should_break = false;
     let err_context = || format!("failed to route action for client {client_id}");
@@ -98,7 +99,7 @@ pub(crate) fn route_action(
                 .send_to_plugin(PluginInstruction::Update(vec![(
                     None,
                     Some(client_id),
-                    Event::ModeUpdate(get_mode_info(mode, attrs, capabilities)),
+                    Event::ModeUpdate(get_mode_info(mode, attrs, capabilities, Some(default_mode))),
                 )]))
                 .with_context(err_context)?;
             senders
@@ -106,7 +107,7 @@ pub(crate) fn route_action(
                 .with_context(err_context)?;
             senders
                 .send_to_screen(ScreenInstruction::ChangeMode(
-                    get_mode_info(mode, attrs, capabilities),
+                    get_mode_info(mode, attrs, capabilities, Some(default_mode)),
                     client_id,
                 ))
                 .with_context(err_context)?;
@@ -344,7 +345,7 @@ pub(crate) fn route_action(
                 .send_to_plugin(PluginInstruction::Update(vec![(
                     None,
                     None,
-                    Event::ModeUpdate(get_mode_info(input_mode, attrs, capabilities)),
+                    Event::ModeUpdate(get_mode_info(input_mode, attrs, capabilities, Some(default_mode))),
                 )]))
                 .with_context(err_context)?;
 
@@ -357,6 +358,7 @@ pub(crate) fn route_action(
                     input_mode,
                     attrs,
                     capabilities,
+                    Some(default_mode),
                 )))
                 .with_context(err_context)?;
         },
@@ -1018,6 +1020,7 @@ pub(crate) fn route_thread_main(
                                                 rlocked_sessions.default_shell.clone(),
                                                 rlocked_sessions.layout.clone(),
                                                 Some(&mut seen_cli_pipes),
+                                                rlocked_sessions.default_mode,
                                             )? {
                                                 should_break = true;
                                             }
@@ -1042,6 +1045,7 @@ pub(crate) fn route_thread_main(
                                     rlocked_sessions.default_shell.clone(),
                                     rlocked_sessions.layout.clone(),
                                     Some(&mut seen_cli_pipes),
+                                    rlocked_sessions.default_mode,
                                 )? {
                                     should_break = true;
                                 }

@@ -81,6 +81,21 @@ impl KeyShortcut {
             KeyAction::Tmux => String::from("TMUX"),
         }
     }
+    pub fn short_text(&self) -> String {
+        match self.action {
+            KeyAction::Normal => String::from("Un"),
+            KeyAction::Lock => String::from("Lo"),
+            KeyAction::Unlock => String::from("Un"),
+            KeyAction::Pane => String::from("Pa"),
+            KeyAction::Tab => String::from("Ta"),
+            KeyAction::Resize => String::from("Re"),
+            KeyAction::Search => String::from("Se"),
+            KeyAction::Quit => String::from("Qu"),
+            KeyAction::Session => String::from("Se"),
+            KeyAction::Move => String::from("Mo"),
+            KeyAction::Tmux => String::from("Tm"),
+        }
+    }
     pub fn with_shortened_modifiers(&self, common_modifiers: &Vec<KeyModifier>) -> String {
         let key = match &self.key {
             Some(k) => k.strip_common_modifiers(common_modifiers),
@@ -633,7 +648,7 @@ fn render_current_mode_keybinding(help: &ModeInfo, max_len: usize, separator: &s
             } else {
                 vec![]
             };
-            let keybinding = add_shortcut_selected(help, &line_part_to_render, "LOCK", key_to_display);
+            let keybinding = add_shortcut(help, "LOCK", &key_to_display, false);
             if line_part_to_render.len + keybinding.len <= max_len {
                 line_part_to_render.append(&keybinding);
             }
@@ -653,10 +668,7 @@ fn render_current_mode_keybinding(help: &ModeInfo, max_len: usize, separator: &s
             } else {
                 vec![]
             };
-            let keybinding = add_shortcut(help, &line_part_to_render, "LOCK", key_to_display); // TODO:
-                                                                                             // color
-                                                                                             // selected
-                                                                                             // LOCK
+            let keybinding = add_shortcut(help, "LOCK", &key_to_display, false);
             if line_part_to_render.len + keybinding.len <= max_len {
                 line_part_to_render.append(&keybinding);
             }
@@ -685,7 +697,7 @@ fn render_current_mode_keybinding(help: &ModeInfo, max_len: usize, separator: &s
 //                 )
 //             };
 
-            let keybinding = add_shortcut_selected(help, &line_part_to_render, "LOCK", locked_key_to_display);
+            let keybinding = add_shortcut(help, "LOCK", &locked_key_to_display, true);
             // let keybinding = add_shortcut_selected(help, &keybinding, &format!("{:?}", help.mode).to_uppercase(), normal_key_to_display);
             if line_part_to_render.len + keybinding.len <= max_len {
                 line_part_to_render.append(&keybinding);
@@ -997,20 +1009,15 @@ fn base_mode_normal_mode_indicators(help: &ModeInfo) -> HashMap<InputMode, Vec<K
         )
     ])
 }
-fn render_mode_key_indicators(help: &ModeInfo, max_len: usize, separator: &str, line_part_to_render: &mut LinePart, base_mode_is_locked: bool) {
-
-
+fn render_mode_key_indicators(help: &ModeInfo, max_len: usize, separator: &str, base_mode_is_locked: bool) -> Option<LinePart> {
+    let mut line_part_to_render = LinePart::default();
     let supports_arrow_fonts = !help.capabilities.arrow_fonts;
     let colored_elements = color_elements(help.style.colors, !supports_arrow_fonts);
-
-    // render_current_mode_keybinding(help, max_len, separator, line_part_to_render);
-
     let default_keys = if base_mode_is_locked {
         base_mode_locked_mode_indicators(help)
     } else {
         base_mode_normal_mode_indicators(help)
     };
-    // TODO: change this to common_modifiers_in_all_modes
     match common_modifiers_in_all_modes(&default_keys) {
         Some(modifiers) => {
             if let Some(default_keys) = default_keys.get(&help.mode) {
@@ -1024,46 +1031,85 @@ fn render_mode_key_indicators(help: &ModeInfo, max_len: usize, separator: &str, 
                         key
                     )
                 }).collect();
-                render_common_modifiers(&colored_elements, help, &modifiers, line_part_to_render, separator);
-                for key in keys_without_common_modifiers {
-                    let is_selected = key.is_selected();
-                    let shortcut = add_shortcut_with_inline_key(help, &line_part_to_render, &key.full_text(), key.key.map(|k| vec![k.strip_common_modifiers(&modifiers)]).unwrap_or_else(|| vec![]), is_selected);
-                    line_part_to_render.append(&shortcut);
+                render_common_modifiers(&colored_elements, help, &modifiers, &mut line_part_to_render, separator);
+
+                let full_shortcut_list = full_inline_keys_modes_shortcut_list(&keys_without_common_modifiers, help);
+
+                if line_part_to_render.len + full_shortcut_list.len <= max_len {
+                    line_part_to_render.append(&full_shortcut_list);
+                } else {
+                    let shortened_shortcut_list = shortened_inline_keys_modes_shortcut_list(&keys_without_common_modifiers, help);
+                    if line_part_to_render.len + shortened_shortcut_list.len <= max_len {
+                        line_part_to_render.append(&shortened_shortcut_list);
+                    }
                 }
+
             }
         },
         None => {
             if let Some(default_keys) = default_keys.get(&help.mode) {
-                for key in default_keys {
-                    let is_selected = key.is_selected();
-                    if is_selected {
-                        *line_part_to_render = add_shortcut_selected(help, &line_part_to_render, &key.full_text(), key.key.as_ref().map(|k| vec![k.clone()]).unwrap_or_else(|| vec![]));
-                    } else {
-                        *line_part_to_render = add_shortcut(help, &line_part_to_render, &key.full_text(), key.key.as_ref().map(|k| vec![k.clone()]).unwrap_or_else(|| vec![]));
+                let full_shortcut_list = full_modes_shortcut_list(&default_keys, help);
+                if line_part_to_render.len + full_shortcut_list.len <= max_len {
+                    line_part_to_render.append(&full_shortcut_list);
+                } else {
+                    let shortened_shortcut_list = shortened_modes_shortcut_list(&default_keys, help);
+                    if line_part_to_render.len + shortened_shortcut_list.len <= max_len {
+                        line_part_to_render.append(&shortened_shortcut_list);
                     }
                 }
             }
         }
     }
-    if help.mode != InputMode::Normal && help.mode != InputMode::Locked {
-        // TODO: move elsewhere
-        let separator = add_keygroup_separator(help);
-        if line_part_to_render.len + separator.len <= max_len {
-            line_part_to_render.part = format!("{}{}", line_part_to_render.part, separator.part);
-            line_part_to_render.len += separator.len;
-        }
+    if line_part_to_render.len <= max_len {
+        Some(line_part_to_render)
+    } else {
+        None
     }
-    // key_indicators(max_len, &default_keys, colored_elements, separator, help, line_part_to_render);
+}
+
+fn full_inline_keys_modes_shortcut_list(keys_without_common_modifiers: &Vec<KeyShortcut>, help: &ModeInfo) -> LinePart {
+    let mut full_shortcut_list = LinePart::default();
+    for key in keys_without_common_modifiers {
+        let is_selected = key.is_selected();
+        let shortcut = add_shortcut_with_inline_key(help, &key.full_text(), key.key.as_ref().map(|k| vec![k.clone()]).unwrap_or_else(|| vec![]), is_selected);
+        full_shortcut_list.append(&shortcut);
+    }
+    full_shortcut_list
+}
+
+fn shortened_inline_keys_modes_shortcut_list(keys_without_common_modifiers: &Vec<KeyShortcut>, help: &ModeInfo) -> LinePart {
+    let mut shortened_shortcut_list = LinePart::default();
+    for key in keys_without_common_modifiers {
+        let is_selected = key.is_selected();
+        let shortcut = add_shortcut_with_key_only(help, key.key.as_ref().map(|k| vec![k.clone()]).unwrap_or_else(|| vec![]), is_selected);
+        shortened_shortcut_list.append(&shortcut);
+    }
+    shortened_shortcut_list
+}
+
+fn full_modes_shortcut_list(default_keys: &Vec<KeyShortcut>, help: &ModeInfo) -> LinePart {
+    let mut full_shortcut_list = LinePart::default();
+    for key in default_keys {
+        let is_selected = key.is_selected();
+        full_shortcut_list.append(&add_shortcut(help, &key.full_text(), &key.key.as_ref().map(|k| vec![k.clone()]).unwrap_or_else(|| vec![]), is_selected));
+    }
+    full_shortcut_list
+}
+
+fn shortened_modes_shortcut_list(default_keys: &Vec<KeyShortcut>, help: &ModeInfo) -> LinePart {
+    let mut shortened_shortcut_list = LinePart::default();
+    for key in default_keys {
+        let is_selected = key.is_selected();
+        shortened_shortcut_list.append(&add_shortcut(help, &key.short_text(), &key.key.as_ref().map(|k| vec![k.clone()]).unwrap_or_else(|| vec![]), is_selected));
+    }
+    shortened_shortcut_list
 }
 
 fn common_modifiers_in_all_modes(key_shortcuts: &HashMap<InputMode, Vec<KeyShortcut>>) -> Option<Vec<KeyModifier>> {
-    eprintln!("common_modifiers_in_all_modes: {:#?}", key_shortcuts);
     let Some(mut common_modifiers) = key_shortcuts.iter().next().and_then(|k| k.1.iter().next().and_then(|k| k.get_key().map(|k| k.key_modifiers.clone()))) else {
         return None;
     };
-    eprintln!("common_modifiers start: {:?}", common_modifiers);
     for (_mode, key_shortcuts) in key_shortcuts {
-        eprintln!("common_modifiers mode {:?}: {:?}", _mode, common_modifiers);
 
         if key_shortcuts.is_empty() {
             return None;
@@ -1116,97 +1162,66 @@ fn render_common_modifiers(palette: &ColoredElements, mode_info: &ModeInfo, comm
     line_part_to_render.len += prefix_text.chars().count() + separator.chars().count();
 }
 
-fn render_secondary_info(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usize, separator: &str, current_line: &mut LinePart) {
+fn render_secondary_info(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usize, separator: &str) -> Option<LinePart> {
     let mut secondary_info = LinePart::default();
     let supports_arrow_fonts = !help.capabilities.arrow_fonts;
     let colored_elements = color_elements(help.style.colors, !supports_arrow_fonts);
-    let secondary_keybinds = secondary_keybinds(&help); // TODO: only if there's enough space
+    let secondary_keybinds = secondary_keybinds(&help, tab_info, max_len, separator);
     secondary_info.append(&secondary_keybinds);
-    if let Some(swap_layout_indicator) = tab_info.and_then(|tab_info| swap_layout_status(
-        max_len,
-        &tab_info.active_swap_layout_name,
-        tab_info.is_swap_layout_dirty,
-        help,
-        colored_elements,
-        &help.style.colors,
-        separator,
-    )) {
-        secondary_info.append(&swap_layout_indicator);
-    }
-    let remaining_space = max_len.saturating_sub(current_line.len).saturating_sub(secondary_info.len).saturating_sub(1); // 1 for the end padding of the line
+    let remaining_space = max_len.saturating_sub(secondary_info.len).saturating_sub(1); // 1 for the end padding of the line
+    let mut padding = String::new();
+    let mut padding_len = 0;
     for _ in 0..remaining_space {
-        current_line.part.push_str(
+        padding.push_str(
             &ANSIStrings(&[colored_elements.superkey_prefix.paint(" ")]).to_string(),
         );
-        current_line.len += 1;
+        padding_len += 1;
     }
-    current_line.append(&secondary_info);
-}
-
-fn render_current_mode(help: &ModeInfo, max_len: usize, line_part: &mut LinePart) {
-    let palette = help.style.colors;
-    let mode = help.mode;
-    let mode_text = format!(" {:^7} ", format!("{:?}", mode)).to_uppercase();
-
-    let bg_color = match palette.theme_hue {
-        ThemeHue::Dark => palette.black,
-        ThemeHue::Light => palette.white,
-    };
-
-    let locked_mode_color = palette.magenta;
-    let normal_mode_color = palette.green;
-    let other_modes_color = palette.orange;
-
-    let mode_part_styled_text = if mode == InputMode::Locked {
-        style!(locked_mode_color, bg_color)
-            .bold()
-            .paint(&mode_text)
-    } else if mode == InputMode::Normal {
-        style!(normal_mode_color, bg_color)
-            .bold()
-            .paint(&mode_text)
+    secondary_info.part = format!("{}{}", padding, secondary_info.part);
+    secondary_info.len += padding_len;
+    if secondary_info.len <= max_len {
+        Some(secondary_info)
     } else {
-        style!(other_modes_color, bg_color)
-            .bold()
-            .paint(&mode_text)
-    };
-    let mode_text_len = mode_text.chars().count();
-
-    if mode_text_len <= max_len {
-        line_part.len += mode_text.chars().count();
-        line_part.part = format!("{}{}", line_part.part, mode_part_styled_text);
+        None
     }
 }
 
 pub fn one_line_ui(
     help: &ModeInfo,
     tab_info: Option<&TabInfo>,
-    max_len: usize,
+    mut max_len: usize,
     separator: &str,
+    base_mode_is_locked: bool,
 ) -> LinePart {
-    let base_mode_is_locked = true; // TODO: from config/zellij
-    // TODO: decrement max_len as we go, there are probably errors here
     let mut line_part_to_render = LinePart::default();
-    // render_current_mode(help, max_len, &mut line_part_to_render);
-    render_mode_key_indicators(help, max_len, separator, &mut line_part_to_render, base_mode_is_locked);
-    match help.mode {
-        InputMode::Normal | InputMode::Locked => {
-            if line_part_to_render.len < max_len {
-                render_secondary_info(help, tab_info, max_len, separator, &mut line_part_to_render);
+    let mut append = |line_part: &LinePart, max_len: &mut usize| {
+        line_part_to_render.append(line_part);
+        *max_len = max_len.saturating_sub(line_part.len);
+    };
+
+    render_mode_key_indicators(help, max_len, separator, base_mode_is_locked)
+        .map(|mode_key_indicators| append(&mode_key_indicators, &mut max_len))
+        .and_then(|_| {
+            match help.mode {
+                InputMode::Normal | InputMode::Locked => {
+                    render_secondary_info(help, tab_info, max_len, separator)
+                        .map(|secondary_info| append(&secondary_info, &mut max_len))
+                },
+                _ => {
+                    add_keygroup_separator(help, max_len)
+                        .map(|key_group_separator| append(&key_group_separator, &mut max_len))
+                        .and_then(|_| keybinds(help, max_len))
+                        .map(|keybinds| append(&keybinds, &mut max_len))
+                }
             }
-        },
-        _ => {
-            let keybinds = keybinds(help, "quicknav", max_len);
-            if line_part_to_render.len + keybinds.len <= max_len {
-                line_part_to_render.append(&keybinds);
-            }
-        }
-    }
+        });
     line_part_to_render
 }
 
-fn secondary_keybinds(help: &ModeInfo) -> LinePart {
-    let secondary_info = LinePart::default();
+fn secondary_keybinds(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usize, separator: &str) -> LinePart {
+    let mut secondary_info = LinePart::default();
+    let supports_arrow_fonts = !help.capabilities.arrow_fonts;
+    let colored_elements = color_elements(help.style.colors, !supports_arrow_fonts);
     let binds = &help.get_mode_keybinds();
 
     // New Pane
@@ -1223,7 +1238,7 @@ fn secondary_keybinds(help: &ModeInfo) -> LinePart {
     } else {
         vec![]
     };
-    let secondary_info = add_shortcut(help, &secondary_info, "New Pane", key_to_display);
+    // secondary_info.append(&add_shortcut(help, "New Pane", key_to_display, false));
 
     // Move focus
     let mut move_focus_shortcuts: Vec<KeyWithModifier> = vec![];
@@ -1277,31 +1292,137 @@ fn secondary_keybinds(help: &ModeInfo) -> LinePart {
         move_focus_shortcuts.push(move_focus_left_key.clone());
     }
 
-    let secondary_info = add_shortcut(help, &secondary_info, "Change Focus", move_focus_shortcuts);
+    secondary_info.append(&add_shortcut(help, "New Pane", &key_to_display, false));
+    secondary_info.append(&add_shortcut(help, "Change Focus", &move_focus_shortcuts, false));
 
-    secondary_info
-}
+    let swap_layout_indicator = tab_info.and_then(|tab_info| swap_layout_status(
+        max_len,
+        &tab_info.active_swap_layout_name,
+        tab_info.is_swap_layout_dirty,
+        help,
+        colored_elements,
+        &help.style.colors,
+        separator,
+    ));
 
-pub fn add_shortcut(
-    help: &ModeInfo,
-    linepart: &LinePart,
-    text: &str,
-    keys: Vec<KeyWithModifier>,
-) -> LinePart {
-    let separator = crate::ARROW_SEPARATOR; // TODO: from args
-    let selected = false;
-    let shortcut = if linepart.len == 0 {
-        full_length_shortcut(true, keys, text, help.style.colors, separator, selected)
+    if let Some(swap_layout_indicator) = &swap_layout_indicator {
+        secondary_info.append(&swap_layout_indicator);
+    }
+
+    if secondary_info.len <= max_len {
+        secondary_info
     } else {
-        full_length_shortcut(false, keys, text, help.style.colors, separator, selected)
-    };
+        let mut short_line = LinePart::default();
+        short_line.append(&add_shortcut(help, "New", &key_to_display, false));
+        short_line.append(&add_shortcut(help, "Focus", &move_focus_shortcuts, false));
+        if let Some(swap_layout_indicator) = swap_layout_indicator {
+            short_line.append(&swap_layout_indicator);
+        }
+        short_line
+    }
 
-    let mut new_linepart = LinePart::default();
-    new_linepart.len += linepart.len + shortcut.len;
-    // new_linepart.part = format!("{}{}", linepart.part, shortcut);
-    new_linepart.part = format!("{}{}", linepart.part, shortcut.part);
-    new_linepart
 }
+
+// fn secondary_keybinds_short(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usize, separator: &str) -> LinePart {
+//     let mut secondary_info = LinePart::default();
+//     let supports_arrow_fonts = !help.capabilities.arrow_fonts;
+//     let colored_elements = color_elements(help.style.colors, !supports_arrow_fonts);
+//     let binds = &help.get_mode_keybinds();
+// 
+//     // New Pane
+//     let new_pane_action_key = action_key(
+//         binds,
+//         &[Action::NewPane(None, None)],
+//     );
+//     let mut key_to_display = new_pane_action_key
+//         .iter()
+//         .find(|k| k.is_key_with_alt_modifier(BareKey::Char('n')))
+//         .or_else(|| new_pane_action_key.iter().next());
+//     let key_to_display = if let Some(key_to_display) = key_to_display.take() {
+//         vec![key_to_display.clone()]
+//     } else {
+//         vec![]
+//     };
+//     secondary_info.append(&add_shortcut(help, "New", &key_to_display, false));
+// 
+//     // Move focus
+//     let mut move_focus_shortcuts: Vec<KeyWithModifier> = vec![];
+// 
+//     // Left
+//     let move_focus_left_action_key = action_key(
+//         binds,
+//         &[Action::MoveFocusOrTab(Direction::Left)]
+//     );
+//     let move_focus_left_key = move_focus_left_action_key
+//         .iter()
+//         .find(|k| k.is_key_with_alt_modifier(BareKey::Left))
+//         .or_else(|| move_focus_left_action_key.iter().next());
+//     if let Some(move_focus_left_key) = move_focus_left_key {
+//         move_focus_shortcuts.push(move_focus_left_key.clone());
+//     }
+//     // Down
+//     let move_focus_left_action_key = action_key(
+//         binds,
+//         &[Action::MoveFocus(Direction::Down)]
+//     );
+//     let move_focus_left_key = move_focus_left_action_key
+//         .iter()
+//         .find(|k| k.is_key_with_alt_modifier(BareKey::Down))
+//         .or_else(|| move_focus_left_action_key.iter().next());
+//     if let Some(move_focus_left_key) = move_focus_left_key {
+//         move_focus_shortcuts.push(move_focus_left_key.clone());
+//     }
+//     // Up
+//     let move_focus_left_action_key = action_key(
+//         binds,
+//         &[Action::MoveFocus(Direction::Up)]
+//     );
+//     let move_focus_left_key = move_focus_left_action_key
+//         .iter()
+//         .find(|k| k.is_key_with_alt_modifier(BareKey::Up))
+//         .or_else(|| move_focus_left_action_key.iter().next());
+//     if let Some(move_focus_left_key) = move_focus_left_key {
+//         move_focus_shortcuts.push(move_focus_left_key.clone());
+//     }
+//     // Right
+//     let move_focus_left_action_key = action_key(
+//         binds,
+//         &[Action::MoveFocusOrTab(Direction::Right)]
+//     );
+//     let move_focus_left_key = move_focus_left_action_key
+//         .iter()
+//         .find(|k| k.is_key_with_alt_modifier(BareKey::Right))
+//         .or_else(|| move_focus_left_action_key.iter().next());
+//     if let Some(move_focus_left_key) = move_focus_left_key {
+//         move_focus_shortcuts.push(move_focus_left_key.clone());
+//     }
+// 
+//     secondary_info.append(&add_shortcut(help, "Focus", &move_focus_shortcuts, false));
+// 
+//     if let Some(swap_layout_indicator) = tab_info.and_then(|tab_info| swap_layout_status(
+//         max_len,
+//         &tab_info.active_swap_layout_name,
+//         tab_info.is_swap_layout_dirty,
+//         help,
+//         colored_elements,
+//         &help.style.colors,
+//         separator,
+//     )) {
+//         secondary_info.append(&swap_layout_indicator);
+//     }
+// 
+//     secondary_info
+// }
+
+// pub fn add_shortcut(
+//     help: &ModeInfo,
+//     text: &str,
+//     keys: Vec<KeyWithModifier>,
+// ) -> LinePart {
+//     let separator = crate::ARROW_SEPARATOR; // TODO: from args
+//     let selected = false;
+//     full_length_shortcut(true, keys, text, help.style.colors, separator, selected)
+// }
 
 fn full_length_shortcut(
     is_first_shortcut: bool,
@@ -1360,7 +1481,7 @@ fn full_length_shortcut(
     ret
 }
 
-pub fn keybinds(help: &ModeInfo, tip_name: &str, max_width: usize) -> LinePart {
+pub fn keybinds(help: &ModeInfo, max_width: usize) -> Option<LinePart> {
     // It is assumed that there is at least one TIP data in the TIPS HasMap.
 //     let tip_body = TIPS
 //         .get(tip_name)
@@ -1368,38 +1489,126 @@ pub fn keybinds(help: &ModeInfo, tip_name: &str, max_width: usize) -> LinePart {
 
     let full_shortcut_list = full_shortcut_list(help);
     if full_shortcut_list.len <= max_width {
-        return full_shortcut_list;
+        return Some(full_shortcut_list);
     }
     let shortened_shortcut_list = shortened_shortcut_list(help);
     if shortened_shortcut_list.len <= max_width {
-        return shortened_shortcut_list;
+        return Some(shortened_shortcut_list);
     }
-    best_effort_shortcut_list(help, max_width)
+    Some(best_effort_shortcut_list(help, max_width))
 }
 
-pub fn add_shortcut_selected(
+pub fn add_shortcut(
     help: &ModeInfo,
-    linepart: &LinePart,
     text: &str,
-    keys: Vec<KeyWithModifier>,
+    keys: &Vec<KeyWithModifier>,
+    selected: bool,
 ) -> LinePart {
-    let separator = crate::ARROW_SEPARATOR; // TODO: from args
-    let selected = true;
-    let shortcut = if linepart.len == 0 {
-        full_length_shortcut(true, keys, text, help.style.colors, separator, selected)
-    } else {
-        full_length_shortcut(false, keys, text, help.style.colors, separator, selected)
+    let arrow_separator = crate::ARROW_SEPARATOR; // TODO: from args
+    let palette = help.style.colors;
+    let mut ret = LinePart::default();
+    if keys.is_empty() {
+        return ret;
+    }
+
+    let text_color = palette_match!(match palette.theme_hue {
+        ThemeHue::Dark => palette.black,
+        ThemeHue::Light => palette.white,
+    });
+
+    let bg_color = match palette.theme_hue {
+        ThemeHue::Dark => palette_match!(palette.black),
+        ThemeHue::Light => palette_match!(palette.white),
+    };
+    let fg_color = match palette.theme_hue {
+        ThemeHue::Dark => if selected { palette_match!(palette.green) } else { palette_match!(palette.fg) },
+        ThemeHue::Light => if selected { palette_match!(palette.green) } else { palette_match!(palette.fg) },
     };
 
-    let mut new_linepart = LinePart::default();
-    new_linepart.len += linepart.len + shortcut.len;
-    new_linepart.part = format!("{}{}", linepart.part, shortcut);
-    new_linepart
+    ret.append(&style_key_with_modifier(&keys, &palette, None)); // TODO: alternate
+
+    let mut bits: Vec<ANSIString> = vec![];
+    bits.push(
+        Style::new()
+            .fg(bg_color)
+            .on(fg_color)
+            .bold()
+            .paint(format!("{}", arrow_separator)),
+    );
+    bits.push(
+        Style::new()
+            .fg(text_color)
+            .on(fg_color)
+            .bold()
+            .paint(format!(" {} ", text)),
+    );
+    bits.push(
+        Style::new()
+            .fg(fg_color)
+            .on(bg_color)
+            .bold()
+            .paint(format!("{}", arrow_separator)),
+    );
+    ret.part = format!("{}{}", ret.part, ANSIStrings(&bits));
+    ret.len += text.chars().count() + 4; // padding and arrow fonts
+
+    ret
+}
+
+pub fn add_only_key_shortcut_selected(
+    help: &ModeInfo,
+    keys: Vec<KeyWithModifier>,
+    selected: bool
+) -> LinePart {
+    let mut ret = LinePart::default();
+    let palette = help.style.colors;
+    let arrow_separator = crate::ARROW_SEPARATOR; // TODO: from args
+
+    let text_color = palette_match!(match palette.theme_hue {
+        ThemeHue::Dark => palette.black,
+        ThemeHue::Light => palette.white,
+    });
+
+    let bg_color = match palette.theme_hue {
+        ThemeHue::Dark => palette_match!(palette.black),
+        ThemeHue::Light => palette_match!(palette.white),
+    };
+    let fg_color = match palette.theme_hue {
+        ThemeHue::Dark => if selected { palette_match!(palette.green) } else { palette_match!(palette.fg) },
+        ThemeHue::Light => if selected { palette_match!(palette.green) } else { palette_match!(palette.fg) },
+    };
+
+    let key_string = format!("{}", keys.iter().map(|k| k.to_string()).collect::<Vec<_>>().join("-"));
+    let mut bits: Vec<ANSIString> = vec![];
+    bits.push(
+        Style::new()
+            .fg(bg_color)
+            .on(fg_color)
+            .bold()
+            .paint(format!("{}", arrow_separator)),
+    );
+    bits.push(
+        Style::new()
+            .fg(text_color)
+            .on(fg_color)
+            .bold()
+            .paint(format!(" {} ", key_string)),
+    );
+    bits.push(
+        Style::new()
+            .fg(fg_color)
+            .on(bg_color)
+            .bold()
+            .paint(format!("{}", arrow_separator)),
+    );
+    ret.part = format!("{}{}", ret.part, ANSIStrings(&bits));
+    ret.len += key_string.chars().count() + 4; // padding and arrow fonts
+
+    ret
 }
 
 pub fn add_shortcut_with_inline_key(
     help: &ModeInfo,
-    linepart: &LinePart,
     text: &str,
     key: Vec<KeyWithModifier>,
     is_selected: bool,
@@ -1427,6 +1636,7 @@ pub fn add_shortcut_with_inline_key(
     };
 
     // ret.append(&style_key_with_modifier(&key, &palette, None)); // TODO: alternate
+    let key_string = format!("{}", key.iter().map(|k| k.to_string()).collect::<Vec<_>>().join("-"));
 
     let mut bits: Vec<ANSIString> = vec![];
     bits.push(
@@ -1448,7 +1658,7 @@ pub fn add_shortcut_with_inline_key(
             .fg(shortcut_color)
             .on(bg_color)
             .bold()
-            .paint(format!("{}", key.iter().map(|k| k.to_string()).collect::<Vec<_>>().join("-"))),
+            .paint(&key_string)
     );
     bits.push(
         Style::new()
@@ -1473,31 +1683,74 @@ pub fn add_shortcut_with_inline_key(
     );
     // TODO: check line length and max length and stuff
     ret.part = format!("{}{}", ret.part, ANSIStrings(&bits));
-    ret.len += text.chars().count() + 8; // padding, group boundaries and arrow fonts
+    ret.len += text.chars().count() + key_string.chars().count() + 7; // padding, group boundaries and arrow fonts
 
     ret
+}
 
+pub fn add_shortcut_with_key_only(
+    help: &ModeInfo,
+    key: Vec<KeyWithModifier>,
+    is_selected: bool,
+) -> LinePart {
+    let arrow_separator = crate::ARROW_SEPARATOR; // TODO: from args
+    let palette = help.style.colors;
 
+    let mut ret = LinePart::default();
+    if key.is_empty() {
+        return ret;
+    }
 
+    let text_color = palette_match!(match palette.theme_hue {
+        ThemeHue::Dark => palette.black,
+        ThemeHue::Light => palette.white,
+    });
 
+    let bg_color = match palette.theme_hue {
+        ThemeHue::Dark => if is_selected { palette_match!(palette.green) } else { palette_match!(palette.fg) },
+        ThemeHue::Light => if is_selected { palette_match!(palette.green) } else { palette_match!(palette.fg) },
+    };
+    let shortcut_color = match palette.theme_hue {
+        ThemeHue::Dark => palette_match!(palette.red),
+        ThemeHue::Light => palette_match!(palette.red),
+    };
 
-//     let separator = crate::ARROW_SEPARATOR; // TODO: from args
-//     let selected = true;
-//     let shortcut = if linepart.len == 0 {
-//         full_length_shortcut(true, keys, text, help.style.colors, separator, selected)
-//     } else {
-//         full_length_shortcut(false, keys, text, help.style.colors, separator, selected)
-//     };
-// 
-//     let mut new_linepart = LinePart::default();
-//     new_linepart.len += linepart.len + shortcut.len;
-//     new_linepart.part = format!("{}{}", linepart.part, shortcut);
-//     new_linepart
+    // ret.append(&style_key_with_modifier(&key, &palette, None)); // TODO: alternate
+    let key_string = format!(" {} ", key.iter().map(|k| k.to_string()).collect::<Vec<_>>().join("-"));
+
+    let mut bits: Vec<ANSIString> = vec![];
+    bits.push(
+        Style::new()
+            .fg(text_color)
+            .on(bg_color)
+            .bold()
+            .paint(format!("{}", arrow_separator)),
+    );
+    bits.push(
+        Style::new()
+            .fg(shortcut_color)
+            .on(bg_color)
+            .bold()
+            .paint(&key_string)
+    );
+    bits.push(
+        Style::new()
+            .fg(bg_color)
+            .on(text_color)
+            .bold()
+            .paint(format!("{}", arrow_separator)),
+    );
+    // TODO: check line length and max length and stuff
+    ret.part = format!("{}{}", ret.part, ANSIStrings(&bits));
+    ret.len += key_string.chars().count() + 2; // 2 => arrow fonts
+
+    ret
 }
 
 pub fn add_keygroup_separator (
     help: &ModeInfo,
-) -> LinePart {
+    max_len: usize,
+) -> Option<LinePart> {
     let arrow_separator = crate::ARROW_SEPARATOR; // TODO: from args
     let palette = help.style.colors;
 
@@ -1531,7 +1784,11 @@ pub fn add_keygroup_separator (
     ret.part = format!("{}{}", ret.part, ANSIStrings(&bits));
     ret.len += 3; // padding, group boundaries and arrow fonts
 
-    ret
+    if ret.len <= max_len {
+        Some(ret)
+    } else {
+        None
+    }
 }
 
 fn full_shortcut_list(help: &ModeInfo) -> LinePart {
@@ -1547,7 +1804,7 @@ fn full_shortcut_list_nonstandard_mode(help: &ModeInfo) -> LinePart {
     let keys_and_hints = get_keys_and_hints(help);
 
     for (long, _short, keys) in keys_and_hints.into_iter() {
-        line_part = add_shortcut(help, &line_part, &long, keys.to_vec());
+        line_part.append(&add_shortcut(help, &long, &keys.to_vec(), false));
     }
     line_part
 }
@@ -1720,7 +1977,7 @@ fn shortened_shortcut_list_nonstandard_mode(help: &ModeInfo) -> LinePart {
     let keys_and_hints = get_keys_and_hints(help);
 
     for (_, short, keys) in keys_and_hints.into_iter() {
-        line_part = add_shortcut(help, &line_part, &short, keys.to_vec());
+        line_part.append(&add_shortcut(help, &short, &keys.to_vec(), false));
     }
     line_part
 }
@@ -1738,13 +1995,14 @@ fn best_effort_shortcut_list_nonstandard_mode(help: &ModeInfo, max_len: usize) -
     let keys_and_hints = get_keys_and_hints(help);
 
     for (_, short, keys) in keys_and_hints.into_iter() {
-        let new_line_part = add_shortcut(help, &line_part, &short, keys.to_vec());
-        if new_line_part.len + MORE_MSG.chars().count() > max_len {
+        let shortcut = add_shortcut(help, &short, &keys.to_vec(), false);
+        if line_part.len + shortcut.len + MORE_MSG.chars().count() > max_len {
             line_part.part = format!("{}{}", line_part.part, MORE_MSG);
             line_part.len += MORE_MSG.chars().count();
             break;
+        } else {
+            line_part.append(&shortcut);
         }
-        line_part = new_line_part;
     }
     line_part
 }

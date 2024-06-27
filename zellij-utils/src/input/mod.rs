@@ -33,12 +33,14 @@ mod not_wasm {
         mode: InputMode,
         attributes: &ClientAttributes,
         capabilities: PluginCapabilities,
+        base_mode: Option<InputMode>,
     ) -> ModeInfo {
         let keybinds = attributes.keybinds.to_keybinds_vec();
         let session_name = envs::get_session_name().ok();
 
         ModeInfo {
             mode,
+            base_mode,
             keybinds,
             style: attributes.style,
             capabilities,

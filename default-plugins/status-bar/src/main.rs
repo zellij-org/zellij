@@ -37,6 +37,7 @@ struct State {
     mode_info: ModeInfo,
     text_copy_destination: Option<CopyDestination>,
     display_system_clipboard_failure: bool,
+    base_mode_is_locked: bool,
 }
 
 register_plugin!(State);
@@ -203,6 +204,11 @@ impl ZellijPlugin for State {
                     should_render = true;
                 }
                 self.mode_info = mode_info;
+                self.base_mode_is_locked = self.mode_info.base_mode == Some(InputMode::Locked); // TODO:
+                                                                                          // CONTINUE
+                                                                                          // HERE -
+                                                                                          // implement
+                                                                                          // this
             },
             Event::TabUpdate(tabs) => {
                 if self.tabs != tabs {
@@ -251,7 +257,7 @@ impl ZellijPlugin for State {
 
         let active_tab = self.tabs.iter().find(|t| t.active);
         // let first_line = first_line(&self.mode_info, active_tab, cols, separator);
-        let first_line = one_line_ui(&self.mode_info, active_tab, cols, separator);
+        let first_line = one_line_ui(&self.mode_info, active_tab, cols, separator, self.base_mode_is_locked);
 
         let background = match self.mode_info.style.colors.theme_hue {
             ThemeHue::Dark => self.mode_info.style.colors.black,
@@ -582,6 +588,7 @@ pub fn style_key_with_modifier(
     }
 
     // let group_end_str = ">";
+    // let group_end_str = if keyvec.len() > 1 { "> " } else { " " };
     let group_end_str = if keyvec.len() > 1 { "> " } else { " " };
     if let Some(background) = background {
         let background = palette_match!(background);

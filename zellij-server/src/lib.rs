@@ -149,6 +149,7 @@ pub(crate) struct SessionMetaData {
     pub config_options: Box<Options>,
     pub client_keybinds: HashMap<ClientId, Keybinds>,
     pub client_input_modes: HashMap<ClientId, InputMode>,
+    pub default_mode: InputMode,
     screen_thread: Option<thread::JoinHandle<()>>,
     pty_thread: Option<thread::JoinHandle<()>>,
     plugin_thread: Option<thread::JoinHandle<()>>,
@@ -565,7 +566,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .send_to_plugin(PluginInstruction::AddClient(client_id))
                     .unwrap();
                 let default_mode = options.default_mode.unwrap_or_default();
-                let mode_info = get_mode_info(default_mode, &attrs, session_data.capabilities);
+                let mode_info = get_mode_info(default_mode, &attrs, session_data.capabilities, Some(default_mode));
                 session_data
                     .senders
                     .send_to_screen(ScreenInstruction::ChangeMode(mode_info.clone(), client_id))
@@ -999,6 +1000,8 @@ fn init_session(
         .clone()
         .unwrap_or_else(|| get_default_shell());
 
+    let default_mode = config_options.default_mode.unwrap_or_default();
+
     let pty_thread = thread::Builder::new()
         .name("pty".to_string())
         .spawn({
@@ -1089,6 +1092,7 @@ fn init_session(
                     client_attributes,
                     default_shell,
                     plugin_aliases,
+                    default_mode,
                 )
                 .fatal()
             }
@@ -1158,6 +1162,7 @@ fn init_session(
         plugin_thread: Some(plugin_thread),
         pty_writer_thread: Some(pty_writer_thread),
         background_jobs_thread: Some(background_jobs_thread),
+        default_mode,
     }
 }
 

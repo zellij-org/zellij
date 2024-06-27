@@ -14,6 +14,7 @@ use zellij_utils::async_channel::Sender;
 use zellij_utils::{
     data::EventType,
     data::PluginCapabilities,
+    data::InputMode,
     input::command::TerminalAction,
     input::layout::{Layout, PluginUserConfiguration, RunPlugin, RunPluginLocation},
     input::plugins::PluginConfig,
@@ -282,6 +283,7 @@ pub struct PluginEnv {
     pub plugin_cwd: PathBuf,
     pub input_pipes_to_unblock: Arc<Mutex<HashSet<String>>>,
     pub input_pipes_to_block: Arc<Mutex<HashSet<String>>>,
+    pub default_mode: InputMode,
 }
 
 impl PluginEnv {

@@ -27,7 +27,7 @@ use zellij_utils::{
     async_std::{channel, future::timeout, task},
     data::{
         Event, EventType, MessageToPlugin, PermissionStatus, PermissionType, PipeMessage,
-        PipeSource, PluginCapabilities,
+        PipeSource, PluginCapabilities, InputMode,
     },
     errors::{prelude::*, ContextType, PluginContext},
     input::{
@@ -199,6 +199,7 @@ pub(crate) fn plugin_thread_main(
     client_attributes: ClientAttributes,
     default_shell: Option<TerminalAction>,
     plugin_aliases: Box<PluginAliases>,
+    default_mode: InputMode,
 ) -> Result<()> {
     info!("Wasm main thread starts");
     let plugin_dir = data_dir.join("plugins/");
@@ -221,6 +222,7 @@ pub(crate) fn plugin_thread_main(
         default_shell,
         layout.clone(),
         layout_dir,
+        default_mode,
     );
 
     loop {
