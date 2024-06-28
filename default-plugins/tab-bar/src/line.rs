@@ -128,7 +128,10 @@ fn left_more_message(
     // 238
     // chars length plus separator length on both sides
     let more_text_len = more_text.width() + 2 * separator.width();
-    let (text_color, sep_color) = (palette.text_unselected.base, palette.text_unselected.background);
+    let (text_color, sep_color) = (
+        palette.text_unselected.base,
+        palette.text_unselected.background,
+    );
     let left_separator = style!(sep_color, palette.ribbon_unselected.background).paint(separator);
     let more_styled_text = style!(text_color, palette.ribbon_unselected.background)
         .bold()
@@ -159,7 +162,10 @@ fn right_more_message(
     };
     // chars length plus separator length on both sides
     let more_text_len = more_text.width() + 2 * separator.width();
-    let (text_color, sep_color) = (palette.text_unselected.base, palette.text_unselected.background);
+    let (text_color, sep_color) = (
+        palette.text_unselected.base,
+        palette.text_unselected.background,
+    );
     let left_separator = style!(sep_color, palette.ribbon_unselected.background).paint(separator);
     let more_styled_text = style!(text_color, palette.ribbon_unselected.background)
         .bold()
