@@ -10,10 +10,9 @@ use std::{
     collections::{BTreeMap, HashMap, HashSet},
     fs,
     path::PathBuf,
-    sync::{Arc, Mutex},
     time::Duration,
 };
-use wasmer::Store;
+use wasmtime::Engine;
 
 use crate::panes::PaneId;
 use crate::screen::ScreenInstruction;
@@ -189,7 +188,7 @@ impl From<&PluginInstruction> for PluginContext {
 
 pub(crate) fn plugin_thread_main(
     bus: Bus<PluginInstruction>,
-    store: Store,
+    engine: Engine,
     data_dir: PathBuf,
     mut layout: Box<Layout>,
     layout_dir: Option<PathBuf>,
@@ -204,7 +203,6 @@ pub(crate) fn plugin_thread_main(
     let plugin_dir = data_dir.join("plugins/");
     let plugin_global_data_dir = plugin_dir.join("data");
     layout.populate_plugin_aliases_in_layout(&plugin_aliases);
-    let store = Arc::new(Mutex::new(store));
 
     // use this channel to ensure that tasks spawned from this thread terminate before exiting
     // https://tokio.rs/tokio/topics/shutdown#waiting-for-things-to-finish-shutting-down
@@ -212,7 +210,7 @@ pub(crate) fn plugin_thread_main(
 
     let mut wasm_bridge = WasmBridge::new(
         bus.senders.clone(),
-        store,
+        engine,
         plugin_dir,
         path_to_default_shell,
         zellij_cwd,
