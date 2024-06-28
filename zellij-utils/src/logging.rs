@@ -68,15 +68,15 @@ pub fn configure_logger() {
         .unwrap();
 
     // Set the default logging level to "info" and log it to zellij.log file
-    // Decrease verbosity for `wasmer_compiler_cranelift` module because it has a lot of useless info logs
+    // Decrease verbosity for `wasmtime_wasi` module because it has a lot of useless info logs
     // For `zellij_server::logging_pipe`, we use custom format as we use logging macros to forward stderr output from plugins
     let config = Config::builder()
         .appender(Appender::builder().build("logFile", Box::new(log_file)))
         .appender(Appender::builder().build("logPlugin", Box::new(log_plugin)))
         .logger(
             Logger::builder()
-                .appender("logFile")
-                .build("wasmer_compiler_cranelift", LevelFilter::Warn),
+                .appender("logPlugin")
+                .build("wasmtime_wasi", LevelFilter::Warn),
         )
         .logger(
             Logger::builder()

@@ -1,6 +1,6 @@
 use super::PluginInstruction;
 use crate::background_jobs::BackgroundJob;
-use crate::plugins::plugin_map::{PluginEnv, Subscriptions};
+use crate::plugins::plugin_map::PluginEnv;
 use crate::plugins::wasm_bridge::handle_plugin_crash;
 use crate::route::route_action;
 use crate::ServerInstruction;
@@ -8,15 +8,14 @@ use log::{debug, warn};
 use serde::Serialize;
 use std::{
     collections::{BTreeMap, HashSet},
+    io::{Read, Write},
     path::PathBuf,
     process,
     str::FromStr,
-    sync::{Arc, Mutex},
     thread,
     time::{Duration, Instant},
 };
-use wasmer::{imports, AsStoreMut, Function, FunctionEnv, FunctionEnvMut, Imports};
-use wasmer_wasi::WasiEnv;
+use wasmtime::{Caller, Linker};
 use zellij_utils::data::{
     CommandType, ConnectToSession, FloatingPaneCoordinates, HttpVerb, LayoutInfo, MessageToPlugin,
     PermissionStatus, PermissionType, PluginPermission,
@@ -54,13 +53,13 @@ macro_rules! apply_action {
     ($action:ident, $error_message:ident, $env: ident) => {
         if let Err(e) = route_action(
             $action,
-            $env.plugin_env.client_id,
-            Some(PaneId::Plugin($env.plugin_env.plugin_id)),
-            $env.plugin_env.senders.clone(),
-            $env.plugin_env.capabilities.clone(),
-            $env.plugin_env.client_attributes.clone(),
-            $env.plugin_env.default_shell.clone(),
-            $env.plugin_env.default_layout.clone(),
+            $env.client_id,
+            Some(PaneId::Plugin($env.plugin_id)),
+            $env.senders.clone(),
+            $env.capabilities.clone(),
+            $env.client_attributes.clone(),
+            $env.default_shell.clone(),
+            $env.default_layout.clone(),
             None,
         ) {
             log::error!("{}: {:?}", $error_message(), e);
@@ -68,46 +67,22 @@ macro_rules! apply_action {
     };
 }
 
-pub fn zellij_exports(
-    store: &mut impl AsStoreMut,
-    plugin_env: &PluginEnv,
-    subscriptions: &Arc<Mutex<Subscriptions>>,
-) -> Imports {
-    let function_env = FunctionEnv::new(store, ForeignFunctionEnv::new(plugin_env, subscriptions));
-    imports! {
-        "zellij" => {
-          "host_run_plugin_command" => {
-            Function::new_typed_with_env(store, &function_env, host_run_plugin_command)
-          }
-        }
-    }
+pub fn zellij_exports(linker: &mut Linker<PluginEnv>) {
+    linker
+        .func_wrap("zellij", "host_run_plugin_command", host_run_plugin_command)
+        .unwrap();
 }
 
-#[derive(Clone)]
-pub struct ForeignFunctionEnv {
-    pub plugin_env: PluginEnv,
-    pub subscriptions: Arc<Mutex<Subscriptions>>,
-}
-
-impl ForeignFunctionEnv {
-    pub fn new(plugin_env: &PluginEnv, subscriptions: &Arc<Mutex<Subscriptions>>) -> Self {
-        ForeignFunctionEnv {
-            plugin_env: plugin_env.clone(),
-            subscriptions: subscriptions.clone(),
-        }
-    }
-}
-
-fn host_run_plugin_command(env: FunctionEnvMut<ForeignFunctionEnv>) {
-    let env = env.data();
-    let err_context = || format!("failed to run plugin command {}", env.plugin_env.name());
-    wasi_read_bytes(&env.plugin_env.wasi_env)
+fn host_run_plugin_command(caller: Caller<'_, PluginEnv>) {
+    let env = caller.data();
+    let err_context = || format!("failed to run plugin command {}", env.name());
+    wasi_read_bytes(env)
         .and_then(|bytes| {
             let command: ProtobufPluginCommand = ProtobufPluginCommand::decode(bytes.as_slice())?;
             let command: PluginCommand = command
                 .try_into()
                 .map_err(|e| anyhow!("failed to convert serialized command: {}", e))?;
-            match check_command_permission(&env.plugin_env, &command) {
+            match check_command_permission(&env, &command) {
                 (PermissionStatus::Granted, _) => match command {
                     PluginCommand::Subscribe(event_list) => subscribe(env, event_list)?,
                     PluginCommand::Unsubscribe(event_list) => unsubscribe(env, event_list)?,
@@ -273,7 +248,7 @@ fn host_run_plugin_command(env: FunctionEnvMut<ForeignFunctionEnv>) {
                 (PermissionStatus::Denied, permission) => {
                     log::error!(
                         "Plugin '{}' permission '{}' denied - Command '{:?}' denied",
-                        env.plugin_env.name(),
+                        env.name(),
                         permission
                             .map(|p| p.to_string())
                             .unwrap_or("UNKNOWN".to_owned()),
@@ -283,64 +258,50 @@ fn host_run_plugin_command(env: FunctionEnvMut<ForeignFunctionEnv>) {
             };
             Ok(())
         })
-        .with_context(|| format!("failed to run plugin command {}", env.plugin_env.name()))
+        .with_context(|| format!("failed to run plugin command {}", env.name()))
         .non_fatal();
 }
 
-fn subscribe(env: &ForeignFunctionEnv, event_list: HashSet<EventType>) -> Result<()> {
+fn subscribe(env: &PluginEnv, event_list: HashSet<EventType>) -> Result<()> {
     env.subscriptions
         .lock()
         .to_anyhow()?
         .extend(event_list.clone());
-    env.plugin_env
-        .senders
+    env.senders
         .send_to_plugin(PluginInstruction::PluginSubscribedToEvents(
-            env.plugin_env.plugin_id,
-            env.plugin_env.client_id,
+            env.plugin_id,
+            env.client_id,
             event_list,
         ))
 }
 
-fn unblock_cli_pipe_input(env: &ForeignFunctionEnv, pipe_name: String) {
-    env.plugin_env
-        .input_pipes_to_unblock
-        .lock()
-        .unwrap()
-        .insert(pipe_name);
+fn unblock_cli_pipe_input(env: &PluginEnv, pipe_name: String) {
+    env.input_pipes_to_unblock.lock().unwrap().insert(pipe_name);
 }
 
-fn block_cli_pipe_input(env: &ForeignFunctionEnv, pipe_name: String) {
-    env.plugin_env
-        .input_pipes_to_block
-        .lock()
-        .unwrap()
-        .insert(pipe_name);
+fn block_cli_pipe_input(env: &PluginEnv, pipe_name: String) {
+    env.input_pipes_to_block.lock().unwrap().insert(pipe_name);
 }
 
-fn cli_pipe_output(env: &ForeignFunctionEnv, pipe_name: String, output: String) -> Result<()> {
-    env.plugin_env
-        .senders
+fn cli_pipe_output(env: &PluginEnv, pipe_name: String, output: String) -> Result<()> {
+    env.senders
         .send_to_server(ServerInstruction::CliPipeOutput(pipe_name, output))
         .context("failed to send pipe output")
 }
 
-fn message_to_plugin(
-    env: &ForeignFunctionEnv,
-    mut message_to_plugin: MessageToPlugin,
-) -> Result<()> {
+fn message_to_plugin(env: &PluginEnv, mut message_to_plugin: MessageToPlugin) -> Result<()> {
     if message_to_plugin.plugin_url.as_ref().map(|s| s.as_str()) == Some("zellij:OWN_URL") {
-        message_to_plugin.plugin_url = Some(env.plugin_env.plugin.location.display());
+        message_to_plugin.plugin_url = Some(env.plugin.location.display());
     }
-    env.plugin_env
-        .senders
+    env.senders
         .send_to_plugin(PluginInstruction::MessageFromPlugin {
-            source_plugin_id: env.plugin_env.plugin_id,
+            source_plugin_id: env.plugin_id,
             message: message_to_plugin,
         })
         .context("failed to send message to plugin")
 }
 
-fn unsubscribe(env: &ForeignFunctionEnv, event_list: HashSet<EventType>) -> Result<()> {
+fn unsubscribe(env: &PluginEnv, event_list: HashSet<EventType>) -> Result<()> {
     env.subscriptions
         .lock()
         .to_anyhow()?
@@ -348,14 +309,13 @@ fn unsubscribe(env: &ForeignFunctionEnv, event_list: HashSet<EventType>) -> Resu
     Ok(())
 }
 
-fn set_selectable(env: &ForeignFunctionEnv, selectable: bool) {
-    match env.plugin_env.plugin.run {
+fn set_selectable(env: &PluginEnv, selectable: bool) {
+    match env.plugin.run {
         PluginType::Pane(Some(tab_index)) => {
             // let selectable = selectable != 0;
-            env.plugin_env
-                .senders
+            env.senders
                 .send_to_screen(ScreenInstruction::SetSelectable(
-                    PaneId::Plugin(env.plugin_env.plugin_id),
+                    PaneId::Plugin(env.plugin_id),
                     selectable,
                     tab_index,
                 ))
@@ -363,7 +323,7 @@ fn set_selectable(env: &ForeignFunctionEnv, selectable: bool) {
                     format!(
                         "failed to set plugin {} selectable from plugin {}",
                         selectable,
-                        env.plugin_env.name()
+                        env.name()
                     )
                 })
                 .non_fatal();
@@ -371,22 +331,21 @@ fn set_selectable(env: &ForeignFunctionEnv, selectable: bool) {
         _ => {
             debug!(
                 "{} - Calling method 'set_selectable' does nothing for headless plugins",
-                env.plugin_env.plugin.location
+                env.plugin.location
             )
         },
     }
 }
 
-fn request_permission(env: &ForeignFunctionEnv, permissions: Vec<PermissionType>) -> Result<()> {
+fn request_permission(env: &PluginEnv, permissions: Vec<PermissionType>) -> Result<()> {
     if PermissionCache::from_path_or_default(None)
-        .check_permissions(env.plugin_env.plugin.location.to_string(), &permissions)
+        .check_permissions(env.plugin.location.to_string(), &permissions)
     {
         return env
-            .plugin_env
             .senders
             .send_to_plugin(PluginInstruction::PermissionRequestResult(
-                env.plugin_env.plugin_id,
-                Some(env.plugin_env.client_id),
+                env.plugin_id,
+                Some(env.client_id),
                 permissions.to_vec(),
                 PermissionStatus::Granted,
                 None,
@@ -396,67 +355,62 @@ fn request_permission(env: &ForeignFunctionEnv, permissions: Vec<PermissionType>
     // we do this so that messages that have arrived while the user is seeing the permission screen
     // will be cached and reapplied once the permission is granted
     let _ = env
-        .plugin_env
         .senders
         .send_to_plugin(PluginInstruction::CachePluginEvents {
-            plugin_id: env.plugin_env.plugin_id,
+            plugin_id: env.plugin_id,
         });
 
-    env.plugin_env
-        .senders
+    env.senders
         .send_to_screen(ScreenInstruction::RequestPluginPermissions(
-            env.plugin_env.plugin_id,
-            PluginPermission::new(env.plugin_env.plugin.location.to_string(), permissions),
+            env.plugin_id,
+            PluginPermission::new(env.plugin.location.to_string(), permissions),
         ))
 }
 
-fn get_plugin_ids(env: &ForeignFunctionEnv) {
+fn get_plugin_ids(env: &PluginEnv) {
     let ids = PluginIds {
-        plugin_id: env.plugin_env.plugin_id,
+        plugin_id: env.plugin_id,
         zellij_pid: process::id(),
-        initial_cwd: env.plugin_env.plugin_cwd.clone(),
+        initial_cwd: env.plugin_cwd.clone(),
     };
     ProtobufPluginIds::try_from(ids)
         .map_err(|e| anyhow!("Failed to serialized plugin ids: {}", e))
         .and_then(|serialized| {
-            wasi_write_object(&env.plugin_env.wasi_env, &serialized.encode_to_vec())?;
+            wasi_write_object(env, &serialized.encode_to_vec())?;
             Ok(())
         })
         .with_context(|| {
             format!(
                 "failed to query plugin IDs from host for plugin {}",
-                env.plugin_env.name()
+                env.name()
             )
         })
         .non_fatal();
 }
 
-fn get_zellij_version(env: &ForeignFunctionEnv) {
+fn get_zellij_version(env: &PluginEnv) {
     let protobuf_zellij_version = ProtobufZellijVersion {
         version: VERSION.to_owned(),
     };
-    wasi_write_object(
-        &env.plugin_env.wasi_env,
-        &protobuf_zellij_version.encode_to_vec(),
-    )
-    .with_context(|| {
-        format!(
-            "failed to request zellij version from host for plugin {}",
-            env.plugin_env.name()
-        )
-    })
-    .non_fatal();
+    wasi_write_object(env, &protobuf_zellij_version.encode_to_vec())
+        .with_context(|| {
+            format!(
+                "failed to request zellij version from host for plugin {}",
+                env.name()
+            )
+        })
+        .non_fatal();
 }
 
-fn open_file(env: &ForeignFunctionEnv, file_to_open: FileToOpen) {
-    let error_msg = || format!("failed to open file in plugin {}", env.plugin_env.name());
+fn open_file(env: &PluginEnv, file_to_open: FileToOpen) {
+    let error_msg = || format!("failed to open file in plugin {}", env.name());
     let floating = false;
     let in_place = false;
-    let path = env.plugin_env.plugin_cwd.join(file_to_open.path);
+    let path = env.plugin_cwd.join(file_to_open.path);
     let cwd = file_to_open
         .cwd
-        .map(|cwd| env.plugin_env.plugin_cwd.join(cwd))
-        .or_else(|| Some(env.plugin_env.plugin_cwd.clone()));
+        .map(|cwd| env.plugin_cwd.join(cwd))
+        .or_else(|| Some(env.plugin_cwd.clone()));
     let action = Action::EditFile(
         path,
         file_to_open.line_number,
@@ -470,18 +424,18 @@ fn open_file(env: &ForeignFunctionEnv, file_to_open: FileToOpen) {
 }
 
 fn open_file_floating(
-    env: &ForeignFunctionEnv,
+    env: &PluginEnv,
     file_to_open: FileToOpen,
     floating_pane_coordinates: Option<FloatingPaneCoordinates>,
 ) {
-    let error_msg = || format!("failed to open file in plugin {}", env.plugin_env.name());
+    let error_msg = || format!("failed to open file in plugin {}", env.name());
     let floating = true;
     let in_place = false;
-    let path = env.plugin_env.plugin_cwd.join(file_to_open.path);
+    let path = env.plugin_cwd.join(file_to_open.path);
     let cwd = file_to_open
         .cwd
-        .map(|cwd| env.plugin_env.plugin_cwd.join(cwd))
-        .or_else(|| Some(env.plugin_env.plugin_cwd.clone()));
+        .map(|cwd| env.plugin_cwd.join(cwd))
+        .or_else(|| Some(env.plugin_cwd.clone()));
     let action = Action::EditFile(
         path,
         file_to_open.line_number,
@@ -494,15 +448,15 @@ fn open_file_floating(
     apply_action!(action, error_msg, env);
 }
 
-fn open_file_in_place(env: &ForeignFunctionEnv, file_to_open: FileToOpen) {
-    let error_msg = || format!("failed to open file in plugin {}", env.plugin_env.name());
+fn open_file_in_place(env: &PluginEnv, file_to_open: FileToOpen) {
+    let error_msg = || format!("failed to open file in plugin {}", env.name());
     let floating = false;
     let in_place = true;
-    let path = env.plugin_env.plugin_cwd.join(file_to_open.path);
+    let path = env.plugin_cwd.join(file_to_open.path);
     let cwd = file_to_open
         .cwd
-        .map(|cwd| env.plugin_env.plugin_cwd.join(cwd))
-        .or_else(|| Some(env.plugin_env.plugin_cwd.clone()));
+        .map(|cwd| env.plugin_cwd.join(cwd))
+        .or_else(|| Some(env.plugin_cwd.clone()));
 
     let action = Action::EditFile(
         path,
@@ -516,12 +470,12 @@ fn open_file_in_place(env: &ForeignFunctionEnv, file_to_open: FileToOpen) {
     apply_action!(action, error_msg, env);
 }
 
-fn open_terminal(env: &ForeignFunctionEnv, cwd: PathBuf) {
-    let error_msg = || format!("failed to open file in plugin {}", env.plugin_env.name());
-    let cwd = env.plugin_env.plugin_cwd.join(cwd);
-    let mut default_shell = env.plugin_env.default_shell.clone().unwrap_or_else(|| {
+fn open_terminal(env: &PluginEnv, cwd: PathBuf) {
+    let error_msg = || format!("failed to open file in plugin {}", env.name());
+    let cwd = env.plugin_cwd.join(cwd);
+    let mut default_shell = env.default_shell.clone().unwrap_or_else(|| {
         TerminalAction::RunCommand(RunCommand {
-            command: env.plugin_env.path_to_default_shell.clone(),
+            command: env.path_to_default_shell.clone(),
             ..Default::default()
         })
     });
@@ -535,15 +489,15 @@ fn open_terminal(env: &ForeignFunctionEnv, cwd: PathBuf) {
 }
 
 fn open_terminal_floating(
-    env: &ForeignFunctionEnv,
+    env: &PluginEnv,
     cwd: PathBuf,
     floating_pane_coordinates: Option<FloatingPaneCoordinates>,
 ) {
-    let error_msg = || format!("failed to open file in plugin {}", env.plugin_env.name());
-    let cwd = env.plugin_env.plugin_cwd.join(cwd);
-    let mut default_shell = env.plugin_env.default_shell.clone().unwrap_or_else(|| {
+    let error_msg = || format!("failed to open file in plugin {}", env.name());
+    let cwd = env.plugin_cwd.join(cwd);
+    let mut default_shell = env.default_shell.clone().unwrap_or_else(|| {
         TerminalAction::RunCommand(RunCommand {
-            command: env.plugin_env.path_to_default_shell.clone(),
+            command: env.path_to_default_shell.clone(),
             ..Default::default()
         })
     });
@@ -556,12 +510,12 @@ fn open_terminal_floating(
     apply_action!(action, error_msg, env);
 }
 
-fn open_terminal_in_place(env: &ForeignFunctionEnv, cwd: PathBuf) {
-    let error_msg = || format!("failed to open file in plugin {}", env.plugin_env.name());
-    let cwd = env.plugin_env.plugin_cwd.join(cwd);
-    let mut default_shell = env.plugin_env.default_shell.clone().unwrap_or_else(|| {
+fn open_terminal_in_place(env: &PluginEnv, cwd: PathBuf) {
+    let error_msg = || format!("failed to open file in plugin {}", env.name());
+    let cwd = env.plugin_cwd.join(cwd);
+    let mut default_shell = env.default_shell.clone().unwrap_or_else(|| {
         TerminalAction::RunCommand(RunCommand {
-            command: env.plugin_env.path_to_default_shell.clone(),
+            command: env.path_to_default_shell.clone(),
             ..Default::default()
         })
     });
@@ -574,12 +528,10 @@ fn open_terminal_in_place(env: &ForeignFunctionEnv, cwd: PathBuf) {
     apply_action!(action, error_msg, env);
 }
 
-fn open_command_pane(env: &ForeignFunctionEnv, command_to_run: CommandToRun) {
-    let error_msg = || format!("failed to open command in plugin {}", env.plugin_env.name());
+fn open_command_pane(env: &PluginEnv, command_to_run: CommandToRun) {
+    let error_msg = || format!("failed to open command in plugin {}", env.name());
     let command = command_to_run.path;
-    let cwd = command_to_run
-        .cwd
-        .map(|cwd| env.plugin_env.plugin_cwd.join(cwd));
+    let cwd = command_to_run.cwd.map(|cwd| env.plugin_cwd.join(cwd));
     let args = command_to_run.args;
     let direction = None;
     let hold_on_close = true;
@@ -598,15 +550,13 @@ fn open_command_pane(env: &ForeignFunctionEnv, command_to_run: CommandToRun) {
 }
 
 fn open_command_pane_floating(
-    env: &ForeignFunctionEnv,
+    env: &PluginEnv,
     command_to_run: CommandToRun,
     floating_pane_coordinates: Option<FloatingPaneCoordinates>,
 ) {
-    let error_msg = || format!("failed to open command in plugin {}", env.plugin_env.name());
+    let error_msg = || format!("failed to open command in plugin {}", env.name());
     let command = command_to_run.path;
-    let cwd = command_to_run
-        .cwd
-        .map(|cwd| env.plugin_env.plugin_cwd.join(cwd));
+    let cwd = command_to_run.cwd.map(|cwd| env.plugin_cwd.join(cwd));
     let args = command_to_run.args;
     let direction = None;
     let hold_on_close = true;
@@ -624,12 +574,10 @@ fn open_command_pane_floating(
     apply_action!(action, error_msg, env);
 }
 
-fn open_command_pane_in_place(env: &ForeignFunctionEnv, command_to_run: CommandToRun) {
-    let error_msg = || format!("failed to open command in plugin {}", env.plugin_env.name());
+fn open_command_pane_in_place(env: &PluginEnv, command_to_run: CommandToRun) {
+    let error_msg = || format!("failed to open command in plugin {}", env.name());
     let command = command_to_run.path;
-    let cwd = command_to_run
-        .cwd
-        .map(|cwd| env.plugin_env.plugin_cwd.join(cwd));
+    let cwd = command_to_run.cwd.map(|cwd| env.plugin_cwd.join(cwd));
     let args = command_to_run.args;
     let direction = None;
     let hold_on_close = true;
@@ -647,23 +595,19 @@ fn open_command_pane_in_place(env: &ForeignFunctionEnv, command_to_run: CommandT
     apply_action!(action, error_msg, env);
 }
 
-fn switch_tab_to(env: &ForeignFunctionEnv, tab_idx: u32) {
-    env.plugin_env
-        .senders
-        .send_to_screen(ScreenInstruction::GoToTab(
-            tab_idx,
-            Some(env.plugin_env.client_id),
-        ))
+fn switch_tab_to(env: &PluginEnv, tab_idx: u32) {
+    env.senders
+        .send_to_screen(ScreenInstruction::GoToTab(tab_idx, Some(env.client_id)))
         .with_context(|| {
             format!(
                 "failed to switch to tab {tab_idx} from plugin {}",
-                env.plugin_env.name()
+                env.name()
             )
         })
         .non_fatal();
 }
 
-fn set_timeout(env: &ForeignFunctionEnv, secs: f64) {
+fn set_timeout(env: &PluginEnv, secs: f64) {
     // There is a fancy, high-performance way to do this with zero additional threads:
     // If the plugin thread keeps a BinaryHeap of timer structs, it can manage multiple and easily `.peek()` at the
     // next time to trigger in O(1) time. Once the wake-up time is known, the `wasm` thread can use `recv_timeout()`
@@ -673,10 +617,10 @@ fn set_timeout(env: &ForeignFunctionEnv, secs: f64) {
     // timers as we'd like.
     //
     // But that's a lot of code, and this is a few lines:
-    let send_plugin_instructions = env.plugin_env.senders.to_plugin.clone();
-    let update_target = Some(env.plugin_env.plugin_id);
-    let client_id = env.plugin_env.client_id;
-    let plugin_name = env.plugin_env.name();
+    let send_plugin_instructions = env.senders.to_plugin.clone();
+    let update_target = Some(env.plugin_id);
+    let client_id = env.client_id;
+    let plugin_name = env.name();
     // TODO: we should really use an async task for this
     thread::spawn(move || {
         let start_time = Instant::now();
@@ -706,18 +650,18 @@ fn set_timeout(env: &ForeignFunctionEnv, secs: f64) {
     });
 }
 
-fn exec_cmd(env: &ForeignFunctionEnv, mut command_line: Vec<String>) {
+fn exec_cmd(env: &PluginEnv, mut command_line: Vec<String>) {
     log::warn!("The ExecCmd plugin command is deprecated and will be removed in a future version. Please use RunCmd instead (it has all the things and can even show you STDOUT/STDERR and an exit code!)");
     let err_context = || {
         format!(
             "failed to execute command on host for plugin '{}'",
-            env.plugin_env.name()
+            env.name()
         )
     };
     let command = command_line.remove(0);
 
     // Bail out if we're forbidden to run command
-    if !env.plugin_env.plugin._allow_exec_host_cmd {
+    if !env.plugin._allow_exec_host_cmd {
         warn!("This plugin isn't allow to run command in host side, skip running this command: '{cmd} {args}'.",
         	cmd = command, args = command_line.join(" "));
         return;
@@ -732,7 +676,7 @@ fn exec_cmd(env: &ForeignFunctionEnv, mut command_line: Vec<String>) {
 }
 
 fn run_command(
-    env: &ForeignFunctionEnv,
+    env: &PluginEnv,
     mut command_line: Vec<String>,
     env_variables: BTreeMap<String, String>,
     cwd: PathBuf,
@@ -742,13 +686,12 @@ fn run_command(
         log::error!("Command cannot be empty");
     } else {
         let command = command_line.remove(0);
-        let cwd = env.plugin_env.plugin_cwd.join(cwd);
+        let cwd = env.plugin_cwd.join(cwd);
         let _ = env
-            .plugin_env
             .senders
             .send_to_background_jobs(BackgroundJob::RunCommand(
-                env.plugin_env.plugin_id,
-                env.plugin_env.client_id,
+                env.plugin_id,
+                env.client_id,
                 command,
                 command_line,
                 env_variables,
@@ -759,7 +702,7 @@ fn run_command(
 }
 
 fn web_request(
-    env: &ForeignFunctionEnv,
+    env: &PluginEnv,
     url: String,
     verb: HttpVerb,
     headers: BTreeMap<String, String>,
@@ -767,11 +710,10 @@ fn web_request(
     context: BTreeMap<String, String>,
 ) {
     let _ = env
-        .plugin_env
         .senders
         .send_to_background_jobs(BackgroundJob::WebRequest(
-            env.plugin_env.plugin_id,
-            env.plugin_env.client_id,
+            env.plugin_id,
+            env.client_id,
             url,
             verb,
             headers,
@@ -780,95 +722,84 @@ fn web_request(
         ));
 }
 
-fn post_message_to(env: &ForeignFunctionEnv, plugin_message: PluginMessage) -> Result<()> {
+fn post_message_to(env: &PluginEnv, plugin_message: PluginMessage) -> Result<()> {
     let worker_name = plugin_message
         .worker_name
         .ok_or(anyhow!("Worker name not specified in message to worker"))?;
-    env.plugin_env
-        .senders
+    env.senders
         .send_to_plugin(PluginInstruction::PostMessagesToPluginWorker(
-            env.plugin_env.plugin_id,
-            env.plugin_env.client_id,
+            env.plugin_id,
+            env.client_id,
             worker_name,
             vec![(plugin_message.name, plugin_message.payload)],
         ))
 }
 
-fn post_message_to_plugin(env: &ForeignFunctionEnv, plugin_message: PluginMessage) -> Result<()> {
+fn post_message_to_plugin(env: &PluginEnv, plugin_message: PluginMessage) -> Result<()> {
     if let Some(worker_name) = plugin_message.worker_name {
         return Err(anyhow!(
             "Worker name (\"{}\") should not be specified in message to plugin",
             worker_name
         ));
     }
-    env.plugin_env
-        .senders
+    env.senders
         .send_to_plugin(PluginInstruction::PostMessageToPlugin(
-            env.plugin_env.plugin_id,
-            env.plugin_env.client_id,
+            env.plugin_id,
+            env.client_id,
             plugin_message.name,
             plugin_message.payload,
         ))
 }
 
-fn hide_self(env: &ForeignFunctionEnv) -> Result<()> {
-    env.plugin_env
-        .senders
+fn hide_self(env: &PluginEnv) -> Result<()> {
+    env.senders
         .send_to_screen(ScreenInstruction::SuppressPane(
-            PaneId::Plugin(env.plugin_env.plugin_id),
-            env.plugin_env.client_id,
+            PaneId::Plugin(env.plugin_id),
+            env.client_id,
         ))
         .with_context(|| format!("failed to hide self"))
 }
 
-fn show_self(env: &ForeignFunctionEnv, should_float_if_hidden: bool) {
-    let action = Action::FocusPluginPaneWithId(env.plugin_env.plugin_id, should_float_if_hidden);
+fn show_self(env: &PluginEnv, should_float_if_hidden: bool) {
+    let action = Action::FocusPluginPaneWithId(env.plugin_id, should_float_if_hidden);
     let error_msg = || format!("Failed to show self for plugin");
     apply_action!(action, error_msg, env);
 }
 
-fn close_self(env: &ForeignFunctionEnv) {
-    env.plugin_env
-        .senders
+fn close_self(env: &PluginEnv) {
+    env.senders
         .send_to_screen(ScreenInstruction::ClosePane(
-            PaneId::Plugin(env.plugin_env.plugin_id),
+            PaneId::Plugin(env.plugin_id),
             None,
         ))
         .with_context(|| format!("failed to close self"))
         .non_fatal();
-    env.plugin_env
-        .senders
-        .send_to_plugin(PluginInstruction::Unload(env.plugin_env.plugin_id))
+    env.senders
+        .send_to_plugin(PluginInstruction::Unload(env.plugin_id))
         .with_context(|| format!("failed to close self"))
         .non_fatal();
 }
 
-fn rebind_keys(env: &ForeignFunctionEnv, new_keybinds: String) -> Result<()> {
+fn rebind_keys(env: &PluginEnv, new_keybinds: String) -> Result<()> {
     let err_context = || "Failed to rebind keys";
-    let client_id = env.plugin_env.client_id;
-    env.plugin_env
-        .senders
+    let client_id = env.client_id;
+    env.senders
         .send_to_server(ServerInstruction::RebindKeys(client_id, new_keybinds))
         .with_context(err_context)?;
     Ok(())
 }
 
-fn switch_to_mode(env: &ForeignFunctionEnv, input_mode: InputMode) {
+fn switch_to_mode(env: &PluginEnv, input_mode: InputMode) {
     let action = Action::SwitchToMode(input_mode);
-    let error_msg = || {
-        format!(
-            "failed to switch to mode in plugin {}",
-            env.plugin_env.name()
-        )
-    };
+    let error_msg = || format!("failed to switch to mode in plugin {}", env.name());
     apply_action!(action, error_msg, env);
 }
 
-fn new_tabs_with_layout(env: &ForeignFunctionEnv, raw_layout: &str) -> Result<()> {
+fn new_tabs_with_layout(env: &PluginEnv, raw_layout: &str) -> Result<()> {
     // TODO: cwd
     let layout = Layout::from_str(
         &raw_layout,
-        format!("Layout from plugin: {}", env.plugin_env.name()),
+        format!("Layout from plugin: {}", env.name()),
         None,
         None,
     )
@@ -877,15 +808,15 @@ fn new_tabs_with_layout(env: &ForeignFunctionEnv, raw_layout: &str) -> Result<()
     Ok(())
 }
 
-fn new_tabs_with_layout_info(env: &ForeignFunctionEnv, layout_info: LayoutInfo) -> Result<()> {
+fn new_tabs_with_layout_info(env: &PluginEnv, layout_info: LayoutInfo) -> Result<()> {
     // TODO: cwd
-    let layout = Layout::from_layout_info(&env.plugin_env.layout_dir, layout_info)
+    let layout = Layout::from_layout_info(&env.layout_dir, layout_info)
         .map_err(|e| anyhow!("Failed to parse layout: {:?}", e))?;
     apply_layout(env, layout);
     Ok(())
 }
 
-fn apply_layout(env: &ForeignFunctionEnv, layout: Layout) {
+fn apply_layout(env: &PluginEnv, layout: Layout) {
     let mut tabs_to_open = vec![];
     let tabs = layout.tabs();
     if tabs.is_empty() {
@@ -919,68 +850,68 @@ fn apply_layout(env: &ForeignFunctionEnv, layout: Layout) {
     }
 }
 
-fn new_tab(env: &ForeignFunctionEnv) {
+fn new_tab(env: &PluginEnv) {
     let action = Action::NewTab(None, vec![], None, None, None);
     let error_msg = || format!("Failed to open new tab");
     apply_action!(action, error_msg, env);
 }
 
-fn go_to_next_tab(env: &ForeignFunctionEnv) {
+fn go_to_next_tab(env: &PluginEnv) {
     let action = Action::GoToNextTab;
     let error_msg = || format!("Failed to go to next tab");
     apply_action!(action, error_msg, env);
 }
 
-fn go_to_previous_tab(env: &ForeignFunctionEnv) {
+fn go_to_previous_tab(env: &PluginEnv) {
     let action = Action::GoToPreviousTab;
     let error_msg = || format!("Failed to go to previous tab");
     apply_action!(action, error_msg, env);
 }
 
-fn resize(env: &ForeignFunctionEnv, resize: Resize) {
-    let error_msg = || format!("failed to resize in plugin {}", env.plugin_env.name());
+fn resize(env: &PluginEnv, resize: Resize) {
+    let error_msg = || format!("failed to resize in plugin {}", env.name());
     let action = Action::Resize(resize, None);
     apply_action!(action, error_msg, env);
 }
 
-fn resize_with_direction(env: &ForeignFunctionEnv, resize: ResizeStrategy) {
-    let error_msg = || format!("failed to resize in plugin {}", env.plugin_env.name());
+fn resize_with_direction(env: &PluginEnv, resize: ResizeStrategy) {
+    let error_msg = || format!("failed to resize in plugin {}", env.name());
     let action = Action::Resize(resize.resize, resize.direction);
     apply_action!(action, error_msg, env);
 }
 
-fn focus_next_pane(env: &ForeignFunctionEnv) {
+fn focus_next_pane(env: &PluginEnv) {
     let action = Action::FocusNextPane;
     let error_msg = || format!("Failed to focus next pane");
     apply_action!(action, error_msg, env);
 }
 
-fn focus_previous_pane(env: &ForeignFunctionEnv) {
+fn focus_previous_pane(env: &PluginEnv) {
     let action = Action::FocusPreviousPane;
     let error_msg = || format!("Failed to focus previous pane");
     apply_action!(action, error_msg, env);
 }
 
-fn move_focus(env: &ForeignFunctionEnv, direction: Direction) {
-    let error_msg = || format!("failed to move focus in plugin {}", env.plugin_env.name());
+fn move_focus(env: &PluginEnv, direction: Direction) {
+    let error_msg = || format!("failed to move focus in plugin {}", env.name());
     let action = Action::MoveFocus(direction);
     apply_action!(action, error_msg, env);
 }
 
-fn move_focus_or_tab(env: &ForeignFunctionEnv, direction: Direction) {
-    let error_msg = || format!("failed to move focus in plugin {}", env.plugin_env.name());
+fn move_focus_or_tab(env: &PluginEnv, direction: Direction) {
+    let error_msg = || format!("failed to move focus in plugin {}", env.name());
     let action = Action::MoveFocusOrTab(direction);
     apply_action!(action, error_msg, env);
 }
 
-fn detach(env: &ForeignFunctionEnv) {
+fn detach(env: &PluginEnv) {
     let action = Action::Detach;
     let error_msg = || format!("Failed to detach");
     apply_action!(action, error_msg, env);
 }
 
 fn switch_session(
-    env: &ForeignFunctionEnv,
+    env: &PluginEnv,
     session_name: Option<String>,
     tab_position: Option<usize>,
     pane_id: Option<(u32, bool)>,
@@ -989,7 +920,7 @@ fn switch_session(
 ) -> Result<()> {
     // pane_id is (id, is_plugin)
     let err_context = || format!("Failed to switch session");
-    let client_id = env.plugin_env.client_id;
+    let client_id = env.client_id;
     let tab_position = tab_position.map(|p| p + 1); // ¯\_()_/¯
     let connect_to_session = ConnectToSession {
         name: session_name,
@@ -998,8 +929,7 @@ fn switch_session(
         layout,
         cwd,
     };
-    env.plugin_env
-        .senders
+    env.senders
         .send_to_server(ServerInstruction::SwitchSession(
             connect_to_session,
             client_id,
@@ -1054,236 +984,176 @@ fn delete_all_dead_sessions() -> Result<()> {
     Ok(())
 }
 
-fn edit_scrollback(env: &ForeignFunctionEnv) {
+fn edit_scrollback(env: &PluginEnv) {
     let action = Action::EditScrollback;
     let error_msg = || format!("Failed to edit scrollback");
     apply_action!(action, error_msg, env);
 }
 
-fn write(env: &ForeignFunctionEnv, bytes: Vec<u8>) {
-    let error_msg = || format!("failed to write in plugin {}", env.plugin_env.name());
+fn write(env: &PluginEnv, bytes: Vec<u8>) {
+    let error_msg = || format!("failed to write in plugin {}", env.name());
     let action = Action::Write(None, bytes, false);
     apply_action!(action, error_msg, env);
 }
 
-fn write_chars(env: &ForeignFunctionEnv, chars_to_write: String) {
-    let error_msg = || format!("failed to write in plugin {}", env.plugin_env.name());
+fn write_chars(env: &PluginEnv, chars_to_write: String) {
+    let error_msg = || format!("failed to write in plugin {}", env.name());
     let action = Action::WriteChars(chars_to_write);
     apply_action!(action, error_msg, env);
 }
 
-fn toggle_tab(env: &ForeignFunctionEnv) {
+fn toggle_tab(env: &PluginEnv) {
     let error_msg = || format!("Failed to toggle tab");
     let action = Action::ToggleTab;
     apply_action!(action, error_msg, env);
 }
 
-fn move_pane(env: &ForeignFunctionEnv) {
-    let error_msg = || format!("failed to move pane in plugin {}", env.plugin_env.name());
+fn move_pane(env: &PluginEnv) {
+    let error_msg = || format!("failed to move pane in plugin {}", env.name());
     let action = Action::MovePane(None);
     apply_action!(action, error_msg, env);
 }
 
-fn move_pane_with_direction(env: &ForeignFunctionEnv, direction: Direction) {
-    let error_msg = || format!("failed to move pane in plugin {}", env.plugin_env.name());
+fn move_pane_with_direction(env: &PluginEnv, direction: Direction) {
+    let error_msg = || format!("failed to move pane in plugin {}", env.name());
     let action = Action::MovePane(Some(direction));
     apply_action!(action, error_msg, env);
 }
 
-fn clear_screen(env: &ForeignFunctionEnv) {
-    let error_msg = || format!("failed to clear screen in plugin {}", env.plugin_env.name());
+fn clear_screen(env: &PluginEnv) {
+    let error_msg = || format!("failed to clear screen in plugin {}", env.name());
     let action = Action::ClearScreen;
     apply_action!(action, error_msg, env);
 }
-fn scroll_up(env: &ForeignFunctionEnv) {
-    let error_msg = || format!("failed to scroll up in plugin {}", env.plugin_env.name());
+fn scroll_up(env: &PluginEnv) {
+    let error_msg = || format!("failed to scroll up in plugin {}", env.name());
     let action = Action::ScrollUp;
     apply_action!(action, error_msg, env);
 }
 
-fn scroll_down(env: &ForeignFunctionEnv) {
-    let error_msg = || format!("failed to scroll down in plugin {}", env.plugin_env.name());
+fn scroll_down(env: &PluginEnv) {
+    let error_msg = || format!("failed to scroll down in plugin {}", env.name());
     let action = Action::ScrollDown;
     apply_action!(action, error_msg, env);
 }
 
-fn scroll_to_top(env: &ForeignFunctionEnv) {
-    let error_msg = || format!("failed to scroll in plugin {}", env.plugin_env.name());
+fn scroll_to_top(env: &PluginEnv) {
+    let error_msg = || format!("failed to scroll in plugin {}", env.name());
     let action = Action::ScrollToTop;
     apply_action!(action, error_msg, env);
 }
 
-fn scroll_to_bottom(env: &ForeignFunctionEnv) {
-    let error_msg = || format!("failed to scroll in plugin {}", env.plugin_env.name());
+fn scroll_to_bottom(env: &PluginEnv) {
+    let error_msg = || format!("failed to scroll in plugin {}", env.name());
     let action = Action::ScrollToBottom;
     apply_action!(action, error_msg, env);
 }
 
-fn page_scroll_up(env: &ForeignFunctionEnv) {
-    let error_msg = || format!("failed to scroll in plugin {}", env.plugin_env.name());
+fn page_scroll_up(env: &PluginEnv) {
+    let error_msg = || format!("failed to scroll in plugin {}", env.name());
     let action = Action::PageScrollUp;
     apply_action!(action, error_msg, env);
 }
 
-fn page_scroll_down(env: &ForeignFunctionEnv) {
-    let error_msg = || format!("failed to scroll in plugin {}", env.plugin_env.name());
+fn page_scroll_down(env: &PluginEnv) {
+    let error_msg = || format!("failed to scroll in plugin {}", env.name());
     let action = Action::PageScrollDown;
     apply_action!(action, error_msg, env);
 }
 
-fn toggle_focus_fullscreen(env: &ForeignFunctionEnv) {
-    let error_msg = || {
-        format!(
-            "failed to toggle full screen in plugin {}",
-            env.plugin_env.name()
-        )
-    };
+fn toggle_focus_fullscreen(env: &PluginEnv) {
+    let error_msg = || format!("failed to toggle full screen in plugin {}", env.name());
     let action = Action::ToggleFocusFullscreen;
     apply_action!(action, error_msg, env);
 }
 
-fn toggle_pane_frames(env: &ForeignFunctionEnv) {
-    let error_msg = || {
-        format!(
-            "failed to toggle full screen in plugin {}",
-            env.plugin_env.name()
-        )
-    };
+fn toggle_pane_frames(env: &PluginEnv) {
+    let error_msg = || format!("failed to toggle full screen in plugin {}", env.name());
     let action = Action::TogglePaneFrames;
     apply_action!(action, error_msg, env);
 }
 
-fn toggle_pane_embed_or_eject(env: &ForeignFunctionEnv) {
+fn toggle_pane_embed_or_eject(env: &PluginEnv) {
     let error_msg = || {
         format!(
             "failed to toggle pane embed or eject in plugin {}",
-            env.plugin_env.name()
+            env.name()
         )
     };
     let action = Action::TogglePaneEmbedOrFloating;
     apply_action!(action, error_msg, env);
 }
 
-fn undo_rename_pane(env: &ForeignFunctionEnv) {
-    let error_msg = || {
-        format!(
-            "failed to undo rename pane in plugin {}",
-            env.plugin_env.name()
-        )
-    };
+fn undo_rename_pane(env: &PluginEnv) {
+    let error_msg = || format!("failed to undo rename pane in plugin {}", env.name());
     let action = Action::UndoRenamePane;
     apply_action!(action, error_msg, env);
 }
 
-fn close_focus(env: &ForeignFunctionEnv) {
-    let error_msg = || {
-        format!(
-            "failed to close focused pane in plugin {}",
-            env.plugin_env.name()
-        )
-    };
+fn close_focus(env: &PluginEnv) {
+    let error_msg = || format!("failed to close focused pane in plugin {}", env.name());
     let action = Action::CloseFocus;
     apply_action!(action, error_msg, env);
 }
 
-fn toggle_active_tab_sync(env: &ForeignFunctionEnv) {
-    let error_msg = || {
-        format!(
-            "failed to toggle active tab sync in plugin {}",
-            env.plugin_env.name()
-        )
-    };
+fn toggle_active_tab_sync(env: &PluginEnv) {
+    let error_msg = || format!("failed to toggle active tab sync in plugin {}", env.name());
     let action = Action::ToggleActiveSyncTab;
     apply_action!(action, error_msg, env);
 }
 
-fn close_focused_tab(env: &ForeignFunctionEnv) {
-    let error_msg = || {
-        format!(
-            "failed to close active tab in plugin {}",
-            env.plugin_env.name()
-        )
-    };
+fn close_focused_tab(env: &PluginEnv) {
+    let error_msg = || format!("failed to close active tab in plugin {}", env.name());
     let action = Action::CloseTab;
     apply_action!(action, error_msg, env);
 }
 
-fn undo_rename_tab(env: &ForeignFunctionEnv) {
-    let error_msg = || {
-        format!(
-            "failed to undo rename tab in plugin {}",
-            env.plugin_env.name()
-        )
-    };
+fn undo_rename_tab(env: &PluginEnv) {
+    let error_msg = || format!("failed to undo rename tab in plugin {}", env.name());
     let action = Action::UndoRenameTab;
     apply_action!(action, error_msg, env);
 }
 
-fn quit_zellij(env: &ForeignFunctionEnv) {
-    let error_msg = || format!("failed to quit zellij in plugin {}", env.plugin_env.name());
+fn quit_zellij(env: &PluginEnv) {
+    let error_msg = || format!("failed to quit zellij in plugin {}", env.name());
     let action = Action::Quit;
     apply_action!(action, error_msg, env);
 }
 
-fn previous_swap_layout(env: &ForeignFunctionEnv) {
-    let error_msg = || {
-        format!(
-            "failed to switch swap layout in plugin {}",
-            env.plugin_env.name()
-        )
-    };
+fn previous_swap_layout(env: &PluginEnv) {
+    let error_msg = || format!("failed to switch swap layout in plugin {}", env.name());
     let action = Action::PreviousSwapLayout;
     apply_action!(action, error_msg, env);
 }
 
-fn next_swap_layout(env: &ForeignFunctionEnv) {
-    let error_msg = || {
-        format!(
-            "failed to switch swap layout in plugin {}",
-            env.plugin_env.name()
-        )
-    };
+fn next_swap_layout(env: &PluginEnv) {
+    let error_msg = || format!("failed to switch swap layout in plugin {}", env.name());
     let action = Action::NextSwapLayout;
     apply_action!(action, error_msg, env);
 }
 
-fn go_to_tab_name(env: &ForeignFunctionEnv, tab_name: String) {
-    let error_msg = || format!("failed to change tab in plugin {}", env.plugin_env.name());
+fn go_to_tab_name(env: &PluginEnv, tab_name: String) {
+    let error_msg = || format!("failed to change tab in plugin {}", env.name());
     let create = false;
     let action = Action::GoToTabName(tab_name, create);
     apply_action!(action, error_msg, env);
 }
 
-fn focus_or_create_tab(env: &ForeignFunctionEnv, tab_name: String) {
-    let error_msg = || {
-        format!(
-            "failed to change or create tab in plugin {}",
-            env.plugin_env.name()
-        )
-    };
+fn focus_or_create_tab(env: &PluginEnv, tab_name: String) {
+    let error_msg = || format!("failed to change or create tab in plugin {}", env.name());
     let create = true;
     let action = Action::GoToTabName(tab_name, create);
     apply_action!(action, error_msg, env);
 }
 
-fn go_to_tab(env: &ForeignFunctionEnv, tab_index: u32) {
-    let error_msg = || {
-        format!(
-            "failed to change tab focus in plugin {}",
-            env.plugin_env.name()
-        )
-    };
+fn go_to_tab(env: &PluginEnv, tab_index: u32) {
+    let error_msg = || format!("failed to change tab focus in plugin {}", env.name());
     let action = Action::GoToTab(tab_index + 1);
     apply_action!(action, error_msg, env);
 }
 
-fn start_or_reload_plugin(env: &ForeignFunctionEnv, url: &str) -> Result<()> {
-    let error_msg = || {
-        format!(
-            "failed to start or reload plugin in plugin {}",
-            env.plugin_env.name()
-        )
-    };
+fn start_or_reload_plugin(env: &PluginEnv, url: &str) -> Result<()> {
+    let error_msg = || format!("failed to start or reload plugin in plugin {}", env.name());
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     let run_plugin_or_alias = RunPluginOrAlias::from_url(url, &None, None, Some(cwd))
         .map_err(|e| anyhow!("Failed to parse plugin location: {}", e))?;
@@ -1292,81 +1162,59 @@ fn start_or_reload_plugin(env: &ForeignFunctionEnv, url: &str) -> Result<()> {
     Ok(())
 }
 
-fn close_terminal_pane(env: &ForeignFunctionEnv, terminal_pane_id: u32) {
-    let error_msg = || {
-        format!(
-            "failed to change tab focus in plugin {}",
-            env.plugin_env.name()
-        )
-    };
+fn close_terminal_pane(env: &PluginEnv, terminal_pane_id: u32) {
+    let error_msg = || format!("failed to change tab focus in plugin {}", env.name());
     let action = Action::CloseTerminalPane(terminal_pane_id);
     apply_action!(action, error_msg, env);
 }
 
-fn close_plugin_pane(env: &ForeignFunctionEnv, plugin_pane_id: u32) {
-    let error_msg = || {
-        format!(
-            "failed to change tab focus in plugin {}",
-            env.plugin_env.name()
-        )
-    };
+fn close_plugin_pane(env: &PluginEnv, plugin_pane_id: u32) {
+    let error_msg = || format!("failed to change tab focus in plugin {}", env.name());
     let action = Action::ClosePluginPane(plugin_pane_id);
     apply_action!(action, error_msg, env);
 }
 
-fn focus_terminal_pane(
-    env: &ForeignFunctionEnv,
-    terminal_pane_id: u32,
-    should_float_if_hidden: bool,
-) {
+fn focus_terminal_pane(env: &PluginEnv, terminal_pane_id: u32, should_float_if_hidden: bool) {
     let action = Action::FocusTerminalPaneWithId(terminal_pane_id, should_float_if_hidden);
     let error_msg = || format!("Failed to focus terminal pane");
     apply_action!(action, error_msg, env);
 }
 
-fn focus_plugin_pane(env: &ForeignFunctionEnv, plugin_pane_id: u32, should_float_if_hidden: bool) {
+fn focus_plugin_pane(env: &PluginEnv, plugin_pane_id: u32, should_float_if_hidden: bool) {
     let action = Action::FocusPluginPaneWithId(plugin_pane_id, should_float_if_hidden);
     let error_msg = || format!("Failed to focus plugin pane");
     apply_action!(action, error_msg, env);
 }
 
-fn rename_terminal_pane(env: &ForeignFunctionEnv, terminal_pane_id: u32, new_name: &str) {
+fn rename_terminal_pane(env: &PluginEnv, terminal_pane_id: u32, new_name: &str) {
     let error_msg = || format!("Failed to rename terminal pane");
     let rename_pane_action =
         Action::RenameTerminalPane(terminal_pane_id, new_name.as_bytes().to_vec());
     apply_action!(rename_pane_action, error_msg, env);
 }
 
-fn rename_plugin_pane(env: &ForeignFunctionEnv, plugin_pane_id: u32, new_name: &str) {
+fn rename_plugin_pane(env: &PluginEnv, plugin_pane_id: u32, new_name: &str) {
     let error_msg = || format!("Failed to rename plugin pane");
     let rename_pane_action = Action::RenamePluginPane(plugin_pane_id, new_name.as_bytes().to_vec());
     apply_action!(rename_pane_action, error_msg, env);
 }
 
-fn rename_tab(env: &ForeignFunctionEnv, tab_index: u32, new_name: &str) {
+fn rename_tab(env: &PluginEnv, tab_index: u32, new_name: &str) {
     let error_msg = || format!("Failed to rename tab");
     let rename_tab_action = Action::RenameTab(tab_index, new_name.as_bytes().to_vec());
     apply_action!(rename_tab_action, error_msg, env);
 }
 
-fn rename_session(env: &ForeignFunctionEnv, new_session_name: String) {
-    let error_msg = || {
-        format!(
-            "failed to rename session in plugin {}",
-            env.plugin_env.name()
-        )
-    };
+fn rename_session(env: &PluginEnv, new_session_name: String) {
+    let error_msg = || format!("failed to rename session in plugin {}", env.name());
     let action = Action::RenameSession(new_session_name);
     apply_action!(action, error_msg, env);
 }
 
-fn disconnect_other_clients(env: &ForeignFunctionEnv) {
+fn disconnect_other_clients(env: &PluginEnv) {
     let _ = env
-        .plugin_env
         .senders
-        .send_to_server(ServerInstruction::DisconnectAllClientsExcept(
-            env.plugin_env.client_id,
-        ))
+        .send_to_server(ServerInstruction::DisconnectAllClientsExcept(env.client_id))
         .context("failed to send disconnect other clients instruction");
 }
 
@@ -1384,24 +1232,23 @@ fn kill_sessions(session_names: Vec<String>) {
     }
 }
 
-fn watch_filesystem(env: &ForeignFunctionEnv) {
+fn watch_filesystem(env: &PluginEnv) {
     let _ = env
-        .plugin_env
         .senders
         .to_plugin
         .as_ref()
         .map(|sender| sender.send(PluginInstruction::WatchFilesystem));
 }
 
-fn dump_session_layout(env: &ForeignFunctionEnv) {
-    let _ = env.plugin_env.senders.to_screen.as_ref().map(|sender| {
-        sender.send(ScreenInstruction::DumpLayoutToPlugin(
-            env.plugin_env.plugin_id,
-        ))
-    });
+fn dump_session_layout(env: &PluginEnv) {
+    let _ = env
+        .senders
+        .to_screen
+        .as_ref()
+        .map(|sender| sender.send(ScreenInstruction::DumpLayoutToPlugin(env.plugin_id)));
 }
 
-fn scan_host_folder(env: &ForeignFunctionEnv, folder_to_scan: PathBuf) {
+fn scan_host_folder(env: &PluginEnv, folder_to_scan: PathBuf) {
     if !folder_to_scan.starts_with("/host") {
         log::error!(
             "Can only scan files in the /host filesystem, found: {}",
@@ -1409,7 +1256,7 @@ fn scan_host_folder(env: &ForeignFunctionEnv, folder_to_scan: PathBuf) {
         );
         return;
     }
-    let plugin_host_folder = env.plugin_env.plugin_cwd.clone();
+    let plugin_host_folder = env.plugin_cwd.clone();
     let folder_to_scan = plugin_host_folder.join(folder_to_scan.strip_prefix("/host").unwrap());
     match folder_to_scan.canonicalize() {
         Ok(folder_to_scan) => {
@@ -1424,9 +1271,9 @@ fn scan_host_folder(env: &ForeignFunctionEnv, folder_to_scan: PathBuf) {
             let reading_folder = std::fs::read_dir(&folder_to_scan);
             match reading_folder {
                 Ok(reading_folder) => {
-                    let send_plugin_instructions = env.plugin_env.senders.to_plugin.clone();
-                    let update_target = Some(env.plugin_env.plugin_id);
-                    let client_id = env.plugin_env.client_id;
+                    let send_plugin_instructions = env.senders.to_plugin.clone();
+                    let update_target = Some(env.plugin_id);
+                    let client_id = env.client_id;
                     thread::spawn({
                         move || {
                             let mut paths_in_folder = vec![];
@@ -1473,27 +1320,23 @@ fn scan_host_folder(env: &ForeignFunctionEnv, folder_to_scan: PathBuf) {
 // This is called when a panic occurs in a plugin. Since most panics will likely originate in the
 // code trying to deserialize an `Event` upon a plugin state update, we read some panic message,
 // formatted as string from the plugin.
-fn report_panic(env: &ForeignFunctionEnv, msg: &str) {
+fn report_panic(env: &PluginEnv, msg: &str) {
     log::error!("PANIC IN PLUGIN!\n\r{}", msg);
-    handle_plugin_crash(
-        env.plugin_env.plugin_id,
-        msg.to_owned(),
-        env.plugin_env.senders.clone(),
-    );
+    handle_plugin_crash(env.plugin_id, msg.to_owned(), env.senders.clone());
 }
 
 // Helper Functions ---------------------------------------------------------------------------------------------------
 
-pub fn wasi_read_string(wasi_env: &WasiEnv) -> Result<String> {
-    let err_context = || format!("failed to read string from WASI env '{wasi_env:?}'");
+pub fn wasi_read_string(plugin_env: &PluginEnv) -> Result<String> {
+    let err_context = || format!("failed to read string from WASI env");
 
     let mut buf = vec![];
-    wasi_env
-        .state()
-        .stdout()
+    plugin_env
+        .stdout_pipe
+        .lock()
+        .unwrap()
+        .read_to_end(&mut buf)
         .map_err(anyError::new)
-        .and_then(|stdout| stdout.ok_or(anyhow!("failed to get mutable reference to stdout")))
-        .and_then(|mut wasi_file| wasi_file.read_to_end(&mut buf).map_err(anyError::new))
         .with_context(err_context)?;
     let buf = String::from_utf8_lossy(&buf);
 
@@ -1501,27 +1344,24 @@ pub fn wasi_read_string(wasi_env: &WasiEnv) -> Result<String> {
     Ok(buf.replace("\n", "\n\r"))
 }
 
-pub fn wasi_write_string(wasi_env: &WasiEnv, buf: &str) -> Result<()> {
-    wasi_env
-        .state()
-        .stdin()
+pub fn wasi_write_string(plugin_env: &PluginEnv, buf: &str) -> Result<()> {
+    let mut stdin = plugin_env.stdin_pipe.lock().unwrap();
+    writeln!(stdin, "{}\r", buf)
         .map_err(anyError::new)
-        .and_then(|stdin| stdin.ok_or(anyhow!("failed to get mutable reference to stdin")))
-        .and_then(|mut stdin| writeln!(stdin, "{}\r", buf).map_err(anyError::new))
-        .with_context(|| format!("failed to write string to WASI env '{wasi_env:?}'"))
+        .with_context(|| format!("failed to write string to WASI env"))
 }
 
-pub fn wasi_write_object(wasi_env: &WasiEnv, object: &(impl Serialize + ?Sized)) -> Result<()> {
+pub fn wasi_write_object(plugin_env: &PluginEnv, object: &(impl Serialize + ?Sized)) -> Result<()> {
     serde_json::to_string(&object)
         .map_err(anyError::new)
-        .and_then(|string| wasi_write_string(wasi_env, &string))
-        .with_context(|| format!("failed to serialize object for WASI env '{wasi_env:?}'"))
+        .and_then(|string| wasi_write_string(plugin_env, &string))
+        .with_context(|| format!("failed to serialize object for WASI env"))
 }
 
-pub fn wasi_read_bytes(wasi_env: &WasiEnv) -> Result<Vec<u8>> {
-    wasi_read_string(wasi_env)
+pub fn wasi_read_bytes(plugin_env: &PluginEnv) -> Result<Vec<u8>> {
+    wasi_read_string(plugin_env)
         .and_then(|string| serde_json::from_str(&string).map_err(anyError::new))
-        .with_context(|| format!("failed to deserialize object from WASI env '{wasi_env:?}'"))
+        .with_context(|| format!("failed to deserialize object from WASI env"))
 }
 
 // TODO: move to permissions?
