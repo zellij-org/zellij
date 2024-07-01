@@ -1,9 +1,11 @@
 use ansi_term::ANSIStrings;
+use ansi_term::{Style, Color::{Fixed, RGB}};
 use unicode_width::UnicodeWidthStr;
 
 use crate::{LinePart, ARROW_SEPARATOR};
 use zellij_tile::prelude::*;
-use zellij_tile_utils::style;
+use zellij_tile::prelude::actions::Action;
+use zellij_tile_utils::{style, palette_match};
 
 fn get_current_title_len(current_title: &[LinePart]) -> usize {
     current_title.iter().map(|p| p.len).sum()
@@ -224,6 +226,8 @@ pub fn tab_line(
     palette: Palette,
     capabilities: PluginCapabilities,
     hide_session_name: bool,
+    tab_info: Option<&TabInfo>,
+    mode_info: &ModeInfo,
 ) -> Vec<LinePart> {
     let mut tabs_after_active = all_tabs.split_off(active_tab_index);
     let mut tabs_before_active = all_tabs;
@@ -236,10 +240,21 @@ pub fn tab_line(
         true => tab_line_prefix(None, palette, cols),
         false => tab_line_prefix(session_name, palette, cols),
     };
-    let prefix_len = get_current_title_len(&prefix);
+
+
+    let mut swap_layout_indicator = tab_info.and_then(|tab_info| swap_layout_status(
+        cols,
+        &tab_info.active_swap_layout_name,
+        tab_info.is_swap_layout_dirty,
+        mode_info,
+        capabilities.arrow_fonts,
+    ));
+
+
+    let non_tab_len = get_current_title_len(&prefix) + swap_layout_indicator.as_ref().map(|s| s.len).unwrap_or(0);
 
     // if active tab alone won't fit in cols, don't draw any tabs
-    if prefix_len + active_tab.len > cols {
+    if non_tab_len + active_tab.len > cols {
         return prefix;
     }
 
@@ -249,10 +264,375 @@ pub fn tab_line(
         &mut tabs_before_active,
         &mut tabs_after_active,
         &mut tabs_to_render,
-        cols.saturating_sub(prefix_len),
+        cols.saturating_sub(non_tab_len),
         palette,
         capabilities,
     );
     prefix.append(&mut tabs_to_render);
+
+
+    if let Some(mut swap_layout_indicator) = swap_layout_indicator.take() {
+        let remaining_space = cols.saturating_sub(prefix.iter().fold(0, |len, part| len + part.len)).saturating_sub(swap_layout_indicator.len).saturating_sub(1); // 1 for the end padding of the line
+        let mut padding = String::new();
+        let mut padding_len = 0;
+        for _ in 0..remaining_space {
+            padding.push_str(" ");
+            padding_len += 1;
+        }
+        swap_layout_indicator.part = format!("{}{}", padding, swap_layout_indicator.part);
+        swap_layout_indicator.len += padding_len;
+        prefix.push(swap_layout_indicator);
+    }
+
+
     prefix
+}
+
+fn swap_layout_status(cols: usize, swap_layout_name: &Option<String>, is_swap_layout_dirty: bool, mode_info: &ModeInfo, supports_arrow_fonts: bool) -> Option<LinePart> {
+    match swap_layout_name {
+        Some(swap_layout_name) => {
+            let mode_keybinds = mode_info.get_mode_keybinds();
+            let prev_next_keys = action_key_group(
+                &mode_keybinds,
+                &[&[Action::PreviousSwapLayout], &[Action::NextSwapLayout]],
+            );
+            let mut text = style_key_with_modifier(&prev_next_keys, Some(0));
+            text.append(&ribbon_as_line_part(
+                &swap_layout_name.to_uppercase(),
+                !is_swap_layout_dirty,
+                supports_arrow_fonts
+            ));
+            Some(text)
+        },
+        None => None
+    }
+}
+
+pub fn ribbon_as_line_part(text: &str, is_selected: bool, supports_arrow_fonts: bool) -> LinePart {
+    let ribbon_text = if is_selected {
+        Text::new(text).selected()
+    } else {
+        Text::new(text)
+    };
+    let part = serialize_ribbon(&ribbon_text);
+    let mut len = text.width() + 3;
+    if supports_arrow_fonts {
+        len += 2;
+    };
+    LinePart {
+        part,
+        len,
+        tab_index: None,
+    }
+}
+
+
+pub fn style_key_with_modifier(
+    keyvec: &[KeyWithModifier],
+    color_index: Option<usize>,
+) -> LinePart {
+    if keyvec.is_empty() {
+        return LinePart::default();
+    }
+
+    let common_modifiers = get_common_modifiers(keyvec.iter().collect());
+
+    let no_common_modifier = common_modifiers.is_empty();
+    let modifier_str = common_modifiers
+        .iter()
+        .map(|m| m.to_string())
+        .collect::<Vec<_>>()
+        .join("-");
+
+    // Prints the keys
+    let key = keyvec
+        .iter()
+        .map(|key| {
+            if no_common_modifier || keyvec.len() == 1 {
+                format!("{}", key)
+            } else {
+                format!("{}", key.strip_common_modifiers(&common_modifiers))
+            }
+        })
+        .collect::<Vec<String>>();
+
+    // Special handling of some pre-defined keygroups
+    let key_string = key.join("");
+    let key_separator = match &key_string[..] {
+        "HJKL" => "",
+        "hjkl" => "",
+        "←↓↑→" => "",
+        "←→" => "",
+        "↓↑" => "",
+        "[]" => "",
+        _ => "|",
+    };
+
+    if no_common_modifier || key.len() == 1 {
+        let key_string_text = format!(" {} ", key.join(key_separator));
+        let text = if let Some(color_index) = color_index {
+            Text::new(&key_string_text)
+                .color_range(color_index, ..)
+        } else {
+            Text::new(&key_string_text)
+        };
+        LinePart {
+            part: serialize_text(&text),
+            len: key_string_text.width(),
+            ..Default::default()
+        }
+    } else {
+        let key_string_without_modifier = format!("{}", key.join(key_separator));
+        let key_string_text = format!(" {} <{}> ", modifier_str, key_string_without_modifier);
+        let text = if let Some(color_index) = color_index {
+            Text::new(&key_string_text)
+                .color_range(color_index, ..modifier_str.width() + 1)
+                .color_range(color_index, modifier_str.width() + 3..modifier_str.width() + 3 + key_string_without_modifier.width())
+        } else {
+            Text::new(&key_string_text)
+        };
+        LinePart {
+            part: serialize_text(&text),
+            len: key_string_text.width(),
+            ..Default::default()
+        }
+    }
+}
+
+
+
+
+
+// pub fn style_key_with_modifier(
+//     keyvec: &[KeyWithModifier],
+//     background: Option<PaletteColor>,
+//     mode_info: &ModeInfo,
+// ) -> LinePart {
+//     let mut ret = LinePart::default();
+//     let palette = mode_info.style.colors;
+//     if keyvec.is_empty() {
+//         return ret;
+//     }
+// 
+//     let text_color = palette_match!(match palette.theme_hue {
+//         ThemeHue::Dark => palette.white,
+//         ThemeHue::Light => palette.black,
+//     });
+//     let green_color = palette_match!(palette.green);
+//     let orange_color = palette_match!(palette.orange);
+//     // let orange_color = palette_match!(palette.magenta);
+// 
+//     let common_modifiers = get_common_modifiers(keyvec.iter().collect());
+// 
+//     let no_common_modifier = common_modifiers.is_empty();
+//     let modifier_str = common_modifiers
+//         .iter()
+//         .map(|m| m.to_string())
+//         .collect::<Vec<_>>()
+//         .join("-");
+//     let painted_modifier = if modifier_str.is_empty() {
+//         LinePart::default()
+//     } else {
+//         let modifier_str = format!(" {}", modifier_str);
+//         let len = modifier_str.chars().count();
+//         if let Some(background) = background {
+//             let background = palette_match!(background);
+//             let len = modifier_str.chars().count();
+//             let part = Style::new()
+//                 .fg(orange_color)
+//                 .on(background)
+//                 .bold()
+//                 .paint(modifier_str).to_string();
+//             LinePart {
+//                 part,
+//                 len,
+//                 tab_index: None,
+//             }
+//         } else {
+//             LinePart {
+//                 part: Style::new().fg(orange_color).bold().paint(modifier_str).to_string(),
+//                 len,
+//                 tab_index: None,
+//             }
+//         }
+//     };
+//     ret.append(&painted_modifier);
+// 
+//     // Prints key group start
+//     // let group_start_str = if no_common_modifier { "<" } else { " + <" };
+//     // let group_start_str = if no_common_modifier { " " } else { " " };
+//     let group_start_str = if keyvec.len() > 1 { " <" } else { " " };
+//     if let Some(background) = background {
+//         let background = palette_match!(background);
+//         let part = Style::new()
+//             .fg(text_color)
+//             // .fg(orange_color)
+//             .on(background)
+//             .bold()
+//             .paint(group_start_str).to_string();
+//         let len = group_start_str.chars().count();
+//         ret.append(&LinePart { part, len, tab_index: None });
+//     } else {
+//         let len = group_start_str.chars().count();
+//         let part = Style::new().fg(text_color).bold().paint(group_start_str).to_string();
+//         ret.append(&LinePart { part, len, tab_index: None });
+//     }
+// 
+//     // Prints the keys
+//     let key = keyvec
+//         .iter()
+//         .map(|key| {
+//             if no_common_modifier {
+//                 format!("{}", key)
+//             } else {
+//                 let key_modifier_for_key = key
+//                     .key_modifiers
+//                     .iter()
+//                     .filter(|m| !common_modifiers.contains(m))
+//                     .map(|m| m.to_string())
+//                     .collect::<Vec<_>>()
+//                     .join(" ");
+//                 if key_modifier_for_key.is_empty() {
+//                     format!("{}", key.bare_key)
+//                 } else {
+//                     format!("{} {}", key_modifier_for_key, key.bare_key)
+//                 }
+//             }
+//         })
+//         .collect::<Vec<String>>();
+// 
+//     // Special handling of some pre-defined keygroups
+//     let key_string = key.join("");
+//     let key_separator = match &key_string[..] {
+//         "HJKL" => "",
+//         "hjkl" => "",
+//         "←↓↑→" => "",
+//         "←→" => "",
+//         "↓↑" => "",
+//         "[]" => "",
+//         _ => "|",
+//     };
+// 
+//     for (idx, key) in key.iter().enumerate() {
+//         if idx > 0 && !key_separator.is_empty() {
+//             if let Some(background) = background {
+//                 let background = palette_match!(background);
+//                 ret.append(
+//                     &LinePart {
+//                         part: Style::new()
+//                             .fg(text_color)
+//                             .on(background)
+//                             .paint(key_separator).to_string(),
+//                         len: key_separator.chars().count(),
+//                         tab_index: None,
+//                     }
+//                 );
+//             } else {
+//                 ret.append(&LinePart {
+//                     part: Style::new().fg(text_color).paint(key_separator).to_string(),
+//                     len: key_separator.chars().count(),
+//                     tab_index: None,
+//                 });
+//             }
+//         }
+//         if let Some(background) = background {
+//             let background = palette_match!(background);
+//             let key = key.clone();
+//             let len = key.chars().count();
+//             ret.append(
+//                 &LinePart {
+//                     part: Style::new()
+//                         .fg(orange_color)
+//                         .on(background)
+//                         .bold()
+//                         .paint(key).to_string(),
+//                     len,
+//                     tab_index: None,
+//                 }
+//             );
+//         } else {
+//             let key = key.clone();
+//             let len = key.chars().count();
+//             ret.append(&LinePart {
+//                 part: Style::new().fg(orange_color).bold().paint(key).to_string(),
+//                 len,
+//                 tab_index: None,
+//             });
+//         }
+//     }
+// 
+//     // let group_end_str = ">";
+//     // let group_end_str = if keyvec.len() > 1 { "> " } else { " " };
+//     let group_end_str = if keyvec.len() > 1 { "> " } else { " " };
+//     if let Some(background) = background {
+//         let background = palette_match!(background);
+//         ret.append(
+//             &LinePart {
+//                 part: Style::new()
+//                     .fg(text_color)
+//                     .bold()
+//                     .on(background)
+//                     .paint(group_end_str).to_string(),
+//                 len: group_end_str.chars().count(),
+//                 tab_index: None,
+//             }
+//         );
+//     } else {
+//         ret.append(
+//             &LinePart {
+//                 part: Style::new().fg(text_color).bold().paint(group_end_str).to_string(),
+//                 len: group_end_str.chars().count(),
+//                 tab_index: None,
+//             }
+//         );
+//     }
+//     ret
+// }
+// 
+pub fn get_common_modifiers(mut keyvec: Vec<&KeyWithModifier>) -> Vec<KeyModifier> {
+    if keyvec.is_empty() {
+        return vec![];
+    }
+    let mut common_modifiers = keyvec.pop().unwrap().key_modifiers.clone();
+    for key in keyvec {
+        common_modifiers = common_modifiers
+            .intersection(&key.key_modifiers)
+            .cloned()
+            .collect();
+    }
+    common_modifiers.into_iter().collect()
+}
+
+
+pub fn action_key_group(
+    keymap: &[(KeyWithModifier, Vec<Action>)],
+    actions: &[&[Action]],
+) -> Vec<KeyWithModifier> {
+    let mut ret = vec![];
+    for action in actions {
+        ret.extend(action_key(keymap, action));
+    }
+    ret
+}
+
+pub fn action_key(
+    keymap: &[(KeyWithModifier, Vec<Action>)],
+    action: &[Action],
+) -> Vec<KeyWithModifier> {
+    keymap
+        .iter()
+        .filter_map(|(key, acvec)| {
+            let matching = acvec
+                .iter()
+                .zip(action)
+                .filter(|(a, b)| a.shallow_eq(b))
+                .count();
+
+            if matching == acvec.len() && matching == action.len() {
+                Some(key.clone())
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<KeyWithModifier>>()
 }

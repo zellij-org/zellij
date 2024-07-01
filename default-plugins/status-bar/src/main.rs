@@ -448,14 +448,11 @@ pub fn style_key_with_modifier(
         ThemeHue::Light => palette.black,
     });
     let green_color = palette_match!(palette.green);
-    let orange_color = palette_match!(palette.orange);
+    // let orange_color = palette_match!(palette.orange);
+    let orange_color = palette_match!(palette.magenta);
 
     let common_modifiers = get_common_modifiers(keyvec.iter().collect());
 
-    //     let modifier_str = match get_common_modifier(keyvec.iter().collect()) {
-    //         Some(modifier) => modifier,
-    //         None => "".to_string(),
-    //     };
     let no_common_modifier = common_modifiers.is_empty();
     let modifier_str = common_modifiers
         .iter()

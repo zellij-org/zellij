@@ -3,16 +3,13 @@ use ansi_term::{Style, Color::{Fixed, RGB}};
 use zellij_tile_utils::palette_match;
 use zellij_tile::prelude::actions::Action;
 use zellij_tile::prelude::*;
-use zellij_tile_utils::style;
-use std::collections::{HashMap, BTreeSet};
+use std::collections::HashMap;
 
+use unicode_width::UnicodeWidthStr;
 use crate::{color_elements, MORE_MSG};
-use crate::{
-    action_key, action_key_group, get_common_modifiers, style_key_with_modifier, TO_NORMAL,
-    // second_line::{keybinds, add_shortcut, add_shortcut_selected, add_shortcut_with_inline_key, add_keygroup_separator},
-};
 use crate::{ColoredElements, LinePart};
-use crate::tip::{data::TIPS, TipFn};
+
+const TO_NORMAL: Action = Action::SwitchToMode(InputMode::Normal);
 
 #[derive(Debug)]
 struct KeyShortcut {
@@ -162,109 +159,109 @@ impl KeyShortcut {
 ///   the shortcut tile.
 /// - `first_tile`: If set to true, the leading separator for this tile will be ommited so no gap
 ///   appears on the screen.
-fn long_mode_shortcut(
-    key: &KeyShortcut,
-    palette: ColoredElements,
-    separator: &str,
-    common_modifiers: &Vec<KeyModifier>,
-    first_tile: bool,
-) -> LinePart {
-    let key_hint = key.full_text();
-    let has_common_modifiers = !common_modifiers.is_empty();
-    let key_binding = match (&key.mode, &key.key) {
-        (KeyMode::Disabled, None) => "".to_string(),
-        (_, None) => return LinePart::default(),
-        (_, Some(_)) => key.letter_shortcut(common_modifiers),
-    };
+// fn long_mode_shortcut(
+//     key: &KeyShortcut,
+//     palette: ColoredElements,
+//     separator: &str,
+//     common_modifiers: &Vec<KeyModifier>,
+//     first_tile: bool,
+// ) -> LinePart {
+//     let key_hint = key.full_text();
+//     let has_common_modifiers = !common_modifiers.is_empty();
+//     let key_binding = match (&key.mode, &key.key) {
+//         (KeyMode::Disabled, None) => "".to_string(),
+//         (_, None) => return LinePart::default(),
+//         (_, Some(_)) => key.letter_shortcut(common_modifiers),
+//     };
+// 
+//     let colors = match key.mode {
+//         KeyMode::Unselected => palette.unselected,
+//         KeyMode::UnselectedAlternate => palette.unselected_alternate,
+//         KeyMode::Selected => palette.selected,
+//         KeyMode::Disabled => palette.disabled,
+//     };
+//     let start_separator = if !has_common_modifiers && first_tile {
+//         ""
+//     } else {
+//         separator
+//     };
+//     let prefix_separator = colors.prefix_separator.paint(start_separator);
+//     let char_left_separator = colors.char_left_separator.paint(" <".to_string());
+//     let char_shortcut = colors.char_shortcut.paint(key_binding.to_string());
+//     let char_right_separator = colors.char_right_separator.paint("> ".to_string());
+//     let styled_text = colors.styled_text.paint(format!("{} ", key_hint));
+//     let suffix_separator = colors.suffix_separator.paint(separator);
+//     LinePart {
+//         part: ANSIStrings(&[
+//             prefix_separator,
+//             char_left_separator,
+//             char_shortcut,
+//             char_right_separator,
+//             styled_text,
+//             suffix_separator,
+//         ])
+//         .to_string(),
+//         len: start_separator.chars().count() // Separator
+//             + 2                              // " <"
+//             + key_binding.chars().count()    // Key binding
+//             + 2                              // "> "
+//             + key_hint.chars().count()       // Key hint (mode)
+//             + 1                              // " "
+//             + separator.chars().count(), // Separator
+//     }
+// }
 
-    let colors = match key.mode {
-        KeyMode::Unselected => palette.unselected,
-        KeyMode::UnselectedAlternate => palette.unselected_alternate,
-        KeyMode::Selected => palette.selected,
-        KeyMode::Disabled => palette.disabled,
-    };
-    let start_separator = if !has_common_modifiers && first_tile {
-        ""
-    } else {
-        separator
-    };
-    let prefix_separator = colors.prefix_separator.paint(start_separator);
-    let char_left_separator = colors.char_left_separator.paint(" <".to_string());
-    let char_shortcut = colors.char_shortcut.paint(key_binding.to_string());
-    let char_right_separator = colors.char_right_separator.paint("> ".to_string());
-    let styled_text = colors.styled_text.paint(format!("{} ", key_hint));
-    let suffix_separator = colors.suffix_separator.paint(separator);
-    LinePart {
-        part: ANSIStrings(&[
-            prefix_separator,
-            char_left_separator,
-            char_shortcut,
-            char_right_separator,
-            styled_text,
-            suffix_separator,
-        ])
-        .to_string(),
-        len: start_separator.chars().count() // Separator
-            + 2                              // " <"
-            + key_binding.chars().count()    // Key binding
-            + 2                              // "> "
-            + key_hint.chars().count()       // Key hint (mode)
-            + 1                              // " "
-            + separator.chars().count(), // Separator
-    }
-}
-
-fn shortened_modifier_shortcut(
-    key: &KeyShortcut,
-    palette: ColoredElements,
-    separator: &str,
-    common_modifiers: &Vec<KeyModifier>,
-    first_tile: bool,
-) -> LinePart {
-    let key_hint = key.full_text();
-    let has_common_modifiers = !common_modifiers.is_empty();
-    let key_binding = match (&key.mode, &key.key) {
-        (KeyMode::Disabled, None) => "".to_string(),
-        (_, None) => return LinePart::default(),
-        (_, Some(_)) => key.with_shortened_modifiers(common_modifiers),
-    };
-
-    let colors = match key.mode {
-        KeyMode::Unselected => palette.unselected,
-        KeyMode::UnselectedAlternate => palette.unselected_alternate,
-        KeyMode::Selected => palette.selected,
-        KeyMode::Disabled => palette.disabled,
-    };
-    let start_separator = if !has_common_modifiers && first_tile {
-        ""
-    } else {
-        separator
-    };
-    let prefix_separator = colors.prefix_separator.paint(start_separator);
-    let char_left_separator = colors.char_left_separator.paint(" <".to_string());
-    let char_shortcut = colors.char_shortcut.paint(key_binding.to_string());
-    let char_right_separator = colors.char_right_separator.paint("> ".to_string());
-    let styled_text = colors.styled_text.paint(format!("{} ", key_hint));
-    let suffix_separator = colors.suffix_separator.paint(separator);
-    LinePart {
-        part: ANSIStrings(&[
-            prefix_separator,
-            char_left_separator,
-            char_shortcut,
-            char_right_separator,
-            styled_text,
-            suffix_separator,
-        ])
-        .to_string(),
-        len: start_separator.chars().count() // Separator
-            + 2                              // " <"
-            + key_binding.chars().count()    // Key binding
-            + 2                              // "> "
-            + key_hint.chars().count()       // Key hint (mode)
-            + 1                              // " "
-            + separator.chars().count(), // Separator
-    }
-}
+// fn shortened_modifier_shortcut(
+//     key: &KeyShortcut,
+//     palette: ColoredElements,
+//     separator: &str,
+//     common_modifiers: &Vec<KeyModifier>,
+//     first_tile: bool,
+// ) -> LinePart {
+//     let key_hint = key.full_text();
+//     let has_common_modifiers = !common_modifiers.is_empty();
+//     let key_binding = match (&key.mode, &key.key) {
+//         (KeyMode::Disabled, None) => "".to_string(),
+//         (_, None) => return LinePart::default(),
+//         (_, Some(_)) => key.with_shortened_modifiers(common_modifiers),
+//     };
+// 
+//     let colors = match key.mode {
+//         KeyMode::Unselected => palette.unselected,
+//         KeyMode::UnselectedAlternate => palette.unselected_alternate,
+//         KeyMode::Selected => palette.selected,
+//         KeyMode::Disabled => palette.disabled,
+//     };
+//     let start_separator = if !has_common_modifiers && first_tile {
+//         ""
+//     } else {
+//         separator
+//     };
+//     let prefix_separator = colors.prefix_separator.paint(start_separator);
+//     let char_left_separator = colors.char_left_separator.paint(" <".to_string());
+//     let char_shortcut = colors.char_shortcut.paint(key_binding.to_string());
+//     let char_right_separator = colors.char_right_separator.paint("> ".to_string());
+//     let styled_text = colors.styled_text.paint(format!("{} ", key_hint));
+//     let suffix_separator = colors.suffix_separator.paint(separator);
+//     LinePart {
+//         part: ANSIStrings(&[
+//             prefix_separator,
+//             char_left_separator,
+//             char_shortcut,
+//             char_right_separator,
+//             styled_text,
+//             suffix_separator,
+//         ])
+//         .to_string(),
+//         len: start_separator.chars().count() // Separator
+//             + 2                              // " <"
+//             + key_binding.chars().count()    // Key binding
+//             + 2                              // "> "
+//             + key_hint.chars().count()       // Key hint (mode)
+//             + 1                              // " "
+//             + separator.chars().count(), // Separator
+//     }
+// }
 
 /// Generate short mode shortcut tile.
 ///
@@ -284,191 +281,191 @@ fn shortened_modifier_shortcut(
 ///   the shortcut tile.
 /// - `first_tile`: If set to true, the leading separator for this tile will be ommited so no gap
 ///   appears on the screen.
-fn short_mode_shortcut(
-    key: &KeyShortcut,
-    palette: ColoredElements,
-    separator: &str,
-    common_modifiers: &Vec<KeyModifier>,
-    first_tile: bool,
-) -> LinePart {
-    let has_common_modifiers = !common_modifiers.is_empty();
-    let key_binding = match (&key.mode, &key.key) {
-        (KeyMode::Disabled, None) => "".to_string(),
-        (_, None) => return LinePart::default(),
-        (_, Some(_)) => key.letter_shortcut(common_modifiers),
-    };
+// fn short_mode_shortcut(
+//     key: &KeyShortcut,
+//     palette: ColoredElements,
+//     separator: &str,
+//     common_modifiers: &Vec<KeyModifier>,
+//     first_tile: bool,
+// ) -> LinePart {
+//     let has_common_modifiers = !common_modifiers.is_empty();
+//     let key_binding = match (&key.mode, &key.key) {
+//         (KeyMode::Disabled, None) => "".to_string(),
+//         (_, None) => return LinePart::default(),
+//         (_, Some(_)) => key.letter_shortcut(common_modifiers),
+//     };
+// 
+//     let colors = match key.mode {
+//         KeyMode::Unselected => palette.unselected,
+//         KeyMode::UnselectedAlternate => palette.unselected_alternate,
+//         KeyMode::Selected => palette.selected,
+//         KeyMode::Disabled => palette.disabled,
+//     };
+//     let start_separator = if !has_common_modifiers && first_tile {
+//         ""
+//     } else {
+//         separator
+//     };
+//     let prefix_separator = colors.prefix_separator.paint(start_separator);
+//     let char_shortcut = colors.char_shortcut.paint(format!(" {} ", key_binding));
+//     let suffix_separator = colors.suffix_separator.paint(separator);
+//     LinePart {
+//         part: ANSIStrings(&[prefix_separator, char_shortcut, suffix_separator]).to_string(),
+//         len: separator.chars().count()      // Separator
+//             + 1                             // " "
+//             + key_binding.chars().count()   // Key binding
+//             + 1                             // " "
+//             + separator.chars().count(), // Separator
+//     }
+// }
 
-    let colors = match key.mode {
-        KeyMode::Unselected => palette.unselected,
-        KeyMode::UnselectedAlternate => palette.unselected_alternate,
-        KeyMode::Selected => palette.selected,
-        KeyMode::Disabled => palette.disabled,
-    };
-    let start_separator = if !has_common_modifiers && first_tile {
-        ""
-    } else {
-        separator
-    };
-    let prefix_separator = colors.prefix_separator.paint(start_separator);
-    let char_shortcut = colors.char_shortcut.paint(format!(" {} ", key_binding));
-    let suffix_separator = colors.suffix_separator.paint(separator);
-    LinePart {
-        part: ANSIStrings(&[prefix_separator, char_shortcut, suffix_separator]).to_string(),
-        len: separator.chars().count()      // Separator
-            + 1                             // " "
-            + key_binding.chars().count()   // Key binding
-            + 1                             // " "
-            + separator.chars().count(), // Separator
-    }
-}
+// fn key_indicators(
+//     max_len: usize,
+//     keys: &[KeyShortcut],
+//     palette: ColoredElements,
+//     separator: &str,
+//     mode_info: &ModeInfo,
+//     line_part_to_render: &mut LinePart,
+// ) {
+//     if keys.is_empty() {
+//         return;
+//     }
+//     // Print full-width hints
+//     let shared_modifiers = superkey(palette, separator, mode_info, line_part_to_render);
+//     let mut line_part = LinePart::default();
+//     for key in keys {
+//         let line_empty = line_part_to_render.len == 0;
+//         let key = long_mode_shortcut(key, palette, separator, &shared_modifiers, line_empty);
+//         line_part.part = format!("{}{}", line_part.part, key.part);
+//         line_part.len += key.len;
+//     }
+//     if line_part_to_render.len + line_part.len < max_len {
+//         line_part_to_render.part = format!("{}{}", line_part_to_render.part, line_part.part);
+//         line_part_to_render.len += line_part.len;
+//         return;
+//     }
+// 
+//     // Full-width doesn't fit, try shortened modifiers (eg. "^C" instead of "Ctrl")
+//     let mut line_part = LinePart::default();
+//     for key in keys {
+//         let line_empty = line_part.len == 0;
+//         let key =
+//             shortened_modifier_shortcut(key, palette, separator, &shared_modifiers, line_empty);
+//         line_part.part = format!("{}{}", line_part.part, key.part);
+//         line_part.len += key.len;
+//     }
+//     if line_part_to_render.len + line_part.len < max_len {
+//         line_part_to_render.part  = format!("{}{}", line_part_to_render.part, line_part.part);
+//         line_part_to_render.len += line_part.len;
+//         return;
+//     }
+// 
+//     // Full-width doesn't fit, try shortened hints (just keybindings, no meanings/actions)
+//     let mut line_part = LinePart::default();
+//     for key in keys {
+//         let line_empty = line_part.len == 0;
+//         let key = short_mode_shortcut(key, palette, separator, &shared_modifiers, line_empty);
+//         line_part.part = format!("{}{}", line_part.part, key.part);
+//         line_part.len += key.len;
+//     }
+//     if line_part_to_render.len + line_part.len < max_len {
+//         line_part_to_render.part  = format!("{}{}", line_part_to_render.part, line_part.part);
+//         line_part_to_render.len += line_part.len;
+//         return;
+//     }
+// 
+//     // nothing fits, print nothing
+// }
 
-fn key_indicators(
-    max_len: usize,
-    keys: &[KeyShortcut],
-    palette: ColoredElements,
-    separator: &str,
-    mode_info: &ModeInfo,
-    line_part_to_render: &mut LinePart,
-) {
-    if keys.is_empty() {
-        return;
-    }
-    // Print full-width hints
-    let shared_modifiers = superkey(palette, separator, mode_info, line_part_to_render);
-    let mut line_part = LinePart::default();
-    for key in keys {
-        let line_empty = line_part_to_render.len == 0;
-        let key = long_mode_shortcut(key, palette, separator, &shared_modifiers, line_empty);
-        line_part.part = format!("{}{}", line_part.part, key.part);
-        line_part.len += key.len;
-    }
-    if line_part_to_render.len + line_part.len < max_len {
-        line_part_to_render.part = format!("{}{}", line_part_to_render.part, line_part.part);
-        line_part_to_render.len += line_part.len;
-        return;
-    }
-
-    // Full-width doesn't fit, try shortened modifiers (eg. "^C" instead of "Ctrl")
-    let mut line_part = LinePart::default();
-    for key in keys {
-        let line_empty = line_part.len == 0;
-        let key =
-            shortened_modifier_shortcut(key, palette, separator, &shared_modifiers, line_empty);
-        line_part.part = format!("{}{}", line_part.part, key.part);
-        line_part.len += key.len;
-    }
-    if line_part_to_render.len + line_part.len < max_len {
-        line_part_to_render.part  = format!("{}{}", line_part_to_render.part, line_part.part);
-        line_part_to_render.len += line_part.len;
-        return;
-    }
-
-    // Full-width doesn't fit, try shortened hints (just keybindings, no meanings/actions)
-    let mut line_part = LinePart::default();
-    for key in keys {
-        let line_empty = line_part.len == 0;
-        let key = short_mode_shortcut(key, palette, separator, &shared_modifiers, line_empty);
-        line_part.part = format!("{}{}", line_part.part, key.part);
-        line_part.len += key.len;
-    }
-    if line_part_to_render.len + line_part.len < max_len {
-        line_part_to_render.part  = format!("{}{}", line_part_to_render.part, line_part.part);
-        line_part_to_render.len += line_part.len;
-        return;
-    }
-
-    // nothing fits, print nothing
-}
-
-fn swap_layout_keycode(mode_info: &ModeInfo, palette: &Palette) -> LinePart {
-    let mode_keybinds = mode_info.get_mode_keybinds();
-    let prev_next_keys = action_key_group(
-        &mode_keybinds,
-        &[&[Action::PreviousSwapLayout], &[Action::NextSwapLayout]],
-    );
-    style_key_with_modifier(&prev_next_keys, palette, Some(palette.black))
-//     let prev_next_keys_indicator =
-//         style_key_with_modifier(&prev_next_keys, palette, Some(palette.black));
-//     let keycode = ANSIStrings(&prev_next_keys_indicator);
-//     // TODO: CONTINUE HERE - instead of relying on unstyled_len here and in other places, count the
-//     // characters and return them as a LinePart
-//     let len = unstyled_len(&keycode).saturating_sub(4);
-//     let part = keycode.to_string();
-//     LinePart { part, len }
-}
-
-fn swap_layout_status(
-    max_len: usize,
-    swap_layout_name: &Option<String>,
-    is_swap_layout_damaged: bool,
-    mode_info: &ModeInfo,
-    colored_elements: ColoredElements,
-    palette: &Palette,
-    separator: &str,
-) -> Option<LinePart> {
-    match swap_layout_name {
-        Some(swap_layout_name) => {
-            let mut swap_layout_name = format!(" {} ", swap_layout_name);
-            swap_layout_name.make_ascii_uppercase();
-            let keycode = swap_layout_keycode(mode_info, palette);
-            let swap_layout_name_len = swap_layout_name.len() + 2; // 2 for the arrow separators
-            macro_rules! style_swap_layout_indicator {
-                ($style_name:ident) => {{
-                    (
-                        colored_elements
-                            .$style_name
-                            .prefix_separator
-                            .paint(separator),
-                        colored_elements
-                            .$style_name
-                            .styled_text
-                            .paint(&swap_layout_name),
-                        colored_elements
-                            .$style_name
-                            .suffix_separator
-                            .paint(separator),
-                    )
-                }};
-            }
-            let (prefix_separator, swap_layout_name, suffix_separator) =
-//                 if mode_info.mode == InputMode::Locked {
-//                     style_swap_layout_indicator!(disabled)
-                if is_swap_layout_damaged {
-                    style_swap_layout_indicator!(unselected)
-                } else {
-                    style_swap_layout_indicator!(selected)
-                };
-            let swap_layout_indicator = format!(
-                "{}{}{}",
-                prefix_separator, swap_layout_name, suffix_separator
-            );
-            let (part, full_len) = 
-                (
-                    format!(
-                        "{}{}",
-                        keycode,
-                        swap_layout_indicator,
-                    ),
-                    keycode.len + swap_layout_name_len
-                );
-            let short_len = swap_layout_name_len + 1; // 1 is the space between
-            if full_len <= max_len {
-                Some(LinePart {
-                    part,
-                    len: full_len,
-                })
-            } else if short_len <= max_len && mode_info.mode != InputMode::Locked {
-                Some(LinePart {
-                    part: swap_layout_indicator,
-                    len: short_len,
-                })
-            } else {
-                None
-            }
-        },
-        None => None,
-    }
-}
+// fn swap_layout_keycode(mode_info: &ModeInfo, palette: &Palette) -> LinePart {
+//     let mode_keybinds = mode_info.get_mode_keybinds();
+//     let prev_next_keys = action_key_group(
+//         &mode_keybinds,
+//         &[&[Action::PreviousSwapLayout], &[Action::NextSwapLayout]],
+//     );
+//     style_key_with_modifier(&prev_next_keys, 0)
+// //     let prev_next_keys_indicator =
+// //         style_key_with_modifier(&prev_next_keys, palette, Some(palette.black));
+// //     let keycode = ANSIStrings(&prev_next_keys_indicator);
+// //     // TODO: CONTINUE HERE - instead of relying on unstyled_len here and in other places, count the
+// //     // characters and return them as a LinePart
+// //     let len = unstyled_len(&keycode).saturating_sub(4);
+// //     let part = keycode.to_string();
+// //     LinePart { part, len }
+// }
+// 
+// fn swap_layout_status(
+//     max_len: usize,
+//     swap_layout_name: &Option<String>,
+//     is_swap_layout_damaged: bool,
+//     mode_info: &ModeInfo,
+//     colored_elements: ColoredElements,
+//     palette: &Palette,
+//     separator: &str,
+// ) -> Option<LinePart> {
+//     match swap_layout_name {
+//         Some(swap_layout_name) => {
+//             let mut swap_layout_name = format!(" {} ", swap_layout_name);
+//             swap_layout_name.make_ascii_uppercase();
+//             let keycode = swap_layout_keycode(mode_info, palette);
+//             let swap_layout_name_len = swap_layout_name.len() + 2; // 2 for the arrow separators
+//             macro_rules! style_swap_layout_indicator {
+//                 ($style_name:ident) => {{
+//                     (
+//                         colored_elements
+//                             .$style_name
+//                             .prefix_separator
+//                             .paint(separator),
+//                         colored_elements
+//                             .$style_name
+//                             .styled_text
+//                             .paint(&swap_layout_name),
+//                         colored_elements
+//                             .$style_name
+//                             .suffix_separator
+//                             .paint(separator),
+//                     )
+//                 }};
+//             }
+//             let (prefix_separator, swap_layout_name, suffix_separator) =
+// //                 if mode_info.mode == InputMode::Locked {
+// //                     style_swap_layout_indicator!(disabled)
+//                 if is_swap_layout_damaged {
+//                     style_swap_layout_indicator!(unselected)
+//                 } else {
+//                     style_swap_layout_indicator!(selected)
+//                 };
+//             let swap_layout_indicator = format!(
+//                 "{}{}{}",
+//                 prefix_separator, swap_layout_name, suffix_separator
+//             );
+//             let (part, full_len) = 
+//                 (
+//                     format!(
+//                         "{}{}",
+//                         keycode,
+//                         swap_layout_indicator,
+//                     ),
+//                     keycode.len + swap_layout_name_len
+//                 );
+//             let short_len = swap_layout_name_len + 1; // 1 is the space between
+//             if full_len <= max_len {
+//                 Some(LinePart {
+//                     part,
+//                     len: full_len,
+//                 })
+//             } else if short_len <= max_len && mode_info.mode != InputMode::Locked {
+//                 Some(LinePart {
+//                     part: swap_layout_indicator,
+//                     len: short_len,
+//                 })
+//             } else {
+//                 None
+//             }
+//         },
+//         None => None,
+//     }
+// }
 
 /// Get the keybindings for switching `InputMode`s and `Quit` visible in status bar.
 ///
@@ -483,94 +480,94 @@ fn swap_layout_status(
 ///   to get back to normal mode from any input mode, but they aren't of interest when searching
 ///   for the super key. If for any input mode the user has bound only these keys to switching back
 ///   to `InputMode::Normal`, a '?' will be displayed as keybinding instead.
-pub fn mode_switch_keys(mode_info: &ModeInfo) -> Vec<KeyWithModifier> {
-    mode_info
-        .get_mode_keybinds()
-        .iter()
-        .filter_map(|(key, vac)| match vac.first() {
-            // No actions defined, ignore
-            None => None,
-            Some(vac) => {
-                // We ignore certain "default" keybindings that switch back to normal InputMode.
-                // These include: ' ', '\n', 'Esc'
-                if matches!(
-                    key,
-                    KeyWithModifier {
-                        bare_key: BareKey::Char(' '),
-                        ..
-                    } | KeyWithModifier {
-                        bare_key: BareKey::Enter,
-                        ..
-                    } | KeyWithModifier {
-                        bare_key: BareKey::Esc,
-                        ..
-                    }
-                ) {
-                    return None;
-                }
-                if let actions::Action::SwitchToMode(mode) = vac {
-                    return match mode {
-                        // Store the keys that switch to displayed modes
-                        InputMode::Normal
-                        | InputMode::Locked
-                        | InputMode::Pane
-                        | InputMode::Tab
-                        | InputMode::Resize
-                        | InputMode::Move
-                        | InputMode::Scroll
-                        | InputMode::Session => Some(key.clone()),
-                        _ => None,
-                    };
-                }
-                if let actions::Action::Quit = vac {
-                    return Some(key.clone());
-                }
-                // Not a `SwitchToMode` or `Quit` action, ignore
-                None
-            },
-        })
-        .collect()
-}
+// pub fn mode_switch_keys(mode_info: &ModeInfo) -> Vec<KeyWithModifier> {
+//     mode_info
+//         .get_mode_keybinds()
+//         .iter()
+//         .filter_map(|(key, vac)| match vac.first() {
+//             // No actions defined, ignore
+//             None => None,
+//             Some(vac) => {
+//                 // We ignore certain "default" keybindings that switch back to normal InputMode.
+//                 // These include: ' ', '\n', 'Esc'
+//                 if matches!(
+//                     key,
+//                     KeyWithModifier {
+//                         bare_key: BareKey::Char(' '),
+//                         ..
+//                     } | KeyWithModifier {
+//                         bare_key: BareKey::Enter,
+//                         ..
+//                     } | KeyWithModifier {
+//                         bare_key: BareKey::Esc,
+//                         ..
+//                     }
+//                 ) {
+//                     return None;
+//                 }
+//                 if let actions::Action::SwitchToMode(mode) = vac {
+//                     return match mode {
+//                         // Store the keys that switch to displayed modes
+//                         InputMode::Normal
+//                         | InputMode::Locked
+//                         | InputMode::Pane
+//                         | InputMode::Tab
+//                         | InputMode::Resize
+//                         | InputMode::Move
+//                         | InputMode::Scroll
+//                         | InputMode::Session => Some(key.clone()),
+//                         _ => None,
+//                     };
+//                 }
+//                 if let actions::Action::Quit = vac {
+//                     return Some(key.clone());
+//                 }
+//                 // Not a `SwitchToMode` or `Quit` action, ignore
+//                 None
+//             },
+//         })
+//         .collect()
+// }
 
-pub fn superkey(
-    palette: ColoredElements,
-    separator: &str,
-    mode_info: &ModeInfo,
-    line_part_to_render: &mut LinePart,
-) -> Vec<KeyModifier> {
-    // Find a common modifier if any
-    let common_modifiers = get_common_modifiers(mode_switch_keys(mode_info).iter().collect());
-    if common_modifiers.is_empty() {
-        return common_modifiers;
-    }
-
-    let prefix_text = if mode_info.capabilities.arrow_fonts {
-        // Add extra space in simplified ui
-        format!(
-            " {} + ",
-            common_modifiers
-                .iter()
-                .map(|m| m.to_string())
-                .collect::<Vec<_>>()
-                .join("-")
-        )
-    } else {
-        format!(
-            " {} +",
-            common_modifiers
-                .iter()
-                .map(|m| m.to_string())
-                .collect::<Vec<_>>()
-                .join("-")
-        )
-    };
-
-    let prefix = palette.superkey_prefix.paint(&prefix_text);
-    let suffix_separator = palette.superkey_suffix_separator.paint(separator);
-    line_part_to_render.part = format!("{}{}", line_part_to_render.part, ANSIStrings(&[prefix, suffix_separator]).to_string());
-    line_part_to_render.len += prefix_text.chars().count() + separator.chars().count();
-    common_modifiers
-}
+// pub fn superkey(
+//     palette: ColoredElements,
+//     separator: &str,
+//     mode_info: &ModeInfo,
+//     line_part_to_render: &mut LinePart,
+// ) -> Vec<KeyModifier> {
+//     // Find a common modifier if any
+//     let common_modifiers = get_common_modifiers(mode_switch_keys(mode_info).iter().collect());
+//     if common_modifiers.is_empty() {
+//         return common_modifiers;
+//     }
+// 
+//     let prefix_text = if mode_info.capabilities.arrow_fonts {
+//         // Add extra space in simplified ui
+//         format!(
+//             " {} + ",
+//             common_modifiers
+//                 .iter()
+//                 .map(|m| m.to_string())
+//                 .collect::<Vec<_>>()
+//                 .join("-")
+//         )
+//     } else {
+//         format!(
+//             " {} +",
+//             common_modifiers
+//                 .iter()
+//                 .map(|m| m.to_string())
+//                 .collect::<Vec<_>>()
+//                 .join("-")
+//         )
+//     };
+// 
+//     let prefix = palette.superkey_prefix.paint(&prefix_text);
+//     let suffix_separator = palette.superkey_suffix_separator.paint(separator);
+//     line_part_to_render.part = format!("{}{}", line_part_to_render.part, ANSIStrings(&[prefix, suffix_separator]).to_string());
+//     line_part_to_render.len += prefix_text.chars().count() + separator.chars().count();
+//     common_modifiers
+// }
 
 pub fn to_char(kv: Vec<KeyWithModifier>) -> Option<KeyWithModifier> {
     let key = kv
@@ -609,102 +606,103 @@ pub fn to_char(kv: Vec<KeyWithModifier>) -> Option<KeyWithModifier> {
 ///
 /// In case multiple entries in `shortcuts` match `mode` (which shouldn't happen), the first match
 /// is returned.
-fn get_key_shortcut_for_mode<'a>(
-    shortcuts: &'a mut [KeyShortcut],
-    mode: &InputMode,
-) -> Option<&'a mut KeyShortcut> {
-    let key_action = match mode {
-        InputMode::Normal | InputMode::Prompt | InputMode::Tmux => return None,
-        InputMode::Locked => KeyAction::Lock,
-        InputMode::Pane | InputMode::RenamePane => KeyAction::Pane,
-        InputMode::Tab | InputMode::RenameTab => KeyAction::Tab,
-        InputMode::Resize => KeyAction::Resize,
-        InputMode::Move => KeyAction::Move,
-        InputMode::Scroll | InputMode::Search | InputMode::EnterSearch => KeyAction::Search,
-        InputMode::Session => KeyAction::Session,
-    };
-    for shortcut in shortcuts.iter_mut() {
-        if shortcut.action == key_action {
-            return Some(shortcut);
-        }
-    }
-    None
-}
+// fn get_key_shortcut_for_mode<'a>(
+//     shortcuts: &'a mut [KeyShortcut],
+//     mode: &InputMode,
+// ) -> Option<&'a mut KeyShortcut> {
+//     let key_action = match mode {
+//         InputMode::Normal | InputMode::Prompt | InputMode::Tmux => return None,
+//         InputMode::Locked => KeyAction::Lock,
+//         InputMode::Pane | InputMode::RenamePane => KeyAction::Pane,
+//         InputMode::Tab | InputMode::RenameTab => KeyAction::Tab,
+//         InputMode::Resize => KeyAction::Resize,
+//         InputMode::Move => KeyAction::Move,
+//         InputMode::Scroll | InputMode::Search | InputMode::EnterSearch => KeyAction::Search,
+//         InputMode::Session => KeyAction::Session,
+//     };
+//     for shortcut in shortcuts.iter_mut() {
+//         if shortcut.action == key_action {
+//             return Some(shortcut);
+//         }
+//     }
+//     None
+// }
 
-fn render_current_mode_keybinding(help: &ModeInfo, max_len: usize, separator: &str, line_part_to_render: &mut LinePart) {
-    let binds = &help.get_mode_keybinds();
-    match help.mode {
-        InputMode::Normal => {
-            let action_key = action_key(
-                binds,
-                &[Action::SwitchToMode(InputMode::Locked)],
-            );
-            let mut key_to_display = action_key
-                .iter()
-                .find(|k| k.is_key_with_ctrl_modifier(BareKey::Char('g')))
-                .or_else(|| action_key.iter().next());
-            let key_to_display = if let Some(key_to_display) = key_to_display.take() {
-                vec![key_to_display.clone()]
-            } else {
-                vec![]
-            };
-            let keybinding = add_shortcut(help, "LOCK", &key_to_display, false);
-            if line_part_to_render.len + keybinding.len <= max_len {
-                line_part_to_render.append(&keybinding);
-            }
-
-        }
-        InputMode::Locked => {
-            let action_key = action_key(
-                binds,
-                &[Action::SwitchToMode(InputMode::Normal)],
-            );
-            let mut key_to_display = action_key
-                .iter()
-                .find(|k| k.is_key_with_ctrl_modifier(BareKey::Char('g')))
-                .or_else(|| action_key.iter().next());
-            let key_to_display = if let Some(key_to_display) = key_to_display.take() {
-                vec![key_to_display.clone()]
-            } else {
-                vec![]
-            };
-            let keybinding = add_shortcut(help, "LOCK", &key_to_display, false);
-            if line_part_to_render.len + keybinding.len <= max_len {
-                line_part_to_render.append(&keybinding);
-            }
-        }
-        _ => {
-            let locked_key_to_display = {
-                let action_key = action_key(
-                    binds,
-                    &[Action::SwitchToMode(InputMode::Locked)], // needs to be base mode
-                );
-                let mut key_to_display = action_key
-                    .iter()
-                    .find(|k| k.is_key_with_ctrl_modifier(BareKey::Char('g')))
-                    .or_else(|| action_key.iter().next());
-                if let Some(key_to_display) = key_to_display.take() {
-                    vec![key_to_display.clone()]
-                } else {
-                    vec![]
-                }
-            };
-
-//             let normal_key_to_display = {
-//                 action_key(
-//                     binds,
-//                     &[Action::SwitchToMode(InputMode::Normal)],
-//                 )
+// fn render_current_mode_keybinding(help: &ModeInfo, max_len: usize, separator: &str, line_part_to_render: &mut LinePart) {
+//     let binds = &help.get_mode_keybinds();
+//     let palette = help.style.colors;
+//     match help.mode {
+//         InputMode::Normal => {
+//             let action_key = action_key(
+//                 binds,
+//                 &[Action::SwitchToMode(InputMode::Locked)],
+//             );
+//             let mut key_to_display = action_key
+//                 .iter()
+//                 .find(|k| k.is_key_with_ctrl_modifier(BareKey::Char('g')))
+//                 .or_else(|| action_key.iter().next());
+//             let key_to_display = if let Some(key_to_display) = key_to_display.take() {
+//                 vec![key_to_display.clone()]
+//             } else {
+//                 vec![]
 //             };
-
-            let keybinding = add_shortcut(help, "LOCK", &locked_key_to_display, true);
-            // let keybinding = add_shortcut_selected(help, &keybinding, &format!("{:?}", help.mode).to_uppercase(), normal_key_to_display);
-            if line_part_to_render.len + keybinding.len <= max_len {
-                line_part_to_render.append(&keybinding);
-            }
-        }
-    }
-}
+//             let keybinding = add_shortcut(help, "LOCK", &key_to_display, false, Some(palette.magenta));
+//             if line_part_to_render.len + keybinding.len <= max_len {
+//                 line_part_to_render.append(&keybinding);
+//             }
+// 
+//         }
+//         InputMode::Locked => {
+//             let action_key = action_key(
+//                 binds,
+//                 &[Action::SwitchToMode(InputMode::Normal)],
+//             );
+//             let mut key_to_display = action_key
+//                 .iter()
+//                 .find(|k| k.is_key_with_ctrl_modifier(BareKey::Char('g')))
+//                 .or_else(|| action_key.iter().next());
+//             let key_to_display = if let Some(key_to_display) = key_to_display.take() {
+//                 vec![key_to_display.clone()]
+//             } else {
+//                 vec![]
+//             };
+//             let keybinding = add_shortcut(help, "LOCK", &key_to_display, false, Some(palette.magenta));
+//             if line_part_to_render.len + keybinding.len <= max_len {
+//                 line_part_to_render.append(&keybinding);
+//             }
+//         }
+//         _ => {
+//             let locked_key_to_display = {
+//                 let action_key = action_key(
+//                     binds,
+//                     &[Action::SwitchToMode(InputMode::Locked)], // needs to be base mode
+//                 );
+//                 let mut key_to_display = action_key
+//                     .iter()
+//                     .find(|k| k.is_key_with_ctrl_modifier(BareKey::Char('g')))
+//                     .or_else(|| action_key.iter().next());
+//                 if let Some(key_to_display) = key_to_display.take() {
+//                     vec![key_to_display.clone()]
+//                 } else {
+//                     vec![]
+//                 }
+//             };
+// 
+// //             let normal_key_to_display = {
+// //                 action_key(
+// //                     binds,
+// //                     &[Action::SwitchToMode(InputMode::Normal)],
+// //                 )
+// //             };
+// 
+//             let keybinding = add_shortcut(help, "LOCK", &locked_key_to_display, true, Some(palette.magenta));
+//             // let keybinding = add_shortcut_selected(help, &keybinding, &format!("{:?}", help.mode).to_uppercase(), normal_key_to_display);
+//             if line_part_to_render.len + keybinding.len <= max_len {
+//                 line_part_to_render.append(&keybinding);
+//             }
+//         }
+//     }
+// }
 
 fn base_mode_locked_mode_indicators(help: &ModeInfo) -> HashMap<InputMode, Vec<KeyShortcut>> {
     let locked_binds = &help.get_keybinds_for_mode(InputMode::Locked);
@@ -1089,18 +1087,35 @@ fn shortened_inline_keys_modes_shortcut_list(keys_without_common_modifiers: &Vec
 
 fn full_modes_shortcut_list(default_keys: &Vec<KeyShortcut>, help: &ModeInfo) -> LinePart {
     let mut full_shortcut_list = LinePart::default();
+    let palette = help.style.colors;
     for key in default_keys {
         let is_selected = key.is_selected();
-        full_shortcut_list.append(&add_shortcut(help, &key.full_text(), &key.key.as_ref().map(|k| vec![k.clone()]).unwrap_or_else(|| vec![]), is_selected));
+        full_shortcut_list.append(
+            &add_shortcut(
+                help,
+                &key.full_text(),
+                &key.key.as_ref().map(|k| vec![k.clone()]).unwrap_or_else(|| vec![]),
+                is_selected,
+                Some(3),
+            )
+        );
     }
     full_shortcut_list
 }
 
 fn shortened_modes_shortcut_list(default_keys: &Vec<KeyShortcut>, help: &ModeInfo) -> LinePart {
     let mut shortened_shortcut_list = LinePart::default();
+    let palette = help.style.colors;
     for key in default_keys {
         let is_selected = key.is_selected();
-        shortened_shortcut_list.append(&add_shortcut(help, &key.short_text(), &key.key.as_ref().map(|k| vec![k.clone()]).unwrap_or_else(|| vec![]), is_selected));
+        shortened_shortcut_list.append(
+            &add_shortcut(
+                help,
+                &key.short_text(),
+                &key.key.as_ref().map(|k| vec![k.clone()]).unwrap_or_else(|| vec![]),
+                is_selected,
+                Some(3),
+            ));
     }
     shortened_shortcut_list
 }
@@ -1156,9 +1171,8 @@ fn render_common_modifiers(palette: &ColoredElements, mode_info: &ModeInfo, comm
         )
     };
 
-    let prefix = palette.superkey_prefix.paint(&prefix_text);
     let suffix_separator = palette.superkey_suffix_separator.paint(separator);
-    line_part_to_render.part = format!("{}{}", line_part_to_render.part, ANSIStrings(&[prefix, suffix_separator]).to_string());
+    line_part_to_render.part = format!("{}{}{}", line_part_to_render.part, serialize_text(&Text::new(&prefix_text)), suffix_separator);
     line_part_to_render.len += prefix_text.chars().count() + separator.chars().count();
 }
 
@@ -1193,6 +1207,20 @@ pub fn one_line_ui(
     separator: &str,
     base_mode_is_locked: bool,
 ) -> LinePart {
+    // TODO: CONTINUE HERE:
+    // * make everything use the UI components - DONE
+    // * see how we share this code with the tab bar (maybe in zellij-tile somehow?) - N/A
+    // * refactor this as an addition to the status-bar, with the previous behavior accessible
+    // through the "classic=true" configuration parameter
+    //  - commit these changes, then go back to the head of this bramch, copy the status-bar folder
+    //  aside, go back to the current state and copy the status bar here, copy one-line ui into it
+    //  and continue from there
+    // * make swap-layout-indicator addition to the tab-bar disable-able through
+    // swap-layout-indicator=false (defaults to true) config parameter
+    // * make a list of small bugs to fix and then fix them (eg. search/rename/etc modes, alt-f
+    // floating thing in pane mode, simplified_ui, custom keys, custom keys with multiple
+    // modifiers, clear key to get back out of a mode (eg. ENTER or whatnot), make actions return
+    // to default mode instead of the TO_NORMAL shite  etc.)
     let mut line_part_to_render = LinePart::default();
     let mut append = |line_part: &LinePart, max_len: &mut usize| {
         line_part_to_render.append(line_part);
@@ -1223,22 +1251,21 @@ fn secondary_keybinds(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usiz
     let supports_arrow_fonts = !help.capabilities.arrow_fonts;
     let colored_elements = color_elements(help.style.colors, !supports_arrow_fonts);
     let binds = &help.get_mode_keybinds();
-
+    let palette = help.style.colors;
     // New Pane
     let new_pane_action_key = action_key(
         binds,
         &[Action::NewPane(None, None)],
     );
-    let mut key_to_display = new_pane_action_key
+    let mut new_pane_key_to_display = new_pane_action_key
         .iter()
         .find(|k| k.is_key_with_alt_modifier(BareKey::Char('n')))
         .or_else(|| new_pane_action_key.iter().next());
-    let key_to_display = if let Some(key_to_display) = key_to_display.take() {
-        vec![key_to_display.clone()]
+    let new_pane_key_to_display = if let Some(new_pane_key_to_display) = new_pane_key_to_display.take() {
+        vec![new_pane_key_to_display.clone()]
     } else {
         vec![]
     };
-    // secondary_info.append(&add_shortcut(help, "New Pane", key_to_display, false));
 
     // Move focus
     let mut move_focus_shortcuts: Vec<KeyWithModifier> = vec![];
@@ -1292,36 +1319,91 @@ fn secondary_keybinds(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usiz
         move_focus_shortcuts.push(move_focus_left_key.clone());
     }
 
-    secondary_info.append(&add_shortcut(help, "New Pane", &key_to_display, false));
-    secondary_info.append(&add_shortcut(help, "Change Focus", &move_focus_shortcuts, false));
+    let toggle_floating_action_key = action_key(
+        binds,
+        &[Action::ToggleFloatingPanes],
+    );
+    let mut toggle_floating_action_key = toggle_floating_action_key
+        .iter()
+        .find(|k| k.is_key_with_alt_modifier(BareKey::Char('f')))
+        .or_else(|| toggle_floating_action_key.iter().next());
+    let toggle_floating_key_to_display = if let Some(toggle_floating_key_to_display) = toggle_floating_action_key.take() {
+        vec![toggle_floating_key_to_display.clone()]
+    } else {
+        vec![]
+    };
+    let are_floating_panes_visible = tab_info.map(|t| t.are_floating_panes_visible).unwrap_or(false);
 
-    let swap_layout_indicator = tab_info.and_then(|tab_info| swap_layout_status(
-        max_len,
-        &tab_info.active_swap_layout_name,
-        tab_info.is_swap_layout_dirty,
-        help,
-        colored_elements,
-        &help.style.colors,
-        separator,
-    ));
+    let common_modifiers = get_common_modifiers([new_pane_key_to_display.clone(), move_focus_shortcuts.clone(), toggle_floating_key_to_display.clone()].iter().flatten().collect());
+    let no_common_modifier = common_modifiers.is_empty();
 
-    if let Some(swap_layout_indicator) = &swap_layout_indicator {
-        secondary_info.append(&swap_layout_indicator);
+    if no_common_modifier {
+        secondary_info.append(&add_shortcut(help, "New Pane", &new_pane_key_to_display, false, Some(0)));
+        secondary_info.append(&add_shortcut(help, "Change Focus", &move_focus_shortcuts, false, Some(0)));
+        secondary_info.append(&add_shortcut(help, "Floating", &toggle_floating_key_to_display, are_floating_panes_visible, Some(0)));
+    } else {
+        let modifier_str = text_as_line_part_with_emphasis(
+            format!("{} + ", common_modifiers
+                .iter()
+                .map(|m| m.to_string())
+                .collect::<Vec<_>>()
+                .join("-")),
+            0
+        );
+        secondary_info.append(&modifier_str);
+        let new_pane_key_to_display: Vec<KeyWithModifier> = new_pane_key_to_display.iter().map(|k| k.strip_common_modifiers(&common_modifiers)).collect();
+        let move_focus_shortcuts: Vec<KeyWithModifier> = move_focus_shortcuts.iter().map(|k| k.strip_common_modifiers(&common_modifiers)).collect();
+        let toggle_floating_key_to_display: Vec<KeyWithModifier> = toggle_floating_key_to_display.iter().map(|k| k.strip_common_modifiers(&common_modifiers)).collect();
+        secondary_info.append(&add_shortcut_with_inline_key(help, "New Pane", new_pane_key_to_display, false));
+        secondary_info.append(&add_shortcut_with_inline_key(help, "Change Focus", move_focus_shortcuts, false));
+        secondary_info.append(&add_shortcut_with_inline_key(help, "Floating", toggle_floating_key_to_display, are_floating_panes_visible));
     }
 
     if secondary_info.len <= max_len {
         secondary_info
     } else {
         let mut short_line = LinePart::default();
-        short_line.append(&add_shortcut(help, "New", &key_to_display, false));
-        short_line.append(&add_shortcut(help, "Focus", &move_focus_shortcuts, false));
-        if let Some(swap_layout_indicator) = swap_layout_indicator {
-            short_line.append(&swap_layout_indicator);
+        if no_common_modifier {
+            short_line.append(&add_shortcut(help, "New", &new_pane_key_to_display, false, Some(0)));
+            short_line.append(&add_shortcut(help, "Focus", &move_focus_shortcuts, false, Some(0)));
+            short_line.append(&add_shortcut(help, "Floating", &toggle_floating_key_to_display, are_floating_panes_visible, Some(0)));
+        } else {
+            let modifier_str = text_as_line_part_with_emphasis(
+                format!("{} + ", common_modifiers
+                    .iter()
+                    .map(|m| m.to_string())
+                    .collect::<Vec<_>>()
+                    .join("-")),
+                0
+            );
+            short_line.append(&modifier_str);
+            let new_pane_key_to_display: Vec<KeyWithModifier> = new_pane_key_to_display.iter().map(|k| k.strip_common_modifiers(&common_modifiers)).collect();
+            let move_focus_shortcuts: Vec<KeyWithModifier> = move_focus_shortcuts.iter().map(|k| k.strip_common_modifiers(&common_modifiers)).collect();
+            let toggle_floating_key_to_display: Vec<KeyWithModifier> = toggle_floating_key_to_display.iter().map(|k| k.strip_common_modifiers(&common_modifiers)).collect();
+            short_line.append(&add_shortcut_with_inline_key(help, "New", new_pane_key_to_display, false));
+            short_line.append(&add_shortcut_with_inline_key(help, "Focus", move_focus_shortcuts, false));
+            short_line.append(&add_shortcut_with_inline_key(help, "Floating", toggle_floating_key_to_display, are_floating_panes_visible));
         }
         short_line
     }
 
 }
+
+fn text_as_line_part(text: String) -> LinePart {
+    let part = serialize_text(&Text::new(&text));
+    LinePart {
+        part,
+        len: text.width()
+    }
+}
+fn text_as_line_part_with_emphasis(text: String, emphases_index: usize) -> LinePart {
+    let part = serialize_text(&Text::new(&text).color_range(emphases_index, ..));
+    LinePart {
+        part,
+        len: text.width()
+    }
+}
+
 
 // fn secondary_keybinds_short(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usize, separator: &str) -> LinePart {
 //     let mut secondary_info = LinePart::default();
@@ -1424,62 +1506,62 @@ fn secondary_keybinds(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usiz
 //     full_length_shortcut(true, keys, text, help.style.colors, separator, selected)
 // }
 
-fn full_length_shortcut(
-    is_first_shortcut: bool,
-    key: Vec<KeyWithModifier>,
-    action: &str,
-    palette: Palette,
-    arrow_separator: &str,
-    selected: bool,
-) -> LinePart {
-    let mut ret = LinePart::default();
-    if key.is_empty() {
-        return ret;
-    }
-
-    let text_color = palette_match!(match palette.theme_hue {
-        ThemeHue::Dark => palette.black,
-        ThemeHue::Light => palette.white,
-    });
-
-    let bg_color = match palette.theme_hue {
-        ThemeHue::Dark => palette_match!(palette.black),
-        ThemeHue::Light => palette_match!(palette.white),
-    };
-    let fg_color = match palette.theme_hue {
-        ThemeHue::Dark => if selected { palette_match!(palette.green) } else { palette_match!(palette.fg) },
-        ThemeHue::Light => if selected { palette_match!(palette.green) } else { palette_match!(palette.fg) },
-    };
-
-    ret.append(&style_key_with_modifier(&key, &palette, None)); // TODO: alternate
-
-    let mut bits: Vec<ANSIString> = vec![];
-    bits.push(
-        Style::new()
-            .fg(bg_color)
-            .on(fg_color)
-            .bold()
-            .paint(format!("{}", arrow_separator)),
-    );
-    bits.push(
-        Style::new()
-            .fg(text_color)
-            .on(fg_color)
-            .bold()
-            .paint(format!(" {} ", action)),
-    );
-    bits.push(
-        Style::new()
-            .fg(fg_color)
-            .on(bg_color)
-            .bold()
-            .paint(format!("{}", arrow_separator)),
-    );
-    ret.part = format!("{}{}", ret.part, ANSIStrings(&bits));
-    ret.len += action.chars().count() + 4; // padding and arrow fonts
-
-    ret
-}
+// fn full_length_shortcut(
+//     is_first_shortcut: bool,
+//     key: Vec<KeyWithModifier>,
+//     action: &str,
+//     palette: Palette,
+//     arrow_separator: &str,
+//     selected: bool,
+// ) -> LinePart {
+//     let mut ret = LinePart::default();
+//     if key.is_empty() {
+//         return ret;
+//     }
+// 
+//     let text_color = palette_match!(match palette.theme_hue {
+//         ThemeHue::Dark => palette.black,
+//         ThemeHue::Light => palette.white,
+//     });
+// 
+//     let bg_color = match palette.theme_hue {
+//         ThemeHue::Dark => palette_match!(palette.black),
+//         ThemeHue::Light => palette_match!(palette.white),
+//     };
+//     let fg_color = match palette.theme_hue {
+//         ThemeHue::Dark => if selected { palette_match!(palette.green) } else { palette_match!(palette.fg) },
+//         ThemeHue::Light => if selected { palette_match!(palette.green) } else { palette_match!(palette.fg) },
+//     };
+// 
+//     ret.append(&style_key_with_modifier(&key, &palette, palette.green, None)); // TODO: alternate
+// 
+//     let mut bits: Vec<ANSIString> = vec![];
+//     bits.push(
+//         Style::new()
+//             .fg(bg_color)
+//             .on(fg_color)
+//             .bold()
+//             .paint(format!("{}", arrow_separator)),
+//     );
+//     bits.push(
+//         Style::new()
+//             .fg(text_color)
+//             .on(fg_color)
+//             .bold()
+//             .paint(format!(" {} ", action)),
+//     );
+//     bits.push(
+//         Style::new()
+//             .fg(fg_color)
+//             .on(bg_color)
+//             .bold()
+//             .paint(format!("{}", arrow_separator)),
+//     );
+//     ret.part = format!("{}{}", ret.part, ANSIStrings(&bits));
+//     ret.len += action.chars().count() + 4; // padding and arrow fonts
+// 
+//     ret
+// }
 
 pub fn keybinds(help: &ModeInfo, max_width: usize) -> Option<LinePart> {
     // It is assumed that there is at least one TIP data in the TIPS HasMap.
@@ -1503,109 +1585,82 @@ pub fn add_shortcut(
     text: &str,
     keys: &Vec<KeyWithModifier>,
     selected: bool,
+    key_color_index: Option<usize>,
 ) -> LinePart {
-    let arrow_separator = crate::ARROW_SEPARATOR; // TODO: from args
     let palette = help.style.colors;
     let mut ret = LinePart::default();
     if keys.is_empty() {
         return ret;
     }
 
-    let text_color = palette_match!(match palette.theme_hue {
-        ThemeHue::Dark => palette.black,
-        ThemeHue::Light => palette.white,
-    });
-
-    let bg_color = match palette.theme_hue {
-        ThemeHue::Dark => palette_match!(palette.black),
-        ThemeHue::Light => palette_match!(palette.white),
+    ret.append(&style_key_with_modifier(&keys, key_color_index)); // TODO: alternate
+                                                                                                     //
+    let ribbon = if selected {
+        serialize_ribbon(&Text::new(format!("{}", text)).selected())
+    } else {
+        serialize_ribbon(&Text::new(format!("{}", text)))
     };
-    let fg_color = match palette.theme_hue {
-        ThemeHue::Dark => if selected { palette_match!(palette.green) } else { palette_match!(palette.fg) },
-        ThemeHue::Light => if selected { palette_match!(palette.green) } else { palette_match!(palette.fg) },
+    ret.part = format!("{}{}", ret.part, ribbon);
+    let supports_arrow_fonts = !help.capabilities.arrow_fonts;
+    ret.len += if supports_arrow_fonts {
+        text.width() + 4 // padding and arrow fonts
+    } else {
+        text.width() + 2 // padding
     };
-
-    ret.append(&style_key_with_modifier(&keys, &palette, None)); // TODO: alternate
-
-    let mut bits: Vec<ANSIString> = vec![];
-    bits.push(
-        Style::new()
-            .fg(bg_color)
-            .on(fg_color)
-            .bold()
-            .paint(format!("{}", arrow_separator)),
-    );
-    bits.push(
-        Style::new()
-            .fg(text_color)
-            .on(fg_color)
-            .bold()
-            .paint(format!(" {} ", text)),
-    );
-    bits.push(
-        Style::new()
-            .fg(fg_color)
-            .on(bg_color)
-            .bold()
-            .paint(format!("{}", arrow_separator)),
-    );
-    ret.part = format!("{}{}", ret.part, ANSIStrings(&bits));
-    ret.len += text.chars().count() + 4; // padding and arrow fonts
-
     ret
 }
 
-pub fn add_only_key_shortcut_selected(
-    help: &ModeInfo,
-    keys: Vec<KeyWithModifier>,
-    selected: bool
-) -> LinePart {
-    let mut ret = LinePart::default();
-    let palette = help.style.colors;
-    let arrow_separator = crate::ARROW_SEPARATOR; // TODO: from args
-
-    let text_color = palette_match!(match palette.theme_hue {
-        ThemeHue::Dark => palette.black,
-        ThemeHue::Light => palette.white,
-    });
-
-    let bg_color = match palette.theme_hue {
-        ThemeHue::Dark => palette_match!(palette.black),
-        ThemeHue::Light => palette_match!(palette.white),
-    };
-    let fg_color = match palette.theme_hue {
-        ThemeHue::Dark => if selected { palette_match!(palette.green) } else { palette_match!(palette.fg) },
-        ThemeHue::Light => if selected { palette_match!(palette.green) } else { palette_match!(palette.fg) },
-    };
-
-    let key_string = format!("{}", keys.iter().map(|k| k.to_string()).collect::<Vec<_>>().join("-"));
-    let mut bits: Vec<ANSIString> = vec![];
-    bits.push(
-        Style::new()
-            .fg(bg_color)
-            .on(fg_color)
-            .bold()
-            .paint(format!("{}", arrow_separator)),
-    );
-    bits.push(
-        Style::new()
-            .fg(text_color)
-            .on(fg_color)
-            .bold()
-            .paint(format!(" {} ", key_string)),
-    );
-    bits.push(
-        Style::new()
-            .fg(fg_color)
-            .on(bg_color)
-            .bold()
-            .paint(format!("{}", arrow_separator)),
-    );
-    ret.part = format!("{}{}", ret.part, ANSIStrings(&bits));
-    ret.len += key_string.chars().count() + 4; // padding and arrow fonts
-
-    ret
-}
+// pub fn add_only_key_shortcut_selected(
+//     help: &ModeInfo,
+//     keys: Vec<KeyWithModifier>,
+//     selected: bool
+// ) -> LinePart {
+//     let mut ret = LinePart::default();
+//     let palette = help.style.colors;
+//     let arrow_separator = crate::ARROW_SEPARATOR; // TODO: from args
+// 
+//     let text_color = palette_match!(match palette.theme_hue {
+//         ThemeHue::Dark => palette.black,
+//         ThemeHue::Light => palette.white,
+//     });
+// 
+//     let bg_color = match palette.theme_hue {
+//         ThemeHue::Dark => palette_match!(palette.black),
+//         ThemeHue::Light => palette_match!(palette.white),
+//     };
+//     let fg_color = match palette.theme_hue {
+//         ThemeHue::Dark => if selected { palette_match!(palette.green) } else { palette_match!(palette.fg) },
+//         ThemeHue::Light => if selected { palette_match!(palette.green) } else { palette_match!(palette.fg) },
+//     };
+// 
+//     let key_string = format!("{}", keys.iter().map(|k| k.to_string()).collect::<Vec<_>>().join("-"));
+//     let mut bits: Vec<ANSIString> = vec![];
+//     bits.push(
+//         Style::new()
+//             .fg(bg_color)
+//             .on(fg_color)
+//             .bold()
+//             .paint(format!("{}", arrow_separator)),
+//     );
+//     bits.push(
+//         Style::new()
+//             .fg(text_color)
+//             .on(fg_color)
+//             .bold()
+//             .paint(format!(" {} ", key_string)),
+//     );
+//     bits.push(
+//         Style::new()
+//             .fg(fg_color)
+//             .on(bg_color)
+//             .bold()
+//             .paint(format!("{}", arrow_separator)),
+//     );
+//     ret.part = format!("{}{}", ret.part, ANSIStrings(&bits));
+//     ret.len += key_string.chars().count() + 4; // padding and arrow fonts
+// 
+//     ret
+// }
 
 pub fn add_shortcut_with_inline_key(
     help: &ModeInfo,
@@ -1613,77 +1668,45 @@ pub fn add_shortcut_with_inline_key(
     key: Vec<KeyWithModifier>,
     is_selected: bool,
 ) -> LinePart {
-    let arrow_separator = crate::ARROW_SEPARATOR; // TODO: from args
-    let palette = help.style.colors;
+    let capabilities = help.capabilities;
 
     let mut ret = LinePart::default();
     if key.is_empty() {
         return ret;
     }
 
-    let text_color = palette_match!(match palette.theme_hue {
-        ThemeHue::Dark => palette.black,
-        ThemeHue::Light => palette.white,
-    });
-
-    let bg_color = match palette.theme_hue {
-        ThemeHue::Dark => if is_selected { palette_match!(palette.green) } else { palette_match!(palette.fg) },
-        ThemeHue::Light => if is_selected { palette_match!(palette.green) } else { palette_match!(palette.fg) },
-    };
-    let shortcut_color = match palette.theme_hue {
-        ThemeHue::Dark => palette_match!(palette.red),
-        ThemeHue::Light => palette_match!(palette.red),
+    let key_separator = match key.iter().map(|k| k.to_string()).collect::<Vec<_>>().join("").as_str() {
+        "HJKL" => "",
+        "hjkl" => "",
+        "←↓↑→" => "",
+        "←→" => "",
+        "↓↑" => "",
+        "[]" => "",
+        _ => "|",
     };
 
-    // ret.append(&style_key_with_modifier(&key, &palette, None)); // TODO: alternate
-    let key_string = format!("{}", key.iter().map(|k| k.to_string()).collect::<Vec<_>>().join("-"));
 
-    let mut bits: Vec<ANSIString> = vec![];
-    bits.push(
-        Style::new()
-            .fg(text_color)
-            .on(bg_color)
-            .bold()
-            .paint(format!("{}", arrow_separator)),
-    );
-    bits.push(
-        Style::new()
-            .fg(text_color)
-            .on(bg_color)
-            .bold()
-            .paint(format!(" <")),
-    );
-    bits.push(
-        Style::new()
-            .fg(shortcut_color)
-            .on(bg_color)
-            .bold()
-            .paint(&key_string)
-    );
-    bits.push(
-        Style::new()
-            .fg(text_color)
-            .on(bg_color)
-            .bold()
-            .paint(format!("> ")),
-    );
-    bits.push(
-        Style::new()
-            .fg(text_color)
-            .on(bg_color)
-            .bold()
-            .paint(format!("{} ", text)),
-    );
-    bits.push(
-        Style::new()
-            .fg(bg_color)
-            .on(text_color)
-            .bold()
-            .paint(format!("{}", arrow_separator)),
-    );
-    // TODO: check line length and max length and stuff
-    ret.part = format!("{}{}", ret.part, ANSIStrings(&bits));
-    ret.len += text.chars().count() + key_string.chars().count() + 7; // padding, group boundaries and arrow fonts
+    let key_string = format!("{}", key.iter().map(|k| k.to_string()).collect::<Vec<_>>().join(key_separator));
+
+    let ribbon = if is_selected {
+        serialize_ribbon(
+            &Text::new(format!("<{}> {}", key_string, text))
+                .color_range(0, 1..key_string.width() + 1)
+                .selected()
+        )
+    } else {
+        serialize_ribbon(
+            &Text::new(format!("<{}> {}", key_string, text))
+                .color_range(0, 1..key_string.width() + 1)
+        )
+    };
+    ret.part = ribbon;
+    let supports_arrow_fonts = !capabilities.arrow_fonts;
+    ret.len += if supports_arrow_fonts {
+        text.width() + key_string.width() + 7 // padding, group boundaries and arrow fonts
+    } else {
+        text.width() + key_string.width() + 5 // padding and group boundaries
+    };
 
     ret
 }
@@ -1693,57 +1716,32 @@ pub fn add_shortcut_with_key_only(
     key: Vec<KeyWithModifier>,
     is_selected: bool,
 ) -> LinePart {
-    let arrow_separator = crate::ARROW_SEPARATOR; // TODO: from args
-    let palette = help.style.colors;
-
     let mut ret = LinePart::default();
     if key.is_empty() {
         return ret;
     }
 
-    let text_color = palette_match!(match palette.theme_hue {
-        ThemeHue::Dark => palette.black,
-        ThemeHue::Light => palette.white,
-    });
+    let key_string = format!("{}", key.iter().map(|k| k.to_string()).collect::<Vec<_>>().join("-"));
 
-    let bg_color = match palette.theme_hue {
-        ThemeHue::Dark => if is_selected { palette_match!(palette.green) } else { palette_match!(palette.fg) },
-        ThemeHue::Light => if is_selected { palette_match!(palette.green) } else { palette_match!(palette.fg) },
+    let ribbon = if is_selected {
+        serialize_ribbon(
+            &Text::new(format!("{}", key_string))
+                .color_range(0, ..)
+                .selected()
+        )
+    } else {
+        serialize_ribbon(
+            &Text::new(format!("{}", key_string))
+                .color_range(0, ..)
+        )
     };
-    let shortcut_color = match palette.theme_hue {
-        ThemeHue::Dark => palette_match!(palette.red),
-        ThemeHue::Light => palette_match!(palette.red),
+    ret.part = ribbon;
+    let supports_arrow_fonts = !help.capabilities.arrow_fonts;
+    ret.len += if supports_arrow_fonts {
+        key_string.width() + 4 // 4 => arrow fonts + padding
+    } else {
+        key_string.width() + 2 // 2 => padding
     };
-
-    // ret.append(&style_key_with_modifier(&key, &palette, None)); // TODO: alternate
-    let key_string = format!(" {} ", key.iter().map(|k| k.to_string()).collect::<Vec<_>>().join("-"));
-
-    let mut bits: Vec<ANSIString> = vec![];
-    bits.push(
-        Style::new()
-            .fg(text_color)
-            .on(bg_color)
-            .bold()
-            .paint(format!("{}", arrow_separator)),
-    );
-    bits.push(
-        Style::new()
-            .fg(shortcut_color)
-            .on(bg_color)
-            .bold()
-            .paint(&key_string)
-    );
-    bits.push(
-        Style::new()
-            .fg(bg_color)
-            .on(text_color)
-            .bold()
-            .paint(format!("{}", arrow_separator)),
-    );
-    // TODO: check line length and max length and stuff
-    ret.part = format!("{}{}", ret.part, ANSIStrings(&bits));
-    ret.len += key_string.chars().count() + 2; // 2 => arrow fonts
-
     ret
 }
 
@@ -1804,7 +1802,7 @@ fn full_shortcut_list_nonstandard_mode(help: &ModeInfo) -> LinePart {
     let keys_and_hints = get_keys_and_hints(help);
 
     for (long, _short, keys) in keys_and_hints.into_iter() {
-        line_part.append(&add_shortcut(help, &long, &keys.to_vec(), false));
+        line_part.append(&add_shortcut(help, &long, &keys.to_vec(), false, Some(2)));
     }
     line_part
 }
@@ -1977,7 +1975,7 @@ fn shortened_shortcut_list_nonstandard_mode(help: &ModeInfo) -> LinePart {
     let keys_and_hints = get_keys_and_hints(help);
 
     for (_, short, keys) in keys_and_hints.into_iter() {
-        line_part.append(&add_shortcut(help, &short, &keys.to_vec(), false));
+        line_part.append(&add_shortcut(help, &short, &keys.to_vec(), false, Some(2)));
     }
     line_part
 }
@@ -1995,7 +1993,7 @@ fn best_effort_shortcut_list_nonstandard_mode(help: &ModeInfo, max_len: usize) -
     let keys_and_hints = get_keys_and_hints(help);
 
     for (_, short, keys) in keys_and_hints.into_iter() {
-        let shortcut = add_shortcut(help, &short, &keys.to_vec(), false);
+        let shortcut = add_shortcut(help, &short, &keys.to_vec(), false, Some(2));
         if line_part.len + shortcut.len + MORE_MSG.chars().count() > max_len {
             line_part.part = format!("{}{}", line_part.part, MORE_MSG);
             line_part.len += MORE_MSG.chars().count();
@@ -2084,4 +2082,121 @@ pub fn session_manager_key(
     } else {
         vec![]
     }
+}
+
+pub fn style_key_with_modifier(
+    keyvec: &[KeyWithModifier],
+    color_index: Option<usize>,
+) -> LinePart {
+    if keyvec.is_empty() {
+        return LinePart::default();
+    }
+
+    let common_modifiers = get_common_modifiers(keyvec.iter().collect());
+
+    let no_common_modifier = common_modifiers.is_empty();
+    let modifier_str = common_modifiers
+        .iter()
+        .map(|m| m.to_string())
+        .collect::<Vec<_>>()
+        .join("-");
+
+    // Prints the keys
+    let key = keyvec
+        .iter()
+        .map(|key| {
+            if no_common_modifier || keyvec.len() == 1 {
+                format!("{}", key)
+            } else {
+                format!("{}", key.strip_common_modifiers(&common_modifiers))
+            }
+        })
+        .collect::<Vec<String>>();
+
+    // Special handling of some pre-defined keygroups
+    let key_string = key.join("");
+    let key_separator = match &key_string[..] {
+        "HJKL" => "",
+        "hjkl" => "",
+        "←↓↑→" => "",
+        "←→" => "",
+        "↓↑" => "",
+        "[]" => "",
+        _ => "|",
+    };
+
+    if no_common_modifier || key.len() == 1 {
+        let key_string_text = format!(" {} ", key.join(key_separator));
+        let text = if let Some(color_index) = color_index {
+            Text::new(&key_string_text)
+                .color_range(color_index, ..)
+        } else {
+            Text::new(&key_string_text)
+        };
+        LinePart {
+            part: serialize_text(&text),
+            len: key_string_text.width()
+        }
+    } else {
+        let key_string_without_modifier = format!("{}", key.join(key_separator));
+        let key_string_text = format!(" {} <{}> ", modifier_str, key_string_without_modifier);
+        let text = if let Some(color_index) = color_index {
+            Text::new(&key_string_text)
+                .color_range(color_index, ..modifier_str.width() + 1)
+                .color_range(color_index, modifier_str.width() + 3..modifier_str.width() + 3 + key_string_without_modifier.width())
+        } else {
+            Text::new(&key_string_text)
+        };
+        LinePart {
+            part: serialize_text(&text),
+            len: key_string_text.width()
+        }
+    }
+}
+
+pub fn action_key(
+    keymap: &[(KeyWithModifier, Vec<Action>)],
+    action: &[Action],
+) -> Vec<KeyWithModifier> {
+    keymap
+        .iter()
+        .filter_map(|(key, acvec)| {
+            let matching = acvec
+                .iter()
+                .zip(action)
+                .filter(|(a, b)| a.shallow_eq(b))
+                .count();
+
+            if matching == acvec.len() && matching == action.len() {
+                Some(key.clone())
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<KeyWithModifier>>()
+}
+
+pub fn action_key_group(
+    keymap: &[(KeyWithModifier, Vec<Action>)],
+    actions: &[&[Action]],
+) -> Vec<KeyWithModifier> {
+    let mut ret = vec![];
+    for action in actions {
+        ret.extend(action_key(keymap, action));
+    }
+    ret
+}
+
+pub fn get_common_modifiers(mut keyvec: Vec<&KeyWithModifier>) -> Vec<KeyModifier> {
+    if keyvec.is_empty() {
+        return vec![];
+    }
+    let mut common_modifiers = keyvec.pop().unwrap().key_modifiers.clone();
+    for key in keyvec {
+        common_modifiers = common_modifiers
+            .intersection(&key.key_modifiers)
+            .cloned()
+            .collect();
+    }
+    common_modifiers.into_iter().collect()
 }

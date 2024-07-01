@@ -18,6 +18,13 @@ pub struct LinePart {
     tab_index: Option<usize>,
 }
 
+impl LinePart {
+    pub fn append(&mut self, to_append: &LinePart) {
+        self.part.push_str(&to_append.part);
+        self.len += to_append.len;
+    }
+}
+
 #[derive(Default)]
 struct State {
     tabs: Vec<TabInfo>,
@@ -120,6 +127,8 @@ impl ZellijPlugin for State {
             self.mode_info.style.colors,
             self.mode_info.capabilities,
             self.mode_info.style.hide_session_name,
+            self.tabs.iter().find(|t| t.active),
+            &self.mode_info,
         );
 
         let output = self
