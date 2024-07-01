@@ -45,9 +45,33 @@ pub fn render_tab(
     let left_separator = style!(foreground_color, background_color).paint(separator);
     let mut tab_text_len = text.width() + (separator_width * 2) + 2; // + 2 for padding
 
+    let flag = if tab.is_sync_panes_active {
+        "[Sync] ".to_string()
+    } else if tab.is_fullscreen_active {
+        let mut flag_text = "[FullScreen".to_string();
+        if tab.panes_to_hide > 0 {
+            flag_text.push_str(&format!(" ^{}", tab.panes_to_hide + 1));
+        }
+        flag_text.push_str("]");
+        flag_text
+    } else if tab.are_floating_panes_visible {
+        "[Float] ".to_string()
+    } else {
+        String::new()
+    };
+
+    tab_text_len += flag.len();
+
     let tab_styled_text = style!(foreground_color, background_color)
         .bold()
-        .paint(format!(" {} ", text));
+        .paint(format!(
+            " {} {}",
+            text,
+            style!(palette.gray, background_color)
+                .bold()
+                .paint(&flag)
+                .to_string()
+        ));
 
     let right_separator = style!(background_color, foreground_color).paint(separator);
     let tab_styled_text = if !focused_clients.is_empty() {
@@ -89,9 +113,6 @@ pub fn tab_style(
     capabilities: PluginCapabilities,
 ) -> LinePart {
     let separator = tab_separator(capabilities);
-    if tab.is_sync_panes_active {
-        tabname.push_str(" (Sync)");
-    }
     // we only color alternate tabs differently if we can't use the arrow fonts to separate them
     if !capabilities.arrow_fonts {
         is_alternate_tab = false;
