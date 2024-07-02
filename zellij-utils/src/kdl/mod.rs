@@ -4059,6 +4059,11 @@ impl Themes {
                             "frame_selected",
                             DEFAULT_STYLES.frame_selected,
                         )?,
+                        frame_highlight: Themes::style_declaration_from_node(
+                            style,
+                            "frame_highlight",
+                            DEFAULT_STYLES.frame_highlight,
+                        )?,
                         exit_code_success: Themes::style_declaration_from_node(
                             style,
                             "exit_code_success",

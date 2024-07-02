@@ -1157,6 +1157,7 @@ pub struct Styling {
     pub list_selected: StyleDeclaration,
     pub frame_unselected: StyleDeclaration,
     pub frame_selected: StyleDeclaration,
+    pub frame_highlight: StyleDeclaration,
     pub exit_code_success: StyleDeclaration,
     pub exit_code_error: StyleDeclaration,
     pub multiplayer_user_colors: MultiplayerColors,
@@ -1250,6 +1251,14 @@ pub const DEFAULT_STYLES: Styling = Styling {
         emphasis_3: PaletteColor::EightBit(default_colors::MAGENTA),
         emphasis_4: PaletteColor::EightBit(default_colors::BROWN),
         background: PaletteColor::EightBit(default_colors::GRAY),
+    },
+    frame_highlight: StyleDeclaration {
+        base: PaletteColor::EightBit(default_colors::GREEN),
+        emphasis_1: PaletteColor::EightBit(default_colors::GREEN),
+        emphasis_2: PaletteColor::EightBit(default_colors::GREEN),
+        emphasis_3: PaletteColor::EightBit(default_colors::GREEN),
+        emphasis_4: PaletteColor::EightBit(default_colors::GREEN),
+        background: PaletteColor::EightBit(default_colors::GREEN),
     },
     table_title: StyleDeclaration {
         base: PaletteColor::EightBit(default_colors::GREEN),
@@ -1406,6 +1415,14 @@ impl From<Palette> for Styling {
                 emphasis_2: palette.cyan,
                 emphasis_3: palette.magenta,
                 emphasis_4: palette.brown,
+                background: Default::default(),
+            },
+            frame_highlight: StyleDeclaration {
+                base: palette.green,
+                emphasis_1: palette.green,
+                emphasis_2: palette.green,
+                emphasis_3: palette.green,
+                emphasis_4: palette.green,
                 background: Default::default(),
             },
             table_title: StyleDeclaration {

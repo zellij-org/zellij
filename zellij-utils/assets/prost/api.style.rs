@@ -106,10 +106,12 @@ pub struct Styling {
     #[prost(message, repeated, tag = "11")]
     pub frame_selected: ::prost::alloc::vec::Vec<Color>,
     #[prost(message, repeated, tag = "12")]
-    pub exit_code_success: ::prost::alloc::vec::Vec<Color>,
+    pub frame_highlight: ::prost::alloc::vec::Vec<Color>,
     #[prost(message, repeated, tag = "13")]
-    pub exit_code_error: ::prost::alloc::vec::Vec<Color>,
+    pub exit_code_success: ::prost::alloc::vec::Vec<Color>,
     #[prost(message, repeated, tag = "14")]
+    pub exit_code_error: ::prost::alloc::vec::Vec<Color>,
+    #[prost(message, repeated, tag = "15")]
     pub multiplayer_user_colors: ::prost::alloc::vec::Vec<Color>,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
