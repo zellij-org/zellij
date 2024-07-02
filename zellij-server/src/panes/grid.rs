@@ -1085,14 +1085,19 @@ impl Grid {
                 .selection
                 .contains_row(character_chunk.y.saturating_sub(content_y))
             {
-                let background_color = match style.colors.text_unselected.background {
+                let background_color = match style.colors.text_selected.background {
                     PaletteColor::Rgb(rgb) => AnsiCode::RgbCode(rgb),
                     PaletteColor::EightBit(col) => AnsiCode::ColorIndex(col),
                 };
+                let foreground_color = match style.colors.text_selected.base {
+                    PaletteColor::Rgb(rgb) => AnsiCode::RgbCode(rgb),
+                    PaletteColor::EightBit(col) => AnsiCode::ColorIndex(col),
+                };
+
                 character_chunk.add_selection_and_colors(
                     self.selection,
                     background_color,
-                    None,
+                    Some(foreground_color),
                     content_x,
                     content_y,
                 );
