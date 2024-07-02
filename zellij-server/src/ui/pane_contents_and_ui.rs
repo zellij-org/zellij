@@ -269,7 +269,7 @@ impl<'a> PaneContentsAndUi<'a> {
                         colors.map(|colors| colors.0)
                     }
                 },
-                _ => Some(self.style.colors.frame_unselected.base),
+                _ => Some(self.style.colors.frame_highlight.base),
             }
         } else {
             None
