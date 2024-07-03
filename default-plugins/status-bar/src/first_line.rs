@@ -1,29 +1,21 @@
-use ansi_term::{ANSIStrings};
-use ansi_term::{Style, Color::{Fixed, RGB}};
-use zellij_tile_utils::palette_match;
+use ansi_term::{unstyled_len, ANSIStrings};
 use zellij_tile::prelude::actions::Action;
 use zellij_tile::prelude::*;
-use zellij_tile_utils::style;
-use std::collections::{HashMap, BTreeSet};
 
 use crate::color_elements;
 use crate::{
     action_key, action_key_group, get_common_modifiers, style_key_with_modifier, TO_NORMAL,
-    second_line::{keybinds, add_shortcut, add_shortcut_selected, add_shortcut_with_inline_key, add_keygroup_separator},
 };
 use crate::{ColoredElements, LinePart};
-use crate::tip::{data::TIPS, TipFn};
 
-#[derive(Debug)]
-struct KeyShortcut {
+pub struct KeyShortcut {
     mode: KeyMode,
     action: KeyAction,
-    key: Option<KeyWithModifier>,
+    pub key: Option<KeyWithModifier>,
 }
 
-#[derive(PartialEq, Debug, Clone, Copy)]
-enum KeyAction {
-    Normal,
+#[derive(PartialEq, Copy, Clone)]
+pub enum KeyAction {
     Lock,
     Unlock,
     Pane,
@@ -36,25 +28,8 @@ enum KeyAction {
     Tmux,
 }
 
-impl From<InputMode> for KeyAction {
-    fn from(input_mode: InputMode) -> Self {
-        match input_mode {
-            InputMode::Normal => KeyAction::Normal,
-            InputMode::Locked => KeyAction::Lock,
-            InputMode::Pane => KeyAction::Pane,
-            InputMode::Tab => KeyAction::Tab,
-            InputMode::Resize => KeyAction::Resize,
-            InputMode::Search => KeyAction::Search,
-            InputMode::Session => KeyAction::Session,
-            InputMode::Move => KeyAction::Move,
-            InputMode::Tmux => KeyAction::Tmux,
-            _ => KeyAction::Normal, // TODO: NO!!
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-enum KeyMode {
+#[derive(Copy, Clone)]
+pub enum KeyMode {
     Unselected,
     UnselectedAlternate,
     Selected,
@@ -68,7 +43,6 @@ impl KeyShortcut {
 
     pub fn full_text(&self) -> String {
         match self.action {
-            KeyAction::Normal => String::from("UNLOCK"),
             KeyAction::Lock => String::from("LOCK"),
             KeyAction::Unlock => String::from("UNLOCK"),
             KeyAction::Pane => String::from("PANE"),
@@ -124,6 +98,20 @@ impl KeyShortcut {
         match self.mode {
             KeyMode::Selected => true,
             _ => false
+        }
+    }
+    pub fn short_text(&self) -> String {
+        match self.action {
+            KeyAction::Lock => String::from("Lo"),
+            KeyAction::Unlock => String::from("Un"),
+            KeyAction::Pane => String::from("Pa"),
+            KeyAction::Tab => String::from("Ta"),
+            KeyAction::Resize => String::from("Re"),
+            KeyAction::Search => String::from("Se"),
+            KeyAction::Quit => String::from("Qu"),
+            KeyAction::Session => String::from("Se"),
+            KeyAction::Move => String::from("Mo"),
+            KeyAction::Tmux => String::from("Tm"),
         }
     }
 }
@@ -313,28 +301,21 @@ fn key_indicators(
     palette: ColoredElements,
     separator: &str,
     mode_info: &ModeInfo,
-    line_part_to_render: &mut LinePart,
-) {
-    if keys.is_empty() {
-        return;
-    }
+) -> LinePart {
     // Print full-width hints
-    let shared_modifiers = superkey(palette, separator, mode_info, line_part_to_render);
-    let mut line_part = LinePart::default();
+    let (shared_modifiers, mut line_part) = superkey(palette, separator, mode_info);
     for key in keys {
-        let line_empty = line_part_to_render.len == 0;
+        let line_empty = line_part.len == 0;
         let key = long_mode_shortcut(key, palette, separator, &shared_modifiers, line_empty);
         line_part.part = format!("{}{}", line_part.part, key.part);
         line_part.len += key.len;
     }
-    if line_part_to_render.len + line_part.len < max_len {
-        line_part_to_render.part = format!("{}{}", line_part_to_render.part, line_part.part);
-        line_part_to_render.len += line_part.len;
-        return;
+    if line_part.len < max_len {
+        return line_part;
     }
 
     // Full-width doesn't fit, try shortened modifiers (eg. "^C" instead of "Ctrl")
-    let mut line_part = LinePart::default();
+    line_part = superkey(palette, separator, mode_info).1;
     for key in keys {
         let line_empty = line_part.len == 0;
         let key =
@@ -342,27 +323,25 @@ fn key_indicators(
         line_part.part = format!("{}{}", line_part.part, key.part);
         line_part.len += key.len;
     }
-    if line_part_to_render.len + line_part.len < max_len {
-        line_part_to_render.part  = format!("{}{}", line_part_to_render.part, line_part.part);
-        line_part_to_render.len += line_part.len;
-        return;
+    if line_part.len < max_len {
+        return line_part;
     }
 
     // Full-width doesn't fit, try shortened hints (just keybindings, no meanings/actions)
-    let mut line_part = LinePart::default();
+    line_part = superkey(palette, separator, mode_info).1;
     for key in keys {
         let line_empty = line_part.len == 0;
         let key = short_mode_shortcut(key, palette, separator, &shared_modifiers, line_empty);
         line_part.part = format!("{}{}", line_part.part, key.part);
         line_part.len += key.len;
     }
-    if line_part_to_render.len + line_part.len < max_len {
-        line_part_to_render.part  = format!("{}{}", line_part_to_render.part, line_part.part);
-        line_part_to_render.len += line_part.len;
-        return;
+    if line_part.len < max_len {
+        return line_part;
     }
 
-    // nothing fits, print nothing
+    // Shortened doesn't fit, print nothing
+    line_part = LinePart::default();
+    line_part
 }
 
 fn swap_layout_keycode(mode_info: &ModeInfo, palette: &Palette) -> LinePart {
@@ -371,15 +350,12 @@ fn swap_layout_keycode(mode_info: &ModeInfo, palette: &Palette) -> LinePart {
         &mode_keybinds,
         &[&[Action::PreviousSwapLayout], &[Action::NextSwapLayout]],
     );
-    style_key_with_modifier(&prev_next_keys, palette, Some(palette.black))
-//     let prev_next_keys_indicator =
-//         style_key_with_modifier(&prev_next_keys, palette, Some(palette.black));
-//     let keycode = ANSIStrings(&prev_next_keys_indicator);
-//     // TODO: CONTINUE HERE - instead of relying on unstyled_len here and in other places, count the
-//     // characters and return them as a LinePart
-//     let len = unstyled_len(&keycode).saturating_sub(4);
-//     let part = keycode.to_string();
-//     LinePart { part, len }
+    let prev_next_keys_indicator =
+        style_key_with_modifier(&prev_next_keys, palette, Some(palette.black));
+    let keycode = ANSIStrings(&prev_next_keys_indicator);
+    let len = unstyled_len(&keycode);
+    let part = keycode.to_string();
+    LinePart { part, len }
 }
 
 fn swap_layout_status(
@@ -396,7 +372,8 @@ fn swap_layout_status(
             let mut swap_layout_name = format!(" {} ", swap_layout_name);
             swap_layout_name.make_ascii_uppercase();
             let keycode = swap_layout_keycode(mode_info, palette);
-            let swap_layout_name_len = swap_layout_name.len() + 2; // 2 for the arrow separators
+            let swap_layout_name_len = swap_layout_name.len() + 3; // 2 for the arrow separators, one for the screen end buffer
+                                                                   //
             macro_rules! style_swap_layout_indicator {
                 ($style_name:ident) => {{
                     (
@@ -416,9 +393,9 @@ fn swap_layout_status(
                 }};
             }
             let (prefix_separator, swap_layout_name, suffix_separator) =
-//                 if mode_info.mode == InputMode::Locked {
-//                     style_swap_layout_indicator!(disabled)
-                if is_swap_layout_damaged {
+                if mode_info.mode == InputMode::Locked {
+                    style_swap_layout_indicator!(disabled)
+                } else if is_swap_layout_damaged {
                     style_swap_layout_indicator!(unselected)
                 } else {
                     style_swap_layout_indicator!(selected)
@@ -427,15 +404,23 @@ fn swap_layout_status(
                 "{}{}{}",
                 prefix_separator, swap_layout_name, suffix_separator
             );
-            let (part, full_len) = 
+            let (part, full_len) = if mode_info.mode == InputMode::Locked {
+                (
+                    format!("{}", swap_layout_indicator),
+                    swap_layout_name_len, // 1 is the space between
+                )
+            } else {
                 (
                     format!(
-                        "{}{}",
+                        "{}{}{}{}",
                         keycode,
+                        colored_elements.superkey_prefix.paint(" "),
                         swap_layout_indicator,
+                        colored_elements.superkey_prefix.paint(" ")
                     ),
-                    keycode.len + swap_layout_name_len
-                );
+                    keycode.len + swap_layout_name_len + 1, // 1 is the space between
+                )
+            };
             let short_len = swap_layout_name_len + 1; // 1 is the space between
             if full_len <= max_len {
                 Some(LinePart {
@@ -521,12 +506,11 @@ pub fn superkey(
     palette: ColoredElements,
     separator: &str,
     mode_info: &ModeInfo,
-    line_part_to_render: &mut LinePart,
-) -> Vec<KeyModifier> {
+) -> (Vec<KeyModifier>, LinePart) {
     // Find a common modifier if any
     let common_modifiers = get_common_modifiers(mode_switch_keys(mode_info).iter().collect());
     if common_modifiers.is_empty() {
-        return common_modifiers;
+        return (common_modifiers, LinePart::default());
     }
 
     let prefix_text = if mode_info.capabilities.arrow_fonts {
@@ -552,9 +536,13 @@ pub fn superkey(
 
     let prefix = palette.superkey_prefix.paint(&prefix_text);
     let suffix_separator = palette.superkey_suffix_separator.paint(separator);
-    line_part_to_render.part = format!("{}{}", line_part_to_render.part, ANSIStrings(&[prefix, suffix_separator]).to_string());
-    line_part_to_render.len += prefix_text.chars().count() + separator.chars().count();
-    common_modifiers
+    (
+        common_modifiers,
+        LinePart {
+            part: ANSIStrings(&[prefix, suffix_separator]).to_string(),
+            len: prefix_text.chars().count() + separator.chars().count(),
+        },
+    )
 }
 
 pub fn to_char(kv: Vec<KeyWithModifier>) -> Option<KeyWithModifier> {
@@ -616,672 +604,118 @@ fn get_key_shortcut_for_mode<'a>(
     None
 }
 
-fn render_current_mode_keybinding(help: &ModeInfo, max_len: usize, separator: &str, line_part_to_render: &mut LinePart) {
-    let binds = &help.get_mode_keybinds();
-    match help.mode {
-        InputMode::Normal => {
-            let action_key = action_key(
-                binds,
-                &[Action::SwitchToMode(InputMode::Locked)],
-            );
-            let mut key_to_display = action_key
-                .iter()
-                .find(|k| k.is_key_with_ctrl_modifier(BareKey::Char('g')))
-                .or_else(|| action_key.iter().next());
-            let key_to_display = if let Some(key_to_display) = key_to_display.take() {
-                vec![key_to_display.clone()]
-            } else {
-                vec![]
-            };
-            let keybinding = add_shortcut_selected(help, &line_part_to_render, "LOCK", key_to_display);
-            if line_part_to_render.len + keybinding.len <= max_len {
-                line_part_to_render.append(&keybinding);
-            }
-
-        }
-        InputMode::Locked => {
-            let action_key = action_key(
-                binds,
-                &[Action::SwitchToMode(InputMode::Normal)],
-            );
-            let mut key_to_display = action_key
-                .iter()
-                .find(|k| k.is_key_with_ctrl_modifier(BareKey::Char('g')))
-                .or_else(|| action_key.iter().next());
-            let key_to_display = if let Some(key_to_display) = key_to_display.take() {
-                vec![key_to_display.clone()]
-            } else {
-                vec![]
-            };
-            let keybinding = add_shortcut(help, &line_part_to_render, "LOCK", key_to_display); // TODO:
-                                                                                             // color
-                                                                                             // selected
-                                                                                             // LOCK
-            if line_part_to_render.len + keybinding.len <= max_len {
-                line_part_to_render.append(&keybinding);
-            }
-        }
-        _ => {
-            let locked_key_to_display = {
-                let action_key = action_key(
-                    binds,
-                    &[Action::SwitchToMode(InputMode::Locked)], // needs to be base mode
-                );
-                let mut key_to_display = action_key
-                    .iter()
-                    .find(|k| k.is_key_with_ctrl_modifier(BareKey::Char('g')))
-                    .or_else(|| action_key.iter().next());
-                if let Some(key_to_display) = key_to_display.take() {
-                    vec![key_to_display.clone()]
-                } else {
-                    vec![]
-                }
-            };
-
-//             let normal_key_to_display = {
-//                 action_key(
-//                     binds,
-//                     &[Action::SwitchToMode(InputMode::Normal)],
-//                 )
-//             };
-
-            let keybinding = add_shortcut_selected(help, &line_part_to_render, "LOCK", locked_key_to_display);
-            // let keybinding = add_shortcut_selected(help, &keybinding, &format!("{:?}", help.mode).to_uppercase(), normal_key_to_display);
-            if line_part_to_render.len + keybinding.len <= max_len {
-                line_part_to_render.append(&keybinding);
-            }
-        }
-    }
-}
-
-fn base_mode_locked_mode_indicators(help: &ModeInfo) -> HashMap<InputMode, Vec<KeyShortcut>> {
-    let locked_binds = &help.get_keybinds_for_mode(InputMode::Locked);
-    let normal_binds = &help.get_keybinds_for_mode(InputMode::Normal);
-    let pane_binds = &help.get_keybinds_for_mode(InputMode::Pane);
-    let tab_binds = &help.get_keybinds_for_mode(InputMode::Tab);
-    let resize_binds = &help.get_keybinds_for_mode(InputMode::Resize);
-    let move_binds = &help.get_keybinds_for_mode(InputMode::Move);
-    let scroll_binds = &help.get_keybinds_for_mode(InputMode::Scroll);
-    let session_binds = &help.get_keybinds_for_mode(InputMode::Session);
-    HashMap::from([
-        (
-            InputMode::Locked,
-            vec![
-                KeyShortcut::new(
-                    KeyMode::Unselected,
-                    KeyAction::Unlock,
-                    to_char(action_key(locked_binds, &[Action::SwitchToMode(InputMode::Normal)])),
-                ),
-            ],
-        ),
-        (
-            InputMode::Normal,
-            vec![
-                KeyShortcut::new(
-                    KeyMode::Selected,
-                    KeyAction::Unlock,
-                    to_char(action_key(normal_binds, &[Action::SwitchToMode(InputMode::Locked)])),
-                ),
-                KeyShortcut::new(
-                    KeyMode::UnselectedAlternate,
-                    KeyAction::Pane,
-                    to_char(action_key(normal_binds, &[Action::SwitchToMode(InputMode::Pane)])),
-                ),
-                KeyShortcut::new(
-                    KeyMode::Unselected,
-                    KeyAction::Tab,
-                    to_char(action_key(normal_binds, &[Action::SwitchToMode(InputMode::Tab)])),
-                ),
-                KeyShortcut::new(
-                    KeyMode::UnselectedAlternate,
-                    KeyAction::Resize,
-                    to_char(action_key(
-                        normal_binds,
-                        &[Action::SwitchToMode(InputMode::Resize)],
-                    )),
-                ),
-                KeyShortcut::new(
-                    KeyMode::Unselected,
-                    KeyAction::Move,
-                    to_char(action_key(normal_binds, &[Action::SwitchToMode(InputMode::Move)])),
-                ),
-                KeyShortcut::new(
-                    KeyMode::UnselectedAlternate,
-                    KeyAction::Search,
-                    to_char(action_key(
-                        normal_binds,
-                        &[Action::SwitchToMode(InputMode::Scroll)],
-                    )),
-                ),
-                KeyShortcut::new(
-                    KeyMode::Unselected,
-                    KeyAction::Session,
-                    to_char(action_key(
-                        normal_binds,
-                        &[Action::SwitchToMode(InputMode::Session)],
-                    )),
-                ),
-                KeyShortcut::new(
-                    KeyMode::UnselectedAlternate,
-                    KeyAction::Quit,
-                    to_char(action_key(normal_binds, &[Action::Quit])),
-                ),
-            ]
-        ),
-        (
-            InputMode::Pane,
-            vec![
-                KeyShortcut::new(
-                    KeyMode::Selected,
-                    KeyAction::Unlock,
-                    to_char(action_key(pane_binds, &[Action::SwitchToMode(InputMode::Locked)])),
-                ),
-                KeyShortcut::new(
-                    KeyMode::Selected,
-                    KeyAction::Pane,
-                    to_char(action_key(pane_binds, &[Action::SwitchToMode(InputMode::Normal)])),
-                )
-            ]
-        ),
-        (
-            InputMode::Tab,
-            vec![
-                KeyShortcut::new(
-                    KeyMode::Selected,
-                    KeyAction::Unlock,
-                    to_char(action_key(tab_binds, &[Action::SwitchToMode(InputMode::Locked)])),
-                ),
-                KeyShortcut::new(
-                    KeyMode::Selected,
-                    KeyAction::Tab,
-                    to_char(action_key(tab_binds, &[Action::SwitchToMode(InputMode::Normal)])),
-                )
-            ]
-        ),
-        (
-            InputMode::Resize,
-            vec![
-                KeyShortcut::new(
-                    KeyMode::Selected,
-                    KeyAction::Unlock,
-                    to_char(action_key(resize_binds, &[Action::SwitchToMode(InputMode::Locked)])),
-                ),
-                KeyShortcut::new(
-                    KeyMode::Selected,
-                    KeyAction::Resize,
-                    to_char(action_key(resize_binds, &[Action::SwitchToMode(InputMode::Normal)])),
-                )
-            ]
-        ),
-        (
-            InputMode::Move,
-            vec![
-                KeyShortcut::new(
-                    KeyMode::Selected,
-                    KeyAction::Unlock,
-                    to_char(action_key(move_binds, &[Action::SwitchToMode(InputMode::Locked)])),
-                ),
-                KeyShortcut::new(
-                    KeyMode::Selected,
-                    KeyAction::Move,
-                    to_char(action_key(move_binds, &[Action::SwitchToMode(InputMode::Normal)])),
-                )
-            ]
-        ),
-        (
-            InputMode::Scroll,
-            vec![
-                KeyShortcut::new(
-                    KeyMode::Selected,
-                    KeyAction::Unlock,
-                    to_char(action_key(scroll_binds, &[Action::SwitchToMode(InputMode::Locked)])),
-                ),
-                KeyShortcut::new(
-                    KeyMode::Selected,
-                    KeyAction::Search,
-                    to_char(action_key(scroll_binds, &[Action::SwitchToMode(InputMode::Normal)])),
-                )
-            ]
-        ),
-        (
-            InputMode::Session,
-            vec![
-                KeyShortcut::new(
-                    KeyMode::Selected,
-                    KeyAction::Unlock,
-                    to_char(action_key(session_binds, &[Action::SwitchToMode(InputMode::Locked)])),
-                ),
-                KeyShortcut::new(
-                    KeyMode::Selected,
-                    KeyAction::Session,
-                    to_char(action_key(session_binds, &[Action::SwitchToMode(InputMode::Normal)])),
-                )
-            ]
-        )
-    ])
-}
-
-fn base_mode_normal_mode_indicators(help: &ModeInfo) -> HashMap<InputMode, Vec<KeyShortcut>> {
-    let locked_binds = &help.get_keybinds_for_mode(InputMode::Locked);
-    let normal_binds = &help.get_keybinds_for_mode(InputMode::Normal);
-    let pane_binds = &help.get_keybinds_for_mode(InputMode::Pane);
-    let tab_binds = &help.get_keybinds_for_mode(InputMode::Tab);
-    let resize_binds = &help.get_keybinds_for_mode(InputMode::Resize);
-    let move_binds = &help.get_keybinds_for_mode(InputMode::Move);
-    let scroll_binds = &help.get_keybinds_for_mode(InputMode::Scroll);
-    let session_binds = &help.get_keybinds_for_mode(InputMode::Session);
-    HashMap::from([
-        (
-            InputMode::Locked,
-            vec![
-                KeyShortcut::new(
-                    KeyMode::Selected,
-                    KeyAction::Lock,
-                    to_char(action_key(locked_binds, &[Action::SwitchToMode(InputMode::Normal)])),
-                ),
-            ]
-        ),
-        (
-            InputMode::Normal,
-            vec![
-                KeyShortcut::new(
-                    KeyMode::Unselected,
-                    KeyAction::Lock,
-                    to_char(action_key(normal_binds, &[Action::SwitchToMode(InputMode::Locked)])),
-                ),
-                KeyShortcut::new(
-                    KeyMode::UnselectedAlternate,
-                    KeyAction::Pane,
-                    to_char(action_key(normal_binds, &[Action::SwitchToMode(InputMode::Pane)])),
-                ),
-                KeyShortcut::new(
-                    KeyMode::Unselected,
-                    KeyAction::Tab,
-                    to_char(action_key(normal_binds, &[Action::SwitchToMode(InputMode::Tab)])),
-                ),
-                KeyShortcut::new(
-                    KeyMode::UnselectedAlternate,
-                    KeyAction::Resize,
-                    to_char(action_key(
-                        normal_binds,
-                        &[Action::SwitchToMode(InputMode::Resize)],
-                    )),
-                ),
-                KeyShortcut::new(
-                    KeyMode::Unselected,
-                    KeyAction::Move,
-                    to_char(action_key(normal_binds, &[Action::SwitchToMode(InputMode::Move)])),
-                ),
-                KeyShortcut::new(
-                    KeyMode::UnselectedAlternate,
-                    KeyAction::Search,
-                    to_char(action_key(
-                        normal_binds,
-                        &[Action::SwitchToMode(InputMode::Scroll)],
-                    )),
-                ),
-                KeyShortcut::new(
-                    KeyMode::Unselected,
-                    KeyAction::Session,
-                    to_char(action_key(
-                        normal_binds,
-                        &[Action::SwitchToMode(InputMode::Session)],
-                    )),
-                ),
-                KeyShortcut::new(
-                    KeyMode::UnselectedAlternate,
-                    KeyAction::Quit,
-                    to_char(action_key(normal_binds, &[Action::Quit])),
-                ),
-            ]
-        ),
-        (
-            InputMode::Pane,
-            vec![
-                KeyShortcut::new(
-                    KeyMode::Selected,
-                    KeyAction::Pane,
-                    to_char(action_key(pane_binds, &[Action::SwitchToMode(InputMode::Normal)])),
-                )
-            ]
-        ),
-        (
-            InputMode::Tab,
-            vec![
-                KeyShortcut::new(
-                    KeyMode::Selected,
-                    KeyAction::Tab,
-                    to_char(action_key(tab_binds, &[Action::SwitchToMode(InputMode::Normal)])),
-                )
-            ]
-        ),
-        (
-            InputMode::Resize,
-            vec![
-                KeyShortcut::new(
-                    KeyMode::Selected,
-                    KeyAction::Resize,
-                    to_char(action_key(resize_binds, &[Action::SwitchToMode(InputMode::Normal)])),
-                )
-            ]
-        ),
-        (
-            InputMode::Move,
-            vec![
-                KeyShortcut::new(
-                    KeyMode::Selected,
-                    KeyAction::Move,
-                    to_char(action_key(move_binds, &[Action::SwitchToMode(InputMode::Normal)])),
-                )
-            ]
-        ),
-        (
-            InputMode::Scroll,
-            vec![
-                KeyShortcut::new(
-                    KeyMode::Selected,
-                    KeyAction::Search,
-                    to_char(action_key(scroll_binds, &[Action::SwitchToMode(InputMode::Normal)])),
-                )
-            ]
-        ),
-        (
-            InputMode::Session,
-            vec![
-                KeyShortcut::new(
-                    KeyMode::Selected,
-                    KeyAction::Session,
-                    to_char(action_key(session_binds, &[Action::SwitchToMode(InputMode::Normal)])),
-                )
-            ]
-        )
-    ])
-}
-fn render_mode_key_indicators(help: &ModeInfo, max_len: usize, separator: &str, line_part_to_render: &mut LinePart) {
-    // TODO CONTINUE HERE - refactor some, then make this responsive
-
-    let base_mode_is_locked = false; // TODO: from config/zellij
-    // let base_mode_is_locked = true; // TODO: from config/zellij
-
-    let supports_arrow_fonts = !help.capabilities.arrow_fonts;
-    let colored_elements = color_elements(help.style.colors, !supports_arrow_fonts);
-
-    // render_current_mode_keybinding(help, max_len, separator, line_part_to_render);
-
-    let default_keys = if base_mode_is_locked {
-        base_mode_locked_mode_indicators(help)
-    } else {
-        base_mode_normal_mode_indicators(help)
-    };
-    // TODO: change this to common_modifiers_in_all_modes
-    match common_modifiers_in_all_modes(&default_keys) {
-        Some(modifiers) => {
-            if let Some(default_keys) = default_keys.get(&help.mode) {
-                let keys_without_common_modifiers: Vec<KeyShortcut> = default_keys.iter().map(|key_shortcut| {
-                    let key = key_shortcut.get_key().map(|k| k.strip_common_modifiers(&modifiers));
-                    let mode = key_shortcut.get_mode();
-                    let action = key_shortcut.get_action();
-                    KeyShortcut::new(
-                        mode,
-                        action,
-                        key
-                    )
-                }).collect();
-                render_common_modifiers(&colored_elements, help, &modifiers, line_part_to_render, separator);
-                for key in keys_without_common_modifiers {
-                    let is_selected = key.is_selected();
-                    let shortcut = add_shortcut_with_inline_key(help, &line_part_to_render, &key.full_text(), key.key.map(|k| vec![k.strip_common_modifiers(&modifiers)]).unwrap_or_else(|| vec![]), is_selected);
-                    line_part_to_render.append(&shortcut);
-                }
-            }
-        },
-        None => {
-            if let Some(default_keys) = default_keys.get(&help.mode) {
-                for key in default_keys {
-                    let is_selected = key.is_selected();
-                    if is_selected {
-                        *line_part_to_render = add_shortcut_selected(help, &line_part_to_render, &key.full_text(), key.key.as_ref().map(|k| vec![k.clone()]).unwrap_or_else(|| vec![]));
-                    } else {
-                        *line_part_to_render = add_shortcut(help, &line_part_to_render, &key.full_text(), key.key.as_ref().map(|k| vec![k.clone()]).unwrap_or_else(|| vec![]));
-                    }
-                }
-            }
-        }
-    }
-    if help.mode != InputMode::Normal && help.mode != InputMode::Locked {
-        // TODO: move elsewhere
-        let separator = add_keygroup_separator(help);
-        if line_part_to_render.len + separator.len <= max_len {
-            line_part_to_render.part = format!("{}{}", line_part_to_render.part, separator.part);
-            line_part_to_render.len += separator.len;
-        }
-    }
-    // key_indicators(max_len, &default_keys, colored_elements, separator, help, line_part_to_render);
-}
-
-fn common_modifiers_in_all_modes(key_shortcuts: &HashMap<InputMode, Vec<KeyShortcut>>) -> Option<Vec<KeyModifier>> {
-    eprintln!("common_modifiers_in_all_modes: {:#?}", key_shortcuts);
-    let Some(mut common_modifiers) = key_shortcuts.iter().next().and_then(|k| k.1.iter().next().and_then(|k| k.get_key().map(|k| k.key_modifiers.clone()))) else {
-        return None;
-    };
-    eprintln!("common_modifiers start: {:?}", common_modifiers);
-    for (_mode, key_shortcuts) in key_shortcuts {
-        eprintln!("common_modifiers mode {:?}: {:?}", _mode, common_modifiers);
-
-        if key_shortcuts.is_empty() {
-            return None;
-        }
-        let Some(mut common_modifiers_for_mode) = key_shortcuts.iter().next().unwrap().get_key().map(|k| k.key_modifiers.clone()) else {
-            return None;
-        };
-        for key in key_shortcuts {
-            let Some(key) = key.get_key() else {
-                return None;
-            };
-            common_modifiers_for_mode = common_modifiers_for_mode
-                .intersection(&key.key_modifiers)
-                .cloned()
-                .collect();
-        }
-        common_modifiers = common_modifiers.intersection(&common_modifiers_for_mode).cloned().collect();
-    }
-    if common_modifiers.is_empty() {
-        return None;
-    }
-    Some(common_modifiers.into_iter().collect())
-}
-
-fn render_common_modifiers(palette: &ColoredElements, mode_info: &ModeInfo, common_modifiers: &Vec<KeyModifier>, line_part_to_render: &mut LinePart, separator: &str) {
-    let prefix_text = if mode_info.capabilities.arrow_fonts {
-        // Add extra space in simplified ui
-        format!(
-            " {} + ",
-            common_modifiers
-                .iter()
-                .map(|m| m.to_string())
-                .collect::<Vec<_>>()
-                .join("-")
-        )
-    } else {
-        format!(
-            " {} +",
-            common_modifiers
-                .iter()
-                .map(|m| m.to_string())
-                .collect::<Vec<_>>()
-                .join("-")
-        )
-    };
-
-    let prefix = palette.superkey_prefix.paint(&prefix_text);
-    let suffix_separator = palette.superkey_suffix_separator.paint(separator);
-    line_part_to_render.part = format!("{}{}", line_part_to_render.part, ANSIStrings(&[prefix, suffix_separator]).to_string());
-    line_part_to_render.len += prefix_text.chars().count() + separator.chars().count();
-}
-
-fn render_secondary_info(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usize, separator: &str, current_line: &mut LinePart) {
-    let mut secondary_info = LinePart::default();
-    let supports_arrow_fonts = !help.capabilities.arrow_fonts;
-    let colored_elements = color_elements(help.style.colors, !supports_arrow_fonts);
-    let secondary_keybinds = secondary_keybinds(&help); // TODO: only if there's enough space
-    secondary_info.append(&secondary_keybinds);
-    if let Some(swap_layout_indicator) = tab_info.and_then(|tab_info| swap_layout_status(
-        max_len,
-        &tab_info.active_swap_layout_name,
-        tab_info.is_swap_layout_dirty,
-        help,
-        colored_elements,
-        &help.style.colors,
-        separator,
-    )) {
-        secondary_info.append(&swap_layout_indicator);
-    }
-    let remaining_space = max_len.saturating_sub(current_line.len).saturating_sub(secondary_info.len).saturating_sub(1); // 1 for the end padding of the line
-    for _ in 0..remaining_space {
-        current_line.part.push_str(
-            &ANSIStrings(&[colored_elements.superkey_prefix.paint(" ")]).to_string(),
-        );
-        current_line.len += 1;
-    }
-    current_line.append(&secondary_info);
-}
-
-fn render_current_mode(help: &ModeInfo, max_len: usize, line_part: &mut LinePart) {
-    let palette = help.style.colors;
-    let mode = help.mode;
-    let mode_text = format!(" {:^7} ", format!("{:?}", mode)).to_uppercase();
-
-    let bg_color = match palette.theme_hue {
-        ThemeHue::Dark => palette.black,
-        ThemeHue::Light => palette.white,
-    };
-
-    let locked_mode_color = palette.magenta;
-    let normal_mode_color = palette.green;
-    let other_modes_color = palette.orange;
-
-    let mode_part_styled_text = if mode == InputMode::Locked {
-        style!(locked_mode_color, bg_color)
-            .bold()
-            .paint(&mode_text)
-    } else if mode == InputMode::Normal {
-        style!(normal_mode_color, bg_color)
-            .bold()
-            .paint(&mode_text)
-    } else {
-        style!(other_modes_color, bg_color)
-            .bold()
-            .paint(&mode_text)
-    };
-    let mode_text_len = mode_text.chars().count();
-
-    if mode_text_len <= max_len {
-        line_part.len += mode_text.chars().count();
-        line_part.part = format!("{}{}", line_part.part, mode_part_styled_text);
-    }
-}
-
 pub fn first_line(
     help: &ModeInfo,
     tab_info: Option<&TabInfo>,
     max_len: usize,
     separator: &str,
 ) -> LinePart {
-    // TODO: decrement max_len as we go, there are probably errors here
-    let mut line_part_to_render = LinePart::default();
-    // render_current_mode(help, max_len, &mut line_part_to_render);
-    render_mode_key_indicators(help, max_len, separator, &mut line_part_to_render);
-    match help.mode {
-        InputMode::Normal | InputMode::Locked => {
-            if line_part_to_render.len < max_len {
-                render_secondary_info(help, tab_info, max_len, separator, &mut line_part_to_render);
-            }
-        },
-        _ => {
-            let keybinds = keybinds(help, "quicknav", max_len);
-            if line_part_to_render.len + keybinds.len <= max_len {
-                line_part_to_render.append(&keybinds);
+    let supports_arrow_fonts = !help.capabilities.arrow_fonts;
+    let colored_elements = color_elements(help.style.colors, !supports_arrow_fonts);
+    let binds = &help.get_mode_keybinds();
+    // Unselect all by default
+    let mut default_keys = vec![
+        KeyShortcut::new(
+            KeyMode::Unselected,
+            KeyAction::Lock,
+            to_char(action_key(
+                binds,
+                &[Action::SwitchToMode(InputMode::Locked)],
+            )),
+        ),
+        KeyShortcut::new(
+            KeyMode::UnselectedAlternate,
+            KeyAction::Pane,
+            to_char(action_key(binds, &[Action::SwitchToMode(InputMode::Pane)])),
+        ),
+        KeyShortcut::new(
+            KeyMode::Unselected,
+            KeyAction::Tab,
+            to_char(action_key(binds, &[Action::SwitchToMode(InputMode::Tab)])),
+        ),
+        KeyShortcut::new(
+            KeyMode::UnselectedAlternate,
+            KeyAction::Resize,
+            to_char(action_key(
+                binds,
+                &[Action::SwitchToMode(InputMode::Resize)],
+            )),
+        ),
+        KeyShortcut::new(
+            KeyMode::Unselected,
+            KeyAction::Move,
+            to_char(action_key(binds, &[Action::SwitchToMode(InputMode::Move)])),
+        ),
+        KeyShortcut::new(
+            KeyMode::UnselectedAlternate,
+            KeyAction::Search,
+            to_char(action_key(
+                binds,
+                &[Action::SwitchToMode(InputMode::Scroll)],
+            )),
+        ),
+        KeyShortcut::new(
+            KeyMode::Unselected,
+            KeyAction::Session,
+            to_char(action_key(
+                binds,
+                &[Action::SwitchToMode(InputMode::Session)],
+            )),
+        ),
+        KeyShortcut::new(
+            KeyMode::UnselectedAlternate,
+            KeyAction::Quit,
+            to_char(action_key(binds, &[Action::Quit])),
+        ),
+    ];
+
+    if let Some(key_shortcut) = get_key_shortcut_for_mode(&mut default_keys, &help.mode) {
+        key_shortcut.mode = KeyMode::Selected;
+        key_shortcut.key = to_char(action_key(binds, &[TO_NORMAL]));
+    }
+
+    // In locked mode we must disable all other mode keybindings
+    if help.mode == InputMode::Locked {
+        for key in default_keys.iter_mut().skip(1) {
+            key.mode = KeyMode::Disabled;
+        }
+    }
+
+    if help.mode == InputMode::Tmux {
+        // Tmux tile is hidden by default
+        default_keys.push(KeyShortcut::new(
+            KeyMode::Selected,
+            KeyAction::Tmux,
+            to_char(action_key(binds, &[TO_NORMAL])),
+        ));
+    }
+
+    let mut key_indicators =
+        key_indicators(max_len, &default_keys, colored_elements, separator, help);
+    if key_indicators.len < max_len {
+        if let Some(tab_info) = tab_info {
+            let mut remaining_space = max_len - key_indicators.len;
+            if let Some(swap_layout_status) = swap_layout_status(
+                remaining_space,
+                &tab_info.active_swap_layout_name,
+                tab_info.is_swap_layout_dirty,
+                help,
+                colored_elements,
+                &help.style.colors,
+                separator,
+            ) {
+                remaining_space -= swap_layout_status.len;
+                for _ in 0..remaining_space {
+                    key_indicators.part.push_str(
+                        &ANSIStrings(&[colored_elements.superkey_prefix.paint(" ")]).to_string(),
+                    );
+                    key_indicators.len += 1;
+                }
+                key_indicators.append(&swap_layout_status);
             }
         }
     }
-    line_part_to_render
-}
-
-fn secondary_keybinds(help: &ModeInfo) -> LinePart {
-    let secondary_info = LinePart::default();
-    let binds = &help.get_mode_keybinds();
-
-    // New Pane
-    let new_pane_action_key = action_key(
-        binds,
-        &[Action::NewPane(None, None)],
-    );
-    let mut key_to_display = new_pane_action_key
-        .iter()
-        .find(|k| k.is_key_with_alt_modifier(BareKey::Char('n')))
-        .or_else(|| new_pane_action_key.iter().next());
-    let key_to_display = if let Some(key_to_display) = key_to_display.take() {
-        vec![key_to_display.clone()]
-    } else {
-        vec![]
-    };
-    let secondary_info = add_shortcut(help, &secondary_info, "New Pane", key_to_display);
-
-    // Move focus
-    let mut move_focus_shortcuts: Vec<KeyWithModifier> = vec![];
-
-    // Left
-    let move_focus_left_action_key = action_key(
-        binds,
-        &[Action::MoveFocusOrTab(Direction::Left)]
-    );
-    let move_focus_left_key = move_focus_left_action_key
-        .iter()
-        .find(|k| k.is_key_with_alt_modifier(BareKey::Left))
-        .or_else(|| move_focus_left_action_key.iter().next());
-    if let Some(move_focus_left_key) = move_focus_left_key {
-        move_focus_shortcuts.push(move_focus_left_key.clone());
-    }
-    // Down
-    let move_focus_left_action_key = action_key(
-        binds,
-        &[Action::MoveFocus(Direction::Down)]
-    );
-    let move_focus_left_key = move_focus_left_action_key
-        .iter()
-        .find(|k| k.is_key_with_alt_modifier(BareKey::Down))
-        .or_else(|| move_focus_left_action_key.iter().next());
-    if let Some(move_focus_left_key) = move_focus_left_key {
-        move_focus_shortcuts.push(move_focus_left_key.clone());
-    }
-    // Up
-    let move_focus_left_action_key = action_key(
-        binds,
-        &[Action::MoveFocus(Direction::Up)]
-    );
-    let move_focus_left_key = move_focus_left_action_key
-        .iter()
-        .find(|k| k.is_key_with_alt_modifier(BareKey::Up))
-        .or_else(|| move_focus_left_action_key.iter().next());
-    if let Some(move_focus_left_key) = move_focus_left_key {
-        move_focus_shortcuts.push(move_focus_left_key.clone());
-    }
-    // Right
-    let move_focus_left_action_key = action_key(
-        binds,
-        &[Action::MoveFocusOrTab(Direction::Right)]
-    );
-    let move_focus_left_key = move_focus_left_action_key
-        .iter()
-        .find(|k| k.is_key_with_alt_modifier(BareKey::Right))
-        .or_else(|| move_focus_left_action_key.iter().next());
-    if let Some(move_focus_left_key) = move_focus_left_key {
-        move_focus_shortcuts.push(move_focus_left_key.clone());
-    }
-
-    let secondary_info = add_shortcut(help, &secondary_info, "Change Focus", move_focus_shortcuts);
-
-    secondary_info
+    key_indicators
 }
 
 #[cfg(test)]

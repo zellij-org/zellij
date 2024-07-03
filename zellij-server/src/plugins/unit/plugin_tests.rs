@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use tempfile::tempdir;
 use wasmer::Store;
 use zellij_utils::data::{
-    BareKey, Event, KeyWithModifier, PermissionStatus, PermissionType, PluginCapabilities,
+    BareKey, Event, KeyWithModifier, PermissionStatus, PermissionType, PluginCapabilities, InputMode
 };
 use zellij_utils::errors::ErrorContext;
 use zellij_utils::input::layout::{
@@ -280,6 +280,7 @@ fn create_plugin_thread(
                 client_attributes,
                 default_shell_action,
                 Box::new(plugin_aliases),
+                InputMode::Normal,
             )
             .expect("TEST")
         })
@@ -359,6 +360,7 @@ fn create_plugin_thread_with_server_receiver(
                 client_attributes,
                 default_shell_action,
                 Box::new(PluginAliases::default()),
+                InputMode::Normal,
             )
             .expect("TEST");
         })
@@ -444,6 +446,7 @@ fn create_plugin_thread_with_pty_receiver(
                 client_attributes,
                 default_shell_action,
                 Box::new(PluginAliases::default()),
+                InputMode::Normal,
             )
             .expect("TEST")
         })
@@ -524,6 +527,7 @@ fn create_plugin_thread_with_background_jobs_receiver(
                 client_attributes,
                 default_shell_action,
                 Box::new(PluginAliases::default()),
+                InputMode::Normal,
             )
             .expect("TEST")
         })

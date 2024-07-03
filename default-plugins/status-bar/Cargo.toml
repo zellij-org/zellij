@@ -13,9 +13,9 @@ rand = "0.8.4"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 thiserror = "1.0.30"
+unicode-width = "0.1.8"
 zellij-tile = { path = "../../zellij-tile" }
 zellij-tile-utils = { path = "../../zellij-tile-utils" }
-unicode-width = "0.1.8"
 
 [dev-dependencies]
 regex = "1"

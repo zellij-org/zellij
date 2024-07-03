@@ -31,6 +31,7 @@ struct State {
     active_tab_idx: usize,
     mode_info: ModeInfo,
     tab_line: Vec<LinePart>,
+    hide_swap_layout_indication: bool,
 }
 
 static ARROW_SEPARATOR: &str = "";
@@ -38,7 +39,8 @@ static ARROW_SEPARATOR: &str = "";
 register_plugin!(State);
 
 impl ZellijPlugin for State {
-    fn load(&mut self, _configuration: BTreeMap<String, String>) {
+    fn load(&mut self, configuration: BTreeMap<String, String>) {
+        self.hide_swap_layout_indication = configuration.get("hide_swap_layout_indication").map(|s| s == "true").unwrap_or(false);
         set_selectable(false);
         subscribe(&[
             EventType::TabUpdate,
@@ -129,6 +131,7 @@ impl ZellijPlugin for State {
             self.mode_info.style.hide_session_name,
             self.tabs.iter().find(|t| t.active),
             &self.mode_info,
+            self.hide_swap_layout_indication,
         );
 
         let output = self

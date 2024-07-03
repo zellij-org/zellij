@@ -1117,6 +1117,7 @@ fn serialize_mode_update_event_with_non_default_values() {
         },
         capabilities: PluginCapabilities { arrow_fonts: false },
         session_name: Some("my awesome test session".to_owned()),
+        base_mode: Some(InputMode::Locked),
     });
     let protobuf_event: ProtobufEvent = mode_update_event.clone().try_into().unwrap();
     let serialized_protobuf_event = protobuf_event.encode_to_vec();

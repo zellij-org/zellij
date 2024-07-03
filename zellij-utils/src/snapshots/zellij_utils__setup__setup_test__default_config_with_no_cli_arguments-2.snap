@@ -1,6 +1,6 @@
 ---
 source: zellij-utils/src/setup.rs
-assertion_line: 699
+assertion_line: 740
 expression: "format!(\"{:#?}\", layout)"
 ---
 Layout {
@@ -69,7 +69,7 @@ Layout {
                         children: [],
                         split_size: Some(
                             Fixed(
-                                2,
+                                1,
                             ),
                         ),
                         run: Some(
@@ -233,7 +233,7 @@ Layout {
                             children: [],
                             split_size: Some(
                                 Fixed(
-                                    2,
+                                    1,
                                 ),
                             ),
                             run: Some(
@@ -455,7 +455,7 @@ Layout {
                             children: [],
                             split_size: Some(
                                 Fixed(
-                                    2,
+                                    1,
                                 ),
                             ),
                             run: Some(
@@ -758,7 +758,7 @@ Layout {
                             children: [],
                             split_size: Some(
                                 Fixed(
-                                    2,
+                                    1,
                                 ),
                             ),
                             run: Some(
@@ -903,7 +903,7 @@ Layout {
                             children: [],
                             split_size: Some(
                                 Fixed(
-                                    2,
+                                    1,
                                 ),
                             ),
                             run: Some(
@@ -1125,7 +1125,7 @@ Layout {
                             children: [],
                             split_size: Some(
                                 Fixed(
-                                    2,
+                                    1,
                                 ),
                             ),
                             run: Some(
@@ -1428,7 +1428,7 @@ Layout {
                             children: [],
                             split_size: Some(
                                 Fixed(
-                                    2,
+                                    1,
                                 ),
                             ),
                             run: Some(
@@ -1592,7 +1592,7 @@ Layout {
                             children: [],
                             split_size: Some(
                                 Fixed(
-                                    2,
+                                    1,
                                 ),
                             ),
                             run: Some(

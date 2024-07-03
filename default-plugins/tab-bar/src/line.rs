@@ -228,6 +228,7 @@ pub fn tab_line(
     hide_session_name: bool,
     tab_info: Option<&TabInfo>,
     mode_info: &ModeInfo,
+    hide_swap_layout_indicator: bool,
 ) -> Vec<LinePart> {
     let mut tabs_after_active = all_tabs.split_off(active_tab_index);
     let mut tabs_before_active = all_tabs;
@@ -242,13 +243,17 @@ pub fn tab_line(
     };
 
 
-    let mut swap_layout_indicator = tab_info.and_then(|tab_info| swap_layout_status(
-        cols,
-        &tab_info.active_swap_layout_name,
-        tab_info.is_swap_layout_dirty,
-        mode_info,
-        capabilities.arrow_fonts,
-    ));
+    let mut swap_layout_indicator = if hide_swap_layout_indicator {
+        None
+    } else {
+        tab_info.and_then(|tab_info| swap_layout_status(
+            cols,
+            &tab_info.active_swap_layout_name,
+            tab_info.is_swap_layout_dirty,
+            mode_info,
+            !capabilities.arrow_fonts,
+        ))
+    };
 
 
     let non_tab_len = get_current_title_len(&prefix) + swap_layout_indicator.as_ref().map(|s| s.len).unwrap_or(0);
@@ -272,7 +277,7 @@ pub fn tab_line(
 
 
     if let Some(mut swap_layout_indicator) = swap_layout_indicator.take() {
-        let remaining_space = cols.saturating_sub(prefix.iter().fold(0, |len, part| len + part.len)).saturating_sub(swap_layout_indicator.len).saturating_sub(1); // 1 for the end padding of the line
+        let remaining_space = cols.saturating_sub(prefix.iter().fold(0, |len, part| len + part.len)).saturating_sub(swap_layout_indicator.len);
         let mut padding = String::new();
         let mut padding_len = 0;
         for _ in 0..remaining_space {
@@ -315,7 +320,7 @@ pub fn ribbon_as_line_part(text: &str, is_selected: bool, supports_arrow_fonts: 
         Text::new(text)
     };
     let part = serialize_ribbon(&ribbon_text);
-    let mut len = text.width() + 3;
+    let mut len = text.width() + 2;
     if supports_arrow_fonts {
         len += 2;
     };

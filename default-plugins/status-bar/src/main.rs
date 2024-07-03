@@ -1,5 +1,5 @@
-mod first_line;
 mod one_line_ui;
+mod first_line;
 mod second_line;
 mod tip;
 
@@ -37,6 +37,7 @@ struct State {
     mode_info: ModeInfo,
     text_copy_destination: Option<CopyDestination>,
     display_system_clipboard_failure: bool,
+    classic_ui: bool,
     base_mode_is_locked: bool,
 }
 
@@ -52,9 +53,6 @@ impl LinePart {
     pub fn append(&mut self, to_append: &LinePart) {
         self.part.push_str(&to_append.part);
         self.len += to_append.len;
-    }
-    pub fn is_empty(&self) -> bool {
-        self.part.is_empty()
     }
 }
 
@@ -183,9 +181,10 @@ fn color_elements(palette: Palette, different_color_alternates: bool) -> Colored
 }
 
 impl ZellijPlugin for State {
-    fn load(&mut self, _configuration: BTreeMap<String, String>) {
+    fn load(&mut self, configuration: BTreeMap<String, String>) {
         // TODO: Should be able to choose whether to use the cache through config.
         self.tip_name = get_cached_tip_name();
+        self.classic_ui = configuration.get("classic").map(|c| c == "true").unwrap_or(false);
         set_selectable(false);
         subscribe(&[
             EventType::ModeUpdate,
@@ -204,11 +203,7 @@ impl ZellijPlugin for State {
                     should_render = true;
                 }
                 self.mode_info = mode_info;
-                self.base_mode_is_locked = self.mode_info.base_mode == Some(InputMode::Locked); // TODO:
-                                                                                          // CONTINUE
-                                                                                          // HERE -
-                                                                                          // implement
-                                                                                          // this
+                self.base_mode_is_locked = self.mode_info.base_mode == Some(InputMode::Locked);
             },
             Event::TabUpdate(tabs) => {
                 if self.tabs != tabs {
@@ -255,9 +250,16 @@ impl ZellijPlugin for State {
             ""
         };
 
+        if rows == 1 && !self.classic_ui {
+            // one_line_ui(help, tab_info, cols, separator, )
+            let active_tab = self.tabs.iter().find(|t| t.active);
+            print!("{}", one_line_ui(&self.mode_info, active_tab, cols, separator, self.base_mode_is_locked));
+            return;
+        }
+
         let active_tab = self.tabs.iter().find(|t| t.active);
-        // let first_line = first_line(&self.mode_info, active_tab, cols, separator);
-        let first_line = one_line_ui(&self.mode_info, active_tab, cols, separator, self.base_mode_is_locked);
+        let first_line = first_line(&self.mode_info, active_tab, cols, separator);
+        let second_line = self.second_line(cols);
 
         let background = match self.mode_info.style.colors.theme_hue {
             ThemeHue::Dark => self.mode_info.style.colors.black,
@@ -268,11 +270,31 @@ impl ZellijPlugin for State {
         // [m is background reset, [0K is so that it clears the rest of the line
         match background {
             PaletteColor::Rgb((r, g, b)) => {
-                print!("{}\u{1b}[48;2;{};{};{}m\u{1b}[0K", first_line, r, g, b);
+                if rows > 1 {
+                    println!("{}\u{1b}[48;2;{};{};{}m\u{1b}[0K", first_line, r, g, b);
+                } else {
+                    if self.mode_info.mode == InputMode::Normal {
+                        print!("{}\u{1b}[48;2;{};{};{}m\u{1b}[0K", first_line, r, g, b);
+                    } else {
+                        print!("\u{1b}[m{}\u{1b}[0K", second_line);
+                    }
+                }
             },
             PaletteColor::EightBit(color) => {
-                print!("{}\u{1b}[48;5;{}m\u{1b}[0K", first_line, color);
+                if rows > 1 {
+                    println!("{}\u{1b}[48;5;{}m\u{1b}[0K", first_line, color);
+                } else {
+                    if self.mode_info.mode == InputMode::Normal {
+                        print!("{}\u{1b}[48;5;{}m\u{1b}[0K", first_line, color);
+                    } else {
+                        print!("\u{1b}[m{}\u{1b}[0K", second_line);
+                    }
+                }
             },
+        }
+
+        if rows > 1 {
+            print!("\u{1b}[m{}\u{1b}[0K", second_line);
         }
     }
 }
@@ -357,49 +379,6 @@ pub fn action_key(
         .collect::<Vec<KeyWithModifier>>()
 }
 
-pub fn single_action_key(
-    keymap: &[(KeyWithModifier, Vec<Action>)],
-    action: &[Action],
-) -> Vec<KeyWithModifier> {
-    let mut matching = keymap
-        .iter()
-        .find_map(|(key, acvec)| {
-            if acvec.iter().next() == action.iter().next() {
-                Some(key.clone())
-            } else {
-                None
-            }
-        });
-    if let Some(matching) = matching.take() {
-        vec![matching]
-    } else {
-        vec![]
-    }
-}
-
-pub fn session_manager_key(
-    keymap: &[(KeyWithModifier, Vec<Action>)],
-) -> Vec<KeyWithModifier> {
-    let mut matching = keymap
-        .iter()
-        .find_map(|(key, acvec)| {
-            let has_match = acvec
-                .iter()
-                .find(|a| a.launches_plugin("session-manager"))
-                .is_some();
-            if has_match {
-                Some(key.clone())
-            } else {
-                None
-            }
-        });
-    if let Some(matching) = matching.take() {
-        vec![matching]
-    } else {
-        vec![]
-    }
-}
-
 /// Get multiple keys for multiple actions.
 ///
 /// An extension of [`action_key`] that iterates over all action tuples and collects the results.
@@ -437,10 +416,9 @@ pub fn style_key_with_modifier(
     keyvec: &[KeyWithModifier],
     palette: &Palette,
     background: Option<PaletteColor>,
-) -> LinePart {
-    let mut ret = LinePart::default();
+) -> Vec<ANSIString<'static>> {
     if keyvec.is_empty() {
-        return ret;
+        return vec![];
     }
 
     let text_color = palette_match!(match palette.theme_hue {
@@ -448,8 +426,8 @@ pub fn style_key_with_modifier(
         ThemeHue::Light => palette.black,
     });
     let green_color = palette_match!(palette.green);
-    // let orange_color = palette_match!(palette.orange);
-    let orange_color = palette_match!(palette.magenta);
+    let orange_color = palette_match!(palette.orange);
+    let mut ret = vec![];
 
     let common_modifiers = get_common_modifiers(keyvec.iter().collect());
 
@@ -460,49 +438,33 @@ pub fn style_key_with_modifier(
         .collect::<Vec<_>>()
         .join("-");
     let painted_modifier = if modifier_str.is_empty() {
-        LinePart::default()
+        Style::new().paint("")
     } else {
-        let modifier_str = format!(" {}", modifier_str);
-        let len = modifier_str.chars().count();
         if let Some(background) = background {
             let background = palette_match!(background);
-            let len = modifier_str.chars().count();
-            let part = Style::new()
+            Style::new()
                 .fg(orange_color)
                 .on(background)
                 .bold()
-                .paint(modifier_str).to_string();
-            LinePart {
-                part,
-                len,
-            }
+                .paint(modifier_str)
         } else {
-            LinePart {
-                part: Style::new().fg(orange_color).bold().paint(modifier_str).to_string(),
-                len,
-            }
+            Style::new().fg(orange_color).bold().paint(modifier_str)
         }
     };
-    ret.append(&painted_modifier);
+    ret.push(painted_modifier);
 
     // Prints key group start
-    // let group_start_str = if no_common_modifier { "<" } else { " + <" };
-    // let group_start_str = if no_common_modifier { " " } else { " " };
-    let group_start_str = if keyvec.len() > 1 { " <" } else { " " };
+    let group_start_str = if no_common_modifier { "<" } else { " + <" };
     if let Some(background) = background {
         let background = palette_match!(background);
-        let part = Style::new()
-            .fg(text_color)
-            // .fg(orange_color)
-            .on(background)
-            .bold()
-            .paint(group_start_str).to_string();
-        let len = group_start_str.chars().count();
-        ret.append(&LinePart { part, len });
+        ret.push(
+            Style::new()
+                .fg(text_color)
+                .on(background)
+                .paint(group_start_str),
+        );
     } else {
-        let len = group_start_str.chars().count();
-        let part = Style::new().fg(text_color).bold().paint(group_start_str).to_string();
-        ret.append(&LinePart { part, len });
+        ret.push(Style::new().fg(text_color).paint(group_start_str));
     }
 
     // Prints the keys
@@ -544,398 +506,372 @@ pub fn style_key_with_modifier(
         if idx > 0 && !key_separator.is_empty() {
             if let Some(background) = background {
                 let background = palette_match!(background);
-                ret.append(
-                    &LinePart {
-                        part: Style::new()
-                            .fg(text_color)
-                            .on(background)
-                            .paint(key_separator).to_string(),
-                        len: key_separator.chars().count(),
-                    }
+                ret.push(
+                    Style::new()
+                        .fg(text_color)
+                        .on(background)
+                        .paint(key_separator),
                 );
             } else {
-                ret.append(&LinePart {
-                    part: Style::new().fg(text_color).paint(key_separator).to_string(),
-                    len: key_separator.chars().count(),
-                });
+                ret.push(Style::new().fg(text_color).paint(key_separator));
             }
         }
         if let Some(background) = background {
             let background = palette_match!(background);
-            let key = key.clone();
-            let len = key.chars().count();
-            ret.append(
-                &LinePart {
-                    part: Style::new()
-                        .fg(orange_color)
-                        .on(background)
-                        .bold()
-                        .paint(key).to_string(),
-                    len,
-                }
+            ret.push(
+                Style::new()
+                    .fg(green_color)
+                    .on(background)
+                    .bold()
+                    .paint(key.clone()),
             );
         } else {
-            let key = key.clone();
-            let len = key.chars().count();
-            ret.append(&LinePart {
-                part: Style::new().fg(orange_color).bold().paint(key).to_string(),
-                len,
-            });
+            ret.push(Style::new().fg(green_color).bold().paint(key.clone()));
         }
     }
 
-    // let group_end_str = ">";
-    // let group_end_str = if keyvec.len() > 1 { "> " } else { " " };
-    let group_end_str = if keyvec.len() > 1 { "> " } else { " " };
+    let group_end_str = ">";
     if let Some(background) = background {
         let background = palette_match!(background);
-        ret.append(
-            &LinePart {
-                part: Style::new()
-                    .fg(text_color)
-                    .bold()
-                    .on(background)
-                    .paint(group_end_str).to_string(),
-                len: group_end_str.chars().count(),
-            }
+        ret.push(
+            Style::new()
+                .fg(text_color)
+                .on(background)
+                .paint(group_end_str),
         );
     } else {
-        ret.append(
-            &LinePart {
-                part: Style::new().fg(text_color).bold().paint(group_end_str).to_string(),
-                len: group_end_str.chars().count(),
-            }
-        );
+        ret.push(Style::new().fg(text_color).paint(group_end_str));
     }
+
     ret
 }
 
-// #[cfg(test)]
-// pub mod tests {
-//     use super::*;
-//     use ansi_term::unstyle;
-//     use ansi_term::ANSIStrings;
-// 
-//     fn big_keymap() -> Vec<(KeyWithModifier, Vec<Action>)> {
-//         vec![
-//             (KeyWithModifier::new(BareKey::Char('a')), vec![Action::Quit]),
-//             (
-//                 KeyWithModifier::new(BareKey::Char('b')).with_ctrl_modifier(),
-//                 vec![Action::ScrollUp],
-//             ),
-//             (
-//                 KeyWithModifier::new(BareKey::Char('d')).with_ctrl_modifier(),
-//                 vec![Action::ScrollDown],
-//             ),
-//             (
-//                 KeyWithModifier::new(BareKey::Char('c')).with_alt_modifier(),
-//                 vec![Action::ScrollDown, Action::SwitchToMode(InputMode::Normal)],
-//             ),
-//             (
-//                 KeyWithModifier::new(BareKey::Char('1')),
-//                 vec![TO_NORMAL, Action::SwitchToMode(InputMode::Locked)],
-//             ),
-//         ]
-//     }
-// 
-//     #[test]
-//     fn common_modifier_with_ctrl_keys() {
-//         let keyvec = vec![
-//             KeyWithModifier::new(BareKey::Char('a')).with_ctrl_modifier(),
-//             KeyWithModifier::new(BareKey::Char('b')).with_ctrl_modifier(),
-//             KeyWithModifier::new(BareKey::Char('c')).with_ctrl_modifier(),
-//         ];
-//         let ret = get_common_modifiers(keyvec.iter().collect());
-//         assert_eq!(ret, vec![KeyModifier::Ctrl]);
-//     }
-// 
-//     #[test]
-//     fn common_modifier_with_alt_keys_chars() {
-//         let keyvec = vec![
-//             KeyWithModifier::new(BareKey::Char('1')).with_alt_modifier(),
-//             KeyWithModifier::new(BareKey::Char('t')).with_alt_modifier(),
-//             KeyWithModifier::new(BareKey::Char('z')).with_alt_modifier(),
-//         ];
-//         let ret = get_common_modifiers(keyvec.iter().collect());
-//         assert_eq!(ret, vec![KeyModifier::Alt]);
-//     }
-// 
-//     #[test]
-//     fn common_modifier_with_mixed_alt_ctrl_keys() {
-//         let keyvec = vec![
-//             KeyWithModifier::new(BareKey::Char('1')).with_ctrl_modifier(),
-//             KeyWithModifier::new(BareKey::Char('t')).with_alt_modifier(),
-//             KeyWithModifier::new(BareKey::Char('z')).with_alt_modifier(),
-//         ];
-//         let ret = get_common_modifiers(keyvec.iter().collect());
-//         assert_eq!(ret, vec![]); // no common modifiers
-//     }
-// 
-//     #[test]
-//     fn common_modifier_with_any_keys() {
-//         let keyvec = vec![
-//             KeyWithModifier::new(BareKey::Char('1')),
-//             KeyWithModifier::new(BareKey::Char('t')).with_alt_modifier(),
-//             KeyWithModifier::new(BareKey::Char('z')).with_alt_modifier(),
-//         ];
-//         let ret = get_common_modifiers(keyvec.iter().collect());
-//         assert_eq!(ret, vec![]); // no common modifiers
-//     }
-// 
-//     #[test]
-//     fn action_key_simple_pattern_match_exact() {
-//         let keymap = &[(KeyWithModifier::new(BareKey::Char('f')), vec![Action::Quit])];
-//         let ret = action_key(keymap, &[Action::Quit]);
-//         assert_eq!(ret, vec![KeyWithModifier::new(BareKey::Char('f'))]);
-//     }
-// 
-//     #[test]
-//     fn action_key_simple_pattern_match_pattern_too_long() {
-//         let keymap = &[(KeyWithModifier::new(BareKey::Char('f')), vec![Action::Quit])];
-//         let ret = action_key(keymap, &[Action::Quit, Action::ScrollUp]);
-//         assert_eq!(ret, Vec::new());
-//     }
-// 
-//     #[test]
-//     fn action_key_simple_pattern_match_pattern_empty() {
-//         let keymap = &[(KeyWithModifier::new(BareKey::Char('f')), vec![Action::Quit])];
-//         let ret = action_key(keymap, &[]);
-//         assert_eq!(ret, Vec::new());
-//     }
-// 
-//     #[test]
-//     fn action_key_long_pattern_match_exact() {
-//         let keymap = big_keymap();
-//         let ret = action_key(&keymap, &[Action::ScrollDown, TO_NORMAL]);
-//         assert_eq!(
-//             ret,
-//             vec![KeyWithModifier::new(BareKey::Char('c')).with_alt_modifier()]
-//         );
-//     }
-// 
-//     #[test]
-//     fn action_key_long_pattern_match_too_short() {
-//         let keymap = big_keymap();
-//         let ret = action_key(&keymap, &[TO_NORMAL]);
-//         assert_eq!(ret, Vec::new());
-//     }
-// 
-//     #[test]
-//     fn action_key_group_single_pattern() {
-//         let keymap = big_keymap();
-//         let ret = action_key_group(&keymap, &[&[Action::Quit]]);
-//         assert_eq!(ret, vec![KeyWithModifier::new(BareKey::Char('a'))]);
-//     }
-// 
-//     #[test]
-//     fn action_key_group_two_patterns() {
-//         let keymap = big_keymap();
-//         let ret = action_key_group(&keymap, &[&[Action::ScrollDown], &[Action::ScrollUp]]);
-//         // Mind the order!
-//         assert_eq!(
-//             ret,
-//             vec![
-//                 KeyWithModifier::new(BareKey::Char('d')).with_ctrl_modifier(),
-//                 KeyWithModifier::new(BareKey::Char('b')).with_ctrl_modifier()
-//             ]
-//         );
-//     }
-// 
-//     fn get_palette() -> Palette {
-//         Palette::default()
-//     }
-// 
-//     #[test]
-//     fn style_key_with_modifier_only_chars() {
-//         let keyvec = vec![
-//             KeyWithModifier::new(BareKey::Char('a')),
-//             KeyWithModifier::new(BareKey::Char('b')),
-//             KeyWithModifier::new(BareKey::Char('c')),
-//         ];
-//         let palette = get_palette();
-// 
-//         let ret = style_key_with_modifier(&keyvec, &palette, None);
-//         let ret = unstyle(&ANSIStrings(&ret));
-// 
-//         assert_eq!(ret, "<a|b|c>".to_string())
-//     }
-// 
-//     #[test]
-//     fn style_key_with_modifier_special_group_hjkl() {
-//         let keyvec = vec![
-//             KeyWithModifier::new(BareKey::Char('h')),
-//             KeyWithModifier::new(BareKey::Char('j')),
-//             KeyWithModifier::new(BareKey::Char('k')),
-//             KeyWithModifier::new(BareKey::Char('l')),
-//         ];
-//         let palette = get_palette();
-// 
-//         let ret = style_key_with_modifier(&keyvec, &palette, None);
-//         let ret = unstyle(&ANSIStrings(&ret));
-// 
-//         assert_eq!(ret, "<hjkl>".to_string())
-//     }
-// 
-//     #[test]
-//     fn style_key_with_modifier_special_group_all_arrows() {
-//         let keyvec = vec![
-//             KeyWithModifier::new(BareKey::Left),
-//             KeyWithModifier::new(BareKey::Down),
-//             KeyWithModifier::new(BareKey::Up),
-//             KeyWithModifier::new(BareKey::Right),
-//         ];
-//         let palette = get_palette();
-// 
-//         let ret = style_key_with_modifier(&keyvec, &palette, None);
-//         let ret = unstyle(&ANSIStrings(&ret));
-// 
-//         assert_eq!(ret, "<←↓↑→>".to_string())
-//     }
-// 
-//     #[test]
-//     fn style_key_with_modifier_special_group_left_right_arrows() {
-//         let keyvec = vec![
-//             KeyWithModifier::new(BareKey::Left),
-//             KeyWithModifier::new(BareKey::Right),
-//         ];
-//         let palette = get_palette();
-// 
-//         let ret = style_key_with_modifier(&keyvec, &palette, None);
-//         let ret = unstyle(&ANSIStrings(&ret));
-// 
-//         assert_eq!(ret, "<←→>".to_string())
-//     }
-// 
-//     #[test]
-//     fn style_key_with_modifier_special_group_down_up_arrows() {
-//         let keyvec = vec![
-//             KeyWithModifier::new(BareKey::Down),
-//             KeyWithModifier::new(BareKey::Up),
-//         ];
-//         let palette = get_palette();
-// 
-//         let ret = style_key_with_modifier(&keyvec, &palette, None);
-//         let ret = unstyle(&ANSIStrings(&ret));
-// 
-//         assert_eq!(ret, "<↓↑>".to_string())
-//     }
-// 
-//     #[test]
-//     fn style_key_with_modifier_common_ctrl_modifier_chars() {
-//         let keyvec = vec![
-//             KeyWithModifier::new(BareKey::Char('a')).with_ctrl_modifier(),
-//             KeyWithModifier::new(BareKey::Char('b')).with_ctrl_modifier(),
-//             KeyWithModifier::new(BareKey::Char('c')).with_ctrl_modifier(),
-//             KeyWithModifier::new(BareKey::Char('d')).with_ctrl_modifier(),
-//         ];
-//         let palette = get_palette();
-// 
-//         let ret = style_key_with_modifier(&keyvec, &palette, None);
-//         let ret = unstyle(&ANSIStrings(&ret));
-// 
-//         assert_eq!(ret, "Ctrl + <a|b|c|d>".to_string())
-//     }
-// 
-//     #[test]
-//     fn style_key_with_modifier_common_alt_modifier_chars() {
-//         let keyvec = vec![
-//             KeyWithModifier::new(BareKey::Char('a')).with_alt_modifier(),
-//             KeyWithModifier::new(BareKey::Char('b')).with_alt_modifier(),
-//             KeyWithModifier::new(BareKey::Char('c')).with_alt_modifier(),
-//             KeyWithModifier::new(BareKey::Char('d')).with_alt_modifier(),
-//         ];
-//         let palette = get_palette();
-// 
-//         let ret = style_key_with_modifier(&keyvec, &palette, None);
-//         let ret = unstyle(&ANSIStrings(&ret));
-// 
-//         assert_eq!(ret, "Alt + <a|b|c|d>".to_string())
-//     }
-// 
-//     #[test]
-//     fn style_key_with_modifier_common_alt_modifier_with_special_group_all_arrows() {
-//         let keyvec = vec![
-//             KeyWithModifier::new(BareKey::Left).with_alt_modifier(),
-//             KeyWithModifier::new(BareKey::Down).with_alt_modifier(),
-//             KeyWithModifier::new(BareKey::Up).with_alt_modifier(),
-//             KeyWithModifier::new(BareKey::Right).with_alt_modifier(),
-//         ];
-//         let palette = get_palette();
-// 
-//         let ret = style_key_with_modifier(&keyvec, &palette, None);
-//         let ret = unstyle(&ANSIStrings(&ret));
-// 
-//         assert_eq!(ret, "Alt + <←↓↑→>".to_string())
-//     }
-// 
-//     #[test]
-//     fn style_key_with_modifier_ctrl_alt_char_mixed() {
-//         let keyvec = vec![
-//             KeyWithModifier::new(BareKey::Char('a')).with_alt_modifier(),
-//             KeyWithModifier::new(BareKey::Char('b')).with_ctrl_modifier(),
-//             KeyWithModifier::new(BareKey::Char('c')),
-//         ];
-//         let palette = get_palette();
-// 
-//         let ret = style_key_with_modifier(&keyvec, &palette, None);
-//         let ret = unstyle(&ANSIStrings(&ret));
-// 
-//         assert_eq!(ret, "<Alt a|Ctrl b|c>".to_string())
-//     }
-// 
-//     #[test]
-//     fn style_key_with_modifier_unprintables() {
-//         let keyvec = vec![
-//             KeyWithModifier::new(BareKey::Backspace),
-//             KeyWithModifier::new(BareKey::Enter),
-//             KeyWithModifier::new(BareKey::Char(' ')),
-//             KeyWithModifier::new(BareKey::Tab),
-//             KeyWithModifier::new(BareKey::PageDown),
-//             KeyWithModifier::new(BareKey::Delete),
-//             KeyWithModifier::new(BareKey::Home),
-//             KeyWithModifier::new(BareKey::End),
-//             KeyWithModifier::new(BareKey::Insert),
-//             KeyWithModifier::new(BareKey::Tab),
-//             KeyWithModifier::new(BareKey::Esc),
-//         ];
-//         let palette = get_palette();
-// 
-//         let ret = style_key_with_modifier(&keyvec, &palette, None);
-//         let ret = unstyle(&ANSIStrings(&ret));
-// 
-//         assert_eq!(
-//             ret,
-//             "<BACKSPACE|ENTER|SPACE|TAB|PgDn|DEL|HOME|END|INS|TAB|ESC>".to_string()
-//         )
-//     }
-// 
-//     #[test]
-//     fn style_key_with_modifier_unprintables_with_common_ctrl_modifier() {
-//         let keyvec = vec![
-//             KeyWithModifier::new(BareKey::Enter).with_ctrl_modifier(),
-//             KeyWithModifier::new(BareKey::Char(' ')).with_ctrl_modifier(),
-//             KeyWithModifier::new(BareKey::Tab).with_ctrl_modifier(),
-//         ];
-//         let palette = get_palette();
-// 
-//         let ret = style_key_with_modifier(&keyvec, &palette, None);
-//         let ret = unstyle(&ANSIStrings(&ret));
-// 
-//         assert_eq!(ret, "Ctrl + <ENTER|SPACE|TAB>".to_string())
-//     }
-// 
-//     #[test]
-//     fn style_key_with_modifier_unprintables_with_common_alt_modifier() {
-//         let keyvec = vec![
-//             KeyWithModifier::new(BareKey::Enter).with_alt_modifier(),
-//             KeyWithModifier::new(BareKey::Char(' ')).with_alt_modifier(),
-//             KeyWithModifier::new(BareKey::Tab).with_alt_modifier(),
-//         ];
-//         let palette = get_palette();
-// 
-//         let ret = style_key_with_modifier(&keyvec, &palette, None);
-//         let ret = unstyle(&ANSIStrings(&ret));
-// 
-//         assert_eq!(ret, "Alt + <ENTER|SPACE|TAB>".to_string())
-//     }
-// }
+#[cfg(test)]
+pub mod tests {
+    use super::*;
+    use ansi_term::unstyle;
+    use ansi_term::ANSIStrings;
+
+    fn big_keymap() -> Vec<(KeyWithModifier, Vec<Action>)> {
+        vec![
+            (KeyWithModifier::new(BareKey::Char('a')), vec![Action::Quit]),
+            (
+                KeyWithModifier::new(BareKey::Char('b')).with_ctrl_modifier(),
+                vec![Action::ScrollUp],
+            ),
+            (
+                KeyWithModifier::new(BareKey::Char('d')).with_ctrl_modifier(),
+                vec![Action::ScrollDown],
+            ),
+            (
+                KeyWithModifier::new(BareKey::Char('c')).with_alt_modifier(),
+                vec![Action::ScrollDown, Action::SwitchToMode(InputMode::Normal)],
+            ),
+            (
+                KeyWithModifier::new(BareKey::Char('1')),
+                vec![TO_NORMAL, Action::SwitchToMode(InputMode::Locked)],
+            ),
+        ]
+    }
+
+    #[test]
+    fn common_modifier_with_ctrl_keys() {
+        let keyvec = vec![
+            KeyWithModifier::new(BareKey::Char('a')).with_ctrl_modifier(),
+            KeyWithModifier::new(BareKey::Char('b')).with_ctrl_modifier(),
+            KeyWithModifier::new(BareKey::Char('c')).with_ctrl_modifier(),
+        ];
+        let ret = get_common_modifiers(keyvec.iter().collect());
+        assert_eq!(ret, vec![KeyModifier::Ctrl]);
+    }
+
+    #[test]
+    fn common_modifier_with_alt_keys_chars() {
+        let keyvec = vec![
+            KeyWithModifier::new(BareKey::Char('1')).with_alt_modifier(),
+            KeyWithModifier::new(BareKey::Char('t')).with_alt_modifier(),
+            KeyWithModifier::new(BareKey::Char('z')).with_alt_modifier(),
+        ];
+        let ret = get_common_modifiers(keyvec.iter().collect());
+        assert_eq!(ret, vec![KeyModifier::Alt]);
+    }
+
+    #[test]
+    fn common_modifier_with_mixed_alt_ctrl_keys() {
+        let keyvec = vec![
+            KeyWithModifier::new(BareKey::Char('1')).with_ctrl_modifier(),
+            KeyWithModifier::new(BareKey::Char('t')).with_alt_modifier(),
+            KeyWithModifier::new(BareKey::Char('z')).with_alt_modifier(),
+        ];
+        let ret = get_common_modifiers(keyvec.iter().collect());
+        assert_eq!(ret, vec![]); // no common modifiers
+    }
+
+    #[test]
+    fn common_modifier_with_any_keys() {
+        let keyvec = vec![
+            KeyWithModifier::new(BareKey::Char('1')),
+            KeyWithModifier::new(BareKey::Char('t')).with_alt_modifier(),
+            KeyWithModifier::new(BareKey::Char('z')).with_alt_modifier(),
+        ];
+        let ret = get_common_modifiers(keyvec.iter().collect());
+        assert_eq!(ret, vec![]); // no common modifiers
+    }
+
+    #[test]
+    fn action_key_simple_pattern_match_exact() {
+        let keymap = &[(KeyWithModifier::new(BareKey::Char('f')), vec![Action::Quit])];
+        let ret = action_key(keymap, &[Action::Quit]);
+        assert_eq!(ret, vec![KeyWithModifier::new(BareKey::Char('f'))]);
+    }
+
+    #[test]
+    fn action_key_simple_pattern_match_pattern_too_long() {
+        let keymap = &[(KeyWithModifier::new(BareKey::Char('f')), vec![Action::Quit])];
+        let ret = action_key(keymap, &[Action::Quit, Action::ScrollUp]);
+        assert_eq!(ret, Vec::new());
+    }
+
+    #[test]
+    fn action_key_simple_pattern_match_pattern_empty() {
+        let keymap = &[(KeyWithModifier::new(BareKey::Char('f')), vec![Action::Quit])];
+        let ret = action_key(keymap, &[]);
+        assert_eq!(ret, Vec::new());
+    }
+
+    #[test]
+    fn action_key_long_pattern_match_exact() {
+        let keymap = big_keymap();
+        let ret = action_key(&keymap, &[Action::ScrollDown, TO_NORMAL]);
+        assert_eq!(
+            ret,
+            vec![KeyWithModifier::new(BareKey::Char('c')).with_alt_modifier()]
+        );
+    }
+
+    #[test]
+    fn action_key_long_pattern_match_too_short() {
+        let keymap = big_keymap();
+        let ret = action_key(&keymap, &[TO_NORMAL]);
+        assert_eq!(ret, Vec::new());
+    }
+
+    #[test]
+    fn action_key_group_single_pattern() {
+        let keymap = big_keymap();
+        let ret = action_key_group(&keymap, &[&[Action::Quit]]);
+        assert_eq!(ret, vec![KeyWithModifier::new(BareKey::Char('a'))]);
+    }
+
+    #[test]
+    fn action_key_group_two_patterns() {
+        let keymap = big_keymap();
+        let ret = action_key_group(&keymap, &[&[Action::ScrollDown], &[Action::ScrollUp]]);
+        // Mind the order!
+        assert_eq!(
+            ret,
+            vec![
+                KeyWithModifier::new(BareKey::Char('d')).with_ctrl_modifier(),
+                KeyWithModifier::new(BareKey::Char('b')).with_ctrl_modifier()
+            ]
+        );
+    }
+
+    fn get_palette() -> Palette {
+        Palette::default()
+    }
+
+    #[test]
+    fn style_key_with_modifier_only_chars() {
+        let keyvec = vec![
+            KeyWithModifier::new(BareKey::Char('a')),
+            KeyWithModifier::new(BareKey::Char('b')),
+            KeyWithModifier::new(BareKey::Char('c')),
+        ];
+        let palette = get_palette();
+
+        let ret = style_key_with_modifier(&keyvec, &palette, None);
+        let ret = unstyle(&ANSIStrings(&ret));
+
+        assert_eq!(ret, "<a|b|c>".to_string())
+    }
+
+    #[test]
+    fn style_key_with_modifier_special_group_hjkl() {
+        let keyvec = vec![
+            KeyWithModifier::new(BareKey::Char('h')),
+            KeyWithModifier::new(BareKey::Char('j')),
+            KeyWithModifier::new(BareKey::Char('k')),
+            KeyWithModifier::new(BareKey::Char('l')),
+        ];
+        let palette = get_palette();
+
+        let ret = style_key_with_modifier(&keyvec, &palette, None);
+        let ret = unstyle(&ANSIStrings(&ret));
+
+        assert_eq!(ret, "<hjkl>".to_string())
+    }
+
+    #[test]
+    fn style_key_with_modifier_special_group_all_arrows() {
+        let keyvec = vec![
+            KeyWithModifier::new(BareKey::Left),
+            KeyWithModifier::new(BareKey::Down),
+            KeyWithModifier::new(BareKey::Up),
+            KeyWithModifier::new(BareKey::Right),
+        ];
+        let palette = get_palette();
+
+        let ret = style_key_with_modifier(&keyvec, &palette, None);
+        let ret = unstyle(&ANSIStrings(&ret));
+
+        assert_eq!(ret, "<←↓↑→>".to_string())
+    }
+
+    #[test]
+    fn style_key_with_modifier_special_group_left_right_arrows() {
+        let keyvec = vec![
+            KeyWithModifier::new(BareKey::Left),
+            KeyWithModifier::new(BareKey::Right),
+        ];
+        let palette = get_palette();
+
+        let ret = style_key_with_modifier(&keyvec, &palette, None);
+        let ret = unstyle(&ANSIStrings(&ret));
+
+        assert_eq!(ret, "<←→>".to_string())
+    }
+
+    #[test]
+    fn style_key_with_modifier_special_group_down_up_arrows() {
+        let keyvec = vec![
+            KeyWithModifier::new(BareKey::Down),
+            KeyWithModifier::new(BareKey::Up),
+        ];
+        let palette = get_palette();
+
+        let ret = style_key_with_modifier(&keyvec, &palette, None);
+        let ret = unstyle(&ANSIStrings(&ret));
+
+        assert_eq!(ret, "<↓↑>".to_string())
+    }
+
+    #[test]
+    fn style_key_with_modifier_common_ctrl_modifier_chars() {
+        let keyvec = vec![
+            KeyWithModifier::new(BareKey::Char('a')).with_ctrl_modifier(),
+            KeyWithModifier::new(BareKey::Char('b')).with_ctrl_modifier(),
+            KeyWithModifier::new(BareKey::Char('c')).with_ctrl_modifier(),
+            KeyWithModifier::new(BareKey::Char('d')).with_ctrl_modifier(),
+        ];
+        let palette = get_palette();
+
+        let ret = style_key_with_modifier(&keyvec, &palette, None);
+        let ret = unstyle(&ANSIStrings(&ret));
+
+        assert_eq!(ret, "Ctrl + <a|b|c|d>".to_string())
+    }
+
+    #[test]
+    fn style_key_with_modifier_common_alt_modifier_chars() {
+        let keyvec = vec![
+            KeyWithModifier::new(BareKey::Char('a')).with_alt_modifier(),
+            KeyWithModifier::new(BareKey::Char('b')).with_alt_modifier(),
+            KeyWithModifier::new(BareKey::Char('c')).with_alt_modifier(),
+            KeyWithModifier::new(BareKey::Char('d')).with_alt_modifier(),
+        ];
+        let palette = get_palette();
+
+        let ret = style_key_with_modifier(&keyvec, &palette, None);
+        let ret = unstyle(&ANSIStrings(&ret));
+
+        assert_eq!(ret, "Alt + <a|b|c|d>".to_string())
+    }
+
+    #[test]
+    fn style_key_with_modifier_common_alt_modifier_with_special_group_all_arrows() {
+        let keyvec = vec![
+            KeyWithModifier::new(BareKey::Left).with_alt_modifier(),
+            KeyWithModifier::new(BareKey::Down).with_alt_modifier(),
+            KeyWithModifier::new(BareKey::Up).with_alt_modifier(),
+            KeyWithModifier::new(BareKey::Right).with_alt_modifier(),
+        ];
+        let palette = get_palette();
+
+        let ret = style_key_with_modifier(&keyvec, &palette, None);
+        let ret = unstyle(&ANSIStrings(&ret));
+
+        assert_eq!(ret, "Alt + <←↓↑→>".to_string())
+    }
+
+    #[test]
+    fn style_key_with_modifier_ctrl_alt_char_mixed() {
+        let keyvec = vec![
+            KeyWithModifier::new(BareKey::Char('a')).with_alt_modifier(),
+            KeyWithModifier::new(BareKey::Char('b')).with_ctrl_modifier(),
+            KeyWithModifier::new(BareKey::Char('c')),
+        ];
+        let palette = get_palette();
+
+        let ret = style_key_with_modifier(&keyvec, &palette, None);
+        let ret = unstyle(&ANSIStrings(&ret));
+
+        assert_eq!(ret, "<Alt a|Ctrl b|c>".to_string())
+    }
+
+    #[test]
+    fn style_key_with_modifier_unprintables() {
+        let keyvec = vec![
+            KeyWithModifier::new(BareKey::Backspace),
+            KeyWithModifier::new(BareKey::Enter),
+            KeyWithModifier::new(BareKey::Char(' ')),
+            KeyWithModifier::new(BareKey::Tab),
+            KeyWithModifier::new(BareKey::PageDown),
+            KeyWithModifier::new(BareKey::Delete),
+            KeyWithModifier::new(BareKey::Home),
+            KeyWithModifier::new(BareKey::End),
+            KeyWithModifier::new(BareKey::Insert),
+            KeyWithModifier::new(BareKey::Tab),
+            KeyWithModifier::new(BareKey::Esc),
+        ];
+        let palette = get_palette();
+
+        let ret = style_key_with_modifier(&keyvec, &palette, None);
+        let ret = unstyle(&ANSIStrings(&ret));
+
+        assert_eq!(
+            ret,
+            "<BACKSPACE|ENTER|SPACE|TAB|PgDn|DEL|HOME|END|INS|TAB|ESC>".to_string()
+        )
+    }
+
+    #[test]
+    fn style_key_with_modifier_unprintables_with_common_ctrl_modifier() {
+        let keyvec = vec![
+            KeyWithModifier::new(BareKey::Enter).with_ctrl_modifier(),
+            KeyWithModifier::new(BareKey::Char(' ')).with_ctrl_modifier(),
+            KeyWithModifier::new(BareKey::Tab).with_ctrl_modifier(),
+        ];
+        let palette = get_palette();
+
+        let ret = style_key_with_modifier(&keyvec, &palette, None);
+        let ret = unstyle(&ANSIStrings(&ret));
+
+        assert_eq!(ret, "Ctrl + <ENTER|SPACE|TAB>".to_string())
+    }
+
+    #[test]
+    fn style_key_with_modifier_unprintables_with_common_alt_modifier() {
+        let keyvec = vec![
+            KeyWithModifier::new(BareKey::Enter).with_alt_modifier(),
+            KeyWithModifier::new(BareKey::Char(' ')).with_alt_modifier(),
+            KeyWithModifier::new(BareKey::Tab).with_alt_modifier(),
+        ];
+        let palette = get_palette();
+
+        let ret = style_key_with_modifier(&keyvec, &palette, None);
+        let ret = unstyle(&ANSIStrings(&ret));
+
+        assert_eq!(ret, "Alt + <ENTER|SPACE|TAB>".to_string())
+    }
+}
