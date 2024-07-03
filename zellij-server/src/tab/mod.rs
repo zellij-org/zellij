@@ -1817,7 +1817,6 @@ impl Tab {
                     for key in parse_keys(&adjusted_input) {
                         plugin_updates.push((Some(pid), client_id, Event::Key(key)));
                     }
-                    log::info!("plugin_updates: {:?}", plugin_updates);
                     self.senders
                         .send_to_plugin(PluginInstruction::Update(plugin_updates))
                         .with_context(err_context)?;
@@ -2001,8 +2000,8 @@ impl Tab {
                 .with_context(err_context)?;
         }
 
-        self.render_cursor(output);
         if output.has_rendered_assets() {
+            self.render_cursor(output);
             self.hide_cursor_and_clear_display_as_needed(output);
         }
 
