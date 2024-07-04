@@ -1121,6 +1121,7 @@ impl Layout {
         available_layouts.push(LayoutInfo::BuiltIn("strider".to_owned()));
         available_layouts.push(LayoutInfo::BuiltIn("disable-status-bar".to_owned()));
         available_layouts.push(LayoutInfo::BuiltIn("compact".to_owned()));
+        available_layouts.push(LayoutInfo::BuiltIn("classic".to_owned()));
         available_layouts.sort_by(|a, b| {
             let a_name = a.name();
             let b_name = b.name();
@@ -1359,6 +1360,14 @@ impl Layout {
                     Self::stringified_compact_swap_from_assets()?,
                 )),
             )),
+            Some("classic") => Ok((
+                "Classic layout".into(),
+                Self::stringified_classic_from_assets()?,
+                Some((
+                    "Classiclayout swap".into(),
+                    Self::stringified_classic_swap_from_assets()?,
+                )),
+            )),
             Some("welcome") => Ok((
                 "Welcome screen layout".into(),
                 Self::stringified_welcome_from_assets()?,
@@ -1393,6 +1402,14 @@ impl Layout {
 
     pub fn stringified_compact_swap_from_assets() -> Result<String, ConfigError> {
         Ok(String::from_utf8(setup::COMPACT_BAR_SWAP_LAYOUT.to_vec())?)
+    }
+
+    pub fn stringified_classic_from_assets() -> Result<String, ConfigError> {
+        Ok(String::from_utf8(setup::CLASSIC_LAYOUT.to_vec())?)
+    }
+
+    pub fn stringified_classic_swap_from_assets() -> Result<String, ConfigError> {
+        Ok(String::from_utf8(setup::CLASSIC_SWAP_LAYOUT.to_vec())?)
     }
 
     pub fn stringified_welcome_from_assets() -> Result<String, ConfigError> {
