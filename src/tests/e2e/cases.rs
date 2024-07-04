@@ -100,7 +100,7 @@ fn account_for_races_in_snapshot(snapshot: String) -> String {
     // to fix this, we should set plugins as unselectable in the layout (before they are loaded),
     // once that happens, we should be able to remove this hack (and adjust the snapshots for the
     // trailing spaces that we had to get rid of here)
-    let base_replace = Regex::new(r" BASE \s*\n").unwrap();
+    let base_replace = Regex::new(r"Alt <\[\]>  BASE \s*\n").unwrap();
     let eol_arrow_replace = Regex::new(r"\s*\n").unwrap();
     let snapshot = base_replace.replace_all(&snapshot, "\n").to_string();
     let snapshot = eol_arrow_replace.replace_all(&snapshot, "\n").to_string();
@@ -134,6 +134,7 @@ pub fn starts_with_one_terminal() {
             },
         });
         if runner.test_timed_out && test_attempts > 0 {
+            test_attempts -= 1;
             continue;
         } else {
             break last_snapshot;
@@ -175,7 +176,7 @@ pub fn split_terminals_vertically() {
             name: "Wait for new pane to appear",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.cursor_position_is(63, 2) && remote_terminal.tip_appears() {
+                if remote_terminal.cursor_position_is(63, 2) && remote_terminal.status_bar_appears() {
                     // cursor is in the newly opened second pane
                     step_is_complete = true;
                 }
@@ -219,12 +220,7 @@ pub fn cannot_split_terminals_vertically_when_active_terminal_is_too_small() {
             name: "Make sure only one pane appears",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.cursor_position_is(3, 2)
-                //two empty lines at the bottom to make sure there is no plugin output
-                    && remote_terminal
-                        .current_snapshot()
-                        .ends_with("        \n        ")
-                {
+                if remote_terminal.cursor_position_is(3, 2) {
                     // ... is the truncated tip line
                     step_is_complete = true;
                 }
@@ -272,7 +268,7 @@ pub fn scrolling_inside_a_pane() {
                 name: "Fill terminal with text",
                 instruction: |mut remote_terminal: RemoteTerminal| -> bool {
                     let mut step_is_complete = false;
-                    if remote_terminal.cursor_position_is(63, 2) && remote_terminal.tip_appears() {
+                    if remote_terminal.cursor_position_is(63, 2) && remote_terminal.status_bar_appears() {
                         // cursor is in the newly opened second pane
                         remote_terminal.load_fixture("e2e/scrolling_inside_a_pane");
                         step_is_complete = true;
@@ -284,7 +280,7 @@ pub fn scrolling_inside_a_pane() {
                 name: "Scroll up inside pane",
                 instruction: |mut remote_terminal: RemoteTerminal| -> bool {
                     let mut step_is_complete = false;
-                    if remote_terminal.cursor_position_is(63, 20)
+                    if remote_terminal.cursor_position_is(63, 21)
                         && remote_terminal.snapshot_contains("line21")
                     {
                         // all lines have been written to the pane
@@ -301,9 +297,9 @@ pub fn scrolling_inside_a_pane() {
             name: "Wait for scroll to finish",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.cursor_position_is(63, 20)
+                if remote_terminal.cursor_position_is(63, 21)
                     && remote_terminal.snapshot_contains("line3 ")
-                    && remote_terminal.snapshot_contains("SCROLL:  1/4")
+                    && remote_terminal.snapshot_contains("SCROLL:  1/3")
                 {
                     // keyboard scrolls up 1 line, scrollback is 4 lines: cat command + 2 extra lines from fixture + prompt
                     step_is_complete = true;
@@ -352,7 +348,7 @@ pub fn toggle_pane_fullscreen() {
                 name: "Change newly opened pane to be fullscreen",
                 instruction: |mut remote_terminal: RemoteTerminal| -> bool {
                     let mut step_is_complete = false;
-                    if remote_terminal.cursor_position_is(63, 2) && remote_terminal.tip_appears() {
+                    if remote_terminal.cursor_position_is(63, 2) && remote_terminal.status_bar_appears() {
                         // cursor is in the newly opened second pane
                         remote_terminal.send_key(&PANE_MODE);
                         std::thread::sleep(std::time::Duration::from_millis(100));
@@ -415,7 +411,7 @@ pub fn open_new_tab() {
                 name: "Open new tab",
                 instruction: |mut remote_terminal: RemoteTerminal| -> bool {
                     let mut step_is_complete = false;
-                    if remote_terminal.cursor_position_is(63, 2) && remote_terminal.tip_appears() {
+                    if remote_terminal.cursor_position_is(63, 2) && remote_terminal.status_bar_appears() {
                         // cursor is in the newly opened second pane
                         remote_terminal.send_key(&TAB_MODE);
                         std::thread::sleep(std::time::Duration::from_millis(100));
@@ -431,7 +427,6 @@ pub fn open_new_tab() {
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
                 if remote_terminal.cursor_position_is(3, 2)
-                    && remote_terminal.tip_appears()
                     && remote_terminal.snapshot_contains("Tab #2")
                     && remote_terminal.status_bar_appears()
                 {
@@ -482,7 +477,7 @@ pub fn close_tab() {
                 name: "Open new tab",
                 instruction: |mut remote_terminal: RemoteTerminal| -> bool {
                     let mut step_is_complete = false;
-                    if remote_terminal.cursor_position_is(63, 2) && remote_terminal.tip_appears() {
+                    if remote_terminal.cursor_position_is(63, 2) && remote_terminal.status_bar_appears() {
                         // cursor is in the newly opened second pane
                         remote_terminal.send_key(&TAB_MODE);
                         std::thread::sleep(std::time::Duration::from_millis(100));
@@ -497,7 +492,6 @@ pub fn close_tab() {
                 instruction: |mut remote_terminal: RemoteTerminal| -> bool {
                     let mut step_is_complete = false;
                     if remote_terminal.cursor_position_is(3, 2)
-                        && remote_terminal.tip_appears()
                         && remote_terminal.snapshot_contains("Tab #2")
                         && remote_terminal.status_bar_appears()
                     {
@@ -675,7 +669,7 @@ pub fn close_pane() {
                 name: "Close pane",
                 instruction: |mut remote_terminal: RemoteTerminal| -> bool {
                     let mut step_is_complete = false;
-                    if remote_terminal.cursor_position_is(63, 2) && remote_terminal.tip_appears() {
+                    if remote_terminal.cursor_position_is(63, 2) && remote_terminal.status_bar_appears() {
                         // cursor is in the newly opened second pane
                         remote_terminal.send_key(&PANE_MODE);
                         std::thread::sleep(std::time::Duration::from_millis(100));
@@ -690,7 +684,7 @@ pub fn close_pane() {
             name: "Wait for pane to close",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.cursor_position_is(3, 2) && remote_terminal.tip_appears() {
+                if remote_terminal.cursor_position_is(3, 2) && remote_terminal.status_bar_appears() {
                     // cursor is in the original pane
                     step_is_complete = true;
                 }
@@ -820,7 +814,7 @@ pub fn typing_exit_closes_pane() {
                 name: "Type exit",
                 instruction: |mut remote_terminal: RemoteTerminal| -> bool {
                     let mut step_is_complete = false;
-                    if remote_terminal.cursor_position_is(63, 2) && remote_terminal.tip_appears() {
+                    if remote_terminal.cursor_position_is(63, 2) && remote_terminal.status_bar_appears() {
                         remote_terminal.send_key("e".as_bytes());
                         std::thread::sleep(std::time::Duration::from_millis(100));
                         remote_terminal.send_key("x".as_bytes());
@@ -840,8 +834,8 @@ pub fn typing_exit_closes_pane() {
             name: "Wait for pane to close",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                // if remote_terminal.cursor_position_is(3, 2) && remote_terminal.tip_appears() {
-                if remote_terminal.cursor_position_is(3, 2) && remote_terminal.tip_appears() {
+                // if remote_terminal.cursor_position_is(3, 2) && remote_terminal.status_bar_appears() {
+                if remote_terminal.cursor_position_is(3, 2) && remote_terminal.status_bar_appears() {
                     // cursor is in the original pane
                     step_is_complete = true;
                 }
@@ -889,7 +883,7 @@ pub fn resize_pane() {
                 name: "Resize pane",
                 instruction: |mut remote_terminal: RemoteTerminal| -> bool {
                     let mut step_is_complete = false;
-                    if remote_terminal.cursor_position_is(63, 2) && remote_terminal.tip_appears() {
+                    if remote_terminal.cursor_position_is(63, 2) && remote_terminal.status_bar_appears() {
                         // cursor is in the newly opened second pane
                         remote_terminal.send_key(&RESIZE_MODE);
                         std::thread::sleep(std::time::Duration::from_millis(100));
@@ -906,7 +900,7 @@ pub fn resize_pane() {
             name: "Wait for pane to be resized",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.cursor_position_is(57, 2) && remote_terminal.tip_appears() {
+                if remote_terminal.cursor_position_is(57, 2) && remote_terminal.status_bar_appears() {
                     // pane has been resized
                     step_is_complete = true;
                 }
@@ -952,7 +946,7 @@ pub fn lock_mode() {
                 name: "Send keys that should not be intercepted by the app",
                 instruction: |mut remote_terminal: RemoteTerminal| -> bool {
                     let mut step_is_complete = false;
-                    if remote_terminal.snapshot_contains("INTERFACE LOCKED") {
+                    if !remote_terminal.snapshot_contains("PANE") {
                         remote_terminal.send_key(&TAB_MODE);
                         std::thread::sleep(std::time::Duration::from_millis(100));
                         remote_terminal.send_key(&NEW_TAB_IN_TAB_MODE);
@@ -1017,7 +1011,7 @@ pub fn resize_terminal_window() {
                 name: "Change terminal window size",
                 instruction: |mut remote_terminal: RemoteTerminal| -> bool {
                     let mut step_is_complete = false;
-                    if remote_terminal.cursor_position_is(63, 2) && remote_terminal.tip_appears() {
+                    if remote_terminal.cursor_position_is(63, 2) && remote_terminal.status_bar_appears() {
                         // new pane has been opened and focused
                         remote_terminal.change_size(100, 24);
                         step_is_complete = true;
@@ -1031,7 +1025,7 @@ pub fn resize_terminal_window() {
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
                 if remote_terminal.cursor_position_is(53, 2)
-                    && remote_terminal.tip_appears()
+                    && remote_terminal.status_bar_appears()
                     && remote_terminal.snapshot_contains("Ctrl +")
                 {
                     // size has been changed
@@ -1081,7 +1075,7 @@ pub fn detach_and_attach_session() {
                 name: "Send some text to the active pane",
                 instruction: |mut remote_terminal: RemoteTerminal| -> bool {
                     let mut step_is_complete = false;
-                    if remote_terminal.cursor_position_is(63, 2) && remote_terminal.tip_appears() {
+                    if remote_terminal.cursor_position_is(63, 2) && remote_terminal.status_bar_appears() {
                         // new pane has been opened and focused
                         remote_terminal.send_key("I am some text".as_bytes());
                         step_is_complete = true;
@@ -1275,7 +1269,7 @@ pub fn status_bar_loads_custom_keybindings() {
             name: "Wait for app to load",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.cursor_position_is(3, 2) && remote_terminal.tip_appears() {
+                if remote_terminal.cursor_position_is(3, 2) && remote_terminal.snapshot_contains("LOCK") {
                     step_is_complete = true;
                 }
                 step_is_complete
@@ -1323,7 +1317,7 @@ fn focus_pane_with_mouse() {
                 name: "Click left pane",
                 instruction: |mut remote_terminal: RemoteTerminal| -> bool {
                     let mut step_is_complete = false;
-                    if remote_terminal.cursor_position_is(63, 2) && remote_terminal.tip_appears() {
+                    if remote_terminal.cursor_position_is(63, 2) && remote_terminal.status_bar_appears() {
                         remote_terminal.send_key(&sgr_mouse_report(Position::new(5, 2), 0));
                         step_is_complete = true;
                     }
@@ -1335,7 +1329,7 @@ fn focus_pane_with_mouse() {
             name: "Wait for left pane to be focused",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.cursor_position_is(3, 2) && remote_terminal.tip_appears() {
+                if remote_terminal.cursor_position_is(3, 2) && remote_terminal.status_bar_appears() {
                     // cursor is in the newly opened second pane
                     step_is_complete = true;
                 }
@@ -1383,7 +1377,7 @@ pub fn scrolling_inside_a_pane_with_mouse() {
                 name: "Fill terminal with text",
                 instruction: |mut remote_terminal: RemoteTerminal| -> bool {
                     let mut step_is_complete = false;
-                    if remote_terminal.cursor_position_is(63, 2) && remote_terminal.tip_appears() {
+                    if remote_terminal.cursor_position_is(63, 2) && remote_terminal.status_bar_appears() {
                         remote_terminal.load_fixture("e2e/scrolling_inside_a_pane");
                         step_is_complete = true;
                     }
@@ -1394,7 +1388,7 @@ pub fn scrolling_inside_a_pane_with_mouse() {
                 name: "Scroll up inside pane",
                 instruction: |mut remote_terminal: RemoteTerminal| -> bool {
                     let mut step_is_complete = false;
-                    if remote_terminal.cursor_position_is(63, 20)
+                    if remote_terminal.cursor_position_is(63, 21)
                         && remote_terminal.snapshot_contains("line21")
                     {
                         // all lines have been written to the pane
@@ -1409,11 +1403,10 @@ pub fn scrolling_inside_a_pane_with_mouse() {
             name: "Wait for scroll to finish",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.cursor_position_is(63, 20)
+                if remote_terminal.cursor_position_is(63, 21)
                     && remote_terminal.snapshot_contains("line1 ")
-                    && remote_terminal.snapshot_contains("SCROLL:  3/4")
+                    && remote_terminal.snapshot_contains("SCROLL:  3/3")
                 {
-                    // mouse wheel scrolls up 3 lines, scrollback is 4 lines: cat command + 2 extra lines from fixture + prompt
                     step_is_complete = true;
                 }
                 step_is_complete
@@ -1460,7 +1453,7 @@ pub fn start_without_pane_frames() {
             name: "Wait for new pane to appear",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.cursor_position_is(62, 1) && remote_terminal.tip_appears() {
+                if remote_terminal.cursor_position_is(62, 1) && remote_terminal.status_bar_appears() {
                     // cursor is in the newly opened second pane
                     step_is_complete = true;
                 }
@@ -1529,7 +1522,7 @@ pub fn mirrored_sessions() {
                 name: "Open new tab (second user)",
                 instruction: |mut remote_terminal: RemoteTerminal| -> bool {
                     let mut step_is_complete = false;
-                    if remote_terminal.cursor_position_is(63, 2) && remote_terminal.tip_appears() {
+                    if remote_terminal.cursor_position_is(63, 2) && remote_terminal.status_bar_appears() {
                         // cursor is in the newly opened second pane
                         remote_terminal.send_key(&TAB_MODE);
                         std::thread::sleep(std::time::Duration::from_millis(100));
@@ -1544,7 +1537,6 @@ pub fn mirrored_sessions() {
                 instruction: |remote_terminal: RemoteTerminal| -> bool {
                     let mut step_is_complete = false;
                     if remote_terminal.cursor_position_is(3, 2)
-                        && remote_terminal.tip_appears()
                         && remote_terminal.snapshot_contains("Tab #2")
                         && remote_terminal.status_bar_appears()
                     {
@@ -1559,7 +1551,7 @@ pub fn mirrored_sessions() {
                 instruction: |mut remote_terminal: RemoteTerminal| -> bool {
                     let mut step_is_complete = false;
                     if remote_terminal.cursor_position_is(3, 2)
-                        && remote_terminal.tip_appears()
+                        && remote_terminal.status_bar_appears()
                         && remote_terminal.snapshot_contains("Tab #2")
                     {
                         // cursor is in the newly opened second pane
@@ -1584,7 +1576,7 @@ pub fn mirrored_sessions() {
             });
         second_runner.run_all_steps();
 
-        if first_runner.test_timed_out || second_runner.test_timed_out {
+        if (first_runner.test_timed_out || second_runner.test_timed_out) && test_attempts >= 0 {
             test_attempts -= 1;
             continue;
         }
@@ -1674,7 +1666,7 @@ pub fn multiple_users_in_same_pane_and_tab() {
             });
         second_runner.run_all_steps();
 
-        if first_runner.test_timed_out || second_runner.test_timed_out {
+        if (first_runner.test_timed_out || second_runner.test_timed_out) && test_attempts >= 0 {
             test_attempts -= 1;
             continue;
         }
@@ -1767,7 +1759,7 @@ pub fn multiple_users_in_different_panes_and_same_tab() {
             });
         second_runner.run_all_steps();
 
-        if first_runner.test_timed_out || second_runner.test_timed_out {
+        if (first_runner.test_timed_out || second_runner.test_timed_out) && test_attempts >= 0 {
             test_attempts -= 1;
             continue;
         }
@@ -1776,7 +1768,7 @@ pub fn multiple_users_in_different_panes_and_same_tab() {
             name: "take snapshot after",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.cursor_position_is(63, 2) && remote_terminal.tip_appears() {
+                if remote_terminal.cursor_position_is(63, 2) && remote_terminal.status_bar_appears() {
                     // cursor is in the newly opened second pane
                     step_is_complete = true;
                 }
@@ -1790,6 +1782,7 @@ pub fn multiple_users_in_different_panes_and_same_tab() {
                 let mut step_is_complete = false;
                 if remote_terminal.cursor_position_is(3, 2)
                     && remote_terminal.snapshot_contains("││$")
+                    && remote_terminal.tab_bar_appears()
                 {
                     // cursor is back in the first tab
                     step_is_complete = true;
@@ -1847,7 +1840,7 @@ pub fn multiple_users_in_different_tabs() {
                 name: "Open new tab",
                 instruction: |mut remote_terminal: RemoteTerminal| -> bool {
                     let mut step_is_complete = false;
-                    if remote_terminal.cursor_position_is(3, 2) && remote_terminal.tip_appears() {
+                    if remote_terminal.cursor_position_is(3, 2) && remote_terminal.status_bar_appears() {
                         // cursor is in the newly opened second pane
                         remote_terminal.send_key(&TAB_MODE);
                         std::thread::sleep(std::time::Duration::from_millis(100));
@@ -1859,7 +1852,7 @@ pub fn multiple_users_in_different_tabs() {
             });
         second_runner.run_all_steps();
 
-        if first_runner.test_timed_out || second_runner.test_timed_out {
+        if (first_runner.test_timed_out || second_runner.test_timed_out) && test_attempts >= 0 {
             test_attempts -= 1;
             continue;
         }
@@ -1869,7 +1862,6 @@ pub fn multiple_users_in_different_tabs() {
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
                 if remote_terminal.cursor_position_is(3, 2)
-                    && remote_terminal.tip_appears()
                     && remote_terminal.snapshot_contains("Tab #1 [ ]")
                     && remote_terminal.snapshot_contains("Tab #2")
                     && remote_terminal.status_bar_appears()
@@ -1887,7 +1879,6 @@ pub fn multiple_users_in_different_tabs() {
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
                 if remote_terminal.cursor_position_is(3, 2)
-                    && remote_terminal.tip_appears()
                     && remote_terminal.snapshot_contains("Tab #2 [ ]")
                     && remote_terminal.status_bar_appears()
                 {
@@ -2006,9 +1997,7 @@ pub fn toggle_floating_panes() {
             name: "Wait for new pane to appear",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.cursor_position_is(33, 7)
-                    && remote_terminal.snapshot_contains("FLOATING PANES VISIBLE")
-                {
+                if remote_terminal.cursor_position_is(33, 8) {
                     // cursor is in the newly opened second pane
                     step_is_complete = true;
                 }
@@ -2057,7 +2046,7 @@ pub fn tmux_mode() {
             name: "Wait for new pane to appear",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.cursor_position_is(63, 2) && remote_terminal.tip_appears() {
+                if remote_terminal.cursor_position_is(63, 2) && remote_terminal.status_bar_appears() {
                     // cursor is in the newly opened second pane
                     step_is_complete = true;
                 }
@@ -2163,7 +2152,7 @@ pub fn undo_rename_tab() {
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
                 if remote_terminal.snapshot_contains("Tab #1")
-                    && remote_terminal.snapshot_contains("Tip:")
+                    && remote_terminal.snapshot_contains("LOCK")
                 {
                     step_is_complete = true
                 }
@@ -2220,7 +2209,7 @@ pub fn undo_rename_pane() {
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
                 if remote_terminal.snapshot_contains("Pane #1")
-                    && remote_terminal.snapshot_contains("Tip:")
+                    && remote_terminal.snapshot_contains("LOCK")
                 {
                     step_is_complete = true
                 }

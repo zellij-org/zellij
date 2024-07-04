@@ -1,6 +1,6 @@
 ---
 source: src/tests/e2e/cases.rs
-assertion_line: 1232
+assertion_line: 1257
 expression: last_snapshot
 ---
  Zellij (e2e-test)  Tab #1  Tab #2  Tab #3  Tab #4 
