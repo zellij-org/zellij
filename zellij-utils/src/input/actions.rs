@@ -712,15 +712,31 @@ impl Action {
     pub fn launches_plugin(&self, plugin_url: &str) -> bool {
         match self {
             Action::LaunchPlugin(run_plugin_or_alias, ..) => {
-                log::info!("1: {:?} == {:?}", run_plugin_or_alias.location_string(), plugin_url);
-                eprintln!("1: {:?} == {:?}", run_plugin_or_alias.location_string(), plugin_url);
+                log::info!(
+                    "1: {:?} == {:?}",
+                    run_plugin_or_alias.location_string(),
+                    plugin_url
+                );
+                eprintln!(
+                    "1: {:?} == {:?}",
+                    run_plugin_or_alias.location_string(),
+                    plugin_url
+                );
                 &run_plugin_or_alias.location_string() == plugin_url
-            }
+            },
             Action::LaunchOrFocusPlugin(run_plugin_or_alias, ..) => {
-                log::info!("2: {:?} == {:?}", run_plugin_or_alias.location_string(), plugin_url);
-                eprintln!("2: {:?} == {:?}", run_plugin_or_alias.location_string(), plugin_url);
+                log::info!(
+                    "2: {:?} == {:?}",
+                    run_plugin_or_alias.location_string(),
+                    plugin_url
+                );
+                eprintln!(
+                    "2: {:?} == {:?}",
+                    run_plugin_or_alias.location_string(),
+                    plugin_url
+                );
                 &run_plugin_or_alias.location_string() == plugin_url
-            }
+            },
             _ => false,
         }
     }

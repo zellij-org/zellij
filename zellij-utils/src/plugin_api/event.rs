@@ -813,7 +813,8 @@ impl TryFrom<ProtobufModeUpdatePayload> for ModeInfo {
             ProtobufInputMode::from_i32(protobuf_mode_update_payload.current_mode)
                 .ok_or("Malformed InputMode in the ModeUpdate Event")?
                 .try_into()?;
-        let base_mode: Option<InputMode> = protobuf_mode_update_payload.base_mode
+        let base_mode: Option<InputMode> = protobuf_mode_update_payload
+            .base_mode
             .and_then(|b_m| ProtobufInputMode::from_i32(b_m)?.try_into().ok());
         let keybinds: Vec<(InputMode, Vec<(KeyWithModifier, Vec<Action>)>)> =
             protobuf_mode_update_payload
@@ -863,7 +864,9 @@ impl TryFrom<ModeInfo> for ProtobufModeUpdatePayload {
     type Error = &'static str;
     fn try_from(mode_info: ModeInfo) -> Result<Self, &'static str> {
         let current_mode: ProtobufInputMode = mode_info.mode.try_into()?;
-        let base_mode: Option<ProtobufInputMode> = mode_info.base_mode.and_then(|mode| ProtobufInputMode::try_from(mode).ok());
+        let base_mode: Option<ProtobufInputMode> = mode_info
+            .base_mode
+            .and_then(|mode| ProtobufInputMode::try_from(mode).ok());
         let style: ProtobufStyle = mode_info.style.try_into()?;
         let arrow_fonts_support: bool = mode_info.capabilities.arrow_fonts;
         let session_name = mode_info.session_name;

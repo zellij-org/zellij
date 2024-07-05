@@ -19,7 +19,7 @@ use wasmtime::{Engine, Module};
 use zellij_utils::async_channel::Sender;
 use zellij_utils::async_std::task::{self, JoinHandle};
 use zellij_utils::consts::ZELLIJ_CACHE_DIR;
-use zellij_utils::data::{PermissionStatus, PermissionType, PipeMessage, PipeSource, InputMode};
+use zellij_utils::data::{InputMode, PermissionStatus, PermissionType, PipeMessage, PipeSource};
 use zellij_utils::downloader::Downloader;
 use zellij_utils::input::permission::PermissionCache;
 use zellij_utils::notify_debouncer_full::{notify::RecommendedWatcher, Debouncer, FileIdMap};

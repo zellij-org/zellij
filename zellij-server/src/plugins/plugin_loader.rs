@@ -26,7 +26,7 @@ use crate::{
 use zellij_utils::plugin_api::action::ProtobufPluginConfiguration;
 use zellij_utils::{
     consts::{ZELLIJ_CACHE_DIR, ZELLIJ_SESSION_CACHE_DIR, ZELLIJ_TMP_DIR},
-    data::{PluginCapabilities, InputMode},
+    data::{InputMode, PluginCapabilities},
     errors::prelude::*,
     input::command::TerminalAction,
     input::layout::Layout,

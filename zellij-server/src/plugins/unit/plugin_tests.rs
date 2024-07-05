@@ -7,7 +7,8 @@ use std::path::PathBuf;
 use tempfile::tempdir;
 use wasmtime::Engine;
 use zellij_utils::data::{
-    BareKey, Event, KeyWithModifier, PermissionStatus, PermissionType, PluginCapabilities, InputMode
+    BareKey, Event, InputMode, KeyWithModifier, PermissionStatus, PermissionType,
+    PluginCapabilities,
 };
 use zellij_utils::errors::ErrorContext;
 use zellij_utils::input::layout::{

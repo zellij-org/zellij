@@ -1,5 +1,5 @@
-mod one_line_ui;
 mod first_line;
+mod one_line_ui;
 mod second_line;
 mod tip;
 
@@ -184,7 +184,10 @@ impl ZellijPlugin for State {
     fn load(&mut self, configuration: BTreeMap<String, String>) {
         // TODO: Should be able to choose whether to use the cache through config.
         self.tip_name = get_cached_tip_name();
-        self.classic_ui = configuration.get("classic").map(|c| c == "true").unwrap_or(false);
+        self.classic_ui = configuration
+            .get("classic")
+            .map(|c| c == "true")
+            .unwrap_or(false);
         set_selectable(false);
         subscribe(&[
             EventType::ModeUpdate,
@@ -253,7 +256,16 @@ impl ZellijPlugin for State {
         if rows == 1 && !self.classic_ui {
             // one_line_ui(help, tab_info, cols, separator, )
             let active_tab = self.tabs.iter().find(|t| t.active);
-            print!("{}", one_line_ui(&self.mode_info, active_tab, cols, separator, self.base_mode_is_locked));
+            print!(
+                "{}",
+                one_line_ui(
+                    &self.mode_info,
+                    active_tab,
+                    cols,
+                    separator,
+                    self.base_mode_is_locked
+                )
+            );
             return;
         }
 

@@ -1,11 +1,14 @@
 use ansi_term::ANSIStrings;
-use ansi_term::{Style, Color::{Fixed, RGB}};
+use ansi_term::{
+    Color::{Fixed, RGB},
+    Style,
+};
 use unicode_width::UnicodeWidthStr;
 
 use crate::{LinePart, ARROW_SEPARATOR};
-use zellij_tile::prelude::*;
 use zellij_tile::prelude::actions::Action;
-use zellij_tile_utils::{style, palette_match};
+use zellij_tile::prelude::*;
+use zellij_tile_utils::{palette_match, style};
 
 fn get_current_title_len(current_title: &[LinePart]) -> usize {
     current_title.iter().map(|p| p.len).sum()
@@ -242,21 +245,22 @@ pub fn tab_line(
         false => tab_line_prefix(session_name, palette, cols),
     };
 
-
     let mut swap_layout_indicator = if hide_swap_layout_indicator {
         None
     } else {
-        tab_info.and_then(|tab_info| swap_layout_status(
-            cols,
-            &tab_info.active_swap_layout_name,
-            tab_info.is_swap_layout_dirty,
-            mode_info,
-            !capabilities.arrow_fonts,
-        ))
+        tab_info.and_then(|tab_info| {
+            swap_layout_status(
+                cols,
+                &tab_info.active_swap_layout_name,
+                tab_info.is_swap_layout_dirty,
+                mode_info,
+                !capabilities.arrow_fonts,
+            )
+        })
     };
 
-
-    let non_tab_len = get_current_title_len(&prefix) + swap_layout_indicator.as_ref().map(|s| s.len).unwrap_or(0);
+    let non_tab_len =
+        get_current_title_len(&prefix) + swap_layout_indicator.as_ref().map(|s| s.len).unwrap_or(0);
 
     // if active tab alone won't fit in cols, don't draw any tabs
     if non_tab_len + active_tab.len > cols {
@@ -275,9 +279,10 @@ pub fn tab_line(
     );
     prefix.append(&mut tabs_to_render);
 
-
     if let Some(mut swap_layout_indicator) = swap_layout_indicator.take() {
-        let remaining_space = cols.saturating_sub(prefix.iter().fold(0, |len, part| len + part.len)).saturating_sub(swap_layout_indicator.len);
+        let remaining_space = cols
+            .saturating_sub(prefix.iter().fold(0, |len, part| len + part.len))
+            .saturating_sub(swap_layout_indicator.len);
         let mut padding = String::new();
         let mut padding_len = 0;
         for _ in 0..remaining_space {
@@ -289,11 +294,16 @@ pub fn tab_line(
         prefix.push(swap_layout_indicator);
     }
 
-
     prefix
 }
 
-fn swap_layout_status(cols: usize, swap_layout_name: &Option<String>, is_swap_layout_dirty: bool, mode_info: &ModeInfo, supports_arrow_fonts: bool) -> Option<LinePart> {
+fn swap_layout_status(
+    cols: usize,
+    swap_layout_name: &Option<String>,
+    is_swap_layout_dirty: bool,
+    mode_info: &ModeInfo,
+    supports_arrow_fonts: bool,
+) -> Option<LinePart> {
     match swap_layout_name {
         Some(swap_layout_name) => {
             let mode_keybinds = mode_info.get_mode_keybinds();
@@ -305,11 +315,11 @@ fn swap_layout_status(cols: usize, swap_layout_name: &Option<String>, is_swap_la
             text.append(&ribbon_as_line_part(
                 &swap_layout_name.to_uppercase(),
                 !is_swap_layout_dirty,
-                supports_arrow_fonts
+                supports_arrow_fonts,
             ));
             Some(text)
         },
-        None => None
+        None => None,
     }
 }
 
@@ -331,11 +341,7 @@ pub fn ribbon_as_line_part(text: &str, is_selected: bool, supports_arrow_fonts: 
     }
 }
 
-
-pub fn style_key_with_modifier(
-    keyvec: &[KeyWithModifier],
-    color_index: Option<usize>,
-) -> LinePart {
+pub fn style_key_with_modifier(keyvec: &[KeyWithModifier], color_index: Option<usize>) -> LinePart {
     if keyvec.is_empty() {
         return LinePart::default();
     }
@@ -376,8 +382,7 @@ pub fn style_key_with_modifier(
     if no_common_modifier || key.len() == 1 {
         let key_string_text = format!(" {} ", key.join(key_separator));
         let text = if let Some(color_index) = color_index {
-            Text::new(&key_string_text)
-                .color_range(color_index, ..)
+            Text::new(&key_string_text).color_range(color_index, ..)
         } else {
             Text::new(&key_string_text)
         };
@@ -392,7 +397,11 @@ pub fn style_key_with_modifier(
         let text = if let Some(color_index) = color_index {
             Text::new(&key_string_text)
                 .color_range(color_index, ..modifier_str.width() + 1)
-                .color_range(color_index, modifier_str.width() + 3..modifier_str.width() + 3 + key_string_without_modifier.width())
+                .color_range(
+                    color_index,
+                    modifier_str.width() + 3
+                        ..modifier_str.width() + 3 + key_string_without_modifier.width(),
+                )
         } else {
             Text::new(&key_string_text)
         };
@@ -404,10 +413,6 @@ pub fn style_key_with_modifier(
     }
 }
 
-
-
-
-
 // pub fn style_key_with_modifier(
 //     keyvec: &[KeyWithModifier],
 //     background: Option<PaletteColor>,
@@ -418,7 +423,7 @@ pub fn style_key_with_modifier(
 //     if keyvec.is_empty() {
 //         return ret;
 //     }
-// 
+//
 //     let text_color = palette_match!(match palette.theme_hue {
 //         ThemeHue::Dark => palette.white,
 //         ThemeHue::Light => palette.black,
@@ -426,9 +431,9 @@ pub fn style_key_with_modifier(
 //     let green_color = palette_match!(palette.green);
 //     let orange_color = palette_match!(palette.orange);
 //     // let orange_color = palette_match!(palette.magenta);
-// 
+//
 //     let common_modifiers = get_common_modifiers(keyvec.iter().collect());
-// 
+//
 //     let no_common_modifier = common_modifiers.is_empty();
 //     let modifier_str = common_modifiers
 //         .iter()
@@ -462,7 +467,7 @@ pub fn style_key_with_modifier(
 //         }
 //     };
 //     ret.append(&painted_modifier);
-// 
+//
 //     // Prints key group start
 //     // let group_start_str = if no_common_modifier { "<" } else { " + <" };
 //     // let group_start_str = if no_common_modifier { " " } else { " " };
@@ -482,7 +487,7 @@ pub fn style_key_with_modifier(
 //         let part = Style::new().fg(text_color).bold().paint(group_start_str).to_string();
 //         ret.append(&LinePart { part, len, tab_index: None });
 //     }
-// 
+//
 //     // Prints the keys
 //     let key = keyvec
 //         .iter()
@@ -505,7 +510,7 @@ pub fn style_key_with_modifier(
 //             }
 //         })
 //         .collect::<Vec<String>>();
-// 
+//
 //     // Special handling of some pre-defined keygroups
 //     let key_string = key.join("");
 //     let key_separator = match &key_string[..] {
@@ -517,7 +522,7 @@ pub fn style_key_with_modifier(
 //         "[]" => "",
 //         _ => "|",
 //     };
-// 
+//
 //     for (idx, key) in key.iter().enumerate() {
 //         if idx > 0 && !key_separator.is_empty() {
 //             if let Some(background) = background {
@@ -565,7 +570,7 @@ pub fn style_key_with_modifier(
 //             });
 //         }
 //     }
-// 
+//
 //     // let group_end_str = ">";
 //     // let group_end_str = if keyvec.len() > 1 { "> " } else { " " };
 //     let group_end_str = if keyvec.len() > 1 { "> " } else { " " };
@@ -593,7 +598,7 @@ pub fn style_key_with_modifier(
 //     }
 //     ret
 // }
-// 
+//
 pub fn get_common_modifiers(mut keyvec: Vec<&KeyWithModifier>) -> Vec<KeyModifier> {
     if keyvec.is_empty() {
         return vec![];
@@ -607,7 +612,6 @@ pub fn get_common_modifiers(mut keyvec: Vec<&KeyWithModifier>) -> Vec<KeyModifie
     }
     common_modifiers.into_iter().collect()
 }
-
 
 pub fn action_key_group(
     keymap: &[(KeyWithModifier, Vec<Action>)],

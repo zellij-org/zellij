@@ -19,8 +19,8 @@ use crate::{thread_bus::ThreadSenders, ClientId};
 use zellij_utils::async_channel::Sender;
 use zellij_utils::{
     data::EventType,
-    data::PluginCapabilities,
     data::InputMode,
+    data::PluginCapabilities,
     input::command::TerminalAction,
     input::layout::{Layout, PluginUserConfiguration, RunPlugin, RunPluginLocation},
     input::plugins::PluginConfig,

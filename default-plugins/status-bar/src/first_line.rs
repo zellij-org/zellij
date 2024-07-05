@@ -98,7 +98,7 @@ impl KeyShortcut {
     pub fn is_selected(&self) -> bool {
         match self.mode {
             KeyMode::Selected => true,
-            _ => false
+            _ => false,
         }
     }
     pub fn short_text(&self) -> String {
@@ -1167,4 +1167,3 @@ mod tests {
         assert_eq!(ret, " Ctrl +  a  b  c ".to_string());
     }
 }
-

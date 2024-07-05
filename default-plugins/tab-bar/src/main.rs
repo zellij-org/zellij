@@ -40,7 +40,10 @@ register_plugin!(State);
 
 impl ZellijPlugin for State {
     fn load(&mut self, configuration: BTreeMap<String, String>) {
-        self.hide_swap_layout_indication = configuration.get("hide_swap_layout_indication").map(|s| s == "true").unwrap_or(false);
+        self.hide_swap_layout_indication = configuration
+            .get("hide_swap_layout_indication")
+            .map(|s| s == "true")
+            .unwrap_or(false);
         set_selectable(false);
         subscribe(&[
             EventType::TabUpdate,

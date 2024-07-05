@@ -566,7 +566,12 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .send_to_plugin(PluginInstruction::AddClient(client_id))
                     .unwrap();
                 let default_mode = options.default_mode.unwrap_or_default();
-                let mode_info = get_mode_info(default_mode, &attrs, session_data.capabilities, Some(default_mode));
+                let mode_info = get_mode_info(
+                    default_mode,
+                    &attrs,
+                    session_data.capabilities,
+                    Some(default_mode),
+                );
                 session_data
                     .senders
                     .send_to_screen(ScreenInstruction::ChangeMode(mode_info.clone(), client_id))

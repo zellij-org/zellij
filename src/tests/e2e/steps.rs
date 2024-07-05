@@ -24,8 +24,7 @@ pub fn check_second_tab_opened() -> Step {
     Step {
         name: "Check second tab opened",
         instruction: |remote_terminal: RemoteTerminal| -> bool {
-            remote_terminal.status_bar_appears()
-                && remote_terminal.snapshot_contains("Tab #2")
+            remote_terminal.status_bar_appears() && remote_terminal.snapshot_contains("Tab #2")
         },
     }
 }
@@ -73,8 +72,7 @@ pub fn check_third_tab_opened() -> Step {
     Step {
         name: "Check third tab opened",
         instruction: |remote_terminal: RemoteTerminal| -> bool {
-            remote_terminal.status_bar_appears()
-                && remote_terminal.snapshot_contains("Tab #3")
+            remote_terminal.status_bar_appears() && remote_terminal.snapshot_contains("Tab #3")
         },
     }
 }

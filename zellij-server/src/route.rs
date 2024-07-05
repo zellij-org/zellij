@@ -13,7 +13,7 @@ use crate::{
 use uuid::Uuid;
 use zellij_utils::{
     channels::SenderWithContext,
-    data::{Direction, Event, PluginCapabilities, ResizeStrategy, InputMode},
+    data::{Direction, Event, InputMode, PluginCapabilities, ResizeStrategy},
     errors::prelude::*,
     input::{
         actions::{Action, SearchDirection, SearchOption},
@@ -345,7 +345,12 @@ pub(crate) fn route_action(
                 .send_to_plugin(PluginInstruction::Update(vec![(
                     None,
                     None,
-                    Event::ModeUpdate(get_mode_info(input_mode, attrs, capabilities, Some(default_mode))),
+                    Event::ModeUpdate(get_mode_info(
+                        input_mode,
+                        attrs,
+                        capabilities,
+                        Some(default_mode),
+                    )),
                 )]))
                 .with_context(err_context)?;
 
