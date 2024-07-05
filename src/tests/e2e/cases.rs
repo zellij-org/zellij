@@ -848,7 +848,6 @@ pub fn typing_exit_closes_pane() {
             name: "Wait for pane to close",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                // if remote_terminal.cursor_position_is(3, 2) && remote_terminal.status_bar_appears() {
                 if remote_terminal.cursor_position_is(3, 2) && remote_terminal.status_bar_appears()
                 {
                     // cursor is in the original pane

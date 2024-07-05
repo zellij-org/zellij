@@ -254,7 +254,6 @@ impl ZellijPlugin for State {
         };
 
         if rows == 1 && !self.classic_ui {
-            // one_line_ui(help, tab_info, cols, separator, )
             let active_tab = self.tabs.iter().find(|t| t.active);
             print!(
                 "{}",
