@@ -60,6 +60,11 @@ fish/xonsh:
 bash -c 'bash <(curl -L zellij.dev/launch)'
 ```
 
+#### Installing from `main`
+Installing Zellij from the `main` branch is not recommended. This branch represents pre-release code, is constantly being worked on and may contain broken or unusable features. In addition, using it may corrupt the cache for future versions, forcing users to clear it before they can use the officially released version.
+
+That being said - no-one will stop you from using it (and bug reports involving new features are greatly appreciated), but please consider using the latest release instead as detailed at the top of this section.
+
 ## How do I start a development environment?
 
 * Clone the project
