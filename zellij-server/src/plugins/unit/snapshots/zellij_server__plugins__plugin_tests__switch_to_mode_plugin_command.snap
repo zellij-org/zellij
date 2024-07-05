@@ -1,12 +1,15 @@
 ---
 source: zellij-server/src/plugins/./unit/plugin_tests.rs
-assertion_line: 455
+assertion_line: 1043
 expression: "format!(\"{:#?}\", switch_to_mode_event)"
 ---
 Some(
     ChangeMode(
         ModeInfo {
             mode: Tab,
+            base_mode: Some(
+                Normal,
+            ),
             keybinds: [],
             style: Style {
                 colors: Palette {

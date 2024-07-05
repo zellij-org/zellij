@@ -8,14 +8,16 @@ use crate::{
 };
 use crate::{ColoredElements, LinePart};
 
-struct KeyShortcut {
-    mode: KeyMode,
-    action: KeyAction,
-    key: Option<KeyWithModifier>,
+#[derive(Debug)]
+pub struct KeyShortcut {
+    pub mode: KeyMode,
+    pub action: KeyAction,
+    pub key: Option<KeyWithModifier>,
 }
 
-#[derive(PartialEq)]
-enum KeyAction {
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub enum KeyAction {
+    Unlock,
     Lock,
     Pane,
     Tab,
@@ -27,7 +29,8 @@ enum KeyAction {
     Tmux,
 }
 
-enum KeyMode {
+#[derive(Debug, Copy, Clone)]
+pub enum KeyMode {
     Unselected,
     UnselectedAlternate,
     Selected,
@@ -42,6 +45,7 @@ impl KeyShortcut {
     pub fn full_text(&self) -> String {
         match self.action {
             KeyAction::Lock => String::from("LOCK"),
+            KeyAction::Unlock => String::from("UNLOCK"),
             KeyAction::Pane => String::from("PANE"),
             KeyAction::Tab => String::from("TAB"),
             KeyAction::Resize => String::from("RESIZE"),
@@ -81,6 +85,35 @@ impl KeyShortcut {
             None => return String::from("?"),
         };
         format!("{}", key)
+    }
+    pub fn get_key(&self) -> Option<KeyWithModifier> {
+        self.key.clone()
+    }
+    pub fn get_mode(&self) -> KeyMode {
+        self.mode
+    }
+    pub fn get_action(&self) -> KeyAction {
+        self.action
+    }
+    pub fn is_selected(&self) -> bool {
+        match self.mode {
+            KeyMode::Selected => true,
+            _ => false,
+        }
+    }
+    pub fn short_text(&self) -> String {
+        match self.action {
+            KeyAction::Lock => String::from("Lo"),
+            KeyAction::Unlock => String::from("Un"),
+            KeyAction::Pane => String::from("Pa"),
+            KeyAction::Tab => String::from("Ta"),
+            KeyAction::Resize => String::from("Re"),
+            KeyAction::Search => String::from("Se"),
+            KeyAction::Quit => String::from("Qu"),
+            KeyAction::Session => String::from("Se"),
+            KeyAction::Move => String::from("Mo"),
+            KeyAction::Tmux => String::from("Tm"),
+        }
     }
 }
 

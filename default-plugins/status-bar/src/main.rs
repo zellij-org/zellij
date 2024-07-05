@@ -1,4 +1,5 @@
 mod first_line;
+mod one_line_ui;
 mod second_line;
 mod tip;
 
@@ -15,6 +16,7 @@ use zellij_tile::prelude::*;
 use zellij_tile_utils::{palette_match, style};
 
 use first_line::first_line;
+use one_line_ui::one_line_ui;
 use second_line::{
     floating_panes_are_visible, fullscreen_panes_to_hide, keybinds,
     locked_floating_panes_are_visible, locked_fullscreen_panes_to_hide, system_clipboard_error,
@@ -35,6 +37,8 @@ struct State {
     mode_info: ModeInfo,
     text_copy_destination: Option<CopyDestination>,
     display_system_clipboard_failure: bool,
+    classic_ui: bool,
+    base_mode_is_locked: bool,
 }
 
 register_plugin!(State);
@@ -177,9 +181,13 @@ fn color_elements(palette: Palette, different_color_alternates: bool) -> Colored
 }
 
 impl ZellijPlugin for State {
-    fn load(&mut self, _configuration: BTreeMap<String, String>) {
+    fn load(&mut self, configuration: BTreeMap<String, String>) {
         // TODO: Should be able to choose whether to use the cache through config.
         self.tip_name = get_cached_tip_name();
+        self.classic_ui = configuration
+            .get("classic")
+            .map(|c| c == "true")
+            .unwrap_or(false);
         set_selectable(false);
         subscribe(&[
             EventType::ModeUpdate,
@@ -198,6 +206,7 @@ impl ZellijPlugin for State {
                     should_render = true;
                 }
                 self.mode_info = mode_info;
+                self.base_mode_is_locked = self.mode_info.base_mode == Some(InputMode::Locked);
             },
             Event::TabUpdate(tabs) => {
                 if self.tabs != tabs {
@@ -243,6 +252,21 @@ impl ZellijPlugin for State {
         } else {
             ""
         };
+
+        if rows == 1 && !self.classic_ui {
+            let active_tab = self.tabs.iter().find(|t| t.active);
+            print!(
+                "{}",
+                one_line_ui(
+                    &self.mode_info,
+                    active_tab,
+                    cols,
+                    separator,
+                    self.base_mode_is_locked
+                )
+            );
+            return;
+        }
 
         let active_tab = self.tabs.iter().find(|t| t.active);
         let first_line = first_line(&self.mode_info, active_tab, cols, separator);
@@ -418,10 +442,6 @@ pub fn style_key_with_modifier(
 
     let common_modifiers = get_common_modifiers(keyvec.iter().collect());
 
-    //     let modifier_str = match get_common_modifier(keyvec.iter().collect()) {
-    //         Some(modifier) => modifier,
-    //         None => "".to_string(),
-    //     };
     let no_common_modifier = common_modifiers.is_empty();
     let modifier_str = common_modifiers
         .iter()

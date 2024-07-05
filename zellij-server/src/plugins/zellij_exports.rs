@@ -61,6 +61,7 @@ macro_rules! apply_action {
             $env.default_shell.clone(),
             $env.default_layout.clone(),
             None,
+            $env.default_mode.clone(),
         ) {
             log::error!("{}: {:?}", $error_message(), e);
         }

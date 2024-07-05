@@ -218,6 +218,7 @@ message ModeUpdatePayload {
   style.Style style = 3;
   bool arrow_fonts_support = 4;
   optional string session_name = 5;
+  optional input_mode.InputMode base_mode = 6;
 }
 
 message InputModeKeybinds {

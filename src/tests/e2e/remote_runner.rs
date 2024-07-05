@@ -351,10 +351,6 @@ impl RemoteTerminal {
     pub fn cursor_position_is(&self, x: usize, y: usize) -> bool {
         x == self.cursor_x && y == self.cursor_y
     }
-    pub fn tip_appears(&self) -> bool {
-        let snapshot = self.last_snapshot.lock().unwrap();
-        snapshot.contains("Tip:") || snapshot.contains("QuickNav:")
-    }
     pub fn status_bar_appears(&self) -> bool {
         self.last_snapshot.lock().unwrap().contains("Ctrl +")
     }

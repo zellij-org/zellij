@@ -114,6 +114,7 @@ fn send_cli_action_to_server(
     let get_current_dir = || PathBuf::from(".");
     let actions = Action::actions_from_cli(cli_action, Box::new(get_current_dir), None).unwrap();
     let senders = session_metadata.senders.clone();
+    let default_mode = session_metadata.default_mode.clone();
     let capabilities = PluginCapabilities::default();
     let client_attributes = ClientAttributes::default();
     let default_shell = None;
@@ -129,6 +130,7 @@ fn send_cli_action_to_server(
             default_shell.clone(),
             default_layout.clone(),
             None,
+            default_mode,
         )
         .unwrap();
     }
@@ -516,6 +518,7 @@ impl MockScreen {
             layout,
             client_input_modes: HashMap::new(),
             client_keybinds: HashMap::new(),
+            default_mode: self.session_metadata.default_mode.clone(),
         }
     }
 }
@@ -575,6 +578,7 @@ impl MockScreen {
             layout,
             client_input_modes: HashMap::new(),
             client_keybinds: HashMap::new(),
+            default_mode: InputMode::Normal,
         };
 
         let os_input = FakeInputOutput::default();

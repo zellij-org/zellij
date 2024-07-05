@@ -1,0 +1,13 @@
+layout {
+    pane size=1 borderless=true {
+        plugin location="tab-bar" {
+            hide_swap_layout_indication true
+        }
+    }
+    pane
+    pane size=2 borderless=true {
+        plugin location="status-bar" {
+            classic true
+        }
+    }
+}
