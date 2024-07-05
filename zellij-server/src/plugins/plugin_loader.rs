@@ -26,7 +26,7 @@ use crate::{
 use zellij_utils::plugin_api::action::ProtobufPluginConfiguration;
 use zellij_utils::{
     consts::{ZELLIJ_CACHE_DIR, ZELLIJ_SESSION_CACHE_DIR, ZELLIJ_TMP_DIR},
-    data::PluginCapabilities,
+    data::{InputMode, PluginCapabilities},
     errors::prelude::*,
     input::command::TerminalAction,
     input::layout::Layout,
@@ -68,6 +68,7 @@ pub struct PluginLoader<'a> {
     default_shell: Option<TerminalAction>,
     default_layout: Box<Layout>,
     layout_dir: Option<PathBuf>,
+    default_mode: InputMode,
 }
 
 impl<'a> PluginLoader<'a> {
@@ -87,6 +88,7 @@ impl<'a> PluginLoader<'a> {
         default_shell: Option<TerminalAction>,
         default_layout: Box<Layout>,
         layout_dir: Option<PathBuf>,
+        default_mode: InputMode,
     ) -> Result<()> {
         let err_context = || format!("failed to reload plugin {plugin_id} from memory");
         let mut connected_clients: Vec<ClientId> =
@@ -112,6 +114,7 @@ impl<'a> PluginLoader<'a> {
             default_shell,
             default_layout,
             layout_dir,
+            default_mode,
         )?;
         plugin_loader
             .load_module_from_memory()
@@ -148,6 +151,7 @@ impl<'a> PluginLoader<'a> {
         default_layout: Box<Layout>,
         skip_cache: bool,
         layout_dir: Option<PathBuf>,
+        default_mode: InputMode,
     ) -> Result<()> {
         let err_context = || format!("failed to start plugin {plugin_id} for client {client_id}");
         let mut plugin_loader = PluginLoader::new(
@@ -168,6 +172,7 @@ impl<'a> PluginLoader<'a> {
             default_shell,
             default_layout,
             layout_dir,
+            default_mode,
         )?;
         if skip_cache {
             plugin_loader
@@ -220,6 +225,7 @@ impl<'a> PluginLoader<'a> {
         default_shell: Option<TerminalAction>,
         default_layout: Box<Layout>,
         layout_dir: Option<PathBuf>,
+        default_mode: InputMode,
     ) -> Result<()> {
         let mut new_plugins = HashSet::new();
         for plugin_id in plugin_map.lock().unwrap().plugin_ids() {
@@ -242,6 +248,7 @@ impl<'a> PluginLoader<'a> {
                 default_shell.clone(),
                 default_layout.clone(),
                 layout_dir.clone(),
+                default_mode,
             )?;
             plugin_loader
                 .load_module_from_memory()
@@ -270,6 +277,7 @@ impl<'a> PluginLoader<'a> {
         default_shell: Option<TerminalAction>,
         default_layout: Box<Layout>,
         layout_dir: Option<PathBuf>,
+        default_mode: InputMode,
     ) -> Result<()> {
         let err_context = || format!("failed to reload plugin id {plugin_id}");
 
@@ -296,6 +304,7 @@ impl<'a> PluginLoader<'a> {
             default_shell,
             default_layout,
             layout_dir,
+            default_mode,
         )?;
         plugin_loader
             .compile_module()
@@ -328,6 +337,7 @@ impl<'a> PluginLoader<'a> {
         default_shell: Option<TerminalAction>,
         default_layout: Box<Layout>,
         layout_dir: Option<PathBuf>,
+        default_mode: InputMode,
     ) -> Result<Self> {
         let plugin_own_data_dir = ZELLIJ_SESSION_CACHE_DIR
             .join(Url::from(&plugin.location).to_string())
@@ -355,6 +365,7 @@ impl<'a> PluginLoader<'a> {
             default_shell,
             default_layout,
             layout_dir,
+            default_mode,
         })
     }
     pub fn new_from_existing_plugin_attributes(
@@ -373,6 +384,7 @@ impl<'a> PluginLoader<'a> {
         default_shell: Option<TerminalAction>,
         default_layout: Box<Layout>,
         layout_dir: Option<PathBuf>,
+        default_mode: InputMode,
     ) -> Result<Self> {
         let err_context = || "Failed to find existing plugin";
         let (running_plugin, _subscriptions, _workers) = {
@@ -407,6 +419,7 @@ impl<'a> PluginLoader<'a> {
             default_shell,
             default_layout,
             layout_dir,
+            default_mode,
         )
     }
     pub fn new_from_different_client_id(
@@ -425,6 +438,7 @@ impl<'a> PluginLoader<'a> {
         default_shell: Option<TerminalAction>,
         default_layout: Box<Layout>,
         layout_dir: Option<PathBuf>,
+        default_mode: InputMode,
     ) -> Result<Self> {
         let err_context = || "Failed to find existing plugin";
         let running_plugin = {
@@ -460,6 +474,7 @@ impl<'a> PluginLoader<'a> {
             default_shell,
             default_layout,
             layout_dir,
+            default_mode,
         )
     }
     pub fn load_module_from_memory(&mut self) -> Result<Module> {
@@ -715,6 +730,7 @@ impl<'a> PluginLoader<'a> {
                     self.default_shell.clone(),
                     self.default_layout.clone(),
                     self.layout_dir.clone(),
+                    self.default_mode,
                 )?;
                 plugin_loader_for_client
                     .load_module_from_memory()
@@ -814,6 +830,7 @@ impl<'a> PluginLoader<'a> {
             input_pipes_to_unblock: Arc::new(Mutex::new(HashSet::new())),
             input_pipes_to_block: Arc::new(Mutex::new(HashSet::new())),
             layout_dir: self.layout_dir.clone(),
+            default_mode: self.default_mode.clone(),
             subscriptions: Arc::new(Mutex::new(HashSet::new())),
             stdin_pipe,
             stdout_pipe,

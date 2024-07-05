@@ -1,6 +1,6 @@
 ---
 source: src/tests/e2e/cases.rs
-assertion_line: 1266
+assertion_line: 1293
 expression: last_snapshot
 ---
  Zellij (e2e-test)  Tab #1 
@@ -24,6 +24,6 @@ expression: last_snapshot
 │                                                                                                                      │
 │                                                                                                                      │
 │                                                                                                                      │
+│                                                                                                                      │
 └──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
- <F1> LOCK  <F2> PANE  <F3> TAB  <F4> RESIZE  <F5> MOVE  <F6> SEARCH  <Alt F7> SESSION  <Ctrl F8> QUIT 
- Tip: UNBOUND => open new pane. UNBOUND => navigate between panes. UNBOUND => increase/decrease pane size.              
+ F1  LOCK  F2  PANE  F3  TAB  F4  RESIZE  F5  MOVE  F6  SEARCH  Alt F7  SESSION  Ctrl F8  QUIT          

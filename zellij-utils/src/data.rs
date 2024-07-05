@@ -1114,6 +1114,7 @@ pub type KeybindsVec = Vec<(InputMode, Vec<(KeyWithModifier, Vec<Action>)>)>;
 #[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModeInfo {
     pub mode: InputMode,
+    pub base_mode: Option<InputMode>,
     pub keybinds: KeybindsVec,
     pub style: Style,
     pub capabilities: PluginCapabilities,

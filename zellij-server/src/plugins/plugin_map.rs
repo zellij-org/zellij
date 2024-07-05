@@ -19,6 +19,7 @@ use crate::{thread_bus::ThreadSenders, ClientId};
 use zellij_utils::async_channel::Sender;
 use zellij_utils::{
     data::EventType,
+    data::InputMode,
     data::PluginCapabilities,
     input::command::TerminalAction,
     input::layout::{Layout, PluginUserConfiguration, RunPlugin, RunPluginLocation},
@@ -284,6 +285,7 @@ pub struct PluginEnv {
     pub plugin_cwd: PathBuf,
     pub input_pipes_to_unblock: Arc<Mutex<HashSet<String>>>,
     pub input_pipes_to_block: Arc<Mutex<HashSet<String>>>,
+    pub default_mode: InputMode,
     pub subscriptions: Arc<Mutex<Subscriptions>>,
     pub stdin_pipe: Arc<Mutex<VecDeque<u8>>>,
     pub stdout_pipe: Arc<Mutex<VecDeque<u8>>>,

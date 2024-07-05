@@ -293,6 +293,8 @@ pub struct ModeUpdatePayload {
     pub arrow_fonts_support: bool,
     #[prost(string, optional, tag = "5")]
     pub session_name: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(enumeration = "super::input_mode::InputMode", optional, tag = "6")]
+    pub base_mode: ::core::option::Option<i32>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

@@ -2363,6 +2363,7 @@ pub(crate) fn screen_thread_main(
                 //  ¯\_(ツ)_/¯
                 arrow_fonts: !arrow_fonts,
             },
+            config_options.default_mode,
         ),
         draw_pane_frames,
         auto_layout,

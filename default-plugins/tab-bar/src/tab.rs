@@ -51,7 +51,7 @@ pub fn render_tab(
     let right_separator = style!(background_color, foreground_color).paint(separator);
     let tab_styled_text = if !focused_clients.is_empty() {
         let (cursor_section, extra_length) = cursors(focused_clients, palette);
-        tab_text_len += extra_length;
+        tab_text_len += extra_length + 2; // 2 for cursor_beginning and cursor_end
         let mut s = String::new();
         let cursor_beginning = style!(foreground_color, background_color)
             .bold()

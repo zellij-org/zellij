@@ -3811,6 +3811,7 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror",
+ "unicode-width",
  "zellij-tile",
  "zellij-tile-utils",
 ]
