@@ -97,65 +97,101 @@ impl FromStr for SearchOption {
 // They might need to be adjusted in the default config
 // as well `../../assets/config/default.yaml`
 /// Actions that can be bound to keys.
+///
+/// Actions are accessible to the user via keybindings in `config.kdl`. All actions that don't
+/// document what they serialize to (i.e. what text in the `config.kdl` maps to the specific
+/// action), serialize to their exact name by default. For example: [`Action::Quit`] serializes to
+/// `quit` in `config.kdl`.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub enum Action {
     /// Quit Zellij.
     Quit,
-    /// Write to the terminal.
+    /// Write key sequences and/or raw bytes to the focused pane.
+    ///
+    /// Serializes to e.g.: `Write: [1, 2, 3]`.
     Write(Option<KeyWithModifier>, Vec<u8>, bool), // bool -> is_kitty_keyboard_protocol
-    /// Write Characters to the terminal.
+    /// Write Characters to the focused pane.
+    ///
+    /// Serializes to e.g.: `WriteChars: "Foobar"`.
     WriteChars(String),
-    /// Switch to the specified input mode.
+    /// Switch to the specified [input mode](`InputMode`).
+    ///
+    /// Serializes to e.g.: `SwitchToMode: Locked`.
     SwitchToMode(InputMode),
     /// Switch all connected clients to the specified input mode.
     SwitchModeForAllClients(InputMode),
-    /// Shrink/enlarge focused pane at specified border
+    /// Resize focused pane in the specified [direction](`ResizeDirection`).
+    ///
+    /// Serializes to e.g.: `Resize: Left`.
     Resize(Resize, Option<Direction>),
-    /// Switch focus to next pane in specified direction.
+    /// Switch focus to next pane to the right or below if on screen edge.
     FocusNextPane,
+    /// Switch focus to previous pane to the left or above if on screen edge.
     FocusPreviousPane,
-    /// Move the focus pane in specified direction.
+    /// Switch focus to pane with the next ID.
+    ///
+    /// Legacy, prefer using `FocusNextPane` or `FocusPreviousPane`.
     SwitchFocus,
+    /// Switch focus towards the pane with greatest overlap in specified [direction](`Direction`).
+    ///
+    /// Serializes to e.g.: `MoveFocus: Up`.
     MoveFocus(Direction),
-    /// Tries to move the focus pane in specified direction.
+    /// Tries to move the focused pane in specified [direction](`Direction`).
+    ///
     /// If there is no pane in the direction, move to previous/next Tab.
+    /// Serializes to e.g.: `MoveFocusOrTab: Up`.
     MoveFocusOrTab(Direction),
+    /// Move focused pane in specified [direction](`Direction`).
+    ///
+    /// If no direction is specified, move pane clockwise to next pane.
+    /// Serializes to e.g.: `MovePane: ` or `MovePane: Up`.
     MovePane(Option<Direction>),
     MovePaneBackwards,
     /// Clear all buffers of a current screen
     ClearScreen,
-    /// Dumps the screen to a file
+    /// Dumps the focused panes scrollback to a file.
+    ///
+    /// Serializes to e.g.: `DumpScreen: "/tmp/dump.txt"`.
     DumpScreen(String, bool),
     /// Dumps
     DumpLayout,
-    /// Scroll up in focus pane.
+    /// Edit focused panes scrollback in default editor `$EDITOR`, or `$VISUAL`.
     EditScrollback,
+    /// Scroll up one line in the focused pane.
     ScrollUp,
-    /// Scroll up at point
+    /// Scroll up at given point.
+    ///
+    /// Triggered when scrolling while mouse selection is active.
+    /// Not meant for direct user-interaction.
     ScrollUpAt(Position),
-    /// Scroll down in focus pane.
+    /// Scroll down one line in the focused pane.
     ScrollDown,
-    /// Scroll down at point
+    /// Scroll down at given point.
+    ///
+    /// Triggered when scrolling while mouse selection is active.
+    /// Not meant for direct user-interaction.
     ScrollDownAt(Position),
-    /// Scroll down to bottom in focus pane.
+    /// Scroll down to bottom in focused pane.
     ScrollToBottom,
     /// Scroll up to top in focus pane.
     ScrollToTop,
-    /// Scroll up one page in focus pane.
+    /// Scroll up one page in the focused pane.
     PageScrollUp,
-    /// Scroll down one page in focus pane.
+    /// Scroll down one page in the focused pane.
     PageScrollDown,
-    /// Scroll up half page in focus pane.
+    /// Scroll up half page in the focused pane.
     HalfPageScrollUp,
-    /// Scroll down half page in focus pane.
+    /// Scroll down half page in the focused pane.
     HalfPageScrollDown,
-    /// Toggle between fullscreen focus pane and normal layout.
+    /// Toggle between fullscreen focused pane and normal layout.
     ToggleFocusFullscreen,
-    /// Toggle frames around panes in the UI
+    /// Toggle frames around panes in the UI.
     TogglePaneFrames,
-    /// Toggle between sending text commands to all panes on the current tab and normal mode.
+    /// Toggle between sending text commands to all panes on the current tab and just the focused
+    /// pane.
     ToggleActiveSyncTab,
     /// Open a new pane in the specified direction (relative to focus).
+    ///
     /// If no direction is specified, will try to use the biggest available space.
     NewPane(Option<Direction>, Option<String>), // String is an optional pane name
     /// Open the file in a new pane using the default editor
@@ -182,13 +218,30 @@ pub enum Action {
     // name
     /// Embed focused pane in tab if floating or float focused pane if embedded
     TogglePaneEmbedOrFloating,
-    /// Toggle the visibility of all floating panes (if any) in the current Tab
+    /// Toggle the visibility of all floating panes (if any) in the current Tab.
     ToggleFloatingPanes,
-    /// Close the focus pane.
+    /// Close the focused pane.
     CloseFocus,
+    /// Rename a pane.
+    ///
+    /// Not meant for direct user-interaction.
     PaneNameInput(Vec<u8>),
+    /// Undo pane renaming.
+    ///
+    /// Not meant for direct user-interaction.
     UndoRenamePane,
     /// Create a new tab, optionally with a specified tab layout.
+    ///
+    /// Serializes to e.g.: `NewTab: ` to create a new default tab.
+    /// You can specify a layout, too. This creates a vertically split tab:
+    /// ```ignore
+    /// NewTab: {direction: Vertical,
+    /// parts: [
+    ///     direction: Vertical,
+    ///     direction: Horizontal,
+    /// ],}
+    /// ```
+    /// Any valid layout specification can be used.
     NewTab(
         Option<TiledPaneLayout>,
         Vec<FloatingPaneLayout>,
@@ -197,6 +250,8 @@ pub enum Action {
         Option<String>,
     ), // the String is the tab name
     /// Do nothing.
+    ///
+    /// Not meant for direct user-interaction.
     NoOp,
     /// Go to the next tab.
     GoToNextTab,
@@ -204,35 +259,69 @@ pub enum Action {
     GoToPreviousTab,
     /// Close the current tab.
     CloseTab,
+    /// Go to the tab with specified index.
+    ///
+    /// Counting begins at 1.
+    /// Serializes to e.g.: `GoToTab: 1`.
     GoToTab(u32),
     GoToTabName(String, bool),
+    /// Switch between the most recently used tabs.
     ToggleTab,
+    /// Rename a tab.
+    ///
+    /// Not meant for direct user-interaction.
     TabNameInput(Vec<u8>),
+    /// Undo tab renaming.
+    ///
+    /// Not meant for direct user-interaction.
     UndoRenameTab,
     MoveTab(Direction),
     /// Run specified command in new pane.
+    ///
+    /// To execute `ls` in a vertically split pane, use:
+    /// ```ignore
+    /// Run: {cmd: "/usr/bin/ls", args: ["-l"], cwd: "/home/ahartmann", direction: Left}
+    /// ```
     Run(RunCommandAction),
-    /// Detach session and exit
+    /// Detach from the currently running Zellij session and exit.
     Detach,
+    /// Generated when clicking into application window.
+    ///
+    /// Not meant for direct user-interaction.
     LeftClick(Position),
+    /// Generated when clicking into application window.
+    ///
+    /// Not meant for direct user-interaction.
     RightClick(Position),
     MiddleClick(Position),
     LaunchOrFocusPlugin(RunPluginOrAlias, bool, bool, bool, bool), // bools => should float,
     // move_to_focused_tab, should_open_in_place, skip_cache
     LaunchPlugin(RunPluginOrAlias, bool, bool, bool, Option<PathBuf>), // bools => should float,
     // should_open_in_place, skip_cache, Option<PathBuf> is cwd
+    /// Generated when releasing the mouse button in the application window.
+    ///
+    /// Not meant for direct user-interaction.
     LeftMouseRelease(Position),
     RightMouseRelease(Position),
     MiddleMouseRelease(Position),
+    /// Generated when holding the mouse button in the application window.
+    ///
+    /// Not meant for direct user-interaction.
     MouseHoldLeft(Position),
     MouseHoldRight(Position),
     MouseHoldMiddle(Position),
     Copy,
-    /// Confirm a prompt
+    /// Confirm a prompt.
+    ///
+    /// Not meant for direct user-interaction.
     Confirm,
-    /// Deny a prompt
+    /// Deny a prompt.
+    ///
+    /// Not meant for direct user-interaction.
     Deny,
-    /// Confirm an action that invokes a prompt automatically
+    /// Confirm an action that invokes a prompt automatically.
+    ///
+    /// Not meant for direct user-interaction.
     SkipConfirm(Box<Action>),
     /// Search for String
     SearchInput(Vec<u8>),
