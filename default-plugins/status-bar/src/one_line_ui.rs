@@ -1055,8 +1055,8 @@ fn add_keygroup_separator(help: &ModeInfo, max_len: usize) -> Option<LinePart> {
 
     let mut ret = LinePart::default();
 
-    let separator_color = palette_match!(palette.orange);
-    let bg_color = palette_match!(palette.black);
+    let separator_color = palette_match!(palette.ribbon_selected.emphasis_2);
+    let bg_color = palette_match!(palette.ribbon_selected.base);
     let mut bits: Vec<ANSIString> = vec![];
     let mode_help_text = match help.mode {
         InputMode::RenamePane => Some("RENAMING PANE"),
