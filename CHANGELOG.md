@@ -16,7 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix(terminal): workaround for windows terminal not interpreting underline colors with semicolons (https://github.com/zellij-org/zellij/pull/3440)
 * dependencies: switch from wasmer to wasmtime (https://github.com/zellij-org/zellij/pull/3349)
 * feat(ui): status-bar redesign (https://github.com/zellij-org/zellij/pull/3475)
-* chore: Remove MSRV from Cargo.toml (https://github.com/zellij-org/zellij/pull/3480)
+* chore: Update MSRV in Cargo.toml (https://github.com/zellij-org/zellij/pull/3482)
 
 ## [0.40.1] - 2024-05-02
 * fix(sessions): issue where sessions would occasionally become unresponsive (https://github.com/zellij-org/zellij/pull/3281)
