@@ -217,7 +217,9 @@ pub trait Pane {
     fn handle_pty_bytes(&mut self, _bytes: VteBytes) {}
     fn handle_plugin_bytes(&mut self, _client_id: ClientId, _bytes: VteBytes) {}
     fn cursor_coordinates(&self) -> Option<(usize, usize)>;
-    fn is_mid_frame(&self) -> bool { false }
+    fn is_mid_frame(&self) -> bool {
+        false
+    }
     fn adjust_input_to_terminal(
         &mut self,
         _key_with_modifier: &Option<KeyWithModifier>,
@@ -2059,7 +2061,9 @@ impl Tab {
                                 || previous_shape != &desired_cursor_shape
                         })
                         .unwrap_or(true);
-                    let active_terminal_is_mid_frame = self.active_terminal_is_mid_frame(client_id).unwrap_or(false);
+                    let active_terminal_is_mid_frame = self
+                        .active_terminal_is_mid_frame(client_id)
+                        .unwrap_or(false);
 
                     if active_terminal_is_mid_frame {
                         // no-op, this means the active terminal is currently rendering a frame,
