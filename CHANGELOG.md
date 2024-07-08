@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat(layouts): allow consuming a layout through a url (https://github.com/zellij-org/zellij/pull/3351)
 * dependencies: eliminate future incompatibility warnings (https://github.com/zellij-org/zellij/pull/3315)
 * fix(plugins): occasional out of order events on startup (https://github.com/zellij-org/zellij/pull/3367)
-* feat(keybinds): support multiple modifiers (eg. Ctrl+Alt) and the kitty keyboard protocol (https://github.com/zellij-org/zellij/pull/3383 and https://github.com/zellij-org/zellij/pull/3441)
+* feat(keybinds): support multiple modifiers (eg. Ctrl+Alt) and the kitty keyboard protocol (https://github.com/zellij-org/zellij/pull/3383, https://github.com/zellij-org/zellij/pull/3441 and https://github.com/zellij-org/zellij/pull/3484)
 * fix(terminal): properly set and handle scroll region in various instances (https://github.com/zellij-org/zellij/pull/3381 and https://github.com/zellij-org/zellij/pull/3382)
 * fix(rendering): do not render if resizing screen to same size (https://github.com/zellij-org/zellij/pull/3413)
 * feat(plugins): rebind keys at runtime (https://github.com/zellij-org/zellij/pull/3422
