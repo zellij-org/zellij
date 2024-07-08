@@ -1142,6 +1142,9 @@ impl Grid {
             Some((self.cursor.x, self.cursor.y))
         }
     }
+    pub fn is_mid_frame(&self) -> bool {
+        self.lock_renders
+    }
     /// Clears all buffers with text for a current screen
     pub fn clear_screen(&mut self) {
         if self.alternate_screen_state.is_some() {

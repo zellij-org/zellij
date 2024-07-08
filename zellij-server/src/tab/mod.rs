@@ -217,6 +217,9 @@ pub trait Pane {
     fn handle_pty_bytes(&mut self, _bytes: VteBytes) {}
     fn handle_plugin_bytes(&mut self, _client_id: ClientId, _bytes: VteBytes) {}
     fn cursor_coordinates(&self) -> Option<(usize, usize)>;
+    fn is_mid_frame(&self) -> bool {
+        false
+    }
     fn adjust_input_to_terminal(
         &mut self,
         _key_with_modifier: &Option<KeyWithModifier>,
@@ -1866,6 +1869,20 @@ impl Tab {
         }
         Ok(should_update_ui)
     }
+    pub fn active_terminal_is_mid_frame(&self, client_id: ClientId) -> Option<bool> {
+        let active_pane_id = if self.floating_panes.panes_are_visible() {
+            self.floating_panes
+                .get_active_pane_id(client_id)
+                .or_else(|| self.tiled_panes.get_active_pane_id(client_id))?
+        } else {
+            self.tiled_panes.get_active_pane_id(client_id)?
+        };
+        let active_terminal = &self
+            .floating_panes
+            .get(&active_pane_id)
+            .or_else(|| self.tiled_panes.get_pane(active_pane_id))?;
+        Some(active_terminal.is_mid_frame())
+    }
     pub fn get_active_terminal_cursor_position(
         &self,
         client_id: ClientId,
@@ -2000,8 +2017,8 @@ impl Tab {
                 .with_context(err_context)?;
         }
 
+        self.render_cursor(output);
         if output.has_rendered_assets() {
-            self.render_cursor(output);
             self.hide_cursor_and_clear_display_as_needed(output);
         }
 
@@ -2044,8 +2061,17 @@ impl Tab {
                                 || previous_shape != &desired_cursor_shape
                         })
                         .unwrap_or(true);
+                    let active_terminal_is_mid_frame = self
+                        .active_terminal_is_mid_frame(client_id)
+                        .unwrap_or(false);
 
-                    if output.is_dirty() || cursor_changed_position_or_shape {
+                    if active_terminal_is_mid_frame {
+                        // no-op, this means the active terminal is currently rendering a frame,
+                        // which means the cursor can be jumping around and we definitely do not
+                        // want to render it
+                        //
+                        // (I felt this was clearer than expanding the if conditional below)
+                    } else if output.is_dirty() || cursor_changed_position_or_shape {
                         let show_cursor = "\u{1b}[?25h";
                         let goto_cursor_position = &format!(
                             "\u{1b}[{};{}H\u{1b}[m{}",

@@ -193,6 +193,9 @@ impl Pane for TerminalPane {
             .cursor_coordinates()
             .map(|(x, y)| (x + left, y + top))
     }
+    fn is_mid_frame(&self) -> bool {
+        self.grid.is_mid_frame()
+    }
     fn adjust_input_to_terminal(
         &mut self,
         key_with_modifier: &Option<KeyWithModifier>,
