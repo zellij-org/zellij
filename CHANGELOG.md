@@ -8,15 +8,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat(layouts): allow consuming a layout through a url (https://github.com/zellij-org/zellij/pull/3351)
 * dependencies: eliminate future incompatibility warnings (https://github.com/zellij-org/zellij/pull/3315)
 * fix(plugins): occasional out of order events on startup (https://github.com/zellij-org/zellij/pull/3367)
-* feat(keybinds): support multiple modifiers (eg. Ctrl+Alt) and the kitty keyboard protocol (https://github.com/zellij-org/zellij/pull/3383 and https://github.com/zellij-org/zellij/pull/3441)
+* feat(keybinds): support multiple modifiers (eg. Ctrl+Alt) and the kitty keyboard protocol (https://github.com/zellij-org/zellij/pull/3383, https://github.com/zellij-org/zellij/pull/3441 and https://github.com/zellij-org/zellij/pull/3484)
 * fix(terminal): properly set and handle scroll region in various instances (https://github.com/zellij-org/zellij/pull/3381 and https://github.com/zellij-org/zellij/pull/3382)
 * fix(rendering): do not render if resizing screen to same size (https://github.com/zellij-org/zellij/pull/3413)
 * feat(plugins): rebind keys at runtime (https://github.com/zellij-org/zellij/pull/3422
-* fix(rendering): do not render cursor if there's nothing to render (https://github.com/zellij-org/zellij/pull/3439)
+* fix(rendering): do not render cursor if there's nothing to render (https://github.com/zellij-org/zellij/pull/3439 and https://github.com/zellij-org/zellij/pull/3483)
 * fix(terminal): workaround for windows terminal not interpreting underline colors with semicolons (https://github.com/zellij-org/zellij/pull/3440)
 * dependencies: switch from wasmer to wasmtime (https://github.com/zellij-org/zellij/pull/3349)
 * feat(ui): status-bar redesign (https://github.com/zellij-org/zellij/pull/3475)
-* chore: Remove MSRV from Cargo.toml (https://github.com/zellij-org/zellij/pull/3480)
+* chore: Update MSRV in Cargo.toml (https://github.com/zellij-org/zellij/pull/3482)
 
 ## [0.40.1] - 2024-05-02
 * fix(sessions): issue where sessions would occasionally become unresponsive (https://github.com/zellij-org/zellij/pull/3281)

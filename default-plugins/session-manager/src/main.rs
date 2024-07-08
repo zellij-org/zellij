@@ -197,6 +197,10 @@ impl State {
                 self.new_session_info.handle_key(key);
                 should_render = true;
             },
+            BareKey::Enter if key.has_no_modifiers() => {
+                self.handle_selection();
+                should_render = true;
+            },
             BareKey::Char(character) if key.has_no_modifiers() => {
                 if character == '\n' {
                     self.handle_selection();
@@ -291,6 +295,10 @@ impl State {
                 },
                 BareKey::Up if key.has_no_modifiers() => {
                     self.sessions.move_selection_up();
+                    should_render = true;
+                },
+                BareKey::Enter if key.has_no_modifiers() => {
+                    self.handle_selection();
                     should_render = true;
                 },
                 BareKey::Char(character) if key.has_no_modifiers() => {
@@ -389,6 +397,10 @@ impl State {
             },
             BareKey::Up if key.has_no_modifiers() => {
                 self.resurrectable_sessions.move_selection_up();
+                should_render = true;
+            },
+            BareKey::Enter if key.has_no_modifiers() => {
+                self.handle_selection();
                 should_render = true;
             },
             BareKey::Char(character) if key.has_no_modifiers() => {
