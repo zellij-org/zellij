@@ -1215,9 +1215,9 @@ pub const DEFAULT_STYLES: Styling = Styling {
     ribbon_selected: StyleDeclaration {
         base: PaletteColor::EightBit(default_colors::BLACK),
         emphasis_1: PaletteColor::EightBit(default_colors::RED),
-        emphasis_2: PaletteColor::EightBit(default_colors::WHITE),
-        emphasis_3: PaletteColor::EightBit(default_colors::BLUE),
-        emphasis_4: PaletteColor::EightBit(default_colors::MAGENTA),
+        emphasis_2: PaletteColor::EightBit(default_colors::ORANGE),
+        emphasis_3: PaletteColor::EightBit(default_colors::MAGENTA),
+        emphasis_4: PaletteColor::EightBit(default_colors::BLUE),
         background: PaletteColor::EightBit(default_colors::GREEN),
     },
     exit_code_success: StyleDeclaration {
@@ -1335,7 +1335,7 @@ impl From<Styling> for Palette {
             orange: styling.text_unselected.emphasis_1,
             cyan: styling.text_unselected.emphasis_2,
             black: styling.ribbon_unselected.base,
-            white: styling.ribbon_selected.emphasis_2,
+            white: styling.ribbon_unselected.emphasis_2,
             gray: styling.list_unselected.background,
             purple: styling.multiplayer_user_colors.player_3,
             gold: styling.multiplayer_user_colors.player_6,
@@ -1380,9 +1380,9 @@ impl From<Palette> for Styling {
             ribbon_selected: StyleDeclaration {
                 base: palette.black,
                 emphasis_1: palette.red,
-                emphasis_2: palette.white,
-                emphasis_3: palette.blue,
-                emphasis_4: palette.magenta,
+                emphasis_2: palette.orange,
+                emphasis_3: palette.magenta,
+                emphasis_4: palette.blue,
                 background: palette.green,
             },
             exit_code_success: StyleDeclaration {
