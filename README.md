@@ -76,9 +76,8 @@ For more build commands, see [CONTRIBUTING.md](CONTRIBUTING.md).
 ## Configuration
 For configuring Zellij, please see the [Configuration Documentation](https://zellij.dev/documentation/configuration.html).
 
-## What is the current status of the project?
-
-Zellij should be ready for everyday use, but it's still classified as a beta. This means that there might be a rare crash or wrong behaviour here and there, but that once found it should be fixed rather quickly. If this happens to you, we would be very happy if you could open an issue and tell us how to reproduce it as best you can.
+## About issues in this repository
+Issues in this repository, whether open or closed, do not necessarily indicate a problem or a bug in the software. They only indicate that the reporter wanted to communicate their experiences or thoughts to the maintainers. The Zellij maintainers do their best to go over and reply to all issue reports, but unfortunately cannot promise these will always be dealt with or even read. Your understanding is appreciated.
 
 ## Roadmap
 Presented here is the project roadmap, divided into three main sections.
