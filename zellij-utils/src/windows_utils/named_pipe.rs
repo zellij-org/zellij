@@ -238,12 +238,6 @@ impl PipeStream {
     }
 }
 
-impl IntoRawHandle for PipeStream {
-    fn into_raw_handle(self) -> std::os::windows::prelude::RawHandle {
-        self.0.into_raw_handle()
-    }
-}
-
 impl From<HANDLE> for PipeStream {
     fn from(value: HANDLE) -> Self {
         let handle = unsafe { OwnedHandle::from_raw_handle(value as _) };
