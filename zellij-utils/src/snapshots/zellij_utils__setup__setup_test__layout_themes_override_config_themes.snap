@@ -5880,6 +5880,46 @@ Config {
                         0,
                     ),
                 },
+                frame_highlight: StyleDeclaration {
+                    base: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
+                    background: EightBit(
+                        0,
+                    ),
+                    emphasis_1: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
+                    emphasis_2: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
+                    emphasis_3: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
+                    emphasis_4: Rgb(
+                        (
+                            2,
+                            2,
+                            2,
+                        ),
+                    ),
+                },
                 exit_code_success: StyleDeclaration {
                     base: Rgb(
                         (
@@ -6460,6 +6500,46 @@ Config {
                         0,
                     ),
                 },
+                frame_highlight: StyleDeclaration {
+                    base: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    background: EightBit(
+                        0,
+                    ),
+                    emphasis_1: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_2: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_3: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_4: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                },
                 exit_code_success: StyleDeclaration {
                     base: Rgb(
                         (
@@ -7038,6 +7118,46 @@ Config {
                     ),
                     emphasis_4: EightBit(
                         0,
+                    ),
+                },
+                frame_highlight: StyleDeclaration {
+                    base: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    background: EightBit(
+                        0,
+                    ),
+                    emphasis_1: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_2: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_3: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
+                    ),
+                    emphasis_4: Rgb(
+                        (
+                            1,
+                            1,
+                            1,
+                        ),
                     ),
                 },
                 exit_code_success: StyleDeclaration {

@@ -462,6 +462,46 @@ expression: "format!(\"{:#?}\", theme)"
                     0,
                 ),
             },
+            frame_highlight: StyleDeclaration {
+                base: Rgb(
+                    (
+                        80,
+                        250,
+                        123,
+                    ),
+                ),
+                background: EightBit(
+                    0,
+                ),
+                emphasis_1: Rgb(
+                    (
+                        80,
+                        250,
+                        123,
+                    ),
+                ),
+                emphasis_2: Rgb(
+                    (
+                        80,
+                        250,
+                        123,
+                    ),
+                ),
+                emphasis_3: Rgb(
+                    (
+                        80,
+                        250,
+                        123,
+                    ),
+                ),
+                emphasis_4: Rgb(
+                    (
+                        80,
+                        250,
+                        123,
+                    ),
+                ),
+            },
             exit_code_success: StyleDeclaration {
                 base: Rgb(
                     (
