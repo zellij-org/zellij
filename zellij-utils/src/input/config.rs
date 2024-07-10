@@ -989,6 +989,79 @@ mod config_test {
     }
 
     #[test]
+    fn omitting_required_style_errors() {
+        let config_contents = r##"
+            themes {
+                named_theme {
+                    styling {
+                        text_unselected {
+                            base "#DCD7BA"
+                            emphasis_2 "#DCD8DD"
+                            emphasis_3 "#DCD899"
+                            emphasis_4 "#ACD7CD"
+                            background   "#1F1F28"
+                        }
+                    }
+                }
+            }
+            "##;
+
+        let config = Config::from_kdl(config_contents, None);
+        assert!(config.is_err());
+        if let Err(ConfigError::KdlError(KdlError {
+            error_message,
+            src: _,
+            offset: _,
+            len: _,
+            help_message: _,
+        })) = config
+        {
+            assert_eq!(error_message, "Missing theme color: emphasis_1")
+        }
+    }
+
+    #[test]
+    fn partial_declaration_of_styles_defaults_omitted() {
+        let config_contents = r##"
+            themes {
+                named_theme {
+                    styling {
+                        text_unselected {
+                            base "#DCD7BA"
+                            emphasis_1 "#DCD7CD"
+                            emphasis_2 "#DCD8DD"
+                            emphasis_3 "#DCD899"
+                            emphasis_4 "#ACD7CD"
+                            background   "#1F1F28"
+                        }
+                    }
+                }
+            }
+            "##;
+
+        let config = Config::from_kdl(config_contents, None).unwrap();
+        let mut expected_themes = HashMap::new();
+        expected_themes.insert(
+            "named_theme".into(),
+            Theme {
+                palette: Styling {
+                    text_unselected: StyleDeclaration {
+                        base: PaletteColor::Rgb((220, 215, 186)),
+                        emphasis_1: PaletteColor::Rgb((220, 215, 205)),
+                        emphasis_2: PaletteColor::Rgb((220, 216, 221)),
+                        emphasis_3: PaletteColor::Rgb((220, 216, 153)),
+                        emphasis_4: PaletteColor::Rgb((172, 215, 205)),
+                        background: PaletteColor::Rgb((31, 31, 40)),
+                    },
+                    ..Default::default()
+                },
+            },
+        );
+        let expected_themes = Themes::from_data(expected_themes);
+        assert_eq!(config.themes, expected_themes, "Theme defined in config")
+    }
+
+    #[test]
     fn can_define_plugin_configuration_in_configfile() {
         let config_contents = r#"
             plugins {
