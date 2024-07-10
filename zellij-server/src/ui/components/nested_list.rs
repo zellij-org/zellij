@@ -2,7 +2,7 @@ use super::{
     is_too_high, parse_indices, parse_selected, parse_text, stringify_text, Coordinates, Text,
 };
 use crate::panes::terminal_character::{AnsiCode, CharacterStyles, RESET_STYLES};
-use zellij_utils::data::{PaletteColor, Style};
+use zellij_utils::data::Style;
 
 use unicode_width::UnicodeWidthChar;
 
