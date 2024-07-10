@@ -8,7 +8,6 @@ fn theme_test_dir(theme: String) -> PathBuf {
     theme_dir.join(theme)
 }
 
-#[ignore]
 #[test]
 fn dracula_theme_from_file() {
     let path = theme_test_dir("dracula.kdl".into());
