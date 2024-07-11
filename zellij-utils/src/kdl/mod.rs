@@ -1649,6 +1649,10 @@ impl Options {
             support_kitty_keyboard_protocol,
         })
     }
+    pub fn from_string(stringified_keybindings: &String) -> Result<Self, ConfigError> {
+        let document: KdlDocument = stringified_keybindings.parse()?;
+        Options::from_kdl(&document)
+    }
 }
 
 impl Layout {

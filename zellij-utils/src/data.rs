@@ -942,7 +942,7 @@ pub enum Permission {
     WebAccess,
     ReadCliPipes,
     MessageAndLaunchOtherPlugins,
-    RebindKeys,
+    Reconfigure,
 }
 
 impl PermissionType {
@@ -963,7 +963,7 @@ impl PermissionType {
             PermissionType::MessageAndLaunchOtherPlugins => {
                 "Send messages to and launch other plugins".to_owned()
             },
-            PermissionType::RebindKeys => "Rebind keys".to_owned(),
+            PermissionType::Reconfigure => "Change Zellij runtime configuration".to_owned(),
         }
     }
 }
@@ -1163,6 +1163,9 @@ impl ModeInfo {
     }
     pub fn update_keybinds(&mut self, keybinds: Keybinds) {
         self.keybinds = keybinds.to_keybinds_vec();
+    }
+    pub fn update_default_mode(&mut self, new_default_mode: InputMode) {
+        self.base_mode = Some(new_default_mode);
     }
 }
 
@@ -1767,5 +1770,5 @@ pub enum PluginCommand {
     DumpSessionLayout,
     CloseSelf,
     NewTabsWithLayoutInfo(LayoutInfo),
-    RebindKeys(String), // String -> stringified keybindings
+    Reconfigure(String), // String -> stringified configuration
 }

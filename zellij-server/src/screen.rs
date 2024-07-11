@@ -361,7 +361,11 @@ pub enum ScreenInstruction {
     DumpLayoutToHd,
     RenameSession(String, ClientId), // String -> new name
     ListClientsMetadata(Option<PathBuf>, ClientId), // Option<PathBuf> - default shell
-    RebindKeys(Keybinds, ClientId),
+    Reconfigure {
+        client_id: ClientId,
+        keybinds: Option<Keybinds>,
+        default_mode: Option<InputMode>,
+    }
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -546,7 +550,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::DumpLayoutToHd => ScreenContext::DumpLayoutToHd,
             ScreenInstruction::RenameSession(..) => ScreenContext::RenameSession,
             ScreenInstruction::ListClientsMetadata(..) => ScreenContext::ListClientsMetadata,
-            ScreenInstruction::RebindKeys(..) => ScreenContext::RebindKeys,
+            ScreenInstruction::Reconfigure{..} => ScreenContext::Reconfigure,
         }
     }
 }
@@ -2151,17 +2155,25 @@ impl Screen {
         }
         Ok(())
     }
-    pub fn rebind_keys(&mut self, new_keybinds: Keybinds, client_id: ClientId) -> Result<()> {
+    pub fn reconfigure_mode_info(&mut self, new_keybinds: Option<Keybinds>, new_default_mode: Option<InputMode>, client_id: ClientId) -> Result<()> {
         if self.connected_clients_contains(&client_id) {
+            let should_update_mode_info = new_keybinds.is_some() || new_default_mode.is_some();
             let mode_info = self
                 .mode_info
                 .entry(client_id)
                 .or_insert_with(|| self.default_mode_info.clone());
-            mode_info.update_keybinds(new_keybinds);
-            for tab in self.tabs.values_mut() {
-                tab.change_mode_info(mode_info.clone(), client_id);
-                tab.mark_active_pane_for_rerender(client_id);
-                tab.update_input_modes()?;
+            if let Some(new_keybinds) = new_keybinds {
+                mode_info.update_keybinds(new_keybinds);
+            }
+            if let Some(new_default_mode) = new_default_mode {
+                mode_info.update_default_mode(new_default_mode);
+            }
+            if should_update_mode_info {
+                for tab in self.tabs.values_mut() {
+                    tab.change_mode_info(mode_info.clone(), client_id);
+                    tab.mark_active_pane_for_rerender(client_id);
+                    tab.update_input_modes()?;
+                }
             }
         } else {
             log::error!("Could not find client_id {client_id} to rebind keys");
@@ -2363,6 +2375,7 @@ pub(crate) fn screen_thread_main(
                 //  ¯\_(ツ)_/¯
                 arrow_fonts: !arrow_fonts,
             },
+            &client_attributes.keybinds,
             config_options.default_mode,
         ),
         draw_pane_frames,
@@ -4028,8 +4041,8 @@ pub(crate) fn screen_thread_main(
                 }
                 screen.unblock_input()?;
             },
-            ScreenInstruction::RebindKeys(new_keybinds, client_id) => {
-                screen.rebind_keys(new_keybinds, client_id).non_fatal();
+            ScreenInstruction::Reconfigure{ client_id, keybinds, default_mode } => {
+                screen.reconfigure_mode_info(keybinds, default_mode, client_id).non_fatal();
             },
         }
     }

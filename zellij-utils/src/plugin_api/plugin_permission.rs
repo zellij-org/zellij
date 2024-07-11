@@ -24,7 +24,7 @@ impl TryFrom<ProtobufPermissionType> for PermissionType {
             ProtobufPermissionType::MessageAndLaunchOtherPlugins => {
                 Ok(PermissionType::MessageAndLaunchOtherPlugins)
             },
-            ProtobufPermissionType::RebindKeys => Ok(PermissionType::RebindKeys),
+            ProtobufPermissionType::Reconfigure => Ok(PermissionType::Reconfigure),
         }
     }
 }
@@ -50,7 +50,7 @@ impl TryFrom<PermissionType> for ProtobufPermissionType {
             PermissionType::MessageAndLaunchOtherPlugins => {
                 Ok(ProtobufPermissionType::MessageAndLaunchOtherPlugins)
             },
-            PermissionType::RebindKeys => Ok(ProtobufPermissionType::RebindKeys),
+            PermissionType::Reconfigure => Ok(ProtobufPermissionType::Reconfigure),
         }
     }
 }

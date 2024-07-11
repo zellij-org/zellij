@@ -888,11 +888,11 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 },
                 _ => Err("Mismatched payload for NewTabsWithLayoutInfo"),
             },
-            Some(CommandName::RebindKeys) => match protobuf_plugin_command.payload {
-                Some(Payload::RebindKeysPayload(rebind_keys_payload)) => {
-                    Ok(PluginCommand::RebindKeys(rebind_keys_payload))
+            Some(CommandName::Reconfigure) => match protobuf_plugin_command.payload {
+                Some(Payload::ReconfigurePayload(reconfigure_payload)) => {
+                    Ok(PluginCommand::Reconfigure(reconfigure_payload))
                 },
-                _ => Err("Mismatched payload for RebindKeys"),
+                _ => Err("Mismatched payload for Reconfigure"),
             },
             None => Err("Unrecognized plugin command"),
         }
@@ -1426,9 +1426,9 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     )),
                 })
             },
-            PluginCommand::RebindKeys(rebind_keys_payload) => Ok(ProtobufPluginCommand {
-                name: CommandName::RebindKeys as i32,
-                payload: Some(Payload::RebindKeysPayload(rebind_keys_payload)),
+            PluginCommand::Reconfigure(reconfigure_payload) => Ok(ProtobufPluginCommand {
+                name: CommandName::Reconfigure as i32,
+                payload: Some(Payload::ReconfigurePayload(reconfigure_payload)),
             }),
         }
     }

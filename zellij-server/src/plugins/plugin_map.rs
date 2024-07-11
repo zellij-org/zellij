@@ -25,6 +25,7 @@ use zellij_utils::{
     input::layout::{Layout, PluginUserConfiguration, RunPlugin, RunPluginLocation},
     input::plugins::PluginConfig,
     ipc::ClientAttributes,
+    input::keybinds::Keybinds,
 };
 use zellij_utils::{data::PermissionType, errors::prelude::*};
 
@@ -289,6 +290,7 @@ pub struct PluginEnv {
     pub subscriptions: Arc<Mutex<Subscriptions>>,
     pub stdin_pipe: Arc<Mutex<VecDeque<u8>>>,
     pub stdout_pipe: Arc<Mutex<VecDeque<u8>>>,
+    pub keybinds: Keybinds,
 }
 
 #[derive(Clone)]
@@ -423,5 +425,11 @@ impl RunningPlugin {
         } else {
             false
         }
+    }
+    pub fn update_keybinds(&mut self, keybinds: Keybinds) {
+        self.store.data_mut().keybinds = keybinds;
+    }
+    pub fn update_default_mode(&mut self, default_mode: InputMode) {
+        self.store.data_mut().default_mode = default_mode;
     }
 }

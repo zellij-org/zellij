@@ -22,6 +22,7 @@ use zellij_utils::consts::ZELLIJ_CACHE_DIR;
 use zellij_utils::data::{InputMode, PermissionStatus, PermissionType, PipeMessage, PipeSource};
 use zellij_utils::downloader::Downloader;
 use zellij_utils::input::permission::PermissionCache;
+use zellij_utils::input::keybinds::Keybinds;
 use zellij_utils::notify_debouncer_full::{notify::RecommendedWatcher, Debouncer, FileIdMap};
 use zellij_utils::plugin_api::event::ProtobufEvent;
 
@@ -795,6 +796,43 @@ impl WasmBridge {
             .unwrap()
             .run_plugin_of_plugin_id(plugin_id)
     }
+
+    pub fn reconfigure(
+        &mut self,
+        client_id: ClientId,
+        keybinds: Option<Keybinds>,
+        default_mode: Option<InputMode>,
+    ) -> Result<()> {
+        let err_context = move || format!("failed to reconfigure plugin");
+
+        let plugins_to_reconfigure: Vec<Arc<Mutex<RunningPlugin>>> = self
+            .plugin_map
+            .lock()
+            .unwrap()
+            .running_plugins()
+            .iter()
+            .cloned()
+            .filter_map(|(_plugin_id, c_id, running_plugin)| if c_id == client_id { Some(running_plugin.clone()) } else { None })
+            .collect();
+        for running_plugin in plugins_to_reconfigure {
+            task::spawn({
+                let senders = self.senders.clone();
+                let running_plugin = running_plugin.clone();
+                let client_id = client_id;
+                let keybinds = keybinds.clone();
+                async move {
+                    let mut running_plugin = running_plugin.lock().unwrap();
+                    if let Some(keybinds) = keybinds {
+                        running_plugin.update_keybinds(keybinds);
+                    }
+                    if let Some(default_mode) = default_mode {
+                        running_plugin.update_default_mode(default_mode);
+                    }
+                }
+            });
+        }
+        Ok(())
+    }
     fn apply_cached_events_and_resizes_for_plugin(
         &mut self,
         plugin_id: PluginId,
@@ -1288,6 +1326,18 @@ pub fn apply_event_to_plugin(
     let err_context = || format!("Failed to apply event to plugin {plugin_id}");
     match check_event_permission(running_plugin.store.data(), event) {
         (PermissionStatus::Granted, _) => {
+            let mut event = event.clone();
+            if let Event::ModeUpdate(mode_info) = &mut event {
+                // we do this because there can be some cases where this event arrives here with
+                // the wrong keybindings or default mode (for example: when triggered from the CLI,
+                // where we do not know the target client_id and thus don't know if their keybindings are the
+                // default or if they have changed at runtime), the keybindings in running_plugin
+                // should always be up-to-date. Ideally, we would have changed the keybindings in
+                // ModeInfo to an Option, but alas - this is already part of our contract and that
+                // would be a breaking change.
+                mode_info.keybinds = running_plugin.store.data().keybinds.to_keybinds_vec();
+                mode_info.base_mode = Some(running_plugin.store.data().default_mode);
+            }
             let protobuf_event: ProtobufEvent = event
                 .clone()
                 .try_into()

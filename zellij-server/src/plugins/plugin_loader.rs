@@ -832,6 +832,7 @@ impl<'a> PluginLoader<'a> {
             layout_dir: self.layout_dir.clone(),
             default_mode: self.default_mode.clone(),
             subscriptions: Arc::new(Mutex::new(HashSet::new())),
+            keybinds: self.client_attributes.keybinds.clone(),
             stdin_pipe,
             stdout_pipe,
         };
