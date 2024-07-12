@@ -3862,3 +3862,41 @@ fn text_ui_component_with_coordinates() {
     }
     assert_snapshot!(format!("{:?}", grid));
 }
+
+#[test]
+fn cannot_escape_scroll_region() {
+    // this tests a fix for a bug where it would be possible to set the scroll region bounds beyond
+    // the pane height, which would then allow a goto instruction beyond the scroll region to scape
+    // the pane bounds and render content on other panes
+    //
+    // what we do here is set the scroll region beyond the terminal bounds (`<ESC>[1;42r` - whereas
+    // the terminal is just 41 lines high), and then issue a goto instruction to line 42, one line
+    // beyond the pane and scroll region bounds (`<ESC>[42;1H`) and then print text `Hi there!`.
+    // This should be printed on the last line (zero indexed 40) of the terminal and not beyond it.
+    let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let debug = false;
+    let arrow_fonts = true;
+    let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
+    let mut grid = Grid::new(
+        41,
+        120,
+        Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
+        sixel_image_store,
+        Style::default(),
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
+    );
+    let content = "\u{1b}[1;42r\u{1b}[42;1HHi there!".as_bytes();
+    for byte in content {
+        vte_parser.advance(&mut grid, *byte);
+    }
+    assert_snapshot!(format!("{:?}", grid));
+}
