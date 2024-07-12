@@ -44,13 +44,15 @@ pub fn render_tab(
     } else {
         palette.ribbon_unselected.base
     };
-    let left_separator = style!(foreground_color, background_color).paint(separator);
+
+    let separator_fill_color = palette.text_unselected.background;
+    let left_separator = style!(separator_fill_color, background_color).paint(separator);
     let mut tab_text_len = text.width() + (separator_width * 2) + 2; // +2 for padding
     let tab_styled_text = style!(foreground_color, background_color)
         .bold()
         .paint(format!(" {} ", text));
 
-    let right_separator = style!(background_color, foreground_color).paint(separator);
+    let right_separator = style!(background_color, separator_fill_color).paint(separator);
     let tab_styled_text = if !focused_clients.is_empty() {
         let (cursor_section, extra_length) = cursors(focused_clients, palette);
         tab_text_len += extra_length + 2; // 2 for cursor_beginning and cursor_end
