@@ -1665,16 +1665,18 @@ impl TiledPanes {
         }
     }
 
-    pub fn focus_pane_left_fullscreen(&mut self, client_id: ClientId) {
+    pub fn focus_pane_left_fullscreen(&mut self, client_id: ClientId) -> bool {
         self.unset_fullscreen();
-        self.move_focus_left(client_id);
+        let ret = self.move_focus_left(client_id);
         self.toggle_active_pane_fullscreen(client_id);
+        return ret;
     }
 
-    pub fn focus_pane_right_fullscreen(&mut self, client_id: ClientId) {
+    pub fn focus_pane_right_fullscreen(&mut self, client_id: ClientId) -> bool {
         self.unset_fullscreen();
-        self.move_focus_right(client_id);
+        let ret = self.move_focus_right(client_id);
         self.toggle_active_pane_fullscreen(client_id);
+        return ret;
     }
 
     pub fn focus_pane_up_fullscreen(&mut self, client_id: ClientId) {
