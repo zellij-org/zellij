@@ -29,6 +29,7 @@ use zellij_utils::{
     data::{InputMode, PluginCapabilities},
     errors::prelude::*,
     input::command::TerminalAction,
+    input::keybinds::Keybinds,
     input::layout::Layout,
     input::plugins::PluginConfig,
     ipc::ClientAttributes,
@@ -69,6 +70,7 @@ pub struct PluginLoader<'a> {
     default_layout: Box<Layout>,
     layout_dir: Option<PathBuf>,
     default_mode: InputMode,
+    keybinds: Option<Keybinds>,
 }
 
 impl<'a> PluginLoader<'a> {
@@ -89,6 +91,7 @@ impl<'a> PluginLoader<'a> {
         default_layout: Box<Layout>,
         layout_dir: Option<PathBuf>,
         default_mode: InputMode,
+        keybinds: &HashMap<ClientId, Keybinds>,
     ) -> Result<()> {
         let err_context = || format!("failed to reload plugin {plugin_id} from memory");
         let mut connected_clients: Vec<ClientId> =
@@ -97,6 +100,7 @@ impl<'a> PluginLoader<'a> {
             return Err(anyhow!("No connected clients, cannot reload plugin"));
         }
         let first_client_id = connected_clients.remove(0);
+        let keybinds = keybinds.get(&first_client_id).cloned();
 
         let mut plugin_loader = PluginLoader::new_from_existing_plugin_attributes(
             &plugin_cache,
@@ -115,6 +119,7 @@ impl<'a> PluginLoader<'a> {
             default_layout,
             layout_dir,
             default_mode,
+            keybinds,
         )?;
         plugin_loader
             .load_module_from_memory()
@@ -152,6 +157,7 @@ impl<'a> PluginLoader<'a> {
         skip_cache: bool,
         layout_dir: Option<PathBuf>,
         default_mode: InputMode,
+        keybinds: Option<Keybinds>,
     ) -> Result<()> {
         let err_context = || format!("failed to start plugin {plugin_id} for client {client_id}");
         let mut plugin_loader = PluginLoader::new(
@@ -173,6 +179,7 @@ impl<'a> PluginLoader<'a> {
             default_layout,
             layout_dir,
             default_mode,
+            keybinds,
         )?;
         if skip_cache {
             plugin_loader
@@ -226,6 +233,7 @@ impl<'a> PluginLoader<'a> {
         default_layout: Box<Layout>,
         layout_dir: Option<PathBuf>,
         default_mode: InputMode,
+        keybinds: Option<Keybinds>,
     ) -> Result<()> {
         let mut new_plugins = HashSet::new();
         for plugin_id in plugin_map.lock().unwrap().plugin_ids() {
@@ -249,6 +257,7 @@ impl<'a> PluginLoader<'a> {
                 default_layout.clone(),
                 layout_dir.clone(),
                 default_mode,
+                keybinds.clone(),
             )?;
             plugin_loader
                 .load_module_from_memory()
@@ -278,6 +287,7 @@ impl<'a> PluginLoader<'a> {
         default_layout: Box<Layout>,
         layout_dir: Option<PathBuf>,
         default_mode: InputMode,
+        keybinds: &HashMap<ClientId, Keybinds>,
     ) -> Result<()> {
         let err_context = || format!("failed to reload plugin id {plugin_id}");
 
@@ -287,6 +297,7 @@ impl<'a> PluginLoader<'a> {
             return Err(anyhow!("No connected clients, cannot reload plugin"));
         }
         let first_client_id = connected_clients.remove(0);
+        let keybinds = keybinds.get(&first_client_id).cloned();
 
         let mut plugin_loader = PluginLoader::new_from_existing_plugin_attributes(
             &plugin_cache,
@@ -305,6 +316,7 @@ impl<'a> PluginLoader<'a> {
             default_layout,
             layout_dir,
             default_mode,
+            keybinds,
         )?;
         plugin_loader
             .compile_module()
@@ -338,6 +350,7 @@ impl<'a> PluginLoader<'a> {
         default_layout: Box<Layout>,
         layout_dir: Option<PathBuf>,
         default_mode: InputMode,
+        keybinds: Option<Keybinds>,
     ) -> Result<Self> {
         let plugin_own_data_dir = ZELLIJ_SESSION_CACHE_DIR
             .join(Url::from(&plugin.location).to_string())
@@ -366,6 +379,7 @@ impl<'a> PluginLoader<'a> {
             default_layout,
             layout_dir,
             default_mode,
+            keybinds,
         })
     }
     pub fn new_from_existing_plugin_attributes(
@@ -385,6 +399,7 @@ impl<'a> PluginLoader<'a> {
         default_layout: Box<Layout>,
         layout_dir: Option<PathBuf>,
         default_mode: InputMode,
+        keybinds: Option<Keybinds>,
     ) -> Result<Self> {
         let err_context = || "Failed to find existing plugin";
         let (running_plugin, _subscriptions, _workers) = {
@@ -420,6 +435,7 @@ impl<'a> PluginLoader<'a> {
             default_layout,
             layout_dir,
             default_mode,
+            keybinds,
         )
     }
     pub fn new_from_different_client_id(
@@ -439,6 +455,7 @@ impl<'a> PluginLoader<'a> {
         default_layout: Box<Layout>,
         layout_dir: Option<PathBuf>,
         default_mode: InputMode,
+        keybinds: Option<Keybinds>,
     ) -> Result<Self> {
         let err_context = || "Failed to find existing plugin";
         let running_plugin = {
@@ -475,6 +492,7 @@ impl<'a> PluginLoader<'a> {
             default_layout,
             layout_dir,
             default_mode,
+            keybinds,
         )
     }
     pub fn load_module_from_memory(&mut self) -> Result<Module> {
@@ -731,6 +749,7 @@ impl<'a> PluginLoader<'a> {
                     self.default_layout.clone(),
                     self.layout_dir.clone(),
                     self.default_mode,
+                    self.keybinds.clone(),
                 )?;
                 plugin_loader_for_client
                     .load_module_from_memory()
@@ -832,7 +851,7 @@ impl<'a> PluginLoader<'a> {
             layout_dir: self.layout_dir.clone(),
             default_mode: self.default_mode.clone(),
             subscriptions: Arc::new(Mutex::new(HashSet::new())),
-            keybinds: self.client_attributes.keybinds.clone(),
+            keybinds: self.keybinds.as_ref().unwrap_or_else(|| &self.client_attributes.keybinds).clone(),
             stdin_pipe,
             stdout_pipe,
         };

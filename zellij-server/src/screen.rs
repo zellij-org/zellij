@@ -1218,7 +1218,7 @@ impl Screen {
         let tab_name = tab_name.unwrap_or_else(|| String::new());
 
         let position = self.tabs.len();
-        let tab = Tab::new(
+        let mut tab = Tab::new(
             tab_index,
             position,
             tab_name,
@@ -1249,6 +1249,9 @@ impl Screen {
             self.styled_underlines,
             self.explicitly_disable_kitty_keyboard_protocol,
         );
+        for (client_id, mode_info) in &self.mode_info {
+            tab.change_mode_info(mode_info.clone(), *client_id);
+        }
         self.tabs.insert(tab_index, tab);
         Ok(())
     }
