@@ -131,8 +131,14 @@ fn send_cli_action_to_server(
             default_shell.clone(),
             default_layout.clone(),
             None,
-            client_keybinds.get(&client_id).unwrap_or(&session_metadata.client_attributes.keybinds).clone(),
-            default_mode.get(&client_id).unwrap_or(&InputMode::Normal).clone(),
+            client_keybinds
+                .get(&client_id)
+                .unwrap_or(&session_metadata.client_attributes.keybinds)
+                .clone(),
+            default_mode
+                .get(&client_id)
+                .unwrap_or(&InputMode::Normal)
+                .clone(),
         )
         .unwrap();
     }

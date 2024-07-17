@@ -37,6 +37,7 @@ members = [
     "default-plugins/tab-bar",
     "default-plugins/fixture-plugin-for-tests",
     "default-plugins/session-manager",
+    "default-plugins/configuration",
     "zellij-client",
     "zellij-server",
     "zellij-utils",

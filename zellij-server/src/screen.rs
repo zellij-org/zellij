@@ -365,7 +365,7 @@ pub enum ScreenInstruction {
         client_id: ClientId,
         keybinds: Option<Keybinds>,
         default_mode: Option<InputMode>,
-    }
+    },
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -550,7 +550,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::DumpLayoutToHd => ScreenContext::DumpLayoutToHd,
             ScreenInstruction::RenameSession(..) => ScreenContext::RenameSession,
             ScreenInstruction::ListClientsMetadata(..) => ScreenContext::ListClientsMetadata,
-            ScreenInstruction::Reconfigure{..} => ScreenContext::Reconfigure,
+            ScreenInstruction::Reconfigure { .. } => ScreenContext::Reconfigure,
         }
     }
 }
@@ -2158,7 +2158,12 @@ impl Screen {
         }
         Ok(())
     }
-    pub fn reconfigure_mode_info(&mut self, new_keybinds: Option<Keybinds>, new_default_mode: Option<InputMode>, client_id: ClientId) -> Result<()> {
+    pub fn reconfigure_mode_info(
+        &mut self,
+        new_keybinds: Option<Keybinds>,
+        new_default_mode: Option<InputMode>,
+        client_id: ClientId,
+    ) -> Result<()> {
         if self.connected_clients_contains(&client_id) {
             let should_update_mode_info = new_keybinds.is_some() || new_default_mode.is_some();
             let mode_info = self
@@ -4044,8 +4049,14 @@ pub(crate) fn screen_thread_main(
                 }
                 screen.unblock_input()?;
             },
-            ScreenInstruction::Reconfigure{ client_id, keybinds, default_mode } => {
-                screen.reconfigure_mode_info(keybinds, default_mode, client_id).non_fatal();
+            ScreenInstruction::Reconfigure {
+                client_id,
+                keybinds,
+                default_mode,
+            } => {
+                screen
+                    .reconfigure_mode_info(keybinds, default_mode, client_id)
+                    .non_fatal();
             },
         }
     }

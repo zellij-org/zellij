@@ -21,8 +21,8 @@ use zellij_utils::async_std::task::{self, JoinHandle};
 use zellij_utils::consts::ZELLIJ_CACHE_DIR;
 use zellij_utils::data::{InputMode, PermissionStatus, PermissionType, PipeMessage, PipeSource};
 use zellij_utils::downloader::Downloader;
-use zellij_utils::input::permission::PermissionCache;
 use zellij_utils::input::keybinds::Keybinds;
+use zellij_utils::input::permission::PermissionCache;
 use zellij_utils::notify_debouncer_full::{notify::RecommendedWatcher, Debouncer, FileIdMap};
 use zellij_utils::plugin_api::event::ProtobufEvent;
 
@@ -820,7 +820,13 @@ impl WasmBridge {
             .running_plugins()
             .iter()
             .cloned()
-            .filter_map(|(_plugin_id, c_id, running_plugin)| if c_id == client_id { Some(running_plugin.clone()) } else { None })
+            .filter_map(|(_plugin_id, c_id, running_plugin)| {
+                if c_id == client_id {
+                    Some(running_plugin.clone())
+                } else {
+                    None
+                }
+            })
             .collect();
         if let Some(default_mode) = default_mode.as_ref() {
             self.default_mode = *default_mode;

@@ -19,8 +19,8 @@ use zellij_utils::{
         actions::{Action, SearchDirection, SearchOption},
         command::TerminalAction,
         get_mode_info,
-        layout::Layout,
         keybinds::Keybinds,
+        layout::Layout,
     },
     ipc::{
         ClientAttributes, ClientToServerMsg, ExitReason, IpcReceiverWithContext, ServerToClientMsg,
@@ -101,7 +101,13 @@ pub(crate) fn route_action(
                 .send_to_plugin(PluginInstruction::Update(vec![(
                     None,
                     Some(client_id),
-                    Event::ModeUpdate(get_mode_info(mode, attrs, capabilities, &client_keybinds, Some(default_mode))),
+                    Event::ModeUpdate(get_mode_info(
+                        mode,
+                        attrs,
+                        capabilities,
+                        &client_keybinds,
+                        Some(default_mode),
+                    )),
                 )]))
                 .with_context(err_context)?;
             senders
@@ -109,7 +115,13 @@ pub(crate) fn route_action(
                 .with_context(err_context)?;
             senders
                 .send_to_screen(ScreenInstruction::ChangeMode(
-                    get_mode_info(mode, attrs, capabilities, &client_keybinds, Some(default_mode)),
+                    get_mode_info(
+                        mode,
+                        attrs,
+                        capabilities,
+                        &client_keybinds,
+                        Some(default_mode),
+                    ),
                     client_id,
                 ))
                 .with_context(err_context)?;
@@ -1029,11 +1041,17 @@ pub(crate) fn route_thread_main(
                                                 rlocked_sessions.default_shell.clone(),
                                                 rlocked_sessions.layout.clone(),
                                                 Some(&mut seen_cli_pipes),
-                                                rlocked_sessions.client_keybinds
+                                                rlocked_sessions
+                                                    .client_keybinds
                                                     .get(&client_id)
-                                                    .unwrap_or(&rlocked_sessions.client_attributes.keybinds)
+                                                    .unwrap_or(
+                                                        &rlocked_sessions
+                                                            .client_attributes
+                                                            .keybinds,
+                                                    )
                                                     .clone(),
-                                                rlocked_sessions.default_mode
+                                                rlocked_sessions
+                                                    .default_mode
                                                     .get(&client_id)
                                                     .unwrap_or(&InputMode::Normal)
                                                     .clone(),
@@ -1061,11 +1079,13 @@ pub(crate) fn route_thread_main(
                                     rlocked_sessions.default_shell.clone(),
                                     rlocked_sessions.layout.clone(),
                                     Some(&mut seen_cli_pipes),
-                                    rlocked_sessions.client_keybinds
+                                    rlocked_sessions
+                                        .client_keybinds
                                         .get(&client_id)
                                         .unwrap_or(&rlocked_sessions.client_attributes.keybinds)
                                         .clone(),
-                                    rlocked_sessions.default_mode
+                                    rlocked_sessions
+                                        .default_mode
                                         .get(&client_id)
                                         .unwrap_or(&InputMode::Normal)
                                         .clone(),

@@ -31,9 +31,9 @@ use zellij_utils::{
     errors::{prelude::*, ContextType, PluginContext},
     input::{
         command::TerminalAction,
+        keybinds::Keybinds,
         layout::{FloatingPaneLayout, Layout, Run, RunPlugin, RunPluginOrAlias, TiledPaneLayout},
         plugins::PluginAliases,
-        keybinds::Keybinds,
     },
     ipc::ClientAttributes,
     pane_size::Size,
@@ -188,7 +188,7 @@ impl From<&PluginInstruction> for PluginContext {
             PluginInstruction::WatchFilesystem => PluginContext::WatchFilesystem,
             PluginInstruction::KeybindPipe { .. } => PluginContext::KeybindPipe,
             PluginInstruction::DumpLayoutToPlugin(..) => PluginContext::DumpLayoutToPlugin,
-            PluginInstruction::Reconfigure{ .. } => PluginContext::Reconfigure,
+            PluginInstruction::Reconfigure { .. } => PluginContext::Reconfigure,
         }
     }
 }
@@ -741,9 +741,13 @@ pub(crate) fn plugin_thread_main(
                         .context("failed to unblock input pipe");
                 }
             },
-            PluginInstruction::Reconfigure { client_id, keybinds, default_mode } => {
+            PluginInstruction::Reconfigure {
+                client_id,
+                keybinds,
+                default_mode,
+            } => {
                 wasm_bridge.reconfigure(client_id, keybinds, default_mode);
-            }
+            },
             PluginInstruction::WatchFilesystem => {
                 wasm_bridge.start_fs_watcher_if_not_started();
             },

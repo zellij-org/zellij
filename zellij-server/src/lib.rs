@@ -129,7 +129,7 @@ impl From<&ServerInstruction> for ServerContext {
             ServerInstruction::ChangeModeForAllClients(..) => {
                 ServerContext::ChangeModeForAllClients
             },
-            ServerInstruction::Reconfigure(..) => ServerContext::Reconfigure
+            ServerInstruction::Reconfigure(..) => ServerContext::Reconfigure,
         }
     }
 }
@@ -570,7 +570,8 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     default_mode,
                     &attrs,
                     session_data.capabilities,
-                    session_data.client_keybinds
+                    session_data
+                        .client_keybinds
                         .get(&client_id)
                         .unwrap_or(&session_data.client_attributes.keybinds),
                     Some(default_mode),
@@ -920,13 +921,18 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     Ok(mut new_config_options) => {
                         if let Some(default_mode) = new_config_options.default_mode.take() {
                             new_default_mode = Some(default_mode);
-                            session_data.write().unwrap().as_mut().unwrap().default_mode.insert(client_id, default_mode);
-
+                            session_data
+                                .write()
+                                .unwrap()
+                                .as_mut()
+                                .unwrap()
+                                .default_mode
+                                .insert(client_id, default_mode);
                         }
                     },
                     Err(e) => {
                         log::error!("Failed to parse config: {}", e);
-                    }
+                    },
                 }
 
                 let new_keybinds = session_data
@@ -957,7 +963,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .send_to_plugin(PluginInstruction::Reconfigure {
                         client_id,
                         keybinds: new_keybinds,
-                        default_mode: new_default_mode
+                        default_mode: new_default_mode,
                     })
                     .unwrap();
             },

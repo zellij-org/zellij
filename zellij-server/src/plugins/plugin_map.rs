@@ -22,10 +22,10 @@ use zellij_utils::{
     data::InputMode,
     data::PluginCapabilities,
     input::command::TerminalAction,
+    input::keybinds::Keybinds,
     input::layout::{Layout, PluginUserConfiguration, RunPlugin, RunPluginLocation},
     input::plugins::PluginConfig,
     ipc::ClientAttributes,
-    input::keybinds::Keybinds,
 };
 use zellij_utils::{data::PermissionType, errors::prelude::*};
 
