@@ -97,7 +97,7 @@ pub enum ServerInstruction {
     DisconnectAllClientsExcept(ClientId),
     ChangeMode(ClientId, InputMode),
     ChangeModeForAllClients(InputMode),
-    RebindKeys(ClientId, String), // String -> stringified keybindings
+    Reconfigure(ClientId, String), // String -> stringified configuration
 }
 
 impl From<&ServerInstruction> for ServerContext {
@@ -129,7 +129,7 @@ impl From<&ServerInstruction> for ServerContext {
             ServerInstruction::ChangeModeForAllClients(..) => {
                 ServerContext::ChangeModeForAllClients
             },
-            ServerInstruction::RebindKeys(..) => ServerContext::RebindKeys,
+            ServerInstruction::Reconfigure(..) => ServerContext::Reconfigure,
         }
     }
 }
@@ -149,7 +149,7 @@ pub(crate) struct SessionMetaData {
     pub config_options: Box<Options>,
     pub client_keybinds: HashMap<ClientId, Keybinds>,
     pub client_input_modes: HashMap<ClientId, InputMode>,
-    pub default_mode: InputMode,
+    pub default_mode: HashMap<ClientId, InputMode>,
     screen_thread: Option<thread::JoinHandle<()>>,
     pty_thread: Option<thread::JoinHandle<()>>,
     plugin_thread: Option<thread::JoinHandle<()>>,
@@ -570,6 +570,10 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     default_mode,
                     &attrs,
                     session_data.capabilities,
+                    session_data
+                        .client_keybinds
+                        .get(&client_id)
+                        .unwrap_or(&session_data.client_attributes.keybinds),
                     Some(default_mode),
                 );
                 session_data
@@ -911,24 +915,57 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .unwrap()
                     .change_mode_for_all_clients(input_mode);
             },
-            ServerInstruction::RebindKeys(client_id, new_keybinds) => {
+            ServerInstruction::Reconfigure(client_id, new_config) => {
+                let mut new_default_mode = None;
+                match Options::from_string(&new_config) {
+                    Ok(mut new_config_options) => {
+                        if let Some(default_mode) = new_config_options.default_mode.take() {
+                            new_default_mode = Some(default_mode);
+                            session_data
+                                .write()
+                                .unwrap()
+                                .as_mut()
+                                .unwrap()
+                                .default_mode
+                                .insert(client_id, default_mode);
+                        }
+                    },
+                    Err(e) => {
+                        log::error!("Failed to parse config: {}", e);
+                    },
+                }
+
                 let new_keybinds = session_data
                     .write()
                     .unwrap()
                     .as_mut()
                     .unwrap()
-                    .rebind_keys(client_id, new_keybinds)
+                    .rebind_keys(client_id, new_config)
                     .clone();
-                if let Some(new_keybinds) = new_keybinds {
-                    session_data
-                        .write()
-                        .unwrap()
-                        .as_ref()
-                        .unwrap()
-                        .senders
-                        .send_to_screen(ScreenInstruction::RebindKeys(new_keybinds, client_id))
-                        .unwrap();
-                }
+                session_data
+                    .write()
+                    .unwrap()
+                    .as_ref()
+                    .unwrap()
+                    .senders
+                    .send_to_screen(ScreenInstruction::Reconfigure {
+                        client_id,
+                        keybinds: new_keybinds.clone(),
+                        default_mode: new_default_mode,
+                    })
+                    .unwrap();
+                session_data
+                    .write()
+                    .unwrap()
+                    .as_ref()
+                    .unwrap()
+                    .senders
+                    .send_to_plugin(PluginInstruction::Reconfigure {
+                        client_id,
+                        keybinds: new_keybinds,
+                        default_mode: new_default_mode,
+                    })
+                    .unwrap();
             },
         }
     }
@@ -1167,7 +1204,7 @@ fn init_session(
         plugin_thread: Some(plugin_thread),
         pty_writer_thread: Some(pty_writer_thread),
         background_jobs_thread: Some(background_jobs_thread),
-        default_mode,
+        default_mode: HashMap::new(),
     }
 }
 

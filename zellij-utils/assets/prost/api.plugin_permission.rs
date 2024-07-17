@@ -10,7 +10,7 @@ pub enum PermissionType {
     WebAccess = 6,
     ReadCliPipes = 7,
     MessageAndLaunchOtherPlugins = 8,
-    RebindKeys = 9,
+    Reconfigure = 9,
 }
 impl PermissionType {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -30,7 +30,7 @@ impl PermissionType {
             PermissionType::MessageAndLaunchOtherPlugins => {
                 "MessageAndLaunchOtherPlugins"
             }
-            PermissionType::RebindKeys => "RebindKeys",
+            PermissionType::Reconfigure => "Reconfigure",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -45,7 +45,7 @@ impl PermissionType {
             "WebAccess" => Some(Self::WebAccess),
             "ReadCliPipes" => Some(Self::ReadCliPipes),
             "MessageAndLaunchOtherPlugins" => Some(Self::MessageAndLaunchOtherPlugins),
-            "RebindKeys" => Some(Self::RebindKeys),
+            "Reconfigure" => Some(Self::Reconfigure),
             _ => None,
         }
     }

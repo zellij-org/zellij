@@ -56,7 +56,7 @@ impl ZellijPlugin for State {
             PermissionType::WebAccess,
             PermissionType::ReadCliPipes,
             PermissionType::MessageAndLaunchOtherPlugins,
-            PermissionType::RebindKeys,
+            PermissionType::Reconfigure,
         ]);
         self.configuration = configuration;
         subscribe(&[
@@ -320,7 +320,7 @@ impl ZellijPlugin for State {
                     );
                 },
                 BareKey::Char('0') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
-                    rebind_keys(
+                    reconfigure(
                         "
                         keybinds {
                             locked {
