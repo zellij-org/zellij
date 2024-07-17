@@ -809,8 +809,8 @@ pub fn dump_session_layout() {
 }
 
 /// Rebind keys for the current user
-pub fn rebind_keys(keys: String) {
-    let plugin_command = PluginCommand::RebindKeys(keys);
+pub fn reconfigure(new_config: String) {
+    let plugin_command = PluginCommand::Reconfigure(new_config);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };

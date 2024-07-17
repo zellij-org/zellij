@@ -6492,7 +6492,7 @@ pub fn disconnect_other_clients_plugins_command() {
 
 #[test]
 #[ignore]
-pub fn rebind_keys_plugin_command() {
+pub fn reconfigure_plugin_command() {
     let temp_folder = tempdir().unwrap(); // placed explicitly in the test scope because its
                                           // destructor removes the directory
     let plugin_host_folder = PathBuf::from(temp_folder.path());
@@ -6527,7 +6527,7 @@ pub fn rebind_keys_plugin_command() {
     let received_server_instruction = Arc::new(Mutex::new(vec![]));
     let server_thread = log_actions_in_thread!(
         received_server_instruction,
-        ServerInstruction::RebindKeys,
+        ServerInstruction::Reconfigure,
         server_receiver,
         1
     );
@@ -6555,20 +6555,20 @@ pub fn rebind_keys_plugin_command() {
     std::thread::sleep(std::time::Duration::from_millis(500));
     teardown();
     server_thread.join().unwrap(); // this might take a while if the cache is cold
-    let rebind_keys_event = received_server_instruction
+    let reconfigure_event = received_server_instruction
         .lock()
         .unwrap()
         .iter()
         .rev()
         .find_map(|i| {
-            if let ServerInstruction::RebindKeys(..) = i {
+            if let ServerInstruction::Reconfigure(..) = i {
                 Some(i.clone())
             } else {
                 None
             }
         })
         .clone();
-    assert_snapshot!(format!("{:#?}", rebind_keys_event));
+    assert_snapshot!(format!("{:#?}", reconfigure_event));
 }
 
 #[test]

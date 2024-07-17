@@ -750,6 +750,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "configuration"
+version = "0.1.0"
+dependencies = [
+ "ansi_term",
+ "chrono",
+ "zellij-tile",
+]
+
+[[package]]
 name = "console"
 version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
