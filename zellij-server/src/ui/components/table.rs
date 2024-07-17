@@ -23,13 +23,19 @@ pub fn table(
             break;
         }
         for cell in row {
-            let reset_styles_for_item = RESET_STYLES;
+            let mut reset_styles_for_item = RESET_STYLES;
             let declaration = if is_title_row {
+                reset_styles_for_item = reset_styles_for_item
+                    .background(Some(style.colors.table_title.background.into()));
                 style.colors.table_title
             } else {
                 if cell.selected {
+                    reset_styles_for_item = reset_styles_for_item
+                        .background(Some(style.colors.table_cell_selected.background.into()));
                     style.colors.table_cell_selected
                 } else {
+                    reset_styles_for_item = reset_styles_for_item
+                        .background(Some(style.colors.table_cell_unselected.background.into()));
                     style.colors.table_cell_unselected
                 }
             };
