@@ -1,5 +1,5 @@
-use super::{is_too_wide, parse_indices, parse_opaque, parse_selected, Coordinates};
-use crate::panes::terminal_character::CharacterStyles;
+use super::{is_too_wide, parqet_opaque, parse_indices, parse_selected, Coordinates};
+use crate::panes::{terminal_character::CharacterStyles, AnsiCode};
 use zellij_utils::{
     data::{PaletteColor, Style, StyleDeclaration},
     shared::ansi_len,
@@ -14,7 +14,8 @@ pub fn text(content: Text, style: &Style, component_coordinates: Option<Coordina
     } else {
         style.colors.text_unselected
     };
-    let base_text_style = CharacterStyles::from(declaration);
+    // TODO: Background here dependent on optional bg, transparency
+    let base_text_style = CharacterStyles::from(declaration).background(Some(AnsiCode::Reset));
     let (text, _text_width) = stringify_text(
         &content,
         None,
@@ -51,13 +52,9 @@ pub fn stringify_text(
             break;
         }
         text_width += character_width;
-        if !text.indices.is_empty() {
-            let character_with_styling =
-                color_index_character(character, i, &text, style, base_text_style);
-            stringified.push_str(&character_with_styling);
-        } else {
-            stringified.push(character);
-        }
+        let character_with_styling =
+            color_index_character(character, i, &text, style, base_text_style);
+        stringified.push_str(&character_with_styling);
     }
     let coordinates_width = coordinates.as_ref().and_then(|c| c.width);
     match (coordinates_width, base_text_style.background) {
@@ -143,7 +140,7 @@ impl Text {
                 }
             }
         }
-        None
+        Some(style.base)
     }
 }
 

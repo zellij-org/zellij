@@ -1,8 +1,5 @@
 use super::{is_too_high, is_too_wide, stringify_text, Coordinates, Text};
-use crate::panes::{
-    terminal_character::{AnsiCode, RESET_STYLES},
-    CharacterStyles,
-};
+use crate::panes::terminal_character::{AnsiCode, RESET_STYLES};
 use std::collections::BTreeMap;
 use zellij_utils::{data::Style, shared::ansi_len};
 
@@ -23,29 +20,37 @@ pub fn table(
             break;
         }
         for cell in row {
-            let mut reset_styles_for_item = RESET_STYLES;
-            let declaration = if is_title_row {
-                reset_styles_for_item = reset_styles_for_item
-                    .background(Some(style.colors.table_title.background.into()));
-                style.colors.table_title
+            let (reset_styles_for_item, declaration) = if is_title_row {
+                (
+                    RESET_STYLES.background(Some(style.colors.table_title.background.into())),
+                    style.colors.table_title,
+                )
             } else {
                 if cell.selected {
-                    reset_styles_for_item = reset_styles_for_item
-                        .background(Some(style.colors.table_cell_selected.background.into()));
-                    style.colors.table_cell_selected
+                    (
+                        RESET_STYLES
+                            .background(Some(style.colors.table_cell_selected.background.into())),
+                        style.colors.table_cell_selected,
+                    )
                 } else {
-                    reset_styles_for_item = reset_styles_for_item
-                        .background(Some(style.colors.table_cell_unselected.background.into()));
-                    style.colors.table_cell_unselected
+                    (
+                        RESET_STYLES.background(None),
+                        style.colors.table_cell_unselected,
+                    )
                 }
             };
             // here we intentionally don't pass our coordinates even if we have them, because
             // these cells have already been padded and truncated
-            let text_styles = CharacterStyles::from(declaration).bold(Some(AnsiCode::On));
-            let (text, _text_width) = stringify_text(&cell, None, &None, &declaration, text_styles);
+            let (text, _text_width) = stringify_text(
+                &cell,
+                None,
+                &None,
+                &declaration,
+                reset_styles_for_item.bold(Some(AnsiCode::On)),
+            );
             stringified.push_str(&format!(
-                "{}{}{} ",
-                text_styles, text, reset_styles_for_item
+                "{}{} {}",
+                reset_styles_for_item, text, RESET_STYLES
             ));
         }
         let next_row_instruction = coordinates
