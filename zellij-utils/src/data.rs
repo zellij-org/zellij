@@ -1439,7 +1439,7 @@ impl From<Palette> for Styling {
                 emphasis_2: palette.cyan,
                 emphasis_3: palette.green,
                 emphasis_4: palette.magenta,
-                background: palette.bg,
+                background: palette.black,
             },
             table_cell_selected: StyleDeclaration {
                 base: palette.green,
