@@ -811,7 +811,6 @@ impl WasmBridge {
         keybinds: Option<Keybinds>,
         default_mode: Option<InputMode>,
     ) -> Result<()> {
-        let err_context = move || format!("failed to reconfigure plugin");
 
         let plugins_to_reconfigure: Vec<Arc<Mutex<RunningPlugin>>> = self
             .plugin_map
@@ -836,9 +835,7 @@ impl WasmBridge {
         }
         for running_plugin in plugins_to_reconfigure {
             task::spawn({
-                let senders = self.senders.clone();
                 let running_plugin = running_plugin.clone();
-                let client_id = client_id;
                 let keybinds = keybinds.clone();
                 async move {
                     let mut running_plugin = running_plugin.lock().unwrap();
