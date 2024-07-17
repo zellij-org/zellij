@@ -811,7 +811,6 @@ impl WasmBridge {
         keybinds: Option<Keybinds>,
         default_mode: Option<InputMode>,
     ) -> Result<()> {
-
         let plugins_to_reconfigure: Vec<Arc<Mutex<RunningPlugin>>> = self
             .plugin_map
             .lock()

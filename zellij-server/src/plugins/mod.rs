@@ -746,7 +746,9 @@ pub(crate) fn plugin_thread_main(
                 keybinds,
                 default_mode,
             } => {
-                wasm_bridge.reconfigure(client_id, keybinds, default_mode).non_fatal();
+                wasm_bridge
+                    .reconfigure(client_id, keybinds, default_mode)
+                    .non_fatal();
             },
             PluginInstruction::WatchFilesystem => {
                 wasm_bridge.start_fs_watcher_if_not_started();
