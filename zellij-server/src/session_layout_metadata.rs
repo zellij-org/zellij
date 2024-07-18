@@ -100,7 +100,7 @@ impl SessionLayoutMetadata {
                         &run_command.command.display().to_string(),
                         &run_command.args,
                     ) {
-                        return true
+                        return true;
                     }
                 }
             }
@@ -111,7 +111,7 @@ impl SessionLayoutMetadata {
                         &run_command.command.display().to_string(),
                         &run_command.args,
                     ) {
-                        return true
+                        return true;
                     }
                 }
             }
