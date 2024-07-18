@@ -550,6 +550,10 @@ impl TryFrom<LayoutInfo> for ProtobufLayoutInfo {
                 source: "url".to_owned(),
                 name,
             }),
+            LayoutInfo::Stringified(stringified_layout) => Ok(ProtobufLayoutInfo {
+                source: "stringified".to_owned(),
+                name: stringified_layout.clone(),
+            }),
         }
     }
 }
@@ -561,6 +565,7 @@ impl TryFrom<ProtobufLayoutInfo> for LayoutInfo {
             "file" => Ok(LayoutInfo::File(protobuf_layout_info.name)),
             "built-in" => Ok(LayoutInfo::BuiltIn(protobuf_layout_info.name)),
             "url" => Ok(LayoutInfo::Url(protobuf_layout_info.name)),
+            "stringified" => Ok(LayoutInfo::Stringified(protobuf_layout_info.name)),
             _ => Err("Unknown source for layout"),
         }
     }

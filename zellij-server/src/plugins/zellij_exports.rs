@@ -922,6 +922,13 @@ fn switch_session(
 ) -> Result<()> {
     // pane_id is (id, is_plugin)
     let err_context = || format!("Failed to switch session");
+    if let Some(LayoutInfo::Stringified(stringified_layout)) = layout.as_ref() {
+        // we verify the stringified layout here to fail early rather than when parsing it at the
+        // session-switching phase
+        if let Err(e) = Layout::from_kdl(&stringified_layout, None, None, None) {
+            return Err(anyhow!("Failed to deserialize layout: {}", e));
+        }
+    }
     let client_id = env.client_id;
     let tab_position = tab_position.map(|p| p + 1); // ¯\_()_/¯
     let connect_to_session = ConnectToSession {

@@ -40,11 +40,15 @@ pub struct KdlLayoutParser<'a> {
     pane_templates: HashMap<String, (PaneOrFloatingPane, KdlNode)>,
     default_tab_template: Option<(TiledPaneLayout, Vec<FloatingPaneLayout>, KdlNode)>,
     new_tab_template: Option<(TiledPaneLayout, Vec<FloatingPaneLayout>)>,
-    file_name: PathBuf,
+    file_name: Option<PathBuf>,
 }
 
 impl<'a> KdlLayoutParser<'a> {
-    pub fn new(raw_layout: &'a str, global_cwd: Option<PathBuf>, file_name: String) -> Self {
+    pub fn new(
+        raw_layout: &'a str,
+        global_cwd: Option<PathBuf>,
+        file_name: Option<String>,
+    ) -> Self {
         KdlLayoutParser {
             raw_layout,
             tab_templates: HashMap::new(),
@@ -52,7 +56,7 @@ impl<'a> KdlLayoutParser<'a> {
             default_tab_template: None,
             new_tab_template: None,
             global_cwd,
-            file_name: PathBuf::from(file_name),
+            file_name: file_name.map(|f| PathBuf::from(f)),
         }
     }
     fn is_a_reserved_word(&self, word: &str) -> bool {
@@ -559,9 +563,12 @@ impl<'a> KdlLayoutParser<'a> {
         }
         self.assert_no_mixed_children_and_properties(kdl_node)?;
         let pane_initial_contents = contents_file.and_then(|contents_file| {
-            self.file_name.parent().and_then(|parent_folder| {
-                std::fs::read_to_string(parent_folder.join(contents_file)).ok()
-            })
+            self.file_name
+                .as_ref()
+                .and_then(|f| f.parent())
+                .and_then(|parent_folder| {
+                    std::fs::read_to_string(parent_folder.join(contents_file)).ok()
+                })
         });
         Ok(TiledPaneLayout {
             borderless: borderless.unwrap_or_default(),
@@ -596,9 +603,12 @@ impl<'a> KdlLayoutParser<'a> {
             kdl_get_string_property_or_child_value_with_error!(kdl_node, "contents_file");
         self.assert_no_mixed_children_and_properties(kdl_node)?;
         let pane_initial_contents = contents_file.and_then(|contents_file| {
-            self.file_name.parent().and_then(|parent_folder| {
-                std::fs::read_to_string(parent_folder.join(contents_file)).ok()
-            })
+            self.file_name
+                .as_ref()
+                .and_then(|f| f.parent())
+                .and_then(|parent_folder| {
+                    std::fs::read_to_string(parent_folder.join(contents_file)).ok()
+                })
         });
         Ok(FloatingPaneLayout {
             name,

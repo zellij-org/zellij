@@ -64,7 +64,7 @@ pub(crate) fn get_resurrectable_sessions() -> Vec<(String, Duration, Layout)> {
                     };
                     let layout = match Layout::from_kdl(
                         &raw_layout,
-                        layout_file_name.display().to_string(),
+                        Some(layout_file_name.display().to_string()),
                         None,
                         None,
                     ) {
