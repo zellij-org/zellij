@@ -1184,6 +1184,7 @@ pub enum LayoutInfo {
     BuiltIn(String),
     File(String),
     Url(String),
+    Stringified(String),
 }
 
 impl LayoutInfo {
@@ -1192,6 +1193,7 @@ impl LayoutInfo {
             LayoutInfo::BuiltIn(name) => &name,
             LayoutInfo::File(name) => &name,
             LayoutInfo::Url(url) => &url,
+            LayoutInfo::Stringified(layout) => &layout,
         }
     }
     pub fn is_builtin(&self) -> bool {
@@ -1199,6 +1201,7 @@ impl LayoutInfo {
             LayoutInfo::BuiltIn(_name) => true,
             LayoutInfo::File(_name) => false,
             LayoutInfo::Url(_url) => false,
+            LayoutInfo::Stringified(_stringified) => false,
         }
     }
 }

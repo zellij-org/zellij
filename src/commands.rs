@@ -445,6 +445,10 @@ pub(crate) fn start_client(opts: CliArgs) {
                         config_without_layout.clone(),
                     ),
                     LayoutInfo::Url(url) => Layout::from_url(&url, config_without_layout.clone()),
+                    LayoutInfo::Stringified(stringified_layout) => Layout::from_stringified_layout(
+                        &stringified_layout,
+                        config_without_layout.clone(),
+                    ),
                 };
                 match new_session_layout {
                     Ok(new_session_layout) => {
