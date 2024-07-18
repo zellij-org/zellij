@@ -97,6 +97,36 @@ pub(crate) fn get_resurrectable_sessions() -> Vec<(String, Duration, Layout)> {
     }
 }
 
+pub(crate) fn get_resurrectable_session_names() -> Vec<String> {
+    match fs::read_dir(&*ZELLIJ_SESSION_INFO_CACHE_DIR) {
+        Ok(files_in_session_info_folder) => {
+            let files_that_are_folders = files_in_session_info_folder
+                .filter_map(|f| f.ok().map(|f| f.path()))
+                .filter(|f| f.is_dir());
+            files_that_are_folders
+                .filter_map(|folder_name| {
+                    let folder = folder_name.display().to_string();
+                    let resurrection_layout_file =
+                        session_layout_cache_file_name(&folder);
+                    if std::path::Path::new(&resurrection_layout_file).exists() {
+                        folder_name.file_name().map(|f| format!("{}", f.to_string_lossy()))
+                    } else {
+                        None
+                    }
+                })
+                .collect()
+        },
+        Err(e) => {
+            log::error!(
+                "Failed to read session_info cache folder: \"{:?}\": {:?}",
+                &*ZELLIJ_SESSION_INFO_CACHE_DIR,
+                e
+            );
+            vec![]
+        },
+    }
+}
+
 pub(crate) fn get_sessions_sorted_by_mtime() -> anyhow::Result<Vec<String>> {
     match fs::read_dir(&*ZELLIJ_SOCK_DIR) {
         Ok(files) => {
@@ -407,8 +437,8 @@ pub(crate) fn assert_session_ne(name: &str) {
 
     match session_exists(name) {
         Ok(result) if !result => {
-            let resurrectable_sessions = get_resurrectable_sessions();
-            if resurrectable_sessions.iter().find(|(s, _, _)| s == name).is_some() {
+            let resurrectable_sessions = get_resurrectable_session_names();
+            if resurrectable_sessions.iter().find(|s| s == &name).is_some() {
                 println!("Session with name {:?} already exists, but is dead. Use the attach command to resurrect it or, the delete-session command to kill it or specify a different name.", name);
             } else {
                 return
