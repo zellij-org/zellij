@@ -81,6 +81,55 @@ impl SessionLayoutMetadata {
 
         ClientMetadata::render_many(clients_metadata, &self.default_editor)
     }
+    pub fn is_dirty(&self) -> bool {
+        // here we check to see if the serialized layout would be different than the base one, and
+        // thus is "dirty". A layout is considered dirty if one of the following is true:
+        // 1. The current number of panes is different than the number of panes in the base layout
+        //    (meaning a pane was opened or closed)
+        // 2. One or more terminal panes are running a command that is not the default shell
+        let base_layout_pane_count = self.default_layout.pane_count();
+        let current_pane_count = self.pane_count();
+        if current_pane_count != base_layout_pane_count {
+            return true;
+        }
+        for tab in &self.tabs {
+            for tiled_pane in &tab.tiled_panes {
+                if let Some(Run::Command(run_command)) = tiled_pane.run.as_ref() {
+                    if !Self::is_default_shell(
+                        self.default_shell.as_ref(),
+                        &run_command.command.display().to_string(),
+                        &run_command.args,
+                    ) {
+                        return true
+                    }
+                }
+            }
+            for floating_pane in &tab.floating_panes {
+                if let Some(Run::Command(run_command)) = floating_pane.run.as_ref() {
+                    if !Self::is_default_shell(
+                        self.default_shell.as_ref(),
+                        &run_command.command.display().to_string(),
+                        &run_command.args,
+                    ) {
+                        return true
+                    }
+                }
+            }
+        }
+        false
+    }
+    fn pane_count(&self) -> usize {
+        let mut pane_count = 0;
+        for tab in &self.tabs {
+            for _tiled_pane in &tab.tiled_panes {
+                pane_count += 1;
+            }
+            for _floating_pane in &tab.floating_panes {
+                pane_count += 1;
+            }
+        }
+        pane_count
+    }
     fn is_default_shell(
         default_shell: Option<&PathBuf>,
         command_name: &String,
