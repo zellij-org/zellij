@@ -1142,15 +1142,20 @@ impl Layout {
         let (path_to_raw_layout, raw_layout, raw_swap_layouts) = match layout_info {
             LayoutInfo::File(layout_name_without_extension) => {
                 let layout_dir = layout_dir.clone().or_else(|| default_layout_dir());
-                Self::stringified_from_dir(
-                    &PathBuf::from(layout_name_without_extension),
-                    layout_dir.as_ref(),
-                )?
+                let (path_to_layout, stringified_layout, swap_layouts) =
+                    Self::stringified_from_dir(
+                        &PathBuf::from(layout_name_without_extension),
+                        layout_dir.as_ref(),
+                    )?;
+                (Some(path_to_layout), stringified_layout, swap_layouts)
             },
             LayoutInfo::BuiltIn(layout_name) => {
-                Self::stringified_from_default_assets(&PathBuf::from(layout_name))?
+                let (path_to_layout, stringified_layout, swap_layouts) =
+                    Self::stringified_from_default_assets(&PathBuf::from(layout_name))?;
+                (Some(path_to_layout), stringified_layout, swap_layouts)
             },
-            LayoutInfo::Url(url) => (url.clone(), Self::stringified_from_url(&url)?, None),
+            LayoutInfo::Url(url) => (Some(url.clone()), Self::stringified_from_url(&url)?, None),
+            LayoutInfo::Stringified(stringified_layout) => (None, stringified_layout, None),
         };
         Layout::from_kdl(
             &raw_layout,
@@ -1208,7 +1213,7 @@ impl Layout {
             Layout::stringified_from_path_or_default(layout_path, layout_dir)?;
         let layout = Layout::from_kdl(
             &raw_layout,
-            path_to_raw_layout,
+            Some(path_to_raw_layout),
             raw_swap_layouts
                 .as_ref()
                 .map(|(r, f)| (r.as_str(), f.as_str())),
@@ -1226,8 +1231,16 @@ impl Layout {
                 Err(e) => Err(ConfigError::DownloadError(format!("{}", e))),
             }
         })?;
-        let layout = Layout::from_kdl(&raw_layout, url.into(), None, None)?;
+        let layout = Layout::from_kdl(&raw_layout, Some(url.into()), None, None)?;
         let config = Config::from_kdl(&raw_layout, Some(config))?; // this merges the two config, with
+        Ok((layout, config))
+    }
+    pub fn from_stringified_layout(
+        stringified_layout: &str,
+        config: Config,
+    ) -> Result<(Layout, Config), ConfigError> {
+        let layout = Layout::from_kdl(&stringified_layout, None, None, None)?;
+        let config = Config::from_kdl(&stringified_layout, Some(config))?; // this merges the two config, with
         Ok((layout, config))
     }
     #[cfg(target_family = "wasm")]
@@ -1244,7 +1257,7 @@ impl Layout {
             Layout::stringified_from_path_or_default(layout_path, layout_dir)?;
         let layout = Layout::from_kdl(
             &raw_layout,
-            path_to_raw_layout,
+            Some(path_to_raw_layout),
             raw_swap_layouts
                 .as_ref()
                 .map(|(r, f)| (r.as_str(), f.as_str())),
@@ -1261,7 +1274,7 @@ impl Layout {
             Layout::stringified_from_default_assets(layout_name)?;
         let layout = Layout::from_kdl(
             &raw_layout,
-            path_to_raw_layout,
+            Some(path_to_raw_layout),
             raw_swap_layouts
                 .as_ref()
                 .map(|(r, f)| (r.as_str(), f.as_str())),
@@ -1276,7 +1289,7 @@ impl Layout {
         swap_layouts: Option<(&str, &str)>, // Option<path_to_swap_layout, stringified_swap_layout>
         cwd: Option<PathBuf>,
     ) -> Result<Layout, ConfigError> {
-        Layout::from_kdl(raw, path_to_raw_layout, swap_layouts, cwd)
+        Layout::from_kdl(raw, Some(path_to_raw_layout), swap_layouts, cwd)
     }
     pub fn stringified_from_dir(
         layout: &PathBuf,
