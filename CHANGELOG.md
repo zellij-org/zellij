@@ -21,6 +21,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat(ui): configuration screen + non-colliding keybindings setup at runtime (https://github.com/zellij-org/zellij/pull/3502)
 * feat(plugins): allow starting a new session with a stringified layout (https://github.com/zellij-org/zellij/pull/3503)
 * fix(resurrection): do not serialize garbage sessions to the cache (https://github.com/zellij-org/zellij/pull/3504)
+* fix(startup): do not parse resurrectable sessions ons startup (https://github.com/zellij-org/zellij/pull/3505)
 
 ## [0.40.1] - 2024-05-02
 * fix(sessions): issue where sessions would occasionally become unresponsive (https://github.com/zellij-org/zellij/pull/3281)
