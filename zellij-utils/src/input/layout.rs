@@ -1511,6 +1511,22 @@ impl Layout {
             }
         }
     }
+    pub fn pane_count(&self) -> usize {
+        let mut pane_count = 0;
+        if let Some((tiled_pane_layout, floating_panes)) = self.template.as_ref() {
+            pane_count += tiled_pane_layout.pane_count();
+            for _ in floating_panes {
+                pane_count += 1;
+            }
+        }
+        for (_, tiled_pane_layout, floating_panes) in &self.tabs {
+            pane_count += tiled_pane_layout.pane_count();
+            for _ in floating_panes {
+                pane_count += 1;
+            }
+        }
+        pane_count
+    }
 }
 
 fn split_space(
