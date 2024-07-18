@@ -3,9 +3,10 @@ use std::{fs::File, io::prelude::*, path::PathBuf, process, time::Duration};
 
 use crate::sessions::{
     assert_dead_session, assert_session, assert_session_ne, delete_session as delete_session_impl,
-    get_active_session, get_name_generator, get_resurrectable_sessions, get_resurrectable_session_names, get_sessions,
-    get_sessions_sorted_by_mtime, kill_session as kill_session_impl, match_session_name,
-    print_sessions, print_sessions_with_index, resurrection_layout, session_exists, ActiveSession,
+    get_active_session, get_name_generator, get_resurrectable_session_names,
+    get_resurrectable_sessions, get_sessions, get_sessions_sorted_by_mtime,
+    kill_session as kill_session_impl, match_session_name, print_sessions,
+    print_sessions_with_index, resurrection_layout, session_exists, ActiveSession,
     SessionNameMatch,
 };
 use zellij_client::{

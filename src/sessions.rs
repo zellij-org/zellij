@@ -106,10 +106,11 @@ pub(crate) fn get_resurrectable_session_names() -> Vec<String> {
             files_that_are_folders
                 .filter_map(|folder_name| {
                     let folder = folder_name.display().to_string();
-                    let resurrection_layout_file =
-                        session_layout_cache_file_name(&folder);
+                    let resurrection_layout_file = session_layout_cache_file_name(&folder);
                     if std::path::Path::new(&resurrection_layout_file).exists() {
-                        folder_name.file_name().map(|f| format!("{}", f.to_string_lossy()))
+                        folder_name
+                            .file_name()
+                            .map(|f| format!("{}", f.to_string_lossy()))
                     } else {
                         None
                     }
