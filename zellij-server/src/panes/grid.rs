@@ -1154,7 +1154,7 @@ impl Grid {
         self.reset_terminal_state();
         self.mark_for_rerender();
     }
-    /// Dumps all lines above terminal vieport and the viewport itself to a string
+    /// Dumps all lines above terminal viewport and the viewport itself to a string
     pub fn dump_screen(&mut self, full: bool) -> String {
         let viewport: String = dump_screen!(self.viewport);
         if !full {

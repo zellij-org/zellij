@@ -3,7 +3,7 @@
 //! To read more about Zellij plugins:
 //! [https://zellij.dev/documentation/plugins](https://zellij.dev/documentation/plugins)
 //!
-//! ### Interesting things in this libary:
+//! ### Interesting things in this library:
 //! - The [`ZellijPlugin`] trait for implementing plugins combined with the
 //! [`register_plugin!`](register_plugin) macro to register them.
 //! - The list of [commands](shim) representing what a plugin can do.
@@ -70,7 +70,7 @@ pub trait ZellijWorker<'de>: Default + Serialize + Deserialize<'de> {
 }
 
 pub const PLUGIN_MISMATCH: &str =
-    "An error occured in a plugin while receiving an Event from zellij. This means
+    "An error occurred in a plugin while receiving an Event from zellij. This means
 that the plugins aren't compatible with the current zellij version.
 
 The most likely explanation for this is that you're running either a
