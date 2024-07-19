@@ -119,7 +119,7 @@ pub mod plugin_command {
         #[prost(message, tag = "62")]
         NewTabsWithLayoutInfoPayload(super::NewTabsWithLayoutInfoPayload),
         #[prost(string, tag = "63")]
-        RebindKeysPayload(::prost::alloc::string::String),
+        ReconfigurePayload(::prost::alloc::string::String),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -433,7 +433,7 @@ pub enum CommandName {
     DumpSessionLayout = 84,
     CloseSelf = 85,
     NewTabsWithLayoutInfo = 86,
-    RebindKeys = 87,
+    Reconfigure = 87,
 }
 impl CommandName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -529,7 +529,7 @@ impl CommandName {
             CommandName::DumpSessionLayout => "DumpSessionLayout",
             CommandName::CloseSelf => "CloseSelf",
             CommandName::NewTabsWithLayoutInfo => "NewTabsWithLayoutInfo",
-            CommandName::RebindKeys => "RebindKeys",
+            CommandName::Reconfigure => "Reconfigure",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -622,7 +622,7 @@ impl CommandName {
             "DumpSessionLayout" => Some(Self::DumpSessionLayout),
             "CloseSelf" => Some(Self::CloseSelf),
             "NewTabsWithLayoutInfo" => Some(Self::NewTabsWithLayoutInfo),
-            "RebindKeys" => Some(Self::RebindKeys),
+            "Reconfigure" => Some(Self::Reconfigure),
             _ => None,
         }
     }

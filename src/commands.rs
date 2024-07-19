@@ -3,9 +3,10 @@ use std::{fs::File, io::prelude::*, path::PathBuf, process, time::Duration};
 
 use crate::sessions::{
     assert_dead_session, assert_session, assert_session_ne, delete_session as delete_session_impl,
-    get_active_session, get_name_generator, get_resurrectable_sessions, get_sessions,
-    get_sessions_sorted_by_mtime, kill_session as kill_session_impl, match_session_name,
-    print_sessions, print_sessions_with_index, resurrection_layout, session_exists, ActiveSession,
+    get_active_session, get_name_generator, get_resurrectable_session_names,
+    get_resurrectable_sessions, get_sessions, get_sessions_sorted_by_mtime,
+    kill_session as kill_session_impl, match_session_name, print_sessions,
+    print_sessions_with_index, resurrection_layout, session_exists, ActiveSession,
     SessionNameMatch,
 };
 use zellij_client::{
@@ -445,6 +446,10 @@ pub(crate) fn start_client(opts: CliArgs) {
                         config_without_layout.clone(),
                     ),
                     LayoutInfo::Url(url) => Layout::from_url(&url, config_without_layout.clone()),
+                    LayoutInfo::Stringified(stringified_layout) => Layout::from_stringified_layout(
+                        &stringified_layout,
+                        config_without_layout.clone(),
+                    ),
                 };
                 match new_session_layout {
                     Ok(new_session_layout) => {
@@ -669,10 +674,7 @@ fn generate_unique_session_name() -> String {
             .map(|s| s.0.clone())
             .collect::<Vec<String>>()
     });
-    let dead_sessions: Vec<String> = get_resurrectable_sessions()
-        .iter()
-        .map(|(s, _, _)| s.clone())
-        .collect();
+    let dead_sessions = get_resurrectable_session_names();
     let Ok(sessions) = sessions else {
         eprintln!("Failed to list existing sessions: {:?}", sessions);
         process::exit(1);

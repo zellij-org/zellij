@@ -21,6 +21,7 @@ use zellij_utils::async_std::task::{self, JoinHandle};
 use zellij_utils::consts::ZELLIJ_CACHE_DIR;
 use zellij_utils::data::{InputMode, PermissionStatus, PermissionType, PipeMessage, PipeSource};
 use zellij_utils::downloader::Downloader;
+use zellij_utils::input::keybinds::Keybinds;
 use zellij_utils::input::permission::PermissionCache;
 use zellij_utils::notify_debouncer_full::{notify::RecommendedWatcher, Debouncer, FileIdMap};
 use zellij_utils::plugin_api::event::ProtobufEvent;
@@ -103,6 +104,7 @@ pub struct WasmBridge {
     pending_pipes: PendingPipes,
     layout_dir: Option<PathBuf>,
     default_mode: InputMode,
+    keybinds: HashMap<ClientId, Keybinds>,
 }
 
 impl WasmBridge {
@@ -149,6 +151,7 @@ impl WasmBridge {
             pending_pipes: Default::default(),
             layout_dir,
             default_mode,
+            keybinds: HashMap::new(),
         }
     }
     pub fn load_plugin(
@@ -206,6 +209,7 @@ impl WasmBridge {
                     let default_layout = self.default_layout.clone();
                     let layout_dir = self.layout_dir.clone();
                     let default_mode = self.default_mode;
+                    let keybinds = self.keybinds.get(&client_id).cloned();
                     async move {
                         let _ = senders.send_to_background_jobs(
                             BackgroundJob::AnimatePluginLoading(plugin_id),
@@ -254,6 +258,7 @@ impl WasmBridge {
                             skip_cache,
                             layout_dir,
                             default_mode,
+                            keybinds,
                         ) {
                             Ok(_) => handle_plugin_successful_loading(&senders, plugin_id),
                             Err(e) => handle_plugin_loading_failure(
@@ -346,6 +351,7 @@ impl WasmBridge {
             let default_layout = self.default_layout.clone();
             let layout_dir = self.layout_dir.clone();
             let default_mode = self.default_mode;
+            let keybinds = self.keybinds.clone();
             async move {
                 match PluginLoader::reload_plugin(
                     first_plugin_id,
@@ -364,6 +370,7 @@ impl WasmBridge {
                     default_layout.clone(),
                     layout_dir.clone(),
                     default_mode,
+                    &keybinds,
                 ) {
                     Ok(_) => {
                         handle_plugin_successful_loading(&senders, first_plugin_id);
@@ -390,6 +397,7 @@ impl WasmBridge {
                                 default_layout.clone(),
                                 layout_dir.clone(),
                                 default_mode,
+                                &keybinds,
                             ) {
                                 Ok(_) => handle_plugin_successful_loading(&senders, *plugin_id),
                                 Err(e) => handle_plugin_loading_failure(
@@ -443,6 +451,7 @@ impl WasmBridge {
             self.default_layout.clone(),
             self.layout_dir.clone(),
             self.default_mode,
+            self.keybinds.get(&client_id).cloned(),
         ) {
             Ok(_) => {
                 let _ = self
@@ -794,6 +803,51 @@ impl WasmBridge {
             .lock()
             .unwrap()
             .run_plugin_of_plugin_id(plugin_id)
+    }
+
+    pub fn reconfigure(
+        &mut self,
+        client_id: ClientId,
+        keybinds: Option<Keybinds>,
+        default_mode: Option<InputMode>,
+    ) -> Result<()> {
+        let plugins_to_reconfigure: Vec<Arc<Mutex<RunningPlugin>>> = self
+            .plugin_map
+            .lock()
+            .unwrap()
+            .running_plugins()
+            .iter()
+            .cloned()
+            .filter_map(|(_plugin_id, c_id, running_plugin)| {
+                if c_id == client_id {
+                    Some(running_plugin.clone())
+                } else {
+                    None
+                }
+            })
+            .collect();
+        if let Some(default_mode) = default_mode.as_ref() {
+            self.default_mode = *default_mode;
+        }
+        if let Some(keybinds) = keybinds.as_ref() {
+            self.keybinds.insert(client_id, keybinds.clone());
+        }
+        for running_plugin in plugins_to_reconfigure {
+            task::spawn({
+                let running_plugin = running_plugin.clone();
+                let keybinds = keybinds.clone();
+                async move {
+                    let mut running_plugin = running_plugin.lock().unwrap();
+                    if let Some(keybinds) = keybinds {
+                        running_plugin.update_keybinds(keybinds);
+                    }
+                    if let Some(default_mode) = default_mode {
+                        running_plugin.update_default_mode(default_mode);
+                    }
+                }
+            });
+        }
+        Ok(())
     }
     fn apply_cached_events_and_resizes_for_plugin(
         &mut self,
@@ -1288,6 +1342,18 @@ pub fn apply_event_to_plugin(
     let err_context = || format!("Failed to apply event to plugin {plugin_id}");
     match check_event_permission(running_plugin.store.data(), event) {
         (PermissionStatus::Granted, _) => {
+            let mut event = event.clone();
+            if let Event::ModeUpdate(mode_info) = &mut event {
+                // we do this because there can be some cases where this event arrives here with
+                // the wrong keybindings or default mode (for example: when triggered from the CLI,
+                // where we do not know the target client_id and thus don't know if their keybindings are the
+                // default or if they have changed at runtime), the keybindings in running_plugin
+                // should always be up-to-date. Ideally, we would have changed the keybindings in
+                // ModeInfo to an Option, but alas - this is already part of our contract and that
+                // would be a breaking change.
+                mode_info.keybinds = running_plugin.store.data().keybinds.to_keybinds_vec();
+                mode_info.base_mode = Some(running_plugin.store.data().default_mode);
+            }
             let protobuf_event: ProtobufEvent = event
                 .clone()
                 .try_into()

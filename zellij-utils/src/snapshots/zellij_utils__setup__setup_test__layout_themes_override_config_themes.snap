@@ -1,6 +1,6 @@
 ---
 source: zellij-utils/src/setup.rs
-assertion_line: 811
+assertion_line: 839
 expression: "format!(\"{:#?}\", config)"
 ---
 Config {
@@ -116,6 +116,16 @@ Config {
                 SwitchToMode(
                     Tmux,
                 ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'f',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                ToggleFloatingPanes,
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -551,6 +561,16 @@ Config {
                 SwitchToMode(
                     Tmux,
                 ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'f',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                ToggleFloatingPanes,
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -996,6 +1016,16 @@ Config {
                 SwitchToMode(
                     Normal,
                 ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'f',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                ToggleFloatingPanes,
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -1592,6 +1622,16 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Char(
+                    'f',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                ToggleFloatingPanes,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
                     'g',
                 ),
                 key_modifiers: {
@@ -2068,6 +2108,16 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Char(
+                    'f',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                ToggleFloatingPanes,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
                     'g',
                 ),
                 key_modifiers: {
@@ -2440,6 +2490,16 @@ Config {
                 SwitchToMode(
                     Scroll,
                 ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'f',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                ToggleFloatingPanes,
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -2823,6 +2883,16 @@ Config {
                 },
             }: [
                 PageScrollDown,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'f',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                ToggleFloatingPanes,
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -3226,6 +3296,16 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Char(
+                    'f',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                ToggleFloatingPanes,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
                     'g',
                 ),
                 key_modifiers: {
@@ -3547,6 +3627,16 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Char(
+                    'f',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                ToggleFloatingPanes,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
                     'g',
                 ),
                 key_modifiers: {
@@ -3856,11 +3946,49 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Char(
+                    'c',
+                ),
+                key_modifiers: {},
+            }: [
+                LaunchOrFocusPlugin(
+                    Alias(
+                        PluginAlias {
+                            name: "configuration",
+                            configuration: Some(
+                                PluginUserConfiguration(
+                                    {},
+                                ),
+                            ),
+                            initial_cwd: None,
+                            run_plugin: None,
+                        },
+                    ),
+                    true,
+                    true,
+                    false,
+                    false,
+                ),
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
                     'd',
                 ),
                 key_modifiers: {},
             }: [
                 Detach,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'f',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                ToggleFloatingPanes,
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -4237,6 +4365,16 @@ Config {
                 SwitchToMode(
                     Tmux,
                 ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'f',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                ToggleFloatingPanes,
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -4619,6 +4757,16 @@ Config {
                 SwitchToMode(
                     Tmux,
                 ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'f',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                ToggleFloatingPanes,
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -5063,6 +5211,16 @@ Config {
                 key_modifiers: {},
             }: [
                 Detach,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'f',
+                ),
+                key_modifiers: {
+                    Alt,
+                },
+            }: [
+                ToggleFloatingPanes,
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -5706,6 +5864,18 @@ Config {
                 location: Zellij(
                     PluginTag(
                         "compact-bar",
+                    ),
+                ),
+                configuration: PluginUserConfiguration(
+                    {},
+                ),
+                initial_cwd: None,
+            },
+            "configuration": RunPlugin {
+                _allow_exec_host_cmd: false,
+                location: Zellij(
+                    PluginTag(
+                        "configuration",
                     ),
                 ),
                 configuration: PluginUserConfiguration(

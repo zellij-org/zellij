@@ -1,6 +1,6 @@
 ---
 source: zellij-utils/src/setup.rs
-assertion_line: 825
+assertion_line: 853
 expression: "format!(\"{:#?}\", config)"
 ---
 Config {
@@ -127,6 +127,18 @@ Config {
                 location: Zellij(
                     PluginTag(
                         "compact-bar",
+                    ),
+                ),
+                configuration: PluginUserConfiguration(
+                    {},
+                ),
+                initial_cwd: None,
+            },
+            "configuration": RunPlugin {
+                _allow_exec_host_cmd: false,
+                location: Zellij(
+                    PluginTag(
+                        "configuration",
                     ),
                 ),
                 configuration: PluginUserConfiguration(

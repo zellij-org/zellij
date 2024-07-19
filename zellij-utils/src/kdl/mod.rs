@@ -1649,23 +1649,30 @@ impl Options {
             support_kitty_keyboard_protocol,
         })
     }
+    pub fn from_string(stringified_keybindings: &String) -> Result<Self, ConfigError> {
+        let document: KdlDocument = stringified_keybindings.parse()?;
+        Options::from_kdl(&document)
+    }
 }
 
 impl Layout {
     pub fn from_kdl(
         raw_layout: &str,
-        file_name: String,
+        file_name: Option<String>,
         raw_swap_layouts: Option<(&str, &str)>, // raw_swap_layouts swap_layouts_file_name
         cwd: Option<PathBuf>,
     ) -> Result<Self, ConfigError> {
         let mut kdl_layout_parser = KdlLayoutParser::new(raw_layout, cwd, file_name.clone());
         let layout = kdl_layout_parser.parse().map_err(|e| match e {
-            ConfigError::KdlError(kdl_error) => {
-                ConfigError::KdlError(kdl_error.add_src(file_name, String::from(raw_layout)))
-            },
-            ConfigError::KdlDeserializationError(kdl_error) => {
-                kdl_layout_error(kdl_error, file_name, raw_layout)
-            },
+            ConfigError::KdlError(kdl_error) => ConfigError::KdlError(kdl_error.add_src(
+                file_name.unwrap_or_else(|| "N/A".to_owned()),
+                String::from(raw_layout),
+            )),
+            ConfigError::KdlDeserializationError(kdl_error) => kdl_layout_error(
+                kdl_error,
+                file_name.unwrap_or_else(|| "N/A".to_owned()),
+                raw_layout,
+            ),
             e => e,
         })?;
         match raw_swap_layouts {
@@ -2189,6 +2196,7 @@ impl SessionInfo {
                 LayoutInfo::File(name) => (name.clone(), "file"),
                 LayoutInfo::BuiltIn(name) => (name.clone(), "built-in"),
                 LayoutInfo::Url(url) => (url.clone(), "url"),
+                LayoutInfo::Stringified(stringified) => ("stringified-layout".to_owned(), "N/A"),
             };
             let mut layout_node = KdlNode::new(format!("{}", layout_name));
             let layout_source = KdlEntry::new_prop("source", layout_source);

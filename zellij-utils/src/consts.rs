@@ -110,6 +110,7 @@ mod not_wasm {
             add_plugin!(assets, "tab-bar.wasm");
             add_plugin!(assets, "strider.wasm");
             add_plugin!(assets, "session-manager.wasm");
+            add_plugin!(assets, "configuration.wasm");
             assets
         };
     }

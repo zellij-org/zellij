@@ -61,6 +61,7 @@ macro_rules! apply_action {
             $env.default_shell.clone(),
             $env.default_layout.clone(),
             None,
+            $env.keybinds.clone(),
             $env.default_mode.clone(),
         ) {
             log::error!("{}: {:?}", $error_message(), e);
@@ -244,7 +245,7 @@ fn host_run_plugin_command(caller: Caller<'_, PluginEnv>) {
                     PluginCommand::WatchFilesystem => watch_filesystem(env),
                     PluginCommand::DumpSessionLayout => dump_session_layout(env),
                     PluginCommand::CloseSelf => close_self(env),
-                    PluginCommand::RebindKeys(new_keybinds) => rebind_keys(env, new_keybinds)?,
+                    PluginCommand::Reconfigure(new_config) => reconfigure(env, new_config)?,
                 },
                 (PermissionStatus::Denied, permission) => {
                     log::error!(
@@ -781,11 +782,11 @@ fn close_self(env: &PluginEnv) {
         .non_fatal();
 }
 
-fn rebind_keys(env: &PluginEnv, new_keybinds: String) -> Result<()> {
-    let err_context = || "Failed to rebind keys";
+fn reconfigure(env: &PluginEnv, new_config: String) -> Result<()> {
+    let err_context = || "Failed to reconfigure";
     let client_id = env.client_id;
     env.senders
-        .send_to_server(ServerInstruction::RebindKeys(client_id, new_keybinds))
+        .send_to_server(ServerInstruction::Reconfigure(client_id, new_config))
         .with_context(err_context)?;
     Ok(())
 }
@@ -921,6 +922,13 @@ fn switch_session(
 ) -> Result<()> {
     // pane_id is (id, is_plugin)
     let err_context = || format!("Failed to switch session");
+    if let Some(LayoutInfo::Stringified(stringified_layout)) = layout.as_ref() {
+        // we verify the stringified layout here to fail early rather than when parsing it at the
+        // session-switching phase
+        if let Err(e) = Layout::from_kdl(&stringified_layout, None, None, None) {
+            return Err(anyhow!("Failed to deserialize layout: {}", e));
+        }
+    }
     let client_id = env.client_id;
     let tab_position = tab_position.map(|p| p + 1); // ¯\_()_/¯
     let connect_to_session = ConnectToSession {
@@ -1446,7 +1454,7 @@ fn check_command_permission(
         | PluginCommand::CliPipeOutput(..) => PermissionType::ReadCliPipes,
         PluginCommand::MessageToPlugin(..) => PermissionType::MessageAndLaunchOtherPlugins,
         PluginCommand::DumpSessionLayout => PermissionType::ReadApplicationState,
-        PluginCommand::RebindKeys(..) => PermissionType::RebindKeys,
+        PluginCommand::Reconfigure(..) => PermissionType::Reconfigure,
         _ => return (PermissionStatus::Granted, None),
     };
 
