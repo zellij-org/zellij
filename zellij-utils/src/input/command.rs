@@ -72,17 +72,6 @@ pub struct RunCommandAction {
     pub hold_on_start: bool,
     #[serde(default)]
     pub originating_plugin: Option<OriginatingPlugin>,
-    // TODO:
-    // * add am originating_plugin field:
-    // OriginatingPlugin {
-    //     plugin_id: u32
-    //     client_id: u32,
-    //     context: BTreeMap<String, String>
-    // }
-    // * then send it to Screen and have it reply to the plugin tread with the existing
-    // RunCommandResult(?) thing, as well as something similar when the command starts so that we
-    // know its ane id
-    // 
 }
 
 impl From<RunCommandAction> for RunCommand {

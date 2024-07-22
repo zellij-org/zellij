@@ -174,10 +174,9 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                         } else {
                             None
                         };
-                        log::info!("sending NewPane to screen, run_command: {:#?}", run_command);
-                        // TODO: send a PluginInstruction::Update(?) event to originating_plugin:
-                        // * Event::CommandPaneOpened with the pane id: PaneId::Terminal(pid),
 
+                        // if this command originated in a plugin, we send the plugin back an event
+                        // to let it know the command started and which pane_id it has
                         if let Some(originating_plugin) = run_command.and_then(|r| r.originating_plugin) {
                             let update_event = Event::CommandPaneOpened(pid, originating_plugin.context.clone());
                             pty.bus
@@ -187,8 +186,6 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                                 ))
                                 .with_context(err_context)?;
                         }
-                        // Update(Vec<(Option<PluginId>, Option<ClientId>, Event)>), // Focused plugin / broadcast, client_id, event data
-
 
                         pty.bus
                             .senders
@@ -868,11 +865,9 @@ impl Pty {
         let originating_plugin = Arc::new(originating_plugin.clone());
         let quit_cb = Box::new({
             let senders = self.bus.senders.clone();
-            // TODO: CONTINUE HERE - figure out how to do this
-            // let originating_plugin = originating_plugin.clone();
             move |pane_id, exit_status, command| {
-                log::info!("quit cb");
-
+                // if this command originated in a plugin, we send the plugin an event letting it
+                // know the command exited and some other useful information
                 if let PaneId::Terminal(pane_id) = pane_id {
                     if let Some(originating_plugin) = originating_plugin.as_ref() {
                         let update_event = Event::CommandPaneExited(pane_id, exit_status, originating_plugin.context.clone());

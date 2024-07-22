@@ -769,7 +769,6 @@ fn hide_self(env: &PluginEnv) -> Result<()> {
         .with_context(|| format!("failed to hide self"))
 }
 
-// TODO: permissions
 fn hide_pane_with_id(env: &PluginEnv, pane_id: PaneId) -> Result<()> {
     env.senders
         .send_to_screen(ScreenInstruction::SuppressPane(
@@ -785,7 +784,6 @@ fn show_self(env: &PluginEnv, should_float_if_hidden: bool) {
     apply_action!(action, error_msg, env);
 }
 
-// TODO: permissions
 fn show_pane_with_id(env: &PluginEnv, pane_id: PaneId, should_float_if_hidden: bool) {
     let _ = env.senders
         .send_to_screen(ScreenInstruction::FocusPaneWithId(

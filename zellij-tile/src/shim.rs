@@ -150,18 +150,6 @@ pub fn open_command_pane_floating(
     unsafe { host_run_plugin_command() };
 }
 
-// pub fn run_command(cmd: &[&str], context: BTreeMap<String, String>) {
-//     let plugin_command = PluginCommand::RunCommand(
-//         cmd.iter().cloned().map(|s| s.to_owned()).collect(),
-//         BTreeMap::new(),
-//         PathBuf::from("."),
-//         context,
-//     );
-//     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
-//     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
-//     unsafe { host_run_plugin_command() };
-// }
-
 /// Open a new in place command pane with the specified command and args (this sort of pane allows the user to control the command, re-run it and see its exit status through the Zellij UI).
 pub fn open_command_pane_in_place(command_to_run: CommandToRun, context: BTreeMap<String, String>) {
     let plugin_command = PluginCommand::OpenCommandPaneInPlace(command_to_run, context);
