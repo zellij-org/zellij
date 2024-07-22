@@ -145,17 +145,17 @@ pub enum Sessions {
     /// Kill a specific session
     #[clap(visible_alias = "k")]
     KillSession {
-        /// Name of target session
+        /// Name of target session(s) to kill
         #[clap(value_parser)]
-        target_session: Option<String>,
+        target_sessions: Vec<String>,
     },
 
     /// Delete a specific session
     #[clap(visible_alias = "d")]
     DeleteSession {
-        /// Name of target session
+        /// Name of target session(s) to kill
         #[clap(value_parser)]
-        target_session: Option<String>,
+        target_sessions: Vec<String>,
         /// Kill the session if it's running before deleting it
         #[clap(short, long, value_parser, takes_value(false), default_value("false"))]
         force: bool,

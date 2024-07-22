@@ -97,31 +97,29 @@ pub(crate) fn delete_all_sessions(yes: bool, force: bool) {
     process::exit(0);
 }
 
-pub(crate) fn kill_session(target_session: &Option<String>) {
-    match target_session {
-        Some(target_session) => {
-            assert_session(target_session);
-            kill_session_impl(target_session);
-            process::exit(0);
-        },
-        None => {
-            println!("Please specify the session name to kill.");
-            process::exit(1);
-        },
+pub(crate) fn kill_session(target_sessions: &[String]) {
+    if target_sessions.len() > 0 {
+        for session in target_sessions {
+            assert_session(session);
+            kill_session_impl(session);
+        }
+        process::exit(0);
+    } else {
+        println!("Please specify the session name to kill.");
+        process::exit(1);
     }
 }
 
-pub(crate) fn delete_session(target_session: &Option<String>, force: bool) {
-    match target_session {
-        Some(target_session) => {
-            assert_dead_session(target_session, force);
-            delete_session_impl(target_session, force);
-            process::exit(0);
-        },
-        None => {
-            println!("Please specify the session name to delete.");
-            process::exit(1);
-        },
+pub(crate) fn delete_session(target_sessions: &[String], force: bool) {
+    if target_sessions.len() > 0 {
+        for session in target_sessions {
+            assert_dead_session(session, force);
+            delete_session_impl(session, force);
+        }
+        process::exit(0);
+    } else {
+        println!("Please specify the session name to delete.");
+        process::exit(1);
     }
 }
 
