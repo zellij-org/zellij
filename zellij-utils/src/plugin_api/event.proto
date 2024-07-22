@@ -42,6 +42,8 @@ enum EventType {
     SessionUpdate = 16;
     RunCommandResult = 17;
     WebRequestResult = 18;
+    CommandPaneOpened = 19;
+    CommandPaneExited = 20;
 }
 
 message EventNameList {
@@ -65,7 +67,20 @@ message Event {
     SessionUpdatePayload session_update_payload = 13;
     RunCommandResultPayload run_command_result_payload = 14;
     WebRequestResultPayload web_request_result_payload = 15;
+    CommandPaneOpenedPayload command_pane_opened_payload = 16;
+    CommandPaneExitedPayload command_pane_exited_payload = 17;
   }
+}
+
+message CommandPaneOpenedPayload {
+  uint32 terminal_pane_id = 1;
+  repeated ContextItem context = 2;
+}
+
+message CommandPaneExitedPayload {
+  uint32 terminal_pane_id = 1;
+  optional int32 exit_code = 2;
+  repeated ContextItem context = 3;
 }
 
 message SessionUpdatePayload {

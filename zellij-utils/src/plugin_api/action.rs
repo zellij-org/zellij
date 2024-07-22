@@ -1385,6 +1385,7 @@ impl TryFrom<ProtobufRunCommandAction> for RunCommandAction {
             direction,
             hold_on_close,
             hold_on_start,
+            ..Default::default()
         })
     }
 }

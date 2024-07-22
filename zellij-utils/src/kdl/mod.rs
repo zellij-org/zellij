@@ -946,6 +946,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                     direction,
                     hold_on_close,
                     hold_on_start,
+                    ..Default::default()
                 };
                 let x = command_metadata
                     .and_then(|c_m| kdl_child_string_value_for_entry(c_m, "x"))
