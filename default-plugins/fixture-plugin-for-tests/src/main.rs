@@ -211,7 +211,7 @@ impl ZellijPlugin for State {
                         path: std::path::PathBuf::from("/path/to/my/file.rs"),
                         args: vec!["arg1".to_owned(), "arg2".to_owned()],
                         ..Default::default()
-                    });
+                    }, BTreeMap::new());
                 },
                 BareKey::Char('n') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
                     open_command_pane_floating(
@@ -221,6 +221,7 @@ impl ZellijPlugin for State {
                             ..Default::default()
                         },
                         None,
+                        BTreeMap::new(),
                     );
                 },
                 BareKey::Char('o') if key.has_modifiers(&[KeyModifier::Ctrl]) => {

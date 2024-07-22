@@ -2596,6 +2596,7 @@ impl Tab {
         is_first_run: bool,
         run_command: RunCommand,
     ) {
+        log::info!("tab.hold_pane. run_command: {:?}, exit_status: {:#?}", exit_status, run_command);
         if self.is_pending {
             self.pending_instructions
                 .push(BufferedTabInstruction::HoldPane(

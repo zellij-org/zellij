@@ -913,6 +913,9 @@ pub enum Event {
        // headers,
        // body,
        // context
+    CommandPaneOpened(u32, Context), // u32 - terminal_pane_id
+    CommandPaneExited(u32, Option<i32>, Context), // u32 - terminal_pane_id, Option<i32> -
+                                                  // exit_code
 }
 
 #[derive(
@@ -1671,6 +1674,25 @@ impl FloatingPaneCoordinates {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct OriginatingPlugin {
+    pub plugin_id: u32,
+    pub client_id: ClientId,
+    pub context: Context,
+}
+
+impl OriginatingPlugin {
+    pub fn new(plugin_id: u32, client_id: ClientId, context: Context) -> Self {
+        OriginatingPlugin {
+            plugin_id,
+            client_id,
+            context,
+        }
+    }
+}
+
+type Context = BTreeMap<String, String>;
+
 #[derive(Debug, Clone, EnumDiscriminants, ToString)]
 #[strum_discriminants(derive(EnumString, Hash, Serialize, Deserialize))]
 #[strum_discriminants(name(CommandType))]
@@ -1684,8 +1706,8 @@ pub enum PluginCommand {
     OpenFileFloating(FileToOpen, Option<FloatingPaneCoordinates>),
     OpenTerminal(FileToOpen), // only used for the path as cwd
     OpenTerminalFloating(FileToOpen, Option<FloatingPaneCoordinates>), // only used for the path as cwd
-    OpenCommandPane(CommandToRun),
-    OpenCommandPaneFloating(CommandToRun, Option<FloatingPaneCoordinates>),
+    OpenCommandPane(CommandToRun, Context),
+    OpenCommandPaneFloating(CommandToRun, Option<FloatingPaneCoordinates>, Context),
     SwitchTabTo(u32), // tab index
     SetTimeout(f64),  // seconds
     ExecCmd(Vec<String>),
@@ -1747,7 +1769,7 @@ pub enum PluginCommand {
     DeleteAllDeadSessions,           // String -> session name
     OpenTerminalInPlace(FileToOpen), // only used for the path as cwd
     OpenFileInPlace(FileToOpen),
-    OpenCommandPaneInPlace(CommandToRun),
+    OpenCommandPaneInPlace(CommandToRun, Context),
     RunCommand(
         Vec<String>,              // command
         BTreeMap<String, String>, // env_variables

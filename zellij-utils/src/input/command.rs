@@ -1,5 +1,5 @@
 //! Trigger a command
-use crate::data::Direction;
+use crate::data::{Direction, OriginatingPlugin};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
@@ -35,6 +35,8 @@ pub struct RunCommand {
     pub hold_on_close: bool,
     #[serde(default)]
     pub hold_on_start: bool,
+    #[serde(default)]
+    pub originating_plugin: Option<OriginatingPlugin>,
 }
 
 impl std::fmt::Display for RunCommand {
@@ -68,6 +70,19 @@ pub struct RunCommandAction {
     pub hold_on_close: bool,
     #[serde(default)]
     pub hold_on_start: bool,
+    #[serde(default)]
+    pub originating_plugin: Option<OriginatingPlugin>,
+    // TODO:
+    // * add am originating_plugin field:
+    // OriginatingPlugin {
+    //     plugin_id: u32
+    //     client_id: u32,
+    //     context: BTreeMap<String, String>
+    // }
+    // * then send it to Screen and have it reply to the plugin tread with the existing
+    // RunCommandResult(?) thing, as well as something similar when the command starts so that we
+    // know its ane id
+    // 
 }
 
 impl From<RunCommandAction> for RunCommand {
@@ -78,6 +93,7 @@ impl From<RunCommandAction> for RunCommand {
             cwd: action.cwd,
             hold_on_close: action.hold_on_close,
             hold_on_start: action.hold_on_start,
+            originating_plugin: action.originating_plugin,
         }
     }
 }
@@ -91,6 +107,7 @@ impl From<RunCommand> for RunCommandAction {
             direction: None,
             hold_on_close: run_command.hold_on_close,
             hold_on_start: run_command.hold_on_start,
+            originating_plugin: run_command.originating_plugin,
         }
     }
 }

@@ -455,6 +455,7 @@ impl<'a> KdlLayoutParser<'a> {
                 cwd,
                 hold_on_close,
                 hold_on_start,
+                ..Default::default()
             }))),
             (None, Some(edit), Some(cwd)) => {
                 Ok(Some(Run::EditFile(cwd.join(edit), None, Some(cwd))))

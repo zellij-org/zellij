@@ -337,6 +337,7 @@ fn spawn_terminal(
                 cwd,
                 hold_on_close: false,
                 hold_on_start: false,
+                ..Default::default()
             }
         },
         TerminalAction::RunCommand(command) => command,

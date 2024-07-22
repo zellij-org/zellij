@@ -235,6 +235,8 @@ pub struct OpenCommandPanePayload {
     pub command_to_run: ::core::option::Option<super::command::Command>,
     #[prost(message, optional, tag = "2")]
     pub floating_pane_coordinates: ::core::option::Option<FloatingPaneCoordinates>,
+    #[prost(message, repeated, tag = "3")]
+    pub context: ::prost::alloc::vec::Vec<ContextItem>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
