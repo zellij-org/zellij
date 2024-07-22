@@ -1796,4 +1796,6 @@ pub enum PluginCommand {
     CloseSelf,
     NewTabsWithLayoutInfo(LayoutInfo),
     Reconfigure(String), // String -> stringified configuration
+    HidePaneWithId(PaneId),
+    ShowPaneWithId(PaneId, bool), // bool -> should_float_if_hidden
 }

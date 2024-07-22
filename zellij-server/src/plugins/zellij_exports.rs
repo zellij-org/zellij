@@ -247,6 +247,8 @@ fn host_run_plugin_command(caller: Caller<'_, PluginEnv>) {
                     PluginCommand::DumpSessionLayout => dump_session_layout(env),
                     PluginCommand::CloseSelf => close_self(env),
                     PluginCommand::Reconfigure(new_config) => reconfigure(env, new_config)?,
+                    PluginCommand::HidePaneWithId(pane_id) => hide_pane_with_id(env, pane_id.into())?,
+                    PluginCommand::ShowPaneWithId(pane_id, should_float_if_hidden) => show_pane_with_id(env, pane_id.into(), should_float_if_hidden),
                 },
                 (PermissionStatus::Denied, permission) => {
                     log::error!(
@@ -767,10 +769,30 @@ fn hide_self(env: &PluginEnv) -> Result<()> {
         .with_context(|| format!("failed to hide self"))
 }
 
+// TODO: permissions
+fn hide_pane_with_id(env: &PluginEnv, pane_id: PaneId) -> Result<()> {
+    env.senders
+        .send_to_screen(ScreenInstruction::SuppressPane(
+            pane_id,
+            env.client_id,
+        ))
+        .with_context(|| format!("failed to hide self"))
+}
+
 fn show_self(env: &PluginEnv, should_float_if_hidden: bool) {
     let action = Action::FocusPluginPaneWithId(env.plugin_id, should_float_if_hidden);
     let error_msg = || format!("Failed to show self for plugin");
     apply_action!(action, error_msg, env);
+}
+
+// TODO: permissions
+fn show_pane_with_id(env: &PluginEnv, pane_id: PaneId, should_float_if_hidden: bool) {
+    let _ = env.senders
+        .send_to_screen(ScreenInstruction::FocusPaneWithId(
+            pane_id,
+            should_float_if_hidden,
+            env.client_id,
+        ));
 }
 
 fn close_self(env: &PluginEnv) {
@@ -1453,6 +1475,8 @@ fn check_command_permission(
         | PluginCommand::RenameSession(..)
         | PluginCommand::RenameTab(..)
         | PluginCommand::DisconnectOtherClients
+        | PluginCommand::ShowPaneWithId(..)
+        | PluginCommand::HidePaneWithId(..)
         | PluginCommand::KillSessions(..) => PermissionType::ChangeApplicationState,
         PluginCommand::UnblockCliPipeInput(..)
         | PluginCommand::BlockCliPipeInput(..)

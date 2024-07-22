@@ -254,9 +254,25 @@ pub fn hide_self() {
     unsafe { host_run_plugin_command() };
 }
 
+/// Hide the pane (suppress it) with the specified [PaneId] from the UI
+pub fn hide_pane_with_id(pane_id: PaneId) {
+    let plugin_command = PluginCommand::HidePaneWithId(pane_id);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 /// Show the plugin pane (unsuppress it if it is suppressed), focus it and switch to its tab
 pub fn show_self(should_float_if_hidden: bool) {
     let plugin_command = PluginCommand::ShowSelf(should_float_if_hidden);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+/// Show the pane (unsuppress it if it is suppressed) with the specified [PaneId], focus it and switch to its tab
+pub fn show_pane_with_id(pane_id: PaneId, should_float_if_hidden: bool) {
+    let plugin_command = PluginCommand::ShowPaneWithId(pane_id, should_float_if_hidden);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };

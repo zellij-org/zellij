@@ -99,6 +99,8 @@ enum CommandName {
   CloseSelf = 85;
   NewTabsWithLayoutInfo = 86;
   Reconfigure = 87;
+  HidePaneWithId = 88;
+  ShowPaneWithId = 89;
 }
 
 message PluginCommand {
@@ -157,7 +159,18 @@ message PluginCommand {
     string scan_host_folder_payload = 61;
     NewTabsWithLayoutInfoPayload new_tabs_with_layout_info_payload = 62;
     string reconfigure_payload = 63;
+    HidePaneWithIdPayload hide_pane_with_id_payload = 64;
+    ShowPaneWithIdPayload show_pane_with_id_payload = 65;
   }
+}
+
+message HidePaneWithIdPayload {
+  PaneId pane_id = 1;
+}
+
+message ShowPaneWithIdPayload {
+  PaneId pane_id = 1;
+  bool should_float_if_hidden = 2;
 }
 
 message NewTabsWithLayoutInfoPayload {

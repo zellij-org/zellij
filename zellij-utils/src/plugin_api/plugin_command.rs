@@ -13,7 +13,7 @@ pub use super::generated_api::api::{
         PaneType as ProtobufPaneType, PluginCommand as ProtobufPluginCommand, PluginMessagePayload,
         RequestPluginPermissionPayload, ResizePayload, RunCommandPayload, SetTimeoutPayload,
         SubscribePayload, SwitchSessionPayload, SwitchTabToPayload, UnsubscribePayload,
-        WebRequestPayload,
+        WebRequestPayload, HidePaneWithIdPayload, ShowPaneWithIdPayload
     },
     plugin_permission::PermissionType as ProtobufPermissionType,
     resize::ResizeAction as ProtobufResizeAction,
@@ -915,6 +915,25 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 },
                 _ => Err("Mismatched payload for Reconfigure"),
             },
+            Some(CommandName::HidePaneWithId) => match protobuf_plugin_command.payload {
+                Some(Payload::HidePaneWithIdPayload(hide_pane_with_id_payload)) => {
+                    let pane_id = hide_pane_with_id_payload.pane_id
+                        .and_then(|p_id| PaneId::try_from(p_id).ok())
+                        .ok_or("Failed to parse HidePaneWithId command")?;
+                    Ok(PluginCommand::HidePaneWithId(pane_id))
+                },
+                _ => Err("Mismatched payload for HidePaneWithId"),
+            },
+            Some(CommandName::ShowPaneWithId) => match protobuf_plugin_command.payload {
+                Some(Payload::ShowPaneWithIdPayload(show_pane_with_id_payload)) => {
+                    let pane_id = show_pane_with_id_payload.pane_id
+                        .and_then(|p_id| PaneId::try_from(p_id).ok())
+                        .ok_or("Failed to parse ShowPaneWithId command")?;
+                    let should_float_if_hidden = show_pane_with_id_payload.should_float_if_hidden;
+                    Ok(PluginCommand::ShowPaneWithId(pane_id, should_float_if_hidden))
+                },
+                _ => Err("Mismatched payload for ShowPaneWithId"),
+            },
             None => Err("Unrecognized plugin command"),
         }
     }
@@ -1469,6 +1488,19 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
             PluginCommand::Reconfigure(reconfigure_payload) => Ok(ProtobufPluginCommand {
                 name: CommandName::Reconfigure as i32,
                 payload: Some(Payload::ReconfigurePayload(reconfigure_payload)),
+            }),
+            PluginCommand::HidePaneWithId(pane_id_to_hide) => Ok(ProtobufPluginCommand {
+                name: CommandName::HidePaneWithId as i32,
+                payload: Some(Payload::HidePaneWithIdPayload(HidePaneWithIdPayload {
+                    pane_id: ProtobufPaneId::try_from(pane_id_to_hide).ok()
+                })),
+            }),
+            PluginCommand::ShowPaneWithId(pane_id_to_show, should_float_if_hidden) => Ok(ProtobufPluginCommand {
+                name: CommandName::ShowPaneWithId as i32,
+                payload: Some(Payload::ShowPaneWithIdPayload(ShowPaneWithIdPayload {
+                    pane_id: ProtobufPaneId::try_from(pane_id_to_show).ok(),
+                    should_float_if_hidden,
+                })),
             }),
         }
     }
