@@ -9,11 +9,12 @@ use crate::{
     ClientId, ServerInstruction,
 };
 use async_std::task::{self, JoinHandle};
+use std::sync::Arc;
 use std::{collections::HashMap, os::unix::io::RawFd, path::PathBuf};
 use zellij_utils::nix::unistd::Pid;
 use zellij_utils::{
     async_std,
-    data::FloatingPaneCoordinates,
+    data::{Event, FloatingPaneCoordinates},
     errors::prelude::*,
     errors::{ContextType, PtyContext},
     input::{
@@ -173,6 +174,24 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                         } else {
                             None
                         };
+
+                        // if this command originated in a plugin, we send the plugin back an event
+                        // to let it know the command started and which pane_id it has
+                        if let Some(originating_plugin) =
+                            run_command.and_then(|r| r.originating_plugin)
+                        {
+                            let update_event =
+                                Event::CommandPaneOpened(pid, originating_plugin.context.clone());
+                            pty.bus
+                                .senders
+                                .send_to_plugin(PluginInstruction::Update(vec![(
+                                    Some(originating_plugin.plugin_id),
+                                    Some(originating_plugin.client_id),
+                                    update_event,
+                                )]))
+                                .with_context(err_context)?;
+                        }
+
                         pty.bus
                             .senders
                             .send_to_screen(ScreenInstruction::NewPane(
@@ -764,6 +783,7 @@ impl Pty {
                     cwd, // note: this might also be filled by the calling function, eg. spawn_terminal
                     hold_on_close: false,
                     hold_on_start: false,
+                    ..Default::default()
                 })
             },
         }
@@ -827,11 +847,13 @@ impl Pty {
                 terminal_action
             },
         };
-        let (hold_on_start, hold_on_close) = match &terminal_action {
-            TerminalAction::RunCommand(run_command) => {
-                (run_command.hold_on_start, run_command.hold_on_close)
-            },
-            _ => (false, false),
+        let (hold_on_start, hold_on_close, originating_plugin) = match &terminal_action {
+            TerminalAction::RunCommand(run_command) => (
+                run_command.hold_on_start,
+                run_command.hold_on_close,
+                run_command.originating_plugin.clone(),
+            ),
+            _ => (false, false, None),
         };
 
         if hold_on_start {
@@ -847,9 +869,27 @@ impl Pty {
             return Ok((terminal_id, starts_held));
         }
 
+        let originating_plugin = Arc::new(originating_plugin.clone());
         let quit_cb = Box::new({
             let senders = self.bus.senders.clone();
             move |pane_id, exit_status, command| {
+                // if this command originated in a plugin, we send the plugin an event letting it
+                // know the command exited and some other useful information
+                if let PaneId::Terminal(pane_id) = pane_id {
+                    if let Some(originating_plugin) = originating_plugin.as_ref() {
+                        let update_event = Event::CommandPaneExited(
+                            pane_id,
+                            exit_status,
+                            originating_plugin.context.clone(),
+                        );
+                        let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
+                            Some(originating_plugin.plugin_id),
+                            Some(originating_plugin.client_id),
+                            update_event,
+                        )]));
+                    }
+                }
+
                 if hold_on_close {
                     let _ = senders.send_to_screen(ScreenInstruction::HoldPane(
                         pane_id,

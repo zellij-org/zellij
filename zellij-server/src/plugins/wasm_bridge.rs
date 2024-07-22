@@ -1314,6 +1314,8 @@ fn check_event_permission(
         | Event::SessionUpdate(..)
         | Event::CopyToClipboard(..)
         | Event::SystemClipboardFailure
+        | Event::CommandPaneOpened(..)
+        | Event::CommandPaneExited(..)
         | Event::InputReceived => PermissionType::ReadApplicationState,
         _ => return (PermissionStatus::Granted, None),
     };
