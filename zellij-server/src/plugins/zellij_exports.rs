@@ -18,7 +18,7 @@ use std::{
 use wasmtime::{Caller, Linker};
 use zellij_utils::data::{
     CommandType, ConnectToSession, FloatingPaneCoordinates, HttpVerb, LayoutInfo, MessageToPlugin,
-    PermissionStatus, PermissionType, PluginPermission, OriginatingPlugin,
+    OriginatingPlugin, PermissionStatus, PermissionType, PluginPermission,
 };
 use zellij_utils::input::permission::PermissionCache;
 use zellij_utils::{
@@ -106,7 +106,12 @@ fn host_run_plugin_command(caller: Caller<'_, PluginEnv>) {
                         command_to_run,
                         floating_pane_coordinates,
                         context,
-                    ) => open_command_pane_floating(env, command_to_run, floating_pane_coordinates, context),
+                    ) => open_command_pane_floating(
+                        env,
+                        command_to_run,
+                        floating_pane_coordinates,
+                        context,
+                    ),
                     PluginCommand::SwitchTabTo(tab_index) => switch_tab_to(env, tab_index),
                     PluginCommand::SetTimeout(seconds) => set_timeout(env, seconds),
                     PluginCommand::ExecCmd(command_line) => exec_cmd(env, command_line),
@@ -247,8 +252,12 @@ fn host_run_plugin_command(caller: Caller<'_, PluginEnv>) {
                     PluginCommand::DumpSessionLayout => dump_session_layout(env),
                     PluginCommand::CloseSelf => close_self(env),
                     PluginCommand::Reconfigure(new_config) => reconfigure(env, new_config)?,
-                    PluginCommand::HidePaneWithId(pane_id) => hide_pane_with_id(env, pane_id.into())?,
-                    PluginCommand::ShowPaneWithId(pane_id, should_float_if_hidden) => show_pane_with_id(env, pane_id.into(), should_float_if_hidden),
+                    PluginCommand::HidePaneWithId(pane_id) => {
+                        hide_pane_with_id(env, pane_id.into())?
+                    },
+                    PluginCommand::ShowPaneWithId(pane_id, should_float_if_hidden) => {
+                        show_pane_with_id(env, pane_id.into(), should_float_if_hidden)
+                    },
                 },
                 (PermissionStatus::Denied, permission) => {
                     log::error!(
@@ -533,7 +542,11 @@ fn open_terminal_in_place(env: &PluginEnv, cwd: PathBuf) {
     apply_action!(action, error_msg, env);
 }
 
-fn open_command_pane(env: &PluginEnv, command_to_run: CommandToRun, context: BTreeMap<String, String>) {
+fn open_command_pane(
+    env: &PluginEnv,
+    command_to_run: CommandToRun,
+    context: BTreeMap<String, String>,
+) {
     let error_msg = || format!("failed to open command in plugin {}", env.name());
     let command = command_to_run.path;
     let cwd = command_to_run.cwd.map(|cwd| env.plugin_cwd.join(cwd));
@@ -549,7 +562,11 @@ fn open_command_pane(env: &PluginEnv, command_to_run: CommandToRun, context: BTr
         direction,
         hold_on_close,
         hold_on_start,
-        originating_plugin: Some(OriginatingPlugin::new(env.plugin_id, env.client_id, context)),
+        originating_plugin: Some(OriginatingPlugin::new(
+            env.plugin_id,
+            env.client_id,
+            context,
+        )),
     };
     let action = Action::NewTiledPane(direction, Some(run_command_action), name);
     apply_action!(action, error_msg, env);
@@ -576,13 +593,21 @@ fn open_command_pane_floating(
         direction,
         hold_on_close,
         hold_on_start,
-        originating_plugin: Some(OriginatingPlugin::new(env.plugin_id, env.client_id, context)),
+        originating_plugin: Some(OriginatingPlugin::new(
+            env.plugin_id,
+            env.client_id,
+            context,
+        )),
     };
     let action = Action::NewFloatingPane(Some(run_command_action), name, floating_pane_coordinates);
     apply_action!(action, error_msg, env);
 }
 
-fn open_command_pane_in_place(env: &PluginEnv, command_to_run: CommandToRun, context: BTreeMap<String, String>) {
+fn open_command_pane_in_place(
+    env: &PluginEnv,
+    command_to_run: CommandToRun,
+    context: BTreeMap<String, String>,
+) {
     let error_msg = || format!("failed to open command in plugin {}", env.name());
     let command = command_to_run.path;
     let cwd = command_to_run.cwd.map(|cwd| env.plugin_cwd.join(cwd));
@@ -598,7 +623,11 @@ fn open_command_pane_in_place(env: &PluginEnv, command_to_run: CommandToRun, con
         direction,
         hold_on_close,
         hold_on_start,
-        originating_plugin: Some(OriginatingPlugin::new(env.plugin_id, env.client_id, context)),
+        originating_plugin: Some(OriginatingPlugin::new(
+            env.plugin_id,
+            env.client_id,
+            context,
+        )),
     };
     let action = Action::NewInPlacePane(Some(run_command_action), name);
     apply_action!(action, error_msg, env);
@@ -771,10 +800,7 @@ fn hide_self(env: &PluginEnv) -> Result<()> {
 
 fn hide_pane_with_id(env: &PluginEnv, pane_id: PaneId) -> Result<()> {
     env.senders
-        .send_to_screen(ScreenInstruction::SuppressPane(
-            pane_id,
-            env.client_id,
-        ))
+        .send_to_screen(ScreenInstruction::SuppressPane(pane_id, env.client_id))
         .with_context(|| format!("failed to hide self"))
 }
 
@@ -785,7 +811,8 @@ fn show_self(env: &PluginEnv, should_float_if_hidden: bool) {
 }
 
 fn show_pane_with_id(env: &PluginEnv, pane_id: PaneId, should_float_if_hidden: bool) {
-    let _ = env.senders
+    let _ = env
+        .senders
         .send_to_screen(ScreenInstruction::FocusPaneWithId(
             pane_id,
             should_float_if_hidden,

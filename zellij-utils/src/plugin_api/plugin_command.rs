@@ -6,14 +6,14 @@ pub use super::generated_api::api::{
         plugin_command::Payload, CliPipeOutputPayload, CommandName, ContextItem, EnvVariable,
         ExecCmdPayload, FixedOrPercent as ProtobufFixedOrPercent,
         FixedOrPercentValue as ProtobufFixedOrPercentValue,
-        FloatingPaneCoordinates as ProtobufFloatingPaneCoordinates, HttpVerb as ProtobufHttpVerb,
-        IdAndNewName, KillSessionsPayload, MessageToPluginPayload, MovePayload,
-        NewPluginArgs as ProtobufNewPluginArgs, NewTabsWithLayoutInfoPayload,
+        FloatingPaneCoordinates as ProtobufFloatingPaneCoordinates, HidePaneWithIdPayload,
+        HttpVerb as ProtobufHttpVerb, IdAndNewName, KillSessionsPayload, MessageToPluginPayload,
+        MovePayload, NewPluginArgs as ProtobufNewPluginArgs, NewTabsWithLayoutInfoPayload,
         OpenCommandPanePayload, OpenFilePayload, PaneId as ProtobufPaneId,
         PaneType as ProtobufPaneType, PluginCommand as ProtobufPluginCommand, PluginMessagePayload,
         RequestPluginPermissionPayload, ResizePayload, RunCommandPayload, SetTimeoutPayload,
-        SubscribePayload, SwitchSessionPayload, SwitchTabToPayload, UnsubscribePayload,
-        WebRequestPayload, HidePaneWithIdPayload, ShowPaneWithIdPayload
+        ShowPaneWithIdPayload, SubscribePayload, SwitchSessionPayload, SwitchTabToPayload,
+        UnsubscribePayload, WebRequestPayload,
     },
     plugin_permission::PermissionType as ProtobufPermissionType,
     resize::ResizeAction as ProtobufResizeAction,
@@ -283,7 +283,10 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                                 .into_iter()
                                 .map(|e| (e.name, e.value))
                                 .collect();
-                            Ok(PluginCommand::OpenCommandPane(command_to_run.try_into()?, context))
+                            Ok(PluginCommand::OpenCommandPane(
+                                command_to_run.try_into()?,
+                                context,
+                            ))
                         },
                         None => Err("Malformed open open command pane payload"),
                     }
@@ -307,7 +310,7 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                                 floating_pane_coordinates,
                                 context,
                             ))
-                        }
+                        },
                         None => Err("Malformed open command pane floating payload"),
                     }
                 },
@@ -917,7 +920,8 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
             },
             Some(CommandName::HidePaneWithId) => match protobuf_plugin_command.payload {
                 Some(Payload::HidePaneWithIdPayload(hide_pane_with_id_payload)) => {
-                    let pane_id = hide_pane_with_id_payload.pane_id
+                    let pane_id = hide_pane_with_id_payload
+                        .pane_id
                         .and_then(|p_id| PaneId::try_from(p_id).ok())
                         .ok_or("Failed to parse HidePaneWithId command")?;
                     Ok(PluginCommand::HidePaneWithId(pane_id))
@@ -926,11 +930,15 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
             },
             Some(CommandName::ShowPaneWithId) => match protobuf_plugin_command.payload {
                 Some(Payload::ShowPaneWithIdPayload(show_pane_with_id_payload)) => {
-                    let pane_id = show_pane_with_id_payload.pane_id
+                    let pane_id = show_pane_with_id_payload
+                        .pane_id
                         .and_then(|p_id| PaneId::try_from(p_id).ok())
                         .ok_or("Failed to parse ShowPaneWithId command")?;
                     let should_float_if_hidden = show_pane_with_id_payload.should_float_if_hidden;
-                    Ok(PluginCommand::ShowPaneWithId(pane_id, should_float_if_hidden))
+                    Ok(PluginCommand::ShowPaneWithId(
+                        pane_id,
+                        should_float_if_hidden,
+                    ))
                 },
                 _ => Err("Mismatched payload for ShowPaneWithId"),
             },
@@ -1019,7 +1027,11 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     })),
                 })
             },
-            PluginCommand::OpenCommandPaneFloating(command_to_run, floating_pane_coordinates, context) => {
+            PluginCommand::OpenCommandPaneFloating(
+                command_to_run,
+                floating_pane_coordinates,
+                context,
+            ) => {
                 let context: Vec<_> = context
                     .into_iter()
                     .map(|(name, value)| ContextItem { name, value })
@@ -1492,16 +1504,18 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
             PluginCommand::HidePaneWithId(pane_id_to_hide) => Ok(ProtobufPluginCommand {
                 name: CommandName::HidePaneWithId as i32,
                 payload: Some(Payload::HidePaneWithIdPayload(HidePaneWithIdPayload {
-                    pane_id: ProtobufPaneId::try_from(pane_id_to_hide).ok()
+                    pane_id: ProtobufPaneId::try_from(pane_id_to_hide).ok(),
                 })),
             }),
-            PluginCommand::ShowPaneWithId(pane_id_to_show, should_float_if_hidden) => Ok(ProtobufPluginCommand {
-                name: CommandName::ShowPaneWithId as i32,
-                payload: Some(Payload::ShowPaneWithIdPayload(ShowPaneWithIdPayload {
-                    pane_id: ProtobufPaneId::try_from(pane_id_to_show).ok(),
-                    should_float_if_hidden,
-                })),
-            }),
+            PluginCommand::ShowPaneWithId(pane_id_to_show, should_float_if_hidden) => {
+                Ok(ProtobufPluginCommand {
+                    name: CommandName::ShowPaneWithId as i32,
+                    payload: Some(Payload::ShowPaneWithIdPayload(ShowPaneWithIdPayload {
+                        pane_id: ProtobufPaneId::try_from(pane_id_to_show).ok(),
+                        should_float_if_hidden,
+                    })),
+                })
+            },
         }
     }
 }

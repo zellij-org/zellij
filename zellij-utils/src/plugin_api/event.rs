@@ -236,32 +236,32 @@ impl TryFrom<ProtobufEvent> for Event {
                 _ => Err("Malformed payload for the WebRequestResult Event"),
             },
             Some(ProtobufEventType::CommandPaneOpened) => match protobuf_event.payload {
-                Some(ProtobufEventPayload::CommandPaneOpenedPayload(command_pane_opened_payload)) => {
-                    Ok(Event::CommandPaneOpened(
-                        command_pane_opened_payload.terminal_pane_id,
-                        command_pane_opened_payload
-                            .context
-                            .into_iter()
-                            .map(|c_i| (c_i.name, c_i.value))
-                            .collect(),
-                    ))
-                },
+                Some(ProtobufEventPayload::CommandPaneOpenedPayload(
+                    command_pane_opened_payload,
+                )) => Ok(Event::CommandPaneOpened(
+                    command_pane_opened_payload.terminal_pane_id,
+                    command_pane_opened_payload
+                        .context
+                        .into_iter()
+                        .map(|c_i| (c_i.name, c_i.value))
+                        .collect(),
+                )),
                 _ => Err("Malformed payload for the CommandPaneOpened Event"),
-            }
+            },
             Some(ProtobufEventType::CommandPaneExited) => match protobuf_event.payload {
-                Some(ProtobufEventPayload::CommandPaneExitedPayload(command_pane_exited_payload)) => {
-                    Ok(Event::CommandPaneExited(
-                        command_pane_exited_payload.terminal_pane_id,
-                        command_pane_exited_payload.exit_code,
-                        command_pane_exited_payload
-                            .context
-                            .into_iter()
-                            .map(|c_i| (c_i.name, c_i.value))
-                            .collect(),
-                    ))
-                },
+                Some(ProtobufEventPayload::CommandPaneExitedPayload(
+                    command_pane_exited_payload,
+                )) => Ok(Event::CommandPaneExited(
+                    command_pane_exited_payload.terminal_pane_id,
+                    command_pane_exited_payload.exit_code,
+                    command_pane_exited_payload
+                        .context
+                        .into_iter()
+                        .map(|c_i| (c_i.name, c_i.value))
+                        .collect(),
+                )),
                 _ => Err("Malformed payload for the CommandPaneExited Event"),
-            }
+            },
             None => Err("Unknown Protobuf Event"),
         }
     }
@@ -498,7 +498,7 @@ impl TryFrom<Event> for ProtobufEvent {
                 Ok(ProtobufEvent {
                     name: ProtobufEventType::CommandPaneOpened as i32,
                     payload: Some(event::Payload::CommandPaneOpenedPayload(
-                        command_pane_opened_payload
+                        command_pane_opened_payload,
                     )),
                 })
             },
@@ -514,7 +514,7 @@ impl TryFrom<Event> for ProtobufEvent {
                 Ok(ProtobufEvent {
                     name: ProtobufEventType::CommandPaneExited as i32,
                     payload: Some(event::Payload::CommandPaneExitedPayload(
-                        command_pane_exited_payload
+                        command_pane_exited_payload,
                     )),
                 })
             },

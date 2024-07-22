@@ -207,11 +207,14 @@ impl ZellijPlugin for State {
                     );
                 },
                 BareKey::Char('m') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
-                    open_command_pane(CommandToRun {
-                        path: std::path::PathBuf::from("/path/to/my/file.rs"),
-                        args: vec!["arg1".to_owned(), "arg2".to_owned()],
-                        ..Default::default()
-                    }, BTreeMap::new());
+                    open_command_pane(
+                        CommandToRun {
+                            path: std::path::PathBuf::from("/path/to/my/file.rs"),
+                            args: vec!["arg1".to_owned(), "arg2".to_owned()],
+                            ..Default::default()
+                        },
+                        BTreeMap::new(),
+                    );
                 },
                 BareKey::Char('n') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
                     open_command_pane_floating(

@@ -910,12 +910,12 @@ pub enum Event {
         Vec<u8>,
         BTreeMap<String, String>,
     ), // status,
-       // headers,
-       // body,
-       // context
+    // headers,
+    // body,
+    // context
     CommandPaneOpened(u32, Context), // u32 - terminal_pane_id
     CommandPaneExited(u32, Option<i32>, Context), // u32 - terminal_pane_id, Option<i32> -
-                                                  // exit_code
+                                     // exit_code
 }
 
 #[derive(

@@ -144,7 +144,8 @@ pub fn open_command_pane_floating(
     coordinates: Option<FloatingPaneCoordinates>,
     context: BTreeMap<String, String>,
 ) {
-    let plugin_command = PluginCommand::OpenCommandPaneFloating(command_to_run, coordinates, context);
+    let plugin_command =
+        PluginCommand::OpenCommandPaneFloating(command_to_run, coordinates, context);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };

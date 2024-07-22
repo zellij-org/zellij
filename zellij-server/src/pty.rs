@@ -9,12 +9,12 @@ use crate::{
     ClientId, ServerInstruction,
 };
 use async_std::task::{self, JoinHandle};
-use std::{collections::HashMap, os::unix::io::RawFd, path::PathBuf};
 use std::sync::Arc;
+use std::{collections::HashMap, os::unix::io::RawFd, path::PathBuf};
 use zellij_utils::nix::unistd::Pid;
 use zellij_utils::{
     async_std,
-    data::{FloatingPaneCoordinates, Event},
+    data::{Event, FloatingPaneCoordinates},
     errors::prelude::*,
     errors::{ContextType, PtyContext},
     input::{
@@ -177,13 +177,18 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
 
                         // if this command originated in a plugin, we send the plugin back an event
                         // to let it know the command started and which pane_id it has
-                        if let Some(originating_plugin) = run_command.and_then(|r| r.originating_plugin) {
-                            let update_event = Event::CommandPaneOpened(pid, originating_plugin.context.clone());
+                        if let Some(originating_plugin) =
+                            run_command.and_then(|r| r.originating_plugin)
+                        {
+                            let update_event =
+                                Event::CommandPaneOpened(pid, originating_plugin.context.clone());
                             pty.bus
                                 .senders
-                                .send_to_plugin(PluginInstruction::Update(
-                                    vec![(Some(originating_plugin.plugin_id), Some(originating_plugin.client_id), update_event)]
-                                ))
+                                .send_to_plugin(PluginInstruction::Update(vec![(
+                                    Some(originating_plugin.plugin_id),
+                                    Some(originating_plugin.client_id),
+                                    update_event,
+                                )]))
                                 .with_context(err_context)?;
                         }
 
@@ -843,9 +848,11 @@ impl Pty {
             },
         };
         let (hold_on_start, hold_on_close, originating_plugin) = match &terminal_action {
-            TerminalAction::RunCommand(run_command) => {
-                (run_command.hold_on_start, run_command.hold_on_close, run_command.originating_plugin.clone())
-            },
+            TerminalAction::RunCommand(run_command) => (
+                run_command.hold_on_start,
+                run_command.hold_on_close,
+                run_command.originating_plugin.clone(),
+            ),
             _ => (false, false, None),
         };
 
@@ -870,15 +877,18 @@ impl Pty {
                 // know the command exited and some other useful information
                 if let PaneId::Terminal(pane_id) = pane_id {
                     if let Some(originating_plugin) = originating_plugin.as_ref() {
-                        let update_event = Event::CommandPaneExited(pane_id, exit_status, originating_plugin.context.clone());
-                        let _ = senders
-                            .send_to_plugin(PluginInstruction::Update(
-                                vec![(Some(originating_plugin.plugin_id), Some(originating_plugin.client_id), update_event)]
-                            ));
+                        let update_event = Event::CommandPaneExited(
+                            pane_id,
+                            exit_status,
+                            originating_plugin.context.clone(),
+                        );
+                        let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
+                            Some(originating_plugin.plugin_id),
+                            Some(originating_plugin.client_id),
+                            update_event,
+                        )]));
                     }
                 }
-
-
 
                 if hold_on_close {
                     let _ = senders.send_to_screen(ScreenInstruction::HoldPane(
