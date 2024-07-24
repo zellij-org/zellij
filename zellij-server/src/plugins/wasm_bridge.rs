@@ -1193,6 +1193,7 @@ impl WasmBridge {
                         cli_client_id,
                     ) {
                         Ok((plugin_id, client_id)) => {
+                            let start_suppressed = false;
                             drop(self.senders.send_to_screen(ScreenInstruction::AddPlugin(
                                 Some(should_float),
                                 should_be_open_in_place,
@@ -1202,6 +1203,7 @@ impl WasmBridge {
                                 plugin_id,
                                 pane_id_to_replace,
                                 cwd,
+                                start_suppressed,
                                 Some(client_id),
                             )));
                             vec![(plugin_id, Some(client_id))]

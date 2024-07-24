@@ -152,6 +152,7 @@ pub enum ScreenInstruction {
         HoldForCommand,
         Option<Run>, // invoked with
         Option<FloatingPaneCoordinates>,
+        bool, // start suppressed
         ClientTabIndexOrPaneId,
     ),
     OpenInPlaceEditor(PaneId, ClientId),
@@ -312,6 +313,7 @@ pub enum ScreenInstruction {
         u32,            // plugin id
         Option<PaneId>,
         Option<PathBuf>, // cwd
+        bool, // start suppressed
         Option<ClientId>,
     ),
     UpdatePluginLoadingStage(u32, LoadingIndication), // u32 - plugin_id
@@ -2456,8 +2458,10 @@ pub(crate) fn screen_thread_main(
                 hold_for_command,
                 invoked_with,
                 floating_pane_coordinates,
+                start_suppressed,
                 client_or_tab_index,
             ) => {
+                log::info!("ScreenInstruction::NewPane");
                 match client_or_tab_index {
                     ClientTabIndexOrPaneId::ClientId(client_id) => {
                         active_tab_and_connected_client_id!(screen, client_id, |tab: &mut Tab, client_id: ClientId| {
@@ -2466,6 +2470,7 @@ pub(crate) fn screen_thread_main(
                                should_float,
                                invoked_with,
                                floating_pane_coordinates,
+                               start_suppressed,
                                Some(client_id)
                            )
                         }, ?);
@@ -2491,6 +2496,7 @@ pub(crate) fn screen_thread_main(
                                 should_float,
                                 invoked_with,
                                 floating_pane_coordinates,
+                                start_suppressed,
                                 None,
                             )?;
                             if let Some(hold_for_command) = hold_for_command {
@@ -3003,6 +3009,7 @@ pub(crate) fn screen_thread_main(
                 screen.log_and_report_session_state()?;
             },
             ScreenInstruction::HoldPane(id, exit_status, run_command, tab_index, client_id) => {
+                log::info!("ScreenInstruction::HoldPane");
                 let is_first_run = false;
                 match (client_id, tab_index) {
                     (Some(client_id), _) => {
@@ -3632,6 +3639,7 @@ pub(crate) fn screen_thread_main(
                 plugin_id,
                 pane_id_to_replace,
                 cwd,
+                start_suppressed,
                 client_id,
             ) => {
                 let pane_title = pane_title.unwrap_or_else(|| {
@@ -3676,6 +3684,7 @@ pub(crate) fn screen_thread_main(
                             should_float,
                             Some(run_plugin),
                             None,
+                            start_suppressed,
                             Some(client_id),
                         )
                     }, ?);
@@ -3688,6 +3697,7 @@ pub(crate) fn screen_thread_main(
                         should_float,
                         Some(run_plugin),
                         None,
+                        start_suppressed,
                         None,
                     )?;
                 } else {

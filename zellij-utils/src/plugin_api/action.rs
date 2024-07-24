@@ -220,7 +220,7 @@ impl TryFrom<ProtobufAction> for Action {
                         .and_then(|d| ProtobufResizeDirection::from_i32(d))
                         .and_then(|d| d.try_into().ok());
                     let pane_name = payload.pane_name;
-                    Ok(Action::NewPane(direction, pane_name))
+                    Ok(Action::NewPane(direction, pane_name, false))
                 },
                 _ => Err("Wrong payload for Action::NewPane"),
             },
@@ -242,6 +242,7 @@ impl TryFrom<ProtobufAction> for Action {
                         direction,
                         should_float,
                         should_be_in_place,
+                        false,
                         None,
                     ))
                 },
@@ -885,7 +886,7 @@ impl TryFrom<Action> for ProtobufAction {
                 name: ProtobufActionName::ToggleActiveSyncTab as i32,
                 optional_payload: None,
             }),
-            Action::NewPane(direction, new_pane_name) => {
+            Action::NewPane(direction, new_pane_name, _start_suppressed) => {
                 let direction = direction.and_then(|direction| {
                     let protobuf_direction: ProtobufResizeDirection = direction.try_into().ok()?;
                     Some(protobuf_direction as i32)
@@ -906,6 +907,7 @@ impl TryFrom<Action> for ProtobufAction {
                 should_float,
                 _should_be_in_place,
                 _floating_pane_coordinates,
+                _start_suppressed,
             ) => {
                 let file_to_edit = path_to_file.display().to_string();
                 let cwd = cwd.map(|cwd| cwd.display().to_string());

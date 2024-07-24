@@ -157,8 +157,8 @@ pub enum Action {
     ToggleActiveSyncTab,
     /// Open a new pane in the specified direction (relative to focus).
     /// If no direction is specified, will try to use the biggest available space.
-    NewPane(Option<Direction>, Option<String>), // String is an optional pane name
-    /// Open the file in a new pane using the default editor
+    NewPane(Option<Direction>, Option<String>, bool), // String is an optional pane name
+    /// Open the file in a new pane using the default editor, bool -> start suppressed
     EditFile(
         PathBuf,
         Option<usize>,
@@ -166,8 +166,10 @@ pub enum Action {
         Option<Direction>,
         bool,
         bool,
+        bool,
         Option<FloatingPaneCoordinates>,
     ), // usize is an optional line number, Option<PathBuf> is an optional cwd, bool is floating true/false, second bool is in_place
+       // third bool is start_suppressed
     /// Open a new floating pane
     NewFloatingPane(
         Option<RunCommandAction>,
@@ -485,6 +487,7 @@ impl Action {
                         file = cwd.join(file);
                     }
                 }
+                let start_suppressed = false;
                 Ok(vec![Action::EditFile(
                     file,
                     line_number,
@@ -492,6 +495,7 @@ impl Action {
                     direction,
                     floating,
                     in_place,
+                    start_suppressed,
                     FloatingPaneCoordinates::new(x, y, width, height),
                 )])
             },

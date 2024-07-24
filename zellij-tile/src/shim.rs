@@ -159,6 +159,17 @@ pub fn open_command_pane_in_place(command_to_run: CommandToRun, context: BTreeMa
     unsafe { host_run_plugin_command() };
 }
 
+/// Open a new hidden (background) command pane with the specified command and args (this sort of pane allows the user to control the command, re-run it and see its exit status through the Zellij UI).
+pub fn open_command_pane_background(
+    command_to_run: CommandToRun,
+    context: BTreeMap<String, String>,
+) {
+    let plugin_command = PluginCommand::OpenCommandPaneBackground(command_to_run, context);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 /// Change the focused tab to the specified index (corresponding with the default tab names, to starting at `1`, `0` will be considered as `1`).
 pub fn switch_tab_to(tab_idx: u32) {
     let plugin_command = PluginCommand::SwitchTabTo(tab_idx);

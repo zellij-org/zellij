@@ -101,6 +101,7 @@ enum CommandName {
   Reconfigure = 87;
   HidePaneWithId = 88;
   ShowPaneWithId = 89;
+  OpenCommandPaneBackground = 90;
 }
 
 message PluginCommand {
@@ -161,6 +162,7 @@ message PluginCommand {
     string reconfigure_payload = 63;
     HidePaneWithIdPayload hide_pane_with_id_payload = 64;
     ShowPaneWithIdPayload show_pane_with_id_payload = 65;
+    OpenCommandPanePayload open_command_pane_background_payload = 66;
   }
 }
 

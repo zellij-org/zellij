@@ -942,6 +942,25 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 },
                 _ => Err("Mismatched payload for ShowPaneWithId"),
             },
+            Some(CommandName::OpenCommandPaneBackground) => match protobuf_plugin_command.payload {
+                Some(Payload::OpenCommandPaneBackgroundPayload(command_to_run_payload)) => {
+                    match command_to_run_payload.command_to_run {
+                        Some(command_to_run) => {
+                            let context: BTreeMap<String, String> = command_to_run_payload
+                                .context
+                                .into_iter()
+                                .map(|e| (e.name, e.value))
+                                .collect();
+                            Ok(PluginCommand::OpenCommandPaneBackground(
+                                command_to_run.try_into()?,
+                                context,
+                            ))
+                        },
+                        None => Err("Malformed open command pane background payload"),
+                    }
+                },
+                _ => Err("Mismatched payload for OpenCommandPaneBackground"),
+            },
             None => Err("Unrecognized plugin command"),
         }
     }
@@ -1514,6 +1533,22 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                         pane_id: ProtobufPaneId::try_from(pane_id_to_show).ok(),
                         should_float_if_hidden,
                     })),
+                })
+            },
+            PluginCommand::OpenCommandPaneBackground(command_to_run, context) => {
+                let context: Vec<_> = context
+                    .into_iter()
+                    .map(|(name, value)| ContextItem { name, value })
+                    .collect();
+                Ok(ProtobufPluginCommand {
+                    name: CommandName::OpenCommandPaneBackground as i32,
+                    payload: Some(Payload::OpenCommandPaneBackgroundPayload(
+                        OpenCommandPanePayload {
+                            command_to_run: Some(command_to_run.try_into()?),
+                            floating_pane_coordinates: None,
+                            context,
+                        },
+                    )),
                 })
             },
         }

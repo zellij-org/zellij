@@ -274,7 +274,7 @@ pub(crate) fn route_action(
                 .send_to_screen(ScreenInstruction::TogglePaneFrames)
                 .with_context(err_context)?;
         },
-        Action::NewPane(direction, name) => {
+        Action::NewPane(direction, name, start_suppressed) => {
             let shell = default_shell.clone();
             let pty_instr = match direction {
                 Some(Direction::Left) => {
@@ -295,6 +295,7 @@ pub(crate) fn route_action(
                     None,
                     name,
                     None,
+                    start_suppressed,
                     ClientTabIndexOrPaneId::ClientId(client_id),
                 ),
             };
@@ -307,6 +308,7 @@ pub(crate) fn route_action(
             split_direction,
             should_float,
             should_open_in_place,
+            start_suppressed,
             floating_pane_coordinates,
         ) => {
             let title = format!("Editing: {}", path_to_file.display());
@@ -348,6 +350,7 @@ pub(crate) fn route_action(
                     Some(should_float),
                     Some(title),
                     floating_pane_coordinates,
+                    start_suppressed,
                     ClientTabIndexOrPaneId::ClientId(client_id),
                 ),
             };
@@ -394,6 +397,7 @@ pub(crate) fn route_action(
                     Some(should_float),
                     name,
                     floating_pane_coordinates,
+                    false,
                     ClientTabIndexOrPaneId::ClientId(client_id),
                 ))
                 .with_context(err_context)?;
@@ -447,6 +451,7 @@ pub(crate) fn route_action(
                     Some(should_float),
                     name,
                     None,
+                    false,
                     ClientTabIndexOrPaneId::ClientId(client_id),
                 ),
             };
@@ -496,6 +501,7 @@ pub(crate) fn route_action(
                     None,
                     None,
                     None,
+                    false,
                     ClientTabIndexOrPaneId::ClientId(client_id),
                 ),
             };

@@ -571,7 +571,7 @@ fn split_largest_pane() {
     let mut tab = create_new_tab(size);
     for i in 2..5 {
         let new_pane_id = PaneId::Terminal(i);
-        tab.new_pane(new_pane_id, None, None, None, None, Some(1))
+        tab.new_pane(new_pane_id, None, None, None, None, false, Some(1))
             .unwrap();
     }
     assert_eq!(tab.tiled_panes.panes.len(), 4, "The tab has four panes");
@@ -777,7 +777,7 @@ pub fn cannot_split_panes_horizontally_when_active_pane_is_too_small() {
 pub fn cannot_split_largest_pane_when_there_is_no_room() {
     let size = Size { cols: 8, rows: 4 };
     let mut tab = create_new_tab(size);
-    tab.new_pane(PaneId::Terminal(2), None, None, None, None, Some(1))
+    tab.new_pane(PaneId::Terminal(2), None, None, None, None, false, Some(1))
         .unwrap();
     assert_eq!(
         tab.tiled_panes.panes.len(),
@@ -821,7 +821,7 @@ pub fn toggle_focused_pane_fullscreen() {
     let mut tab = create_new_tab(size);
     for i in 2..5 {
         let new_pane_id = PaneId::Terminal(i);
-        tab.new_pane(new_pane_id, None, None, None, None, Some(1))
+        tab.new_pane(new_pane_id, None, None, None, None, false, Some(1))
             .unwrap();
     }
     tab.toggle_active_pane_fullscreen(1);
@@ -896,16 +896,16 @@ fn switch_to_next_pane_fullscreen() {
     let mut active_tab = create_new_tab(size);
 
     active_tab
-        .new_pane(PaneId::Terminal(1), None, None, None, None, Some(1))
+        .new_pane(PaneId::Terminal(1), None, None, None, None, false, Some(1))
         .unwrap();
     active_tab
-        .new_pane(PaneId::Terminal(2), None, None, None, None, Some(1))
+        .new_pane(PaneId::Terminal(2), None, None, None, None, false, Some(1))
         .unwrap();
     active_tab
-        .new_pane(PaneId::Terminal(3), None, None, None, None, Some(1))
+        .new_pane(PaneId::Terminal(3), None, None, None, None, false, Some(1))
         .unwrap();
     active_tab
-        .new_pane(PaneId::Terminal(4), None, None, None, None, Some(1))
+        .new_pane(PaneId::Terminal(4), None, None, None, None, false, Some(1))
         .unwrap();
     active_tab.toggle_active_pane_fullscreen(1);
 
@@ -936,16 +936,16 @@ fn switch_to_prev_pane_fullscreen() {
     //testing four consecutive switches in fullscreen mode
 
     active_tab
-        .new_pane(PaneId::Terminal(1), None, None, None, None, Some(1))
+        .new_pane(PaneId::Terminal(1), None, None, None, None, false, Some(1))
         .unwrap();
     active_tab
-        .new_pane(PaneId::Terminal(2), None, None, None, None, Some(1))
+        .new_pane(PaneId::Terminal(2), None, None, None, None, false, Some(1))
         .unwrap();
     active_tab
-        .new_pane(PaneId::Terminal(3), None, None, None, None, Some(1))
+        .new_pane(PaneId::Terminal(3), None, None, None, None, false, Some(1))
         .unwrap();
     active_tab
-        .new_pane(PaneId::Terminal(4), None, None, None, None, Some(1))
+        .new_pane(PaneId::Terminal(4), None, None, None, None, false, Some(1))
         .unwrap();
     active_tab.toggle_active_pane_fullscreen(1);
     // order is now 1 2 3 4
@@ -14427,7 +14427,7 @@ fn correctly_resize_frameless_panes_on_pane_close() {
     let content_size = (pane.get_content_columns(), pane.get_content_rows());
     assert_eq!(content_size, (cols, rows));
 
-    tab.new_pane(PaneId::Terminal(2), None, None, None, None, Some(1))
+    tab.new_pane(PaneId::Terminal(2), None, None, None, None, false, Some(1))
         .unwrap();
     tab.close_pane(PaneId::Terminal(2), true, None);
 

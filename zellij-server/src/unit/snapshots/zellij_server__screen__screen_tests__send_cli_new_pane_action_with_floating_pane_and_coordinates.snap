@@ -1,6 +1,6 @@
 ---
 source: zellij-server/src/./unit/screen_tests.rs
-assertion_line: 2349
+assertion_line: 2351
 expression: "format!(\"{:?}\", * received_pty_instructions.lock().unwrap())"
 ---
-[SpawnTerminal(Some(RunCommand(RunCommand { command: "htop", args: [], cwd: Some("/some/folder"), hold_on_close: true, hold_on_start: false, originating_plugin: None })), Some(true), None, Some(FloatingPaneCoordinates { x: Some(Fixed(10)), y: None, width: Some(Percent(20)), height: None }), ClientId(10)), UpdateActivePane(Some(Terminal(0)), 1), UpdateActivePane(Some(Terminal(0)), 1), Exit]
+[SpawnTerminal(Some(RunCommand(RunCommand { command: "htop", args: [], cwd: Some("/some/folder"), hold_on_close: true, hold_on_start: false, originating_plugin: None })), Some(true), None, Some(FloatingPaneCoordinates { x: Some(Fixed(10)), y: None, width: Some(Percent(20)), height: None }), false, ClientId(10)), UpdateActivePane(Some(Terminal(0)), 1), UpdateActivePane(Some(Terminal(0)), 1), Exit]

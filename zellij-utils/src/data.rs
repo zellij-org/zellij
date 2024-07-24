@@ -1798,4 +1798,5 @@ pub enum PluginCommand {
     Reconfigure(String), // String -> stringified configuration
     HidePaneWithId(PaneId),
     ShowPaneWithId(PaneId, bool), // bool -> should_float_if_hidden
+    OpenCommandPaneBackground(CommandToRun, Context),
 }

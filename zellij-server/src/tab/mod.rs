@@ -32,6 +32,7 @@ use crate::{
     output::{CharacterChunk, Output, SixelImageChunk},
     panes::sixel::SixelImageStore,
     panes::{FloatingPanes, TiledPanes},
+    panes::floating_panes::floating_pane_grid::half_size_middle_geom,
     panes::{LinkHandler, PaneId, PluginPane, TerminalPane},
     plugins::PluginInstruction,
     pty::{ClientTabIndexOrPaneId, PtyInstruction, VteBytes},
@@ -1047,11 +1048,13 @@ impl Tab {
                         Some(client_id) => ClientTabIndexOrPaneId::ClientId(client_id),
                         None => ClientTabIndexOrPaneId::TabIndex(self.index),
                     };
+                    let should_start_suppressed = false;
                     let instruction = PtyInstruction::SpawnTerminal(
                         default_shell,
                         Some(should_float),
                         name,
                         None,
+                        should_start_suppressed,
                         client_id_or_tab_index,
                     );
                     self.senders
@@ -1071,6 +1074,7 @@ impl Tab {
         should_float: Option<bool>,
         invoked_with: Option<Run>,
         floating_pane_coordinates: Option<FloatingPaneCoordinates>,
+        start_suppressed: bool,
         client_id: Option<ClientId>,
     ) -> Result<()> {
         let err_context = || format!("failed to create new pane with id {pid:?}");
@@ -1081,7 +1085,7 @@ impl Tab {
         };
         self.close_down_to_max_terminals()
             .with_context(err_context)?;
-        let new_pane = match pid {
+        let mut new_pane = match pid {
             PaneId::Terminal(term_pid) => {
                 let next_terminal_position = self.get_next_terminal_position();
                 Box::new(TerminalPane::new(
@@ -1128,7 +1132,29 @@ impl Tab {
                 )) as Box<dyn Pane>
             },
         };
-        if self.floating_panes.panes_are_visible() {
+
+        if start_suppressed {
+            // this pane needs to start in the background (suppressed), only accessible if a plugin takes it out
+            // of there in one way or another
+            // we need to do some bookkeeping for this pane, namely setting its geom and
+            // content_offset so that things will appear properly in the terminal - we set it to
+            // the default geom of the first floating pane - this is just in order to give it some
+            // reasonable size, when it is shown - if needed - it will be given the proper geom as if it were
+            // resized
+            let viewport = {
+                self.viewport.borrow().clone()
+            };
+            let new_pane_geom = half_size_middle_geom(&viewport, 0);
+            new_pane.set_active_at(Instant::now());
+            new_pane.set_geom(new_pane_geom);
+            new_pane.set_content_offset(Offset::frame(1));
+            resize_pty!(new_pane, self.os_api, self.senders, self.character_cell_size)
+                .with_context(err_context)?;
+            let is_scrollback_editor = false;
+            self.suppressed_panes
+                .insert(pid, (is_scrollback_editor, new_pane));
+            Ok(())
+        } else if self.floating_panes.panes_are_visible() {
             self.add_floating_pane(new_pane, pid, floating_pane_coordinates, client_id)
         } else {
             self.add_tiled_pane(new_pane, pid, client_id)
@@ -2448,8 +2474,10 @@ impl Tab {
         self.get_tiled_panes().map(|(&pid, _)| pid).collect()
     }
     pub fn get_all_pane_ids(&self) -> Vec<PaneId> {
-        // this is here just as a naming thing to make things more explicit
-        self.get_static_and_floating_pane_ids()
+        let mut static_and_floating_pane_ids = self.get_static_and_floating_pane_ids();
+        let mut suppressed_pane_ids = self.suppressed_panes.values().map(|(_key, pane)| pane.pid()).collect();
+        static_and_floating_pane_ids.append(&mut suppressed_pane_ids);
+        static_and_floating_pane_ids
     }
     pub fn get_static_and_floating_pane_ids(&self) -> Vec<PaneId> {
         self.tiled_panes
@@ -2596,6 +2624,7 @@ impl Tab {
         is_first_run: bool,
         run_command: RunCommand,
     ) {
+        log::info!("tab.hold_pane 0");
         if self.is_pending {
             self.pending_instructions
                 .push(BufferedTabInstruction::HoldPane(
@@ -2607,12 +2636,28 @@ impl Tab {
             return;
         }
         if self.floating_panes.panes_contain(&id) {
+            log::info!("tab.hold_pane 1");
             self.floating_panes
                 .hold_pane(id, exit_status, is_first_run, run_command);
-        } else {
+        } else if self.tiled_panes.panes_contain(&id) {
+            log::info!("tab.hold_pane 2");
             self.tiled_panes
                 .hold_pane(id, exit_status, is_first_run, run_command);
+        } else if let Some(pane) = self.suppressed_panes.values_mut().find(|p| p.1.pid() == id) {
+            log::info!("tab.hold_pane 3");
+            pane.1.hold(exit_status, is_first_run, run_command);
         }
+
+        //         ORIG
+//         if self.floating_panes.panes_contain(&id) {
+//             log::info!("tab.hold_pane 1");
+//             self.floating_panes
+//                 .hold_pane(id, exit_status, is_first_run, run_command);
+//         } else {
+//             log::info!("tab.hold_pane 3");
+//             self.tiled_panes
+//                 .hold_pane(id, exit_status, is_first_run, run_command);
+//         }
     }
     pub fn replace_pane_with_suppressed_pane(
         &mut self,

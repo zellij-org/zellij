@@ -43,6 +43,7 @@ pub enum PtyInstruction {
         Option<bool>,
         Option<String>,
         Option<FloatingPaneCoordinates>,
+        bool, // start suppressed
         ClientTabIndexOrPaneId,
     ), // bool (if Some) is
     // should_float, String is an optional pane name
@@ -50,6 +51,7 @@ pub enum PtyInstruction {
     SpawnTerminalVertically(Option<TerminalAction>, Option<String>, ClientId), // String is an
     // optional pane
     // name
+    // bool is start_suppressed
     SpawnTerminalHorizontally(Option<TerminalAction>, Option<String>, ClientId), // String is an
     // optional pane
     // name
@@ -141,6 +143,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                 should_float,
                 name,
                 floating_pane_coordinates,
+                start_suppressed,
                 client_or_tab_index,
             ) => {
                 let err_context =
@@ -201,6 +204,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                                 hold_for_command,
                                 invoked_with,
                                 floating_pane_coordinates,
+                                start_suppressed,
                                 client_or_tab_index,
                             ))
                             .with_context(err_context)?;
@@ -218,6 +222,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                                         hold_for_command,
                                         invoked_with,
                                         floating_pane_coordinates,
+                                        start_suppressed,
                                         client_or_tab_index,
                                     ))
                                     .with_context(err_context)?;
@@ -875,6 +880,7 @@ impl Pty {
             move |pane_id, exit_status, command| {
                 // if this command originated in a plugin, we send the plugin an event letting it
                 // know the command exited and some other useful information
+                log::info!("quit_cb");
                 if let PaneId::Terminal(pane_id) = pane_id {
                     if let Some(originating_plugin) = originating_plugin.as_ref() {
                         let update_event = Event::CommandPaneExited(
@@ -891,6 +897,7 @@ impl Pty {
                 }
 
                 if hold_on_close {
+                    log::info!("hold_on_close, pane_id: {:?}", pane_id);
                     let _ = senders.send_to_screen(ScreenInstruction::HoldPane(
                         pane_id,
                         exit_status,
