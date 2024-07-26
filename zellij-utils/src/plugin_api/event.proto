@@ -44,6 +44,9 @@ enum EventType {
     WebRequestResult = 18;
     CommandPaneOpened = 19;
     CommandPaneExited = 20;
+    PaneClosed = 21;
+    EditPaneOpened = 22;
+    EditPaneExited = 23;
 }
 
 message EventNameList {
@@ -69,7 +72,26 @@ message Event {
     WebRequestResultPayload web_request_result_payload = 15;
     CommandPaneOpenedPayload command_pane_opened_payload = 16;
     CommandPaneExitedPayload command_pane_exited_payload = 17;
+    PaneClosedPayload pane_closed_payload = 18;
+    EditPaneOpenedPayload edit_pane_opened_payload = 19;
+    EditPaneExitedPayload edit_pane_exited_payload = 20;
   }
+}
+
+message PaneClosedPayload {
+  PaneId pane_id = 1;
+}
+
+// duplicate of plugin_command.PaneId because protobuffs don't like recursive imports
+message PaneId {
+  PaneType pane_type = 1;
+  uint32 id = 2;
+}
+
+// duplicate of plugin_command.PaneType because protobuffs don't like recursive imports
+enum PaneType {
+  Terminal = 0;
+  Plugin = 1;
 }
 
 message CommandPaneOpenedPayload {
@@ -77,7 +99,18 @@ message CommandPaneOpenedPayload {
   repeated ContextItem context = 2;
 }
 
+message EditPaneOpenedPayload {
+  uint32 terminal_pane_id = 1;
+  repeated ContextItem context = 2;
+}
+
 message CommandPaneExitedPayload {
+  uint32 terminal_pane_id = 1;
+  optional int32 exit_code = 2;
+  repeated ContextItem context = 3;
+}
+
+message EditPaneExitedPayload {
   uint32 terminal_pane_id = 1;
   optional int32 exit_code = 2;
   repeated ContextItem context = 3;

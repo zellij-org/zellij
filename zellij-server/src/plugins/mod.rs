@@ -369,6 +369,17 @@ pub(crate) fn plugin_thread_main(
                 tab_index,
                 client_id,
             ) => {
+
+                // prefer connected clients so as to avoid opening plugins in the background for
+                // CLI clients unless no-one else is connected
+                let client_id = if wasm_bridge.client_is_connected(&client_id) {
+                    client_id
+                } else if let Some(first_client_id) = wasm_bridge.get_first_client_id() {
+                    first_client_id
+                } else {
+                    client_id
+                };
+
                 let mut plugin_ids: HashMap<RunPluginOrAlias, Vec<PluginId>> = HashMap::new();
                 tab_layout = tab_layout.or_else(|| Some(layout.new_tab().0));
                 tab_layout

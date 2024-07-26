@@ -1907,7 +1907,7 @@ impl Screen {
                 tab_index_and_plugin_pane_id = Some((*tab_index, plugin_pane_id));
                 if move_to_focused_tab && focused_tab_index != *tab_index {
                     plugin_pane_to_move_to_active_tab =
-                        tab.extract_pane(plugin_pane_id, Some(client_id));
+                        tab.extract_pane(plugin_pane_id, false, Some(client_id));
                 }
 
                 break;
@@ -1994,7 +1994,7 @@ impl Screen {
                 .with_context(err_context)?;
             let pane_to_break_is_floating = active_tab.are_floating_panes_visible();
             let active_pane = active_tab
-                .close_pane(active_pane_id, false, Some(client_id))
+                .extract_pane(active_pane_id, false, Some(client_id))
                 .with_context(err_context)?;
             let active_pane_run_instruction = active_pane.invoked_with().clone();
             let tab_index = self.get_new_tab_index();
@@ -2055,7 +2055,7 @@ impl Screen {
                     .with_context(err_context)?;
                 let pane_to_break_is_floating = active_tab.are_floating_panes_visible();
                 let active_pane = active_tab
-                    .close_pane(active_pane_id, false, Some(client_id))
+                    .extract_pane(active_pane_id, false, Some(client_id))
                     .with_context(err_context)?;
                 (active_pane_id, active_pane, pane_to_break_is_floating)
             };
@@ -2461,7 +2461,6 @@ pub(crate) fn screen_thread_main(
                 start_suppressed,
                 client_or_tab_index,
             ) => {
-                log::info!("ScreenInstruction::NewPane");
                 match client_or_tab_index {
                     ClientTabIndexOrPaneId::ClientId(client_id) => {
                         active_tab_and_connected_client_id!(screen, client_id, |tab: &mut Tab, client_id: ClientId| {
@@ -2988,6 +2987,7 @@ pub(crate) fn screen_thread_main(
                 screen.log_and_report_session_state()?;
             },
             ScreenInstruction::ClosePane(id, client_id) => {
+                log::info!("ScreenInstruction::ClosePane: {:?}", id);
                 match client_id {
                     Some(client_id) => {
                         active_tab!(screen, client_id, |tab: &mut Tab| tab.close_pane(
@@ -3005,11 +3005,12 @@ pub(crate) fn screen_thread_main(
                         }
                     },
                 }
+
+
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
             },
             ScreenInstruction::HoldPane(id, exit_status, run_command, tab_index, client_id) => {
-                log::info!("ScreenInstruction::HoldPane");
                 let is_first_run = false;
                 match (client_id, tab_index) {
                     (Some(client_id), _) => {

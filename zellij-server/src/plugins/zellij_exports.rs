@@ -23,6 +23,7 @@ use zellij_utils::data::{
 };
 use zellij_utils::input::permission::PermissionCache;
 use zellij_utils::{
+    async_std::task,
     interprocess::local_socket::LocalSocketStream,
     ipc::{ClientToServerMsg, IpcSenderWithContext},
 };
@@ -38,7 +39,7 @@ use zellij_utils::{
     errors::prelude::*,
     input::{
         actions::Action,
-        command::{RunCommand, RunCommandAction, TerminalAction},
+        command::{RunCommand, RunCommandAction, TerminalAction, OpenFilePayload},
         layout::{Layout, RunPluginOrAlias},
         plugins::PluginType,
     },
@@ -92,9 +93,9 @@ fn host_run_plugin_command(caller: Caller<'_, PluginEnv>) {
                     PluginCommand::SetSelectable(selectable) => set_selectable(env, selectable),
                     PluginCommand::GetPluginIds => get_plugin_ids(env),
                     PluginCommand::GetZellijVersion => get_zellij_version(env),
-                    PluginCommand::OpenFile(file_to_open) => open_file(env, file_to_open),
-                    PluginCommand::OpenFileFloating(file_to_open, floating_pane_coordinates) => {
-                        open_file_floating(env, file_to_open, floating_pane_coordinates)
+                    PluginCommand::OpenFile(file_to_open, context) => open_file(env, file_to_open, context),
+                    PluginCommand::OpenFileFloating(file_to_open, floating_pane_coordinates, context) => {
+                        open_file_floating(env, file_to_open, floating_pane_coordinates, context)
                     },
                     PluginCommand::OpenTerminal(cwd) => open_terminal(env, cwd.path.try_into()?),
                     PluginCommand::OpenTerminalFloating(cwd, floating_pane_coordinates) => {
@@ -222,8 +223,8 @@ fn host_run_plugin_command(caller: Caller<'_, PluginEnv>) {
                         delete_dead_session(session_name)?
                     },
                     PluginCommand::DeleteAllDeadSessions => delete_all_dead_sessions()?,
-                    PluginCommand::OpenFileInPlace(file_to_open) => {
-                        open_file_in_place(env, file_to_open)
+                    PluginCommand::OpenFileInPlace(file_to_open, context) => {
+                        open_file_in_place(env, file_to_open, context)
                     },
                     PluginCommand::OpenTerminalInPlace(cwd) => {
                         open_terminal_in_place(env, cwd.path.try_into()?)
@@ -359,6 +360,7 @@ fn request_permission(env: &PluginEnv, permissions: Vec<PermissionType>) -> Resu
     if PermissionCache::from_path_or_default(None)
         .check_permissions(env.plugin.location.to_string(), &permissions)
     {
+        log::info!("PermissionRequestResult 1");
         return env
             .senders
             .send_to_plugin(PluginInstruction::PermissionRequestResult(
@@ -420,7 +422,7 @@ fn get_zellij_version(env: &PluginEnv) {
         .non_fatal();
 }
 
-fn open_file(env: &PluginEnv, file_to_open: FileToOpen) {
+fn open_file(env: &PluginEnv, file_to_open: FileToOpen, context: BTreeMap<String, String>) {
     let error_msg = || format!("failed to open file in plugin {}", env.name());
     let floating = false;
     let in_place = false;
@@ -431,9 +433,14 @@ fn open_file(env: &PluginEnv, file_to_open: FileToOpen) {
         .map(|cwd| env.plugin_cwd.join(cwd))
         .or_else(|| Some(env.plugin_cwd.clone()));
     let action = Action::EditFile(
-        path,
-        file_to_open.line_number,
-        cwd,
+        OpenFilePayload::new(path, file_to_open.line_number, cwd).with_originating_plugin(OriginatingPlugin::new(
+            env.plugin_id,
+            env.client_id,
+            context,
+        )),
+//         path,
+//         file_to_open.line_number,
+//         cwd,
         None,
         floating,
         in_place,
@@ -447,7 +454,9 @@ fn open_file_floating(
     env: &PluginEnv,
     file_to_open: FileToOpen,
     floating_pane_coordinates: Option<FloatingPaneCoordinates>,
+    context: BTreeMap<String, String>,
 ) {
+    // TODO: CONTINUE HERE - send the context
     let error_msg = || format!("failed to open file in plugin {}", env.name());
     let floating = true;
     let in_place = false;
@@ -458,9 +467,14 @@ fn open_file_floating(
         .map(|cwd| env.plugin_cwd.join(cwd))
         .or_else(|| Some(env.plugin_cwd.clone()));
     let action = Action::EditFile(
-        path,
-        file_to_open.line_number,
-        cwd,
+        OpenFilePayload::new(path, file_to_open.line_number, cwd).with_originating_plugin(OriginatingPlugin::new(
+            env.plugin_id,
+            env.client_id,
+            context,
+        )),
+//         path,
+//         file_to_open.line_number,
+//         cwd,
         None,
         floating,
         in_place,
@@ -470,7 +484,7 @@ fn open_file_floating(
     apply_action!(action, error_msg, env);
 }
 
-fn open_file_in_place(env: &PluginEnv, file_to_open: FileToOpen) {
+fn open_file_in_place(env: &PluginEnv, file_to_open: FileToOpen, context: BTreeMap<String, String>) {
     let error_msg = || format!("failed to open file in plugin {}", env.name());
     let floating = false;
     let in_place = true;
@@ -482,9 +496,14 @@ fn open_file_in_place(env: &PluginEnv, file_to_open: FileToOpen) {
         .or_else(|| Some(env.plugin_cwd.clone()));
 
     let action = Action::EditFile(
-        path,
-        file_to_open.line_number,
-        cwd,
+        OpenFilePayload::new(path, file_to_open.line_number, cwd).with_originating_plugin(OriginatingPlugin::new(
+            env.plugin_id,
+            env.client_id,
+            context,
+        )),
+//         path,
+//         file_to_open.line_number,
+//         cwd,
         None,
         floating,
         in_place,
@@ -694,23 +713,13 @@ fn switch_tab_to(env: &PluginEnv, tab_idx: u32) {
 }
 
 fn set_timeout(env: &PluginEnv, secs: f64) {
-    // There is a fancy, high-performance way to do this with zero additional threads:
-    // If the plugin thread keeps a BinaryHeap of timer structs, it can manage multiple and easily `.peek()` at the
-    // next time to trigger in O(1) time. Once the wake-up time is known, the `wasm` thread can use `recv_timeout()`
-    // to wait for an event with the timeout set to be the time of the next wake up. If events come in in the meantime,
-    // they are handled, but if the timeout triggers, we replace the event from `recv()` with an
-    // `Update(pid, TimerEvent)` and pop the timer from the Heap (or reschedule it). No additional threads for as many
-    // timers as we'd like.
-    //
-    // But that's a lot of code, and this is a few lines:
     let send_plugin_instructions = env.senders.to_plugin.clone();
     let update_target = Some(env.plugin_id);
     let client_id = env.client_id;
     let plugin_name = env.name();
-    // TODO: we should really use an async task for this
-    thread::spawn(move || {
+    task::spawn(async move {
         let start_time = Instant::now();
-        thread::sleep(Duration::from_secs_f64(secs));
+        task::sleep(Duration::from_secs_f64(secs)).await;
         // FIXME: The way that elapsed time is being calculated here is not exact; it doesn't take into account the
         // time it takes an event to actually reach the plugin after it's sent to the `wasm` thread.
         let elapsed_time = Instant::now().duration_since(start_time).as_secs_f64();

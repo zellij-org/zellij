@@ -986,7 +986,7 @@ impl Tab {
             if let Some(focused_floating_pane_id) = self.floating_panes.active_pane_id(client_id) {
                 if self.tiled_panes.has_room_for_new_pane() {
                     let floating_pane_to_embed = self
-                        .close_pane(focused_floating_pane_id, true, Some(client_id))
+                        .extract_pane(focused_floating_pane_id, true, Some(client_id))
                         .with_context(|| format!(
                         "failed to find floating pane (ID: {focused_floating_pane_id:?}) to embed for client {client_id}",
                     ))
@@ -1005,7 +1005,7 @@ impl Tab {
                 return Ok(());
             }
             if let Some(embedded_pane_to_float) =
-                self.close_pane(focused_pane_id, true, Some(client_id))
+                self.extract_pane(focused_pane_id, true, Some(client_id))
             {
                 self.show_floating_panes();
                 self.add_floating_pane(
@@ -2522,7 +2522,8 @@ impl Tab {
         id: PaneId,
         ignore_suppressed_panes: bool,
         client_id: Option<ClientId>,
-    ) -> Option<Box<dyn Pane>> {
+    // ) -> Option<Box<dyn Pane>> {
+    ) {
         // we need to ignore suppressed panes when we toggle a pane to be floating/embedded(tiled)
         // this is because in that case, while we do use this logic, we're not actually closing the
         // pane, we're moving it
@@ -2531,12 +2532,11 @@ impl Tab {
         // overloaded here and that's not great
         if !ignore_suppressed_panes && self.suppressed_panes.contains_key(&id) {
             return match self.replace_pane_with_suppressed_pane(id) {
-                Ok(pane) => pane,
+                Ok(_pane) => {},
                 Err(e) => {
                     Err::<(), _>(e)
                         .with_context(|| format!("failed to close pane {:?}", id))
                         .non_fatal();
-                    None
                 },
             };
         }
@@ -2557,7 +2557,6 @@ impl Tab {
                 // confusing
                 let _ = self.next_swap_layout(client_id, false);
             }
-            closed_pane
         } else {
             if self.tiled_panes.fullscreen_is_active() {
                 self.tiled_panes.unset_fullscreen();
@@ -2571,14 +2570,28 @@ impl Tab {
                 // confusing
                 let _ = self.next_swap_layout(client_id, false);
             }
-            closed_pane
-        }
+        };
+        let _ = self
+            .senders
+            .send_to_plugin(PluginInstruction::Update(vec![(None, None, Event::PaneClosed(id.into()))]));
     }
     pub fn extract_pane(
         &mut self,
         id: PaneId,
+        ignore_suppressed_panes: bool,
         client_id: Option<ClientId>,
     ) -> Option<Box<dyn Pane>> {
+        if !ignore_suppressed_panes && self.suppressed_panes.contains_key(&id) {
+            return match self.replace_pane_with_suppressed_pane(id) {
+                Ok(pane) => pane,
+                Err(e) => {
+                    Err::<(), _>(e)
+                        .with_context(|| format!("failed to close pane {:?}", id))
+                        .non_fatal();
+                    None
+                },
+            };
+        }
         if self.floating_panes.panes_contain(&id) {
             let closed_pane = self.floating_panes.remove_pane(id);
             self.floating_panes.move_clients_out_of_pane(id);
@@ -2624,7 +2637,6 @@ impl Tab {
         is_first_run: bool,
         run_command: RunCommand,
     ) {
-        log::info!("tab.hold_pane 0");
         if self.is_pending {
             self.pending_instructions
                 .push(BufferedTabInstruction::HoldPane(
@@ -2636,15 +2648,12 @@ impl Tab {
             return;
         }
         if self.floating_panes.panes_contain(&id) {
-            log::info!("tab.hold_pane 1");
             self.floating_panes
                 .hold_pane(id, exit_status, is_first_run, run_command);
         } else if self.tiled_panes.panes_contain(&id) {
-            log::info!("tab.hold_pane 2");
             self.tiled_panes
                 .hold_pane(id, exit_status, is_first_run, run_command);
         } else if let Some(pane) = self.suppressed_panes.values_mut().find(|p| p.1.pid() == id) {
-            log::info!("tab.hold_pane 3");
             pane.1.hold(exit_status, is_first_run, run_command);
         }
 
@@ -3817,7 +3826,8 @@ impl Tab {
         // not take it out of there when another pane is closed (eg. like happens with the
         // scrollback editor), but it has to take itself out on its own (eg. a plugin using the
         // show_self() method)
-        if let Some(pane) = self.close_pane(pane_id, true, Some(client_id)) {
+        // if let Some(pane) = self.close_pane(pane_id, true, Some(client_id)) {
+        if let Some(pane) = self.extract_pane(pane_id, true, Some(client_id)) {
             let is_scrollback_editor = false;
             self.suppressed_panes
                 .insert(pane_id, (is_scrollback_editor, pane));

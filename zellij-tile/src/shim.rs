@@ -76,24 +76,24 @@ pub fn get_zellij_version() -> String {
 // Host Functions
 
 /// Open a file in the user's default `$EDITOR` in a new pane
-pub fn open_file(file_to_open: FileToOpen) {
-    let plugin_command = PluginCommand::OpenFile(file_to_open);
+pub fn open_file(file_to_open: FileToOpen, context: BTreeMap<String, String>) {
+    let plugin_command = PluginCommand::OpenFile(file_to_open, context);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
 }
 
 /// Open a file in the user's default `$EDITOR` in a new floating pane
-pub fn open_file_floating(file_to_open: FileToOpen, coordinates: Option<FloatingPaneCoordinates>) {
-    let plugin_command = PluginCommand::OpenFileFloating(file_to_open, coordinates);
+pub fn open_file_floating(file_to_open: FileToOpen, coordinates: Option<FloatingPaneCoordinates>, context: BTreeMap<String, String>) {
+    let plugin_command = PluginCommand::OpenFileFloating(file_to_open, coordinates, context);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
 }
 
 /// Open a file in the user's default `$EDITOR`, replacing the focused pane
-pub fn open_file_in_place(file_to_open: FileToOpen) {
-    let plugin_command = PluginCommand::OpenFileInPlace(file_to_open);
+pub fn open_file_in_place(file_to_open: FileToOpen, context: BTreeMap<String, String>) {
+    let plugin_command = PluginCommand::OpenFileInPlace(file_to_open, context);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };

@@ -17,7 +17,7 @@ use crate::data::{Direction, InputMode, ResizeStrategy};
 use crate::errors::prelude::*;
 use crate::input::actions::Action;
 use crate::input::actions::{SearchDirection, SearchOption};
-use crate::input::command::RunCommandAction;
+use crate::input::command::{RunCommandAction, OpenFilePayload};
 use crate::input::layout::{
     PluginUserConfiguration, RunPlugin, RunPluginLocation, RunPluginOrAlias,
 };
@@ -236,9 +236,11 @@ impl TryFrom<ProtobufAction> for Action {
                     let should_float = payload.should_float;
                     let should_be_in_place = false;
                     Ok(Action::EditFile(
-                        file_to_edit,
-                        line_number,
-                        cwd,
+                        OpenFilePayload::new(
+                            file_to_edit,
+                            line_number,
+                            cwd,
+                        ),
                         direction,
                         should_float,
                         should_be_in_place,
@@ -900,21 +902,22 @@ impl TryFrom<Action> for ProtobufAction {
                 })
             },
             Action::EditFile(
-                path_to_file,
-                line_number,
-                cwd,
+                open_file_payload,
+//                 path_to_file,
+//                 line_number,
+//                 cwd,
                 direction,
                 should_float,
                 _should_be_in_place,
                 _floating_pane_coordinates,
                 _start_suppressed,
             ) => {
-                let file_to_edit = path_to_file.display().to_string();
-                let cwd = cwd.map(|cwd| cwd.display().to_string());
+                let file_to_edit = open_file_payload.path.display().to_string();
+                let cwd = open_file_payload.cwd.map(|cwd| cwd.display().to_string());
                 let direction: Option<i32> = direction
                     .and_then(|d| ProtobufResizeDirection::try_from(d).ok())
                     .map(|d| d as i32);
-                let line_number = line_number.map(|l| l as u32);
+                let line_number = open_file_payload.line_number.map(|l| l as u32);
                 Ok(ProtobufAction {
                     name: ProtobufActionName::EditFile as i32,
                     optional_payload: Some(OptionalPayload::EditFilePayload(EditFilePayload {

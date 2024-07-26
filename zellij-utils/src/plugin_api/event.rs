@@ -8,7 +8,8 @@ pub use super::generated_api::api::{
         LayoutInfo as ProtobufLayoutInfo, ModeUpdatePayload as ProtobufModeUpdatePayload,
         PaneInfo as ProtobufPaneInfo, PaneManifest as ProtobufPaneManifest,
         ResurrectableSession as ProtobufResurrectableSession,
-        SessionManifest as ProtobufSessionManifest, TabInfo as ProtobufTabInfo, *,
+        SessionManifest as ProtobufSessionManifest, TabInfo as ProtobufTabInfo, PaneId as ProtobufPaneId,
+        PaneType as ProtobufPaneType, *,
     },
     input_mode::InputMode as ProtobufInputMode,
     key::Key as ProtobufKey,
@@ -18,7 +19,7 @@ pub use super::generated_api::api::{
 use crate::data::{
     CopyDestination, Event, EventType, FileMetadata, InputMode, KeyWithModifier, LayoutInfo,
     ModeInfo, Mouse, PaneInfo, PaneManifest, PermissionStatus, PluginCapabilities, SessionInfo,
-    Style, TabInfo,
+    Style, TabInfo, PaneId
 };
 
 use crate::errors::prelude::*;
@@ -261,6 +262,40 @@ impl TryFrom<ProtobufEvent> for Event {
                         .collect(),
                 )),
                 _ => Err("Malformed payload for the CommandPaneExited Event"),
+            },
+            Some(ProtobufEventType::PaneClosed) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::PaneClosedPayload(pane_closed_payload)) => {
+                    let pane_id = pane_closed_payload.pane_id.ok_or("Malformed payload for the PaneClosed Event")?;
+                    Ok(Event::PaneClosed(PaneId::try_from(pane_id)?))
+                },
+                _ => Err("Malformed payload for the PaneClosed Event"),
+            },
+            Some(ProtobufEventType::EditPaneOpened) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::EditPaneOpenedPayload(
+                    command_pane_opened_payload,
+                )) => Ok(Event::EditPaneOpened(
+                    command_pane_opened_payload.terminal_pane_id,
+                    command_pane_opened_payload
+                        .context
+                        .into_iter()
+                        .map(|c_i| (c_i.name, c_i.value))
+                        .collect(),
+                )),
+                _ => Err("Malformed payload for the EditPaneOpened Event"),
+            },
+            Some(ProtobufEventType::EditPaneExited) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::EditPaneExitedPayload(
+                    command_pane_exited_payload,
+                )) => Ok(Event::EditPaneExited(
+                    command_pane_exited_payload.terminal_pane_id,
+                    command_pane_exited_payload.exit_code,
+                    command_pane_exited_payload
+                        .context
+                        .into_iter()
+                        .map(|c_i| (c_i.name, c_i.value))
+                        .collect(),
+                )),
+                _ => Err("Malformed payload for the EditPaneExited Event"),
             },
             None => Err("Unknown Protobuf Event"),
         }
@@ -514,6 +549,45 @@ impl TryFrom<Event> for ProtobufEvent {
                 Ok(ProtobufEvent {
                     name: ProtobufEventType::CommandPaneExited as i32,
                     payload: Some(event::Payload::CommandPaneExitedPayload(
+                        command_pane_exited_payload,
+                    )),
+                })
+            },
+            Event::PaneClosed(pane_id) => {
+                Ok(ProtobufEvent {
+                    name: ProtobufEventType::PaneClosed as i32,
+                    payload: Some(event::Payload::PaneClosedPayload(PaneClosedPayload {
+                        pane_id: Some(pane_id.try_into()?),
+                    })),
+                })
+            },
+            Event::EditPaneOpened(terminal_pane_id, context) => {
+                let command_pane_opened_payload = EditPaneOpenedPayload {
+                    terminal_pane_id,
+                    context: context
+                        .into_iter()
+                        .map(|(name, value)| ContextItem { name, value })
+                        .collect(),
+                };
+                Ok(ProtobufEvent {
+                    name: ProtobufEventType::EditPaneOpened as i32,
+                    payload: Some(event::Payload::EditPaneOpenedPayload(
+                        command_pane_opened_payload,
+                    )),
+                })
+            },
+            Event::EditPaneExited(terminal_pane_id, exit_code, context) => {
+                let command_pane_exited_payload = EditPaneExitedPayload {
+                    terminal_pane_id,
+                    exit_code,
+                    context: context
+                        .into_iter()
+                        .map(|(name, value)| ContextItem { name, value })
+                        .collect(),
+                };
+                Ok(ProtobufEvent {
+                    name: ProtobufEventType::EditPaneExited as i32,
+                    payload: Some(event::Payload::EditPaneExitedPayload(
                         command_pane_exited_payload,
                     )),
                 })
@@ -1023,6 +1097,9 @@ impl TryFrom<ProtobufEventType> for EventType {
             ProtobufEventType::WebRequestResult => EventType::WebRequestResult,
             ProtobufEventType::CommandPaneOpened => EventType::CommandPaneOpened,
             ProtobufEventType::CommandPaneExited => EventType::CommandPaneExited,
+            ProtobufEventType::PaneClosed => EventType::PaneClosed,
+            ProtobufEventType::EditPaneOpened => EventType::EditPaneOpened,
+            ProtobufEventType::EditPaneExited => EventType::EditPaneExited,
         })
     }
 }
@@ -1052,6 +1129,9 @@ impl TryFrom<EventType> for ProtobufEventType {
             EventType::WebRequestResult => ProtobufEventType::WebRequestResult,
             EventType::CommandPaneOpened => ProtobufEventType::CommandPaneOpened,
             EventType::CommandPaneExited => ProtobufEventType::CommandPaneExited,
+            EventType::PaneClosed => ProtobufEventType::PaneClosed,
+            EventType::EditPaneOpened => ProtobufEventType::EditPaneOpened,
+            EventType::EditPaneExited => ProtobufEventType::EditPaneExited,
         })
     }
 }
@@ -1615,4 +1695,37 @@ fn serialize_session_update_event_with_non_default_values() {
         session_update_event, deserialized_event,
         "Event properly serialized/deserialized without change"
     );
+}
+
+// note: ProtobufPaneId and ProtobufPaneType are not the same as the ones defined in plugin_command.rs
+// this is a duplicate type - we are forced to do this because protobuffs do not support recursive
+// imports
+impl TryFrom<ProtobufPaneId> for PaneId {
+    type Error = &'static str;
+    fn try_from(protobuf_pane_id: ProtobufPaneId) -> Result<Self, &'static str> {
+        match ProtobufPaneType::from_i32(protobuf_pane_id.pane_type) {
+            Some(ProtobufPaneType::Terminal) => Ok(PaneId::Terminal(protobuf_pane_id.id)),
+            Some(ProtobufPaneType::Plugin) => Ok(PaneId::Plugin(protobuf_pane_id.id)),
+            None => Err("Failed to convert PaneId"),
+        }
+    }
+}
+
+// note: ProtobufPaneId and ProtobufPaneType are not the same as the ones defined in plugin_command.rs
+// this is a duplicate type - we are forced to do this because protobuffs do not support recursive
+// imports
+impl TryFrom<PaneId> for ProtobufPaneId {
+    type Error = &'static str;
+    fn try_from(pane_id: PaneId) -> Result<Self, &'static str> {
+        match pane_id {
+            PaneId::Terminal(id) => Ok(ProtobufPaneId {
+                pane_type: ProtobufPaneType::Terminal as i32,
+                id,
+            }),
+            PaneId::Plugin(id) => Ok(ProtobufPaneId {
+                pane_type: ProtobufPaneType::Plugin as i32,
+                id,
+            }),
+        }
+    }
 }

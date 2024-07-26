@@ -240,6 +240,7 @@ message UnsubscribePayload {
 message OpenFilePayload {
   file.File file_to_open = 1;
   optional FloatingPaneCoordinates floating_pane_coordinates = 2;
+  repeated ContextItem context = 3;
 }
 
 message OpenCommandPanePayload {

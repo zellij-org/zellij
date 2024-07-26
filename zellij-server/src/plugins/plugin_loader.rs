@@ -620,6 +620,7 @@ impl<'a> PluginLoader<'a> {
         instance: &Instance,
         plugin_map: &Arc<Mutex<PluginMap>>,
     ) -> Result<()> {
+        log::info!("load_plugin_instance");
         let err_context = || format!("failed to load plugin from instance {instance:#?}");
         let main_user_instance = instance.clone();
         display_loading_stage!(
@@ -719,6 +720,7 @@ impl<'a> PluginLoader<'a> {
         connected_clients: &[ClientId],
         plugin_map: &Arc<Mutex<PluginMap>>,
     ) -> Result<()> {
+        log::info!("clone_instance_for_other_clients");
         if !connected_clients.is_empty() {
             display_loading_stage!(
                 indicate_cloning_plugin_for_other_clients,

@@ -1270,6 +1270,12 @@ impl WasmBridge {
             || (message_cid.is_none() && message_pid == Some(*plugin_id))
             || (message_cid == Some(*client_id) && message_pid == Some(*plugin_id))
     }
+    pub fn client_is_connected(&self, client_id: &ClientId) -> bool {
+        self.connected_clients.lock().unwrap().contains(client_id)
+    }
+    pub fn get_first_client_id(&self) -> Option<ClientId> {
+        self.connected_clients.lock().unwrap().iter().next().copied()
+    }
 }
 
 fn handle_plugin_successful_loading(senders: &ThreadSenders, plugin_id: PluginId) {
@@ -1318,6 +1324,9 @@ fn check_event_permission(
         | Event::SystemClipboardFailure
         | Event::CommandPaneOpened(..)
         | Event::CommandPaneExited(..)
+        | Event::PaneClosed(..)
+        | Event::EditPaneOpened(..)
+        | Event::EditPaneExited(..)
         | Event::InputReceived => PermissionType::ReadApplicationState,
         _ => return (PermissionStatus::Granted, None),
     };
