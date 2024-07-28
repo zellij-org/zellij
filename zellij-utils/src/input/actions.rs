@@ -432,6 +432,7 @@ impl Action {
                         direction,
                         hold_on_close,
                         hold_on_start,
+                        ..Default::default()
                     };
                     if floating {
                         Ok(vec![Action::NewFloatingPane(
