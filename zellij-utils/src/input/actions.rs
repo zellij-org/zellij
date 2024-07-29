@@ -161,10 +161,6 @@ pub enum Action {
     /// Open the file in a new pane using the default editor, bool -> start suppressed
     EditFile(
         OpenFilePayload,
-//         PathBuf,
-//         Option<usize>,
-//         Option<PathBuf>,
-
         Option<Direction>,
         bool,
         bool,
@@ -492,9 +488,6 @@ impl Action {
                 let start_suppressed = false;
                 Ok(vec![Action::EditFile(
                     OpenFilePayload::new(file, line_number, cwd),
-//                     file,
-//                     line_number,
-//                     cwd,
                     direction,
                     floating,
                     in_place,

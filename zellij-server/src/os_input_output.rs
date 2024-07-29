@@ -288,7 +288,6 @@ fn spawn_terminal(
     // secondary fd
     let mut failover_cmd_args = None;
     let cmd = match terminal_action {
-        // TerminalAction::OpenFile(mut file_to_open, line_number, cwd) => {
         TerminalAction::OpenFile(mut payload) => {
             if payload.path.is_relative() {
                 if let Some(cwd) = payload.cwd.as_ref() {

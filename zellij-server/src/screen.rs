@@ -2987,7 +2987,6 @@ pub(crate) fn screen_thread_main(
                 screen.log_and_report_session_state()?;
             },
             ScreenInstruction::ClosePane(id, client_id) => {
-                log::info!("ScreenInstruction::ClosePane: {:?}", id);
                 match client_id {
                     Some(client_id) => {
                         active_tab!(screen, client_id, |tab: &mut Tab| tab.close_pane(

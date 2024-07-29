@@ -5,11 +5,7 @@ use std::path::PathBuf;
 
 #[derive(Debug, Clone)]
 pub enum TerminalAction {
-    // TODO: CONTINUE HERE - make this work, and once we compile move to pty.rs and take the
-    // originating_plugin from here
     OpenFile(OpenFilePayload),
-    // OpenFile(PathBuf, Option<usize>, Option<PathBuf>), // path to file (should be absolute), optional line_number and an
-    // optional cwd
     RunCommand(RunCommand),
 }
 

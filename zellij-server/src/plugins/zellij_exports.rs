@@ -438,9 +438,6 @@ fn open_file(env: &PluginEnv, file_to_open: FileToOpen, context: BTreeMap<String
             env.client_id,
             context,
         )),
-//         path,
-//         file_to_open.line_number,
-//         cwd,
         None,
         floating,
         in_place,
@@ -456,7 +453,6 @@ fn open_file_floating(
     floating_pane_coordinates: Option<FloatingPaneCoordinates>,
     context: BTreeMap<String, String>,
 ) {
-    // TODO: CONTINUE HERE - send the context
     let error_msg = || format!("failed to open file in plugin {}", env.name());
     let floating = true;
     let in_place = false;
@@ -472,9 +468,6 @@ fn open_file_floating(
             env.client_id,
             context,
         )),
-//         path,
-//         file_to_open.line_number,
-//         cwd,
         None,
         floating,
         in_place,
@@ -501,9 +494,6 @@ fn open_file_in_place(env: &PluginEnv, file_to_open: FileToOpen, context: BTreeM
             env.client_id,
             context,
         )),
-//         path,
-//         file_to_open.line_number,
-//         cwd,
         None,
         floating,
         in_place,
@@ -667,7 +657,6 @@ fn open_command_pane_background(
     command_to_run: CommandToRun,
     context: BTreeMap<String, String>,
 ) {
-    let error_msg = || format!("failed to open command in plugin {}", env.name());
     let command = command_to_run.path;
     let cwd = command_to_run.cwd.map(|cwd| env.plugin_cwd.join(cwd));
     let args = command_to_run.args;

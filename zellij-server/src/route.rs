@@ -303,9 +303,6 @@ pub(crate) fn route_action(
         },
         Action::EditFile(
             open_file_payload,
-//             path_to_file,
-//             line_number,
-//             cwd,
             split_direction,
             should_float,
             should_open_in_place,
@@ -313,7 +310,6 @@ pub(crate) fn route_action(
             floating_pane_coordinates,
         ) => {
             let title = format!("Editing: {}", open_file_payload.path.display());
-            // let open_file = TerminalAction::OpenFile(OpenFilePayload::new(path_to_file, line_number, cwd));
             let open_file = TerminalAction::OpenFile(open_file_payload);
             let pty_instr = match (split_direction, should_float, should_open_in_place) {
                 (Some(Direction::Left), false, false) => {
@@ -521,7 +517,6 @@ pub(crate) fn route_action(
             swap_floating_layouts,
             tab_name,
         ) => {
-            log::info!("NewTab, client_id: {:?}", client_id);
             let shell = default_shell.clone();
             let swap_tiled_layouts =
                 swap_tiled_layouts.unwrap_or_else(|| default_layout.swap_tiled_layouts.clone());

@@ -3,4 +3,4 @@ source: zellij-server/src/./unit/screen_tests.rs
 assertion_line: 2427
 expression: "format!(\"{:?}\", * received_pty_instructions.lock().unwrap())"
 ---
-[SpawnTerminal(Some(OpenFile("/file/to/edit", Some(100), Some("."))), Some(false), Some("Editing: /file/to/edit"), None, false, ClientId(10)), UpdateActivePane(Some(Terminal(0)), 1), UpdateActivePane(Some(Terminal(0)), 1), Exit]
+[SpawnTerminal(Some(OpenFile(OpenFilePayload { path: "/file/to/edit", line_number: Some(100), cwd: Some("."), originating_plugin: None })), Some(false), Some("Editing: /file/to/edit"), None, false, ClientId(10)), UpdateActivePane(Some(Terminal(0)), 1), UpdateActivePane(Some(Terminal(0)), 1), Exit]
