@@ -5,21 +5,43 @@ use std::path::PathBuf;
 
 #[derive(Debug, Clone)]
 pub enum TerminalAction {
-    OpenFile(PathBuf, Option<usize>, Option<PathBuf>), // path to file (should be absolute), optional line_number and an
-    // optional cwd
+    OpenFile(OpenFilePayload),
     RunCommand(RunCommand),
 }
 
 impl TerminalAction {
     pub fn change_cwd(&mut self, new_cwd: PathBuf) {
         match self {
-            TerminalAction::OpenFile(_, _, cwd) => {
-                *cwd = Some(new_cwd);
+            TerminalAction::OpenFile(open_file_payload) => {
+                open_file_payload.cwd = Some(new_cwd);
             },
             TerminalAction::RunCommand(run_command) => {
                 run_command.cwd = Some(new_cwd);
             },
         }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct OpenFilePayload {
+    pub path: PathBuf,
+    pub line_number: Option<usize>,
+    pub cwd: Option<PathBuf>,
+    pub originating_plugin: Option<OriginatingPlugin>,
+}
+
+impl OpenFilePayload {
+    pub fn new(path: PathBuf, line_number: Option<usize>, cwd: Option<PathBuf>) -> Self {
+        OpenFilePayload {
+            path,
+            line_number,
+            cwd,
+            originating_plugin: None,
+        }
+    }
+    pub fn with_originating_plugin(mut self, originating_plugin: OriginatingPlugin) -> Self {
+        self.originating_plugin = Some(originating_plugin);
+        self
     }
 }
 

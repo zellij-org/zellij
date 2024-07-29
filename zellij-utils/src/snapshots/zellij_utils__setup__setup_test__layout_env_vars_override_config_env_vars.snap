@@ -234,6 +234,7 @@ Config {
                 NewPane(
                     None,
                     None,
+                    false,
                 ),
             ],
             KeyWithModifier {
@@ -731,6 +732,7 @@ Config {
                 NewPane(
                     None,
                     None,
+                    false,
                 ),
             ],
             KeyWithModifier {
@@ -990,6 +992,7 @@ Config {
                         Down,
                     ),
                     None,
+                    false,
                 ),
                 SwitchToMode(
                     Normal,
@@ -1160,6 +1163,7 @@ Config {
                 NewPane(
                     None,
                     None,
+                    false,
                 ),
                 SwitchToMode(
                     Normal,
@@ -1188,6 +1192,7 @@ Config {
                 NewPane(
                     None,
                     None,
+                    false,
                 ),
             ],
             KeyWithModifier {
@@ -1255,6 +1260,7 @@ Config {
                         Right,
                     ),
                     None,
+                    false,
                 ),
                 SwitchToMode(
                     Normal,
@@ -1786,6 +1792,7 @@ Config {
                 NewPane(
                     None,
                     None,
+                    false,
                 ),
             ],
             KeyWithModifier {
@@ -2255,6 +2262,7 @@ Config {
                 NewPane(
                     None,
                     None,
+                    false,
                 ),
             ],
             KeyWithModifier {
@@ -2608,6 +2616,7 @@ Config {
                 NewPane(
                     None,
                     None,
+                    false,
                 ),
             ],
             KeyWithModifier {
@@ -3043,6 +3052,7 @@ Config {
                 NewPane(
                     None,
                     None,
+                    false,
                 ),
             ],
             KeyWithModifier {
@@ -3411,6 +3421,7 @@ Config {
                 NewPane(
                     None,
                     None,
+                    false,
                 ),
             ],
             KeyWithModifier {
@@ -3742,6 +3753,7 @@ Config {
                 NewPane(
                     None,
                     None,
+                    false,
                 ),
             ],
             KeyWithModifier {
@@ -4097,6 +4109,7 @@ Config {
                 NewPane(
                     None,
                     None,
+                    false,
                 ),
             ],
             KeyWithModifier {
@@ -4541,6 +4554,7 @@ Config {
                 NewPane(
                     None,
                     None,
+                    false,
                 ),
             ],
             KeyWithModifier {
@@ -4875,6 +4889,7 @@ Config {
                 NewPane(
                     None,
                     None,
+                    false,
                 ),
             ],
             KeyWithModifier {
@@ -5068,6 +5083,7 @@ Config {
                         Down,
                     ),
                     None,
+                    false,
                 ),
                 SwitchToMode(
                     Normal,
@@ -5084,6 +5100,7 @@ Config {
                         Right,
                     ),
                     None,
+                    false,
                 ),
                 SwitchToMode(
                     Normal,
@@ -5392,6 +5409,7 @@ Config {
                 NewPane(
                     None,
                     None,
+                    false,
                 ),
             ],
             KeyWithModifier {

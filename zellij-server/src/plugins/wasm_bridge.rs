@@ -1193,6 +1193,7 @@ impl WasmBridge {
                         cli_client_id,
                     ) {
                         Ok((plugin_id, client_id)) => {
+                            let start_suppressed = false;
                             drop(self.senders.send_to_screen(ScreenInstruction::AddPlugin(
                                 Some(should_float),
                                 should_be_open_in_place,
@@ -1202,6 +1203,7 @@ impl WasmBridge {
                                 plugin_id,
                                 pane_id_to_replace,
                                 cwd,
+                                start_suppressed,
                                 Some(client_id),
                             )));
                             vec![(plugin_id, Some(client_id))]
@@ -1268,6 +1270,17 @@ impl WasmBridge {
             || (message_cid.is_none() && message_pid == Some(*plugin_id))
             || (message_cid == Some(*client_id) && message_pid == Some(*plugin_id))
     }
+    pub fn client_is_connected(&self, client_id: &ClientId) -> bool {
+        self.connected_clients.lock().unwrap().contains(client_id)
+    }
+    pub fn get_first_client_id(&self) -> Option<ClientId> {
+        self.connected_clients
+            .lock()
+            .unwrap()
+            .iter()
+            .next()
+            .copied()
+    }
 }
 
 fn handle_plugin_successful_loading(senders: &ThreadSenders, plugin_id: PluginId) {
@@ -1316,6 +1329,9 @@ fn check_event_permission(
         | Event::SystemClipboardFailure
         | Event::CommandPaneOpened(..)
         | Event::CommandPaneExited(..)
+        | Event::PaneClosed(..)
+        | Event::EditPaneOpened(..)
+        | Event::EditPaneExited(..)
         | Event::InputReceived => PermissionType::ReadApplicationState,
         _ => return (PermissionStatus::Granted, None),
     };

@@ -288,10 +288,10 @@ fn spawn_terminal(
     // secondary fd
     let mut failover_cmd_args = None;
     let cmd = match terminal_action {
-        TerminalAction::OpenFile(mut file_to_open, line_number, cwd) => {
-            if file_to_open.is_relative() {
-                if let Some(cwd) = cwd.as_ref() {
-                    file_to_open = cwd.join(file_to_open);
+        TerminalAction::OpenFile(mut payload) => {
+            if payload.path.is_relative() {
+                if let Some(cwd) = payload.cwd.as_ref() {
+                    payload.path = cwd.join(payload.path);
                 }
             }
             let mut command = default_editor.unwrap_or_else(|| {
@@ -306,11 +306,12 @@ fn spawn_terminal(
             if !command.is_dir() {
                 separate_command_arguments(&mut command, &mut args);
             }
-            let file_to_open = file_to_open
+            let file_to_open = payload
+                .path
                 .into_os_string()
                 .into_string()
                 .expect("Not valid Utf8 Encoding");
-            if let Some(line_number) = line_number {
+            if let Some(line_number) = payload.line_number {
                 if command.ends_with("vim")
                     || command.ends_with("nvim")
                     || command.ends_with("emacs")
@@ -334,7 +335,7 @@ fn spawn_terminal(
             RunCommand {
                 command,
                 args,
-                cwd,
+                cwd: payload.cwd,
                 hold_on_close: false,
                 hold_on_start: false,
                 ..Default::default()

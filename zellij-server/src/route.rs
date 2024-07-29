@@ -274,7 +274,7 @@ pub(crate) fn route_action(
                 .send_to_screen(ScreenInstruction::TogglePaneFrames)
                 .with_context(err_context)?;
         },
-        Action::NewPane(direction, name) => {
+        Action::NewPane(direction, name, start_suppressed) => {
             let shell = default_shell.clone();
             let pty_instr = match direction {
                 Some(Direction::Left) => {
@@ -295,22 +295,22 @@ pub(crate) fn route_action(
                     None,
                     name,
                     None,
+                    start_suppressed,
                     ClientTabIndexOrPaneId::ClientId(client_id),
                 ),
             };
             senders.send_to_pty(pty_instr).with_context(err_context)?;
         },
         Action::EditFile(
-            path_to_file,
-            line_number,
-            cwd,
+            open_file_payload,
             split_direction,
             should_float,
             should_open_in_place,
+            start_suppressed,
             floating_pane_coordinates,
         ) => {
-            let title = format!("Editing: {}", path_to_file.display());
-            let open_file = TerminalAction::OpenFile(path_to_file, line_number, cwd);
+            let title = format!("Editing: {}", open_file_payload.path.display());
+            let open_file = TerminalAction::OpenFile(open_file_payload);
             let pty_instr = match (split_direction, should_float, should_open_in_place) {
                 (Some(Direction::Left), false, false) => {
                     PtyInstruction::SpawnTerminalVertically(Some(open_file), Some(title), client_id)
@@ -348,6 +348,7 @@ pub(crate) fn route_action(
                     Some(should_float),
                     Some(title),
                     floating_pane_coordinates,
+                    start_suppressed,
                     ClientTabIndexOrPaneId::ClientId(client_id),
                 ),
             };
@@ -394,6 +395,7 @@ pub(crate) fn route_action(
                     Some(should_float),
                     name,
                     floating_pane_coordinates,
+                    false,
                     ClientTabIndexOrPaneId::ClientId(client_id),
                 ))
                 .with_context(err_context)?;
@@ -447,6 +449,7 @@ pub(crate) fn route_action(
                     Some(should_float),
                     name,
                     None,
+                    false,
                     ClientTabIndexOrPaneId::ClientId(client_id),
                 ),
             };
@@ -496,6 +499,7 @@ pub(crate) fn route_action(
                     None,
                     None,
                     None,
+                    false,
                     ClientTabIndexOrPaneId::ClientId(client_id),
                 ),
             };

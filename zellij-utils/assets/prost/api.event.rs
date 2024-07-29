@@ -11,7 +11,7 @@ pub struct Event {
     pub name: i32,
     #[prost(
         oneof = "event::Payload",
-        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17"
+        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20"
     )]
     pub payload: ::core::option::Option<event::Payload>,
 }
@@ -52,7 +52,28 @@ pub mod event {
         CommandPaneOpenedPayload(super::CommandPaneOpenedPayload),
         #[prost(message, tag = "17")]
         CommandPaneExitedPayload(super::CommandPaneExitedPayload),
+        #[prost(message, tag = "18")]
+        PaneClosedPayload(super::PaneClosedPayload),
+        #[prost(message, tag = "19")]
+        EditPaneOpenedPayload(super::EditPaneOpenedPayload),
+        #[prost(message, tag = "20")]
+        EditPaneExitedPayload(super::EditPaneExitedPayload),
     }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PaneClosedPayload {
+    #[prost(message, optional, tag = "1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
+/// duplicate of plugin_command.PaneId because protobuffs don't like recursive imports
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PaneId {
+    #[prost(enumeration = "PaneType", tag = "1")]
+    pub pane_type: i32,
+    #[prost(uint32, tag = "2")]
+    pub id: u32,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -64,7 +85,25 @@ pub struct CommandPaneOpenedPayload {
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EditPaneOpenedPayload {
+    #[prost(uint32, tag = "1")]
+    pub terminal_pane_id: u32,
+    #[prost(message, repeated, tag = "2")]
+    pub context: ::prost::alloc::vec::Vec<ContextItem>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct CommandPaneExitedPayload {
+    #[prost(uint32, tag = "1")]
+    pub terminal_pane_id: u32,
+    #[prost(int32, optional, tag = "2")]
+    pub exit_code: ::core::option::Option<i32>,
+    #[prost(message, repeated, tag = "3")]
+    pub context: ::prost::alloc::vec::Vec<ContextItem>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EditPaneExitedPayload {
     #[prost(uint32, tag = "1")]
     pub terminal_pane_id: u32,
     #[prost(int32, optional, tag = "2")]
@@ -373,6 +412,9 @@ pub enum EventType {
     WebRequestResult = 18,
     CommandPaneOpened = 19,
     CommandPaneExited = 20,
+    PaneClosed = 21,
+    EditPaneOpened = 22,
+    EditPaneExited = 23,
 }
 impl EventType {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -402,6 +444,9 @@ impl EventType {
             EventType::WebRequestResult => "WebRequestResult",
             EventType::CommandPaneOpened => "CommandPaneOpened",
             EventType::CommandPaneExited => "CommandPaneExited",
+            EventType::PaneClosed => "PaneClosed",
+            EventType::EditPaneOpened => "EditPaneOpened",
+            EventType::EditPaneExited => "EditPaneExited",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -428,6 +473,36 @@ impl EventType {
             "WebRequestResult" => Some(Self::WebRequestResult),
             "CommandPaneOpened" => Some(Self::CommandPaneOpened),
             "CommandPaneExited" => Some(Self::CommandPaneExited),
+            "PaneClosed" => Some(Self::PaneClosed),
+            "EditPaneOpened" => Some(Self::EditPaneOpened),
+            "EditPaneExited" => Some(Self::EditPaneExited),
+            _ => None,
+        }
+    }
+}
+/// duplicate of plugin_command.PaneType because protobuffs don't like recursive imports
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum PaneType {
+    Terminal = 0,
+    Plugin = 1,
+}
+impl PaneType {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            PaneType::Terminal => "Terminal",
+            PaneType::Plugin => "Plugin",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "Terminal" => Some(Self::Terminal),
+            "Plugin" => Some(Self::Plugin),
             _ => None,
         }
     }

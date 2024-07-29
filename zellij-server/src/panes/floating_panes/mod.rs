@@ -1,4 +1,4 @@
-mod floating_pane_grid;
+pub mod floating_pane_grid;
 use zellij_utils::{
     data::{Direction, PaneInfo, ResizeStrategy},
     position::Position,
