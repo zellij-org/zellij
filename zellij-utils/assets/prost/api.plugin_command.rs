@@ -5,7 +5,7 @@ pub struct PluginCommand {
     pub name: i32,
     #[prost(
         oneof = "plugin_command::Payload",
-        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 60, 61, 62, 63, 64, 65"
+        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 60, 61, 62, 63, 64, 65, 66"
     )]
     pub payload: ::core::option::Option<plugin_command::Payload>,
 }
@@ -124,6 +124,8 @@ pub mod plugin_command {
         HidePaneWithIdPayload(super::HidePaneWithIdPayload),
         #[prost(message, tag = "65")]
         ShowPaneWithIdPayload(super::ShowPaneWithIdPayload),
+        #[prost(message, tag = "66")]
+        OpenCommandPaneBackgroundPayload(super::OpenCommandPanePayload),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -245,6 +247,8 @@ pub struct OpenFilePayload {
     pub file_to_open: ::core::option::Option<super::file::File>,
     #[prost(message, optional, tag = "2")]
     pub floating_pane_coordinates: ::core::option::Option<FloatingPaneCoordinates>,
+    #[prost(message, repeated, tag = "3")]
+    pub context: ::prost::alloc::vec::Vec<ContextItem>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -456,6 +460,7 @@ pub enum CommandName {
     Reconfigure = 87,
     HidePaneWithId = 88,
     ShowPaneWithId = 89,
+    OpenCommandPaneBackground = 90,
 }
 impl CommandName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -554,6 +559,7 @@ impl CommandName {
             CommandName::Reconfigure => "Reconfigure",
             CommandName::HidePaneWithId => "HidePaneWithId",
             CommandName::ShowPaneWithId => "ShowPaneWithId",
+            CommandName::OpenCommandPaneBackground => "OpenCommandPaneBackground",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -649,6 +655,7 @@ impl CommandName {
             "Reconfigure" => Some(Self::Reconfigure),
             "HidePaneWithId" => Some(Self::HidePaneWithId),
             "ShowPaneWithId" => Some(Self::ShowPaneWithId),
+            "OpenCommandPaneBackground" => Some(Self::OpenCommandPaneBackground),
             _ => None,
         }
     }

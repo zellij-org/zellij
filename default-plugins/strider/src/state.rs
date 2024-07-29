@@ -152,9 +152,10 @@ impl State {
             if let Some(parent_folder) = self.file_list_view.path.parent() {
                 open_file(
                     FileToOpen::new(&self.file_list_view.path).with_cwd(parent_folder.into()),
+                    BTreeMap::new(),
                 );
             } else {
-                open_file(FileToOpen::new(&self.file_list_view.path));
+                open_file(FileToOpen::new(&self.file_list_view.path), BTreeMap::new());
             }
         }
         if self.close_on_selection {

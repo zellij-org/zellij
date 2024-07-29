@@ -1166,7 +1166,7 @@ fn switch_to_tab_with_fullscreen() {
     {
         let active_tab = screen.get_active_tab_mut(1).unwrap();
         active_tab
-            .new_pane(PaneId::Terminal(2), None, None, None, None, Some(1))
+            .new_pane(PaneId::Terminal(2), None, None, None, None, false, Some(1))
             .unwrap();
         active_tab.toggle_active_pane_fullscreen(1);
     }
@@ -1281,7 +1281,7 @@ fn attach_after_first_tab_closed() {
     {
         let active_tab = screen.get_active_tab_mut(1).unwrap();
         active_tab
-            .new_pane(PaneId::Terminal(2), None, None, None, None, Some(1))
+            .new_pane(PaneId::Terminal(2), None, None, None, None, false, Some(1))
             .unwrap();
         active_tab.toggle_active_pane_fullscreen(1);
     }
@@ -1315,6 +1315,7 @@ fn open_new_floating_pane_with_custom_coordinates() {
                 width: Some(SplitSize::Percent(1)),
                 height: Some(SplitSize::Fixed(2)),
             }),
+            false,
             Some(1),
         )
         .unwrap();
@@ -1348,6 +1349,7 @@ fn open_new_floating_pane_with_custom_coordinates_exceeding_viewport() {
                 width: Some(SplitSize::Fixed(10)),
                 height: Some(SplitSize::Fixed(10)),
             }),
+            false,
             Some(1),
         )
         .unwrap();

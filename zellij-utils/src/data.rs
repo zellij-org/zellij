@@ -915,7 +915,10 @@ pub enum Event {
     // context
     CommandPaneOpened(u32, Context), // u32 - terminal_pane_id
     CommandPaneExited(u32, Option<i32>, Context), // u32 - terminal_pane_id, Option<i32> -
-                                     // exit_code
+    // exit_code
+    PaneClosed(PaneId),
+    EditPaneOpened(u32, Context),              // u32 - terminal_pane_id
+    EditPaneExited(u32, Option<i32>, Context), // u32 - terminal_pane_id, Option<i32> - exit code
 }
 
 #[derive(
@@ -1446,7 +1449,7 @@ pub struct NewPluginArgs {
     pub skip_cache: bool,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum PaneId {
     Terminal(u32),
     Plugin(u32),
@@ -1702,8 +1705,8 @@ pub enum PluginCommand {
     SetSelectable(bool),
     GetPluginIds,
     GetZellijVersion,
-    OpenFile(FileToOpen),
-    OpenFileFloating(FileToOpen, Option<FloatingPaneCoordinates>),
+    OpenFile(FileToOpen, Context),
+    OpenFileFloating(FileToOpen, Option<FloatingPaneCoordinates>, Context),
     OpenTerminal(FileToOpen), // only used for the path as cwd
     OpenTerminalFloating(FileToOpen, Option<FloatingPaneCoordinates>), // only used for the path as cwd
     OpenCommandPane(CommandToRun, Context),
@@ -1768,7 +1771,7 @@ pub enum PluginCommand {
     DeleteDeadSession(String),       // String -> session name
     DeleteAllDeadSessions,           // String -> session name
     OpenTerminalInPlace(FileToOpen), // only used for the path as cwd
-    OpenFileInPlace(FileToOpen),
+    OpenFileInPlace(FileToOpen, Context),
     OpenCommandPaneInPlace(CommandToRun, Context),
     RunCommand(
         Vec<String>,              // command
@@ -1798,4 +1801,5 @@ pub enum PluginCommand {
     Reconfigure(String), // String -> stringified configuration
     HidePaneWithId(PaneId),
     ShowPaneWithId(PaneId, bool), // bool -> should_float_if_hidden
+    OpenCommandPaneBackground(CommandToRun, Context),
 }
