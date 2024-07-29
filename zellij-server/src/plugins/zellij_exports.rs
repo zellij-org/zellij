@@ -2,8 +2,8 @@ use super::PluginInstruction;
 use crate::background_jobs::BackgroundJob;
 use crate::plugins::plugin_map::PluginEnv;
 use crate::plugins::wasm_bridge::handle_plugin_crash;
+use crate::pty::{ClientTabIndexOrPaneId, PtyInstruction};
 use crate::route::route_action;
-use crate::pty::{PtyInstruction, ClientTabIndexOrPaneId};
 use crate::ServerInstruction;
 use log::{debug, warn};
 use serde::Serialize;
@@ -39,7 +39,7 @@ use zellij_utils::{
     errors::prelude::*,
     input::{
         actions::Action,
-        command::{RunCommand, RunCommandAction, TerminalAction, OpenFilePayload},
+        command::{OpenFilePayload, RunCommand, RunCommandAction, TerminalAction},
         layout::{Layout, RunPluginOrAlias},
         plugins::PluginType,
     },
@@ -93,10 +93,14 @@ fn host_run_plugin_command(caller: Caller<'_, PluginEnv>) {
                     PluginCommand::SetSelectable(selectable) => set_selectable(env, selectable),
                     PluginCommand::GetPluginIds => get_plugin_ids(env),
                     PluginCommand::GetZellijVersion => get_zellij_version(env),
-                    PluginCommand::OpenFile(file_to_open, context) => open_file(env, file_to_open, context),
-                    PluginCommand::OpenFileFloating(file_to_open, floating_pane_coordinates, context) => {
-                        open_file_floating(env, file_to_open, floating_pane_coordinates, context)
+                    PluginCommand::OpenFile(file_to_open, context) => {
+                        open_file(env, file_to_open, context)
                     },
+                    PluginCommand::OpenFileFloating(
+                        file_to_open,
+                        floating_pane_coordinates,
+                        context,
+                    ) => open_file_floating(env, file_to_open, floating_pane_coordinates, context),
                     PluginCommand::OpenTerminal(cwd) => open_terminal(env, cwd.path.try_into()?),
                     PluginCommand::OpenTerminalFloating(cwd, floating_pane_coordinates) => {
                         open_terminal_floating(env, cwd.path.try_into()?, floating_pane_coordinates)
@@ -433,11 +437,9 @@ fn open_file(env: &PluginEnv, file_to_open: FileToOpen, context: BTreeMap<String
         .map(|cwd| env.plugin_cwd.join(cwd))
         .or_else(|| Some(env.plugin_cwd.clone()));
     let action = Action::EditFile(
-        OpenFilePayload::new(path, file_to_open.line_number, cwd).with_originating_plugin(OriginatingPlugin::new(
-            env.plugin_id,
-            env.client_id,
-            context,
-        )),
+        OpenFilePayload::new(path, file_to_open.line_number, cwd).with_originating_plugin(
+            OriginatingPlugin::new(env.plugin_id, env.client_id, context),
+        ),
         None,
         floating,
         in_place,
@@ -463,11 +465,9 @@ fn open_file_floating(
         .map(|cwd| env.plugin_cwd.join(cwd))
         .or_else(|| Some(env.plugin_cwd.clone()));
     let action = Action::EditFile(
-        OpenFilePayload::new(path, file_to_open.line_number, cwd).with_originating_plugin(OriginatingPlugin::new(
-            env.plugin_id,
-            env.client_id,
-            context,
-        )),
+        OpenFilePayload::new(path, file_to_open.line_number, cwd).with_originating_plugin(
+            OriginatingPlugin::new(env.plugin_id, env.client_id, context),
+        ),
         None,
         floating,
         in_place,
@@ -477,7 +477,11 @@ fn open_file_floating(
     apply_action!(action, error_msg, env);
 }
 
-fn open_file_in_place(env: &PluginEnv, file_to_open: FileToOpen, context: BTreeMap<String, String>) {
+fn open_file_in_place(
+    env: &PluginEnv,
+    file_to_open: FileToOpen,
+    context: BTreeMap<String, String>,
+) {
     let error_msg = || format!("failed to open file in plugin {}", env.name());
     let floating = false;
     let in_place = true;
@@ -489,11 +493,9 @@ fn open_file_in_place(env: &PluginEnv, file_to_open: FileToOpen, context: BTreeM
         .or_else(|| Some(env.plugin_cwd.clone()));
 
     let action = Action::EditFile(
-        OpenFilePayload::new(path, file_to_open.line_number, cwd).with_originating_plugin(OriginatingPlugin::new(
-            env.plugin_id,
-            env.client_id,
-            context,
-        )),
+        OpenFilePayload::new(path, file_to_open.line_number, cwd).with_originating_plugin(
+            OriginatingPlugin::new(env.plugin_id, env.client_id, context),
+        ),
         None,
         floating,
         in_place,

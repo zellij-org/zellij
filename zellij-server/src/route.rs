@@ -17,7 +17,7 @@ use zellij_utils::{
     errors::prelude::*,
     input::{
         actions::{Action, SearchDirection, SearchOption},
-        command::{TerminalAction},
+        command::TerminalAction,
         get_mode_info,
         keybinds::Keybinds,
         layout::Layout,

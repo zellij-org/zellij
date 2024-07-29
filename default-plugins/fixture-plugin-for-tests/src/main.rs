@@ -166,10 +166,13 @@ impl ZellijPlugin for State {
                     start_or_reload_plugin(plugin_url)
                 },
                 BareKey::Char('g') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
-                    open_file(FileToOpen {
-                        path: std::path::PathBuf::from("/path/to/my/file.rs"),
-                        ..Default::default()
-                    }, BTreeMap::new());
+                    open_file(
+                        FileToOpen {
+                            path: std::path::PathBuf::from("/path/to/my/file.rs"),
+                            ..Default::default()
+                        },
+                        BTreeMap::new(),
+                    );
                 },
                 BareKey::Char('h') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
                     open_file_floating(
@@ -178,15 +181,18 @@ impl ZellijPlugin for State {
                             ..Default::default()
                         },
                         None,
-                        BTreeMap::new()
+                        BTreeMap::new(),
                     );
                 },
                 BareKey::Char('i') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
-                    open_file(FileToOpen {
-                        path: std::path::PathBuf::from("/path/to/my/file.rs"),
-                        line_number: Some(42),
-                        ..Default::default()
-                    }, BTreeMap::new());
+                    open_file(
+                        FileToOpen {
+                            path: std::path::PathBuf::from("/path/to/my/file.rs"),
+                            line_number: Some(42),
+                            ..Default::default()
+                        },
+                        BTreeMap::new(),
+                    );
                 },
                 BareKey::Char('j') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
                     open_file_floating(

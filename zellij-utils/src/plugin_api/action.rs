@@ -17,7 +17,7 @@ use crate::data::{Direction, InputMode, ResizeStrategy};
 use crate::errors::prelude::*;
 use crate::input::actions::Action;
 use crate::input::actions::{SearchDirection, SearchOption};
-use crate::input::command::{RunCommandAction, OpenFilePayload};
+use crate::input::command::{OpenFilePayload, RunCommandAction};
 use crate::input::layout::{
     PluginUserConfiguration, RunPlugin, RunPluginLocation, RunPluginOrAlias,
 };
@@ -236,11 +236,7 @@ impl TryFrom<ProtobufAction> for Action {
                     let should_float = payload.should_float;
                     let should_be_in_place = false;
                     Ok(Action::EditFile(
-                        OpenFilePayload::new(
-                            file_to_edit,
-                            line_number,
-                            cwd,
-                        ),
+                        OpenFilePayload::new(file_to_edit, line_number, cwd),
                         direction,
                         should_float,
                         should_be_in_place,
@@ -903,9 +899,9 @@ impl TryFrom<Action> for ProtobufAction {
             },
             Action::EditFile(
                 open_file_payload,
-//                 path_to_file,
-//                 line_number,
-//                 cwd,
+                //                 path_to_file,
+                //                 line_number,
+                //                 cwd,
                 direction,
                 should_float,
                 _should_be_in_place,

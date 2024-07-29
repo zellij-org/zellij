@@ -369,7 +369,6 @@ pub(crate) fn plugin_thread_main(
                 tab_index,
                 client_id,
             ) => {
-
                 // prefer connected clients so as to avoid opening plugins in the background for
                 // CLI clients unless no-one else is connected
                 let client_id = if wasm_bridge.client_is_connected(&client_id) {

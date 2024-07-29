@@ -915,9 +915,9 @@ pub enum Event {
     // context
     CommandPaneOpened(u32, Context), // u32 - terminal_pane_id
     CommandPaneExited(u32, Option<i32>, Context), // u32 - terminal_pane_id, Option<i32> -
-                                     // exit_code
+    // exit_code
     PaneClosed(PaneId),
-    EditPaneOpened(u32, Context), // u32 - terminal_pane_id
+    EditPaneOpened(u32, Context),              // u32 - terminal_pane_id
     EditPaneExited(u32, Option<i32>, Context), // u32 - terminal_pane_id, Option<i32> - exit code
 }
 

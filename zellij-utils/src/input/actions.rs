@@ -1,6 +1,6 @@
 //! Definition of the actions that can be bound to keys.
 
-use super::command::{RunCommandAction, OpenFilePayload};
+use super::command::{OpenFilePayload, RunCommandAction};
 use super::layout::{
     FloatingPaneLayout, Layout, PluginAlias, RunPlugin, RunPluginLocation, RunPluginOrAlias,
     SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,
@@ -167,7 +167,7 @@ pub enum Action {
         bool,
         Option<FloatingPaneCoordinates>,
     ), // bool is floating true/false, second bool is in_place
-       // third bool is start_suppressed
+    // third bool is start_suppressed
     /// Open a new floating pane
     NewFloatingPane(
         Option<RunCommandAction>,

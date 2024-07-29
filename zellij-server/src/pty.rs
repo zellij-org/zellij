@@ -18,7 +18,7 @@ use zellij_utils::{
     errors::prelude::*,
     errors::{ContextType, PtyContext},
     input::{
-        command::{RunCommand, TerminalAction, OpenFilePayload},
+        command::{OpenFilePayload, RunCommand, TerminalAction},
         layout::{FloatingPaneLayout, Layout, Run, RunPluginOrAlias, TiledPaneLayout},
     },
     pane_size::Size,
@@ -149,31 +149,30 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                 let err_context =
                     || format!("failed to spawn terminal for {:?}", client_or_tab_index);
 
-                let (hold_on_close, run_command, pane_title, open_file_payload) = match &terminal_action {
-                    Some(TerminalAction::RunCommand(run_command)) => (
-                        run_command.hold_on_close,
-                        Some(run_command.clone()),
-                        Some(name.unwrap_or_else(|| run_command.to_string())),
-                        None
-                    ),
-                    Some(TerminalAction::OpenFile(open_file_payload)) => (
-                        false,
-                        None,
-                        name,
-                        Some(open_file_payload.clone())
-                    ),
-                    _ => (false, None, name, None),
-                };
-                let invoked_with =
+                let (hold_on_close, run_command, pane_title, open_file_payload) =
                     match &terminal_action {
-                        Some(TerminalAction::RunCommand(run_command)) => {
-                            Some(Run::Command(run_command.clone()))
-                        },
-                        Some(TerminalAction::OpenFile(payload)) => Some(
-                            Run::EditFile(payload.path.clone(), payload.line_number.clone(), payload.cwd.clone()),
+                        Some(TerminalAction::RunCommand(run_command)) => (
+                            run_command.hold_on_close,
+                            Some(run_command.clone()),
+                            Some(name.unwrap_or_else(|| run_command.to_string())),
+                            None,
                         ),
-                        _ => None,
+                        Some(TerminalAction::OpenFile(open_file_payload)) => {
+                            (false, None, name, Some(open_file_payload.clone()))
+                        },
+                        _ => (false, None, name, None),
                     };
+                let invoked_with = match &terminal_action {
+                    Some(TerminalAction::RunCommand(run_command)) => {
+                        Some(Run::Command(run_command.clone()))
+                    },
+                    Some(TerminalAction::OpenFile(payload)) => Some(Run::EditFile(
+                        payload.path.clone(),
+                        payload.line_number.clone(),
+                        payload.cwd.clone(),
+                    )),
+                    _ => None,
+                };
                 match pty
                     .spawn_terminal(terminal_action, client_or_tab_index)
                     .with_context(err_context)
@@ -201,7 +200,9 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                                 )]))
                                 .with_context(err_context)?;
                         }
-                        if let Some(originating_plugin) = open_file_payload.and_then(|o| o.originating_plugin) {
+                        if let Some(originating_plugin) =
+                            open_file_payload.and_then(|o| o.originating_plugin)
+                        {
                             let update_event =
                                 Event::EditPaneOpened(pid, originating_plugin.context.clone());
                             pty.bus
@@ -283,16 +284,17 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     ),
                     _ => (false, None, name),
                 };
-                let invoked_with =
-                    match &terminal_action {
-                        Some(TerminalAction::RunCommand(run_command)) => {
-                            Some(Run::Command(run_command.clone()))
-                        },
-                        Some(TerminalAction::OpenFile(payload)) => Some(
-                            Run::EditFile(payload.path.clone(), payload.line_number.clone(), payload.cwd.clone()),
-                        ),
-                        _ => None,
-                    };
+                let invoked_with = match &terminal_action {
+                    Some(TerminalAction::RunCommand(run_command)) => {
+                        Some(Run::Command(run_command.clone()))
+                    },
+                    Some(TerminalAction::OpenFile(payload)) => Some(Run::EditFile(
+                        payload.path.clone(),
+                        payload.line_number.clone(),
+                        payload.cwd.clone(),
+                    )),
+                    _ => None,
+                };
                 match pty
                     .spawn_terminal(terminal_action, client_id_tab_index_or_pane_id)
                     .with_context(err_context)
@@ -348,7 +350,11 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     || format!("failed to open in-place editor for client {}", client_id);
 
                 match pty.spawn_terminal(
-                    Some(TerminalAction::OpenFile(OpenFilePayload::new(temp_file, line_number, None))),
+                    Some(TerminalAction::OpenFile(OpenFilePayload::new(
+                        temp_file,
+                        line_number,
+                        None,
+                    ))),
                     ClientTabIndexOrPaneId::ClientId(client_id),
                 ) {
                     Ok((pid, _starts_held)) => {
@@ -871,21 +877,22 @@ impl Pty {
                 terminal_action
             },
         };
-        let (hold_on_start, hold_on_close, originating_command_plugin, originating_edit_plugin) = match &terminal_action {
-            TerminalAction::RunCommand(run_command) => (
-                run_command.hold_on_start,
-                run_command.hold_on_close,
-                run_command.originating_plugin.clone(),
-                None,
-            ),
-            TerminalAction::OpenFile(open_file_payload) => (
-                false,
-                false,
-                None,
-                open_file_payload.originating_plugin.clone(),
-            ),
-            _ => (false, false, None, None),
-        };
+        let (hold_on_start, hold_on_close, originating_command_plugin, originating_edit_plugin) =
+            match &terminal_action {
+                TerminalAction::RunCommand(run_command) => (
+                    run_command.hold_on_start,
+                    run_command.hold_on_close,
+                    run_command.originating_plugin.clone(),
+                    None,
+                ),
+                TerminalAction::OpenFile(open_file_payload) => (
+                    false,
+                    false,
+                    None,
+                    open_file_payload.originating_plugin.clone(),
+                ),
+                _ => (false, false, None, None),
+            };
         // TODO: CONTINUE HERE - get originating_plugin also from TerminalAction::OpenFile and do
         // the right thing in the quit_cb below
 
@@ -1246,7 +1253,11 @@ impl Pty {
                     .context("no OS I/O interface found")
                     .with_context(err_context)?
                     .spawn_terminal(
-                        TerminalAction::OpenFile(OpenFilePayload::new(path_to_file, line_number, cwd)),
+                        TerminalAction::OpenFile(OpenFilePayload::new(
+                            path_to_file,
+                            line_number,
+                            cwd,
+                        )),
                         quit_cb,
                         self.default_editor.clone(),
                     )

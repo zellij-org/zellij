@@ -1274,7 +1274,12 @@ impl WasmBridge {
         self.connected_clients.lock().unwrap().contains(client_id)
     }
     pub fn get_first_client_id(&self) -> Option<ClientId> {
-        self.connected_clients.lock().unwrap().iter().next().copied()
+        self.connected_clients
+            .lock()
+            .unwrap()
+            .iter()
+            .next()
+            .copied()
     }
 }
 

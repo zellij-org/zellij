@@ -30,9 +30,9 @@ use self::clipboard::ClipboardProvider;
 use crate::{
     os_input_output::ServerOsApi,
     output::{CharacterChunk, Output, SixelImageChunk},
+    panes::floating_panes::floating_pane_grid::half_size_middle_geom,
     panes::sixel::SixelImageStore,
     panes::{FloatingPanes, TiledPanes},
-    panes::floating_panes::floating_pane_grid::half_size_middle_geom,
     panes::{LinkHandler, PaneId, PluginPane, TerminalPane},
     plugins::PluginInstruction,
     pty::{ClientTabIndexOrPaneId, PtyInstruction, VteBytes},
@@ -1141,15 +1141,18 @@ impl Tab {
             // the default geom of the first floating pane - this is just in order to give it some
             // reasonable size, when it is shown - if needed - it will be given the proper geom as if it were
             // resized
-            let viewport = {
-                self.viewport.borrow().clone()
-            };
+            let viewport = { self.viewport.borrow().clone() };
             let new_pane_geom = half_size_middle_geom(&viewport, 0);
             new_pane.set_active_at(Instant::now());
             new_pane.set_geom(new_pane_geom);
             new_pane.set_content_offset(Offset::frame(1));
-            resize_pty!(new_pane, self.os_api, self.senders, self.character_cell_size)
-                .with_context(err_context)?;
+            resize_pty!(
+                new_pane,
+                self.os_api,
+                self.senders,
+                self.character_cell_size
+            )
+            .with_context(err_context)?;
             let is_scrollback_editor = false;
             self.suppressed_panes
                 .insert(pid, (is_scrollback_editor, new_pane));
@@ -2475,7 +2478,11 @@ impl Tab {
     }
     pub fn get_all_pane_ids(&self) -> Vec<PaneId> {
         let mut static_and_floating_pane_ids = self.get_static_and_floating_pane_ids();
-        let mut suppressed_pane_ids = self.suppressed_panes.values().map(|(_key, pane)| pane.pid()).collect();
+        let mut suppressed_pane_ids = self
+            .suppressed_panes
+            .values()
+            .map(|(_key, pane)| pane.pid())
+            .collect();
         static_and_floating_pane_ids.append(&mut suppressed_pane_ids);
         static_and_floating_pane_ids
     }
@@ -2567,9 +2574,11 @@ impl Tab {
                 let _ = self.next_swap_layout(client_id, false);
             }
         };
-        let _ = self
-            .senders
-            .send_to_plugin(PluginInstruction::Update(vec![(None, None, Event::PaneClosed(id.into()))]));
+        let _ = self.senders.send_to_plugin(PluginInstruction::Update(vec![(
+            None,
+            None,
+            Event::PaneClosed(id.into()),
+        )]));
     }
     pub fn extract_pane(
         &mut self,

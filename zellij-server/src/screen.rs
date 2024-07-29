@@ -313,7 +313,7 @@ pub enum ScreenInstruction {
         u32,            // plugin id
         Option<PaneId>,
         Option<PathBuf>, // cwd
-        bool, // start suppressed
+        bool,            // start suppressed
         Option<ClientId>,
     ),
     UpdatePluginLoadingStage(u32, LoadingIndication), // u32 - plugin_id
@@ -3004,7 +3004,6 @@ pub(crate) fn screen_thread_main(
                         }
                     },
                 }
-
 
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;

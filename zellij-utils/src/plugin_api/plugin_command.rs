@@ -743,7 +743,10 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                                 .into_iter()
                                 .map(|e| (e.name, e.value))
                                 .collect();
-                            Ok(PluginCommand::OpenFileInPlace(file_to_open.try_into()?, context))
+                            Ok(PluginCommand::OpenFileInPlace(
+                                file_to_open.try_into()?,
+                                context,
+                            ))
                         },
                         None => Err("Malformed open file in place payload"),
                     }
