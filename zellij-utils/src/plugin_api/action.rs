@@ -899,9 +899,6 @@ impl TryFrom<Action> for ProtobufAction {
             },
             Action::EditFile(
                 open_file_payload,
-                //                 path_to_file,
-                //                 line_number,
-                //                 cwd,
                 direction,
                 should_float,
                 _should_be_in_place,

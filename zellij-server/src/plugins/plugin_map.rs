@@ -375,7 +375,6 @@ impl PluginEnv {
     }
 
     pub fn set_permissions(&mut self, permissions: HashSet<PermissionType>) {
-        log::info!("set_permissions to: {:?}", permissions);
         self.permissions.lock().unwrap().replace(permissions);
     }
 }
