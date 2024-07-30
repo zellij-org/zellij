@@ -854,7 +854,7 @@ impl<'a> FloatingPaneGrid<'a> {
     }
 }
 
-fn half_size_middle_geom(space: &Viewport, offset: usize) -> PaneGeom {
+pub fn half_size_middle_geom(space: &Viewport, offset: usize) -> PaneGeom {
     let mut geom = PaneGeom {
         x: space.x + (space.cols as f64 / 4.0).round() as usize + offset,
         y: space.y + (space.rows as f64 / 4.0).round() as usize + offset,

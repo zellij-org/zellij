@@ -1,0 +1,13 @@
+---
+source: zellij-server/src/plugins/./unit/plugin_tests.rs
+assertion_line: 6727
+expression: "format!(\"{:#?}\", suppress_pane_event)"
+---
+Some(
+    SuppressPane(
+        Terminal(
+            1,
+        ),
+        1,
+    ),
+)

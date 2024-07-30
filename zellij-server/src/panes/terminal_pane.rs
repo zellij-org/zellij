@@ -98,6 +98,15 @@ impl From<ZellijUtilsPaneId> for PaneId {
     }
 }
 
+impl Into<ZellijUtilsPaneId> for PaneId {
+    fn into(self) -> ZellijUtilsPaneId {
+        match self {
+            PaneId::Terminal(id) => ZellijUtilsPaneId::Terminal(id),
+            PaneId::Plugin(id) => ZellijUtilsPaneId::Plugin(id),
+        }
+    }
+}
+
 type IsFirstRun = bool;
 
 // FIXME: This should hold an os_api handle so that terminal panes can set their own size via FD in

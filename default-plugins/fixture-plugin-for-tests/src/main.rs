@@ -166,10 +166,13 @@ impl ZellijPlugin for State {
                     start_or_reload_plugin(plugin_url)
                 },
                 BareKey::Char('g') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
-                    open_file(FileToOpen {
-                        path: std::path::PathBuf::from("/path/to/my/file.rs"),
-                        ..Default::default()
-                    });
+                    open_file(
+                        FileToOpen {
+                            path: std::path::PathBuf::from("/path/to/my/file.rs"),
+                            ..Default::default()
+                        },
+                        BTreeMap::new(),
+                    );
                 },
                 BareKey::Char('h') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
                     open_file_floating(
@@ -178,14 +181,18 @@ impl ZellijPlugin for State {
                             ..Default::default()
                         },
                         None,
+                        BTreeMap::new(),
                     );
                 },
                 BareKey::Char('i') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
-                    open_file(FileToOpen {
-                        path: std::path::PathBuf::from("/path/to/my/file.rs"),
-                        line_number: Some(42),
-                        ..Default::default()
-                    });
+                    open_file(
+                        FileToOpen {
+                            path: std::path::PathBuf::from("/path/to/my/file.rs"),
+                            line_number: Some(42),
+                            ..Default::default()
+                        },
+                        BTreeMap::new(),
+                    );
                 },
                 BareKey::Char('j') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
                     open_file_floating(
@@ -195,6 +202,7 @@ impl ZellijPlugin for State {
                             ..Default::default()
                         },
                         None,
+                        BTreeMap::new(),
                     );
                 },
                 BareKey::Char('k') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
@@ -333,6 +341,22 @@ impl ZellijPlugin for State {
                         }
                     "
                         .to_owned(),
+                    );
+                },
+                BareKey::Char('a') if key.has_modifiers(&[KeyModifier::Alt]) => {
+                    hide_pane_with_id(PaneId::Terminal(1));
+                },
+                BareKey::Char('b') if key.has_modifiers(&[KeyModifier::Alt]) => {
+                    show_pane_with_id(PaneId::Terminal(1), true);
+                },
+                BareKey::Char('c') if key.has_modifiers(&[KeyModifier::Alt]) => {
+                    open_command_pane_background(
+                        CommandToRun {
+                            path: std::path::PathBuf::from("/path/to/my/file.rs"),
+                            args: vec!["arg1".to_owned(), "arg2".to_owned()],
+                            ..Default::default()
+                        },
+                        BTreeMap::new(),
                     );
                 },
                 _ => {},

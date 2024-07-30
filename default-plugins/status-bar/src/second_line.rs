@@ -149,7 +149,7 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<KeyWithModifier
     }
 
     if mi.mode == IM::Pane { vec![
-        (s("New"), s("New"), action_key(&km, &[A::NewPane(None, None), TO_NORMAL])),
+        (s("New"), s("New"), action_key(&km, &[A::NewPane(None, None, false), TO_NORMAL])),
         (s("Change Focus"), s("Move"),
             action_key_group(&km, &[&[A::MoveFocus(Dir::Left)], &[A::MoveFocus(Dir::Down)],
                 &[A::MoveFocus(Dir::Up)], &[A::MoveFocus(Dir::Right)]])),
@@ -256,8 +256,8 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<KeyWithModifier
         (s("Move focus"), s("Move"), action_key_group(&km, &[
             &[A::MoveFocus(Dir::Left)], &[A::MoveFocus(Dir::Down)],
             &[A::MoveFocus(Dir::Up)], &[A::MoveFocus(Dir::Right)]])),
-        (s("Split down"), s("Down"), action_key(&km, &[A::NewPane(Some(Dir::Down), None), TO_NORMAL])),
-        (s("Split right"), s("Right"), action_key(&km, &[A::NewPane(Some(Dir::Right), None), TO_NORMAL])),
+        (s("Split down"), s("Down"), action_key(&km, &[A::NewPane(Some(Dir::Down), None, false), TO_NORMAL])),
+        (s("Split right"), s("Right"), action_key(&km, &[A::NewPane(Some(Dir::Right), None, false), TO_NORMAL])),
         (s("Fullscreen"), s("Fullscreen"), action_key(&km, &[A::ToggleFocusFullscreen, TO_NORMAL])),
         (s("New tab"), s("New"), action_key(&km, &[A::NewTab(None, vec![], None, None, None), TO_NORMAL])),
         (s("Rename tab"), s("Rename"),
@@ -713,7 +713,7 @@ mod tests {
                     ),
                     (
                         KeyWithModifier::new(BareKey::Char('n')),
-                        vec![Action::NewPane(None, None), TO_NORMAL],
+                        vec![Action::NewPane(None, None, false), TO_NORMAL],
                     ),
                     (
                         KeyWithModifier::new(BareKey::Char('x')),
@@ -763,7 +763,7 @@ mod tests {
                     ),
                     (
                         KeyWithModifier::new(BareKey::Char('n')),
-                        vec![Action::NewPane(None, None), TO_NORMAL],
+                        vec![Action::NewPane(None, None, false), TO_NORMAL],
                     ),
                     (
                         KeyWithModifier::new(BareKey::Char('x')),
@@ -809,7 +809,7 @@ mod tests {
                     ),
                     (
                         KeyWithModifier::new(BareKey::Backspace),
-                        vec![Action::NewPane(None, None), TO_NORMAL],
+                        vec![Action::NewPane(None, None, false), TO_NORMAL],
                     ),
                     (
                         KeyWithModifier::new(BareKey::Esc),

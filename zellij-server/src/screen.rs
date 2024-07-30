@@ -152,6 +152,7 @@ pub enum ScreenInstruction {
         HoldForCommand,
         Option<Run>, // invoked with
         Option<FloatingPaneCoordinates>,
+        bool, // start suppressed
         ClientTabIndexOrPaneId,
     ),
     OpenInPlaceEditor(PaneId, ClientId),
@@ -312,6 +313,7 @@ pub enum ScreenInstruction {
         u32,            // plugin id
         Option<PaneId>,
         Option<PathBuf>, // cwd
+        bool,            // start suppressed
         Option<ClientId>,
     ),
     UpdatePluginLoadingStage(u32, LoadingIndication), // u32 - plugin_id
@@ -1905,7 +1907,7 @@ impl Screen {
                 tab_index_and_plugin_pane_id = Some((*tab_index, plugin_pane_id));
                 if move_to_focused_tab && focused_tab_index != *tab_index {
                     plugin_pane_to_move_to_active_tab =
-                        tab.extract_pane(plugin_pane_id, Some(client_id));
+                        tab.extract_pane(plugin_pane_id, false, Some(client_id));
                 }
 
                 break;
@@ -1992,7 +1994,7 @@ impl Screen {
                 .with_context(err_context)?;
             let pane_to_break_is_floating = active_tab.are_floating_panes_visible();
             let active_pane = active_tab
-                .close_pane(active_pane_id, false, Some(client_id))
+                .extract_pane(active_pane_id, false, Some(client_id))
                 .with_context(err_context)?;
             let active_pane_run_instruction = active_pane.invoked_with().clone();
             let tab_index = self.get_new_tab_index();
@@ -2053,7 +2055,7 @@ impl Screen {
                     .with_context(err_context)?;
                 let pane_to_break_is_floating = active_tab.are_floating_panes_visible();
                 let active_pane = active_tab
-                    .close_pane(active_pane_id, false, Some(client_id))
+                    .extract_pane(active_pane_id, false, Some(client_id))
                     .with_context(err_context)?;
                 (active_pane_id, active_pane, pane_to_break_is_floating)
             };
@@ -2456,6 +2458,7 @@ pub(crate) fn screen_thread_main(
                 hold_for_command,
                 invoked_with,
                 floating_pane_coordinates,
+                start_suppressed,
                 client_or_tab_index,
             ) => {
                 match client_or_tab_index {
@@ -2466,6 +2469,7 @@ pub(crate) fn screen_thread_main(
                                should_float,
                                invoked_with,
                                floating_pane_coordinates,
+                               start_suppressed,
                                Some(client_id)
                            )
                         }, ?);
@@ -2491,6 +2495,7 @@ pub(crate) fn screen_thread_main(
                                 should_float,
                                 invoked_with,
                                 floating_pane_coordinates,
+                                start_suppressed,
                                 None,
                             )?;
                             if let Some(hold_for_command) = hold_for_command {
@@ -2999,6 +3004,7 @@ pub(crate) fn screen_thread_main(
                         }
                     },
                 }
+
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
             },
@@ -3632,6 +3638,7 @@ pub(crate) fn screen_thread_main(
                 plugin_id,
                 pane_id_to_replace,
                 cwd,
+                start_suppressed,
                 client_id,
             ) => {
                 let pane_title = pane_title.unwrap_or_else(|| {
@@ -3676,6 +3683,7 @@ pub(crate) fn screen_thread_main(
                             should_float,
                             Some(run_plugin),
                             None,
+                            start_suppressed,
                             Some(client_id),
                         )
                     }, ?);
@@ -3688,6 +3696,7 @@ pub(crate) fn screen_thread_main(
                         should_float,
                         Some(run_plugin),
                         None,
+                        start_suppressed,
                         None,
                     )?;
                 } else {
