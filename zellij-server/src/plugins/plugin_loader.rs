@@ -70,7 +70,7 @@ pub struct PluginLoader<'a> {
     default_layout: Box<Layout>,
     layout_dir: Option<PathBuf>,
     default_mode: InputMode,
-    keybinds: Option<Keybinds>,
+    keybinds: Keybinds,
 }
 
 impl<'a> PluginLoader<'a> {
@@ -90,7 +90,7 @@ impl<'a> PluginLoader<'a> {
         default_shell: Option<TerminalAction>,
         default_layout: Box<Layout>,
         layout_dir: Option<PathBuf>,
-        default_mode: InputMode,
+        base_modes: &HashMap<ClientId, InputMode>,
         keybinds: &HashMap<ClientId, Keybinds>,
     ) -> Result<()> {
         let err_context = || format!("failed to reload plugin {plugin_id} from memory");
@@ -100,7 +100,12 @@ impl<'a> PluginLoader<'a> {
             return Err(anyhow!("No connected clients, cannot reload plugin"));
         }
         let first_client_id = connected_clients.remove(0);
-        let keybinds = keybinds.get(&first_client_id).cloned();
+        let keybinds = keybinds.get(&first_client_id)
+            .cloned()
+            .unwrap_or_default();
+        let default_mode = base_modes.get(&first_client_id)
+            .cloned()
+            .unwrap_or_default();
 
         let mut plugin_loader = PluginLoader::new_from_existing_plugin_attributes(
             &plugin_cache,
@@ -157,7 +162,7 @@ impl<'a> PluginLoader<'a> {
         skip_cache: bool,
         layout_dir: Option<PathBuf>,
         default_mode: InputMode,
-        keybinds: Option<Keybinds>,
+        keybinds: Keybinds,
     ) -> Result<()> {
         let err_context = || format!("failed to start plugin {plugin_id} for client {client_id}");
         let mut plugin_loader = PluginLoader::new(
@@ -233,7 +238,7 @@ impl<'a> PluginLoader<'a> {
         default_layout: Box<Layout>,
         layout_dir: Option<PathBuf>,
         default_mode: InputMode,
-        keybinds: Option<Keybinds>,
+        keybinds: Keybinds,
     ) -> Result<()> {
         let mut new_plugins = HashSet::new();
         for plugin_id in plugin_map.lock().unwrap().plugin_ids() {
@@ -286,7 +291,7 @@ impl<'a> PluginLoader<'a> {
         default_shell: Option<TerminalAction>,
         default_layout: Box<Layout>,
         layout_dir: Option<PathBuf>,
-        default_mode: InputMode,
+        base_modes: &HashMap<ClientId, InputMode>,
         keybinds: &HashMap<ClientId, Keybinds>,
     ) -> Result<()> {
         let err_context = || format!("failed to reload plugin id {plugin_id}");
@@ -297,7 +302,12 @@ impl<'a> PluginLoader<'a> {
             return Err(anyhow!("No connected clients, cannot reload plugin"));
         }
         let first_client_id = connected_clients.remove(0);
-        let keybinds = keybinds.get(&first_client_id).cloned();
+        let keybinds = keybinds.get(&first_client_id)
+            .cloned()
+            .unwrap_or_default();
+        let default_mode = base_modes.get(&first_client_id)
+            .cloned()
+            .unwrap_or_default();
 
         let mut plugin_loader = PluginLoader::new_from_existing_plugin_attributes(
             &plugin_cache,
@@ -350,7 +360,7 @@ impl<'a> PluginLoader<'a> {
         default_layout: Box<Layout>,
         layout_dir: Option<PathBuf>,
         default_mode: InputMode,
-        keybinds: Option<Keybinds>,
+        keybinds: Keybinds,
     ) -> Result<Self> {
         let plugin_own_data_dir = ZELLIJ_SESSION_CACHE_DIR
             .join(Url::from(&plugin.location).to_string())
@@ -399,7 +409,7 @@ impl<'a> PluginLoader<'a> {
         default_layout: Box<Layout>,
         layout_dir: Option<PathBuf>,
         default_mode: InputMode,
-        keybinds: Option<Keybinds>,
+        keybinds: Keybinds,
     ) -> Result<Self> {
         let err_context = || "Failed to find existing plugin";
         let (running_plugin, _subscriptions, _workers) = {
@@ -455,7 +465,7 @@ impl<'a> PluginLoader<'a> {
         default_layout: Box<Layout>,
         layout_dir: Option<PathBuf>,
         default_mode: InputMode,
-        keybinds: Option<Keybinds>,
+        keybinds: Keybinds,
     ) -> Result<Self> {
         let err_context = || "Failed to find existing plugin";
         let running_plugin = {
@@ -853,8 +863,6 @@ impl<'a> PluginLoader<'a> {
             subscriptions: Arc::new(Mutex::new(HashSet::new())),
             keybinds: self
                 .keybinds
-                .as_ref()
-                .unwrap_or_else(|| &self.client_attributes.keybinds)
                 .clone(),
             stdin_pipe,
             stdout_pipe,

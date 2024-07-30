@@ -4,6 +4,7 @@ use std::fs::File;
 use std::io::{self, Read};
 use std::path::PathBuf;
 use thiserror::Error;
+use serde::{Deserialize, Serialize};
 
 use std::convert::TryFrom;
 
@@ -20,7 +21,7 @@ const DEFAULT_CONFIG_FILE_NAME: &str = "config.kdl";
 type ConfigResult = Result<Config, ConfigError>;
 
 /// Main configuration.
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct Config {
     pub keybinds: Keybinds,
     pub options: Options,

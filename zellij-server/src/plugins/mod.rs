@@ -206,6 +206,7 @@ pub(crate) fn plugin_thread_main(
     default_shell: Option<TerminalAction>,
     plugin_aliases: Box<PluginAliases>,
     default_mode: InputMode,
+    default_keybinds: Keybinds,
 ) -> Result<()> {
     info!("Wasm main thread starts");
     let plugin_dir = data_dir.join("plugins/");
@@ -228,6 +229,7 @@ pub(crate) fn plugin_thread_main(
         layout.clone(),
         layout_dir,
         default_mode,
+        default_keybinds,
     );
 
     loop {

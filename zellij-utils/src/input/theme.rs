@@ -37,7 +37,7 @@ impl FrameConfig {
     }
 }
 
-#[derive(Clone, PartialEq, Default)]
+#[derive(Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct Themes(HashMap<String, Theme>);
 
 impl fmt::Debug for Themes {

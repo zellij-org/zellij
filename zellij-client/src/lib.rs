@@ -158,8 +158,8 @@ pub(crate) enum InputInstruction {
 pub fn start_client(
     mut os_input: Box<dyn ClientOsApi>,
     opts: CliArgs,
-    config: Config,
-    config_options: Options,
+    config: Config, // saved to disk (or default?)
+    config_options: Options, // CLI options merged into (getting priority over) saved config options
     info: ClientInfo,
     layout: Option<Layout>,
     tab_position_to_focus: Option<usize>,
@@ -167,6 +167,10 @@ pub fn start_client(
     is_a_reconnect: bool,
     start_detached_and_exit: bool,
 ) -> Option<ConnectToSession> {
+    // TODO: CONTINUE HERE
+    // * we need to differentiate between config and saved_config (likely need to get them from the
+    // outside here)
+    // * then send them both to the server so that we can make the differentiation there
     if start_detached_and_exit {
         start_server_detached(os_input, opts, config, config_options, info, layout);
         return None;
@@ -218,7 +222,7 @@ pub fn start_client(
             rounded_corners: config.ui.pane_frames.rounded_corners,
             hide_session_name: config.ui.pane_frames.hide_session_name,
         },
-        keybinds: config.keybinds.clone(),
+        // keybinds: config.keybinds.clone(),
     };
 
     let create_ipc_pipe = || -> std::path::PathBuf {
@@ -238,7 +242,8 @@ pub fn start_client(
             (
                 ClientToServerMsg::AttachClient(
                     client_attributes,
-                    config_options,
+                    config.clone(),
+                    config_options.clone(),
                     tab_position_to_focus,
                     pane_id_to_focus,
                 ),
@@ -256,6 +261,7 @@ pub fn start_client(
                 ClientToServerMsg::NewClient(
                     client_attributes,
                     Box::new(opts),
+                    Box::new(config.clone()),
                     Box::new(config_options.clone()),
                     Box::new(layout.unwrap()),
                     Box::new(config.plugins.clone()),
@@ -584,7 +590,7 @@ pub fn start_server_detached(
             rounded_corners: config.ui.pane_frames.rounded_corners,
             hide_session_name: config.ui.pane_frames.hide_session_name,
         },
-        keybinds: config.keybinds.clone(),
+        // keybinds: config.keybinds.clone(),
     };
 
     let create_ipc_pipe = || -> std::path::PathBuf {
@@ -607,6 +613,7 @@ pub fn start_server_detached(
                 ClientToServerMsg::NewClient(
                     client_attributes,
                     Box::new(opts),
+                    Box::new(config.clone()),
                     Box::new(config_options.clone()),
                     Box::new(layout.unwrap()),
                     Box::new(config.plugins.clone()),

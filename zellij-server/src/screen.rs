@@ -15,6 +15,7 @@ use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
 use zellij_utils::input::keybinds::Keybinds;
 use zellij_utils::input::options::Clipboard;
+use zellij_utils::input::config::Config;
 use zellij_utils::pane_size::{Size, SizeInPixels};
 use zellij_utils::{
     consts::{session_info_folder_for_session, ZELLIJ_SOCK_DIR},
@@ -2343,10 +2344,11 @@ pub(crate) fn screen_thread_main(
     bus: Bus<ScreenInstruction>,
     max_panes: Option<usize>,
     client_attributes: ClientAttributes,
-    config_options: Box<Options>,
+    config: Config,
     debug: bool,
     default_layout: Box<Layout>,
 ) -> Result<()> {
+    let config_options = config.options;
     let arrow_fonts = !config_options.simplified_ui.unwrap_or_default();
     let draw_pane_frames = config_options.pane_frames.unwrap_or(true);
     let auto_layout = config_options.auto_layout.unwrap_or(true);
@@ -2385,7 +2387,7 @@ pub(crate) fn screen_thread_main(
                 //  ¯\_(ツ)_/¯
                 arrow_fonts: !arrow_fonts,
             },
-            &client_attributes.keybinds,
+            &config.keybinds,
             config_options.default_mode,
         ),
         draw_pane_frames,

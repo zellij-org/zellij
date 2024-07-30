@@ -4,6 +4,7 @@ use crate::{
     data::{ClientId, ConnectToSession, KeyWithModifier, Style},
     errors::{get_current_ctx, prelude::*, ErrorContext},
     input::keybinds::Keybinds,
+    input::config::Config,
     input::{actions::Action, layout::Layout, options::Options, plugins::PluginAliases},
     pane_size::{Size, SizeInPixels},
 };
@@ -41,7 +42,7 @@ pub enum ClientType {
 pub struct ClientAttributes {
     pub size: Size,
     pub style: Style,
-    pub keybinds: Keybinds,
+    // pub keybinds: Keybinds,
 }
 
 #[derive(Default, Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
@@ -74,13 +75,15 @@ pub enum ClientToServerMsg {
     NewClient(
         ClientAttributes,
         Box<CliArgs>,
-        Box<Options>,
+        Box<Config>, // represents the saved configuration
+        Box<Options>, // represents the runtime configuration
         Box<Layout>,
         Box<PluginAliases>,
     ),
     AttachClient(
         ClientAttributes,
-        Options,
+        Config, // represents the saved configuration
+        Options, // represents the runtime configuration
         Option<usize>,       // tab position to focus
         Option<(u32, bool)>, // (pane_id, is_plugin) => pane id to focus
     ),

@@ -28,7 +28,7 @@ use zellij_utils::envs;
 use zellij_utils::nix::sys::stat::{umask, Mode};
 use zellij_utils::pane_size::Size;
 
-use wasmtime::{Config, Engine, Strategy};
+use wasmtime::{Config as WasmtimeConfig, Engine, Strategy};
 
 use crate::{
     os_input_output::ServerOsApi,
@@ -52,6 +52,7 @@ use zellij_utils::{
         layout::Layout,
         options::Options,
         plugins::PluginAliases,
+        config::Config,
     },
     ipc::{ClientAttributes, ExitReason, ServerToClientMsg},
 };
@@ -64,7 +65,8 @@ pub enum ServerInstruction {
     NewClient(
         ClientAttributes,
         Box<CliArgs>,
-        Box<Options>,
+        Box<Config>, // represents the saved config
+        Box<Options>, // represents the runtime configuration options
         Box<Layout>,
         Box<PluginAliases>,
         ClientId,
@@ -78,7 +80,8 @@ pub enum ServerInstruction {
     DetachSession(Vec<ClientId>),
     AttachClient(
         ClientAttributes,
-        Options,
+        Config, // represents the saved config
+        Options, // represents the runtime configuration options
         Option<usize>,       // tab position to focus
         Option<(u32, bool)>, // (pane_id, is_plugin) => pane_id to focus
         ClientId,
@@ -140,16 +143,78 @@ impl ErrorInstruction for ServerInstruction {
     }
 }
 
+#[derive(Debug, Clone, Default)]
+pub(crate) struct SessionConfiguration {
+    // default_config: Config,
+    runtime_config: HashMap<ClientId, Config>, // if present, overrides the saved_config
+    saved_config: HashMap<ClientId, Config>, // config guaranteed to have been saved to disk
+}
+
+impl SessionConfiguration {
+
+    pub fn set_client_saved_configuration(&mut self, client_id: ClientId, client_config: Config) {
+        self.saved_config.insert(client_id, client_config);
+    }
+    pub fn set_client_runtime_configuration(&mut self, client_id: ClientId, client_config: Config) {
+        self.runtime_config.insert(client_id, client_config);
+    }
+    pub fn get_client_keybinds(&self, client_id: &ClientId) -> Keybinds {
+        self.runtime_config
+            .get(client_id)
+            .or_else(|| self.saved_config.get(client_id)).map(|c| c.keybinds.clone())
+            // .clone()
+            .unwrap_or_default()
+    }
+    pub fn get_client_configuration(&self, client_id: &ClientId) -> Config {
+        self.runtime_config
+            .get(client_id)
+            .or_else(|| self.saved_config.get(client_id))
+            .cloned()
+            .unwrap_or_default()
+    }
+    pub fn reconfigure_runtime_config(&mut self, client_id: &ClientId, stringified_config: String) -> Option<Config> { // returns Config if it changed
+        let mut full_reconfigured_config = None;
+        let current_client_configuration = self.get_client_configuration(client_id);
+        match Config::from_kdl(&stringified_config, Some(current_client_configuration.clone())) {
+            Ok(new_config) => {
+                let mut config_changed = false;
+                if new_config.options.default_mode != current_client_configuration.options.default_mode {
+                    config_changed = true;
+                }
+                if new_config.keybinds != current_client_configuration.keybinds {
+                    config_changed = true;
+                }
+                if config_changed {
+                    full_reconfigured_config = Some(new_config.clone());
+                }
+                self.runtime_config.insert(*client_id, new_config);
+            },
+            Err(e) => {
+                log::error!("Failed to reconfigure runtime config: {}", e);
+            }
+        }
+        full_reconfigured_config
+    }
+}
+
 pub(crate) struct SessionMetaData {
     pub senders: ThreadSenders,
     pub capabilities: PluginCapabilities,
     pub client_attributes: ClientAttributes,
     pub default_shell: Option<TerminalAction>,
     pub layout: Box<Layout>,
-    pub config_options: Box<Options>,
-    pub client_keybinds: HashMap<ClientId, Keybinds>,
-    pub client_input_modes: HashMap<ClientId, InputMode>,
-    pub default_mode: HashMap<ClientId, InputMode>,
+    // pub config_options: Box<Options>,
+
+    // TODO: CONTINUE HERE
+    // * move these to SessionConfiguration
+//     pub client_keybinds: HashMap<ClientId, Keybinds>,
+//     pub default_mode: HashMap<ClientId, InputMode>,
+
+    // TODO: rename to current_input_modes
+    // pub client_input_modes: HashMap<ClientId, InputMode>,
+    pub current_input_modes: HashMap<ClientId, InputMode>,
+    pub session_configuration: SessionConfiguration,
+
     screen_thread: Option<thread::JoinHandle<()>>,
     pty_thread: Option<thread::JoinHandle<()>>,
     plugin_thread: Option<thread::JoinHandle<()>>,
@@ -158,53 +223,52 @@ pub(crate) struct SessionMetaData {
 }
 
 impl SessionMetaData {
-    pub fn set_client_keybinds(&mut self, client_id: ClientId, keybinds: Keybinds) {
-        self.client_keybinds.insert(client_id, keybinds);
-        self.client_input_modes.insert(
-            client_id,
-            self.config_options.default_mode.unwrap_or_default(),
-        );
-    }
+//     pub fn set_client_keybinds(&mut self, client_id: ClientId, keybinds: Keybinds) {
+//         self.client_keybinds.insert(client_id, keybinds);
+//         self.client_input_modes.insert(
+//             client_id,
+//             self.config_options.default_mode.unwrap_or_default(),
+//         );
+//     }
     pub fn get_client_keybinds_and_mode(
         &self,
         client_id: &ClientId,
-    ) -> Option<(&Keybinds, &InputMode)> {
-        match (
-            self.client_keybinds.get(client_id),
-            self.client_input_modes.get(client_id),
-        ) {
-            (Some(client_keybinds), Some(client_input_mode)) => {
+    ) -> Option<(Keybinds, &InputMode)> {
+        let client_keybinds = self.session_configuration.get_client_keybinds(client_id);
+        log::info!("current_input_modes: {:#?}", self.current_input_modes);
+        match self.current_input_modes.get(client_id) {
+            Some(client_input_mode) => {
                 Some((client_keybinds, client_input_mode))
             },
             _ => None,
         }
     }
     pub fn change_mode_for_all_clients(&mut self, input_mode: InputMode) {
-        let all_clients: Vec<ClientId> = self.client_input_modes.keys().copied().collect();
+        let all_clients: Vec<ClientId> = self.current_input_modes.keys().copied().collect();
         for client_id in all_clients {
-            self.client_input_modes.insert(client_id, input_mode);
+            self.current_input_modes.insert(client_id, input_mode);
         }
     }
-    pub fn rebind_keys(&mut self, client_id: ClientId, new_keybinds: String) -> Option<Keybinds> {
-        if let Some(current_keybinds) = self.client_keybinds.get_mut(&client_id) {
-            match Keybinds::from_string(
-                new_keybinds,
-                current_keybinds.clone(),
-                &self.config_options,
-            ) {
-                Ok(new_keybinds) => {
-                    *current_keybinds = new_keybinds.clone();
-                    return Some(new_keybinds);
-                },
-                Err(e) => {
-                    log::error!("Failed to parse keybindings: {}", e);
-                },
-            }
-        } else {
-            log::error!("Failed to bind keys for client: {client_id}");
-        }
-        None
-    }
+//     pub fn rebind_keys(&mut self, client_id: ClientId, new_keybinds: String) -> Option<Keybinds> {
+//         if let Some(current_keybinds) = self.client_keybinds.get_mut(&client_id) {
+//             match Keybinds::from_string(
+//                 new_keybinds,
+//                 current_keybinds.clone(),
+//                 &self.config_options,
+//             ) {
+//                 Ok(new_keybinds) => {
+//                     *current_keybinds = new_keybinds.clone();
+//                     return Some(new_keybinds);
+//                 },
+//                 Err(e) => {
+//                     log::error!("Failed to parse keybindings: {}", e);
+//                 },
+//             }
+//         } else {
+//             log::error!("Failed to bind keys for client: {client_id}");
+//         }
+//         None
+//     }
 }
 
 impl Drop for SessionMetaData {
@@ -360,6 +424,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
     let to_server = SenderWithContext::new(to_server);
     let session_data: Arc<RwLock<Option<SessionMetaData>>> = Arc::new(RwLock::new(None));
     let session_state = Arc::new(RwLock::new(SessionState::new()));
+    // let session_configuration = Arc::new(RwLock::new(SessionConfiguration::default()));
 
     std::panic::set_hook({
         use zellij_utils::errors::handle_panic;
@@ -425,45 +490,57 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
         let (instruction, mut err_ctx) = server_receiver.recv().unwrap();
         err_ctx.add_call(ContextType::IPCServer((&instruction).into()));
         match instruction {
-            ServerInstruction::NewClient(
+            ServerInstruction::NewClient( // TODO: rename to FirstClientConnected?
                 client_attributes,
                 opts,
-                config_options,
+                config,
+                runtime_config_options,
                 layout,
                 plugin_aliases,
                 client_id,
             ) => {
-                let session = init_session(
+                let mut session = init_session(
                     os_input.clone(),
                     to_server.clone(),
                     client_attributes.clone(),
                     SessionOptions {
                         opts,
                         layout: layout.clone(),
-                        config_options: config_options.clone(),
+                        config_options: runtime_config_options.clone(),
                     },
+                    *config.clone(),
                     plugin_aliases,
                 );
+                let mut runtime_configuration = config.clone();
+                runtime_configuration.options = *runtime_config_options.clone();
+                session.session_configuration.set_client_saved_configuration(client_id, *config.clone());
+                session.session_configuration.set_client_runtime_configuration(client_id, *runtime_configuration);
+                let default_input_mode = runtime_config_options.default_mode.unwrap_or_default();
+                session
+                    .current_input_modes
+                    .insert(client_id, default_input_mode);
+
+                // TODO: handle difference with CLI configuration options
                 *session_data.write().unwrap() = Some(session);
-                session_data
-                    .write()
-                    .unwrap()
-                    .as_mut()
-                    .unwrap()
-                    .set_client_keybinds(client_id, client_attributes.keybinds.clone());
+//                 session_data
+//                     .write()
+//                     .unwrap()
+//                     .as_mut()
+//                     .unwrap()
+//                     .set_client_keybinds(client_id, client_attributes.keybinds.clone());
                 session_state
                     .write()
                     .unwrap()
                     .set_client_size(client_id, client_attributes.size);
 
-                let default_shell = config_options.default_shell.map(|shell| {
+                let default_shell = runtime_config_options.default_shell.map(|shell| {
                     TerminalAction::RunCommand(RunCommand {
                         command: shell,
-                        cwd: config_options.default_cwd.clone(),
+                        cwd: config.options.default_cwd.clone(),
                         ..Default::default()
                     })
                 });
-                let cwd = config_options.default_cwd;
+                let cwd = runtime_config_options.default_cwd;
 
                 let spawn_tabs = |tab_layout, floating_panes_layout, tab_name, swap_layouts| {
                     session_data
@@ -532,14 +609,28 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
             },
             ServerInstruction::AttachClient(
                 attrs,
-                options,
+                config,
+                runtime_config_options,
                 tab_position_to_focus,
                 pane_id_to_focus,
                 client_id,
             ) => {
                 let mut rlock = session_data.write().unwrap();
                 let session_data = rlock.as_mut().unwrap();
-                session_data.set_client_keybinds(client_id, attrs.keybinds.clone());
+
+                let mut runtime_configuration = config.clone();
+                runtime_configuration.options = runtime_config_options.clone();
+                session_data.session_configuration.set_client_saved_configuration(client_id, config.clone());
+                session_data.session_configuration.set_client_runtime_configuration(client_id, runtime_configuration);
+
+
+
+                let default_input_mode = config.options.default_mode.unwrap_or_default();
+                session_data
+                    .current_input_modes
+                    .insert(client_id, default_input_mode);
+
+                // session_data.set_client_keybinds(client_id, attrs.keybinds.clone());
                 session_state
                     .write()
                     .unwrap()
@@ -565,15 +656,16 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .senders
                     .send_to_plugin(PluginInstruction::AddClient(client_id))
                     .unwrap();
-                let default_mode = options.default_mode.unwrap_or_default();
+                let default_mode = config.options.default_mode.unwrap_or_default();
                 let mode_info = get_mode_info(
                     default_mode,
                     &attrs,
                     session_data.capabilities,
-                    session_data
-                        .client_keybinds
-                        .get(&client_id)
-                        .unwrap_or(&session_data.client_attributes.keybinds),
+                    &session_data.session_configuration.get_client_keybinds(&client_id),
+//                     session_data
+//                         .client_keybinds
+//                         .get(&client_id)
+//                         .unwrap_or(&session_data.client_attributes.keybinds),
                     Some(default_mode),
                 );
                 session_data
@@ -853,7 +945,12 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .read()
                     .unwrap()
                     .as_ref()
-                    .and_then(|c| c.config_options.layout_dir.clone())
+                    .unwrap()
+                    .session_configuration
+                    .get_client_configuration(&client_id)
+                    .options
+                    .layout_dir
+                    // .and_then(|c| c.config_options.layout_dir.clone())
                     .or_else(|| default_layout_dir());
                 if let Some(layout_dir) = layout_dir {
                     connect_to_session.apply_layout_dir(&layout_dir);
@@ -904,7 +1001,8 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .unwrap()
                     .as_mut()
                     .unwrap()
-                    .client_input_modes
+                    // .client_input_modes
+                    .current_input_modes
                     .insert(client_id, input_mode);
             },
             ServerInstruction::ChangeModeForAllClients(input_mode) => {
@@ -916,56 +1014,66 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .change_mode_for_all_clients(input_mode);
             },
             ServerInstruction::Reconfigure(client_id, new_config) => {
-                let mut new_default_mode = None;
-                match Options::from_string(&new_config) {
-                    Ok(mut new_config_options) => {
-                        if let Some(default_mode) = new_config_options.default_mode.take() {
-                            new_default_mode = Some(default_mode);
-                            session_data
-                                .write()
-                                .unwrap()
-                                .as_mut()
-                                .unwrap()
-                                .default_mode
-                                .insert(client_id, default_mode);
-                        }
-                    },
-                    Err(e) => {
-                        log::error!("Failed to parse config: {}", e);
-                    },
-                }
-
-                let new_keybinds = session_data
+                let new_config = session_data
                     .write()
                     .unwrap()
                     .as_mut()
                     .unwrap()
-                    .rebind_keys(client_id, new_config)
-                    .clone();
-                session_data
-                    .write()
-                    .unwrap()
-                    .as_ref()
-                    .unwrap()
-                    .senders
-                    .send_to_screen(ScreenInstruction::Reconfigure {
-                        client_id,
-                        keybinds: new_keybinds.clone(),
-                        default_mode: new_default_mode,
-                    })
-                    .unwrap();
-                session_data
-                    .write()
-                    .unwrap()
-                    .as_ref()
-                    .unwrap()
-                    .senders
-                    .send_to_plugin(PluginInstruction::Reconfigure {
-                        client_id,
-                        keybinds: new_keybinds,
-                        default_mode: new_default_mode,
-                    })
-                    .unwrap();
+                    .session_configuration
+                    .reconfigure_runtime_config(&client_id, new_config);
+
+//                 let mut new_default_mode = None;
+//                 match Options::from_string(&new_config) {
+//                     Ok(mut new_config_options) => {
+//                         if let Some(default_mode) = new_config_options.default_mode.take() {
+//                             new_default_mode = Some(default_mode);
+//                             session_data
+//                                 .write()
+//                                 .unwrap()
+//                                 .as_mut()
+//                                 .unwrap()
+//                                 .default_mode
+//                                 .insert(client_id, default_mode);
+//                         }
+//                     },
+//                     Err(e) => {
+//                         log::error!("Failed to parse config: {}", e);
+//                     },
+//                 }
+
+//                 let new_keybinds = session_data
+//                     .write()
+//                     .unwrap()
+//                     .as_mut()
+//                     .unwrap()
+//                     .rebind_keys(client_id, new_config)
+//                     .clone();
+                if let Some(new_config) = new_config {
+                    session_data
+                        .write()
+                        .unwrap()
+                        .as_ref()
+                        .unwrap()
+                        .senders
+                        .send_to_screen(ScreenInstruction::Reconfigure {
+                            client_id,
+                            keybinds: Some(new_config.keybinds.clone()),
+                            default_mode: new_config.options.default_mode,
+                        })
+                        .unwrap();
+                    session_data
+                        .write()
+                        .unwrap()
+                        .as_ref()
+                        .unwrap()
+                        .senders
+                        .send_to_plugin(PluginInstruction::Reconfigure {
+                            client_id,
+                            keybinds: Some(new_config.keybinds),
+                            default_mode: new_config.options.default_mode,
+                        })
+                        .unwrap();
+                }
             },
         }
     }
@@ -987,6 +1095,7 @@ fn init_session(
     to_server: SenderWithContext<ServerInstruction>,
     client_attributes: ClientAttributes,
     options: SessionOptions,
+    config: Config,
     plugin_aliases: Box<PluginAliases>,
 ) -> SessionMetaData {
     let SessionOptions {
@@ -1043,6 +1152,7 @@ fn init_session(
         .unwrap_or_else(|| get_default_shell());
 
     let default_mode = config_options.default_mode.unwrap_or_default();
+    let default_keybinds = config.keybinds.clone();
 
     let pty_thread = thread::Builder::new()
         .name("pty".to_string())
@@ -1085,13 +1195,13 @@ fn init_session(
             let client_attributes_clone = client_attributes.clone();
             let debug = opts.debug;
             let layout = layout.clone();
-            let config_options = config_options.clone();
+            // let config_options = config_options.clone();
             move || {
                 screen_thread_main(
                     screen_bus,
                     max_panes,
                     client_attributes_clone,
-                    config_options,
+                    config,
                     debug,
                     layout,
                 )
@@ -1135,6 +1245,7 @@ fn init_session(
                     default_shell,
                     plugin_aliases,
                     default_mode,
+                    default_keybinds,
                 )
                 .fatal()
             }
@@ -1196,26 +1307,28 @@ fn init_session(
         default_shell,
         client_attributes,
         layout,
-        config_options: config_options.clone(),
-        client_keybinds: HashMap::new(),
-        client_input_modes: HashMap::new(),
+        session_configuration: Default::default(),
+//         config_options: config_options.clone(),
+//         client_keybinds: HashMap::new(),
+//         client_input_modes: HashMap::new(),
+        current_input_modes: HashMap::new(),
         screen_thread: Some(screen_thread),
         pty_thread: Some(pty_thread),
         plugin_thread: Some(plugin_thread),
         pty_writer_thread: Some(pty_writer_thread),
         background_jobs_thread: Some(background_jobs_thread),
-        default_mode: HashMap::new(),
+        // default_mode: HashMap::new(),
     }
 }
 
 #[cfg(not(feature = "singlepass"))]
 fn get_engine() -> Engine {
     log::info!("Compiling plugins using Cranelift");
-    Engine::new(Config::new().strategy(Strategy::Cranelift)).unwrap()
+    Engine::new(WasmtimeConfig::new().strategy(Strategy::Cranelift)).unwrap()
 }
 
 #[cfg(feature = "singlepass")]
 fn get_engine() -> Engine {
     log::info!("Compiling plugins using Singlepass");
-    Engine::new(Config::new().strategy(Strategy::Winch)).unwrap()
+    Engine::new(WasmtimeConfig::new().strategy(Strategy::Winch)).unwrap()
 }

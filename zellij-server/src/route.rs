@@ -1045,19 +1045,13 @@ pub(crate) fn route_thread_main(
                                                 rlocked_sessions.default_shell.clone(),
                                                 rlocked_sessions.layout.clone(),
                                                 Some(&mut seen_cli_pipes),
+                                                keybinds.clone(),
                                                 rlocked_sessions
-                                                    .client_keybinds
-                                                    .get(&client_id)
-                                                    .unwrap_or(
-                                                        &rlocked_sessions
-                                                            .client_attributes
-                                                            .keybinds,
-                                                    )
-                                                    .clone(),
-                                                rlocked_sessions
+                                                    .session_configuration
+                                                    .get_client_configuration(&client_id)
+                                                    .options
                                                     .default_mode
-                                                    .get(&client_id)
-                                                    .unwrap_or(&InputMode::Normal)
+                                                    .unwrap_or(InputMode::Normal)
                                                     .clone(),
                                             )? {
                                                 should_break = true;
@@ -1084,15 +1078,26 @@ pub(crate) fn route_thread_main(
                                     rlocked_sessions.layout.clone(),
                                     Some(&mut seen_cli_pipes),
                                     rlocked_sessions
-                                        .client_keybinds
-                                        .get(&client_id)
-                                        .unwrap_or(&rlocked_sessions.client_attributes.keybinds)
+                                        .session_configuration
+                                        .get_client_keybinds(&client_id)
                                         .clone(),
                                     rlocked_sessions
+                                        .session_configuration
+                                        .get_client_configuration(&client_id)
+                                        .options
                                         .default_mode
-                                        .get(&client_id)
-                                        .unwrap_or(&InputMode::Normal)
+                                        .unwrap_or(InputMode::Normal)
                                         .clone(),
+//                                     rlocked_sessions
+//                                         .client_keybinds
+//                                         .get(&client_id)
+//                                         .unwrap_or(&rlocked_sessions.client_attributes.keybinds)
+//                                         .clone(),
+//                                     rlocked_sessions
+//                                         .default_mode
+//                                         .get(&client_id)
+//                                         .unwrap_or(&InputMode::Normal)
+//                                         .clone(),
                                 )? {
                                     should_break = true;
                                 }
@@ -1164,14 +1169,16 @@ pub(crate) fn route_thread_main(
                         ClientToServerMsg::NewClient(
                             client_attributes,
                             cli_args,
-                            opts,
+                            config,
+                            runtime_config_options,
                             layout,
                             plugin_aliases,
                         ) => {
                             let new_client_instruction = ServerInstruction::NewClient(
                                 client_attributes,
                                 cli_args,
-                                opts,
+                                config,
+                                runtime_config_options,
                                 layout,
                                 plugin_aliases,
                                 client_id,
@@ -1182,13 +1189,15 @@ pub(crate) fn route_thread_main(
                         },
                         ClientToServerMsg::AttachClient(
                             client_attributes,
-                            opts,
+                            config,
+                            runtime_config_options,
                             tab_position_to_focus,
                             pane_id_to_focus,
                         ) => {
                             let attach_client_instruction = ServerInstruction::AttachClient(
                                 client_attributes,
-                                opts,
+                                config,
+                                runtime_config_options,
                                 tab_position_to_focus,
                                 pane_id_to_focus,
                                 client_id,
