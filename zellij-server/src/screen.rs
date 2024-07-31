@@ -2424,7 +2424,7 @@ impl Screen {
         &mut self,
         new_keybinds: Keybinds,
         new_default_mode: InputMode,
-        theme: Palette,
+        theme: Styling,
         simplified_ui: bool,
         default_shell: Option<PathBuf>,
         pane_frames: bool,

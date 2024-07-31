@@ -16,7 +16,7 @@ use std::{
 
 use zellij_utils::{
     consts::{DEFAULT_SCROLL_BUFFER_SIZE, SCROLL_BUFFER_SIZE},
-    data::{Palette, PaletteColor},
+    data::{Palette, PaletteColor, Styling},
     input::mouse::{MouseEvent, MouseEventType},
     pane_size::SizeInPixels,
     position::Position,
@@ -2281,7 +2281,7 @@ impl Grid {
     pub fn unlock_renders(&mut self) {
         self.lock_renders = false;
     }
-    pub fn update_theme(&mut self, theme: Palette) {
+    pub fn update_theme(&mut self, theme: Styling) {
         self.style.colors = theme.clone();
     }
     pub fn update_arrow_fonts(&mut self, should_support_arrow_fonts: bool) {
