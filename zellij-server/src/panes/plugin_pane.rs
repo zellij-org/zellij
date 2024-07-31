@@ -25,7 +25,7 @@ use zellij_utils::pane_size::{Offset, SizeInPixels};
 use zellij_utils::position::Position;
 use zellij_utils::{
     channels::SenderWithContext,
-    data::{Event, InputMode, Mouse, Palette, PaletteColor, Style},
+    data::{Event, InputMode, Mouse, Palette, PaletteColor, Style, Styling},
     errors::prelude::*,
     input::layout::Run,
     pane_size::PaneGeom,
@@ -677,7 +677,7 @@ impl Pane for PluginPane {
         self.pane_name = String::from_utf8_lossy(&buf).to_string();
         self.set_should_render(true);
     }
-    fn update_theme(&mut self, theme: Palette) {
+    fn update_theme(&mut self, theme: Styling) {
         self.style.colors = theme.clone();
         for grid in self.grids.values_mut() {
             grid.update_theme(theme.clone());

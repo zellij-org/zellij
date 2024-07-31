@@ -18,7 +18,7 @@ use zellij_utils::pane_size::Offset;
 use zellij_utils::{
     data::{
         BareKey, InputMode, KeyWithModifier, Palette, PaletteColor, PaneId as ZellijUtilsPaneId,
-        Style,
+        Style, Styling,
     },
     errors::prelude::*,
     input::layout::Run,
@@ -790,7 +790,7 @@ impl Pane for TerminalPane {
             run_command.clone()
         })
     }
-    fn update_theme(&mut self, theme: Palette) {
+    fn update_theme(&mut self, theme: Styling) {
         self.style.colors = theme.clone();
         self.grid.update_theme(theme);
         if self.banner.is_some() {
