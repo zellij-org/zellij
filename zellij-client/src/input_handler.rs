@@ -11,25 +11,12 @@ use zellij_utils::{
         actions::Action,
         cast_termwiz_key,
         config::Config,
-        mouse::{MouseButton, MouseEvent},
+        mouse::{MouseButtons, MouseEvent},
         options::Options,
     },
     ipc::{ClientToServerMsg, ExitReason},
     termwiz::input::InputEvent,
 };
-
-#[derive(Debug, Clone, Copy)]
-enum HeldMouseButton {
-    Left,
-    Right,
-    Middle,
-}
-
-impl Default for HeldMouseButton {
-    fn default() -> Self {
-        HeldMouseButton::Left
-    }
-}
 
 /// Handles the dispatching of [`Action`]s according to the current
 /// [`InputMode`], and keep tracks of the current [`InputMode`].
@@ -43,7 +30,7 @@ struct InputHandler {
     send_client_instructions: SenderWithContext<ClientInstruction>,
     should_exit: bool,
     receive_input_instructions: Receiver<(InputInstruction, ErrorContext)>,
-    holding_mouse: Option<HeldMouseButton>,
+    mouse_buttons: MouseButtons,
     mouse_mode_active: bool,
 }
 
@@ -67,7 +54,13 @@ impl InputHandler {
             send_client_instructions,
             should_exit: false,
             receive_input_instructions,
-            holding_mouse: None,
+            mouse_buttons: MouseButtons {
+                left: false,
+                right: false,
+                middle: false,
+                wheel_up: false,
+                wheel_down: false,
+            },
             mouse_mode_active: false,
         }
     }
@@ -99,8 +92,10 @@ impl InputHandler {
                             self.handle_key(&key, raw_bytes, false);
                         },
                         InputEvent::Mouse(mouse_event) => {
-                            let mouse_event =
-                                zellij_utils::input::mouse::MouseEvent::from(mouse_event);
+                            let mouse_event = zellij_utils::input::mouse::MouseEvent::from_termwiz(
+                                self.mouse_buttons,
+                                mouse_event,
+                            );
                             self.handle_mouse_event(&mouse_event);
                         },
                         InputEvent::Paste(pasted_text) => {
@@ -216,67 +211,30 @@ impl InputHandler {
     }
     fn handle_mouse_event(&mut self, mouse_event: &MouseEvent) {
         match *mouse_event {
-            MouseEvent::Press(button, point) => match button {
-                MouseButton::WheelUp => {
+            MouseEvent::Press(buttons, point) => {
+                if buttons.wheel_up {
                     self.dispatch_action(Action::ScrollUpAt(point), None);
-                },
-                MouseButton::WheelDown => {
+                } else if buttons.wheel_down {
                     self.dispatch_action(Action::ScrollDownAt(point), None);
-                },
-                MouseButton::Left => {
-                    if self.holding_mouse.is_some() {
-                        self.dispatch_action(Action::MouseHoldLeft(point), None);
-                    } else {
-                        self.dispatch_action(Action::LeftClick(point), None);
-                    }
-                    self.holding_mouse = Some(HeldMouseButton::Left);
-                },
-                MouseButton::Right => {
-                    if self.holding_mouse.is_some() {
-                        self.dispatch_action(Action::MouseHoldRight(point), None);
-                    } else {
-                        self.dispatch_action(Action::RightClick(point), None);
-                    }
-                    self.holding_mouse = Some(HeldMouseButton::Right);
-                },
-                MouseButton::Middle => {
-                    if self.holding_mouse.is_some() {
-                        self.dispatch_action(Action::MouseHoldMiddle(point), None);
-                    } else {
-                        self.dispatch_action(Action::MiddleClick(point), None);
-                    }
-                    self.holding_mouse = Some(HeldMouseButton::Middle);
-                },
+                } else if buttons.left {
+                    self.dispatch_action(Action::LeftClick(point), None);
+                } else if buttons.right {
+                    self.dispatch_action(Action::RightClick(point), None);
+                } else if buttons.middle {
+                    self.dispatch_action(Action::MiddleClick(point), None);
+                }
             },
-            MouseEvent::Release(point) => {
-                let button_released = self.holding_mouse.unwrap_or_default();
-                match button_released {
-                    HeldMouseButton::Left => {
-                        self.dispatch_action(Action::LeftMouseRelease(point), None)
-                    },
-                    HeldMouseButton::Right => {
-                        self.dispatch_action(Action::RightMouseRelease(point), None)
-                    },
-                    HeldMouseButton::Middle => {
-                        self.dispatch_action(Action::MiddleMouseRelease(point), None)
-                    },
-                };
-                self.holding_mouse = None;
+            MouseEvent::Release(buttons, point) => {
+                if buttons.left {
+                    self.dispatch_action(Action::LeftMouseRelease(point), None);
+                } else if buttons.right {
+                    self.dispatch_action(Action::RightMouseRelease(point), None);
+                } else if buttons.middle {
+                    self.dispatch_action(Action::MiddleMouseRelease(point), None);
+                }
             },
-            MouseEvent::Hold(point) => {
-                let button_held = self.holding_mouse.unwrap_or_default();
-                match button_held {
-                    HeldMouseButton::Left => {
-                        self.dispatch_action(Action::MouseHoldLeft(point), None)
-                    },
-                    HeldMouseButton::Right => {
-                        self.dispatch_action(Action::MouseHoldRight(point), None)
-                    },
-                    HeldMouseButton::Middle => {
-                        self.dispatch_action(Action::MouseHoldMiddle(point), None)
-                    },
-                };
-                self.holding_mouse = Some(button_held);
+            MouseEvent::Motion(buttons, point) => {
+                // AZL TODO
             },
         }
     }
