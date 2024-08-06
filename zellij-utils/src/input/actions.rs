@@ -10,6 +10,7 @@ use crate::data::{Direction, KeyWithModifier, Resize};
 use crate::data::{FloatingPaneCoordinates, InputMode};
 use crate::home::{find_default_config_dir, get_layout_dir};
 use crate::input::config::{Config, ConfigError, KdlError};
+use crate::input::mouse::MouseEvent;
 use crate::input::options::OnForceClose;
 use miette::{NamedSource, Report};
 use serde::{Deserialize, Serialize};
@@ -224,9 +225,7 @@ pub enum Action {
     LeftMouseRelease(Position),
     RightMouseRelease(Position),
     MiddleMouseRelease(Position),
-    MouseHoldLeft(Position),
-    MouseHoldRight(Position),
-    MouseHoldMiddle(Position),
+    MouseEvent(MouseEvent),
     Copy,
     /// Confirm a prompt
     Confirm,

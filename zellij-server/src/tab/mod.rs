@@ -16,6 +16,7 @@ use zellij_utils::data::{
 };
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
+use zellij_utils::input::mouse::MouseEvent;
 use zellij_utils::position::{Column, Line};
 use zellij_utils::{position::Position, serde};
 
@@ -405,6 +406,9 @@ pub trait Pane {
 
     // TODO: this should probably be merged with the mouse_right_click
     fn handle_right_click(&mut self, _to: &Position, _client_id: ClientId) {}
+    fn mouse_event(&self, _event: &MouseEvent) -> Option<String> {
+        None
+    }
     fn mouse_left_click(&self, _position: &Position, _is_held: bool) -> Option<String> {
         None
     }
@@ -3014,6 +3018,19 @@ impl Tab {
         }
     }
 
+    pub fn handle_mouse_event(&mut self, event: &MouseEvent, client_id: ClientId) -> Result<()> {
+        let err_context =
+            || format!("failed to handle mouse event {event:?} for client {client_id}");
+        let active_pane = self.get_active_pane_or_floating_pane_mut(client_id);
+        if let Some(active_pane) = active_pane {
+            if let Some(mouse_event) = active_pane.mouse_event(&event) {
+                self.write_to_active_terminal(&None, mouse_event.into_bytes(), false, client_id)
+                    .with_context(err_context)?;
+            }
+        }
+        Ok(())
+    }
+
     pub fn handle_left_click(&mut self, position: &Position, client_id: ClientId) -> Result<()> {
         let err_context = || {
             format!(
@@ -3278,172 +3295,6 @@ impl Tab {
             }
         }
         Ok(())
-    }
-
-    pub fn handle_mouse_hold_left(
-        &mut self,
-        position_on_screen: &Position,
-        client_id: ClientId,
-    ) -> Result<bool> {
-        let err_context = || {
-            format!("failed to handle left mouse hold at position {position_on_screen:?} for client {client_id}")
-        };
-
-        // return value indicates whether we should trigger a render
-        // determine if event is repeated to enable smooth scrolling
-        let is_repeated = if let Some(last_position) = self.last_mouse_hold_position {
-            position_on_screen == &last_position
-        } else {
-            false
-        };
-        self.last_mouse_hold_position = Some(*position_on_screen);
-
-        let search_selectable = true;
-
-        if self.floating_panes.panes_are_visible()
-            && self.floating_panes.pane_is_being_moved_with_mouse()
-            && self
-                .floating_panes
-                .move_pane_with_mouse(*position_on_screen, search_selectable)
-        {
-            self.swap_layouts.set_is_floating_damaged();
-            self.set_force_render();
-            return Ok(!is_repeated); // we don't need to re-render in this case if the pane did not move
-                                     // return;
-        }
-
-        let selecting = self.selecting_with_mouse;
-        let active_pane = self.get_active_pane_or_floating_pane_mut(client_id);
-
-        if let Some(active_pane) = active_pane {
-            let mut relative_position = active_pane.relative_position(position_on_screen);
-            if !is_repeated {
-                // ensure that coordinates are valid
-                relative_position.change_column(
-                    (relative_position.column())
-                        .max(0)
-                        .min(active_pane.get_content_columns()),
-                );
-
-                relative_position.change_line(
-                    (relative_position.line())
-                        .max(0)
-                        .min(active_pane.get_content_rows() as isize),
-                );
-                if let Some(mouse_event) = active_pane.mouse_left_click(&relative_position, true) {
-                    self.write_to_active_terminal(
-                        &None,
-                        mouse_event.into_bytes(),
-                        false,
-                        client_id,
-                    )
-                    .with_context(err_context)?;
-                    return Ok(true); // we need to re-render in this case so the selection disappears
-                }
-            } else if selecting {
-                active_pane.update_selection(&relative_position, client_id);
-                return Ok(true); // we need to re-render in this case so the selection is updated
-            }
-        }
-        Ok(false) // we shouldn't even get here, but might as well not needlessly render if we do
-    }
-
-    pub fn handle_mouse_hold_right(
-        &mut self,
-        position_on_screen: &Position,
-        client_id: ClientId,
-    ) -> Result<bool> {
-        let err_context = || {
-            format!("failed to handle left mouse hold at position {position_on_screen:?} for client {client_id}")
-        };
-
-        // return value indicates whether we should trigger a render
-        // determine if event is repeated to enable smooth scrolling
-        let is_repeated = if let Some(last_position) = self.last_mouse_hold_position {
-            position_on_screen == &last_position
-        } else {
-            false
-        };
-        self.last_mouse_hold_position = Some(*position_on_screen);
-
-        let active_pane = self.get_active_pane_or_floating_pane_mut(client_id);
-
-        if let Some(active_pane) = active_pane {
-            let mut relative_position = active_pane.relative_position(position_on_screen);
-            if !is_repeated {
-                relative_position.change_column(
-                    (relative_position.column())
-                        .max(0)
-                        .min(active_pane.get_content_columns()),
-                );
-
-                relative_position.change_line(
-                    (relative_position.line())
-                        .max(0)
-                        .min(active_pane.get_content_rows() as isize),
-                );
-                if let Some(mouse_event) = active_pane.mouse_right_click(&relative_position, true) {
-                    self.write_to_active_terminal(
-                        &None,
-                        mouse_event.into_bytes(),
-                        false,
-                        client_id,
-                    )
-                    .with_context(err_context)?;
-                    return Ok(true); // we need to re-render in this case so the selection disappears
-                }
-            }
-        }
-        Ok(false) // we shouldn't even get here, but might as well not needlessly render if we do
-    }
-
-    pub fn handle_mouse_hold_middle(
-        &mut self,
-        position_on_screen: &Position,
-        client_id: ClientId,
-    ) -> Result<bool> {
-        let err_context = || {
-            format!("failed to handle left mouse hold at position {position_on_screen:?} for client {client_id}")
-        };
-        // return value indicates whether we should trigger a render
-        // determine if event is repeated to enable smooth scrolling
-        let is_repeated = if let Some(last_position) = self.last_mouse_hold_position {
-            position_on_screen == &last_position
-        } else {
-            false
-        };
-        self.last_mouse_hold_position = Some(*position_on_screen);
-
-        let active_pane = self.get_active_pane_or_floating_pane_mut(client_id);
-
-        if let Some(active_pane) = active_pane {
-            let mut relative_position = active_pane.relative_position(position_on_screen);
-            if !is_repeated {
-                relative_position.change_column(
-                    (relative_position.column())
-                        .max(0)
-                        .min(active_pane.get_content_columns()),
-                );
-
-                relative_position.change_line(
-                    (relative_position.line())
-                        .max(0)
-                        .min(active_pane.get_content_rows() as isize),
-                );
-                if let Some(mouse_event) = active_pane.mouse_middle_click(&relative_position, true)
-                {
-                    self.write_to_active_terminal(
-                        &None,
-                        mouse_event.into_bytes(),
-                        false,
-                        client_id,
-                    )
-                    .with_context(err_context)?;
-                    return Ok(true); // we need to re-render in this case so the selection disappears
-                }
-            }
-        }
-        Ok(false) // we shouldn't even get here, but might as well not needlessly render if we do
     }
 
     pub fn copy_selection(&self, client_id: ClientId) -> Result<()> {

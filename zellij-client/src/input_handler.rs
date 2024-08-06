@@ -11,7 +11,7 @@ use zellij_utils::{
         actions::Action,
         cast_termwiz_key,
         config::Config,
-        mouse::{MouseButtons, MouseEvent},
+        mouse::{MouseEvent, MouseEventType},
         options::Options,
     },
     ipc::{ClientToServerMsg, ExitReason},
@@ -30,7 +30,7 @@ struct InputHandler {
     send_client_instructions: SenderWithContext<ClientInstruction>,
     should_exit: bool,
     receive_input_instructions: Receiver<(InputInstruction, ErrorContext)>,
-    mouse_buttons: MouseButtons,
+    mouse_old_event: MouseEvent,
     mouse_mode_active: bool,
 }
 
@@ -54,13 +54,7 @@ impl InputHandler {
             send_client_instructions,
             should_exit: false,
             receive_input_instructions,
-            mouse_buttons: MouseButtons {
-                left: false,
-                right: false,
-                middle: false,
-                wheel_up: false,
-                wheel_down: false,
-            },
+            mouse_old_event: MouseEvent::new(),
             mouse_mode_active: false,
         }
     }
@@ -93,7 +87,7 @@ impl InputHandler {
                         },
                         InputEvent::Mouse(mouse_event) => {
                             let mouse_event = zellij_utils::input::mouse::MouseEvent::from_termwiz(
-                                self.mouse_buttons,
+                                &mut self.mouse_old_event,
                                 mouse_event,
                             );
                             self.handle_mouse_event(&mouse_event);
@@ -210,8 +204,16 @@ impl InputHandler {
         }
     }
     fn handle_mouse_event(&mut self, mouse_event: &MouseEvent) {
-        match *mouse_event {
-            MouseEvent::Press(buttons, point) => {
+        // This dispatch handles all of the output(s) to terminal
+        // pane(s).
+        self.dispatch_action(Action::MouseEvent(*mouse_event), None);
+
+        // The rest of this is for the plugin API actions, text
+        // selection, pane move/resize, etc.
+        match mouse_event.event_type {
+            MouseEventType::Press => {
+                // AZL TODO
+                /*
                 if buttons.wheel_up {
                     self.dispatch_action(Action::ScrollUpAt(point), None);
                 } else if buttons.wheel_down {
@@ -223,8 +225,11 @@ impl InputHandler {
                 } else if buttons.middle {
                     self.dispatch_action(Action::MiddleClick(point), None);
                 }
+                */
             },
-            MouseEvent::Release(buttons, point) => {
+            MouseEventType::Release => {
+                // AZL TODO
+                /*
                 if buttons.left {
                     self.dispatch_action(Action::LeftMouseRelease(point), None);
                 } else if buttons.right {
@@ -232,8 +237,9 @@ impl InputHandler {
                 } else if buttons.middle {
                     self.dispatch_action(Action::MiddleMouseRelease(point), None);
                 }
+                */
             },
-            MouseEvent::Motion(buttons, point) => {
+            MouseEventType::Motion => {
                 // AZL TODO
             },
         }

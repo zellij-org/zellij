@@ -2,7 +2,8 @@ pub use super::generated_api::api::{
     action::{
         action::OptionalPayload, Action as ProtobufAction, ActionName as ProtobufActionName,
         DumpScreenPayload, EditFilePayload, GoToTabNamePayload, IdAndName,
-        LaunchOrFocusPluginPayload, MovePanePayload, MoveTabDirection as ProtobufMoveTabDirection,
+        LaunchOrFocusPluginPayload, MouseEventPayload as ProtobufMouseEventPayload,
+        MovePanePayload, MoveTabDirection as ProtobufMoveTabDirection,
         NameAndValue as ProtobufNameAndValue, NewFloatingPanePayload, NewPanePayload,
         NewPluginPanePayload, NewTiledPanePayload, PaneIdAndShouldFloat,
         PluginConfiguration as ProtobufPluginConfiguration, Position as ProtobufPosition,
@@ -21,6 +22,7 @@ use crate::input::command::{OpenFilePayload, RunCommandAction};
 use crate::input::layout::{
     PluginUserConfiguration, RunPlugin, RunPluginLocation, RunPluginOrAlias,
 };
+use crate::input::mouse::{MouseEvent, MouseEventType};
 use crate::position::Position;
 
 use std::collections::BTreeMap;
@@ -480,26 +482,12 @@ impl TryFrom<ProtobufAction> for Action {
                     _ => Err("Wrong payload for Action::MiddleMouseRelease"),
                 }
             },
-            Some(ProtobufActionName::MouseHoldLeft) => match protobuf_action.optional_payload {
-                Some(OptionalPayload::MouseHoldLeftPayload(payload)) => {
-                    let position = payload.try_into()?;
-                    Ok(Action::MouseHoldLeft(position))
+            Some(ProtobufActionName::MouseEvent) => match protobuf_action.optional_payload {
+                Some(OptionalPayload::MouseEventPayload(payload)) => {
+                    let event = payload.try_into()?;
+                    Ok(Action::MouseEvent(event))
                 },
-                _ => Err("Wrong payload for Action::MouseHoldLeft"),
-            },
-            Some(ProtobufActionName::MouseHoldRight) => match protobuf_action.optional_payload {
-                Some(OptionalPayload::MouseHoldRightPayload(payload)) => {
-                    let position = payload.try_into()?;
-                    Ok(Action::MouseHoldRight(position))
-                },
-                _ => Err("Wrong payload for Action::MouseHoldRight"),
-            },
-            Some(ProtobufActionName::MouseHoldMiddle) => match protobuf_action.optional_payload {
-                Some(OptionalPayload::MouseHoldMiddlePayload(payload)) => {
-                    let position = payload.try_into()?;
-                    Ok(Action::MouseHoldMiddle(position))
-                },
-                _ => Err("Wrong payload for Action::MouseHoldMiddle"),
+                _ => Err("Wrong payload for Action::MouseEvent"),
             },
             Some(ProtobufActionName::SearchInput) => match protobuf_action.optional_payload {
                 Some(OptionalPayload::SearchInputPayload(payload)) => {
@@ -1121,25 +1109,11 @@ impl TryFrom<Action> for ProtobufAction {
                     optional_payload: Some(OptionalPayload::MiddleMouseReleasePayload(position)),
                 })
             },
-            Action::MouseHoldLeft(position) => {
-                let position: ProtobufPosition = position.try_into()?;
+            Action::MouseEvent(event) => {
+                let payload: ProtobufMouseEventPayload = event.try_into()?;
                 Ok(ProtobufAction {
-                    name: ProtobufActionName::MouseHoldLeft as i32,
-                    optional_payload: Some(OptionalPayload::MouseHoldLeftPayload(position)),
-                })
-            },
-            Action::MouseHoldRight(position) => {
-                let position: ProtobufPosition = position.try_into()?;
-                Ok(ProtobufAction {
-                    name: ProtobufActionName::MouseHoldRight as i32,
-                    optional_payload: Some(OptionalPayload::MouseHoldRightPayload(position)),
-                })
-            },
-            Action::MouseHoldMiddle(position) => {
-                let position: ProtobufPosition = position.try_into()?;
-                Ok(ProtobufAction {
-                    name: ProtobufActionName::MouseHoldMiddle as i32,
-                    optional_payload: Some(OptionalPayload::MouseHoldMiddlePayload(position)),
+                    name: ProtobufActionName::MouseEvent as i32,
+                    optional_payload: Some(OptionalPayload::MouseEventPayload(payload)),
                 })
             },
             Action::SearchInput(bytes) => Ok(ProtobufAction {
@@ -1428,6 +1402,51 @@ impl TryFrom<Position> for ProtobufPosition {
         Ok(ProtobufPosition {
             line: position.line.0 as i64,
             column: position.column.0 as i64,
+        })
+    }
+}
+
+impl TryFrom<ProtobufMouseEventPayload> for MouseEvent {
+    type Error = &'static str;
+    fn try_from(protobuf_event: ProtobufMouseEventPayload) -> Result<Self, &'static str> {
+        Ok(MouseEvent {
+            event_type: match protobuf_event.event_type as u32 {
+                0 => MouseEventType::Press,
+                1 => MouseEventType::Release,
+                _ => MouseEventType::Motion,
+            },
+            left: protobuf_event.left as bool,
+            right: protobuf_event.right as bool,
+            middle: protobuf_event.middle as bool,
+            wheel_up: protobuf_event.wheel_up as bool,
+            wheel_down: protobuf_event.wheel_down as bool,
+            shift: protobuf_event.shift as bool,
+            alt: protobuf_event.alt as bool,
+            ctrl: protobuf_event.ctrl as bool,
+            position: Position::new(protobuf_event.line as i32, protobuf_event.column as u16),
+        })
+    }
+}
+
+impl TryFrom<MouseEvent> for ProtobufMouseEventPayload {
+    type Error = &'static str;
+    fn try_from(event: MouseEvent) -> Result<Self, &'static str> {
+        Ok(ProtobufMouseEventPayload {
+            event_type: match event.event_type {
+                MouseEventType::Press => 0,
+                MouseEventType::Release => 1,
+                MouseEventType::Motion => 2,
+            } as u32,
+            left: event.left as bool,
+            right: event.right as bool,
+            middle: event.middle as bool,
+            wheel_up: event.wheel_up as bool,
+            wheel_down: event.wheel_down as bool,
+            shift: event.shift as bool,
+            alt: event.alt as bool,
+            ctrl: event.ctrl as bool,
+            line: event.position.line.0 as i64,
+            column: event.position.column.0 as i64,
         })
     }
 }

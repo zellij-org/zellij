@@ -14,6 +14,7 @@ use std::fmt::Debug;
 use std::rc::Rc;
 use std::time::{self, Instant};
 use zellij_utils::input::command::RunCommand;
+use zellij_utils::input::mouse::MouseEvent;
 use zellij_utils::pane_size::Offset;
 use zellij_utils::{
     data::{
@@ -627,6 +628,10 @@ impl Pane for TerminalPane {
 
     fn exclude_from_sync(&self) -> bool {
         self.exclude_from_sync
+    }
+
+    fn mouse_event(&self, event: &MouseEvent) -> Option<String> {
+        self.grid.mouse_event_signal(event)
     }
 
     fn mouse_left_click(&self, position: &Position, is_held: bool) -> Option<String> {

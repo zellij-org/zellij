@@ -17,6 +17,7 @@ use std::{
 use zellij_utils::{
     consts::{DEFAULT_SCROLL_BUFFER_SIZE, SCROLL_BUFFER_SIZE},
     data::{Palette, PaletteColor},
+    input::mouse::{MouseEvent, MouseEventType},
     pane_size::SizeInPixels,
     position::Position,
     vte,
@@ -1919,6 +1920,90 @@ impl Grid {
                 }
                 self.render_full_viewport(); // TODO: this could be optimized if it's a performance bottleneck
             }
+        }
+    }
+    fn mouse_buttons_value_x10(&self, event: &MouseEvent) -> u8 {
+        let mut value = 35; // Default to no buttons down.
+        if event.event_type == MouseEventType::Release {
+            return value;
+        }
+        if event.left {
+            value = 32;
+        } else if event.right {
+            value = 33;
+        } else if event.middle {
+            value = 34;
+        } else if event.wheel_up {
+            value = 68;
+        } else if event.wheel_down {
+            value = 69;
+        }
+        if event.event_type == MouseEventType::Motion {
+            value += 32;
+        }
+        if event.shift {
+            value |= 0x04;
+        }
+        if event.alt {
+            value |= 0x08;
+        }
+        if event.ctrl {
+            value |= 0x10;
+        }
+        value
+    }
+    fn mouse_buttons_value_sgr(&self, event: &MouseEvent) -> u8 {
+        let mut value = 3; // Default to no buttons down.
+        if event.left {
+            value = 0;
+        } else if event.right {
+            value = 1;
+        } else if event.middle {
+            value = 2;
+        } else if event.wheel_up {
+            value = 64;
+        } else if event.wheel_down {
+            value = 65;
+        }
+        if event.event_type == MouseEventType::Motion {
+            value += 32;
+        }
+        if event.shift {
+            value |= 0x04;
+        }
+        if event.alt {
+            value |= 0x08;
+        }
+        if event.ctrl {
+            value |= 0x10;
+        }
+        value
+    }
+    pub fn mouse_event_signal(&self, event: &MouseEvent) -> Option<String> {
+        match &self.mouse_mode {
+            MouseMode::NoEncoding | MouseMode::Utf8 => {
+                let mut msg: Vec<u8> = vec![27, b'[', b'M', self.mouse_buttons_value_x10(event)];
+                msg.append(&mut utf8_mouse_coordinates(
+                    // AZL: Why is event.position not staying 0-based
+                    // on both axes?
+                    event.position.column(),
+                    event.position.line() - 1,
+                ));
+                Some(String::from_utf8_lossy(&msg).into())
+            },
+            MouseMode::Sgr => Some(format!(
+                "\u{1b}[<{:?};{:?};{:?}{}",
+                self.mouse_buttons_value_sgr(event),
+                // AZL: Why is event.position not staying 0-based on
+                // both axes?
+                event.position.column(),
+                event.position.line() - 1,
+                match event.event_type {
+                    MouseEventType::Press => 'M',
+                    _ => 'm',
+                }
+            )),
+            _ => None,
         }
     }
     pub fn mouse_left_click_signal(&self, position: &Position, is_held: bool) -> Option<String> {

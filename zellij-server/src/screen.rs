@@ -14,6 +14,7 @@ use zellij_utils::data::{
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
 use zellij_utils::input::keybinds::Keybinds;
+use zellij_utils::input::mouse::MouseEvent;
 use zellij_utils::input::options::Clipboard;
 use zellij_utils::pane_size::{Size, SizeInPixels};
 use zellij_utils::{
@@ -258,9 +259,7 @@ pub enum ScreenInstruction {
     LeftMouseRelease(Position, ClientId),
     RightMouseRelease(Position, ClientId),
     MiddleMouseRelease(Position, ClientId),
-    MouseHoldLeft(Position, ClientId),
-    MouseHoldRight(Position, ClientId),
-    MouseHoldMiddle(Position, ClientId),
+    MouseEvent(MouseEvent, ClientId),
     Copy(ClientId),
     AddClient(
         ClientId,
@@ -488,9 +487,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::LeftMouseRelease(..) => ScreenContext::LeftMouseRelease,
             ScreenInstruction::RightMouseRelease(..) => ScreenContext::RightMouseRelease,
             ScreenInstruction::MiddleMouseRelease(..) => ScreenContext::MiddleMouseRelease,
-            ScreenInstruction::MouseHoldLeft(..) => ScreenContext::MouseHoldLeft,
-            ScreenInstruction::MouseHoldRight(..) => ScreenContext::MouseHoldRight,
-            ScreenInstruction::MouseHoldMiddle(..) => ScreenContext::MouseHoldMiddle,
+            ScreenInstruction::MouseEvent(..) => ScreenContext::MouseEvent,
             ScreenInstruction::Copy(..) => ScreenContext::Copy,
             ScreenInstruction::ToggleTab(..) => ScreenContext::ToggleTab,
             ScreenInstruction::AddClient(..) => ScreenContext::AddClient,
@@ -3329,19 +3326,9 @@ pub(crate) fn screen_thread_main(
                     .handle_middle_mouse_release(&point, client_id), ?);
                 screen.render(None)?;
             },
-            ScreenInstruction::MouseHoldLeft(point, client_id) => {
+            ScreenInstruction::MouseEvent(event, client_id) => {
                 active_tab!(screen, client_id, |tab: &mut Tab| tab
-                    .handle_mouse_hold_left(&point, client_id), ?);
-                screen.render(None)?;
-            },
-            ScreenInstruction::MouseHoldRight(point, client_id) => {
-                active_tab!(screen, client_id, |tab: &mut Tab| tab
-                    .handle_mouse_hold_right(&point, client_id), ?);
-                screen.render(None)?;
-            },
-            ScreenInstruction::MouseHoldMiddle(point, client_id) => {
-                active_tab!(screen, client_id, |tab: &mut Tab| tab
-                    .handle_mouse_hold_middle(&point, client_id), ?);
+                    .handle_mouse_event(&event, client_id), ?);
                 screen.render(None)?;
             },
             ScreenInstruction::Copy(client_id) => {
