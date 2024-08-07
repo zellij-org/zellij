@@ -11,9 +11,9 @@ pub use super::generated_api::api::{
         MovePayload, NewPluginArgs as ProtobufNewPluginArgs, NewTabsWithLayoutInfoPayload,
         OpenCommandPanePayload, OpenFilePayload, PaneId as ProtobufPaneId,
         PaneType as ProtobufPaneType, PluginCommand as ProtobufPluginCommand, PluginMessagePayload,
-        RequestPluginPermissionPayload, ResizePayload, RunCommandPayload, SetTimeoutPayload,
-        ShowPaneWithIdPayload, SubscribePayload, SwitchSessionPayload, SwitchTabToPayload,
-        UnsubscribePayload, WebRequestPayload,
+        RequestPluginPermissionPayload, RerunCommandPanePayload, ResizePayload, RunCommandPayload,
+        SetTimeoutPayload, ShowPaneWithIdPayload, SubscribePayload, SwitchSessionPayload,
+        SwitchTabToPayload, UnsubscribePayload, WebRequestPayload,
     },
     plugin_permission::PermissionType as ProtobufPermissionType,
     resize::ResizeAction as ProtobufResizeAction,
@@ -982,6 +982,12 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 },
                 _ => Err("Mismatched payload for OpenCommandPaneBackground"),
             },
+            Some(CommandName::RerunCommandPane) => match protobuf_plugin_command.payload {
+                Some(Payload::RerunCommandPanePayload(rerun_command_pane_payload)) => Ok(
+                    PluginCommand::RerunCommandPane(rerun_command_pane_payload.terminal_pane_id),
+                ),
+                _ => Err("Mismatched payload for RerunCommandPane"),
+            },
             None => Err("Unrecognized plugin command"),
         }
     }
@@ -1587,6 +1593,12 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     )),
                 })
             },
+            PluginCommand::RerunCommandPane(terminal_pane_id) => Ok(ProtobufPluginCommand {
+                name: CommandName::RerunCommandPane as i32,
+                payload: Some(Payload::RerunCommandPanePayload(RerunCommandPanePayload {
+                    terminal_pane_id,
+                })),
+            }),
         }
     }
 }

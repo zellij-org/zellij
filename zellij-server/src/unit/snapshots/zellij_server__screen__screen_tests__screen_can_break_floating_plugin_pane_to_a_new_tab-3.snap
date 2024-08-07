@@ -1,6 +1,6 @@
 ---
 source: zellij-server/src/./unit/screen_tests.rs
-assertion_line: 3502
+assertion_line: 3512
 expression: "format!(\"{}\", snapshot)"
 ---
 00 (C): ┌ Pane #1 ─────────────────────────────────────────────────────────────────────┐
@@ -10,7 +10,7 @@ expression: "format!(\"{}\", snapshot)"
 04 (C): │                                                                              │
 05 (C): │                                                                              │
 06 (C): │                                                                              │
-07 (C): │                     ┌ file:/path/to/fake/plugin ───────────┐                 │
+07 (C): │                     ┌ floating_plugin_pane_to_eject ───────┐                 │
 08 (C): │                     │Loading file:/path/to/fake/plugin     │                 │
 09 (C): │                     │                                      │                 │
 10 (C): │                     │                                      │                 │
