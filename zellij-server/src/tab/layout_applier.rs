@@ -399,7 +399,7 @@ impl<'a> LayoutApplier<'a> {
                         .with_context(err_context)?
                         .clone(),
                     pane_title,
-                    layout_name.clone().unwrap_or_default(),
+                    floating_pane_layout.name.clone().unwrap_or_default(),
                     self.sixel_image_store.clone(),
                     self.terminal_emulator_colors.clone(),
                     self.terminal_emulator_color_codes.clone(),

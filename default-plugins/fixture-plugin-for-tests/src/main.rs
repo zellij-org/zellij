@@ -359,6 +359,9 @@ impl ZellijPlugin for State {
                         BTreeMap::new(),
                     );
                 },
+                BareKey::Char('d') if key.has_modifiers(&[KeyModifier::Alt]) => {
+                    rerun_command_pane(1);
+                },
                 _ => {},
             },
             Event::CustomMessage(message, payload) => {
