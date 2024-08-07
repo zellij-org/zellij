@@ -87,96 +87,105 @@ pub struct SegmentStyle {
 // we need different colors from palette for the default theme
 // plus here we can add new sources in the future, like Theme
 // that can be defined in the config perhaps
-fn color_elements(palette: Palette, different_color_alternates: bool) -> ColoredElements {
-    let background = match palette.theme_hue {
-        ThemeHue::Dark => palette.black,
-        ThemeHue::Light => palette.white,
-    };
-    let foreground = match palette.theme_hue {
-        ThemeHue::Dark => palette.white,
-        ThemeHue::Light => palette.black,
-    };
+fn color_elements(palette: Styling, different_color_alternates: bool) -> ColoredElements {
+    let background = palette.text_unselected.background;
+    let foreground = palette.text_unselected.base;
     let alternate_background_color = if different_color_alternates {
-        match palette.theme_hue {
-            ThemeHue::Dark => palette.white,
-            ThemeHue::Light => palette.black,
-        }
+        palette.ribbon_unselected.base
     } else {
-        palette.fg
+        palette.ribbon_unselected.background
     };
-    match palette.source {
-        PaletteSource::Default => ColoredElements {
-            selected: SegmentStyle {
-                prefix_separator: style!(background, palette.green),
-                char_left_separator: style!(background, palette.green).bold(),
-                char_shortcut: style!(palette.red, palette.green).bold(),
-                char_right_separator: style!(background, palette.green).bold(),
-                styled_text: style!(background, palette.green).bold(),
-                suffix_separator: style!(palette.green, background).bold(),
-            },
-            unselected: SegmentStyle {
-                prefix_separator: style!(background, palette.fg),
-                char_left_separator: style!(background, palette.fg).bold(),
-                char_shortcut: style!(palette.red, palette.fg).bold(),
-                char_right_separator: style!(background, palette.fg).bold(),
-                styled_text: style!(background, palette.fg).bold(),
-                suffix_separator: style!(palette.fg, background),
-            },
-            unselected_alternate: SegmentStyle {
-                prefix_separator: style!(background, alternate_background_color),
-                char_left_separator: style!(background, alternate_background_color).bold(),
-                char_shortcut: style!(palette.red, alternate_background_color).bold(),
-                char_right_separator: style!(background, alternate_background_color).bold(),
-                styled_text: style!(background, alternate_background_color).bold(),
-                suffix_separator: style!(alternate_background_color, background),
-            },
-            disabled: SegmentStyle {
-                prefix_separator: style!(background, palette.fg),
-                char_left_separator: style!(background, palette.fg).dimmed().italic(),
-                char_shortcut: style!(background, palette.fg).dimmed().italic(),
-                char_right_separator: style!(background, palette.fg).dimmed().italic(),
-                styled_text: style!(background, palette.fg).dimmed().italic(),
-                suffix_separator: style!(palette.fg, background),
-            },
-            superkey_prefix: style!(foreground, background).bold(),
-            superkey_suffix_separator: style!(background, background),
+    ColoredElements {
+        selected: SegmentStyle {
+            prefix_separator: style!(background, palette.ribbon_selected.background),
+            char_left_separator: style!(
+                palette.ribbon_selected.base,
+                palette.ribbon_selected.background
+            )
+            .bold(),
+            char_shortcut: style!(
+                palette.ribbon_selected.emphasis_1,
+                palette.ribbon_selected.background
+            )
+            .bold(),
+            char_right_separator: style!(
+                palette.ribbon_selected.base,
+                palette.ribbon_selected.background
+            )
+            .bold(),
+            styled_text: style!(
+                palette.ribbon_selected.base,
+                palette.ribbon_selected.background
+            )
+            .bold(),
+            suffix_separator: style!(palette.ribbon_selected.background, background).bold(),
         },
-        PaletteSource::Xresources => ColoredElements {
-            selected: SegmentStyle {
-                prefix_separator: style!(background, palette.green),
-                char_left_separator: style!(palette.fg, palette.green).bold(),
-                char_shortcut: style!(palette.red, palette.green).bold(),
-                char_right_separator: style!(palette.fg, palette.green).bold(),
-                styled_text: style!(background, palette.green).bold(),
-                suffix_separator: style!(palette.green, background).bold(),
-            },
-            unselected: SegmentStyle {
-                prefix_separator: style!(background, palette.fg),
-                char_left_separator: style!(background, palette.fg).bold(),
-                char_shortcut: style!(palette.red, palette.fg).bold(),
-                char_right_separator: style!(background, palette.fg).bold(),
-                styled_text: style!(background, palette.fg).bold(),
-                suffix_separator: style!(palette.fg, background),
-            },
-            unselected_alternate: SegmentStyle {
-                prefix_separator: style!(background, alternate_background_color),
-                char_left_separator: style!(background, alternate_background_color).bold(),
-                char_shortcut: style!(palette.red, alternate_background_color).bold(),
-                char_right_separator: style!(background, alternate_background_color).bold(),
-                styled_text: style!(background, alternate_background_color).bold(),
-                suffix_separator: style!(alternate_background_color, background),
-            },
-            disabled: SegmentStyle {
-                prefix_separator: style!(background, palette.fg),
-                char_left_separator: style!(background, palette.fg).dimmed(),
-                char_shortcut: style!(background, palette.fg).dimmed(),
-                char_right_separator: style!(background, palette.fg).dimmed(),
-                styled_text: style!(background, palette.fg).dimmed(),
-                suffix_separator: style!(palette.fg, background),
-            },
-            superkey_prefix: style!(background, palette.fg).bold(),
-            superkey_suffix_separator: style!(palette.fg, background),
+        unselected: SegmentStyle {
+            prefix_separator: style!(background, palette.ribbon_unselected.background),
+            char_left_separator: style!(
+                palette.ribbon_unselected.base,
+                palette.ribbon_unselected.background
+            )
+            .bold(),
+            char_shortcut: style!(
+                palette.ribbon_unselected.emphasis_1,
+                palette.ribbon_unselected.background
+            )
+            .bold(),
+            char_right_separator: style!(
+                palette.ribbon_unselected.base,
+                palette.ribbon_unselected.background
+            )
+            .bold(),
+            styled_text: style!(
+                palette.ribbon_unselected.base,
+                palette.ribbon_unselected.background
+            )
+            .bold(),
+            suffix_separator: style!(palette.ribbon_unselected.background, background).bold(),
         },
+        unselected_alternate: SegmentStyle {
+            prefix_separator: style!(background, alternate_background_color),
+            char_left_separator: style!(background, alternate_background_color).bold(),
+            char_shortcut: style!(
+                palette.ribbon_unselected.emphasis_1,
+                alternate_background_color
+            )
+            .bold(),
+            char_right_separator: style!(background, alternate_background_color).bold(),
+            styled_text: style!(palette.ribbon_unselected.base, alternate_background_color).bold(),
+            suffix_separator: style!(alternate_background_color, background).bold(),
+        },
+        disabled: SegmentStyle {
+            prefix_separator: style!(background, palette.ribbon_unselected.background),
+            char_left_separator: style!(
+                palette.ribbon_unselected.base,
+                palette.ribbon_unselected.background
+            )
+            .dimmed()
+            .italic(),
+            char_shortcut: style!(
+                palette.ribbon_unselected.base,
+                palette.ribbon_unselected.background
+            )
+            .dimmed()
+            .italic(),
+            char_right_separator: style!(
+                palette.ribbon_unselected.base,
+                palette.ribbon_unselected.background
+            )
+            .dimmed()
+            .italic(),
+            styled_text: style!(
+                palette.ribbon_unselected.base,
+                palette.ribbon_unselected.background
+            )
+            .dimmed()
+            .italic(),
+            suffix_separator: style!(palette.ribbon_unselected.background, background),
+        },
+        superkey_prefix: style!(foreground, background).bold(),
+        superkey_suffix_separator: style!(background, background),
     }
 }
 
@@ -268,15 +277,12 @@ impl ZellijPlugin for State {
             return;
         }
 
+        //TODO: Switch to UI components here
         let active_tab = self.tabs.iter().find(|t| t.active);
         let first_line = first_line(&self.mode_info, active_tab, cols, separator);
         let second_line = self.second_line(cols);
 
-        let background = match self.mode_info.style.colors.theme_hue {
-            ThemeHue::Dark => self.mode_info.style.colors.black,
-            ThemeHue::Light => self.mode_info.style.colors.white,
-        };
-
+        let background = self.mode_info.style.colors.text_unselected.background;
         // [48;5;238m is white background, [0K is so that it fills the rest of the line
         // [m is background reset, [0K is so that it clears the rest of the line
         match background {
@@ -425,19 +431,16 @@ pub fn action_key_group(
 /// type.
 pub fn style_key_with_modifier(
     keyvec: &[KeyWithModifier],
-    palette: &Palette,
+    palette: &Styling,
     background: Option<PaletteColor>,
 ) -> Vec<ANSIString<'static>> {
     if keyvec.is_empty() {
         return vec![];
     }
 
-    let text_color = palette_match!(match palette.theme_hue {
-        ThemeHue::Dark => palette.white,
-        ThemeHue::Light => palette.black,
-    });
-    let green_color = palette_match!(palette.green);
-    let orange_color = palette_match!(palette.orange);
+    let text_color = palette_match!(palette.text_unselected.base);
+    let green_color = palette_match!(palette.text_unselected.emphasis_3);
+    let orange_color = palette_match!(palette.text_unselected.emphasis_1);
     let mut ret = vec![];
 
     let common_modifiers = get_common_modifiers(keyvec.iter().collect());
@@ -699,7 +702,7 @@ pub mod tests {
             KeyWithModifier::new(BareKey::Char('b')),
             KeyWithModifier::new(BareKey::Char('c')),
         ];
-        let palette = get_palette();
+        let palette = Styling::default();
 
         let ret = style_key_with_modifier(&keyvec, &palette, None);
         let ret = unstyle(&ANSIStrings(&ret));
@@ -715,7 +718,7 @@ pub mod tests {
             KeyWithModifier::new(BareKey::Char('k')),
             KeyWithModifier::new(BareKey::Char('l')),
         ];
-        let palette = get_palette();
+        let palette = Styling::default();
 
         let ret = style_key_with_modifier(&keyvec, &palette, None);
         let ret = unstyle(&ANSIStrings(&ret));
@@ -731,7 +734,7 @@ pub mod tests {
             KeyWithModifier::new(BareKey::Up),
             KeyWithModifier::new(BareKey::Right),
         ];
-        let palette = get_palette();
+        let palette = Styling::default();
 
         let ret = style_key_with_modifier(&keyvec, &palette, None);
         let ret = unstyle(&ANSIStrings(&ret));
@@ -745,7 +748,7 @@ pub mod tests {
             KeyWithModifier::new(BareKey::Left),
             KeyWithModifier::new(BareKey::Right),
         ];
-        let palette = get_palette();
+        let palette = Styling::default();
 
         let ret = style_key_with_modifier(&keyvec, &palette, None);
         let ret = unstyle(&ANSIStrings(&ret));
@@ -759,7 +762,7 @@ pub mod tests {
             KeyWithModifier::new(BareKey::Down),
             KeyWithModifier::new(BareKey::Up),
         ];
-        let palette = get_palette();
+        let palette = Styling::default();
 
         let ret = style_key_with_modifier(&keyvec, &palette, None);
         let ret = unstyle(&ANSIStrings(&ret));
@@ -775,7 +778,7 @@ pub mod tests {
             KeyWithModifier::new(BareKey::Char('c')).with_ctrl_modifier(),
             KeyWithModifier::new(BareKey::Char('d')).with_ctrl_modifier(),
         ];
-        let palette = get_palette();
+        let palette = Styling::default();
 
         let ret = style_key_with_modifier(&keyvec, &palette, None);
         let ret = unstyle(&ANSIStrings(&ret));
@@ -791,7 +794,7 @@ pub mod tests {
             KeyWithModifier::new(BareKey::Char('c')).with_alt_modifier(),
             KeyWithModifier::new(BareKey::Char('d')).with_alt_modifier(),
         ];
-        let palette = get_palette();
+        let palette = Styling::default();
 
         let ret = style_key_with_modifier(&keyvec, &palette, None);
         let ret = unstyle(&ANSIStrings(&ret));
@@ -807,7 +810,7 @@ pub mod tests {
             KeyWithModifier::new(BareKey::Up).with_alt_modifier(),
             KeyWithModifier::new(BareKey::Right).with_alt_modifier(),
         ];
-        let palette = get_palette();
+        let palette = Styling::default();
 
         let ret = style_key_with_modifier(&keyvec, &palette, None);
         let ret = unstyle(&ANSIStrings(&ret));
@@ -822,7 +825,7 @@ pub mod tests {
             KeyWithModifier::new(BareKey::Char('b')).with_ctrl_modifier(),
             KeyWithModifier::new(BareKey::Char('c')),
         ];
-        let palette = get_palette();
+        let palette = Styling::default();
 
         let ret = style_key_with_modifier(&keyvec, &palette, None);
         let ret = unstyle(&ANSIStrings(&ret));
@@ -845,7 +848,7 @@ pub mod tests {
             KeyWithModifier::new(BareKey::Tab),
             KeyWithModifier::new(BareKey::Esc),
         ];
-        let palette = get_palette();
+        let palette = Styling::default();
 
         let ret = style_key_with_modifier(&keyvec, &palette, None);
         let ret = unstyle(&ANSIStrings(&ret));
@@ -863,7 +866,7 @@ pub mod tests {
             KeyWithModifier::new(BareKey::Char(' ')).with_ctrl_modifier(),
             KeyWithModifier::new(BareKey::Tab).with_ctrl_modifier(),
         ];
-        let palette = get_palette();
+        let palette = Styling::default();
 
         let ret = style_key_with_modifier(&keyvec, &palette, None);
         let ret = unstyle(&ANSIStrings(&ret));
@@ -878,7 +881,7 @@ pub mod tests {
             KeyWithModifier::new(BareKey::Char(' ')).with_alt_modifier(),
             KeyWithModifier::new(BareKey::Tab).with_alt_modifier(),
         ];
-        let palette = get_palette();
+        let palette = Styling::default();
 
         let ret = style_key_with_modifier(&keyvec, &palette, None);
         let ret = unstyle(&ANSIStrings(&ret));
