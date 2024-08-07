@@ -1,0 +1,15 @@
+themes {
+    ao {
+        fg "#acc4e4"
+        bg "#2c5484"
+        black "#000000"
+        red "#000000"
+        green "#3c6eb4"
+        yellow "#ffba00"
+        blue "#45b1e8"
+        magenta "#d2a8ff"
+        cyan "#6eb0ff"
+        white "#f3f4f6"
+        orange "#e59728"
+    }
+}
