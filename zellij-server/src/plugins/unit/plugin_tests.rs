@@ -6873,5 +6873,9 @@ pub fn open_command_pane_background_plugin_command() {
             }
         })
         .clone();
-    assert_snapshot!(format!("{:#?}", new_tab_event));
+    // we do the replace below to avoid the randomness of the temporary folder in the snapshot
+    // while still testing it
+    assert_snapshot!(
+        format!("{:#?}", new_tab_event).replace(&format!("{:?}", temp_folder.path()), "\"CWD\"")
+    );
 }

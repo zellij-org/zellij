@@ -1177,6 +1177,9 @@ impl<'a> KdlLayoutParser<'a> {
         };
         if let Some(cwd_prefix) = &self.cwd_prefix(tab_cwd.as_ref())? {
             pane_layout.add_cwd_to_layout(&cwd_prefix);
+            for floating_pane in child_floating_panes.iter_mut() {
+                floating_pane.add_cwd_to_layout(&cwd_prefix);
+            }
         }
         Ok((is_focused, tab_name, pane_layout, child_floating_panes))
     }
@@ -1583,6 +1586,9 @@ impl<'a> KdlLayoutParser<'a> {
         }
         if let Some(cwd_prefix) = self.cwd_prefix(tab_cwd.as_ref())? {
             tab_layout.add_cwd_to_layout(&cwd_prefix);
+            for floating_pane in tab_template_floating_panes.iter_mut() {
+                floating_pane.add_cwd_to_layout(&cwd_prefix);
+            }
         }
         tab_layout.external_children_index = None;
         Ok((
