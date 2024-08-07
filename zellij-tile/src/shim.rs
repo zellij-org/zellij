@@ -849,6 +849,14 @@ pub fn reconfigure(new_config: String) {
     unsafe { host_run_plugin_command() };
 }
 
+/// Re-run command in pane
+pub fn rerun_command_pane(terminal_pane_id: u32) {
+    let plugin_command = PluginCommand::RerunCommandPane(terminal_pane_id);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 // Utility Functions
 
 #[allow(unused)]

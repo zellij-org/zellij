@@ -489,6 +489,9 @@ pub trait Pane {
     fn serialize(&self, _scrollback_lines_to_serialize: Option<usize>) -> Option<String> {
         None
     }
+    fn rerun(&mut self) -> Option<RunCommand> {
+        None
+    } // only relevant to terminal panes
 }
 
 #[derive(Clone, Debug)]
@@ -3919,6 +3922,33 @@ impl Tab {
             })
         {
             plugin_pane.request_permissions_from_user(permissions);
+        }
+    }
+    pub fn rerun_terminal_pane_with_id(&mut self, terminal_pane_id: u32) {
+        let pane_id = PaneId::Terminal(terminal_pane_id);
+        match self
+            .floating_panes
+            .get_mut(&pane_id)
+            .or_else(|| self.tiled_panes.get_pane_mut(pane_id))
+            .or_else(|| self.suppressed_panes.get_mut(&pane_id).map(|p| &mut p.1))
+        {
+            Some(pane_to_rerun) => {
+                if let Some(command_to_rerun) = pane_to_rerun.rerun() {
+                    self.pids_waiting_resize.insert(terminal_pane_id);
+                    let _ = self.senders.send_to_pty(PtyInstruction::ReRunCommandInPane(
+                        pane_id,
+                        command_to_rerun,
+                    ));
+                } else {
+                    log::error!("Pane is still running!")
+                }
+            },
+            None => {
+                log::error!(
+                    "Failed to find terminal pane with id {} to rerun in tab",
+                    terminal_pane_id
+                );
+            },
         }
     }
 }

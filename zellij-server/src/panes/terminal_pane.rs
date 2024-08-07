@@ -778,6 +778,18 @@ impl Pane for TerminalPane {
     fn serialize(&self, scrollback_lines_to_serialize: Option<usize>) -> Option<String> {
         self.grid.serialize(scrollback_lines_to_serialize)
     }
+    fn rerun(&mut self) -> Option<RunCommand> {
+        // if this is a command pane that has exited or is waiting to be rerun, will return its
+        // RunCommand, otherwise it is safe to assume this is not the right sort of pane or that it
+        // is not in the right sort of state
+        self.is_held.take().map(|(_, _, run_command)| {
+            self.is_held = None;
+            self.grid.reset_terminal_state();
+            self.set_should_render(true);
+            self.remove_banner();
+            run_command.clone()
+        })
+    }
 }
 
 impl TerminalPane {
