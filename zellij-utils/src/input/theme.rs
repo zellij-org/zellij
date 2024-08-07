@@ -67,6 +67,9 @@ impl Themes {
     pub fn get_theme(&self, theme_name: &str) -> Option<&Theme> {
         self.0.get(theme_name)
     }
+    pub fn inner(&self) -> &HashMap<String, Theme> {
+        &self.0
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]

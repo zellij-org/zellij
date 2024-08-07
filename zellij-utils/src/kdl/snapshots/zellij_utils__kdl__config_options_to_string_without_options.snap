@@ -1,0 +1,6 @@
+---
+source: zellij-utils/src/kdl/mod.rs
+assertion_line: 4196
+expression: fake_document.to_string()
+---
+

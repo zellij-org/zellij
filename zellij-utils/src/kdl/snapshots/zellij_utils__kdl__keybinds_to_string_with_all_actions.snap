@@ -1,0 +1,130 @@
+---
+source: zellij-utils/src/kdl/mod.rs
+assertion_line: 2731
+expression: serialized.to_string()
+---
+keybinds clear-defaults=true {
+    normal {
+        bind "Ctrl a" { Quit; }
+        bind "Ctrl Alt a" { Search "up"; }
+        bind "Alt a" { ToggleActiveSyncTab; }
+        bind "Ctrl b" { Write 102 111 111; }
+        bind "Ctrl Alt b" { SearchToggleOption "CaseSensitivity"; }
+        bind "Alt b" { NewPane "right"; }
+        bind "Ctrl c" { WriteChars "hi there!"; }
+        bind "Ctrl Alt c" { ToggleMouseMode; }
+        bind "Alt c" { TogglePaneEmbedOrFloating; }
+        bind "Ctrl d" { SwitchToMode "locked"; }
+        bind "Ctrl Alt d" { PreviousSwapLayout; }
+        bind "Alt d" { ToggleFloatingPanes; }
+        bind "Ctrl e" { Resize "Increase"; }
+        bind "Ctrl Alt e" { NextSwapLayout; }
+        bind "Alt e" { CloseFocus; }
+        bind "Ctrl f" { FocusNextPane; }
+        bind "Alt f" { PaneNameInput 0; }
+        bind "Ctrl g" { FocusPreviousPane; }
+        bind "Ctrl Alt g" { BreakPane; }
+        bind "Alt g" { UndoRenamePane; }
+        bind "Ctrl h" { SwitchFocus; }
+        bind "Ctrl Alt h" { BreakPaneRight; }
+        bind "Alt h" { NewTab; }
+        bind "Ctrl i" { MoveFocus "right"; }
+        bind "Ctrl Alt i" { BreakPaneLeft; }
+        bind "Alt i" { GoToNextTab; }
+        bind "Ctrl j" { MoveFocusOrTab "right"; }
+        bind "Ctrl Alt j" {
+            MessagePlugin "zellij:session-manager" {
+                name "message_name"
+                cwd "/tmp"
+                payload "message_payload"
+                launch_new true
+                skip_cache true
+                floating true
+                title "plugin_title"
+                config_key_1 "config_value_1"
+                config_key_2 "config_value_2"
+            }
+        }
+        bind "Alt j" { GoToPreviousTab; }
+        bind "Ctrl k" { MovePane "right"; }
+        bind "Alt k" { CloseTab; }
+        bind "Ctrl l" { MovePaneBackwards; }
+        bind "Alt l" { GoToTab 1; }
+        bind "Ctrl m" { Resize "Decrease down"; }
+        bind "Alt m" { ToggleTab; }
+        bind "Ctrl n" { DumpScreen "/tmp/dumped"; }
+        bind "Alt n" { TabNameInput 0; }
+        bind "Ctrl o" { DumpLayout; }
+        bind "Alt o" { UndoRenameTab; }
+        bind "Ctrl p" { EditScrollback; }
+        bind "Alt p" { MoveTab "right"; }
+        bind "Ctrl q" { ScrollUp; }
+        bind "Alt q" {
+            Run "ls" "-l" {
+                cwd "/tmp"
+                name "my cool pane"
+            }
+        }
+        bind "Ctrl r" { ScrollDown; }
+        bind "Alt r" {
+            Run "ls" "-l" {
+                floating true
+                cwd "/tmp"
+                name "my cool pane"
+            }
+        }
+        bind "Ctrl s" { ScrollToBottom; }
+        bind "Alt s" {
+            Run "ls" "-l" {
+                in_place true
+                cwd "/tmp"
+                name "my cool pane"
+            }
+        }
+        bind "Ctrl t" { ScrollToTop; }
+        bind "Alt t" { Detach; }
+        bind "Ctrl u" { PageScrollUp; }
+        bind "Alt u" {
+            LaunchOrFocusPlugin "zellij:session-manager" {
+                floating true
+                move_to_focused_tab true
+                skip_plugin_cache true
+                config_key_1 "config_value_1"
+                config_key_2 "config_value_2"
+            }
+        }
+        bind "Ctrl v" { PageScrollDown; }
+        bind "Alt v" {
+            LaunchOrFocusPlugin "zellij:session-manager" {
+                move_to_focused_tab true
+                in_place true
+                skip_plugin_cache true
+                config_key_1 "config_value_1"
+                config_key_2 "config_value_2"
+            }
+        }
+        bind "Ctrl w" { HalfPageScrollUp; }
+        bind "Alt w" {
+            LaunchPlugin "zellij:session-manager" {
+                floating true
+                skip_plugin_cache true
+                config_key_1 "config_value_1"
+                config_key_2 "config_value_2"
+            }
+        }
+        bind "Ctrl x" { HalfPageScrollDown; }
+        bind "Alt x" {
+            LaunchPlugin "zellij:session-manager" {
+                in_place true
+                skip_plugin_cache true
+                config_key_1 "config_value_1"
+                config_key_2 "config_value_2"
+            }
+        }
+        bind "Ctrl y" { ToggleFocusFullscreen; }
+        bind "Alt y" { Copy; }
+        bind "Ctrl z" { TogglePaneFrames; }
+        bind "Alt z" { SearchInput 0; }
+    }
+}
+

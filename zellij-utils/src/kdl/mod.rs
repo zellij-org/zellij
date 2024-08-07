@@ -1,25 +1,25 @@
 mod kdl_layout_parser;
 use crate::data::{
-    Direction, FloatingPaneCoordinates, InputMode, KeyWithModifier, LayoutInfo, Palette,
+    Direction, FloatingPaneCoordinates, InputMode, KeyWithModifier, BareKey, LayoutInfo, Palette,
     PaletteColor, PaneInfo, PaneManifest, PermissionType, Resize, SessionInfo, TabInfo,
 };
 use crate::envs::EnvironmentVariables;
 use crate::home::{find_default_config_dir, get_layout_dir};
 use crate::input::config::{Config, ConfigError, KdlError};
 use crate::input::keybinds::Keybinds;
-use crate::input::layout::{Layout, RunPlugin, RunPluginOrAlias};
+use crate::input::layout::{Layout, RunPlugin, RunPluginOrAlias, SplitSize, PluginUserConfiguration};
 use crate::input::options::{Clipboard, OnForceClose, Options};
 use crate::input::permission::{GrantedPermission, PermissionCache};
 use crate::input::plugins::PluginAliases;
 use crate::input::theme::{FrameConfig, Theme, Themes, UiConfig};
 use kdl_layout_parser::KdlLayoutParser;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet, BTreeSet};
 use strum::IntoEnumIterator;
 use uuid::Uuid;
 
 use miette::NamedSource;
 
-use kdl::{KdlDocument, KdlEntry, KdlNode};
+use kdl::{KdlDocument, KdlEntry, KdlNode, KdlValue};
 
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -320,6 +320,7 @@ macro_rules! keys_from_kdl {
         kdl_string_arguments!($kdl_node)
             .iter()
             .map(|k| {
+                eprintln!("k: {:?}", k);
                 KeyWithModifier::from_str(k).map_err(|_| {
                     ConfigError::new_kdl_error(
                         format!("Invalid key: '{}'", k),
@@ -548,6 +549,527 @@ impl Action {
             )),
         }
     }
+    pub fn to_kdl(&self) -> Option<KdlNode> {
+        match self {
+            Action::Quit => Some(KdlNode::new("Quit")),
+            Action::Write(_key, bytes, _is_kitty) => {
+                let mut node = KdlNode::new("Write");
+                for byte in bytes {
+                    node.push(KdlValue::Base10(*byte as i64));
+                }
+                Some(node)
+            }
+            Action::WriteChars(string) => {
+                let mut node = KdlNode::new("WriteChars");
+                node.push(string.clone());
+                Some(node)
+            }
+            Action::SwitchToMode(input_mode) => {
+                let mut node = KdlNode::new("SwitchToMode");
+                node.push(format!("{:?}", input_mode).to_lowercase());
+                Some(node)
+            }
+            Action::Resize(resize, resize_direction) => {
+                let mut node = KdlNode::new("Resize");
+                let resize = match resize {
+                    Resize::Increase => "Increase",
+                    Resize::Decrease => "Decrease",
+                };
+                if let Some(resize_direction) = resize_direction {
+                    let resize_direction = match resize_direction {
+                        Direction::Left => "left",
+                        Direction::Right => "right",
+                        Direction::Up => "up",
+                        Direction::Down => "down",
+                    };
+                    node.push(format!("{} {}", resize, resize_direction));
+                } else {
+                    node.push(format!("{}", resize));
+                }
+                Some(node)
+            }
+            Action::FocusNextPane => Some(KdlNode::new("FocusNextPane")),
+            Action::FocusPreviousPane => Some(KdlNode::new("FocusPreviousPane")),
+            Action::SwitchFocus => Some(KdlNode::new("SwitchFocus")),
+            Action::MoveFocus(direction) => {
+                let mut node = KdlNode::new("MoveFocus");
+                let direction = match direction {
+                    Direction::Left => "left",
+                    Direction::Right => "right",
+                    Direction::Up => "up",
+                    Direction::Down => "down",
+                };
+                node.push(direction);
+                Some(node)
+            }
+            Action::MoveFocusOrTab(direction) => {
+                let mut node = KdlNode::new("MoveFocusOrTab");
+                let direction = match direction {
+                    Direction::Left => "left",
+                    Direction::Right => "right",
+                    Direction::Up => "up",
+                    Direction::Down => "down",
+                };
+                node.push(direction);
+                Some(node)
+            }
+            Action::MovePane(direction) => {
+                let mut node = KdlNode::new("MovePane");
+                if let Some(direction) = direction {
+                    let direction = match direction {
+                        Direction::Left => "left",
+                        Direction::Right => "right",
+                        Direction::Up => "up",
+                        Direction::Down => "down",
+                    };
+                    node.push(direction);
+                }
+                Some(node)
+            }
+            Action::MovePaneBackwards => Some(KdlNode::new("MovePaneBackwards")),
+            Action::DumpScreen(file, _) => {
+                let mut node = KdlNode::new("DumpScreen");
+                node.push(file.clone());
+                Some(node)
+            }
+            Action::DumpLayout => Some(KdlNode::new("DumpLayout")),
+            Action::EditScrollback => Some(KdlNode::new("EditScrollback")),
+            Action::ScrollUp => Some(KdlNode::new("ScrollUp")),
+            Action::ScrollDown => Some(KdlNode::new("ScrollDown")),
+            Action::ScrollToBottom => Some(KdlNode::new("ScrollToBottom")),
+            Action::ScrollToTop => Some(KdlNode::new("ScrollToTop")),
+            Action::PageScrollUp => Some(KdlNode::new("PageScrollUp")),
+            Action::PageScrollDown => Some(KdlNode::new("PageScrollDown")),
+            Action::HalfPageScrollUp => Some(KdlNode::new("HalfPageScrollUp")),
+            Action::HalfPageScrollDown => Some(KdlNode::new("HalfPageScrollDown")),
+            Action::ToggleFocusFullscreen => Some(KdlNode::new("ToggleFocusFullscreen")),
+            Action::TogglePaneFrames => Some(KdlNode::new("TogglePaneFrames")),
+            Action::ToggleActiveSyncTab => Some(KdlNode::new("ToggleActiveSyncTab")),
+            Action::NewPane(direction, _, _) => {
+                let mut node = KdlNode::new("NewPane");
+                if let Some(direction) = direction {
+                    let direction = match direction {
+                        Direction::Left => "left",
+                        Direction::Right => "right",
+                        Direction::Up => "up",
+                        Direction::Down => "down",
+                    };
+                    node.push(direction);
+                }
+                Some(node)
+            }
+            Action::TogglePaneEmbedOrFloating => Some(KdlNode::new("TogglePaneEmbedOrFloating")),
+            Action::ToggleFloatingPanes => Some(KdlNode::new("ToggleFloatingPanes")),
+            Action::CloseFocus => Some(KdlNode::new("CloseFocus")),
+            Action::PaneNameInput(bytes) => {
+                let mut node = KdlNode::new("PaneNameInput");
+                for byte in bytes {
+                    node.push(KdlValue::Base10(*byte as i64));
+                }
+                Some(node)
+            }
+            Action::UndoRenamePane => Some(KdlNode::new("UndoRenamePane")),
+            Action::NewTab(_, _, _, _, name) => {
+                log::warn!("Converting new tab action without arguments, original action saved to .bak.kdl file");
+                let mut node = KdlNode::new("NewTab");
+                if let Some(name) = name {
+                    let mut children = KdlDocument::new();
+                    let mut name_node = KdlNode::new("name");
+                    name_node.push(name.clone());
+                    children.nodes_mut().push(name_node);
+                    node.set_children(children);
+                }
+                Some(node)
+            }
+            Action::GoToNextTab => Some(KdlNode::new("GoToNextTab")),
+            Action::GoToPreviousTab => Some(KdlNode::new("GoToPreviousTab")),
+            Action::CloseTab => Some(KdlNode::new("CloseTab")),
+            Action::GoToTab(index) => {
+                let mut node = KdlNode::new("GoToTab");
+                node.push(KdlValue::Base10(*index as i64));
+                Some(node)
+            }
+            Action::ToggleTab => Some(KdlNode::new("ToggleTab")),
+            Action::TabNameInput(bytes) => {
+                let mut node = KdlNode::new("TabNameInput");
+                for byte in bytes {
+                    node.push(KdlValue::Base10(*byte as i64));
+                }
+                Some(node)
+            }
+            Action::UndoRenameTab => Some(KdlNode::new("UndoRenameTab")),
+            Action::MoveTab(direction) => {
+                let mut node = KdlNode::new("MoveTab");
+                let direction = match direction {
+                    Direction::Left => "left",
+                    Direction::Right => "right",
+                    Direction::Up => "up",
+                    Direction::Down => "down",
+                };
+                node.push(direction);
+                Some(node)
+            }
+            Action::NewTiledPane(direction, run_command_action, name) => {
+                let mut node = KdlNode::new("Run");
+                let mut node_children = KdlDocument::new();
+                if let Some(run_command_action) = run_command_action {
+                    node.push(run_command_action.command.display().to_string());
+                    for arg in &run_command_action.args {
+                        node.push(arg.clone());
+                    }
+                    if let Some(cwd) = &run_command_action.cwd {
+                        let mut cwd_node = KdlNode::new("cwd");
+                        cwd_node.push(cwd.display().to_string());
+                        node_children.nodes_mut().push(cwd_node);
+                    }
+                    if run_command_action.hold_on_start {
+                        let mut hos_node = KdlNode::new("hold_on_start");
+                        hos_node.push(KdlValue::Bool(true));
+                        node_children.nodes_mut().push(hos_node);
+                    }
+                    if !run_command_action.hold_on_close {
+                        let mut hoc_node = KdlNode::new("hold_on_close");
+                        hoc_node.push(KdlValue::Bool(false));
+                        node_children.nodes_mut().push(hoc_node);
+                    }
+                }
+                if let Some(name) = name {
+                    let mut name_node = KdlNode::new("name");
+                    name_node.push(name.clone());
+                    node_children.nodes_mut().push(name_node);
+                }
+                if let Some(direction) = direction {
+                    let mut direction_node = KdlNode::new("direction");
+                    let direction = match direction {
+                        Direction::Left => "left",
+                        Direction::Right => "right",
+                        Direction::Up => "up",
+                        Direction::Down => "down",
+                    };
+                    direction_node.push(direction);
+                    node_children.nodes_mut().push(direction_node);
+                }
+                if !node_children.nodes().is_empty() {
+                    node.set_children(node_children);
+                }
+                Some(node)
+            }
+            Action::NewFloatingPane(run_command_action, name, floating_pane_coordinates) => {
+                let mut node = KdlNode::new("Run");
+                let mut node_children = KdlDocument::new();
+                let mut floating_pane = KdlNode::new("floating");
+                floating_pane.push(KdlValue::Bool(true));
+                node_children.nodes_mut().push(floating_pane);
+                if let Some(run_command_action) = run_command_action {
+                    node.push(run_command_action.command.display().to_string());
+                    for arg in &run_command_action.args {
+                        node.push(arg.clone());
+                    }
+                    if let Some(cwd) = &run_command_action.cwd {
+                        let mut cwd_node = KdlNode::new("cwd");
+                        cwd_node.push(cwd.display().to_string());
+                        node_children.nodes_mut().push(cwd_node);
+                    }
+                    if run_command_action.hold_on_start {
+                        let mut hos_node = KdlNode::new("hold_on_start");
+                        hos_node.push(KdlValue::Bool(true));
+                        node_children.nodes_mut().push(hos_node);
+                    }
+                    if !run_command_action.hold_on_close {
+                        let mut hoc_node = KdlNode::new("hold_on_close");
+                        hoc_node.push(KdlValue::Bool(false));
+                        node_children.nodes_mut().push(hoc_node);
+                    }
+                }
+                if let Some(floating_pane_coordinates) = floating_pane_coordinates {
+                    if let Some(x) = floating_pane_coordinates.x {
+                        let mut x_node = KdlNode::new("x");
+                        match x {
+                            SplitSize::Percent(x) => {
+                                x_node.push(format!("{}%", x));
+                            }
+                            SplitSize::Fixed(x) => {
+                                x_node.push(KdlValue::Base10(x as i64));
+                            }
+                        };
+                        node_children.nodes_mut().push(x_node);
+                    }
+                    if let Some(y) = floating_pane_coordinates.y {
+                        let mut y_node = KdlNode::new("y");
+                        match y {
+                            SplitSize::Percent(y) => {
+                                y_node.push(format!("{}%", y));
+                            }
+                            SplitSize::Fixed(y) => {
+                                y_node.push(KdlValue::Base10(y as i64));
+                            }
+                        };
+                        node_children.nodes_mut().push(y_node);
+                    }
+                    if let Some(width) = floating_pane_coordinates.width {
+                        let mut width_node = KdlNode::new("width");
+                        match width {
+                            SplitSize::Percent(width) => {
+                                width_node.push(format!("{}%", width));
+                            }
+                            SplitSize::Fixed(width) => {
+                                width_node.push(KdlValue::Base10(width as i64));
+                            }
+                        };
+                        node_children.nodes_mut().push(width_node);
+                    }
+                    if let Some(height) = floating_pane_coordinates.height {
+                        let mut height_node = KdlNode::new("height");
+                        match height {
+                            SplitSize::Percent(height) => {
+                                height_node.push(format!("{}%", height));
+                            }
+                            SplitSize::Fixed(height) => {
+                                height_node.push(KdlValue::Base10(height as i64));
+                            }
+                        };
+                        node_children.nodes_mut().push(height_node);
+                    }
+                }
+                if let Some(name) = name {
+                    let mut name_node = KdlNode::new("name");
+                    name_node.push(name.clone());
+                    node_children.nodes_mut().push(name_node);
+                }
+                if !node_children.nodes().is_empty() {
+                    node.set_children(node_children);
+                }
+                Some(node)
+            }
+            Action::NewInPlacePane(run_command_action, name) => {
+                let mut node = KdlNode::new("Run");
+                let mut node_children = KdlDocument::new();
+                if let Some(run_command_action) = run_command_action {
+                    node.push(run_command_action.command.display().to_string());
+                    for arg in &run_command_action.args {
+                        node.push(arg.clone());
+                    }
+                    let mut in_place_node = KdlNode::new("in_place");
+                    in_place_node.push(KdlValue::Bool(true));
+                    node_children.nodes_mut().push(in_place_node);
+                    if let Some(cwd) = &run_command_action.cwd {
+                        let mut cwd_node = KdlNode::new("cwd");
+                        cwd_node.push(cwd.display().to_string());
+                        node_children.nodes_mut().push(cwd_node);
+                    }
+                    if run_command_action.hold_on_start {
+                        let mut hos_node = KdlNode::new("hold_on_start");
+                        hos_node.push(KdlValue::Bool(true));
+                        node_children.nodes_mut().push(hos_node);
+                    }
+                    if !run_command_action.hold_on_close {
+                        let mut hoc_node = KdlNode::new("hold_on_close");
+                        hoc_node.push(KdlValue::Bool(false));
+                        node_children.nodes_mut().push(hoc_node);
+                    }
+                }
+                if let Some(name) = name {
+                    let mut name_node = KdlNode::new("name");
+                    name_node.push(name.clone());
+                    node_children.nodes_mut().push(name_node);
+                }
+                if !node_children.nodes().is_empty() {
+                    node.set_children(node_children);
+                }
+                Some(node)
+            }
+            Action::Detach => Some(KdlNode::new("Detach")),
+            Action::LaunchOrFocusPlugin(
+                run_plugin_or_alias,
+                should_float,
+                move_to_focused_tab,
+                should_open_in_place,
+                skip_plugin_cache
+            ) => {
+                let mut node = KdlNode::new("LaunchOrFocusPlugin");
+                let mut node_children = KdlDocument::new();
+                let location = run_plugin_or_alias.location_string();
+                node.push(location);
+                if *should_float {
+                    let mut should_float_node = KdlNode::new("floating");
+                    should_float_node.push(KdlValue::Bool(true));
+                    node_children.nodes_mut().push(should_float_node);
+                }
+                if *move_to_focused_tab {
+                    let mut move_to_focused_tab_node = KdlNode::new("move_to_focused_tab");
+                    move_to_focused_tab_node.push(KdlValue::Bool(true));
+                    node_children.nodes_mut().push(move_to_focused_tab_node);
+                }
+                if *should_open_in_place {
+                    let mut should_open_in_place_node = KdlNode::new("in_place");
+                    should_open_in_place_node.push(KdlValue::Bool(true));
+                    node_children.nodes_mut().push(should_open_in_place_node);
+                }
+                if *skip_plugin_cache {
+                    let mut skip_plugin_cache_node = KdlNode::new("skip_plugin_cache");
+                    skip_plugin_cache_node.push(KdlValue::Bool(true));
+                    node_children.nodes_mut().push(skip_plugin_cache_node);
+                }
+                if let Some(configuration) = run_plugin_or_alias.get_configuration() {
+                    for (config_key, config_value) in configuration.inner().iter() {
+                        let mut node = KdlNode::new(config_key.clone());
+                        node.push(config_value.clone());
+                        node_children.nodes_mut().push(node);
+                    }
+                }
+                if !node_children.nodes().is_empty() {
+                    node.set_children(node_children);
+                }
+                Some(node)
+            }
+            Action::LaunchPlugin(
+                run_plugin_or_alias,
+                should_float,
+                should_open_in_place,
+                skip_plugin_cache,
+                cwd,
+            ) => {
+                let mut node = KdlNode::new("LaunchPlugin");
+                let mut node_children = KdlDocument::new();
+                let location = run_plugin_or_alias.location_string();
+                node.push(location);
+                if *should_float {
+                    let mut should_float_node = KdlNode::new("floating");
+                    should_float_node.push(KdlValue::Bool(true));
+                    node_children.nodes_mut().push(should_float_node);
+                }
+                if *should_open_in_place {
+                    let mut should_open_in_place_node = KdlNode::new("in_place");
+                    should_open_in_place_node.push(KdlValue::Bool(true));
+                    node_children.nodes_mut().push(should_open_in_place_node);
+                }
+                if *skip_plugin_cache {
+                    let mut skip_plugin_cache_node = KdlNode::new("skip_plugin_cache");
+                    skip_plugin_cache_node.push(KdlValue::Bool(true));
+                    node_children.nodes_mut().push(skip_plugin_cache_node);
+                }
+                if let Some(cwd) = &cwd {
+                    let mut cwd_node = KdlNode::new("cwd");
+                    cwd_node.push(cwd.display().to_string());
+                    node_children.nodes_mut().push(cwd_node);
+                } else if let Some(cwd) = run_plugin_or_alias.get_initial_cwd() {
+                    let mut cwd_node = KdlNode::new("cwd");
+                    cwd_node.push(cwd.display().to_string());
+                    node_children.nodes_mut().push(cwd_node);
+                }
+                if let Some(configuration) = run_plugin_or_alias.get_configuration() {
+                    for (config_key, config_value) in configuration.inner().iter() {
+                        let mut node = KdlNode::new(config_key.clone());
+                        node.push(config_value.clone());
+                        node_children.nodes_mut().push(node);
+                    }
+                }
+                if !node_children.nodes().is_empty() {
+                    node.set_children(node_children);
+                }
+                Some(node)
+            }
+            Action::Copy => Some(KdlNode::new("Copy")),
+            Action::SearchInput(bytes) => {
+                let mut node = KdlNode::new("SearchInput");
+                for byte in bytes {
+                    node.push(KdlValue::Base10(*byte as i64));
+                }
+                Some(node)
+            }
+            Action::Search(search_direction) => {
+                let mut node = KdlNode::new("Search");
+                let direction = match search_direction {
+                    SearchDirection::Down => "down",
+                    SearchDirection::Up => "up",
+                };
+                node.push(direction);
+                Some(node)
+            }
+            Action::SearchToggleOption(search_toggle_option) => {
+                let mut node = KdlNode::new("SearchToggleOption");
+                node.push(format!("{:?}", search_toggle_option));
+                Some(node)
+            }
+            Action::ToggleMouseMode => Some(KdlNode::new("ToggleMouseMode")),
+            Action::PreviousSwapLayout => Some(KdlNode::new("PreviousSwapLayout")),
+            Action::NextSwapLayout => Some(KdlNode::new("NextSwapLayout")),
+            Action::BreakPane => Some(KdlNode::new("BreakPane")),
+            Action::BreakPaneRight => Some(KdlNode::new("BreakPaneRight")),
+            Action::BreakPaneLeft => Some(KdlNode::new("BreakPaneLeft")),
+            Action::KeybindPipe {
+                name,
+                payload,
+                args,
+                plugin,
+                configuration,
+                launch_new,
+                skip_cache,
+                floating,
+                in_place,
+                cwd,
+                pane_title
+            } => {
+                let mut node = KdlNode::new("MessagePlugin");
+                let mut node_children = KdlDocument::new();
+                if let Some(plugin) = plugin {
+                    node.push(plugin.clone());
+                }
+                if let Some(name) = name {
+                    let mut name_node = KdlNode::new("name");
+                    name_node.push(name.clone());
+                    node_children.nodes_mut().push(name_node);
+                }
+                if let Some(cwd) = cwd {
+                    let mut cwd_node = KdlNode::new("cwd");
+                    cwd_node.push(cwd.display().to_string());
+                    node_children.nodes_mut().push(cwd_node);
+                }
+                if let Some(payload) = payload {
+                    let mut payload_node = KdlNode::new("payload");
+                    payload_node.push(payload.clone());
+                    node_children.nodes_mut().push(payload_node);
+                }
+                if *launch_new {
+                    let mut launch_new_node = KdlNode::new("launch_new");
+                    launch_new_node.push(KdlValue::Bool(true));
+                    node_children.nodes_mut().push(launch_new_node);
+                }
+                if *skip_cache {
+                    let mut skip_cache_node = KdlNode::new("skip_cache");
+                    skip_cache_node.push(KdlValue::Bool(true));
+                    node_children.nodes_mut().push(skip_cache_node);
+                }
+                if let Some(floating) = floating {
+                    let mut floating_node = KdlNode::new("floating");
+                    floating_node.push(KdlValue::Bool(*floating));
+                    node_children.nodes_mut().push(floating_node);
+                }
+                if let Some(title) = pane_title {
+                    let mut title_node = KdlNode::new("title");
+                    title_node.push(title.clone());
+                    node_children.nodes_mut().push(title_node);
+                }
+                if let Some(configuration) = configuration {
+                    // we do this because the constructor removes the relevant config fields from
+                    // above, otherwise we would have duplicates
+                    let configuration = PluginUserConfiguration::new(configuration.clone());
+                    let configuration = configuration.inner();
+                    for (config_key, config_value) in configuration.iter() {
+                        let mut node = KdlNode::new(config_key.clone());
+                        node.push(config_value.clone());
+                        node_children.nodes_mut().push(node);
+                    }
+                }
+                if !node_children.nodes().is_empty() {
+                    node.set_children(node_children);
+                }
+                Some(node)
+
+            }
+            _ => None
+        }
+    }
 }
 
 impl TryFrom<(&str, &KdlDocument)> for PaletteColor {
@@ -664,6 +1186,23 @@ impl TryFrom<(&str, &KdlDocument)> for PaletteColor {
                 color.span().len(),
             ))
         }
+    }
+}
+
+impl PaletteColor {
+    pub fn to_kdl(&self, color_name: &str) -> KdlNode {
+        let mut node = KdlNode::new(color_name);
+        match self {
+            PaletteColor::Rgb((r, g, b)) => {
+                node.push(KdlValue::Base10(*r as i64));
+                node.push(KdlValue::Base10(*g as i64));
+                node.push(KdlValue::Base10(*b as i64));
+            }
+            PaletteColor::EightBit(color_index) => {
+                node.push(KdlValue::Base10(*color_index as i64));
+            }
+        }
+        node
     }
 }
 
@@ -1654,6 +2193,868 @@ impl Options {
         let document: KdlDocument = stringified_keybindings.parse()?;
         Options::from_kdl(&document)
     }
+    fn simplified_ui_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!("{}\n{}\n{}\n{}\n{}\n{}",
+            " ",
+            "// Use a simplified UI without special fonts (arrow glyphs)",
+            "// Options:",
+            "//   - true",
+            "//   - false (Default)",
+            "// ",
+        );
+
+        let create_node = |node_value: bool| -> KdlNode {
+            let mut node = KdlNode::new("simplified_ui");
+            node.push(KdlValue::Bool(node_value));
+            node
+        };
+        if let Some(simplified_ui) = self.simplified_ui {
+            let mut node = create_node(simplified_ui);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(true);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
+    fn theme_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!("{}\n{}\n{}\n{}",
+            " ",
+            "// Choose the theme that is specified in the themes section.",
+            "// Default: default",
+            "// ",
+        );
+
+        let create_node = |node_value: &str| -> KdlNode {
+            let mut node = KdlNode::new("theme");
+            node.push(node_value.to_owned());
+            node
+        };
+        if let Some(theme) = &self.theme {
+            let mut node = create_node(theme);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node("dracula");
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
+    fn default_mode_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!("{}\n{}\n{}\n{}",
+            " ",
+            "// Choose the base input mode of zellij.",
+            "// Default: normal",
+            "// "
+        );
+
+        let create_node = |default_mode: &InputMode| -> KdlNode {
+            let mut node = KdlNode::new("default_mode");
+            node.push(format!("{:?}", default_mode).to_lowercase());
+            node
+        };
+        if let Some(default_mode) = &self.default_mode {
+            let mut node = create_node(default_mode);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(&InputMode::Locked);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
+    fn default_shell_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!("{}\n{}\n{}\n{}",
+            " ",
+            "// Choose the path to the default shell that zellij will use for opening new panes",
+            "// Default: $SHELL",
+            "// ",
+        );
+
+        let create_node = |node_value: &str| -> KdlNode {
+            let mut node = KdlNode::new("default_shell");
+            node.push(node_value.to_owned());
+            node
+        };
+        if let Some(default_shell) = &self.default_shell {
+            let mut node = create_node(&default_shell.display().to_string());
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node("fish");
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
+    fn default_cwd_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!("{}\n{}\n{}",
+            " ",
+            "// Choose the path to override cwd that zellij will use for opening new panes",
+            "// ",
+        );
+
+        let create_node = |node_value: &str| -> KdlNode {
+            let mut node = KdlNode::new("default_cwd");
+            node.push(node_value.to_owned());
+            node
+        };
+        if let Some(default_cwd) = &self.default_cwd{
+            let mut node = create_node(&default_cwd.display().to_string());
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node("/tmp");
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
+    fn default_layout_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!("{}\n{}\n{}\n{}",
+            " ",
+            "// The name of the default layout to load on startup",
+            "// Default: \"default\"",
+            "// ",
+        );
+
+        let create_node = |node_value: &str| -> KdlNode {
+            let mut node = KdlNode::new("default_layout");
+            node.push(node_value.to_owned());
+            node
+        };
+        if let Some(default_layout) = &self.default_layout {
+            let mut node = create_node(&default_layout.display().to_string());
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node("compact");
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
+    fn layout_dir_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!("{}\n{}\n{}",
+            " ",
+            "// The folder in which Zellij will look for layouts",
+            "// ",
+        );
+
+        let create_node = |node_value: &str| -> KdlNode {
+            let mut node = KdlNode::new("layout_dir");
+            node.push(node_value.to_owned());
+            node
+        };
+        if let Some(layout_dir) = &self.layout_dir {
+            let mut node = create_node(&layout_dir.display().to_string());
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node("/tmp");
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
+    fn theme_dir_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!("{}\n{}\n{}",
+            " ",
+            "// The folder in which Zellij will look for themes",
+            "// ",
+        );
+
+        let create_node = |node_value: &str| -> KdlNode {
+            let mut node = KdlNode::new("theme_dir");
+            node.push(node_value.to_owned());
+            node
+        };
+        if let Some(theme_dir) = &self.theme_dir {
+            let mut node = create_node(&theme_dir.display().to_string());
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node("/tmp");
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
+    fn mouse_mode_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!("{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+            " ",
+            "// Toggle enabling the mouse mode.",
+            "// On certain configurations, or terminals this could",
+            "// potentially interfere with copying text.",
+            "// Options:",
+            "//   - true (default)",
+            "//   - false",
+            "// ",
+        );
+
+        let create_node = |node_value: bool| -> KdlNode {
+            let mut node = KdlNode::new("mouse_mode");
+            node.push(KdlValue::Bool(node_value));
+            node
+        };
+        if let Some(mouse_mode) = self.mouse_mode {
+            let mut node = create_node(mouse_mode);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(false);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
+    fn pane_frames_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!("{}\n{}\n{}\n{}\n{}\n{}",
+            " ",
+            "// Toggle having pane frames around the panes",
+            "// Options:",
+            "//   - true (default, enabled)",
+            "//   - false",
+            "// ",
+        );
+
+        let create_node = |node_value: bool| -> KdlNode {
+            let mut node = KdlNode::new("pane_frames");
+            node.push(KdlValue::Bool(node_value));
+            node
+        };
+        if let Some(pane_frames) = self.pane_frames {
+            let mut node = create_node(pane_frames);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(false);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
+    fn mirror_session_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!("{}\n{}\n{}\n{}\n{}\n{}",
+            " ",
+            "// When attaching to an existing session with other users,",
+            "// should the session be mirrored (true)",
+            "// or should each user have their own cursor (false)",
+            "// Default: false",
+            "// ",
+        );
+
+        let create_node = |node_value: bool| -> KdlNode {
+            let mut node = KdlNode::new("mirror_session");
+            node.push(KdlValue::Bool(node_value));
+            node
+        };
+        if let Some(mirror_session) = self.mirror_session {
+            let mut node = create_node(mirror_session);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(true);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
+    fn on_force_close_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!("{}\n{}\n{}\n{}\n{}\n{}\n{}",
+            " ",
+            "// Choose what to do when zellij receives SIGTERM, SIGINT, SIGQUIT or SIGHUP",
+            "// eg. when terminal window with an active zellij session is closed",
+            "// Options:",
+            "//   - detach (Default)",
+            "//   - quit",
+            "// ",
+        );
+
+        let create_node = |node_value: &str| -> KdlNode {
+            let mut node = KdlNode::new("on_force_close");
+            node.push(node_value.to_owned());
+            node
+        };
+        if let Some(on_force_close) = &self.on_force_close {
+            let mut node = match on_force_close {
+                OnForceClose::Detach => {
+                    create_node("detach")
+                }
+                OnForceClose::Quit => {
+                    create_node("quit")
+                }
+            };
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node("quit");
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
+    fn scroll_buffer_size_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!("{}\n{}\n{}\n{}\n{}\n{}\n{}",
+            " ",
+            "// Configure the scroll back buffer size",
+            "// This is the number of lines zellij stores for each pane in the scroll back",
+            "// buffer. Excess number of lines are discarded in a FIFO fashion.",
+            "// Valid values: positive integers",
+            "// Default value: 10000",
+            "// ",
+        );
+
+        let create_node = |node_value: usize| -> KdlNode {
+            let mut node = KdlNode::new("scroll_buffer_size");
+            node.push(KdlValue::Base10(node_value as i64));
+            node
+        };
+        if let Some(scroll_buffer_size) = self.scroll_buffer_size {
+            let mut node = create_node(scroll_buffer_size);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(10000);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
+    fn copy_command_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!("{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+            " ",
+            "// Provide a command to execute when copying text. The text will be piped to",
+            "// the stdin of the program to perform the copy. This can be used with",
+            "// terminal emulators which do not support the OSC 52 ANSI control sequence",
+            "// that will be used by default if this option is not set.",
+            "// Examples:",
+            "//",
+            "// copy_command \"xclip -selection clipboard\" // x11",
+            "// copy_command \"wl-copy\"                    // wayland",
+            "// copy_command \"pbcopy\"                     // osx",
+            "// ",
+        );
+
+        let create_node = |node_value: &str| -> KdlNode {
+            let mut node = KdlNode::new("copy_command");
+            node.push(node_value.to_owned());
+            node
+        };
+        if let Some(copy_command) = &self.copy_command{
+            let mut node = create_node(copy_command);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node("pbcopy");
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
+    fn copy_clipboard_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!("{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+            " ",
+            "// Choose the destination for copied text",
+            "// Allows using the primary selection buffer (on x11/wayland) instead of the system clipboard.",
+            "// Does not apply when using copy_command.",
+            "// Options:",
+            "//   - system (default)",
+            "//   - primary",
+            "// ",
+        );
+
+        let create_node = |node_value: &str| -> KdlNode {
+            let mut node = KdlNode::new("copy_clipboard");
+            node.push(node_value.to_owned());
+            node
+        };
+        if let Some(copy_clipboard) = &self.copy_clipboard {
+            let mut node = match copy_clipboard {
+                Clipboard::Primary => {
+                    create_node("primary")
+                }
+                Clipboard::System => {
+                    create_node("system")
+                }
+            };
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node("primary");
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
+    fn copy_on_select_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!("{}\n{}\n{}\n{}",
+            " ",
+            "// Enable automatic copying (and clearing) of selection when releasing mouse",
+            "// Default: true",
+            "// ",
+        );
+
+        let create_node = |node_value: bool| -> KdlNode {
+            let mut node = KdlNode::new("copy_on_select");
+            node.push(KdlValue::Bool(node_value));
+            node
+        };
+        if let Some(copy_on_select) = self.copy_on_select {
+            let mut node = create_node(copy_on_select);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(true);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
+    fn scrollback_editor_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!("{}\n{}\n{}",
+            " ",
+            "// Path to the default editor to use to edit pane scrollbuffer",
+            "// Default: $EDITOR or $VISUAL",
+        );
+
+        let create_node = |node_value: &str| -> KdlNode {
+            let mut node = KdlNode::new("scrollback_editor");
+            node.push(node_value.to_owned());
+            node
+        };
+        if let Some(scrollback_editor) = &self.scrollback_editor {
+            let mut node = create_node(&scrollback_editor.display().to_string());
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node("/usr/bin/vim");
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
+    fn session_name_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!("{}\n{}\n{}\n{}\n{}\n{}",
+            " ",
+            "// A fixed name to always give the Zellij session.",
+            "// Consider also setting `attach_to_session true,`",
+            "// otherwise this will error if such a session exists.",
+            "// Default: <RANDOM>",
+            "// ",
+        );
+
+        let create_node = |node_value: &str| -> KdlNode {
+            let mut node = KdlNode::new("session_name");
+            node.push(node_value.to_owned());
+            node
+        };
+        if let Some(session_name) = &self.session_name {
+            let mut node = create_node(&session_name);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node("My singleton session");
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
+    fn attach_to_session_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!("{}\n{}\n{}\n{}\n{}",
+            " ",
+            "// When `session_name` is provided, attaches to that session",
+            "// if it is already running or creates it otherwise.",
+            "// Default: false",
+            "// ",
+        );
+
+        let create_node = |node_value: bool| -> KdlNode {
+            let mut node = KdlNode::new("attach_to_session");
+            node.push(KdlValue::Bool(node_value));
+            node
+        };
+        if let Some(attach_to_session) = self.attach_to_session {
+            let mut node = create_node(attach_to_session);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(true);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
+    fn auto_layout_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!("{}\n{}\n{}\n{}\n{}\n{}",
+            " ",
+            "// Toggle between having Zellij lay out panes according to a predefined set of layouts whenever possible",
+            "// Options:",
+            "//   - true (default)",
+            "//   - false",
+            "// ",
+        );
+
+        let create_node = |node_value: bool| -> KdlNode {
+            let mut node = KdlNode::new("auto_layout");
+            node.push(KdlValue::Bool(node_value));
+            node
+        };
+        if let Some(auto_layout) = self.auto_layout {
+            let mut node = create_node(auto_layout);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(false);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
+    fn session_serialization_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!("{}\n{}\n{}\n{}\n{}\n{}",
+            " ",
+            "// Whether sessions should be serialized to the cache folder (including their tabs/panes, cwds and running commands) so that they can later be resurrected",
+            "// Options:",
+            "//   - true (default)",
+            "//   - false",
+            "// ",
+        );
+
+        let create_node = |node_value: bool| -> KdlNode {
+            let mut node = KdlNode::new("session_serialization");
+            node.push(KdlValue::Bool(node_value));
+            node
+        };
+        if let Some(session_serialization) = self.session_serialization {
+            let mut node = create_node(session_serialization);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(false);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
+    fn serialize_pane_viewport_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!("{}\n{}\n{}\n{}\n{}\n{}",
+            " ",
+            "// Whether pane viewports are serialized along with the session, default is false",
+            "// Options:",
+            "//   - true",
+            "//   - false (default)",
+            "// ",
+        );
+
+        let create_node = |node_value: bool| -> KdlNode {
+            let mut node = KdlNode::new("serialize_pane_viewport");
+            node.push(KdlValue::Bool(node_value));
+            node
+        };
+        if let Some(serialize_pane_viewport) = self.serialize_pane_viewport {
+            let mut node = create_node(serialize_pane_viewport);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(false);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
+    fn scrollback_lines_to_serialize_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!("{}\n{}\n{}\n{}\n{}",
+            " ",
+            "// Scrollback lines to serialize along with the pane viewport when serializing sessions, 0",
+            "// defaults to the scrollback size. If this number is higher than the scrollback size, it will",
+            "// also default to the scrollback size. This does nothing if `serialize_pane_viewport` is not true.",
+            "// ",
+        );
+
+        let create_node = |node_value: usize| -> KdlNode {
+            let mut node = KdlNode::new("scrollback_lines_to_serialize");
+            node.push(KdlValue::Base10(node_value as i64));
+            node
+        };
+        if let Some(scrollback_lines_to_serialize) = self.scrollback_lines_to_serialize {
+            let mut node = create_node(scrollback_lines_to_serialize);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(10000);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
+    fn styled_underlines_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!("{}\n{}\n{}\n{}\n{}",
+            " ",
+            "// Enable or disable the rendering of styled and colored underlines (undercurl).",
+            "// May need to be disabled for certain unsupported terminals",
+            "// Default: true",
+            "// ",
+        );
+
+        let create_node = |node_value: bool| -> KdlNode {
+            let mut node = KdlNode::new("styled_underlines");
+            node.push(KdlValue::Bool(node_value));
+            node
+        };
+        if let Some(styled_underlines) = self.styled_underlines {
+            let mut node = create_node(styled_underlines);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(false);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
+    fn serialization_interval_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!("{}\n{}\n{}",
+            " ",
+            "// How often in seconds sessions are serialized",
+            "// ",
+        );
+
+        let create_node = |node_value: u64| -> KdlNode {
+            let mut node = KdlNode::new("serialization_interval");
+            node.push(KdlValue::Base10(node_value as i64));
+            node
+        };
+        if let Some(serialization_interval) = self.serialization_interval {
+            let mut node = create_node(serialization_interval);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(10000);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
+    fn disable_session_metadata_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!("{}\n{}\n{}\n{}\n{}",
+            " ",
+            "// Enable or disable writing of session metadata to disk (if disabled, other sessions might not know",
+            "// metadata info on this session)",
+            "// Default: false",
+            "// ",
+        );
+
+        let create_node = |node_value: bool| -> KdlNode {
+            let mut node = KdlNode::new("disable_session_metadata");
+            node.push(KdlValue::Bool(node_value));
+            node
+        };
+        if let Some(disable_session_metadata) = self.disable_session_metadata {
+            let mut node = create_node(disable_session_metadata);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(false);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
+    fn support_kitty_keyboard_protocol_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!("{}\n{}\n{}\n{}",
+            " ",
+            "// Enable or disable support for the enhanced Kitty Keyboard Protocol (the host terminal must also support it)",
+            "// Default: true (if the host terminal supports it)",
+            "// ",
+        );
+
+        let create_node = |node_value: bool| -> KdlNode {
+            let mut node = KdlNode::new("support_kitty_keyboard_protocol");
+            node.push(KdlValue::Bool(node_value));
+            node
+        };
+        if let Some(support_kitty_keyboard_protocol) = self.support_kitty_keyboard_protocol {
+            let mut node = create_node(support_kitty_keyboard_protocol);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(false);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
+    pub fn to_kdl(&self, add_comments: bool) -> Vec<KdlNode> {
+        let mut nodes = vec![];
+        if let Some(simplified_ui_node) = self.simplified_ui_to_kdl(add_comments) {
+            nodes.push(simplified_ui_node);
+        }
+        if let Some(theme_node) = self.theme_to_kdl(add_comments) {
+            nodes.push(theme_node);
+        }
+        if let Some(default_mode) = self.default_mode_to_kdl(add_comments) {
+            nodes.push(default_mode);
+        }
+        if let Some(default_shell) = self.default_shell_to_kdl(add_comments) {
+            nodes.push(default_shell);
+        }
+        if let Some(default_cwd) = self.default_cwd_to_kdl(add_comments) {
+            nodes.push(default_cwd);
+        }
+        if let Some(default_layout) = self.default_layout_to_kdl(add_comments) {
+            nodes.push(default_layout);
+        }
+        if let Some(layout_dir) = self.layout_dir_to_kdl(add_comments) {
+            nodes.push(layout_dir);
+        }
+        if let Some(theme_dir) = self.theme_dir_to_kdl(add_comments) {
+            nodes.push(theme_dir);
+        }
+        if let Some(mouse_mode) = self.mouse_mode_to_kdl(add_comments) {
+            nodes.push(mouse_mode);
+        }
+        if let Some(pane_frames) = self.pane_frames_to_kdl(add_comments) {
+            nodes.push(pane_frames);
+        }
+        if let Some(mirror_session) = self.mirror_session_to_kdl(add_comments) {
+            nodes.push(mirror_session);
+        }
+        if let Some(on_force_close) = self.on_force_close_to_kdl(add_comments) {
+            nodes.push(on_force_close);
+        }
+        if let Some(scroll_buffer_size) = self.scroll_buffer_size_to_kdl(add_comments) {
+            nodes.push(scroll_buffer_size);
+        }
+        if let Some(copy_command) = self.copy_command_to_kdl(add_comments) {
+            nodes.push(copy_command);
+        }
+        if let Some(copy_clipboard) = self.copy_clipboard_to_kdl(add_comments) {
+            nodes.push(copy_clipboard);
+        }
+        if let Some(copy_on_select) = self.copy_on_select_to_kdl(add_comments) {
+            nodes.push(copy_on_select);
+        }
+        if let Some(scrollback_editor) = self.scrollback_editor_to_kdl(add_comments) {
+            nodes.push(scrollback_editor);
+        }
+        if let Some(session_name) = self.session_name_to_kdl(add_comments) {
+            nodes.push(session_name);
+        }
+        if let Some(attach_to_session) = self.attach_to_session_to_kdl(add_comments) {
+            nodes.push(attach_to_session);
+        }
+        if let Some(auto_layout) = self.auto_layout_to_kdl(add_comments) {
+            nodes.push(auto_layout);
+        }
+        if let Some(session_serialization) = self.session_serialization_to_kdl(add_comments) {
+            nodes.push(session_serialization);
+        }
+        if let Some(serialize_pane_viewport) = self.serialize_pane_viewport_to_kdl(add_comments) {
+            nodes.push(serialize_pane_viewport);
+        }
+        if let Some(scrollback_lines_to_serialize) = self.scrollback_lines_to_serialize_to_kdl(add_comments) {
+            nodes.push(scrollback_lines_to_serialize);
+        }
+        if let Some(styled_underlines) = self.styled_underlines_to_kdl(add_comments) {
+            nodes.push(styled_underlines);
+        }
+        if let Some(serialization_interval) = self.serialization_interval_to_kdl(add_comments) {
+            nodes.push(serialization_interval);
+        }
+        if let Some(disable_session_metadata) = self.disable_session_metadata_to_kdl(add_comments) {
+            nodes.push(disable_session_metadata);
+        }
+        if let Some(support_kitty_keyboard_protocol) = self.support_kitty_keyboard_protocol_to_kdl(add_comments) {
+            nodes.push(support_kitty_keyboard_protocol);
+        }
+        nodes
+    }
 }
 
 impl Layout {
@@ -1743,6 +3144,29 @@ impl EnvironmentVariables {
             env.insert(env_var_name.into(), env_var_value);
         }
         Ok(EnvironmentVariables::from_data(env))
+    }
+    pub fn to_kdl(&self) -> Option<KdlNode> {
+        let mut has_env_vars = false;
+        let mut env = KdlNode::new("env");
+        let mut env_vars = KdlDocument::new();
+
+        let mut stable_sorted = BTreeMap::new();
+        for (env_var_name, env_var_value) in self.inner() {
+            stable_sorted.insert(env_var_name, env_var_value);
+        }
+        for (env_key, env_value) in stable_sorted {
+            has_env_vars = true;
+            let mut variable_key = KdlNode::new(env_key.to_owned());
+            variable_key.push(env_value.to_owned());
+            env_vars.nodes_mut().push(variable_key);
+        }
+
+        if has_env_vars {
+            env.set_children(env_vars);
+            Some(env)
+        } else {
+            None
+        }
     }
 }
 
@@ -1904,6 +3328,152 @@ impl Keybinds {
             ))
         }
     }
+    // minimize keybind entries for serialization, so that duplicate entries will appear in
+    // "shared" nodes later rather than once per mode
+    fn minimize_entries(&self) -> BTreeMap<BTreeSet<InputMode>, BTreeMap<KeyWithModifier, Vec<Action>>> {
+        let mut minimized: BTreeMap<BTreeSet<InputMode>, BTreeMap<KeyWithModifier, Vec<Action>>> = BTreeMap::new();
+        let mut flattened: Vec<BTreeMap<KeyWithModifier, Vec<Action>>> = self.0
+            .iter()
+            .map(|(_input_mode, keybind)| {
+                keybind.clone().into_iter().collect()
+            })
+            .collect();
+        for keybind in flattened.drain(..) {
+            for (key, actions) in keybind.into_iter() {
+                let mut appears_in_modes: BTreeSet<InputMode> = BTreeSet::new();
+                for (input_mode, keybinds) in self.0.iter() {
+                    if keybinds.get(&key) == Some(&actions) {
+                        appears_in_modes.insert(*input_mode);
+                    }
+                }
+                minimized.entry(appears_in_modes).or_insert_with(Default::default).insert(key, actions);
+            }
+        }
+        minimized
+    }
+    fn serialize_mode_title_node(&self, input_modes: &BTreeSet<InputMode>) -> KdlNode {
+        let all_modes: Vec<InputMode> = InputMode::iter().collect();
+        let total_input_mode_count = all_modes.len();
+        if input_modes.len() == 1 {
+            let input_mode_name = format!("{:?}", input_modes.iter().next().unwrap()).to_lowercase();
+            KdlNode::new(input_mode_name)
+        } else if input_modes.len() == total_input_mode_count {
+            KdlNode::new("shared")
+        } else if input_modes.len() < total_input_mode_count / 2 {
+            let mut node = KdlNode::new("shared_among");
+            for input_mode in input_modes {
+                node.push(format!("{:?}", input_mode).to_lowercase());
+            }
+            node
+        } else {
+            let mut node = KdlNode::new("shared_except");
+            let mut modes = all_modes.clone();
+            for input_mode in input_modes {
+                modes.retain(|m| m != input_mode)
+            }
+            for mode in modes {
+                node.push(format!("{:?}", mode).to_lowercase());
+            }
+            node
+        }
+    }
+    fn serialize_mode_keybinds(&self, keybinds: &BTreeMap<KeyWithModifier, Vec<Action>>) -> KdlDocument {
+        let mut mode_keybinds = KdlDocument::new();
+        for keybind in keybinds {
+            let mut keybind_node = KdlNode::new("bind");
+            keybind_node.push(keybind.0.to_kdl());
+            let mut actions = KdlDocument::new();
+            let mut actions_have_children = false;
+            for action in keybind.1 {
+                if let Some(kdl_action) = action.to_kdl() {
+                    if kdl_action.children().is_some() {
+                        actions_have_children = true;
+                    }
+                    actions.nodes_mut().push(kdl_action);
+                }
+            }
+            if !actions_have_children {
+                for action in actions.nodes_mut() {
+                    action.set_leading("");
+                    action.set_trailing("; ");
+                }
+                actions.set_leading(" ");
+                actions.set_trailing("");
+            }
+            keybind_node.set_children(actions);
+            mode_keybinds.nodes_mut().push(keybind_node);
+        }
+        mode_keybinds
+    }
+    pub fn to_kdl(&self, should_clear_defaults: bool) -> KdlNode {
+        let mut keybinds_node = KdlNode::new("keybinds");
+        if should_clear_defaults {
+            keybinds_node.insert("clear-defaults", true);
+        }
+        let minimized = self.minimize_entries();
+        let mut keybinds_children = KdlDocument::new();
+        for (input_modes, keybinds) in minimized {
+            if input_modes.is_empty() {
+                log::error!("invalid input mode for keybinds: {:#?}", keybinds);
+                continue;
+            }
+            let mut mode_node = self.serialize_mode_title_node(&input_modes);
+            let mode_keybinds = self.serialize_mode_keybinds(&keybinds);
+            mode_node.set_children(mode_keybinds);
+            keybinds_children.nodes_mut().push(mode_node);
+
+        }
+        keybinds_node.set_children(keybinds_children);
+        keybinds_node
+    }
+}
+
+impl KeyWithModifier {
+    pub fn to_kdl(&self) -> String {
+        if self.key_modifiers.is_empty() {
+            self.bare_key.to_kdl()
+        } else {
+            format!(
+                "{} {}",
+                self.key_modifiers
+                    .iter()
+                    .map(|m| m.to_string())
+                    .collect::<Vec<_>>()
+                    .join(" "),
+                self.bare_key.to_kdl()
+            )
+        }
+    }
+}
+
+impl BareKey {
+    pub fn to_kdl(&self) -> String {
+        match self {
+            BareKey::PageDown => format!("PageDown"),
+            BareKey::PageUp => format!("PageUp"),
+            BareKey::Left => format!("left"),
+            BareKey::Down => format!("down"),
+            BareKey::Up => format!("up"),
+            BareKey::Right => format!("right"),
+            BareKey::Home => format!("home"),
+            BareKey::End => format!("end"),
+            BareKey::Backspace => format!("backspace"),
+            BareKey::Delete => format!("del"),
+            BareKey::Insert => format!("insert"),
+            BareKey::F(index) => format!("F{}", index),
+            BareKey::Char(' ') => format!("space"),
+            BareKey::Char(character) => format!("{}", character),
+            BareKey::Tab => format!("tab"),
+            BareKey::Esc => format!("esc"),
+            BareKey::Enter => format!("enter"),
+            BareKey::CapsLock => format!("capslock"),
+            BareKey::ScrollLock => format!("scrolllock"),
+            BareKey::NumLock => format!("numlock"),
+            BareKey::PrintScreen => format!("printscreen"),
+            BareKey::Pause => format!("pause"),
+            BareKey::Menu => format!("menu"),
+        }
+    }
 }
 
 impl Config {
@@ -1937,6 +3507,33 @@ impl Config {
         }
         Ok(config)
     }
+    pub fn to_string(&self, add_comments: bool) -> String {
+        let mut document = KdlDocument::new();
+
+        let clear_defaults = true;
+        let keybinds = self.keybinds.to_kdl(clear_defaults);
+        document.nodes_mut().push(keybinds);
+
+        if let Some(themes) = self.themes.to_kdl() {
+            document.nodes_mut().push(themes);
+        }
+
+        let plugins = self.plugins.to_kdl();
+        document.nodes_mut().push(plugins);
+
+        if let Some(ui_config) = self.ui.to_kdl() {
+            document.nodes_mut().push(ui_config);
+        }
+
+        if let Some(env) = self.env.to_kdl() {
+            document.nodes_mut().push(env);
+        }
+
+        document.nodes_mut().append(&mut self.options.to_kdl(add_comments));
+
+        document.to_string()
+
+    }
 }
 
 impl PluginAliases {
@@ -1962,6 +3559,46 @@ impl PluginAliases {
         }
         Ok(PluginAliases { aliases })
     }
+    pub fn to_kdl(&self) -> KdlNode {
+        let mut plugins = KdlNode::new("plugins");
+        let mut plugins_children = KdlDocument::new();
+        for (alias_name, plugin_alias) in self.aliases.iter() {
+            let mut plugin_alias_node = KdlNode::new(alias_name.clone());
+            let mut plugin_alias_children = KdlDocument::new();
+            let location_string = plugin_alias.location.display();
+
+            plugin_alias_node.insert("location", location_string);
+            let cwd = plugin_alias.initial_cwd.as_ref();
+            let mut has_children = false;
+            if let Some(cwd) = cwd {
+                has_children = true;
+                let mut cwd_node = KdlNode::new("cwd");
+                cwd_node.push(cwd.display().to_string());
+                plugin_alias_children.nodes_mut().push(cwd_node);
+            }
+            let configuration = plugin_alias.configuration.inner();
+            if !configuration.is_empty() {
+                has_children = true;
+                for (config_key, config_value) in configuration {
+                    let mut node = KdlNode::new(config_key.to_owned());
+                    if config_value == "true" {
+                        node.push(KdlValue::Bool(true));
+                    } else if config_value == "false" {
+                        node.push(KdlValue::Bool(false));
+                    } else {
+                        node.push(config_value.to_string());
+                    }
+                    plugin_alias_children.nodes_mut().push(node);
+                }
+            }
+            if has_children {
+                plugin_alias_node.set_children(plugin_alias_children);
+            }
+            plugins_children.nodes_mut().push(plugin_alias_node);
+        }
+        plugins.set_children(plugins_children);
+        plugins
+    }
 }
 
 impl UiConfig {
@@ -1980,6 +3617,33 @@ impl UiConfig {
             ui_config.pane_frames = frame_config;
         }
         Ok(ui_config)
+    }
+    pub fn to_kdl(&self) -> Option<KdlNode> {
+        let mut ui_config = KdlNode::new("ui");
+        let mut ui_config_children = KdlDocument::new();
+        let mut frame_config = KdlNode::new("pane_frames");
+        let mut frame_config_children = KdlDocument::new();
+        let mut has_ui_config = false;
+        if self.pane_frames.rounded_corners {
+            has_ui_config = true;
+            let mut rounded_corners = KdlNode::new("rounded_corners");
+            rounded_corners.push(KdlValue::Bool(true));
+            frame_config_children.nodes_mut().push(rounded_corners);
+        }
+        if self.pane_frames.hide_session_name {
+            has_ui_config = true;
+            let mut hide_session_name = KdlNode::new("hide_session_name");
+            hide_session_name.push(KdlValue::Bool(true));
+            frame_config_children.nodes_mut().push(hide_session_name);
+        }
+        if has_ui_config {
+            frame_config.set_children(frame_config_children);
+            ui_config_children.nodes_mut().push(frame_config);
+            ui_config.set_children(ui_config_children);
+            Some(ui_config)
+        } else {
+            None
+        }
     }
 }
 
@@ -2048,6 +3712,35 @@ impl Themes {
             }
         }
         Ok(themes)
+    }
+    pub fn to_kdl(&self) -> Option<KdlNode> {
+        let mut theme_node = KdlNode::new("themes");
+        let mut themes = KdlDocument::new();
+        let mut has_themes = false;
+        for (theme_name, theme) in self.inner() {
+            has_themes = true;
+            let mut current_theme_node = KdlNode::new(theme_name.clone());
+            let mut current_theme_node_children = KdlDocument::new();
+            current_theme_node_children.nodes_mut().push(theme.palette.fg.to_kdl("fg"));
+            current_theme_node_children.nodes_mut().push(theme.palette.bg.to_kdl("bg"));
+            current_theme_node_children.nodes_mut().push(theme.palette.red.to_kdl("red"));
+            current_theme_node_children.nodes_mut().push(theme.palette.green.to_kdl("green"));
+            current_theme_node_children.nodes_mut().push(theme.palette.yellow.to_kdl("yellow"));
+            current_theme_node_children.nodes_mut().push(theme.palette.blue.to_kdl("blue"));
+            current_theme_node_children.nodes_mut().push(theme.palette.magenta.to_kdl("magenta"));
+            current_theme_node_children.nodes_mut().push(theme.palette.orange.to_kdl("orange"));
+            current_theme_node_children.nodes_mut().push(theme.palette.cyan.to_kdl("cyan"));
+            current_theme_node_children.nodes_mut().push(theme.palette.black.to_kdl("black"));
+            current_theme_node_children.nodes_mut().push(theme.palette.white.to_kdl("white"));
+            current_theme_node.set_children(current_theme_node_children);
+            themes.nodes_mut().push(current_theme_node);
+        }
+        if has_themes {
+            theme_node.set_children(themes);
+            Some(theme_node)
+        } else {
+            None
+        }
     }
 }
 
@@ -2197,7 +3890,7 @@ impl SessionInfo {
                 LayoutInfo::File(name) => (name.clone(), "file"),
                 LayoutInfo::BuiltIn(name) => (name.clone(), "built-in"),
                 LayoutInfo::Url(url) => (url.clone(), "url"),
-                LayoutInfo::Stringified(stringified) => ("stringified-layout".to_owned(), "N/A"),
+                LayoutInfo::Stringified(_stringified) => ("stringified-layout".to_owned(), "N/A"),
             };
             let mut layout_node = KdlNode::new(format!("{}", layout_name));
             let layout_source = KdlEntry::new_prop("source", layout_source);
@@ -2707,3 +4400,639 @@ fn serialize_and_deserialize_session_info_with_data() {
     assert_eq!(session_info, deserealized);
     insta::assert_snapshot!(serialized);
 }
+
+// ******* TODO: MOVE ELSEWHERE FROM HERE *******
+#[test]
+fn keybinds_to_string() {
+    let fake_config =  r#"
+        keybinds {
+            normal {
+                bind "Ctrl g" { SwitchToMode "Locked"; }
+            }
+        }"#;
+    let document: KdlDocument = fake_config.parse().unwrap();
+    let deserialized = Keybinds::from_kdl(document.get("keybinds").unwrap(), Default::default(), &Default::default()).unwrap();
+    let clear_defaults = true;
+    let serialized = Keybinds::to_kdl(&deserialized, clear_defaults);
+    let deserialized_from_serialized = Keybinds::from_kdl(serialized.to_string().parse::<KdlDocument>().unwrap().get("keybinds").unwrap(), Default::default(), &Default::default()).unwrap();
+    insta::assert_snapshot!(serialized.to_string());
+    assert_eq!(deserialized, deserialized_from_serialized, "Deserialized serialized config equals original config");
+}
+
+#[test]
+fn keybinds_to_string_without_clearing_defaults() {
+    let fake_config =  r#"
+        keybinds {
+            normal {
+                bind "Ctrl g" { SwitchToMode "Locked"; }
+            }
+        }"#;
+    let document: KdlDocument = fake_config.parse().unwrap();
+    let deserialized = Keybinds::from_kdl(document.get("keybinds").unwrap(), Default::default(), &Default::default()).unwrap();
+    let clear_defaults = false;
+    let serialized = Keybinds::to_kdl(&deserialized, clear_defaults);
+    let deserialized_from_serialized = Keybinds::from_kdl(serialized.to_string().parse::<KdlDocument>().unwrap().get("keybinds").unwrap(), Default::default(), &Default::default()).unwrap();
+    insta::assert_snapshot!(serialized.to_string());
+    assert_eq!(deserialized, deserialized_from_serialized, "Deserialized serialized config equals original config");
+}
+
+#[test]
+fn keybinds_to_string_with_multiple_actions() {
+    let fake_config =  r#"
+        keybinds {
+            normal {
+                bind "Ctrl n" { NewPane; SwitchToMode "Locked"; }
+            }
+        }"#;
+    let document: KdlDocument = fake_config.parse().unwrap();
+    let deserialized = Keybinds::from_kdl(document.get("keybinds").unwrap(), Default::default(), &Default::default()).unwrap();
+    let clear_defaults = true;
+    let serialized = Keybinds::to_kdl(&deserialized, clear_defaults);
+    let deserialized_from_serialized = Keybinds::from_kdl(serialized.to_string().parse::<KdlDocument>().unwrap().get("keybinds").unwrap(), Default::default(), &Default::default()).unwrap();
+    assert_eq!(deserialized, deserialized_from_serialized, "Deserialized serialized config equals original config");
+    insta::assert_snapshot!(serialized.to_string());
+}
+
+#[test]
+fn keybinds_to_string_with_all_actions() {
+    let fake_config =  r#"
+        keybinds {
+            normal {
+                bind "Ctrl a" { Quit; }
+                bind "Ctrl b" { Write 102 111 111; }
+                bind "Ctrl c" { WriteChars "hi there!"; }
+                bind "Ctrl d" { SwitchToMode "Locked"; }
+                bind "Ctrl e" { Resize "Increase"; }
+                bind "Ctrl f" { FocusNextPane; }
+                bind "Ctrl g" { FocusPreviousPane; }
+                bind "Ctrl h" { SwitchFocus; }
+                bind "Ctrl i" { MoveFocus "Right"; }
+                bind "Ctrl j" { MoveFocusOrTab "Right"; }
+                bind "Ctrl k" { MovePane "Right"; }
+                bind "Ctrl l" { MovePaneBackwards; }
+                bind "Ctrl m" { Resize "Decrease Down"; }
+                bind "Ctrl n" { DumpScreen "/tmp/dumped"; }
+                bind "Ctrl o" { DumpLayout "/tmp/dumped-layout"; }
+                bind "Ctrl p" { EditScrollback; }
+                bind "Ctrl q" { ScrollUp; }
+                bind "Ctrl r" { ScrollDown; }
+                bind "Ctrl s" { ScrollToBottom; }
+                bind "Ctrl t" { ScrollToTop; }
+                bind "Ctrl u" { PageScrollUp; }
+                bind "Ctrl v" { PageScrollDown; }
+                bind "Ctrl w" { HalfPageScrollUp; }
+                bind "Ctrl x" { HalfPageScrollDown; }
+                bind "Ctrl y" { ToggleFocusFullscreen; }
+                bind "Ctrl z" { TogglePaneFrames; }
+                bind "Alt a" { ToggleActiveSyncTab; }
+                bind "Alt b" { NewPane "Right"; }
+                bind "Alt c" { TogglePaneEmbedOrFloating; }
+                bind "Alt d" { ToggleFloatingPanes; }
+                bind "Alt e" { CloseFocus; }
+                bind "Alt f" { PaneNameInput 0; }
+                bind "Alt g" { UndoRenamePane; }
+                bind "Alt h" { NewTab; }
+                bind "Alt i" { GoToNextTab; }
+                bind "Alt j" { GoToPreviousTab; }
+                bind "Alt k" { CloseTab; }
+                bind "Alt l" { GoToTab 1; }
+                bind "Alt m" { ToggleTab; }
+                bind "Alt n" { TabNameInput 0; }
+                bind "Alt o" { UndoRenameTab; }
+                bind "Alt p" { MoveTab "Right"; }
+                bind "Alt q" {
+                    Run "ls" "-l" {
+                        hold_on_start true;
+                        hold_on_close false;
+                        cwd "/tmp";
+                        name "my cool pane";
+                    };
+                }
+                bind "Alt r" {
+                    Run "ls" "-l" {
+                        hold_on_start true;
+                        hold_on_close false;
+                        cwd "/tmp";
+                        name "my cool pane";
+                        floating true;
+                    };
+                }
+                bind "Alt s" {
+                    Run "ls" "-l" {
+                        hold_on_start true;
+                        hold_on_close false;
+                        cwd "/tmp";
+                        name "my cool pane";
+                        in_place true;
+                    };
+                }
+                bind "Alt t" { Detach; }
+                bind "Alt u" {
+                    LaunchOrFocusPlugin "zellij:session-manager"{
+                        floating true;
+                        move_to_focused_tab true;
+                        skip_plugin_cache true;
+                        config_key_1 "config_value_1";
+                        config_key_2 "config_value_2";
+                    };
+                }
+                bind "Alt v" {
+                    LaunchOrFocusPlugin "zellij:session-manager"{
+                        in_place true;
+                        move_to_focused_tab true;
+                        skip_plugin_cache true;
+                        config_key_1 "config_value_1";
+                        config_key_2 "config_value_2";
+                    };
+                }
+                bind "Alt w" {
+                    LaunchPlugin "zellij:session-manager" {
+                        floating true;
+                        skip_plugin_cache true;
+                        config_key_1 "config_value_1";
+                        config_key_2 "config_value_2";
+                    };
+                }
+                bind "Alt x" {
+                    LaunchPlugin "zellij:session-manager"{
+                        in_place true;
+                        skip_plugin_cache true;
+                        config_key_1 "config_value_1";
+                        config_key_2 "config_value_2";
+                    };
+                }
+                bind "Alt y" { Copy; }
+                bind "Alt z" { SearchInput 0; }
+                bind "Ctrl Alt a" { Search "Up"; }
+                bind "Ctrl Alt b" { SearchToggleOption "CaseSensitivity"; }
+                bind "Ctrl Alt c" { ToggleMouseMode; }
+                bind "Ctrl Alt d" { PreviousSwapLayout; }
+                bind "Ctrl Alt e" { NextSwapLayout; }
+                bind "Ctrl Alt g" { BreakPane; }
+                bind "Ctrl Alt h" { BreakPaneRight; }
+                bind "Ctrl Alt i" { BreakPaneLeft; }
+                bind "Ctrl Alt i" { BreakPaneLeft; }
+                bind "Ctrl Alt j" {
+                    MessagePlugin "zellij:session-manager"{
+                        name "message_name";
+                        payload "message_payload";
+                        cwd "/tmp";
+                        launch_new true;
+                        skip_cache true;
+                        floating true;
+                        title "plugin_title";
+                        config_key_1 "config_value_1";
+                        config_key_2 "config_value_2";
+                    };
+                }
+            }
+        }"#;
+    let document: KdlDocument = fake_config.parse().unwrap();
+    let deserialized = Keybinds::from_kdl(document.get("keybinds").unwrap(), Default::default(), &Default::default()).unwrap();
+    let clear_defaults = true;
+    let serialized = Keybinds::to_kdl(&deserialized, clear_defaults);
+    let deserialized_from_serialized = Keybinds::from_kdl(serialized.to_string().parse::<KdlDocument>().unwrap().get("keybinds").unwrap(), Default::default(), &Default::default()).unwrap();
+    // uncomment the below lines for more easily debugging a failed assertion here
+    //     for (input_mode, input_mode_keybinds) in deserialized.0 {
+    //         if let Some(other_input_mode_keybinds) = deserialized_from_serialized.0.get(&input_mode) {
+    //             for (keybind, action) in input_mode_keybinds {
+    //                 if let Some(other_action) = other_input_mode_keybinds.get(&keybind) {
+    //                     assert_eq!(&action, other_action);
+    //                 } else {
+    //                     eprintln!("keybind: {:?} not found in other", keybind);
+    //                 }
+    //             }
+    //         }
+    //     }
+    assert_eq!(deserialized, deserialized_from_serialized, "Deserialized serialized config equals original config");
+    insta::assert_snapshot!(serialized.to_string());
+}
+
+#[test]
+fn keybinds_to_string_with_shared_modes() {
+    let fake_config =  r#"
+        keybinds {
+            normal {
+                bind "Ctrl n" { NewPane; SwitchToMode "Locked"; }
+            }
+            locked {
+                bind "Ctrl n" { NewPane; SwitchToMode "Locked"; }
+            }
+            shared_except "locked" "pane" {
+                bind "Ctrl f" { TogglePaneEmbedOrFloating; }
+            }
+            shared_among "locked" "pane" {
+                bind "Ctrl p" { WriteChars "foo"; }
+            }
+        }"#;
+    let document: KdlDocument = fake_config.parse().unwrap();
+    let deserialized = Keybinds::from_kdl(document.get("keybinds").unwrap(), Default::default(), &Default::default()).unwrap();
+    let clear_defaults = true;
+    let serialized = Keybinds::to_kdl(&deserialized, clear_defaults);
+    let deserialized_from_serialized = Keybinds::from_kdl(serialized.to_string().parse::<KdlDocument>().unwrap().get("keybinds").unwrap(), Default::default(), &Default::default()).unwrap();
+    assert_eq!(deserialized, deserialized_from_serialized, "Deserialized serialized config equals original config");
+    insta::assert_snapshot!(serialized.to_string());
+}
+
+#[test]
+fn keybinds_to_string_with_multiple_multiline_actions() {
+    let fake_config =  r#"
+        keybinds {
+            shared {
+                bind "Ctrl n" {
+                    NewPane
+                    SwitchToMode "Locked"
+                    MessagePlugin "zellij:session-manager"{
+                        name "message_name";
+                        payload "message_payload";
+                        cwd "/tmp";
+                        launch_new true;
+                        skip_cache true;
+                        floating true;
+                        title "plugin_title";
+                        config_key_1 "config_value_1";
+                        config_key_2 "config_value_2";
+                    };
+                }
+            }
+        }"#;
+    let document: KdlDocument = fake_config.parse().unwrap();
+    let deserialized = Keybinds::from_kdl(document.get("keybinds").unwrap(), Default::default(), &Default::default()).unwrap();
+    let clear_defaults = true;
+    let serialized = Keybinds::to_kdl(&deserialized, clear_defaults);
+    let deserialized_from_serialized = Keybinds::from_kdl(serialized.to_string().parse::<KdlDocument>().unwrap().get("keybinds").unwrap(), Default::default(), &Default::default()).unwrap();
+    assert_eq!(deserialized, deserialized_from_serialized, "Deserialized serialized config equals original config");
+    insta::assert_snapshot!(serialized.to_string());
+}
+
+#[test]
+fn themes_to_string() {
+    let fake_config =  r#"
+        themes {
+           dracula {
+                fg 248 248 242
+                bg 40 42 54
+                black 0 0 0
+                red 255 85 85
+                green 80 250 123
+                yellow 241 250 140
+                blue 98 114 164
+                magenta 255 121 198
+                cyan 139 233 253
+                white 255 255 255
+                orange 255 184 108
+            }
+        }"#;
+    let document: KdlDocument = fake_config.parse().unwrap();
+    let deserialized = Themes::from_kdl(document.get("themes").unwrap()).unwrap();
+    let serialized = Themes::to_kdl(&deserialized).unwrap();
+    let deserialized_from_serialized = Themes::from_kdl(serialized.to_string().parse::<KdlDocument>().unwrap().get("themes").unwrap()).unwrap();
+    assert_eq!(deserialized, deserialized_from_serialized, "Deserialized serialized config equals original config");
+    insta::assert_snapshot!(serialized.to_string());
+}
+
+#[test]
+fn themes_to_string_with_hex_definitions() {
+    let fake_config =  r##"
+        themes {
+            nord {
+                fg "#D8DEE9"
+                bg "#2E3440"
+                black "#3B4252"
+                red "#BF616A"
+                green "#A3BE8C"
+                yellow "#EBCB8B"
+                blue "#81A1C1"
+                magenta "#B48EAD"
+                cyan "#88C0D0"
+                white "#E5E9F0"
+                orange "#D08770"
+            }
+        }"##;
+    let document: KdlDocument = fake_config.parse().unwrap();
+    let deserialized = Themes::from_kdl(document.get("themes").unwrap()).unwrap();
+    let serialized = Themes::to_kdl(&deserialized).unwrap();
+    let deserialized_from_serialized = Themes::from_kdl(serialized.to_string().parse::<KdlDocument>().unwrap().get("themes").unwrap()).unwrap();
+    assert_eq!(deserialized, deserialized_from_serialized, "Deserialized serialized config equals original config");
+    insta::assert_snapshot!(serialized.to_string());
+}
+
+#[test]
+fn themes_to_string_with_eight_bit_definitions() {
+    let fake_config =  r##"
+        themes {
+            default {
+                fg 1
+                bg 10
+                black 20
+                red 30
+                green 40
+                yellow 50
+                blue 60
+                magenta 70
+                cyan 80
+                white 90
+                orange 254
+            }
+        }"##;
+    let document: KdlDocument = fake_config.parse().unwrap();
+    let deserialized = Themes::from_kdl(document.get("themes").unwrap()).unwrap();
+    let serialized = Themes::to_kdl(&deserialized).unwrap();
+    let deserialized_from_serialized = Themes::from_kdl(serialized.to_string().parse::<KdlDocument>().unwrap().get("themes").unwrap()).unwrap();
+    assert_eq!(deserialized, deserialized_from_serialized, "Deserialized serialized config equals original config");
+    insta::assert_snapshot!(serialized.to_string());
+}
+
+#[test]
+fn themes_to_string_with_combined_definitions() {
+    let fake_config =  r##"
+        themes {
+            default {
+                fg 1
+                bg 10
+                black 20
+                red 30
+                green 40
+                yellow 50
+                blue 60
+                magenta 70
+                cyan 80
+                white 255 255 255
+                orange "#D08770"
+            }
+        }"##;
+    let document: KdlDocument = fake_config.parse().unwrap();
+    let deserialized = Themes::from_kdl(document.get("themes").unwrap()).unwrap();
+    let serialized = Themes::to_kdl(&deserialized).unwrap();
+    let deserialized_from_serialized = Themes::from_kdl(serialized.to_string().parse::<KdlDocument>().unwrap().get("themes").unwrap()).unwrap();
+    assert_eq!(deserialized, deserialized_from_serialized, "Deserialized serialized config equals original config");
+    insta::assert_snapshot!(serialized.to_string());
+}
+
+#[test]
+fn themes_to_string_with_multiple_theme_definitions() {
+    let fake_config =  r##"
+        themes {
+           nord {
+               fg "#D8DEE9"
+               bg "#2E3440"
+               black "#3B4252"
+               red "#BF616A"
+               green "#A3BE8C"
+               yellow "#EBCB8B"
+               blue "#81A1C1"
+               magenta "#B48EAD"
+               cyan "#88C0D0"
+               white "#E5E9F0"
+               orange "#D08770"
+           }
+           dracula {
+                fg 248 248 242
+                bg 40 42 54
+                black 0 0 0
+                red 255 85 85
+                green 80 250 123
+                yellow 241 250 140
+                blue 98 114 164
+                magenta 255 121 198
+                cyan 139 233 253
+                white 255 255 255
+                orange 255 184 108
+            }
+        }"##;
+    let document: KdlDocument = fake_config.parse().unwrap();
+    let deserialized = Themes::from_kdl(document.get("themes").unwrap()).unwrap();
+    let serialized = Themes::to_kdl(&deserialized).unwrap();
+    let deserialized_from_serialized = Themes::from_kdl(serialized.to_string().parse::<KdlDocument>().unwrap().get("themes").unwrap()).unwrap();
+    assert_eq!(deserialized, deserialized_from_serialized, "Deserialized serialized config equals original config");
+    insta::assert_snapshot!(serialized.to_string());
+}
+
+#[test]
+fn plugins_to_string() {
+    let fake_config =  r##"
+        plugins {
+            tab-bar location="zellij:tab-bar"
+            status-bar location="zellij:status-bar"
+            strider location="zellij:strider"
+            compact-bar location="zellij:compact-bar"
+            session-manager location="zellij:session-manager"
+            welcome-screen location="zellij:session-manager" {
+                welcome_screen true
+            }
+            filepicker location="zellij:strider" {
+                cwd "/"
+            }
+        }"##;
+    let document: KdlDocument = fake_config.parse().unwrap();
+    let deserialized = PluginAliases::from_kdl(document.get("plugins").unwrap()).unwrap();
+    let serialized = PluginAliases::to_kdl(&deserialized);
+    let deserialized_from_serialized = PluginAliases::from_kdl(serialized.to_string().parse::<KdlDocument>().unwrap().get("plugins").unwrap()).unwrap();
+    assert_eq!(deserialized, deserialized_from_serialized, "Deserialized serialized config equals original config");
+    insta::assert_snapshot!(serialized.to_string());
+}
+
+#[test]
+fn plugins_to_string_with_file_and_web() {
+    let fake_config =  r##"
+        plugins {
+            tab-bar location="https://foo.com/plugin.wasm"
+            filepicker location="file:/path/to/my/plugin.wasm" {
+                cwd "/"
+            }
+        }"##;
+    let document: KdlDocument = fake_config.parse().unwrap();
+    let deserialized = PluginAliases::from_kdl(document.get("plugins").unwrap()).unwrap();
+    let serialized = PluginAliases::to_kdl(&deserialized);
+    let deserialized_from_serialized = PluginAliases::from_kdl(serialized.to_string().parse::<KdlDocument>().unwrap().get("plugins").unwrap()).unwrap();
+    assert_eq!(deserialized, deserialized_from_serialized, "Deserialized serialized config equals original config");
+    insta::assert_snapshot!(serialized.to_string());
+}
+
+#[test]
+fn ui_config_to_string() {
+    let fake_config =  r##"
+        ui {
+            pane_frames {
+                rounded_corners true
+                hide_session_name true
+            }
+        }"##;
+    let document: KdlDocument = fake_config.parse().unwrap();
+    let deserialized = UiConfig::from_kdl(document.get("ui").unwrap()).unwrap();
+    let serialized = UiConfig::to_kdl(&deserialized).unwrap();
+    let deserialized_from_serialized = UiConfig::from_kdl(serialized.to_string().parse::<KdlDocument>().unwrap().get("ui").unwrap()).unwrap();
+    assert_eq!(deserialized, deserialized_from_serialized, "Deserialized serialized config equals original config");
+    insta::assert_snapshot!(serialized.to_string());
+}
+
+#[test]
+fn ui_config_to_string_with_no_ui_config() {
+    let fake_config =  r##"
+        ui {
+            pane_frames {
+            }
+        }"##;
+    let document: KdlDocument = fake_config.parse().unwrap();
+    let deserialized = UiConfig::from_kdl(document.get("ui").unwrap()).unwrap();
+    assert_eq!(UiConfig::to_kdl(&deserialized), None);
+}
+
+#[test]
+fn env_vars_to_string() {
+    let fake_config =  r##"
+        env {
+            foo "bar"
+            bar "foo"
+            thing 1
+            baz "true"
+        }"##;
+    let document: KdlDocument = fake_config.parse().unwrap();
+    let deserialized = EnvironmentVariables::from_kdl(document.get("env").unwrap()).unwrap();
+    let serialized = EnvironmentVariables::to_kdl(&deserialized).unwrap();
+    let deserialized_from_serialized = EnvironmentVariables::from_kdl(serialized.to_string().parse::<KdlDocument>().unwrap().get("env").unwrap()).unwrap();
+    assert_eq!(deserialized, deserialized_from_serialized, "Deserialized serialized config equals original config");
+    insta::assert_snapshot!(serialized.to_string());
+}
+
+#[test]
+fn env_vars_to_string_with_no_env_vars() {
+    let fake_config =  r##"
+        env {
+        }"##;
+    let document: KdlDocument = fake_config.parse().unwrap();
+    let deserialized = EnvironmentVariables::from_kdl(document.get("env").unwrap()).unwrap();
+    assert_eq!(EnvironmentVariables::to_kdl(&deserialized), None);
+}
+
+#[test]
+fn config_options_to_string() {
+    let fake_config =  r##"
+        simplified_ui true
+        theme "dracula"
+        default_mode "locked"
+        default_shell "fish"
+        default_cwd "/tmp/foo"
+        default_layout "compact"
+        layout_dir "/tmp/layouts"
+        theme_dir "/tmp/themes"
+        mouse_mode false
+        pane_frames false
+        mirror_session true
+        on_force_close "quit"
+        scroll_buffer_size 100
+        copy_command "pbcopy"
+        copy_clipboard "system"
+        copy_on_select false
+        scrollback_editor "vim"
+        session_name "my_cool_session"
+        attach_to_session false
+        auto_layout false
+        session_serialization true
+        serialize_pane_viewport false
+        scrollback_lines_to_serialize 1000
+        styled_underlines false
+        serialization_interval 1
+        disable_session_metadata true
+        support_kitty_keyboard_protocol false
+    "##;
+    let document: KdlDocument = fake_config.parse().unwrap();
+    let deserialized = Options::from_kdl(&document).unwrap();
+    let mut serialized = Options::to_kdl(&deserialized, false);
+    let mut fake_document = KdlDocument::new();
+    fake_document.nodes_mut().append(&mut serialized);
+    let deserialized_from_serialized = Options::from_kdl(&fake_document.to_string().parse::<KdlDocument>().unwrap()).unwrap();
+    assert_eq!(deserialized, deserialized_from_serialized, "Deserialized serialized config equals original config");
+    insta::assert_snapshot!(fake_document.to_string());
+}
+
+#[test]
+fn config_options_to_string_with_comments() {
+    let fake_config =  r##"
+        simplified_ui true
+        theme "dracula"
+        default_mode "locked"
+        default_shell "fish"
+        default_cwd "/tmp/foo"
+        default_layout "compact"
+        layout_dir "/tmp/layouts"
+        theme_dir "/tmp/themes"
+        mouse_mode false
+        pane_frames false
+        mirror_session true
+        on_force_close "quit"
+        scroll_buffer_size 100
+        copy_command "pbcopy"
+        copy_clipboard "system"
+        copy_on_select false
+        scrollback_editor "vim"
+        session_name "my_cool_session"
+        attach_to_session false
+        auto_layout false
+        session_serialization true
+        serialize_pane_viewport false
+        scrollback_lines_to_serialize 1000
+        styled_underlines false
+        serialization_interval 1
+        disable_session_metadata true
+        support_kitty_keyboard_protocol false
+    "##;
+    let document: KdlDocument = fake_config.parse().unwrap();
+    let deserialized = Options::from_kdl(&document).unwrap();
+    let mut serialized = Options::to_kdl(&deserialized, true);
+    let mut fake_document = KdlDocument::new();
+    fake_document.nodes_mut().append(&mut serialized);
+    let deserialized_from_serialized = Options::from_kdl(&fake_document.to_string().parse::<KdlDocument>().unwrap()).unwrap();
+    assert_eq!(deserialized, deserialized_from_serialized, "Deserialized serialized config equals original config");
+    insta::assert_snapshot!(fake_document.to_string());
+}
+
+#[test]
+fn config_options_to_string_without_options() {
+    let fake_config =  r##"
+    "##;
+    let document: KdlDocument = fake_config.parse().unwrap();
+    let deserialized = Options::from_kdl(&document).unwrap();
+    let mut serialized = Options::to_kdl(&deserialized, false);
+    let mut fake_document = KdlDocument::new();
+    fake_document.nodes_mut().append(&mut serialized);
+    let deserialized_from_serialized = Options::from_kdl(&fake_document.to_string().parse::<KdlDocument>().unwrap()).unwrap();
+    assert_eq!(deserialized, deserialized_from_serialized, "Deserialized serialized config equals original config");
+    insta::assert_snapshot!(fake_document.to_string());
+}
+
+#[test]
+fn config_options_to_string_with_some_options() {
+    let fake_config =  r##"
+        default_layout "compact"
+    "##;
+    let document: KdlDocument = fake_config.parse().unwrap();
+    let deserialized = Options::from_kdl(&document).unwrap();
+    let mut serialized = Options::to_kdl(&deserialized, false);
+    let mut fake_document = KdlDocument::new();
+    fake_document.nodes_mut().append(&mut serialized);
+    let deserialized_from_serialized = Options::from_kdl(&fake_document.to_string().parse::<KdlDocument>().unwrap()).unwrap();
+    assert_eq!(deserialized, deserialized_from_serialized, "Deserialized serialized config equals original config");
+    insta::assert_snapshot!(fake_document.to_string());
+}
+
+#[test]
+fn bare_config_from_default_assets_to_string() {
+    let fake_config = Config::from_default_assets().unwrap();
+    let fake_config_stringified = fake_config.to_string(false);
+    let deserialized_from_serialized = Config::from_kdl(&fake_config_stringified, None).unwrap();
+    assert_eq!(fake_config, deserialized_from_serialized, "Deserialized serialized config equals original config");
+    insta::assert_snapshot!(fake_config_stringified);
+}
+
+#[test]
+fn bare_config_from_default_assets_to_string_with_comments() {
+    let fake_config = Config::from_default_assets().unwrap();
+    let fake_config_stringified = fake_config.to_string(true);
+    let deserialized_from_serialized = Config::from_kdl(&fake_config_stringified, None).unwrap();
+    assert_eq!(fake_config, deserialized_from_serialized, "Deserialized serialized config equals original config");
+    insta::assert_snapshot!(fake_config_stringified);
+}
+
+// ******* TODO: MOVE ELSEWHERE UNTIL HERE *******
+

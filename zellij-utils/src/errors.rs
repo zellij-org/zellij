@@ -433,6 +433,7 @@ pub enum ClientContext {
     UnblockCliPipeInput,
     CliPipeOutput,
     QueryTerminalSize,
+    WriteConfigToDisk,
 }
 
 /// Stack call representations corresponding to the different types of [`ServerInstruction`]s.
@@ -459,6 +460,7 @@ pub enum ServerContext {
     ChangeMode,
     ChangeModeForAllClients,
     Reconfigure,
+    ConfigWrittenToDisk,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]

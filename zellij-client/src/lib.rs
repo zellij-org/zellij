@@ -53,6 +53,9 @@ pub(crate) enum ClientInstruction {
     UnblockCliPipeInput(String),   // String -> pipe name
     CliPipeOutput(String, String), // String -> pipe name, String -> output
     QueryTerminalSize,
+    WriteConfigToDisk {
+        config: String
+    }
 }
 
 impl From<ServerToClientMsg> for ClientInstruction {
@@ -75,6 +78,7 @@ impl From<ServerToClientMsg> for ClientInstruction {
                 ClientInstruction::CliPipeOutput(pipe_name, output)
             },
             ServerToClientMsg::QueryTerminalSize => ClientInstruction::QueryTerminalSize,
+            ServerToClientMsg::WriteConfigToDisk{ config } => ClientInstruction::WriteConfigToDisk { config },
         }
     }
 }
@@ -97,6 +101,7 @@ impl From<&ClientInstruction> for ClientContext {
             ClientInstruction::UnblockCliPipeInput(..) => ClientContext::UnblockCliPipeInput,
             ClientInstruction::CliPipeOutput(..) => ClientContext::CliPipeOutput,
             ClientInstruction::QueryTerminalSize => ClientContext::QueryTerminalSize,
+            ClientInstruction::WriteConfigToDisk { .. } => ClientContext::WriteConfigToDisk,
         }
     }
 }
@@ -260,7 +265,7 @@ pub fn start_client(
             (
                 ClientToServerMsg::NewClient(
                     client_attributes,
-                    Box::new(opts),
+                    Box::new(opts.clone()),
                     Box::new(config.clone()),
                     Box::new(config_options.clone()),
                     Box::new(layout.unwrap()),
@@ -527,6 +532,42 @@ pub fn start_client(
                 os_input.send_to_server(ClientToServerMsg::TerminalResize(
                     os_input.get_terminal_size_using_fd(0),
                 ));
+            },
+            ClientInstruction::WriteConfigToDisk { config } => {
+                // TODO: might want to also update opts?
+                match Config::from_kdl(&config, None) {
+                    Ok(parsed_config) => {
+                        if let Some(config_file_path) = Config::config_file_path(&opts) {
+                            // TODO: use error?
+                            let _ = std::fs::write(&config_file_path, config.as_bytes());
+                            if let Ok(written_config) = std::fs::read_to_string(config_file_path) {
+                                if let Ok(parsed_written_config) = Config::from_kdl(&written_config, None) {
+                                    if parsed_written_config == parsed_config {
+                                        // TODO: CONTINUE HERE (06/08) - backup current config and check if
+                                        // this works
+                                        os_input.send_to_server(ClientToServerMsg::ConfigWrittenToDisk(
+                                            parsed_config
+                                        ));
+                                    }
+                                }
+                            }
+
+                        }
+                    },
+                    Err(e) => {
+                        log::error!("Failed to parse config for writing: {}", e);
+                    }
+                }
+                // TODO: 
+                // * parse config
+                // * if successful, write it to disk
+                // * read it from disk, parse it and compare it to the previously parsed one
+                // * if they are the same, update the server
+                // * if not or we can't write to disk, update the server that the config dir is not
+                // writeable 
+//                 os_input.send_to_server(ClientToServerMsg::TerminalResize(
+//                     os_input.get_terminal_size_using_fd(0),
+//                 ));
             },
             _ => {},
         }

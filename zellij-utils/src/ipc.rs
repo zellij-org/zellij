@@ -93,6 +93,7 @@ pub enum ClientToServerMsg {
     KillSession,
     ConnStatus,
     ListClients,
+    ConfigWrittenToDisk(Config),
 }
 
 // Types of messages sent from the server to the client
@@ -109,6 +110,9 @@ pub enum ServerToClientMsg {
     UnblockCliPipeInput(String),   // String -> pipe name
     CliPipeOutput(String, String), // String -> pipe name, String -> Output
     QueryTerminalSize,
+    WriteConfigToDisk {
+        config: String
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

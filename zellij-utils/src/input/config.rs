@@ -234,6 +234,21 @@ impl Config {
         self.env = self.env.merge(other.env);
         Ok(())
     }
+    pub fn config_file_path(opts: &CliArgs) -> Option<PathBuf> {
+        // TODO: consider consolidating with similar logic above
+        let config_dir = opts
+            .config_dir
+            .clone()
+            .or_else(home::find_default_config_dir);
+
+        if let Some(ref config) = config_dir {
+            let path = config.join(DEFAULT_CONFIG_FILE_NAME);
+            if path.exists() {
+                return Some(path);
+            }
+        }
+        return None;
+    }
 }
 
 #[cfg(test)]

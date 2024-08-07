@@ -504,6 +504,12 @@ impl PluginUserConfiguration {
         configuration.remove("direction");
         configuration.remove("floating");
         configuration.remove("move_to_focused_tab");
+        configuration.remove("launch_new");
+        configuration.remove("payload");
+        configuration.remove("skip_cache");
+        configuration.remove("title");
+        configuration.remove("in_place");
+        configuration.remove("skip_plugin_cache");
 
         PluginUserConfiguration(configuration)
     }

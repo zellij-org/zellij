@@ -1228,6 +1228,9 @@ pub(crate) fn route_thread_main(
                         ClientToServerMsg::ListClients => {
                             let _ = to_server.send(ServerInstruction::ActiveClients(client_id));
                         },
+                        ClientToServerMsg::ConfigWrittenToDisk(config) => {
+                            let _ = to_server.send(ServerInstruction::ConfigWrittenToDisk(client_id, config));
+                        }
                     }
                     Ok(should_break)
                 };

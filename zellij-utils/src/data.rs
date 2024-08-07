@@ -120,7 +120,7 @@ impl fmt::Display for KeyWithModifier {
                     .iter()
                     .map(|m| m.to_string())
                     .collect::<Vec<_>>()
-                    .join("-"),
+                    .join(" "),
                 self.bare_key
             )
         }
@@ -1798,7 +1798,8 @@ pub enum PluginCommand {
     DumpSessionLayout,
     CloseSelf,
     NewTabsWithLayoutInfo(LayoutInfo),
-    Reconfigure(String), // String -> stringified configuration
+    Reconfigure(String, bool), // String -> stringified configuration, bool -> save configuration
+                               // file to disk
     HidePaneWithId(PaneId),
     ShowPaneWithId(PaneId, bool), // bool -> should_float_if_hidden
     OpenCommandPaneBackground(CommandToRun, Context),

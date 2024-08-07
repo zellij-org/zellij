@@ -100,7 +100,12 @@ pub enum ServerInstruction {
     DisconnectAllClientsExcept(ClientId),
     ChangeMode(ClientId, InputMode),
     ChangeModeForAllClients(InputMode),
-    Reconfigure(ClientId, String), // String -> stringified configuration
+    Reconfigure {
+        client_id: ClientId,
+        config: String,
+        write_config_to_disk: bool
+    },
+    ConfigWrittenToDisk(ClientId, Config),
 }
 
 impl From<&ServerInstruction> for ServerContext {
@@ -132,7 +137,8 @@ impl From<&ServerInstruction> for ServerContext {
             ServerInstruction::ChangeModeForAllClients(..) => {
                 ServerContext::ChangeModeForAllClients
             },
-            ServerInstruction::Reconfigure(..) => ServerContext::Reconfigure,
+            ServerInstruction::Reconfigure{..} => ServerContext::Reconfigure,
+            ServerInstruction::ConfigWrittenToDisk(..) => ServerContext::ConfigWrittenToDisk,
         }
     }
 }
@@ -151,7 +157,20 @@ pub(crate) struct SessionConfiguration {
 }
 
 impl SessionConfiguration {
-
+    pub fn new_saved_config(&mut self, client_id: ClientId, mut new_saved_config: Config) {
+        self.saved_config.insert(client_id, new_saved_config.clone());
+        if let Some(runtime_config) = self.runtime_config.get_mut(&client_id) {
+            match new_saved_config.merge(runtime_config.clone()) {
+                Ok(_) => {
+                    *runtime_config = new_saved_config;
+                },
+                Err(e) => {
+                    log::error!("Failed to update runtime config: {}", e);
+                }
+            }
+        }
+        // TODO: handle change by propagating to all the relevant places
+    }
     pub fn set_client_saved_configuration(&mut self, client_id: ClientId, client_config: Config) {
         self.saved_config.insert(client_id, client_config);
     }
@@ -177,13 +196,14 @@ impl SessionConfiguration {
         let current_client_configuration = self.get_client_configuration(client_id);
         match Config::from_kdl(&stringified_config, Some(current_client_configuration.clone())) {
             Ok(new_config) => {
-                let mut config_changed = false;
-                if new_config.options.default_mode != current_client_configuration.options.default_mode {
-                    config_changed = true;
-                }
-                if new_config.keybinds != current_client_configuration.keybinds {
-                    config_changed = true;
-                }
+                let config_changed = current_client_configuration != new_config;
+//                 let mut config_changed = false;
+//                 if new_config.options.default_mode != current_client_configuration.options.default_mode {
+//                     config_changed = true;
+//                 }
+//                 if new_config.keybinds != current_client_configuration.keybinds {
+//                     config_changed = true;
+//                 }
                 if config_changed {
                     full_reconfigured_config = Some(new_config.clone());
                 }
@@ -1013,42 +1033,30 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .unwrap()
                     .change_mode_for_all_clients(input_mode);
             },
-            ServerInstruction::Reconfigure(client_id, new_config) => {
+            ServerInstruction::Reconfigure{client_id, config, write_config_to_disk } => {
+                // TODO: CONTINUE HERE - this is only the changed part of the config
+                // we need to merge it with the rest of the config then write everything to disk
                 let new_config = session_data
                     .write()
                     .unwrap()
                     .as_mut()
                     .unwrap()
                     .session_configuration
-                    .reconfigure_runtime_config(&client_id, new_config);
+                    .reconfigure_runtime_config(&client_id, config);
 
-//                 let mut new_default_mode = None;
-//                 match Options::from_string(&new_config) {
-//                     Ok(mut new_config_options) => {
-//                         if let Some(default_mode) = new_config_options.default_mode.take() {
-//                             new_default_mode = Some(default_mode);
-//                             session_data
-//                                 .write()
-//                                 .unwrap()
-//                                 .as_mut()
-//                                 .unwrap()
-//                                 .default_mode
-//                                 .insert(client_id, default_mode);
-//                         }
-//                     },
-//                     Err(e) => {
-//                         log::error!("Failed to parse config: {}", e);
-//                     },
-//                 }
 
-//                 let new_keybinds = session_data
-//                     .write()
-//                     .unwrap()
-//                     .as_mut()
-//                     .unwrap()
-//                     .rebind_keys(client_id, new_config)
-//                     .clone();
                 if let Some(new_config) = new_config {
+
+                    if write_config_to_disk {
+                        let clear_defaults = true;
+                        send_to_client!(
+                            client_id,
+                            os_input,
+                            ServerToClientMsg::WriteConfigToDisk{config: new_config.to_string(clear_defaults)},
+                            session_state
+                        );
+                    }
+
                     session_data
                         .write()
                         .unwrap()
@@ -1075,6 +1083,15 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                         .unwrap();
                 }
             },
+            ServerInstruction::ConfigWrittenToDisk(client_id, new_config) => {
+                session_data
+                    .write()
+                    .unwrap()
+                    .as_mut()
+                    .unwrap()
+                    .session_configuration
+                    .new_saved_config(client_id, new_config);
+            }
         }
     }
 

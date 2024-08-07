@@ -1,0 +1,33 @@
+---
+source: zellij-utils/src/kdl/mod.rs
+assertion_line: 3814
+expression: serialized.to_string()
+---
+themes {
+    nord {
+        fg 216 222 233
+        bg 46 52 64
+        red 191 97 106
+        green 163 190 140
+        yellow 235 203 139
+        blue 129 161 193
+        magenta 180 142 173
+        orange 208 135 112
+        cyan 136 192 208
+        black 59 66 82
+        white 229 233 240
+    }
+    dracula {
+        fg 248 248 242
+        bg 40 42 54
+        red 255 85 85
+        green 80 250 123
+        yellow 241 250 140
+        blue 98 114 164
+        magenta 255 121 198
+        orange 255 184 108
+        cyan 139 233 253
+        black 0 0 0
+        white 255 255 255
+    }
+}

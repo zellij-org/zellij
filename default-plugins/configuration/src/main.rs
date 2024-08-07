@@ -205,6 +205,7 @@ impl State {
             should_render = true;
         } else if key.bare_key == BareKey::Enter && key.has_no_modifiers() {
             if let Some(selected) = self.selected_index.take() {
+                let write_to_disk = true;
                 if selected == 0 {
                     // TODO: these should be part of a "transaction" when they are
                     // implemented
@@ -219,7 +220,7 @@ impl State {
                             .map(|m| m.to_string())
                             .collect::<Vec<_>>()
                             .join(" "),
-                    ));
+                    ), write_to_disk);
                     switch_to_input_mode(&InputMode::Normal);
                 } else if selected == 1 {
                     // TODO: these should be part of a "transaction" when they are
@@ -235,7 +236,7 @@ impl State {
                             .map(|m| m.to_string())
                             .collect::<Vec<_>>()
                             .join(" "),
-                    ));
+                    ), write_to_disk);
                     switch_to_input_mode(&InputMode::Locked);
                 }
                 should_render = true;
