@@ -2283,7 +2283,7 @@ impl Tab {
         }
     }
     // returns a boolean that indicates whether the focus moved
-    pub fn move_focus_left(&mut self, client_id: ClientId) -> Result<bool> {
+    pub fn move_focus_left(&mut self, client_id: ClientId, wrap_panes: bool) -> Result<bool> {
         let err_context = || format!("failed to move focus left for client {}", client_id);
 
         if self.floating_panes.panes_are_visible() {
@@ -2302,7 +2302,7 @@ impl Tab {
                 self.focus_pane_left_fullscreen(client_id);
                 return Ok(true);
             }
-            Ok(self.tiled_panes.move_focus_left(client_id))
+            Ok(self.tiled_panes.move_focus_left(client_id, wrap_panes))
         }
     }
     pub fn move_focus_down(&mut self, client_id: ClientId) -> Result<bool> {
@@ -2350,7 +2350,7 @@ impl Tab {
         }
     }
     // returns a boolean that indicates whether the focus moved
-    pub fn move_focus_right(&mut self, client_id: ClientId) -> Result<bool> {
+    pub fn move_focus_right(&mut self, client_id: ClientId, wrap_panes: bool) -> Result<bool> {
         let err_context = || format!("failed to move focus right for client {}", client_id);
 
         if self.floating_panes.panes_are_visible() {
@@ -2369,7 +2369,7 @@ impl Tab {
                 self.focus_pane_right_fullscreen(client_id);
                 return Ok(true);
             }
-            Ok(self.tiled_panes.move_focus_right(client_id))
+            Ok(self.tiled_panes.move_focus_right(client_id, wrap_panes))
         }
     }
     pub fn move_active_pane(&mut self, client_id: ClientId) {
