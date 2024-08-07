@@ -1,0 +1,10 @@
+---
+source: zellij-server/src/plugins/./unit/plugin_tests.rs
+assertion_line: 6951
+expression: "format!(\"{:#?}\", rerun_command_pane_event)"
+---
+Some(
+    RerunCommandPane(
+        1,
+    ),
+)

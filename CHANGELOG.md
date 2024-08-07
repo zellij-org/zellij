@@ -25,6 +25,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix(terminal): only refresh cwd of current process (https://github.com/zellij-org/zellij/pull/3472)
 * feat(plugins): new APIs for controlling and receiving information about other panes (https://github.com/zellij-org/zellij/pull/3515)
 * feat(plugins): new API to open command panes in the background (https://github.com/zellij-org/zellij/pull/3530)
+* fix(plugins): properly set cwd for floating_panes in tab_layout (https://github.com/zellij-org/zellij/pull/3545)
+* feat(plugins): new API to rerun command the command in an existing command pane (https://github.com/zellij-org/zellij/pull/3546)
 
 ## [0.40.1] - 2024-05-02
 * fix(sessions): issue where sessions would occasionally become unresponsive (https://github.com/zellij-org/zellij/pull/3281)
