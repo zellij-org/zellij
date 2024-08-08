@@ -320,7 +320,6 @@ macro_rules! keys_from_kdl {
         kdl_string_arguments!($kdl_node)
             .iter()
             .map(|k| {
-                eprintln!("k: {:?}", k);
                 KeyWithModifier::from_str(k).map_err(|_| {
                     ConfigError::new_kdl_error(
                         format!("Invalid key: '{}'", k),
@@ -3490,7 +3489,8 @@ impl Config {
             config.keybinds = Keybinds::from_kdl(&kdl_keybinds, config.keybinds, &config.options)?;
         }
         if let Some(kdl_themes) = kdl_config.get("themes") {
-            let config_themes = Themes::from_kdl(kdl_themes)?;
+            let sourced_from_external_file = false;
+            let config_themes = Themes::from_kdl(kdl_themes, sourced_from_external_file)?;
             config.themes = config.themes.merge(config_themes);
         }
         if let Some(kdl_plugin_aliases) = kdl_config.get("plugins") {
@@ -3648,7 +3648,7 @@ impl UiConfig {
 }
 
 impl Themes {
-    pub fn from_kdl(themes_from_kdl: &KdlNode) -> Result<Self, ConfigError> {
+    pub fn from_kdl(themes_from_kdl: &KdlNode, sourced_from_external_file: bool) -> Result<Self, ConfigError> {
         let mut themes: HashMap<String, Theme> = HashMap::new();
         for theme_config in kdl_children_nodes_or_error!(themes_from_kdl, "no themes found") {
             let theme_name = kdl_name!(theme_config);
@@ -3668,6 +3668,7 @@ impl Themes {
                     white: PaletteColor::try_from(("white", theme_colors))?,
                     ..Default::default()
                 },
+                sourced_from_external_file,
             };
             themes.insert(theme_name.into(), theme);
         }
@@ -3675,14 +3676,14 @@ impl Themes {
         Ok(themes)
     }
 
-    pub fn from_string(raw_string: &String) -> Result<Self, ConfigError> {
+    pub fn from_string(raw_string: &String, sourced_from_external_file: bool) -> Result<Self, ConfigError> {
         let kdl_config: KdlDocument = raw_string.parse()?;
         let kdl_themes = kdl_config.get("themes").ok_or(ConfigError::new_kdl_error(
             "No theme node found in file".into(),
             kdl_config.span().offset(),
             kdl_config.span().len(),
         ))?;
-        let all_themes_in_file = Themes::from_kdl(kdl_themes)?;
+        let all_themes_in_file = Themes::from_kdl(kdl_themes, sourced_from_external_file)?;
         Ok(all_themes_in_file)
     }
 
@@ -3690,7 +3691,8 @@ impl Themes {
         // String is the theme name
         let kdl_config = std::fs::read_to_string(&path_to_theme_file)
             .map_err(|e| ConfigError::IoPath(e, path_to_theme_file.clone()))?;
-        Themes::from_string(&kdl_config).map_err(|e| match e {
+        let sourced_from_external_file = true;
+        Themes::from_string(&kdl_config, sourced_from_external_file).map_err(|e| match e {
             ConfigError::KdlError(kdl_error) => ConfigError::KdlError(
                 kdl_error.add_src(path_to_theme_file.display().to_string(), kdl_config),
             ),
@@ -3718,6 +3720,11 @@ impl Themes {
         let mut themes = KdlDocument::new();
         let mut has_themes = false;
         for (theme_name, theme) in self.inner() {
+            if theme.sourced_from_external_file {
+                // we do not serialize themes that have been defined in external files so as not to
+                // clog up the configuration file definitions
+                continue;
+            }
             has_themes = true;
             let mut current_theme_node = KdlNode::new(theme_name.clone());
             let mut current_theme_node_children = KdlDocument::new();
@@ -4684,9 +4691,10 @@ fn themes_to_string() {
             }
         }"#;
     let document: KdlDocument = fake_config.parse().unwrap();
-    let deserialized = Themes::from_kdl(document.get("themes").unwrap()).unwrap();
+    let sourced_from_external_file = false;
+    let deserialized = Themes::from_kdl(document.get("themes").unwrap(), sourced_from_external_file).unwrap();
     let serialized = Themes::to_kdl(&deserialized).unwrap();
-    let deserialized_from_serialized = Themes::from_kdl(serialized.to_string().parse::<KdlDocument>().unwrap().get("themes").unwrap()).unwrap();
+    let deserialized_from_serialized = Themes::from_kdl(serialized.to_string().parse::<KdlDocument>().unwrap().get("themes").unwrap(), sourced_from_external_file).unwrap();
     assert_eq!(deserialized, deserialized_from_serialized, "Deserialized serialized config equals original config");
     insta::assert_snapshot!(serialized.to_string());
 }
@@ -4710,9 +4718,10 @@ fn themes_to_string_with_hex_definitions() {
             }
         }"##;
     let document: KdlDocument = fake_config.parse().unwrap();
-    let deserialized = Themes::from_kdl(document.get("themes").unwrap()).unwrap();
+    let sourced_from_external_file = false;
+    let deserialized = Themes::from_kdl(document.get("themes").unwrap(), sourced_from_external_file).unwrap();
     let serialized = Themes::to_kdl(&deserialized).unwrap();
-    let deserialized_from_serialized = Themes::from_kdl(serialized.to_string().parse::<KdlDocument>().unwrap().get("themes").unwrap()).unwrap();
+    let deserialized_from_serialized = Themes::from_kdl(serialized.to_string().parse::<KdlDocument>().unwrap().get("themes").unwrap(), sourced_from_external_file).unwrap();
     assert_eq!(deserialized, deserialized_from_serialized, "Deserialized serialized config equals original config");
     insta::assert_snapshot!(serialized.to_string());
 }
@@ -4736,9 +4745,10 @@ fn themes_to_string_with_eight_bit_definitions() {
             }
         }"##;
     let document: KdlDocument = fake_config.parse().unwrap();
-    let deserialized = Themes::from_kdl(document.get("themes").unwrap()).unwrap();
+    let sourced_from_external_file = false;
+    let deserialized = Themes::from_kdl(document.get("themes").unwrap(), sourced_from_external_file).unwrap();
     let serialized = Themes::to_kdl(&deserialized).unwrap();
-    let deserialized_from_serialized = Themes::from_kdl(serialized.to_string().parse::<KdlDocument>().unwrap().get("themes").unwrap()).unwrap();
+    let deserialized_from_serialized = Themes::from_kdl(serialized.to_string().parse::<KdlDocument>().unwrap().get("themes").unwrap(), sourced_from_external_file).unwrap();
     assert_eq!(deserialized, deserialized_from_serialized, "Deserialized serialized config equals original config");
     insta::assert_snapshot!(serialized.to_string());
 }
@@ -4762,9 +4772,10 @@ fn themes_to_string_with_combined_definitions() {
             }
         }"##;
     let document: KdlDocument = fake_config.parse().unwrap();
-    let deserialized = Themes::from_kdl(document.get("themes").unwrap()).unwrap();
+    let sourced_from_external_file = false;
+    let deserialized = Themes::from_kdl(document.get("themes").unwrap(), sourced_from_external_file).unwrap();
     let serialized = Themes::to_kdl(&deserialized).unwrap();
-    let deserialized_from_serialized = Themes::from_kdl(serialized.to_string().parse::<KdlDocument>().unwrap().get("themes").unwrap()).unwrap();
+    let deserialized_from_serialized = Themes::from_kdl(serialized.to_string().parse::<KdlDocument>().unwrap().get("themes").unwrap(), sourced_from_external_file).unwrap();
     assert_eq!(deserialized, deserialized_from_serialized, "Deserialized serialized config equals original config");
     insta::assert_snapshot!(serialized.to_string());
 }
@@ -4801,9 +4812,10 @@ fn themes_to_string_with_multiple_theme_definitions() {
             }
         }"##;
     let document: KdlDocument = fake_config.parse().unwrap();
-    let deserialized = Themes::from_kdl(document.get("themes").unwrap()).unwrap();
+    let sourced_from_external_file = false;
+    let deserialized = Themes::from_kdl(document.get("themes").unwrap(), sourced_from_external_file).unwrap();
     let serialized = Themes::to_kdl(&deserialized).unwrap();
-    let deserialized_from_serialized = Themes::from_kdl(serialized.to_string().parse::<KdlDocument>().unwrap().get("themes").unwrap()).unwrap();
+    let deserialized_from_serialized = Themes::from_kdl(serialized.to_string().parse::<KdlDocument>().unwrap().get("themes").unwrap(), sourced_from_external_file).unwrap();
     assert_eq!(deserialized, deserialized_from_serialized, "Deserialized serialized config equals original config");
     insta::assert_snapshot!(serialized.to_string());
 }

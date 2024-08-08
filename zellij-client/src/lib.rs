@@ -15,6 +15,7 @@ use std::path::Path;
 use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::thread;
+use std::path::PathBuf;
 use zellij_utils::errors::FatalError;
 
 use crate::stdin_ansi_parser::{AnsiStdinInstruction, StdinAnsiParser, SyncOutput};
@@ -534,30 +535,116 @@ pub fn start_client(
                 ));
             },
             ClientInstruction::WriteConfigToDisk { config } => {
-                // TODO: might want to also update opts?
-                match Config::from_kdl(&config, None) {
-                    Ok(parsed_config) => {
-                        if let Some(config_file_path) = Config::config_file_path(&opts) {
-                            // TODO: use error?
-                            let _ = std::fs::write(&config_file_path, config.as_bytes());
-                            if let Ok(written_config) = std::fs::read_to_string(config_file_path) {
-                                if let Ok(parsed_written_config) = Config::from_kdl(&written_config, None) {
-                                    if parsed_written_config == parsed_config {
-                                        // TODO: CONTINUE HERE (06/08) - backup current config and check if
-                                        // this works
-                                        os_input.send_to_server(ClientToServerMsg::ConfigWrittenToDisk(
-                                            parsed_config
-                                        ));
+                // TODO: 
+                // - refactor the below into functions
+                // - if a file already exists, read it to memory and then move it to <name>.bak.kdl (if that exists, to
+                // <name>.bak2.kdl, etc.)
+                // - read the backed-up file to memory and compare it to the original, if they are
+                // the same, continue
+                // - once all this works, when serializing this file, add a comment to the config
+                // file letting the user know what happened
+                fn backup_current_config(opts: &CliArgs) -> Result<Option<PathBuf>, String> {
+                    if let Some(config_file_path) = Config::config_file_path(&opts) {
+                        match std::fs::read_to_string(&config_file_path) {
+                            Ok(current_config) => {
+                                let backup_config_path = {
+                                    let mut backup_config_path = None;
+                                    let config_file_name = config_file_path.file_name().and_then(|f| f.to_str()).unwrap_or_else(|| "config.kdl"); // TODO: from consts
+                                    for i in 0..100 {
+                                        let new_file_name = if i == 0 { format!("{}.bak", config_file_name) } else { format!("{}.bak.{}", config_file_name, i) };
+                                        let mut potential_config_path = config_file_path.clone();
+                                        potential_config_path.set_file_name(new_file_name);
+                                        if !potential_config_path.exists() {
+                                            backup_config_path = Some(potential_config_path);
+                                            break;
+                                        }
                                     }
+                                    match backup_config_path.take() {
+                                        Some(backup_config_path) => backup_config_path,
+                                        None => {
+                                            return Err(format!("Failed to find a file name to back up the configuration to."));
+                                        }
+                                    }
+                                };
+                                let _ = std::fs::copy(config_file_path, &backup_config_path);
+                                let backed_up_config = std::fs::read_to_string(&backup_config_path).map_err(|e| format!("Failed to back up config file: {:?}", e))?;
+                                if current_config == backed_up_config {
+                                    Ok(Some(backup_config_path))
+                                } else {
+                                    Err("Failed to back up config file.".to_owned())
+                                }
+                            },
+                            Err(e) => {
+                                if e.kind() == std::io::ErrorKind::NotFound {
+                                    Ok(None)
+                                } else {
+                                    Err(format!("Failed to read current config: {}", e))
                                 }
                             }
-
                         }
-                    },
-                    Err(e) => {
-                        log::error!("Failed to parse config for writing: {}", e);
+                    } else {
+                        Err(format!("No config file path found?"))
                     }
                 }
+                // TODO: CONTINUE HERE - tidy this up and then 
+                // propagate error to server
+                fn autogen_config_message(backed_up_file_name: PathBuf) -> String {
+                    format!("//\n// THIS FILE WAS AUTOGENERATED BY ZELLIJ, THE PREVIOUS FILE AT THIS LOCATION WAS COPIED TO: {}\n//\n\n", backed_up_file_name.display())
+                }
+                Config::from_kdl(&config, None)
+                    .map_err(|e| format!("Failed to parse config: {}", e))
+                    .and_then(|parsed_config| {
+                        let backed_up_file_name = backup_current_config(&opts)?;
+                        let config_file_path = Config::config_file_path(&opts)
+                            .ok_or_else(|| "Config file path not found".to_owned())?;
+                        let config = match backed_up_file_name {
+                            Some(backed_up_file_name) => {
+                                format!("{}{}", autogen_config_message(backed_up_file_name), config)
+                            },
+                            None => config
+                        };
+                        let _ = std::fs::write(&config_file_path, config.as_bytes());
+                        // TODO: CONTINUE HERE (08/08) - keep copying stuff from the commented out
+                        // function below
+                        Ok(())
+                        // Ok((parsed_config, backed_up_file_name, config_file_path))
+                    });
+
+//                 match Config::from_kdl(&config, None) {
+//                     Ok(parsed_config) => {
+//                         match backup_current_config(&opts) {
+//                             Ok(backed_up_file_name) => {
+//                                 if let Some(config_file_path) = Config::config_file_path(&opts) {
+//                                     // TODO: use error?
+//                                     let config = match backed_up_file_name {
+//                                         Some(backed_up_file_name) => {
+//                                             format!("{}{}", autogen_config_message(backed_up_file_name), config)
+//                                         },
+//                                         None => config
+//                                     };
+//                                     let _ = std::fs::write(&config_file_path, config.as_bytes());
+//                                     if let Ok(written_config) = std::fs::read_to_string(config_file_path) {
+//                                         if let Ok(parsed_written_config) = Config::from_kdl(&written_config, None) {
+//                                             if parsed_written_config == parsed_config {
+//                                                 // TODO: CONTINUE HERE (06/08) - backup current config and check if
+//                                                 // this works
+//                                                 os_input.send_to_server(ClientToServerMsg::ConfigWrittenToDisk(
+//                                                     parsed_config
+//                                                 ));
+//                                             }
+//                                         }
+//                                     }
+//                                 }
+//                             },
+//                             Err(e) => {
+//                                 log::error!("Failed to write config to disk: {:?}", e);
+//                             }
+//                         }
+//                     },
+//                     Err(e) => {
+//                         log::error!("Failed to parse config for writing: {}", e);
+//                     }
+//                 }
                 // TODO: 
                 // * parse config
                 // * if successful, write it to disk

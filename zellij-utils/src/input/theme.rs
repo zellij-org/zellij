@@ -76,6 +76,7 @@ impl Themes {
 pub struct Theme {
     #[serde(flatten)]
     pub palette: Palette,
+    pub sourced_from_external_file: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
