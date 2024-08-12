@@ -1231,6 +1231,9 @@ pub(crate) fn route_thread_main(
                         ClientToServerMsg::ConfigWrittenToDisk(config) => {
                             let _ = to_server.send(ServerInstruction::ConfigWrittenToDisk(client_id, config));
                         }
+                        ClientToServerMsg::FailedToWriteConfigToDisk(failed_path) => {
+                            let _ = to_server.send(ServerInstruction::FailedToWriteConfigToDisk(client_id, failed_path));
+                        }
                     }
                     Ok(should_break)
                 };

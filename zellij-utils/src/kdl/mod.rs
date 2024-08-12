@@ -3719,7 +3719,8 @@ impl Themes {
         let mut theme_node = KdlNode::new("themes");
         let mut themes = KdlDocument::new();
         let mut has_themes = false;
-        for (theme_name, theme) in self.inner() {
+        let sorted_themes: BTreeMap<String, Theme> = self.inner().clone().into_iter().collect();
+        for (theme_name, theme) in sorted_themes {
             if theme.sourced_from_external_file {
                 // we do not serialize themes that have been defined in external files so as not to
                 // clog up the configuration file definitions

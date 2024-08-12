@@ -535,13 +535,22 @@ pub fn start_client(
                 ));
             },
             ClientInstruction::WriteConfigToDisk { config } => {
+                // TODO: CONTINUE HERE - work on the config UI, adding an option to write to disk
+                // and differentiating between the two, representing it in the UI, etc.
+                // once that's working, we can get to work on doing this setup on startup
+                // * change the reconfigure command to add an option to save to disk
+                // * in the UI, do not save to disk, once the configuration is applied, show
+                // warning about unsaved changes and allow the user to save them to disk with the
+                // option
+                // * 
                 match Config::write_config_to_disk(config, &opts) {
                     Ok(written_config) => {
                         let _ = os_input.send_to_server(ClientToServerMsg::ConfigWrittenToDisk(written_config));
                     },
                     Err(e) => {
-                        // TODO: propagate to server?
-                        log::error!("Failed to write config to disk: {}", e);
+                        let error_path = e.as_ref().map(|p| p.display().to_string()).unwrap_or_else(String::new);
+                        log::error!("Failed to write config to disk: {}", error_path);
+                        let _ = os_input.send_to_server(ClientToServerMsg::FailedToWriteConfigToDisk(e));
                     }
                 }
             },

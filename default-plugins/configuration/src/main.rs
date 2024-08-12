@@ -16,6 +16,7 @@ struct State {
     preset_color_index: usize,
     primary_leader_key_color_index: usize,
     secondary_leader_key_color_index: usize,
+    notification: Option<String>,
 }
 
 impl Default for State {
@@ -43,6 +44,7 @@ impl Default for State {
             secondary_leader_key_color_index: 0,
             mode_color_index: 2,
             preset_color_index: 1,
+            notification: None,
         }
     }
 }
@@ -64,11 +66,9 @@ impl ZellijPlugin for State {
             PermissionType::ChangeApplicationState,
         ]);
         subscribe(&[
-            EventType::ModeUpdate,
-            EventType::TabUpdate,
-            EventType::Key,
-            EventType::Timer,
             EventType::PermissionRequestResult,
+            EventType::Key,
+            EventType::FailedToWriteConfigToDisk,
         ]);
     }
     fn update(&mut self, event: Event) -> bool {
@@ -84,6 +84,17 @@ impl ZellijPlugin for State {
                     should_render = self.handle_main_screen_key(key);
                 }
             },
+            Event::FailedToWriteConfigToDisk(config_file_path) => {
+                match config_file_path {
+                    Some(failed_path) => {
+                        self.notification = Some(format!("Failed to write configuration file: {}", failed_path));
+                    },
+                    None => {
+                        self.notification = Some(format!("Failed to write configuration file."));
+                    }
+                }
+                should_render = true;
+            }
             _ => (),
         };
         should_render
@@ -185,7 +196,10 @@ impl State {
     }
     fn handle_main_screen_key(&mut self, key: KeyWithModifier) -> bool {
         let mut should_render = false;
-        if key.bare_key == BareKey::Down && key.has_no_modifiers() {
+        if self.notification.is_some() {
+            self.notification = None;
+            should_render = true;
+        } else if key.bare_key == BareKey::Down && key.has_no_modifiers() {
             if self.selected_index.is_none() {
                 self.selected_index = Some(0);
             } else if self.selected_index < Some(1) {
@@ -205,40 +219,16 @@ impl State {
             should_render = true;
         } else if key.bare_key == BareKey::Enter && key.has_no_modifiers() {
             if let Some(selected) = self.selected_index.take() {
+                let write_to_disk = false;
+                self.reconfigure(selected, write_to_disk);
+                self.notification = Some("Configuration applied to current session.".to_owned());
+                should_render = true;
+            }
+        } else if key.bare_key == BareKey::Char(' ') && key.has_no_modifiers() {
+            if let Some(selected) = self.selected_index.take() {
                 let write_to_disk = true;
-                if selected == 0 {
-                    // TODO: these should be part of a "transaction" when they are
-                    // implemented
-                    reconfigure(default_keybinds(
-                        self.primary_modifier
-                            .iter()
-                            .map(|m| m.to_string())
-                            .collect::<Vec<_>>()
-                            .join(" "),
-                        self.secondary_modifier
-                            .iter()
-                            .map(|m| m.to_string())
-                            .collect::<Vec<_>>()
-                            .join(" "),
-                    ), write_to_disk);
-                    switch_to_input_mode(&InputMode::Normal);
-                } else if selected == 1 {
-                    // TODO: these should be part of a "transaction" when they are
-                    // implemented
-                    reconfigure(unlock_first_keybinds(
-                        self.primary_modifier
-                            .iter()
-                            .map(|m| m.to_string())
-                            .collect::<Vec<_>>()
-                            .join(" "),
-                        self.secondary_modifier
-                            .iter()
-                            .map(|m| m.to_string())
-                            .collect::<Vec<_>>()
-                            .join(" "),
-                    ), write_to_disk);
-                    switch_to_input_mode(&InputMode::Locked);
-                }
+                self.reconfigure(selected, write_to_disk);
+                self.notification = Some("Configuration applied and saved to disk.".to_owned());
                 should_render = true;
             }
         } else if key.bare_key == BareKey::Char('l') && key.has_no_modifiers() {
@@ -768,7 +758,7 @@ impl State {
             )
         };
     }
-    fn render_warning_if_needed(&self, rows: usize, cols: usize, primary_modifier_key_text: &str) {
+    fn render_info_line(&self, rows: usize, cols: usize, primary_modifier_key_text: &str) {
         let widths = self.main_screen_widths(primary_modifier_key_text);
         let top_coordinates = if rows > 14 {
             (rows.saturating_sub(15) / 2) + 14
@@ -782,7 +772,15 @@ impl State {
         } else {
             cols.saturating_sub(widths.2) / 2
         };
-        if let Some(warning_text) = self.warning_text(cols) {
+        if let Some(notification) = &self.notification {
+            print_text_with_coordinates(
+                Text::new(notification).color_range(3, ..),
+                left_padding,
+                top_coordinates,
+                None,
+                None,
+            );
+        } else if let Some(warning_text) = self.warning_text(cols) {
             print_text_with_coordinates(
                 Text::new(warning_text).color_range(3, ..),
                 left_padding,
@@ -792,28 +790,30 @@ impl State {
             );
         }
     }
-    fn render_help_text_main(&self, rows: usize, cols: usize, primary_modifier_key_text: &str) {
-        let widths = self.main_screen_widths(primary_modifier_key_text);
-        if cols >= widths.0 {
-            let help_text = "Help: <↓↑/ENTER> - navigate/select, <l> - leaders, <ESC> - close";
+    fn render_help_text_main(&self, rows: usize, cols: usize) {
+        let full_help_text = "Help: <↓↑> - navigate, <ENTER> - apply, <SPACE> - apply & save, <l> - leaders, <ESC> - close";
+        let short_help_text = "Help: <↓↑> / <ENTER> / <SPACE> / <l> / <ESC>";
+        if cols >= full_help_text.chars().count() {
             print_text_with_coordinates(
-                Text::new(help_text)
-                    .color_range(2, 6..16)
-                    .color_range(2, 36..39)
-                    .color_range(2, 51..56),
+                Text::new(full_help_text)
+                    .color_range(2, 6..10)
+                    .color_range(2, 23..30)
+                    .color_range(2, 40..47)
+                    .color_range(2, 64..67)
+                    .color_range(2, 79..84),
                 0,
                 rows,
                 None,
                 None,
             );
         } else {
-            let help_text = "Help: <↓↑> / <ENTER> / <l> / <ESC>";
             print_text_with_coordinates(
-                Text::new(help_text)
+                Text::new(short_help_text)
                     .color_range(2, 6..10)
                     .color_range(2, 13..20)
-                    .color_range(2, 23..26)
-                    .color_range(2, 29..34),
+                    .color_range(2, 23..30)
+                    .color_range(2, 33..36)
+                    .color_range(2, 39..44),
                 0,
                 rows,
                 None,
@@ -893,8 +893,8 @@ impl State {
             &primary_modifier_key_text,
             &secondary_modifier_key_text,
         );
-        self.render_warning_if_needed(rows, cols, &primary_modifier_key_text);
-        self.render_help_text_main(rows, cols, &primary_modifier_key_text);
+        self.render_info_line(rows, cols, &primary_modifier_key_text);
+        self.render_help_text_main(rows, cols);
     }
     fn warning_text(&self, max_width: usize) -> Option<String> {
         if self.needs_kitty_support() {
@@ -921,6 +921,41 @@ impl State {
             || self.secondary_modifier.len() > 1
             || self.primary_modifier.contains(&KeyModifier::Super)
             || self.secondary_modifier.contains(&KeyModifier::Super)
+    }
+    fn reconfigure(&self, selected: usize, write_to_disk: bool) {
+        if selected == 0 {
+            // TODO: these should be part of a "transaction" when they are
+            // implemented
+            reconfigure(default_keybinds(
+                self.primary_modifier
+                    .iter()
+                    .map(|m| m.to_string())
+                    .collect::<Vec<_>>()
+                    .join(" "),
+                self.secondary_modifier
+                    .iter()
+                    .map(|m| m.to_string())
+                    .collect::<Vec<_>>()
+                    .join(" "),
+            ), write_to_disk);
+            switch_to_input_mode(&InputMode::Normal);
+        } else if selected == 1 {
+            // TODO: these should be part of a "transaction" when they are
+            // implemented
+            reconfigure(unlock_first_keybinds(
+                self.primary_modifier
+                    .iter()
+                    .map(|m| m.to_string())
+                    .collect::<Vec<_>>()
+                    .join(" "),
+                self.secondary_modifier
+                    .iter()
+                    .map(|m| m.to_string())
+                    .collect::<Vec<_>>()
+                    .join(" "),
+            ), write_to_disk);
+            switch_to_input_mode(&InputMode::Locked);
+        }
     }
 }
 

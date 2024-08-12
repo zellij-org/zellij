@@ -47,6 +47,7 @@ enum EventType {
     PaneClosed = 21;
     EditPaneOpened = 22;
     EditPaneExited = 23;
+    FailedToWriteConfigToDisk = 24;
 }
 
 message EventNameList {
@@ -75,7 +76,12 @@ message Event {
     PaneClosedPayload pane_closed_payload = 18;
     EditPaneOpenedPayload edit_pane_opened_payload = 19;
     EditPaneExitedPayload edit_pane_exited_payload = 20;
+    FailedToWriteConfigToDiskPayload failed_to_write_config_to_disk_payload = 21;
   }
+}
+
+message FailedToWriteConfigToDiskPayload {
+  optional string file_path = 1;
 }
 
 message PaneClosedPayload {

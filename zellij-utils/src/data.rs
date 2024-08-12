@@ -919,6 +919,7 @@ pub enum Event {
     PaneClosed(PaneId),
     EditPaneOpened(u32, Context),              // u32 - terminal_pane_id
     EditPaneExited(u32, Option<i32>, Context), // u32 - terminal_pane_id, Option<i32> - exit code
+    FailedToWriteConfigToDisk(Option<String>), // String -> the file path we failed to write
 }
 
 #[derive(

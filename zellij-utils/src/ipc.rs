@@ -17,6 +17,7 @@ use std::{
     io::{self, Write},
     marker::PhantomData,
     os::unix::io::{AsRawFd, FromRawFd},
+    path::PathBuf,
 };
 
 type SessionId = u64;
@@ -94,6 +95,7 @@ pub enum ClientToServerMsg {
     ConnStatus,
     ListClients,
     ConfigWrittenToDisk(Config),
+    FailedToWriteConfigToDisk(Option<PathBuf>),
 }
 
 // Types of messages sent from the server to the client

@@ -106,6 +106,7 @@ pub enum ServerInstruction {
         write_config_to_disk: bool
     },
     ConfigWrittenToDisk(ClientId, Config),
+    FailedToWriteConfigToDisk(ClientId, Option<PathBuf>), // Pathbuf - file we failed to write
 }
 
 impl From<&ServerInstruction> for ServerContext {
@@ -139,6 +140,7 @@ impl From<&ServerInstruction> for ServerContext {
             },
             ServerInstruction::Reconfigure{..} => ServerContext::Reconfigure,
             ServerInstruction::ConfigWrittenToDisk(..) => ServerContext::ConfigWrittenToDisk,
+            ServerInstruction::FailedToWriteConfigToDisk(..) => ServerContext::FailedToWriteConfigToDisk,
         }
     }
 }
@@ -191,29 +193,21 @@ impl SessionConfiguration {
             .cloned()
             .unwrap_or_default()
     }
-    pub fn reconfigure_runtime_config(&mut self, client_id: &ClientId, stringified_config: String) -> Option<Config> { // returns Config if it changed
+    pub fn reconfigure_runtime_config(&mut self, client_id: &ClientId, stringified_config: String) -> (Option<Config>, bool) { // bool is whether the config changed
         let mut full_reconfigured_config = None;
+        let mut config_changed = false;
         let current_client_configuration = self.get_client_configuration(client_id);
         match Config::from_kdl(&stringified_config, Some(current_client_configuration.clone())) {
             Ok(new_config) => {
-                let config_changed = current_client_configuration != new_config;
-//                 let mut config_changed = false;
-//                 if new_config.options.default_mode != current_client_configuration.options.default_mode {
-//                     config_changed = true;
-//                 }
-//                 if new_config.keybinds != current_client_configuration.keybinds {
-//                     config_changed = true;
-//                 }
-                if config_changed {
-                    full_reconfigured_config = Some(new_config.clone());
-                }
+                config_changed = current_client_configuration != new_config;
+                full_reconfigured_config = Some(new_config.clone());
                 self.runtime_config.insert(*client_id, new_config);
             },
             Err(e) => {
                 log::error!("Failed to reconfigure runtime config: {}", e);
             }
         }
-        full_reconfigured_config
+        (full_reconfigured_config, config_changed)
     }
 }
 
@@ -1034,9 +1028,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .change_mode_for_all_clients(input_mode);
             },
             ServerInstruction::Reconfigure{client_id, config, write_config_to_disk } => {
-                // TODO: CONTINUE HERE - this is only the changed part of the config
-                // we need to merge it with the rest of the config then write everything to disk
-                let new_config = session_data
+                let (new_config, runtime_config_changed) = session_data
                     .write()
                     .unwrap()
                     .as_mut()
@@ -1057,30 +1049,32 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                         );
                     }
 
-                    session_data
-                        .write()
-                        .unwrap()
-                        .as_ref()
-                        .unwrap()
-                        .senders
-                        .send_to_screen(ScreenInstruction::Reconfigure {
-                            client_id,
-                            keybinds: Some(new_config.keybinds.clone()),
-                            default_mode: new_config.options.default_mode,
-                        })
-                        .unwrap();
-                    session_data
-                        .write()
-                        .unwrap()
-                        .as_ref()
-                        .unwrap()
-                        .senders
-                        .send_to_plugin(PluginInstruction::Reconfigure {
-                            client_id,
-                            keybinds: Some(new_config.keybinds),
-                            default_mode: new_config.options.default_mode,
-                        })
-                        .unwrap();
+                    if runtime_config_changed {
+                        session_data
+                            .write()
+                            .unwrap()
+                            .as_ref()
+                            .unwrap()
+                            .senders
+                            .send_to_screen(ScreenInstruction::Reconfigure {
+                                client_id,
+                                keybinds: Some(new_config.keybinds.clone()),
+                                default_mode: new_config.options.default_mode,
+                            })
+                            .unwrap();
+                        session_data
+                            .write()
+                            .unwrap()
+                            .as_ref()
+                            .unwrap()
+                            .senders
+                            .send_to_plugin(PluginInstruction::Reconfigure {
+                                client_id,
+                                keybinds: Some(new_config.keybinds),
+                                default_mode: new_config.options.default_mode,
+                            })
+                            .unwrap();
+                    }
                 }
             },
             ServerInstruction::ConfigWrittenToDisk(client_id, new_config) => {
@@ -1091,6 +1085,18 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .unwrap()
                     .session_configuration
                     .new_saved_config(client_id, new_config);
+            }
+            ServerInstruction::FailedToWriteConfigToDisk(client_id, file_path) => {
+                session_data
+                    .write()
+                    .unwrap()
+                    .as_ref()
+                    .unwrap()
+                    .senders
+                    .send_to_plugin(PluginInstruction::FailedToWriteConfigToDisk {
+                        file_path
+                    })
+                    .unwrap();
             }
         }
     }

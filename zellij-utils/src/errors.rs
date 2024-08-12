@@ -410,6 +410,7 @@ pub enum PluginContext {
     DumpLayoutToPlugin,
     ListClientsMetadata,
     Reconfigure,
+    FailedToWriteConfigToDisk,
 }
 
 /// Stack call representations corresponding to the different types of [`ClientInstruction`]s.
@@ -461,6 +462,7 @@ pub enum ServerContext {
     ChangeModeForAllClients,
     Reconfigure,
     ConfigWrittenToDisk,
+    FailedToWriteConfigToDisk,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
