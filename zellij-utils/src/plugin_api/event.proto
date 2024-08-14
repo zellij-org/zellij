@@ -47,6 +47,7 @@ enum EventType {
     PaneClosed = 21;
     EditPaneOpened = 22;
     EditPaneExited = 23;
+    CommandPaneReRun = 24;
 }
 
 message EventNameList {
@@ -75,7 +76,13 @@ message Event {
     PaneClosedPayload pane_closed_payload = 18;
     EditPaneOpenedPayload edit_pane_opened_payload = 19;
     EditPaneExitedPayload edit_pane_exited_payload = 20;
+    CommandPaneReRunPayload command_pane_rerun_payload = 21;
   }
+}
+
+message CommandPaneReRunPayload {
+  uint32 terminal_pane_id = 1;
+  repeated ContextItem context = 3;
 }
 
 message PaneClosedPayload {

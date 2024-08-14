@@ -10,11 +10,15 @@ use crate::{
 };
 use async_std::task::{self, JoinHandle};
 use std::sync::Arc;
-use std::{collections::HashMap, os::unix::io::RawFd, path::PathBuf};
+use std::{
+    collections::{BTreeMap, HashMap},
+    os::unix::io::RawFd,
+    path::PathBuf,
+};
 use zellij_utils::nix::unistd::Pid;
 use zellij_utils::{
     async_std,
-    data::{Event, FloatingPaneCoordinates},
+    data::{Event, FloatingPaneCoordinates, OriginatingPlugin},
     errors::prelude::*,
     errors::{ContextType, PtyContext},
     input::{
@@ -128,6 +132,7 @@ pub(crate) struct Pty {
     pub active_panes: HashMap<ClientId, PaneId>,
     pub bus: Bus<PtyInstruction>,
     pub id_to_child_pid: HashMap<u32, RawFd>, // terminal_id => child raw fd
+    originating_plugins: HashMap<u32, OriginatingPlugin>,
     debug_to_file: bool,
     task_handles: HashMap<u32, JoinHandle<()>>, // terminal_id to join-handle
     default_editor: Option<PathBuf>,
@@ -189,6 +194,8 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                         if let Some(originating_plugin) =
                             run_command.and_then(|r| r.originating_plugin)
                         {
+                            pty.originating_plugins
+                                .insert(pid, originating_plugin.clone());
                             let update_event =
                                 Event::CommandPaneOpened(pid, originating_plugin.context.clone());
                             pty.bus
@@ -777,6 +784,7 @@ impl Pty {
             debug_to_file,
             task_handles: HashMap::new(),
             default_editor,
+            originating_plugins: HashMap::new(),
         }
     }
     pub fn get_default_terminal(
@@ -1348,19 +1356,37 @@ impl Pty {
     pub fn rerun_command_in_pane(
         &mut self,
         pane_id: PaneId,
-        run_command: RunCommand,
+        mut run_command: RunCommand,
     ) -> Result<()> {
         let err_context = || format!("failed to rerun command in pane {:?}", pane_id);
 
         match pane_id {
             PaneId::Terminal(id) => {
+                if let Some(originating_plugins) = self.originating_plugins.get(&id) {
+                    run_command.originating_plugin = Some(originating_plugins.clone());
+                }
                 let _ = self.task_handles.remove(&id); // if all is well, this shouldn't be here
                 let _ = self.id_to_child_pid.remove(&id); // if all is wlel, this shouldn't be here
 
                 let hold_on_close = run_command.hold_on_close;
+                let originating_plugin = Arc::new(run_command.originating_plugin.clone());
                 let quit_cb = Box::new({
                     let senders = self.bus.senders.clone();
                     move |pane_id, exit_status, command| {
+                        if let PaneId::Terminal(pane_id) = pane_id {
+                            if let Some(originating_plugin) = originating_plugin.as_ref() {
+                                let update_event = Event::CommandPaneExited(
+                                    pane_id,
+                                    exit_status,
+                                    originating_plugin.context.clone(),
+                                );
+                                let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
+                                    Some(originating_plugin.plugin_id),
+                                    Some(originating_plugin.client_id),
+                                    update_event,
+                                )]));
+                            }
+                        }
                         if hold_on_close {
                             let _ = senders.send_to_screen(ScreenInstruction::HoldPane(
                                 pane_id,
@@ -1407,6 +1433,16 @@ impl Pty {
 
                 self.task_handles.insert(id, terminal_bytes);
                 self.id_to_child_pid.insert(id, child_fd);
+                if let Some(originating_plugin) = self.originating_plugins.get(&id) {
+                    self.bus
+                        .senders
+                        .send_to_plugin(PluginInstruction::Update(vec![(
+                            Some(originating_plugin.plugin_id),
+                            Some(originating_plugin.client_id),
+                            Event::CommandPaneReRun(id, originating_plugin.context.clone()),
+                        )]))
+                        .with_context(err_context)?;
+                }
                 Ok(())
             },
             _ => Err(anyhow!("cannot respawn plugin panes")).with_context(err_context),
