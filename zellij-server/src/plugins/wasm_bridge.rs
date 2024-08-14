@@ -241,7 +241,6 @@ impl WasmBridge {
                             }
                         }
 
-                        log::info!("start_plugin, default_mode: {:?}", default_mode);
                         match PluginLoader::start_plugin(
                             plugin_id,
                             client_id,
@@ -1377,9 +1376,7 @@ pub fn apply_event_to_plugin(
                 // ModeInfo to an Option, but alas - this is already part of our contract and that
                 // would be a breaking change.
                 mode_info.keybinds = running_plugin.store.data().keybinds.to_keybinds_vec();
-                log::info!("base_mode before: {:?}", mode_info.base_mode);
                 mode_info.base_mode = Some(running_plugin.store.data().default_mode);
-                log::info!("base_mode after: {:?}", mode_info.base_mode);
             }
             let protobuf_event: ProtobufEvent = event
                 .clone()

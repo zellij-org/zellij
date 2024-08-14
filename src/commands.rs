@@ -552,8 +552,6 @@ pub(crate) fn start_client(opts: CliArgs) {
             let pane_id_to_focus = reconnect_to_session
                 .as_ref()
                 .and_then(|r| r.pane_id.clone());
-            log::info!("0config: {:#?}", config);
-            log::info!("0config_options: {:#?}", config_options);
             reconnect_to_session = start_client_impl(
                 Box::new(os_input),
                 opts,
@@ -569,8 +567,6 @@ pub(crate) fn start_client(opts: CliArgs) {
         } else {
             if let Some(session_name) = opts.session.clone() {
                 start_client_plan(session_name.clone());
-                log::info!("1config: {:#?}", config);
-                log::info!("1config_options: {:#?}", config_options);
                 reconnect_to_session = start_client_impl(
                     Box::new(os_input),
                     opts,
@@ -612,8 +608,6 @@ pub(crate) fn start_client(opts: CliArgs) {
                                     Some(resurrection_layout.clone())
                                 },
                             };
-                            log::info!("2config: {:#?}", config);
-                            log::info!("2config_options: {:#?}", config_options);
                             reconnect_to_session = start_client_impl(
                                 Box::new(os_input),
                                 opts,
@@ -629,8 +623,6 @@ pub(crate) fn start_client(opts: CliArgs) {
                         },
                         _ => {
                             start_client_plan(session_name.clone());
-                            log::info!("3config: {:#?}", config);
-                            log::info!("3config_options: {:#?}", config_options);
                             reconnect_to_session = start_client_impl(
                                 Box::new(os_input),
                                 opts,
@@ -655,8 +647,6 @@ pub(crate) fn start_client(opts: CliArgs) {
 
                 let session_name = generate_unique_session_name();
                 start_client_plan(session_name.clone());
-                log::info!("4config: {:#?}", config);
-                log::info!("4config_options: {:#?}", config_options);
                 reconnect_to_session = start_client_impl(
                     Box::new(os_input),
                     opts,

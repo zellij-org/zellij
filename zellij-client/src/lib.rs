@@ -262,6 +262,14 @@ pub fn start_client(
             let ipc_pipe = create_ipc_pipe();
 
             spawn_server(&*ipc_pipe, opts.debug).unwrap();
+            let successfully_written_config = Config::write_config_to_disk_if_it_does_not_exist(&config, &opts);
+            // if we successfully wrote the config to disk, it means two things:
+            // 1. It did not exist beforehand
+            // 2. The config folder is writeable
+            //
+            // If these two are true, we should launch the setup wizard, if even one of them is
+            // false, we should never launch it.
+            let should_launch_setup_wizard = successfully_written_config;
 
             (
                 ClientToServerMsg::NewClient(
@@ -271,6 +279,7 @@ pub fn start_client(
                     Box::new(config_options.clone()),
                     Box::new(layout.unwrap()),
                     Box::new(config.plugins.clone()),
+                    should_launch_setup_wizard,
                 ),
                 ipc_pipe,
             )
@@ -634,6 +643,8 @@ pub fn start_server_detached(
             let ipc_pipe = create_ipc_pipe();
 
             spawn_server(&*ipc_pipe, opts.debug).unwrap();
+            let should_launch_setup_wizard = false; // no setup wizard when starting a detached
+                                                    // server
 
             (
                 ClientToServerMsg::NewClient(
@@ -643,6 +654,7 @@ pub fn start_server_detached(
                     Box::new(config_options.clone()),
                     Box::new(layout.unwrap()),
                     Box::new(config.plugins.clone()),
+                    should_launch_setup_wizard,
                 ),
                 ipc_pipe,
             )

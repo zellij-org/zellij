@@ -18,7 +18,7 @@ mod ui;
 use background_jobs::{background_jobs_main, BackgroundJob};
 use log::info;
 use pty_writer::{pty_writer_main, PtyWriteInstruction};
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, BTreeMap};
 use std::{
     path::PathBuf,
     sync::{Arc, RwLock},
@@ -49,7 +49,7 @@ use zellij_utils::{
         command::{RunCommand, TerminalAction},
         get_mode_info,
         keybinds::Keybinds,
-        layout::Layout,
+        layout::{Layout, FloatingPaneLayout, Run, PluginAlias, RunPluginOrAlias, PercentOrFixed},
         options::Options,
         plugins::PluginAliases,
         config::Config,
@@ -69,6 +69,7 @@ pub enum ServerInstruction {
         Box<Options>, // represents the runtime configuration options
         Box<Layout>,
         Box<PluginAliases>,
+        bool, // should launch setup wizard
         ClientId,
     ),
     Render(Option<HashMap<ClientId, String>>),
@@ -217,15 +218,6 @@ pub(crate) struct SessionMetaData {
     pub client_attributes: ClientAttributes,
     pub default_shell: Option<TerminalAction>,
     pub layout: Box<Layout>,
-    // pub config_options: Box<Options>,
-
-    // TODO: CONTINUE HERE
-    // * move these to SessionConfiguration
-//     pub client_keybinds: HashMap<ClientId, Keybinds>,
-//     pub default_mode: HashMap<ClientId, InputMode>,
-
-    // TODO: rename to current_input_modes
-    // pub client_input_modes: HashMap<ClientId, InputMode>,
     pub current_input_modes: HashMap<ClientId, InputMode>,
     pub session_configuration: SessionConfiguration,
 
@@ -237,19 +229,11 @@ pub(crate) struct SessionMetaData {
 }
 
 impl SessionMetaData {
-//     pub fn set_client_keybinds(&mut self, client_id: ClientId, keybinds: Keybinds) {
-//         self.client_keybinds.insert(client_id, keybinds);
-//         self.client_input_modes.insert(
-//             client_id,
-//             self.config_options.default_mode.unwrap_or_default(),
-//         );
-//     }
     pub fn get_client_keybinds_and_mode(
         &self,
         client_id: &ClientId,
     ) -> Option<(Keybinds, &InputMode)> {
         let client_keybinds = self.session_configuration.get_client_keybinds(client_id);
-        log::info!("current_input_modes: {:#?}", self.current_input_modes);
         match self.current_input_modes.get(client_id) {
             Some(client_input_mode) => {
                 Some((client_keybinds, client_input_mode))
@@ -511,6 +495,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 runtime_config_options,
                 layout,
                 plugin_aliases,
+                should_launch_setup_wizard,
                 client_id,
             ) => {
                 let mut session = init_session(
@@ -575,7 +560,18 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                         .unwrap()
                 };
 
+                // TODO:
+                // * manually insert the configuration here as a new floating pane in the first tab
+                // of the layout
+                // * see that it only ever appears in this tab (when opening closing, swapping
+                // layouts, etc.)
+                // * test with multiple users (when opened, closed, etc.) to see that there are no
+                // other oddities
+                // * once this works as intended, only do this conditionally if there was no config
+                // file and we managed to save the default one
+
                 if layout.has_tabs() {
+                    // TODO: also add setup wizard here
                     for (tab_name, tab_layout, floating_panes_layout) in layout.tabs() {
                         spawn_tabs(
                             Some(tab_layout.clone()),
@@ -602,9 +598,24 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                             .unwrap();
                     }
                 } else {
+                    let mut floating_panes = layout.template.map(|t| t.1).clone().unwrap_or_default();
+                    if should_launch_setup_wizard {
+                        let mut config_pane = FloatingPaneLayout::new();
+                        let config_configuration = BTreeMap::from_iter(
+                            [("is_setup_wizard".to_owned(), "true".to_owned())]
+                        );
+                        config_pane.run = Some(
+                            Run::Plugin(
+                                RunPluginOrAlias::Alias(
+                                    PluginAlias::new("configuration", &Some(config_configuration), None)
+                                )
+                            )
+                        );
+                        floating_panes.push(config_pane);
+                    }
                     spawn_tabs(
                         None,
-                        layout.template.map(|t| t.1).clone().unwrap_or_default(),
+                        floating_panes,
                         None,
                         (
                             layout.swap_tiled_layouts.clone(),
@@ -1331,16 +1342,12 @@ fn init_session(
         client_attributes,
         layout,
         session_configuration: Default::default(),
-//         config_options: config_options.clone(),
-//         client_keybinds: HashMap::new(),
-//         client_input_modes: HashMap::new(),
         current_input_modes: HashMap::new(),
         screen_thread: Some(screen_thread),
         pty_thread: Some(pty_thread),
         plugin_thread: Some(plugin_thread),
         pty_writer_thread: Some(pty_writer_thread),
         background_jobs_thread: Some(background_jobs_thread),
-        // default_mode: HashMap::new(),
     }
 }
 

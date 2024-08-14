@@ -115,10 +115,6 @@ fn send_cli_action_to_server(
     let get_current_dir = || PathBuf::from(".");
     let actions = Action::actions_from_cli(cli_action, Box::new(get_current_dir), None).unwrap();
     let senders = session_metadata.senders.clone();
-    // TODO: CONTINUE HERE (09/08) - fix errors here to get `cargo x test` to pass. Once that
-    // passes, make Zellij run the configuration plugin with the "wizard" config on first run
-//     let client_keybinds = session_metadata.client_keybinds.clone();
-//     let default_mode = session_metadata.default_mode.clone();
     let capabilities = PluginCapabilities::default();
     let client_attributes = ClientAttributes::default();
     let default_shell = None;

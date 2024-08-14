@@ -2,6 +2,8 @@ use zellij_tile::prelude::*;
 
 use std::collections::{BTreeMap, BTreeSet};
 
+static UI_SIZE: usize = 15;
+
 struct State {
     userspace_configuration: BTreeMap<String, String>,
     selected_index: Option<usize>,
@@ -17,6 +19,9 @@ struct State {
     primary_leader_key_color_index: usize,
     secondary_leader_key_color_index: usize,
     notification: Option<String>,
+    is_setup_wizard: bool,
+    ui_size: usize,
+    own_plugin_id: Option<u32>,
 }
 
 impl Default for State {
@@ -45,6 +50,9 @@ impl Default for State {
             mode_color_index: 2,
             preset_color_index: 1,
             notification: None,
+            is_setup_wizard: false,
+            ui_size: UI_SIZE,
+            own_plugin_id: None,
         }
     }
 }
@@ -53,6 +61,8 @@ register_plugin!(State);
 
 impl ZellijPlugin for State {
     fn load(&mut self, configuration: BTreeMap<String, String>) {
+
+        self.is_setup_wizard = configuration.get("is_setup_wizard").map(|v| v == "true").unwrap_or(false);
         self.userspace_configuration = configuration;
         // we need the ReadApplicationState permission to receive the ModeUpdate and TabUpdate
         // events
@@ -70,6 +80,15 @@ impl ZellijPlugin for State {
             EventType::Key,
             EventType::FailedToWriteConfigToDisk,
         ]);
+        if self.is_setup_wizard {
+            self.ui_size = 17;
+            self.selected_index = Some(0);
+            let own_plugin_id = get_plugin_ids().plugin_id;
+            rename_plugin_pane(own_plugin_id, "First Run Setup Wizard (Step 1/1)");
+            resize_focused_pane(Resize::Increase);
+            resize_focused_pane(Resize::Increase);
+            resize_focused_pane(Resize::Increase);
+        }
     }
     fn update(&mut self, event: Event) -> bool {
         let mut should_render = false;
@@ -80,6 +99,8 @@ impl ZellijPlugin for State {
             Event::Key(key) => {
                 if self.remapping_leaders {
                     should_render = self.handle_remapping_screen_key(key);
+                } else if self.is_setup_wizard {
+                    should_render = self.handle_setup_wizard_key(key);
                 } else {
                     should_render = self.handle_main_screen_key(key);
                 }
@@ -102,6 +123,8 @@ impl ZellijPlugin for State {
     fn render(&mut self, rows: usize, cols: usize) {
         if self.remapping_leaders {
             self.render_remapping_leaders_screen(rows, cols);
+        } else if self.is_setup_wizard {
+            self.render_setup_wizard_screen(rows, cols);
         } else {
             self.render_main_screen(rows, cols);
         }
@@ -223,6 +246,9 @@ impl State {
                 self.reconfigure(selected, write_to_disk);
                 self.notification = Some("Configuration applied to current session.".to_owned());
                 should_render = true;
+            } else {
+                self.selected_index = Some(0);
+                should_render = true;
             }
         } else if key.bare_key == BareKey::Char(' ') && key.has_no_modifiers() {
             if let Some(selected) = self.selected_index.take() {
@@ -234,7 +260,48 @@ impl State {
         } else if key.bare_key == BareKey::Char('l') && key.has_no_modifiers() {
             self.remapping_leaders = true;
             should_render = true;
-        } else if key.bare_key == BareKey::Esc && key.has_no_modifiers() {
+        } else if (key.bare_key == BareKey::Esc && key.has_no_modifiers()) || key.is_key_with_ctrl_modifier(BareKey::Char('c')) {
+            close_self();
+            should_render = true;
+        }
+        should_render
+    }
+    fn handle_setup_wizard_key(&mut self, key: KeyWithModifier) -> bool {
+        let mut should_render = false;
+        if self.notification.is_some() {
+            self.notification = None;
+            should_render = true;
+        } else if key.bare_key == BareKey::Down && key.has_no_modifiers() {
+            if self.selected_index.is_none() {
+                self.selected_index = Some(0);
+            } else if self.selected_index < Some(1) {
+                self.selected_index = Some(1);
+            } else {
+                self.selected_index = None;
+            }
+            should_render = true;
+        } else if key.bare_key == BareKey::Up && key.has_no_modifiers() {
+            if self.selected_index.is_none() {
+                self.selected_index = Some(1);
+            } else if self.selected_index == Some(1) {
+                self.selected_index = Some(0);
+            } else {
+                self.selected_index = None;
+            }
+            should_render = true;
+        } else if key.bare_key == BareKey::Enter && key.has_no_modifiers() {
+            if let Some(selected) = self.selected_index.take() {
+                let write_to_disk = true;
+                self.reconfigure(selected, write_to_disk);
+                close_self();
+            } else {
+                self.selected_index = Some(0);
+                should_render = true;
+            }
+        } else if key.bare_key == BareKey::Char('l') && key.has_no_modifiers() {
+            self.remapping_leaders = true;
+            should_render = true;
+        } else if (key.bare_key == BareKey::Esc && key.has_no_modifiers()) || key.is_key_with_ctrl_modifier(BareKey::Char('c')) {
             close_self();
             should_render = true;
         }
@@ -403,7 +470,7 @@ impl State {
             print_text_with_coordinates(
                 Text::new(title_text).color_range(2, ..),
                 left_padding,
-                rows.saturating_sub(15) / 2,
+                rows.saturating_sub(self.ui_size) / 2,
                 None,
                 None,
             );
@@ -417,7 +484,93 @@ impl State {
             print_text_with_coordinates(
                 Text::new(title_text).color_range(2, ..),
                 left_padding,
-                rows.saturating_sub(15) / 2,
+                rows.saturating_sub(self.ui_size) / 2,
+                None,
+                None,
+            );
+        }
+    }
+    fn render_setup_wizard_title(&self, rows: usize, cols: usize, primary_modifier_key_text: &str) {
+        let widths = self.main_screen_widths(primary_modifier_key_text);
+        if cols >= widths.0 {
+            let title_text_1 = "Hi there! Let's choose keyboard shortcut settings.";
+            let title_text_2 = "Not sure? Press <ENTER> to choose Default.";
+            let title_text_3 = "Everything can always be changed later.";
+            let title_text_4 = "Tips appear on screen - you don't need to remember anything.";
+            let left_padding = cols.saturating_sub(widths.0) / 2;
+            let first_row_coords = (rows.saturating_sub(self.ui_size) / 2).saturating_sub(1);
+            print_text_with_coordinates(
+                Text::new(title_text_1)
+                    .color_range(2, ..),
+                left_padding,
+                first_row_coords,
+                None,
+                None,
+            );
+            print_text_with_coordinates(
+                Text::new(title_text_2)
+                .color_range(0, ..10)
+                .color_range(2, 16..23)
+                .color_range(self.preset_color_index, 34..41),
+                left_padding,
+                first_row_coords + 2,
+                None,
+                None,
+            );
+            print_text_with_coordinates(
+                Text::new(title_text_3),
+                left_padding,
+                first_row_coords + 4,
+                None,
+                None,
+            );
+            print_text_with_coordinates(
+                Text::new(title_text_4),
+                left_padding,
+                first_row_coords + 5,
+                None,
+                None,
+            );
+        } else {
+            let title_text_1 = "Hi! Choose keyboard settings.";
+            let title_text_2 = "Not sure? Press <ENTER>";
+            let title_text_3 = "Can be changed later. Tips appear";
+            let title_text_4 = "on screen - no need to remember";
+            let left_padding = if cols >= widths.1 {
+                cols.saturating_sub(widths.1) / 2
+            } else {
+                cols.saturating_sub(widths.2) / 2
+            };
+            let first_row_coords = (rows.saturating_sub(self.ui_size) / 2).saturating_sub(1);
+            print_text_with_coordinates(
+                Text::new(title_text_1)
+                    .color_range(2, ..),
+                left_padding,
+                first_row_coords,
+                None,
+                None,
+            );
+            print_text_with_coordinates(
+                Text::new(title_text_2)
+                .color_range(0, ..10)
+                .color_range(2, 16..23)
+                .color_range(self.preset_color_index, 40..49),
+                left_padding,
+                first_row_coords + 2,
+                None,
+                None,
+            );
+            print_text_with_coordinates(
+                Text::new(title_text_3),
+                left_padding,
+                first_row_coords + 4,
+                None,
+                None,
+            );
+            print_text_with_coordinates(
+                Text::new(title_text_4),
+                left_padding,
+                first_row_coords + 5,
                 None,
                 None,
             );
@@ -446,7 +599,7 @@ impl State {
                 )
                 .indent(1),
                 NestedListItem::new(format!(
-                    "{} t - to enter TAB mode.",
+                    "{} t - to enter TAB mode",
                     primary_modifier_key_text
                 ))
                 .color_range(
@@ -479,7 +632,7 @@ impl State {
                     primary_modifier_key_text_len + 14..primary_modifier_key_text_len + 18,
                 ),
                 NestedListItem::new(format!(
-                    "{} t - to enter TAB mode.",
+                    "{} t - to enter TAB mode",
                     primary_modifier_key_text
                 ))
                 .indent(1)
@@ -508,7 +661,7 @@ impl State {
                         primary_modifier_key_text_len + 5..primary_modifier_key_text_len + 10,
                     )
                     .indent(1),
-                NestedListItem::new(format!("{} t - TAB mode.", primary_modifier_key_text))
+                NestedListItem::new(format!("{} t - TAB mode", primary_modifier_key_text))
                     .color_range(
                         self.primary_leader_key_color_index,
                         ..primary_modifier_key_text_len + 3,
@@ -527,9 +680,9 @@ impl State {
         }
         let left_padding = cols.saturating_sub(max_width) / 2;
         let top_coordinates = if rows > 14 {
-            (rows.saturating_sub(15) / 2) + 2
+            (rows.saturating_sub(self.ui_size) / 2) + 2
         } else {
-            (rows.saturating_sub(15) / 2) + 1
+            (rows.saturating_sub(self.ui_size) / 2) + 1
         };
         print_nested_list_with_coordinates(
             list_items,
@@ -569,7 +722,7 @@ impl State {
                     primary_modifier_key_text_len + 16..primary_modifier_key_text_len + 21,
                 ),
                 NestedListItem::new(format!(
-                    "{} g + t to enter TAB mode.",
+                    "{} g + t to enter TAB mode",
                     primary_modifier_key_text
                 ))
                 .indent(1)
@@ -614,7 +767,7 @@ impl State {
                 )
                 .indent(1),
                 NestedListItem::new(format!(
-                    "{} g + t to enter TAB mode.",
+                    "{} g + t to enter TAB mode",
                     primary_modifier_key_text
                 ))
                 .color_range(
@@ -655,7 +808,7 @@ impl State {
                         primary_modifier_key_text_len + 7..primary_modifier_key_text_len + 11,
                     )
                     .indent(1),
-                NestedListItem::new(format!("{} g + t TAB mode.", primary_modifier_key_text))
+                NestedListItem::new(format!("{} g + t TAB mode", primary_modifier_key_text))
                     .color_range(
                         self.primary_leader_key_color_index,
                         ..primary_modifier_key_text_len + 3,
@@ -678,9 +831,9 @@ impl State {
         }
         let left_padding = cols.saturating_sub(max_width) / 2;
         let top_coordinates = if rows > 14 {
-            (rows.saturating_sub(15) / 2) + 7
+            (rows.saturating_sub(self.ui_size) / 2) + 7
         } else {
-            (rows.saturating_sub(15) / 2) + 5
+            (rows.saturating_sub(self.ui_size) / 2) + 5
         };
         print_nested_list_with_coordinates(
             list_items,
@@ -701,14 +854,14 @@ impl State {
         let primary_modifier_key_text_len = primary_modifier_key_text.chars().count();
         let secondary_modifier_key_text_len = secondary_modifier_key_text.chars().count();
         let top_coordinates = if rows > 14 {
-            (rows.saturating_sub(15) / 2) + 12
+            (rows.saturating_sub(self.ui_size) / 2) + 12
         } else {
-            (rows.saturating_sub(15) / 2) + 9
+            (rows.saturating_sub(self.ui_size) / 2) + 9
         };
 
         if cols >= widths.0 {
             let leader_key_text = format!(
-                "Leader keys: {} - modes, {} - quicknav and shortcuts.",
+                "Leader keys: {} - modes, {} - quicknav and shortcuts",
                 primary_modifier_key_text, secondary_modifier_key_text
             );
             let left_padding = cols.saturating_sub(widths.0) / 2;
@@ -761,9 +914,9 @@ impl State {
     fn render_info_line(&self, rows: usize, cols: usize, primary_modifier_key_text: &str) {
         let widths = self.main_screen_widths(primary_modifier_key_text);
         let top_coordinates = if rows > 14 {
-            (rows.saturating_sub(15) / 2) + 14
+            (rows.saturating_sub(self.ui_size) / 2) + 14
         } else {
-            (rows.saturating_sub(15) / 2) + 10
+            (rows.saturating_sub(self.ui_size) / 2) + 10
         };
         let left_padding = if cols >= widths.0 {
             cols.saturating_sub(widths.0) / 2
@@ -814,6 +967,35 @@ impl State {
                     .color_range(2, 23..30)
                     .color_range(2, 33..36)
                     .color_range(2, 39..44),
+                0,
+                rows,
+                None,
+                None,
+            );
+        }
+    }
+    fn render_help_text_setup_wizard(&self, rows: usize, cols: usize) {
+        let full_help_text = "Help: <↓↑> - navigate, <ENTER> - apply & save, <l> - change leaders, <ESC> - close";
+        let short_help_text = "Help: <↓↑> / <ENTER> / <l> / <ESC>";
+        if cols >= full_help_text.chars().count() {
+            print_text_with_coordinates(
+                Text::new(full_help_text)
+                    .color_range(2, 6..10)
+                    .color_range(2, 23..30)
+                    .color_range(2, 47..50)
+                    .color_range(2, 69..74),
+                0,
+                rows,
+                None,
+                None,
+            );
+        } else {
+            print_text_with_coordinates(
+                Text::new(short_help_text)
+                    .color_range(2, 6..10)
+                    .color_range(2, 13..20)
+                    .color_range(2, 23..26)
+                    .color_range(2, 29..34),
                 0,
                 rows,
                 None,
@@ -895,6 +1077,21 @@ impl State {
         );
         self.render_info_line(rows, cols, &primary_modifier_key_text);
         self.render_help_text_main(rows, cols);
+    }
+    fn render_setup_wizard_screen(&mut self, rows: usize, cols: usize) {
+        let primary_modifier_key_text = self.primary_modifier_text();
+        let secondary_modifier_key_text = self.secondary_modifier_text();
+        self.render_setup_wizard_title(rows, cols, &primary_modifier_key_text);
+        self.render_first_bulletin(rows + 8, cols, &primary_modifier_key_text);
+        self.render_second_bulletin(rows + 8, cols, &primary_modifier_key_text);
+        self.render_leader_keys_indication(
+            rows + 8,
+            cols,
+            &primary_modifier_key_text,
+            &secondary_modifier_key_text,
+        );
+        self.render_info_line(rows + 8, cols, &primary_modifier_key_text);
+        self.render_help_text_setup_wizard(rows + 8, cols);
     }
     fn warning_text(&self, max_width: usize) -> Option<String> {
         if self.needs_kitty_support() {

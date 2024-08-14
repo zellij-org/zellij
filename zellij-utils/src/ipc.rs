@@ -80,6 +80,7 @@ pub enum ClientToServerMsg {
         Box<Options>, // represents the runtime configuration
         Box<Layout>,
         Box<PluginAliases>,
+        bool, // should launch setup wizard
     ),
     AttachClient(
         ClientAttributes,

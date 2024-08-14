@@ -1088,16 +1088,6 @@ pub(crate) fn route_thread_main(
                                         .default_mode
                                         .unwrap_or(InputMode::Normal)
                                         .clone(),
-//                                     rlocked_sessions
-//                                         .client_keybinds
-//                                         .get(&client_id)
-//                                         .unwrap_or(&rlocked_sessions.client_attributes.keybinds)
-//                                         .clone(),
-//                                     rlocked_sessions
-//                                         .default_mode
-//                                         .get(&client_id)
-//                                         .unwrap_or(&InputMode::Normal)
-//                                         .clone(),
                                 )? {
                                     should_break = true;
                                 }
@@ -1173,6 +1163,7 @@ pub(crate) fn route_thread_main(
                             runtime_config_options,
                             layout,
                             plugin_aliases,
+                            should_launch_setup_wizard,
                         ) => {
                             let new_client_instruction = ServerInstruction::NewClient(
                                 client_attributes,
@@ -1181,6 +1172,7 @@ pub(crate) fn route_thread_main(
                                 runtime_config_options,
                                 layout,
                                 plugin_aliases,
+                                should_launch_setup_wizard,
                                 client_id,
                             );
                             to_server
