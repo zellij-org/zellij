@@ -1332,6 +1332,7 @@ fn check_event_permission(
         | Event::PaneClosed(..)
         | Event::EditPaneOpened(..)
         | Event::EditPaneExited(..)
+        | Event::CommandPaneReRun(..)
         | Event::InputReceived => PermissionType::ReadApplicationState,
         _ => return (PermissionStatus::Granted, None),
     };
