@@ -262,7 +262,7 @@ pub fn start_client(
             let ipc_pipe = create_ipc_pipe();
 
             spawn_server(&*ipc_pipe, opts.debug).unwrap();
-            let successfully_written_config = Config::write_config_to_disk_if_it_does_not_exist(&config, &opts);
+            let successfully_written_config = Config::write_config_to_disk_if_it_does_not_exist(config.to_string(true), &opts);
             // if we successfully wrote the config to disk, it means two things:
             // 1. It did not exist beforehand
             // 2. The config folder is writeable

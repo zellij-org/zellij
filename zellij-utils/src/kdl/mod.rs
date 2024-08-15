@@ -3409,8 +3409,31 @@ impl Keybinds {
         if should_clear_defaults {
             keybinds_node.insert("clear-defaults", true);
         }
-        let minimized = self.minimize_entries();
+        let mut minimized = self.minimize_entries();
         let mut keybinds_children = KdlDocument::new();
+
+        macro_rules! encode_single_input_mode {
+            ($mode_name:ident) => {{
+                if let Some(keybinds) = minimized.remove(&BTreeSet::from([InputMode::$mode_name])) {
+                    let mut mode_node = KdlNode::new(format!("{:?}", InputMode::$mode_name).to_lowercase());
+                    let mode_keybinds = self.serialize_mode_keybinds(&keybinds);
+                    mode_node.set_children(mode_keybinds);
+                    keybinds_children.nodes_mut().push(mode_node);
+                }
+            }};
+        }
+        // we do this explicitly so that the sorting order of modes in the config is more Human
+        // readable - this is actually less code (and clearer) than implementing Ord in this case
+        encode_single_input_mode!(Normal);
+        encode_single_input_mode!(Locked);
+        encode_single_input_mode!(Pane);
+        encode_single_input_mode!(Tab);
+        encode_single_input_mode!(Resize);
+        encode_single_input_mode!(Move);
+        encode_single_input_mode!(Scroll);
+        encode_single_input_mode!(Search);
+        encode_single_input_mode!(Session);
+
         for (input_modes, keybinds) in minimized {
             if input_modes.is_empty() {
                 log::error!("invalid input mode for keybinds: {:#?}", keybinds);
@@ -3420,7 +3443,6 @@ impl Keybinds {
             let mode_keybinds = self.serialize_mode_keybinds(&keybinds);
             mode_node.set_children(mode_keybinds);
             keybinds_children.nodes_mut().push(mode_node);
-
         }
         keybinds_node.set_children(keybinds_children);
         keybinds_node
