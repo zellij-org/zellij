@@ -173,10 +173,6 @@ pub fn start_client(
     is_a_reconnect: bool,
     start_detached_and_exit: bool,
 ) -> Option<ConnectToSession> {
-    // TODO: CONTINUE HERE
-    // * we need to differentiate between config and saved_config (likely need to get them from the
-    // outside here)
-    // * then send them both to the server so that we can make the differentiation there
     if start_detached_and_exit {
         start_server_detached(os_input, opts, config, config_options, info, layout);
         return None;
@@ -228,7 +224,6 @@ pub fn start_client(
             rounded_corners: config.ui.pane_frames.rounded_corners,
             hide_session_name: config.ui.pane_frames.hide_session_name,
         },
-        // keybinds: config.keybinds.clone(),
     };
 
     let create_ipc_pipe = || -> std::path::PathBuf {
@@ -544,14 +539,6 @@ pub fn start_client(
                 ));
             },
             ClientInstruction::WriteConfigToDisk { config } => {
-                // TODO: CONTINUE HERE - work on the config UI, adding an option to write to disk
-                // and differentiating between the two, representing it in the UI, etc.
-                // once that's working, we can get to work on doing this setup on startup
-                // * change the reconfigure command to add an option to save to disk
-                // * in the UI, do not save to disk, once the configuration is applied, show
-                // warning about unsaved changes and allow the user to save them to disk with the
-                // option
-                // * 
                 match Config::write_config_to_disk(config, &opts) {
                     Ok(written_config) => {
                         let _ = os_input.send_to_server(ClientToServerMsg::ConfigWrittenToDisk(written_config));
@@ -625,7 +612,6 @@ pub fn start_server_detached(
             rounded_corners: config.ui.pane_frames.rounded_corners,
             hide_session_name: config.ui.pane_frames.hide_session_name,
         },
-        // keybinds: config.keybinds.clone(),
     };
 
     let create_ipc_pipe = || -> std::path::PathBuf {

@@ -43,7 +43,6 @@ pub enum ClientType {
 pub struct ClientAttributes {
     pub size: Size,
     pub style: Style,
-    // pub keybinds: Keybinds,
 }
 
 #[derive(Default, Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]

@@ -893,8 +893,6 @@ impl Pty {
                 ),
                 _ => (false, false, None, None),
             };
-        // TODO: CONTINUE HERE - get originating_plugin also from TerminalAction::OpenFile and do
-        // the right thing in the quit_cb below
 
         if hold_on_start {
             // we don't actually open a terminal in this case, just wait for the user to run it

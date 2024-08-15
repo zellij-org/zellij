@@ -154,7 +154,6 @@ impl ErrorInstruction for ServerInstruction {
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct SessionConfiguration {
-    // default_config: Config,
     runtime_config: HashMap<ClientId, Config>, // if present, overrides the saved_config
     saved_config: HashMap<ClientId, Config>, // config guaranteed to have been saved to disk
 }
@@ -184,7 +183,6 @@ impl SessionConfiguration {
         self.runtime_config
             .get(client_id)
             .or_else(|| self.saved_config.get(client_id)).map(|c| c.keybinds.clone())
-            // .clone()
             .unwrap_or_default()
     }
     pub fn get_client_configuration(&self, client_id: &ClientId) -> Config {
@@ -247,26 +245,6 @@ impl SessionMetaData {
             self.current_input_modes.insert(client_id, input_mode);
         }
     }
-//     pub fn rebind_keys(&mut self, client_id: ClientId, new_keybinds: String) -> Option<Keybinds> {
-//         if let Some(current_keybinds) = self.client_keybinds.get_mut(&client_id) {
-//             match Keybinds::from_string(
-//                 new_keybinds,
-//                 current_keybinds.clone(),
-//                 &self.config_options,
-//             ) {
-//                 Ok(new_keybinds) => {
-//                     *current_keybinds = new_keybinds.clone();
-//                     return Some(new_keybinds);
-//                 },
-//                 Err(e) => {
-//                     log::error!("Failed to parse keybindings: {}", e);
-//                 },
-//             }
-//         } else {
-//             log::error!("Failed to bind keys for client: {client_id}");
-//         }
-//         None
-//     }
 }
 
 impl Drop for SessionMetaData {
@@ -422,7 +400,6 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
     let to_server = SenderWithContext::new(to_server);
     let session_data: Arc<RwLock<Option<SessionMetaData>>> = Arc::new(RwLock::new(None));
     let session_state = Arc::new(RwLock::new(SessionState::new()));
-    // let session_configuration = Arc::new(RwLock::new(SessionConfiguration::default()));
 
     std::panic::set_hook({
         use zellij_utils::errors::handle_panic;
@@ -519,14 +496,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .current_input_modes
                     .insert(client_id, default_input_mode);
 
-                // TODO: handle difference with CLI configuration options
                 *session_data.write().unwrap() = Some(session);
-//                 session_data
-//                     .write()
-//                     .unwrap()
-//                     .as_mut()
-//                     .unwrap()
-//                     .set_client_keybinds(client_id, client_attributes.keybinds.clone());
                 session_state
                     .write()
                     .unwrap()
@@ -560,18 +530,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                         .unwrap()
                 };
 
-                // TODO:
-                // * manually insert the configuration here as a new floating pane in the first tab
-                // of the layout
-                // * see that it only ever appears in this tab (when opening closing, swapping
-                // layouts, etc.)
-                // * test with multiple users (when opened, closed, etc.) to see that there are no
-                // other oddities
-                // * once this works as intended, only do this conditionally if there was no config
-                // file and we managed to save the default one
-
                 if layout.has_tabs() {
-                    // TODO: also add setup wizard here
                     for (tab_name, tab_layout, floating_panes_layout) in layout.tabs() {
                         spawn_tabs(
                             Some(tab_layout.clone()),
@@ -600,18 +559,10 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 } else {
                     let mut floating_panes = layout.template.map(|t| t.1).clone().unwrap_or_default();
                     if should_launch_setup_wizard {
-                        let mut config_pane = FloatingPaneLayout::new();
-                        let config_configuration = BTreeMap::from_iter(
-                            [("is_setup_wizard".to_owned(), "true".to_owned())]
-                        );
-                        config_pane.run = Some(
-                            Run::Plugin(
-                                RunPluginOrAlias::Alias(
-                                    PluginAlias::new("configuration", &Some(config_configuration), None)
-                                )
-                            )
-                        );
-                        floating_panes.push(config_pane);
+                        // we only do this here (and only once) because otherwise it will be
+                        // intrusive
+                        let setup_wizard = setup_wizard_floating_pane();
+                        floating_panes.push(setup_wizard);
                     }
                     spawn_tabs(
                         None,
@@ -655,7 +606,6 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .current_input_modes
                     .insert(client_id, default_input_mode);
 
-                // session_data.set_client_keybinds(client_id, attrs.keybinds.clone());
                 session_state
                     .write()
                     .unwrap()
@@ -687,10 +637,6 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     &attrs,
                     session_data.capabilities,
                     &session_data.session_configuration.get_client_keybinds(&client_id),
-//                     session_data
-//                         .client_keybinds
-//                         .get(&client_id)
-//                         .unwrap_or(&session_data.client_attributes.keybinds),
                     Some(default_mode),
                 );
                 session_data
@@ -975,7 +921,6 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .get_client_configuration(&client_id)
                     .options
                     .layout_dir
-                    // .and_then(|c| c.config_options.layout_dir.clone())
                     .or_else(|| default_layout_dir());
                 if let Some(layout_dir) = layout_dir {
                     connect_to_session.apply_layout_dir(&layout_dir);
@@ -1026,7 +971,6 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .unwrap()
                     .as_mut()
                     .unwrap()
-                    // .client_input_modes
                     .current_input_modes
                     .insert(client_id, input_mode);
             },
@@ -1229,7 +1173,6 @@ fn init_session(
             let client_attributes_clone = client_attributes.clone();
             let debug = opts.debug;
             let layout = layout.clone();
-            // let config_options = config_options.clone();
             move || {
                 screen_thread_main(
                     screen_bus,
@@ -1349,6 +1292,21 @@ fn init_session(
         pty_writer_thread: Some(pty_writer_thread),
         background_jobs_thread: Some(background_jobs_thread),
     }
+}
+
+fn setup_wizard_floating_pane() -> FloatingPaneLayout {
+    let mut setup_wizard_pane = FloatingPaneLayout::new();
+    let configuration = BTreeMap::from_iter(
+        [("is_setup_wizard".to_owned(), "true".to_owned())]
+    );
+    setup_wizard_pane.run = Some(
+        Run::Plugin(
+            RunPluginOrAlias::Alias(
+                PluginAlias::new("configuration", &Some(configuration), None)
+            )
+        )
+    );
+    setup_wizard_pane
 }
 
 #[cfg(not(feature = "singlepass"))]

@@ -21,7 +21,6 @@ struct State {
     notification: Option<String>,
     is_setup_wizard: bool,
     ui_size: usize,
-    own_plugin_id: Option<u32>,
 }
 
 impl Default for State {
@@ -52,7 +51,6 @@ impl Default for State {
             notification: None,
             is_setup_wizard: false,
             ui_size: UI_SIZE,
-            own_plugin_id: None,
         }
     }
 }
@@ -81,7 +79,7 @@ impl ZellijPlugin for State {
             EventType::FailedToWriteConfigToDisk,
         ]);
         if self.is_setup_wizard {
-            self.ui_size = 17;
+            self.ui_size = 18;
             self.selected_index = Some(0);
             let own_plugin_id = get_plugin_ids().plugin_id;
             rename_plugin_pane(own_plugin_id, "First Run Setup Wizard (Step 1/1)");
@@ -493,7 +491,7 @@ impl State {
     fn render_setup_wizard_title(&self, rows: usize, cols: usize, primary_modifier_key_text: &str) {
         let widths = self.main_screen_widths(primary_modifier_key_text);
         if cols >= widths.0 {
-            let title_text_1 = "Hi there! Let's choose keyboard shortcut settings.";
+            let title_text_1 = "Hi there! How would you like to interact with Zellij?";
             let title_text_2 = "Not sure? Press <ENTER> to choose Default.";
             let title_text_3 = "Everything can always be changed later.";
             let title_text_4 = "Tips appear on screen - you don't need to remember anything.";
@@ -532,7 +530,7 @@ impl State {
                 None,
             );
         } else {
-            let title_text_1 = "Hi! Choose keyboard settings.";
+            let title_text_1 = "Hi there! Which do you prefer?";
             let title_text_2 = "Not sure? Press <ENTER>";
             let title_text_3 = "Can be changed later. Tips appear";
             let title_text_4 = "on screen - no need to remember";

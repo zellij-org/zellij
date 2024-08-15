@@ -4431,7 +4431,6 @@ fn serialize_and_deserialize_session_info_with_data() {
     insta::assert_snapshot!(serialized);
 }
 
-// ******* TODO: MOVE ELSEWHERE FROM HERE *******
 #[test]
 fn keybinds_to_string() {
     let fake_config =  r#"
@@ -5068,6 +5067,3 @@ fn bare_config_from_default_assets_to_string_with_comments() {
     assert_eq!(fake_config, deserialized_from_serialized, "Deserialized serialized config equals original config");
     insta::assert_snapshot!(fake_config_stringified);
 }
-
-// ******* TODO: MOVE ELSEWHERE UNTIL HERE *******
-
