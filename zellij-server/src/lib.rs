@@ -1095,7 +1095,7 @@ fn init_session(
     to_server: SenderWithContext<ServerInstruction>,
     client_attributes: ClientAttributes,
     options: SessionOptions,
-    config: Config,
+    mut config: Config,
     plugin_aliases: Box<PluginAliases>,
 ) -> SessionMetaData {
     let SessionOptions {
@@ -1103,6 +1103,7 @@ fn init_session(
         config_options,
         layout,
     } = options;
+    config.options = config.options.merge(*config_options.clone());
 
     let _ = SCROLL_BUFFER_SIZE.set(
         config_options
