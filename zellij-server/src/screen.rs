@@ -13,9 +13,9 @@ use zellij_utils::data::{
 };
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
+use zellij_utils::input::config::Config;
 use zellij_utils::input::keybinds::Keybinds;
 use zellij_utils::input::options::Clipboard;
-use zellij_utils::input::config::Config;
 use zellij_utils::pane_size::{Size, SizeInPixels};
 use zellij_utils::{
     consts::{session_info_folder_for_session, ZELLIJ_SOCK_DIR},

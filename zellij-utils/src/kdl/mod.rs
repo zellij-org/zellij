@@ -1,19 +1,21 @@
 mod kdl_layout_parser;
 use crate::data::{
-    Direction, FloatingPaneCoordinates, InputMode, KeyWithModifier, BareKey, LayoutInfo, Palette,
+    BareKey, Direction, FloatingPaneCoordinates, InputMode, KeyWithModifier, LayoutInfo, Palette,
     PaletteColor, PaneInfo, PaneManifest, PermissionType, Resize, SessionInfo, TabInfo,
 };
 use crate::envs::EnvironmentVariables;
 use crate::home::{find_default_config_dir, get_layout_dir};
 use crate::input::config::{Config, ConfigError, KdlError};
 use crate::input::keybinds::Keybinds;
-use crate::input::layout::{Layout, RunPlugin, RunPluginOrAlias, SplitSize, PluginUserConfiguration};
+use crate::input::layout::{
+    Layout, PluginUserConfiguration, RunPlugin, RunPluginOrAlias, SplitSize,
+};
 use crate::input::options::{Clipboard, OnForceClose, Options};
 use crate::input::permission::{GrantedPermission, PermissionCache};
 use crate::input::plugins::PluginAliases;
 use crate::input::theme::{FrameConfig, Theme, Themes, UiConfig};
 use kdl_layout_parser::KdlLayoutParser;
-use std::collections::{BTreeMap, HashMap, HashSet, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use strum::IntoEnumIterator;
 use uuid::Uuid;
 
@@ -557,17 +559,17 @@ impl Action {
                     node.push(KdlValue::Base10(*byte as i64));
                 }
                 Some(node)
-            }
+            },
             Action::WriteChars(string) => {
                 let mut node = KdlNode::new("WriteChars");
                 node.push(string.clone());
                 Some(node)
-            }
+            },
             Action::SwitchToMode(input_mode) => {
                 let mut node = KdlNode::new("SwitchToMode");
                 node.push(format!("{:?}", input_mode).to_lowercase());
                 Some(node)
-            }
+            },
             Action::Resize(resize, resize_direction) => {
                 let mut node = KdlNode::new("Resize");
                 let resize = match resize {
@@ -586,7 +588,7 @@ impl Action {
                     node.push(format!("{}", resize));
                 }
                 Some(node)
-            }
+            },
             Action::FocusNextPane => Some(KdlNode::new("FocusNextPane")),
             Action::FocusPreviousPane => Some(KdlNode::new("FocusPreviousPane")),
             Action::SwitchFocus => Some(KdlNode::new("SwitchFocus")),
@@ -600,7 +602,7 @@ impl Action {
                 };
                 node.push(direction);
                 Some(node)
-            }
+            },
             Action::MoveFocusOrTab(direction) => {
                 let mut node = KdlNode::new("MoveFocusOrTab");
                 let direction = match direction {
@@ -611,7 +613,7 @@ impl Action {
                 };
                 node.push(direction);
                 Some(node)
-            }
+            },
             Action::MovePane(direction) => {
                 let mut node = KdlNode::new("MovePane");
                 if let Some(direction) = direction {
@@ -624,13 +626,13 @@ impl Action {
                     node.push(direction);
                 }
                 Some(node)
-            }
+            },
             Action::MovePaneBackwards => Some(KdlNode::new("MovePaneBackwards")),
             Action::DumpScreen(file, _) => {
                 let mut node = KdlNode::new("DumpScreen");
                 node.push(file.clone());
                 Some(node)
-            }
+            },
             Action::DumpLayout => Some(KdlNode::new("DumpLayout")),
             Action::EditScrollback => Some(KdlNode::new("EditScrollback")),
             Action::ScrollUp => Some(KdlNode::new("ScrollUp")),
@@ -656,7 +658,7 @@ impl Action {
                     node.push(direction);
                 }
                 Some(node)
-            }
+            },
             Action::TogglePaneEmbedOrFloating => Some(KdlNode::new("TogglePaneEmbedOrFloating")),
             Action::ToggleFloatingPanes => Some(KdlNode::new("ToggleFloatingPanes")),
             Action::CloseFocus => Some(KdlNode::new("CloseFocus")),
@@ -666,7 +668,7 @@ impl Action {
                     node.push(KdlValue::Base10(*byte as i64));
                 }
                 Some(node)
-            }
+            },
             Action::UndoRenamePane => Some(KdlNode::new("UndoRenamePane")),
             Action::NewTab(_, _, _, _, name) => {
                 log::warn!("Converting new tab action without arguments, original action saved to .bak.kdl file");
@@ -679,7 +681,7 @@ impl Action {
                     node.set_children(children);
                 }
                 Some(node)
-            }
+            },
             Action::GoToNextTab => Some(KdlNode::new("GoToNextTab")),
             Action::GoToPreviousTab => Some(KdlNode::new("GoToPreviousTab")),
             Action::CloseTab => Some(KdlNode::new("CloseTab")),
@@ -687,7 +689,7 @@ impl Action {
                 let mut node = KdlNode::new("GoToTab");
                 node.push(KdlValue::Base10(*index as i64));
                 Some(node)
-            }
+            },
             Action::ToggleTab => Some(KdlNode::new("ToggleTab")),
             Action::TabNameInput(bytes) => {
                 let mut node = KdlNode::new("TabNameInput");
@@ -695,7 +697,7 @@ impl Action {
                     node.push(KdlValue::Base10(*byte as i64));
                 }
                 Some(node)
-            }
+            },
             Action::UndoRenameTab => Some(KdlNode::new("UndoRenameTab")),
             Action::MoveTab(direction) => {
                 let mut node = KdlNode::new("MoveTab");
@@ -707,7 +709,7 @@ impl Action {
                 };
                 node.push(direction);
                 Some(node)
-            }
+            },
             Action::NewTiledPane(direction, run_command_action, name) => {
                 let mut node = KdlNode::new("Run");
                 let mut node_children = KdlDocument::new();
@@ -752,7 +754,7 @@ impl Action {
                     node.set_children(node_children);
                 }
                 Some(node)
-            }
+            },
             Action::NewFloatingPane(run_command_action, name, floating_pane_coordinates) => {
                 let mut node = KdlNode::new("Run");
                 let mut node_children = KdlDocument::new();
@@ -786,10 +788,10 @@ impl Action {
                         match x {
                             SplitSize::Percent(x) => {
                                 x_node.push(format!("{}%", x));
-                            }
+                            },
                             SplitSize::Fixed(x) => {
                                 x_node.push(KdlValue::Base10(x as i64));
-                            }
+                            },
                         };
                         node_children.nodes_mut().push(x_node);
                     }
@@ -798,10 +800,10 @@ impl Action {
                         match y {
                             SplitSize::Percent(y) => {
                                 y_node.push(format!("{}%", y));
-                            }
+                            },
                             SplitSize::Fixed(y) => {
                                 y_node.push(KdlValue::Base10(y as i64));
-                            }
+                            },
                         };
                         node_children.nodes_mut().push(y_node);
                     }
@@ -810,10 +812,10 @@ impl Action {
                         match width {
                             SplitSize::Percent(width) => {
                                 width_node.push(format!("{}%", width));
-                            }
+                            },
                             SplitSize::Fixed(width) => {
                                 width_node.push(KdlValue::Base10(width as i64));
-                            }
+                            },
                         };
                         node_children.nodes_mut().push(width_node);
                     }
@@ -822,10 +824,10 @@ impl Action {
                         match height {
                             SplitSize::Percent(height) => {
                                 height_node.push(format!("{}%", height));
-                            }
+                            },
                             SplitSize::Fixed(height) => {
                                 height_node.push(KdlValue::Base10(height as i64));
-                            }
+                            },
                         };
                         node_children.nodes_mut().push(height_node);
                     }
@@ -839,7 +841,7 @@ impl Action {
                     node.set_children(node_children);
                 }
                 Some(node)
-            }
+            },
             Action::NewInPlacePane(run_command_action, name) => {
                 let mut node = KdlNode::new("Run");
                 let mut node_children = KdlDocument::new();
@@ -876,14 +878,14 @@ impl Action {
                     node.set_children(node_children);
                 }
                 Some(node)
-            }
+            },
             Action::Detach => Some(KdlNode::new("Detach")),
             Action::LaunchOrFocusPlugin(
                 run_plugin_or_alias,
                 should_float,
                 move_to_focused_tab,
                 should_open_in_place,
-                skip_plugin_cache
+                skip_plugin_cache,
             ) => {
                 let mut node = KdlNode::new("LaunchOrFocusPlugin");
                 let mut node_children = KdlDocument::new();
@@ -920,7 +922,7 @@ impl Action {
                     node.set_children(node_children);
                 }
                 Some(node)
-            }
+            },
             Action::LaunchPlugin(
                 run_plugin_or_alias,
                 should_float,
@@ -967,7 +969,7 @@ impl Action {
                     node.set_children(node_children);
                 }
                 Some(node)
-            }
+            },
             Action::Copy => Some(KdlNode::new("Copy")),
             Action::SearchInput(bytes) => {
                 let mut node = KdlNode::new("SearchInput");
@@ -975,7 +977,7 @@ impl Action {
                     node.push(KdlValue::Base10(*byte as i64));
                 }
                 Some(node)
-            }
+            },
             Action::Search(search_direction) => {
                 let mut node = KdlNode::new("Search");
                 let direction = match search_direction {
@@ -984,12 +986,12 @@ impl Action {
                 };
                 node.push(direction);
                 Some(node)
-            }
+            },
             Action::SearchToggleOption(search_toggle_option) => {
                 let mut node = KdlNode::new("SearchToggleOption");
                 node.push(format!("{:?}", search_toggle_option));
                 Some(node)
-            }
+            },
             Action::ToggleMouseMode => Some(KdlNode::new("ToggleMouseMode")),
             Action::PreviousSwapLayout => Some(KdlNode::new("PreviousSwapLayout")),
             Action::NextSwapLayout => Some(KdlNode::new("NextSwapLayout")),
@@ -1007,7 +1009,7 @@ impl Action {
                 floating,
                 in_place,
                 cwd,
-                pane_title
+                pane_title,
             } => {
                 let mut node = KdlNode::new("MessagePlugin");
                 let mut node_children = KdlDocument::new();
@@ -1064,9 +1066,8 @@ impl Action {
                     node.set_children(node_children);
                 }
                 Some(node)
-
-            }
-            _ => None
+            },
+            _ => None,
         }
     }
 }
@@ -1196,10 +1197,10 @@ impl PaletteColor {
                 node.push(KdlValue::Base10(*r as i64));
                 node.push(KdlValue::Base10(*g as i64));
                 node.push(KdlValue::Base10(*b as i64));
-            }
+            },
             PaletteColor::EightBit(color_index) => {
                 node.push(KdlValue::Base10(*color_index as i64));
-            }
+            },
         }
         node
     }
@@ -2193,7 +2194,8 @@ impl Options {
         Options::from_kdl(&document)
     }
     fn simplified_ui_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
-        let comment_text = format!("{}\n{}\n{}\n{}\n{}\n{}",
+        let comment_text = format!(
+            "{}\n{}\n{}\n{}\n{}\n{}",
             " ",
             "// Use a simplified UI without special fonts (arrow glyphs)",
             "// Options:",
@@ -2222,7 +2224,8 @@ impl Options {
         }
     }
     fn theme_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
-        let comment_text = format!("{}\n{}\n{}\n{}",
+        let comment_text = format!(
+            "{}\n{}\n{}\n{}",
             " ",
             "// Choose the theme that is specified in the themes section.",
             "// Default: default",
@@ -2249,11 +2252,9 @@ impl Options {
         }
     }
     fn default_mode_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
-        let comment_text = format!("{}\n{}\n{}\n{}",
-            " ",
-            "// Choose the base input mode of zellij.",
-            "// Default: normal",
-            "// "
+        let comment_text = format!(
+            "{}\n{}\n{}\n{}",
+            " ", "// Choose the base input mode of zellij.", "// Default: normal", "// "
         );
 
         let create_node = |default_mode: &InputMode| -> KdlNode {
@@ -2276,7 +2277,8 @@ impl Options {
         }
     }
     fn default_shell_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
-        let comment_text = format!("{}\n{}\n{}\n{}",
+        let comment_text =
+            format!("{}\n{}\n{}\n{}",
             " ",
             "// Choose the path to the default shell that zellij will use for opening new panes",
             "// Default: $SHELL",
@@ -2303,7 +2305,8 @@ impl Options {
         }
     }
     fn default_cwd_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
-        let comment_text = format!("{}\n{}\n{}",
+        let comment_text = format!(
+            "{}\n{}\n{}",
             " ",
             "// Choose the path to override cwd that zellij will use for opening new panes",
             "// ",
@@ -2314,7 +2317,7 @@ impl Options {
             node.push(node_value.to_owned());
             node
         };
-        if let Some(default_cwd) = &self.default_cwd{
+        if let Some(default_cwd) = &self.default_cwd {
             let mut node = create_node(&default_cwd.display().to_string());
             if add_comments {
                 node.set_leading(format!("{}\n", comment_text));
@@ -2329,7 +2332,8 @@ impl Options {
         }
     }
     fn default_layout_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
-        let comment_text = format!("{}\n{}\n{}\n{}",
+        let comment_text = format!(
+            "{}\n{}\n{}\n{}",
             " ",
             "// The name of the default layout to load on startup",
             "// Default: \"default\"",
@@ -2356,10 +2360,9 @@ impl Options {
         }
     }
     fn layout_dir_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
-        let comment_text = format!("{}\n{}\n{}",
-            " ",
-            "// The folder in which Zellij will look for layouts",
-            "// ",
+        let comment_text = format!(
+            "{}\n{}\n{}",
+            " ", "// The folder in which Zellij will look for layouts", "// ",
         );
 
         let create_node = |node_value: &str| -> KdlNode {
@@ -2382,10 +2385,9 @@ impl Options {
         }
     }
     fn theme_dir_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
-        let comment_text = format!("{}\n{}\n{}",
-            " ",
-            "// The folder in which Zellij will look for themes",
-            "// ",
+        let comment_text = format!(
+            "{}\n{}\n{}",
+            " ", "// The folder in which Zellij will look for themes", "// ",
         );
 
         let create_node = |node_value: &str| -> KdlNode {
@@ -2408,7 +2410,8 @@ impl Options {
         }
     }
     fn mouse_mode_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
-        let comment_text = format!("{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        let comment_text = format!(
+            "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
             " ",
             "// Toggle enabling the mouse mode.",
             "// On certain configurations, or terminals this could",
@@ -2439,7 +2442,8 @@ impl Options {
         }
     }
     fn pane_frames_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
-        let comment_text = format!("{}\n{}\n{}\n{}\n{}\n{}",
+        let comment_text = format!(
+            "{}\n{}\n{}\n{}\n{}\n{}",
             " ",
             "// Toggle having pane frames around the panes",
             "// Options:",
@@ -2468,7 +2472,8 @@ impl Options {
         }
     }
     fn mirror_session_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
-        let comment_text = format!("{}\n{}\n{}\n{}\n{}\n{}",
+        let comment_text = format!(
+            "{}\n{}\n{}\n{}\n{}\n{}",
             " ",
             "// When attaching to an existing session with other users,",
             "// should the session be mirrored (true)",
@@ -2497,7 +2502,8 @@ impl Options {
         }
     }
     fn on_force_close_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
-        let comment_text = format!("{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        let comment_text = format!(
+            "{}\n{}\n{}\n{}\n{}\n{}\n{}",
             " ",
             "// Choose what to do when zellij receives SIGTERM, SIGINT, SIGQUIT or SIGHUP",
             "// eg. when terminal window with an active zellij session is closed",
@@ -2514,12 +2520,8 @@ impl Options {
         };
         if let Some(on_force_close) = &self.on_force_close {
             let mut node = match on_force_close {
-                OnForceClose::Detach => {
-                    create_node("detach")
-                }
-                OnForceClose::Quit => {
-                    create_node("quit")
-                }
+                OnForceClose::Detach => create_node("detach"),
+                OnForceClose::Quit => create_node("quit"),
             };
             if add_comments {
                 node.set_leading(format!("{}\n", comment_text));
@@ -2534,7 +2536,8 @@ impl Options {
         }
     }
     fn scroll_buffer_size_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
-        let comment_text = format!("{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        let comment_text = format!(
+            "{}\n{}\n{}\n{}\n{}\n{}\n{}",
             " ",
             "// Configure the scroll back buffer size",
             "// This is the number of lines zellij stores for each pane in the scroll back",
@@ -2564,7 +2567,8 @@ impl Options {
         }
     }
     fn copy_command_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
-        let comment_text = format!("{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        let comment_text = format!(
+            "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
             " ",
             "// Provide a command to execute when copying text. The text will be piped to",
             "// the stdin of the program to perform the copy. This can be used with",
@@ -2583,7 +2587,7 @@ impl Options {
             node.push(node_value.to_owned());
             node
         };
-        if let Some(copy_command) = &self.copy_command{
+        if let Some(copy_command) = &self.copy_command {
             let mut node = create_node(copy_command);
             if add_comments {
                 node.set_leading(format!("{}\n", comment_text));
@@ -2616,12 +2620,8 @@ impl Options {
         };
         if let Some(copy_clipboard) = &self.copy_clipboard {
             let mut node = match copy_clipboard {
-                Clipboard::Primary => {
-                    create_node("primary")
-                }
-                Clipboard::System => {
-                    create_node("system")
-                }
+                Clipboard::Primary => create_node("primary"),
+                Clipboard::System => create_node("system"),
             };
             if add_comments {
                 node.set_leading(format!("{}\n", comment_text));
@@ -2636,7 +2636,8 @@ impl Options {
         }
     }
     fn copy_on_select_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
-        let comment_text = format!("{}\n{}\n{}\n{}",
+        let comment_text = format!(
+            "{}\n{}\n{}\n{}",
             " ",
             "// Enable automatic copying (and clearing) of selection when releasing mouse",
             "// Default: true",
@@ -2663,7 +2664,8 @@ impl Options {
         }
     }
     fn scrollback_editor_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
-        let comment_text = format!("{}\n{}\n{}",
+        let comment_text = format!(
+            "{}\n{}\n{}",
             " ",
             "// Path to the default editor to use to edit pane scrollbuffer",
             "// Default: $EDITOR or $VISUAL",
@@ -2689,7 +2691,8 @@ impl Options {
         }
     }
     fn session_name_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
-        let comment_text = format!("{}\n{}\n{}\n{}\n{}\n{}",
+        let comment_text = format!(
+            "{}\n{}\n{}\n{}\n{}\n{}",
             " ",
             "// A fixed name to always give the Zellij session.",
             "// Consider also setting `attach_to_session true,`",
@@ -2718,7 +2721,8 @@ impl Options {
         }
     }
     fn attach_to_session_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
-        let comment_text = format!("{}\n{}\n{}\n{}\n{}",
+        let comment_text = format!(
+            "{}\n{}\n{}\n{}\n{}",
             " ",
             "// When `session_name` is provided, attaches to that session",
             "// if it is already running or creates it otherwise.",
@@ -2804,7 +2808,8 @@ impl Options {
         }
     }
     fn serialize_pane_viewport_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
-        let comment_text = format!("{}\n{}\n{}\n{}\n{}\n{}",
+        let comment_text = format!(
+            "{}\n{}\n{}\n{}\n{}\n{}",
             " ",
             "// Whether pane viewports are serialized along with the session, default is false",
             "// Options:",
@@ -2861,7 +2866,8 @@ impl Options {
         }
     }
     fn styled_underlines_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
-        let comment_text = format!("{}\n{}\n{}\n{}\n{}",
+        let comment_text = format!(
+            "{}\n{}\n{}\n{}\n{}",
             " ",
             "// Enable or disable the rendering of styled and colored underlines (undercurl).",
             "// May need to be disabled for certain unsupported terminals",
@@ -2889,10 +2895,9 @@ impl Options {
         }
     }
     fn serialization_interval_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
-        let comment_text = format!("{}\n{}\n{}",
-            " ",
-            "// How often in seconds sessions are serialized",
-            "// ",
+        let comment_text = format!(
+            "{}\n{}\n{}",
+            " ", "// How often in seconds sessions are serialized", "// ",
         );
 
         let create_node = |node_value: u64| -> KdlNode {
@@ -3037,7 +3042,9 @@ impl Options {
         if let Some(serialize_pane_viewport) = self.serialize_pane_viewport_to_kdl(add_comments) {
             nodes.push(serialize_pane_viewport);
         }
-        if let Some(scrollback_lines_to_serialize) = self.scrollback_lines_to_serialize_to_kdl(add_comments) {
+        if let Some(scrollback_lines_to_serialize) =
+            self.scrollback_lines_to_serialize_to_kdl(add_comments)
+        {
             nodes.push(scrollback_lines_to_serialize);
         }
         if let Some(styled_underlines) = self.styled_underlines_to_kdl(add_comments) {
@@ -3049,7 +3056,9 @@ impl Options {
         if let Some(disable_session_metadata) = self.disable_session_metadata_to_kdl(add_comments) {
             nodes.push(disable_session_metadata);
         }
-        if let Some(support_kitty_keyboard_protocol) = self.support_kitty_keyboard_protocol_to_kdl(add_comments) {
+        if let Some(support_kitty_keyboard_protocol) =
+            self.support_kitty_keyboard_protocol_to_kdl(add_comments)
+        {
             nodes.push(support_kitty_keyboard_protocol);
         }
         nodes
@@ -3329,13 +3338,15 @@ impl Keybinds {
     }
     // minimize keybind entries for serialization, so that duplicate entries will appear in
     // "shared" nodes later rather than once per mode
-    fn minimize_entries(&self) -> BTreeMap<BTreeSet<InputMode>, BTreeMap<KeyWithModifier, Vec<Action>>> {
-        let mut minimized: BTreeMap<BTreeSet<InputMode>, BTreeMap<KeyWithModifier, Vec<Action>>> = BTreeMap::new();
-        let mut flattened: Vec<BTreeMap<KeyWithModifier, Vec<Action>>> = self.0
+    fn minimize_entries(
+        &self,
+    ) -> BTreeMap<BTreeSet<InputMode>, BTreeMap<KeyWithModifier, Vec<Action>>> {
+        let mut minimized: BTreeMap<BTreeSet<InputMode>, BTreeMap<KeyWithModifier, Vec<Action>>> =
+            BTreeMap::new();
+        let mut flattened: Vec<BTreeMap<KeyWithModifier, Vec<Action>>> = self
+            .0
             .iter()
-            .map(|(_input_mode, keybind)| {
-                keybind.clone().into_iter().collect()
-            })
+            .map(|(_input_mode, keybind)| keybind.clone().into_iter().collect())
             .collect();
         for keybind in flattened.drain(..) {
             for (key, actions) in keybind.into_iter() {
@@ -3345,7 +3356,10 @@ impl Keybinds {
                         appears_in_modes.insert(*input_mode);
                     }
                 }
-                minimized.entry(appears_in_modes).or_insert_with(Default::default).insert(key, actions);
+                minimized
+                    .entry(appears_in_modes)
+                    .or_insert_with(Default::default)
+                    .insert(key, actions);
             }
         }
         minimized
@@ -3354,7 +3368,8 @@ impl Keybinds {
         let all_modes: Vec<InputMode> = InputMode::iter().collect();
         let total_input_mode_count = all_modes.len();
         if input_modes.len() == 1 {
-            let input_mode_name = format!("{:?}", input_modes.iter().next().unwrap()).to_lowercase();
+            let input_mode_name =
+                format!("{:?}", input_modes.iter().next().unwrap()).to_lowercase();
             KdlNode::new(input_mode_name)
         } else if input_modes.len() == total_input_mode_count {
             KdlNode::new("shared")
@@ -3376,7 +3391,10 @@ impl Keybinds {
             node
         }
     }
-    fn serialize_mode_keybinds(&self, keybinds: &BTreeMap<KeyWithModifier, Vec<Action>>) -> KdlDocument {
+    fn serialize_mode_keybinds(
+        &self,
+        keybinds: &BTreeMap<KeyWithModifier, Vec<Action>>,
+    ) -> KdlDocument {
         let mut mode_keybinds = KdlDocument::new();
         for keybind in keybinds {
             let mut keybind_node = KdlNode::new("bind");
@@ -3415,7 +3433,8 @@ impl Keybinds {
         macro_rules! encode_single_input_mode {
             ($mode_name:ident) => {{
                 if let Some(keybinds) = minimized.remove(&BTreeSet::from([InputMode::$mode_name])) {
-                    let mut mode_node = KdlNode::new(format!("{:?}", InputMode::$mode_name).to_lowercase());
+                    let mut mode_node =
+                        KdlNode::new(format!("{:?}", InputMode::$mode_name).to_lowercase());
                     let mode_keybinds = self.serialize_mode_keybinds(&keybinds);
                     mode_node.set_children(mode_keybinds);
                     keybinds_children.nodes_mut().push(mode_node);
@@ -3551,10 +3570,11 @@ impl Config {
             document.nodes_mut().push(env);
         }
 
-        document.nodes_mut().append(&mut self.options.to_kdl(add_comments));
+        document
+            .nodes_mut()
+            .append(&mut self.options.to_kdl(add_comments));
 
         document.to_string()
-
     }
 }
 
@@ -3670,7 +3690,10 @@ impl UiConfig {
 }
 
 impl Themes {
-    pub fn from_kdl(themes_from_kdl: &KdlNode, sourced_from_external_file: bool) -> Result<Self, ConfigError> {
+    pub fn from_kdl(
+        themes_from_kdl: &KdlNode,
+        sourced_from_external_file: bool,
+    ) -> Result<Self, ConfigError> {
         let mut themes: HashMap<String, Theme> = HashMap::new();
         for theme_config in kdl_children_nodes_or_error!(themes_from_kdl, "no themes found") {
             let theme_name = kdl_name!(theme_config);
@@ -3698,7 +3721,10 @@ impl Themes {
         Ok(themes)
     }
 
-    pub fn from_string(raw_string: &String, sourced_from_external_file: bool) -> Result<Self, ConfigError> {
+    pub fn from_string(
+        raw_string: &String,
+        sourced_from_external_file: bool,
+    ) -> Result<Self, ConfigError> {
         let kdl_config: KdlDocument = raw_string.parse()?;
         let kdl_themes = kdl_config.get("themes").ok_or(ConfigError::new_kdl_error(
             "No theme node found in file".into(),
@@ -3751,17 +3777,39 @@ impl Themes {
             has_themes = true;
             let mut current_theme_node = KdlNode::new(theme_name.clone());
             let mut current_theme_node_children = KdlDocument::new();
-            current_theme_node_children.nodes_mut().push(theme.palette.fg.to_kdl("fg"));
-            current_theme_node_children.nodes_mut().push(theme.palette.bg.to_kdl("bg"));
-            current_theme_node_children.nodes_mut().push(theme.palette.red.to_kdl("red"));
-            current_theme_node_children.nodes_mut().push(theme.palette.green.to_kdl("green"));
-            current_theme_node_children.nodes_mut().push(theme.palette.yellow.to_kdl("yellow"));
-            current_theme_node_children.nodes_mut().push(theme.palette.blue.to_kdl("blue"));
-            current_theme_node_children.nodes_mut().push(theme.palette.magenta.to_kdl("magenta"));
-            current_theme_node_children.nodes_mut().push(theme.palette.orange.to_kdl("orange"));
-            current_theme_node_children.nodes_mut().push(theme.palette.cyan.to_kdl("cyan"));
-            current_theme_node_children.nodes_mut().push(theme.palette.black.to_kdl("black"));
-            current_theme_node_children.nodes_mut().push(theme.palette.white.to_kdl("white"));
+            current_theme_node_children
+                .nodes_mut()
+                .push(theme.palette.fg.to_kdl("fg"));
+            current_theme_node_children
+                .nodes_mut()
+                .push(theme.palette.bg.to_kdl("bg"));
+            current_theme_node_children
+                .nodes_mut()
+                .push(theme.palette.red.to_kdl("red"));
+            current_theme_node_children
+                .nodes_mut()
+                .push(theme.palette.green.to_kdl("green"));
+            current_theme_node_children
+                .nodes_mut()
+                .push(theme.palette.yellow.to_kdl("yellow"));
+            current_theme_node_children
+                .nodes_mut()
+                .push(theme.palette.blue.to_kdl("blue"));
+            current_theme_node_children
+                .nodes_mut()
+                .push(theme.palette.magenta.to_kdl("magenta"));
+            current_theme_node_children
+                .nodes_mut()
+                .push(theme.palette.orange.to_kdl("orange"));
+            current_theme_node_children
+                .nodes_mut()
+                .push(theme.palette.cyan.to_kdl("cyan"));
+            current_theme_node_children
+                .nodes_mut()
+                .push(theme.palette.black.to_kdl("black"));
+            current_theme_node_children
+                .nodes_mut()
+                .push(theme.palette.white.to_kdl("white"));
             current_theme_node.set_children(current_theme_node_children);
             themes.nodes_mut().push(current_theme_node);
         }
@@ -4433,58 +4481,112 @@ fn serialize_and_deserialize_session_info_with_data() {
 
 #[test]
 fn keybinds_to_string() {
-    let fake_config =  r#"
+    let fake_config = r#"
         keybinds {
             normal {
                 bind "Ctrl g" { SwitchToMode "Locked"; }
             }
         }"#;
     let document: KdlDocument = fake_config.parse().unwrap();
-    let deserialized = Keybinds::from_kdl(document.get("keybinds").unwrap(), Default::default(), &Default::default()).unwrap();
+    let deserialized = Keybinds::from_kdl(
+        document.get("keybinds").unwrap(),
+        Default::default(),
+        &Default::default(),
+    )
+    .unwrap();
     let clear_defaults = true;
     let serialized = Keybinds::to_kdl(&deserialized, clear_defaults);
-    let deserialized_from_serialized = Keybinds::from_kdl(serialized.to_string().parse::<KdlDocument>().unwrap().get("keybinds").unwrap(), Default::default(), &Default::default()).unwrap();
+    let deserialized_from_serialized = Keybinds::from_kdl(
+        serialized
+            .to_string()
+            .parse::<KdlDocument>()
+            .unwrap()
+            .get("keybinds")
+            .unwrap(),
+        Default::default(),
+        &Default::default(),
+    )
+    .unwrap();
     insta::assert_snapshot!(serialized.to_string());
-    assert_eq!(deserialized, deserialized_from_serialized, "Deserialized serialized config equals original config");
+    assert_eq!(
+        deserialized, deserialized_from_serialized,
+        "Deserialized serialized config equals original config"
+    );
 }
 
 #[test]
 fn keybinds_to_string_without_clearing_defaults() {
-    let fake_config =  r#"
+    let fake_config = r#"
         keybinds {
             normal {
                 bind "Ctrl g" { SwitchToMode "Locked"; }
             }
         }"#;
     let document: KdlDocument = fake_config.parse().unwrap();
-    let deserialized = Keybinds::from_kdl(document.get("keybinds").unwrap(), Default::default(), &Default::default()).unwrap();
+    let deserialized = Keybinds::from_kdl(
+        document.get("keybinds").unwrap(),
+        Default::default(),
+        &Default::default(),
+    )
+    .unwrap();
     let clear_defaults = false;
     let serialized = Keybinds::to_kdl(&deserialized, clear_defaults);
-    let deserialized_from_serialized = Keybinds::from_kdl(serialized.to_string().parse::<KdlDocument>().unwrap().get("keybinds").unwrap(), Default::default(), &Default::default()).unwrap();
+    let deserialized_from_serialized = Keybinds::from_kdl(
+        serialized
+            .to_string()
+            .parse::<KdlDocument>()
+            .unwrap()
+            .get("keybinds")
+            .unwrap(),
+        Default::default(),
+        &Default::default(),
+    )
+    .unwrap();
     insta::assert_snapshot!(serialized.to_string());
-    assert_eq!(deserialized, deserialized_from_serialized, "Deserialized serialized config equals original config");
+    assert_eq!(
+        deserialized, deserialized_from_serialized,
+        "Deserialized serialized config equals original config"
+    );
 }
 
 #[test]
 fn keybinds_to_string_with_multiple_actions() {
-    let fake_config =  r#"
+    let fake_config = r#"
         keybinds {
             normal {
                 bind "Ctrl n" { NewPane; SwitchToMode "Locked"; }
             }
         }"#;
     let document: KdlDocument = fake_config.parse().unwrap();
-    let deserialized = Keybinds::from_kdl(document.get("keybinds").unwrap(), Default::default(), &Default::default()).unwrap();
+    let deserialized = Keybinds::from_kdl(
+        document.get("keybinds").unwrap(),
+        Default::default(),
+        &Default::default(),
+    )
+    .unwrap();
     let clear_defaults = true;
     let serialized = Keybinds::to_kdl(&deserialized, clear_defaults);
-    let deserialized_from_serialized = Keybinds::from_kdl(serialized.to_string().parse::<KdlDocument>().unwrap().get("keybinds").unwrap(), Default::default(), &Default::default()).unwrap();
-    assert_eq!(deserialized, deserialized_from_serialized, "Deserialized serialized config equals original config");
+    let deserialized_from_serialized = Keybinds::from_kdl(
+        serialized
+            .to_string()
+            .parse::<KdlDocument>()
+            .unwrap()
+            .get("keybinds")
+            .unwrap(),
+        Default::default(),
+        &Default::default(),
+    )
+    .unwrap();
+    assert_eq!(
+        deserialized, deserialized_from_serialized,
+        "Deserialized serialized config equals original config"
+    );
     insta::assert_snapshot!(serialized.to_string());
 }
 
 #[test]
 fn keybinds_to_string_with_all_actions() {
-    let fake_config =  r#"
+    let fake_config = r#"
         keybinds {
             normal {
                 bind "Ctrl a" { Quit; }
@@ -4617,10 +4719,25 @@ fn keybinds_to_string_with_all_actions() {
             }
         }"#;
     let document: KdlDocument = fake_config.parse().unwrap();
-    let deserialized = Keybinds::from_kdl(document.get("keybinds").unwrap(), Default::default(), &Default::default()).unwrap();
+    let deserialized = Keybinds::from_kdl(
+        document.get("keybinds").unwrap(),
+        Default::default(),
+        &Default::default(),
+    )
+    .unwrap();
     let clear_defaults = true;
     let serialized = Keybinds::to_kdl(&deserialized, clear_defaults);
-    let deserialized_from_serialized = Keybinds::from_kdl(serialized.to_string().parse::<KdlDocument>().unwrap().get("keybinds").unwrap(), Default::default(), &Default::default()).unwrap();
+    let deserialized_from_serialized = Keybinds::from_kdl(
+        serialized
+            .to_string()
+            .parse::<KdlDocument>()
+            .unwrap()
+            .get("keybinds")
+            .unwrap(),
+        Default::default(),
+        &Default::default(),
+    )
+    .unwrap();
     // uncomment the below lines for more easily debugging a failed assertion here
     //     for (input_mode, input_mode_keybinds) in deserialized.0 {
     //         if let Some(other_input_mode_keybinds) = deserialized_from_serialized.0.get(&input_mode) {
@@ -4633,13 +4750,16 @@ fn keybinds_to_string_with_all_actions() {
     //             }
     //         }
     //     }
-    assert_eq!(deserialized, deserialized_from_serialized, "Deserialized serialized config equals original config");
+    assert_eq!(
+        deserialized, deserialized_from_serialized,
+        "Deserialized serialized config equals original config"
+    );
     insta::assert_snapshot!(serialized.to_string());
 }
 
 #[test]
 fn keybinds_to_string_with_shared_modes() {
-    let fake_config =  r#"
+    let fake_config = r#"
         keybinds {
             normal {
                 bind "Ctrl n" { NewPane; SwitchToMode "Locked"; }
@@ -4655,17 +4775,35 @@ fn keybinds_to_string_with_shared_modes() {
             }
         }"#;
     let document: KdlDocument = fake_config.parse().unwrap();
-    let deserialized = Keybinds::from_kdl(document.get("keybinds").unwrap(), Default::default(), &Default::default()).unwrap();
+    let deserialized = Keybinds::from_kdl(
+        document.get("keybinds").unwrap(),
+        Default::default(),
+        &Default::default(),
+    )
+    .unwrap();
     let clear_defaults = true;
     let serialized = Keybinds::to_kdl(&deserialized, clear_defaults);
-    let deserialized_from_serialized = Keybinds::from_kdl(serialized.to_string().parse::<KdlDocument>().unwrap().get("keybinds").unwrap(), Default::default(), &Default::default()).unwrap();
-    assert_eq!(deserialized, deserialized_from_serialized, "Deserialized serialized config equals original config");
+    let deserialized_from_serialized = Keybinds::from_kdl(
+        serialized
+            .to_string()
+            .parse::<KdlDocument>()
+            .unwrap()
+            .get("keybinds")
+            .unwrap(),
+        Default::default(),
+        &Default::default(),
+    )
+    .unwrap();
+    assert_eq!(
+        deserialized, deserialized_from_serialized,
+        "Deserialized serialized config equals original config"
+    );
     insta::assert_snapshot!(serialized.to_string());
 }
 
 #[test]
 fn keybinds_to_string_with_multiple_multiline_actions() {
-    let fake_config =  r#"
+    let fake_config = r#"
         keybinds {
             shared {
                 bind "Ctrl n" {
@@ -4686,17 +4824,35 @@ fn keybinds_to_string_with_multiple_multiline_actions() {
             }
         }"#;
     let document: KdlDocument = fake_config.parse().unwrap();
-    let deserialized = Keybinds::from_kdl(document.get("keybinds").unwrap(), Default::default(), &Default::default()).unwrap();
+    let deserialized = Keybinds::from_kdl(
+        document.get("keybinds").unwrap(),
+        Default::default(),
+        &Default::default(),
+    )
+    .unwrap();
     let clear_defaults = true;
     let serialized = Keybinds::to_kdl(&deserialized, clear_defaults);
-    let deserialized_from_serialized = Keybinds::from_kdl(serialized.to_string().parse::<KdlDocument>().unwrap().get("keybinds").unwrap(), Default::default(), &Default::default()).unwrap();
-    assert_eq!(deserialized, deserialized_from_serialized, "Deserialized serialized config equals original config");
+    let deserialized_from_serialized = Keybinds::from_kdl(
+        serialized
+            .to_string()
+            .parse::<KdlDocument>()
+            .unwrap()
+            .get("keybinds")
+            .unwrap(),
+        Default::default(),
+        &Default::default(),
+    )
+    .unwrap();
+    assert_eq!(
+        deserialized, deserialized_from_serialized,
+        "Deserialized serialized config equals original config"
+    );
     insta::assert_snapshot!(serialized.to_string());
 }
 
 #[test]
 fn themes_to_string() {
-    let fake_config =  r#"
+    let fake_config = r#"
         themes {
            dracula {
                 fg 248 248 242
@@ -4714,16 +4870,29 @@ fn themes_to_string() {
         }"#;
     let document: KdlDocument = fake_config.parse().unwrap();
     let sourced_from_external_file = false;
-    let deserialized = Themes::from_kdl(document.get("themes").unwrap(), sourced_from_external_file).unwrap();
+    let deserialized =
+        Themes::from_kdl(document.get("themes").unwrap(), sourced_from_external_file).unwrap();
     let serialized = Themes::to_kdl(&deserialized).unwrap();
-    let deserialized_from_serialized = Themes::from_kdl(serialized.to_string().parse::<KdlDocument>().unwrap().get("themes").unwrap(), sourced_from_external_file).unwrap();
-    assert_eq!(deserialized, deserialized_from_serialized, "Deserialized serialized config equals original config");
+    let deserialized_from_serialized = Themes::from_kdl(
+        serialized
+            .to_string()
+            .parse::<KdlDocument>()
+            .unwrap()
+            .get("themes")
+            .unwrap(),
+        sourced_from_external_file,
+    )
+    .unwrap();
+    assert_eq!(
+        deserialized, deserialized_from_serialized,
+        "Deserialized serialized config equals original config"
+    );
     insta::assert_snapshot!(serialized.to_string());
 }
 
 #[test]
 fn themes_to_string_with_hex_definitions() {
-    let fake_config =  r##"
+    let fake_config = r##"
         themes {
             nord {
                 fg "#D8DEE9"
@@ -4741,16 +4910,29 @@ fn themes_to_string_with_hex_definitions() {
         }"##;
     let document: KdlDocument = fake_config.parse().unwrap();
     let sourced_from_external_file = false;
-    let deserialized = Themes::from_kdl(document.get("themes").unwrap(), sourced_from_external_file).unwrap();
+    let deserialized =
+        Themes::from_kdl(document.get("themes").unwrap(), sourced_from_external_file).unwrap();
     let serialized = Themes::to_kdl(&deserialized).unwrap();
-    let deserialized_from_serialized = Themes::from_kdl(serialized.to_string().parse::<KdlDocument>().unwrap().get("themes").unwrap(), sourced_from_external_file).unwrap();
-    assert_eq!(deserialized, deserialized_from_serialized, "Deserialized serialized config equals original config");
+    let deserialized_from_serialized = Themes::from_kdl(
+        serialized
+            .to_string()
+            .parse::<KdlDocument>()
+            .unwrap()
+            .get("themes")
+            .unwrap(),
+        sourced_from_external_file,
+    )
+    .unwrap();
+    assert_eq!(
+        deserialized, deserialized_from_serialized,
+        "Deserialized serialized config equals original config"
+    );
     insta::assert_snapshot!(serialized.to_string());
 }
 
 #[test]
 fn themes_to_string_with_eight_bit_definitions() {
-    let fake_config =  r##"
+    let fake_config = r##"
         themes {
             default {
                 fg 1
@@ -4768,16 +4950,29 @@ fn themes_to_string_with_eight_bit_definitions() {
         }"##;
     let document: KdlDocument = fake_config.parse().unwrap();
     let sourced_from_external_file = false;
-    let deserialized = Themes::from_kdl(document.get("themes").unwrap(), sourced_from_external_file).unwrap();
+    let deserialized =
+        Themes::from_kdl(document.get("themes").unwrap(), sourced_from_external_file).unwrap();
     let serialized = Themes::to_kdl(&deserialized).unwrap();
-    let deserialized_from_serialized = Themes::from_kdl(serialized.to_string().parse::<KdlDocument>().unwrap().get("themes").unwrap(), sourced_from_external_file).unwrap();
-    assert_eq!(deserialized, deserialized_from_serialized, "Deserialized serialized config equals original config");
+    let deserialized_from_serialized = Themes::from_kdl(
+        serialized
+            .to_string()
+            .parse::<KdlDocument>()
+            .unwrap()
+            .get("themes")
+            .unwrap(),
+        sourced_from_external_file,
+    )
+    .unwrap();
+    assert_eq!(
+        deserialized, deserialized_from_serialized,
+        "Deserialized serialized config equals original config"
+    );
     insta::assert_snapshot!(serialized.to_string());
 }
 
 #[test]
 fn themes_to_string_with_combined_definitions() {
-    let fake_config =  r##"
+    let fake_config = r##"
         themes {
             default {
                 fg 1
@@ -4795,16 +4990,29 @@ fn themes_to_string_with_combined_definitions() {
         }"##;
     let document: KdlDocument = fake_config.parse().unwrap();
     let sourced_from_external_file = false;
-    let deserialized = Themes::from_kdl(document.get("themes").unwrap(), sourced_from_external_file).unwrap();
+    let deserialized =
+        Themes::from_kdl(document.get("themes").unwrap(), sourced_from_external_file).unwrap();
     let serialized = Themes::to_kdl(&deserialized).unwrap();
-    let deserialized_from_serialized = Themes::from_kdl(serialized.to_string().parse::<KdlDocument>().unwrap().get("themes").unwrap(), sourced_from_external_file).unwrap();
-    assert_eq!(deserialized, deserialized_from_serialized, "Deserialized serialized config equals original config");
+    let deserialized_from_serialized = Themes::from_kdl(
+        serialized
+            .to_string()
+            .parse::<KdlDocument>()
+            .unwrap()
+            .get("themes")
+            .unwrap(),
+        sourced_from_external_file,
+    )
+    .unwrap();
+    assert_eq!(
+        deserialized, deserialized_from_serialized,
+        "Deserialized serialized config equals original config"
+    );
     insta::assert_snapshot!(serialized.to_string());
 }
 
 #[test]
 fn themes_to_string_with_multiple_theme_definitions() {
-    let fake_config =  r##"
+    let fake_config = r##"
         themes {
            nord {
                fg "#D8DEE9"
@@ -4835,16 +5043,29 @@ fn themes_to_string_with_multiple_theme_definitions() {
         }"##;
     let document: KdlDocument = fake_config.parse().unwrap();
     let sourced_from_external_file = false;
-    let deserialized = Themes::from_kdl(document.get("themes").unwrap(), sourced_from_external_file).unwrap();
+    let deserialized =
+        Themes::from_kdl(document.get("themes").unwrap(), sourced_from_external_file).unwrap();
     let serialized = Themes::to_kdl(&deserialized).unwrap();
-    let deserialized_from_serialized = Themes::from_kdl(serialized.to_string().parse::<KdlDocument>().unwrap().get("themes").unwrap(), sourced_from_external_file).unwrap();
-    assert_eq!(deserialized, deserialized_from_serialized, "Deserialized serialized config equals original config");
+    let deserialized_from_serialized = Themes::from_kdl(
+        serialized
+            .to_string()
+            .parse::<KdlDocument>()
+            .unwrap()
+            .get("themes")
+            .unwrap(),
+        sourced_from_external_file,
+    )
+    .unwrap();
+    assert_eq!(
+        deserialized, deserialized_from_serialized,
+        "Deserialized serialized config equals original config"
+    );
     insta::assert_snapshot!(serialized.to_string());
 }
 
 #[test]
 fn plugins_to_string() {
-    let fake_config =  r##"
+    let fake_config = r##"
         plugins {
             tab-bar location="zellij:tab-bar"
             status-bar location="zellij:status-bar"
@@ -4861,14 +5082,25 @@ fn plugins_to_string() {
     let document: KdlDocument = fake_config.parse().unwrap();
     let deserialized = PluginAliases::from_kdl(document.get("plugins").unwrap()).unwrap();
     let serialized = PluginAliases::to_kdl(&deserialized);
-    let deserialized_from_serialized = PluginAliases::from_kdl(serialized.to_string().parse::<KdlDocument>().unwrap().get("plugins").unwrap()).unwrap();
-    assert_eq!(deserialized, deserialized_from_serialized, "Deserialized serialized config equals original config");
+    let deserialized_from_serialized = PluginAliases::from_kdl(
+        serialized
+            .to_string()
+            .parse::<KdlDocument>()
+            .unwrap()
+            .get("plugins")
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        deserialized, deserialized_from_serialized,
+        "Deserialized serialized config equals original config"
+    );
     insta::assert_snapshot!(serialized.to_string());
 }
 
 #[test]
 fn plugins_to_string_with_file_and_web() {
-    let fake_config =  r##"
+    let fake_config = r##"
         plugins {
             tab-bar location="https://foo.com/plugin.wasm"
             filepicker location="file:/path/to/my/plugin.wasm" {
@@ -4878,14 +5110,25 @@ fn plugins_to_string_with_file_and_web() {
     let document: KdlDocument = fake_config.parse().unwrap();
     let deserialized = PluginAliases::from_kdl(document.get("plugins").unwrap()).unwrap();
     let serialized = PluginAliases::to_kdl(&deserialized);
-    let deserialized_from_serialized = PluginAliases::from_kdl(serialized.to_string().parse::<KdlDocument>().unwrap().get("plugins").unwrap()).unwrap();
-    assert_eq!(deserialized, deserialized_from_serialized, "Deserialized serialized config equals original config");
+    let deserialized_from_serialized = PluginAliases::from_kdl(
+        serialized
+            .to_string()
+            .parse::<KdlDocument>()
+            .unwrap()
+            .get("plugins")
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        deserialized, deserialized_from_serialized,
+        "Deserialized serialized config equals original config"
+    );
     insta::assert_snapshot!(serialized.to_string());
 }
 
 #[test]
 fn ui_config_to_string() {
-    let fake_config =  r##"
+    let fake_config = r##"
         ui {
             pane_frames {
                 rounded_corners true
@@ -4895,14 +5138,25 @@ fn ui_config_to_string() {
     let document: KdlDocument = fake_config.parse().unwrap();
     let deserialized = UiConfig::from_kdl(document.get("ui").unwrap()).unwrap();
     let serialized = UiConfig::to_kdl(&deserialized).unwrap();
-    let deserialized_from_serialized = UiConfig::from_kdl(serialized.to_string().parse::<KdlDocument>().unwrap().get("ui").unwrap()).unwrap();
-    assert_eq!(deserialized, deserialized_from_serialized, "Deserialized serialized config equals original config");
+    let deserialized_from_serialized = UiConfig::from_kdl(
+        serialized
+            .to_string()
+            .parse::<KdlDocument>()
+            .unwrap()
+            .get("ui")
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        deserialized, deserialized_from_serialized,
+        "Deserialized serialized config equals original config"
+    );
     insta::assert_snapshot!(serialized.to_string());
 }
 
 #[test]
 fn ui_config_to_string_with_no_ui_config() {
-    let fake_config =  r##"
+    let fake_config = r##"
         ui {
             pane_frames {
             }
@@ -4914,7 +5168,7 @@ fn ui_config_to_string_with_no_ui_config() {
 
 #[test]
 fn env_vars_to_string() {
-    let fake_config =  r##"
+    let fake_config = r##"
         env {
             foo "bar"
             bar "foo"
@@ -4924,14 +5178,25 @@ fn env_vars_to_string() {
     let document: KdlDocument = fake_config.parse().unwrap();
     let deserialized = EnvironmentVariables::from_kdl(document.get("env").unwrap()).unwrap();
     let serialized = EnvironmentVariables::to_kdl(&deserialized).unwrap();
-    let deserialized_from_serialized = EnvironmentVariables::from_kdl(serialized.to_string().parse::<KdlDocument>().unwrap().get("env").unwrap()).unwrap();
-    assert_eq!(deserialized, deserialized_from_serialized, "Deserialized serialized config equals original config");
+    let deserialized_from_serialized = EnvironmentVariables::from_kdl(
+        serialized
+            .to_string()
+            .parse::<KdlDocument>()
+            .unwrap()
+            .get("env")
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        deserialized, deserialized_from_serialized,
+        "Deserialized serialized config equals original config"
+    );
     insta::assert_snapshot!(serialized.to_string());
 }
 
 #[test]
 fn env_vars_to_string_with_no_env_vars() {
-    let fake_config =  r##"
+    let fake_config = r##"
         env {
         }"##;
     let document: KdlDocument = fake_config.parse().unwrap();
@@ -4941,7 +5206,7 @@ fn env_vars_to_string_with_no_env_vars() {
 
 #[test]
 fn config_options_to_string() {
-    let fake_config =  r##"
+    let fake_config = r##"
         simplified_ui true
         theme "dracula"
         default_mode "locked"
@@ -4975,14 +5240,18 @@ fn config_options_to_string() {
     let mut serialized = Options::to_kdl(&deserialized, false);
     let mut fake_document = KdlDocument::new();
     fake_document.nodes_mut().append(&mut serialized);
-    let deserialized_from_serialized = Options::from_kdl(&fake_document.to_string().parse::<KdlDocument>().unwrap()).unwrap();
-    assert_eq!(deserialized, deserialized_from_serialized, "Deserialized serialized config equals original config");
+    let deserialized_from_serialized =
+        Options::from_kdl(&fake_document.to_string().parse::<KdlDocument>().unwrap()).unwrap();
+    assert_eq!(
+        deserialized, deserialized_from_serialized,
+        "Deserialized serialized config equals original config"
+    );
     insta::assert_snapshot!(fake_document.to_string());
 }
 
 #[test]
 fn config_options_to_string_with_comments() {
-    let fake_config =  r##"
+    let fake_config = r##"
         simplified_ui true
         theme "dracula"
         default_mode "locked"
@@ -5016,28 +5285,36 @@ fn config_options_to_string_with_comments() {
     let mut serialized = Options::to_kdl(&deserialized, true);
     let mut fake_document = KdlDocument::new();
     fake_document.nodes_mut().append(&mut serialized);
-    let deserialized_from_serialized = Options::from_kdl(&fake_document.to_string().parse::<KdlDocument>().unwrap()).unwrap();
-    assert_eq!(deserialized, deserialized_from_serialized, "Deserialized serialized config equals original config");
+    let deserialized_from_serialized =
+        Options::from_kdl(&fake_document.to_string().parse::<KdlDocument>().unwrap()).unwrap();
+    assert_eq!(
+        deserialized, deserialized_from_serialized,
+        "Deserialized serialized config equals original config"
+    );
     insta::assert_snapshot!(fake_document.to_string());
 }
 
 #[test]
 fn config_options_to_string_without_options() {
-    let fake_config =  r##"
+    let fake_config = r##"
     "##;
     let document: KdlDocument = fake_config.parse().unwrap();
     let deserialized = Options::from_kdl(&document).unwrap();
     let mut serialized = Options::to_kdl(&deserialized, false);
     let mut fake_document = KdlDocument::new();
     fake_document.nodes_mut().append(&mut serialized);
-    let deserialized_from_serialized = Options::from_kdl(&fake_document.to_string().parse::<KdlDocument>().unwrap()).unwrap();
-    assert_eq!(deserialized, deserialized_from_serialized, "Deserialized serialized config equals original config");
+    let deserialized_from_serialized =
+        Options::from_kdl(&fake_document.to_string().parse::<KdlDocument>().unwrap()).unwrap();
+    assert_eq!(
+        deserialized, deserialized_from_serialized,
+        "Deserialized serialized config equals original config"
+    );
     insta::assert_snapshot!(fake_document.to_string());
 }
 
 #[test]
 fn config_options_to_string_with_some_options() {
-    let fake_config =  r##"
+    let fake_config = r##"
         default_layout "compact"
     "##;
     let document: KdlDocument = fake_config.parse().unwrap();
@@ -5045,8 +5322,12 @@ fn config_options_to_string_with_some_options() {
     let mut serialized = Options::to_kdl(&deserialized, false);
     let mut fake_document = KdlDocument::new();
     fake_document.nodes_mut().append(&mut serialized);
-    let deserialized_from_serialized = Options::from_kdl(&fake_document.to_string().parse::<KdlDocument>().unwrap()).unwrap();
-    assert_eq!(deserialized, deserialized_from_serialized, "Deserialized serialized config equals original config");
+    let deserialized_from_serialized =
+        Options::from_kdl(&fake_document.to_string().parse::<KdlDocument>().unwrap()).unwrap();
+    assert_eq!(
+        deserialized, deserialized_from_serialized,
+        "Deserialized serialized config equals original config"
+    );
     insta::assert_snapshot!(fake_document.to_string());
 }
 
@@ -5055,7 +5336,10 @@ fn bare_config_from_default_assets_to_string() {
     let fake_config = Config::from_default_assets().unwrap();
     let fake_config_stringified = fake_config.to_string(false);
     let deserialized_from_serialized = Config::from_kdl(&fake_config_stringified, None).unwrap();
-    assert_eq!(fake_config, deserialized_from_serialized, "Deserialized serialized config equals original config");
+    assert_eq!(
+        fake_config, deserialized_from_serialized,
+        "Deserialized serialized config equals original config"
+    );
     insta::assert_snapshot!(fake_config_stringified);
 }
 
@@ -5064,6 +5348,9 @@ fn bare_config_from_default_assets_to_string_with_comments() {
     let fake_config = Config::from_default_assets().unwrap();
     let fake_config_stringified = fake_config.to_string(true);
     let deserialized_from_serialized = Config::from_kdl(&fake_config_stringified, None).unwrap();
-    assert_eq!(fake_config, deserialized_from_serialized, "Deserialized serialized config equals original config");
+    assert_eq!(
+        fake_config, deserialized_from_serialized,
+        "Deserialized serialized config equals original config"
+    );
     insta::assert_snapshot!(fake_config_stringified);
 }

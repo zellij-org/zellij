@@ -1800,7 +1800,7 @@ pub enum PluginCommand {
     CloseSelf,
     NewTabsWithLayoutInfo(LayoutInfo),
     Reconfigure(String, bool), // String -> stringified configuration, bool -> save configuration
-                               // file to disk
+    // file to disk
     HidePaneWithId(PaneId),
     ShowPaneWithId(PaneId, bool), // bool -> should_float_if_hidden
     OpenCommandPaneBackground(CommandToRun, Context),

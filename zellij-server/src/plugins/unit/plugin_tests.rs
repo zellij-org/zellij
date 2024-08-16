@@ -11,12 +11,12 @@ use zellij_utils::data::{
     PluginCapabilities,
 };
 use zellij_utils::errors::ErrorContext;
+use zellij_utils::input::keybinds::Keybinds;
 use zellij_utils::input::layout::{
     Layout, PluginAlias, PluginUserConfiguration, RunPlugin, RunPluginLocation, RunPluginOrAlias,
 };
 use zellij_utils::input::permission::PermissionCache;
 use zellij_utils::input::plugins::PluginAliases;
-use zellij_utils::input::keybinds::Keybinds;
 use zellij_utils::ipc::ClientAttributes;
 use zellij_utils::lazy_static::lazy_static;
 use zellij_utils::pane_size::Size;
@@ -71,7 +71,7 @@ macro_rules! log_actions_in_thread_struct {
                         .recv()
                         .expect("failed to receive event on channel");
                     match event {
-                        $exit_event{..} => {
+                        $exit_event { .. } => {
                             exit_event_count += 1;
                             log.lock().unwrap().push(event);
                             if exit_event_count == $exit_after_count {
@@ -6595,7 +6595,7 @@ pub fn reconfigure_plugin_command() {
         .iter()
         .rev()
         .find_map(|i| {
-            if let ServerInstruction::Reconfigure{..} = i {
+            if let ServerInstruction::Reconfigure { .. } = i {
                 Some(i.clone())
             } else {
                 None

@@ -213,8 +213,16 @@ impl WasmBridge {
                     let default_shell = self.default_shell.clone();
                     let default_layout = self.default_layout.clone();
                     let layout_dir = self.layout_dir.clone();
-                    let default_mode = self.base_modes.get(&client_id).copied().unwrap_or(self.default_mode);
-                    let keybinds = self.keybinds.get(&client_id).cloned().unwrap_or_else(|| self.default_keybinds.clone());
+                    let default_mode = self
+                        .base_modes
+                        .get(&client_id)
+                        .copied()
+                        .unwrap_or(self.default_mode);
+                    let keybinds = self
+                        .keybinds
+                        .get(&client_id)
+                        .cloned()
+                        .unwrap_or_else(|| self.default_keybinds.clone());
                     async move {
                         let _ = senders.send_to_background_jobs(
                             BackgroundJob::AnimatePluginLoading(plugin_id),
@@ -456,7 +464,10 @@ impl WasmBridge {
             self.default_layout.clone(),
             self.layout_dir.clone(),
             self.default_mode,
-            self.keybinds.get(&client_id).cloned().unwrap_or_else(|| self.default_keybinds.clone()),
+            self.keybinds
+                .get(&client_id)
+                .cloned()
+                .unwrap_or_else(|| self.default_keybinds.clone()),
         ) {
             Ok(_) => {
                 let _ = self

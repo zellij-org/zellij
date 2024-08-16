@@ -257,7 +257,9 @@ fn host_run_plugin_command(caller: Caller<'_, PluginEnv>) {
                     PluginCommand::WatchFilesystem => watch_filesystem(env),
                     PluginCommand::DumpSessionLayout => dump_session_layout(env),
                     PluginCommand::CloseSelf => close_self(env),
-                    PluginCommand::Reconfigure(new_config, write_config_to_disk) => reconfigure(env, new_config, write_config_to_disk)?,
+                    PluginCommand::Reconfigure(new_config, write_config_to_disk) => {
+                        reconfigure(env, new_config, write_config_to_disk)?
+                    },
                     PluginCommand::HidePaneWithId(pane_id) => {
                         hide_pane_with_id(env, pane_id.into())?
                     },
@@ -886,7 +888,11 @@ fn reconfigure(env: &PluginEnv, new_config: String, write_config_to_disk: bool) 
     let err_context = || "Failed to reconfigure";
     let client_id = env.client_id;
     env.senders
-        .send_to_server(ServerInstruction::Reconfigure{client_id, config: new_config, write_config_to_disk})
+        .send_to_server(ServerInstruction::Reconfigure {
+            client_id,
+            config: new_config,
+            write_config_to_disk,
+        })
         .with_context(err_context)?;
     Ok(())
 }

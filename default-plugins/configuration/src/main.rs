@@ -59,8 +59,10 @@ register_plugin!(State);
 
 impl ZellijPlugin for State {
     fn load(&mut self, configuration: BTreeMap<String, String>) {
-
-        self.is_setup_wizard = configuration.get("is_setup_wizard").map(|v| v == "true").unwrap_or(false);
+        self.is_setup_wizard = configuration
+            .get("is_setup_wizard")
+            .map(|v| v == "true")
+            .unwrap_or(false);
         self.userspace_configuration = configuration;
         // we need the ReadApplicationState permission to receive the ModeUpdate and TabUpdate
         // events
@@ -106,14 +108,17 @@ impl ZellijPlugin for State {
             Event::FailedToWriteConfigToDisk(config_file_path) => {
                 match config_file_path {
                     Some(failed_path) => {
-                        self.notification = Some(format!("Failed to write configuration file: {}", failed_path));
+                        self.notification = Some(format!(
+                            "Failed to write configuration file: {}",
+                            failed_path
+                        ));
                     },
                     None => {
                         self.notification = Some(format!("Failed to write configuration file."));
-                    }
+                    },
                 }
                 should_render = true;
-            }
+            },
             _ => (),
         };
         should_render
@@ -258,7 +263,9 @@ impl State {
         } else if key.bare_key == BareKey::Char('l') && key.has_no_modifiers() {
             self.remapping_leaders = true;
             should_render = true;
-        } else if (key.bare_key == BareKey::Esc && key.has_no_modifiers()) || key.is_key_with_ctrl_modifier(BareKey::Char('c')) {
+        } else if (key.bare_key == BareKey::Esc && key.has_no_modifiers())
+            || key.is_key_with_ctrl_modifier(BareKey::Char('c'))
+        {
             close_self();
             should_render = true;
         }
@@ -299,7 +306,9 @@ impl State {
         } else if key.bare_key == BareKey::Char('l') && key.has_no_modifiers() {
             self.remapping_leaders = true;
             should_render = true;
-        } else if (key.bare_key == BareKey::Esc && key.has_no_modifiers()) || key.is_key_with_ctrl_modifier(BareKey::Char('c')) {
+        } else if (key.bare_key == BareKey::Esc && key.has_no_modifiers())
+            || key.is_key_with_ctrl_modifier(BareKey::Char('c'))
+        {
             close_self();
             should_render = true;
         }
@@ -498,8 +507,7 @@ impl State {
             let left_padding = cols.saturating_sub(widths.0) / 2;
             let first_row_coords = (rows.saturating_sub(self.ui_size) / 2).saturating_sub(1);
             print_text_with_coordinates(
-                Text::new(title_text_1)
-                    .color_range(2, ..),
+                Text::new(title_text_1).color_range(2, ..),
                 left_padding,
                 first_row_coords,
                 None,
@@ -507,9 +515,9 @@ impl State {
             );
             print_text_with_coordinates(
                 Text::new(title_text_2)
-                .color_range(0, ..10)
-                .color_range(2, 16..23)
-                .color_range(self.preset_color_index, 34..41),
+                    .color_range(0, ..10)
+                    .color_range(2, 16..23)
+                    .color_range(self.preset_color_index, 34..41),
                 left_padding,
                 first_row_coords + 2,
                 None,
@@ -541,8 +549,7 @@ impl State {
             };
             let first_row_coords = (rows.saturating_sub(self.ui_size) / 2).saturating_sub(1);
             print_text_with_coordinates(
-                Text::new(title_text_1)
-                    .color_range(2, ..),
+                Text::new(title_text_1).color_range(2, ..),
                 left_padding,
                 first_row_coords,
                 None,
@@ -550,9 +557,9 @@ impl State {
             );
             print_text_with_coordinates(
                 Text::new(title_text_2)
-                .color_range(0, ..10)
-                .color_range(2, 16..23)
-                .color_range(self.preset_color_index, 40..49),
+                    .color_range(0, ..10)
+                    .color_range(2, 16..23)
+                    .color_range(self.preset_color_index, 40..49),
                 left_padding,
                 first_row_coords + 2,
                 None,
@@ -973,7 +980,8 @@ impl State {
         }
     }
     fn render_help_text_setup_wizard(&self, rows: usize, cols: usize) {
-        let full_help_text = "Help: <↓↑> - navigate, <ENTER> - apply & save, <l> - change leaders, <ESC> - close";
+        let full_help_text =
+            "Help: <↓↑> - navigate, <ENTER> - apply & save, <l> - change leaders, <ESC> - close";
         let short_help_text = "Help: <↓↑> / <ENTER> / <l> / <ESC>";
         if cols >= full_help_text.chars().count() {
             print_text_with_coordinates(
@@ -1121,34 +1129,40 @@ impl State {
         if selected == 0 {
             // TODO: these should be part of a "transaction" when they are
             // implemented
-            reconfigure(default_keybinds(
-                self.primary_modifier
-                    .iter()
-                    .map(|m| m.to_string())
-                    .collect::<Vec<_>>()
-                    .join(" "),
-                self.secondary_modifier
-                    .iter()
-                    .map(|m| m.to_string())
-                    .collect::<Vec<_>>()
-                    .join(" "),
-            ), write_to_disk);
+            reconfigure(
+                default_keybinds(
+                    self.primary_modifier
+                        .iter()
+                        .map(|m| m.to_string())
+                        .collect::<Vec<_>>()
+                        .join(" "),
+                    self.secondary_modifier
+                        .iter()
+                        .map(|m| m.to_string())
+                        .collect::<Vec<_>>()
+                        .join(" "),
+                ),
+                write_to_disk,
+            );
             switch_to_input_mode(&InputMode::Normal);
         } else if selected == 1 {
             // TODO: these should be part of a "transaction" when they are
             // implemented
-            reconfigure(unlock_first_keybinds(
-                self.primary_modifier
-                    .iter()
-                    .map(|m| m.to_string())
-                    .collect::<Vec<_>>()
-                    .join(" "),
-                self.secondary_modifier
-                    .iter()
-                    .map(|m| m.to_string())
-                    .collect::<Vec<_>>()
-                    .join(" "),
-            ), write_to_disk);
+            reconfigure(
+                unlock_first_keybinds(
+                    self.primary_modifier
+                        .iter()
+                        .map(|m| m.to_string())
+                        .collect::<Vec<_>>()
+                        .join(" "),
+                    self.secondary_modifier
+                        .iter()
+                        .map(|m| m.to_string())
+                        .collect::<Vec<_>>()
+                        .join(" "),
+                ),
+                write_to_disk,
+            );
             switch_to_input_mode(&InputMode::Locked);
         }
     }

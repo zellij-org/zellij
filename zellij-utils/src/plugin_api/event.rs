@@ -300,9 +300,11 @@ impl TryFrom<ProtobufEvent> for Event {
                 _ => Err("Malformed payload for the EditPaneExited Event"),
             },
             Some(ProtobufEventType::FailedToWriteConfigToDisk) => match protobuf_event.payload {
-                Some(ProtobufEventPayload::FailedToWriteConfigToDiskPayload(failed_to_write_configuration_payload)) => {
-                    Ok(Event::FailedToWriteConfigToDisk(failed_to_write_configuration_payload.file_path))
-                },
+                Some(ProtobufEventPayload::FailedToWriteConfigToDiskPayload(
+                    failed_to_write_configuration_payload,
+                )) => Ok(Event::FailedToWriteConfigToDisk(
+                    failed_to_write_configuration_payload.file_path,
+                )),
                 _ => Err("Malformed payload for the FailedToWriteConfigToDisk Event"),
             },
             None => Err("Unknown Protobuf Event"),
@@ -598,14 +600,12 @@ impl TryFrom<Event> for ProtobufEvent {
                     )),
                 })
             },
-            Event::FailedToWriteConfigToDisk(file_path) => {
-                Ok(ProtobufEvent {
-                    name: ProtobufEventType::FailedToWriteConfigToDisk as i32,
-                    payload: Some(event::Payload::FailedToWriteConfigToDiskPayload(FailedToWriteConfigToDiskPayload {
-                        file_path
-                    }))
-                })
-            },
+            Event::FailedToWriteConfigToDisk(file_path) => Ok(ProtobufEvent {
+                name: ProtobufEventType::FailedToWriteConfigToDisk as i32,
+                payload: Some(event::Payload::FailedToWriteConfigToDiskPayload(
+                    FailedToWriteConfigToDiskPayload { file_path },
+                )),
+            }),
         }
     }
 }

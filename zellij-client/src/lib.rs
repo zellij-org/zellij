@@ -12,10 +12,10 @@ use log::info;
 use std::env::current_exe;
 use std::io::{self, Write};
 use std::path::Path;
+use std::path::PathBuf;
 use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::path::PathBuf;
 use zellij_utils::errors::FatalError;
 
 use crate::stdin_ansi_parser::{AnsiStdinInstruction, StdinAnsiParser, SyncOutput};
@@ -54,9 +54,7 @@ pub(crate) enum ClientInstruction {
     UnblockCliPipeInput(String),   // String -> pipe name
     CliPipeOutput(String, String), // String -> pipe name, String -> output
     QueryTerminalSize,
-    WriteConfigToDisk {
-        config: String
-    }
+    WriteConfigToDisk { config: String },
 }
 
 impl From<ServerToClientMsg> for ClientInstruction {
@@ -79,7 +77,9 @@ impl From<ServerToClientMsg> for ClientInstruction {
                 ClientInstruction::CliPipeOutput(pipe_name, output)
             },
             ServerToClientMsg::QueryTerminalSize => ClientInstruction::QueryTerminalSize,
-            ServerToClientMsg::WriteConfigToDisk{ config } => ClientInstruction::WriteConfigToDisk { config },
+            ServerToClientMsg::WriteConfigToDisk { config } => {
+                ClientInstruction::WriteConfigToDisk { config }
+            },
         }
     }
 }
@@ -164,7 +164,7 @@ pub(crate) enum InputInstruction {
 pub fn start_client(
     mut os_input: Box<dyn ClientOsApi>,
     opts: CliArgs,
-    config: Config, // saved to disk (or default?)
+    config: Config,          // saved to disk (or default?)
     config_options: Options, // CLI options merged into (getting priority over) saved config options
     info: ClientInfo,
     layout: Option<Layout>,
@@ -257,7 +257,8 @@ pub fn start_client(
             let ipc_pipe = create_ipc_pipe();
 
             spawn_server(&*ipc_pipe, opts.debug).unwrap();
-            let successfully_written_config = Config::write_config_to_disk_if_it_does_not_exist(config.to_string(true), &opts);
+            let successfully_written_config =
+                Config::write_config_to_disk_if_it_does_not_exist(config.to_string(true), &opts);
             // if we successfully wrote the config to disk, it means two things:
             // 1. It did not exist beforehand
             // 2. The config folder is writeable
@@ -541,13 +542,18 @@ pub fn start_client(
             ClientInstruction::WriteConfigToDisk { config } => {
                 match Config::write_config_to_disk(config, &opts) {
                     Ok(written_config) => {
-                        let _ = os_input.send_to_server(ClientToServerMsg::ConfigWrittenToDisk(written_config));
+                        let _ = os_input
+                            .send_to_server(ClientToServerMsg::ConfigWrittenToDisk(written_config));
                     },
                     Err(e) => {
-                        let error_path = e.as_ref().map(|p| p.display().to_string()).unwrap_or_else(String::new);
+                        let error_path = e
+                            .as_ref()
+                            .map(|p| p.display().to_string())
+                            .unwrap_or_else(String::new);
                         log::error!("Failed to write config to disk: {}", error_path);
-                        let _ = os_input.send_to_server(ClientToServerMsg::FailedToWriteConfigToDisk(e));
-                    }
+                        let _ = os_input
+                            .send_to_server(ClientToServerMsg::FailedToWriteConfigToDisk(e));
+                    },
                 }
             },
             _ => {},

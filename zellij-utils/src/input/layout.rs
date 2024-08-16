@@ -751,7 +751,7 @@ impl FloatingPaneLayout {
             run: None,
             focus: None,
             already_running: false,
-            pane_initial_contents: None
+            pane_initial_contents: None,
         }
     }
     pub fn add_cwd_to_layout(&mut self, cwd: &PathBuf) {

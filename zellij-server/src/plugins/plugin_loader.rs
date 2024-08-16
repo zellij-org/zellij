@@ -100,10 +100,9 @@ impl<'a> PluginLoader<'a> {
             return Err(anyhow!("No connected clients, cannot reload plugin"));
         }
         let first_client_id = connected_clients.remove(0);
-        let keybinds = keybinds.get(&first_client_id)
-            .cloned()
-            .unwrap_or_default();
-        let default_mode = base_modes.get(&first_client_id)
+        let keybinds = keybinds.get(&first_client_id).cloned().unwrap_or_default();
+        let default_mode = base_modes
+            .get(&first_client_id)
             .cloned()
             .unwrap_or_default();
 
@@ -302,10 +301,9 @@ impl<'a> PluginLoader<'a> {
             return Err(anyhow!("No connected clients, cannot reload plugin"));
         }
         let first_client_id = connected_clients.remove(0);
-        let keybinds = keybinds.get(&first_client_id)
-            .cloned()
-            .unwrap_or_default();
-        let default_mode = base_modes.get(&first_client_id)
+        let keybinds = keybinds.get(&first_client_id).cloned().unwrap_or_default();
+        let default_mode = base_modes
+            .get(&first_client_id)
             .cloned()
             .unwrap_or_default();
 
@@ -861,9 +859,7 @@ impl<'a> PluginLoader<'a> {
             layout_dir: self.layout_dir.clone(),
             default_mode: self.default_mode.clone(),
             subscriptions: Arc::new(Mutex::new(HashSet::new())),
-            keybinds: self
-                .keybinds
-                .clone(),
+            keybinds: self.keybinds.clone(),
             stdin_pipe,
             stdout_pipe,
         };

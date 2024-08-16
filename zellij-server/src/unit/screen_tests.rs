@@ -14,12 +14,12 @@ use zellij_utils::data::{Event, Resize, Style};
 use zellij_utils::errors::{prelude::*, ErrorContext};
 use zellij_utils::input::actions::Action;
 use zellij_utils::input::command::{RunCommand, TerminalAction};
+use zellij_utils::input::config::Config;
 use zellij_utils::input::layout::{
     FloatingPaneLayout, Layout, PluginAlias, PluginUserConfiguration, Run, RunPlugin,
     RunPluginLocation, RunPluginOrAlias, SplitDirection, SplitSize, TiledPaneLayout,
 };
 use zellij_utils::input::options::Options;
-use zellij_utils::input::config::Config;
 use zellij_utils::ipc::IpcReceiverWithContext;
 use zellij_utils::pane_size::{Size, SizeInPixels};
 
@@ -119,7 +119,9 @@ fn send_cli_action_to_server(
     let client_attributes = ClientAttributes::default();
     let default_shell = None;
     let default_layout = Box::new(Layout::default());
-    let default_mode = session_metadata.session_configuration.get_client_configuration(&client_id)
+    let default_mode = session_metadata
+        .session_configuration
+        .get_client_configuration(&client_id)
         .options
         .default_mode
         .unwrap_or(InputMode::Normal);

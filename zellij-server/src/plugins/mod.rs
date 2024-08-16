@@ -192,7 +192,9 @@ impl From<&PluginInstruction> for PluginContext {
             PluginInstruction::KeybindPipe { .. } => PluginContext::KeybindPipe,
             PluginInstruction::DumpLayoutToPlugin(..) => PluginContext::DumpLayoutToPlugin,
             PluginInstruction::Reconfigure { .. } => PluginContext::Reconfigure,
-            PluginInstruction::FailedToWriteConfigToDisk { .. } => PluginContext::FailedToWriteConfigToDisk,
+            PluginInstruction::FailedToWriteConfigToDisk { .. } => {
+                PluginContext::FailedToWriteConfigToDisk
+            },
         }
     }
 }
@@ -770,13 +772,15 @@ pub(crate) fn plugin_thread_main(
                     .reconfigure(client_id, keybinds, default_mode)
                     .non_fatal();
             },
-            PluginInstruction::FailedToWriteConfigToDisk {
-                file_path,
-            } => {
-                let updates = vec![
-                    (None, None, Event::FailedToWriteConfigToDisk(file_path.map(|f| f.display().to_string())))
-                ];
-                wasm_bridge.update_plugins(updates, shutdown_send.clone()).non_fatal();
+            PluginInstruction::FailedToWriteConfigToDisk { file_path } => {
+                let updates = vec![(
+                    None,
+                    None,
+                    Event::FailedToWriteConfigToDisk(file_path.map(|f| f.display().to_string())),
+                )];
+                wasm_bridge
+                    .update_plugins(updates, shutdown_send.clone())
+                    .non_fatal();
             },
             PluginInstruction::WatchFilesystem => {
                 wasm_bridge.start_fs_watcher_if_not_started();

@@ -18,7 +18,7 @@ mod ui;
 use background_jobs::{background_jobs_main, BackgroundJob};
 use log::info;
 use pty_writer::{pty_writer_main, PtyWriteInstruction};
-use std::collections::{HashMap, HashSet, BTreeMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::{
     path::PathBuf,
     sync::{Arc, RwLock},
@@ -47,12 +47,12 @@ use zellij_utils::{
     home::{default_layout_dir, get_default_data_dir},
     input::{
         command::{RunCommand, TerminalAction},
+        config::Config,
         get_mode_info,
         keybinds::Keybinds,
-        layout::{Layout, FloatingPaneLayout, Run, PluginAlias, RunPluginOrAlias, PercentOrFixed},
+        layout::{FloatingPaneLayout, Layout, PercentOrFixed, PluginAlias, Run, RunPluginOrAlias},
         options::Options,
         plugins::PluginAliases,
-        config::Config,
     },
     ipc::{ClientAttributes, ExitReason, ServerToClientMsg},
 };
@@ -65,7 +65,7 @@ pub enum ServerInstruction {
     NewClient(
         ClientAttributes,
         Box<CliArgs>,
-        Box<Config>, // represents the saved config
+        Box<Config>,  // represents the saved config
         Box<Options>, // represents the runtime configuration options
         Box<Layout>,
         Box<PluginAliases>,
@@ -81,8 +81,8 @@ pub enum ServerInstruction {
     DetachSession(Vec<ClientId>),
     AttachClient(
         ClientAttributes,
-        Config, // represents the saved config
-        Options, // represents the runtime configuration options
+        Config,              // represents the saved config
+        Options,             // represents the runtime configuration options
         Option<usize>,       // tab position to focus
         Option<(u32, bool)>, // (pane_id, is_plugin) => pane_id to focus
         ClientId,
@@ -104,7 +104,7 @@ pub enum ServerInstruction {
     Reconfigure {
         client_id: ClientId,
         config: String,
-        write_config_to_disk: bool
+        write_config_to_disk: bool,
     },
     ConfigWrittenToDisk(ClientId, Config),
     FailedToWriteConfigToDisk(ClientId, Option<PathBuf>), // Pathbuf - file we failed to write
@@ -139,9 +139,11 @@ impl From<&ServerInstruction> for ServerContext {
             ServerInstruction::ChangeModeForAllClients(..) => {
                 ServerContext::ChangeModeForAllClients
             },
-            ServerInstruction::Reconfigure{..} => ServerContext::Reconfigure,
+            ServerInstruction::Reconfigure { .. } => ServerContext::Reconfigure,
             ServerInstruction::ConfigWrittenToDisk(..) => ServerContext::ConfigWrittenToDisk,
-            ServerInstruction::FailedToWriteConfigToDisk(..) => ServerContext::FailedToWriteConfigToDisk,
+            ServerInstruction::FailedToWriteConfigToDisk(..) => {
+                ServerContext::FailedToWriteConfigToDisk
+            },
         }
     }
 }
@@ -155,12 +157,13 @@ impl ErrorInstruction for ServerInstruction {
 #[derive(Debug, Clone, Default)]
 pub(crate) struct SessionConfiguration {
     runtime_config: HashMap<ClientId, Config>, // if present, overrides the saved_config
-    saved_config: HashMap<ClientId, Config>, // config guaranteed to have been saved to disk
+    saved_config: HashMap<ClientId, Config>,   // config guaranteed to have been saved to disk
 }
 
 impl SessionConfiguration {
     pub fn new_saved_config(&mut self, client_id: ClientId, mut new_saved_config: Config) {
-        self.saved_config.insert(client_id, new_saved_config.clone());
+        self.saved_config
+            .insert(client_id, new_saved_config.clone());
         if let Some(runtime_config) = self.runtime_config.get_mut(&client_id) {
             match new_saved_config.merge(runtime_config.clone()) {
                 Ok(_) => {
@@ -168,7 +171,7 @@ impl SessionConfiguration {
                 },
                 Err(e) => {
                     log::error!("Failed to update runtime config: {}", e);
-                }
+                },
             }
         }
         // TODO: handle change by propagating to all the relevant places
@@ -182,7 +185,8 @@ impl SessionConfiguration {
     pub fn get_client_keybinds(&self, client_id: &ClientId) -> Keybinds {
         self.runtime_config
             .get(client_id)
-            .or_else(|| self.saved_config.get(client_id)).map(|c| c.keybinds.clone())
+            .or_else(|| self.saved_config.get(client_id))
+            .map(|c| c.keybinds.clone())
             .unwrap_or_default()
     }
     pub fn get_client_configuration(&self, client_id: &ClientId) -> Config {
@@ -192,11 +196,19 @@ impl SessionConfiguration {
             .cloned()
             .unwrap_or_default()
     }
-    pub fn reconfigure_runtime_config(&mut self, client_id: &ClientId, stringified_config: String) -> (Option<Config>, bool) { // bool is whether the config changed
+    pub fn reconfigure_runtime_config(
+        &mut self,
+        client_id: &ClientId,
+        stringified_config: String,
+    ) -> (Option<Config>, bool) {
+        // bool is whether the config changed
         let mut full_reconfigured_config = None;
         let mut config_changed = false;
         let current_client_configuration = self.get_client_configuration(client_id);
-        match Config::from_kdl(&stringified_config, Some(current_client_configuration.clone())) {
+        match Config::from_kdl(
+            &stringified_config,
+            Some(current_client_configuration.clone()),
+        ) {
             Ok(new_config) => {
                 config_changed = current_client_configuration != new_config;
                 full_reconfigured_config = Some(new_config.clone());
@@ -204,7 +216,7 @@ impl SessionConfiguration {
             },
             Err(e) => {
                 log::error!("Failed to reconfigure runtime config: {}", e);
-            }
+            },
         }
         (full_reconfigured_config, config_changed)
     }
@@ -233,9 +245,7 @@ impl SessionMetaData {
     ) -> Option<(Keybinds, &InputMode)> {
         let client_keybinds = self.session_configuration.get_client_keybinds(client_id);
         match self.current_input_modes.get(client_id) {
-            Some(client_input_mode) => {
-                Some((client_keybinds, client_input_mode))
-            },
+            Some(client_input_mode) => Some((client_keybinds, client_input_mode)),
             _ => None,
         }
     }
@@ -465,7 +475,8 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
         let (instruction, mut err_ctx) = server_receiver.recv().unwrap();
         err_ctx.add_call(ContextType::IPCServer((&instruction).into()));
         match instruction {
-            ServerInstruction::NewClient( // TODO: rename to FirstClientConnected?
+            ServerInstruction::NewClient(
+                // TODO: rename to FirstClientConnected?
                 client_attributes,
                 opts,
                 config,
@@ -489,8 +500,12 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 );
                 let mut runtime_configuration = config.clone();
                 runtime_configuration.options = *runtime_config_options.clone();
-                session.session_configuration.set_client_saved_configuration(client_id, *config.clone());
-                session.session_configuration.set_client_runtime_configuration(client_id, *runtime_configuration);
+                session
+                    .session_configuration
+                    .set_client_saved_configuration(client_id, *config.clone());
+                session
+                    .session_configuration
+                    .set_client_runtime_configuration(client_id, *runtime_configuration);
                 let default_input_mode = runtime_config_options.default_mode.unwrap_or_default();
                 session
                     .current_input_modes
@@ -557,7 +572,8 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                             .unwrap();
                     }
                 } else {
-                    let mut floating_panes = layout.template.map(|t| t.1).clone().unwrap_or_default();
+                    let mut floating_panes =
+                        layout.template.map(|t| t.1).clone().unwrap_or_default();
                     if should_launch_setup_wizard {
                         // we only do this here (and only once) because otherwise it will be
                         // intrusive
@@ -596,10 +612,12 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
 
                 let mut runtime_configuration = config.clone();
                 runtime_configuration.options = runtime_config_options.clone();
-                session_data.session_configuration.set_client_saved_configuration(client_id, config.clone());
-                session_data.session_configuration.set_client_runtime_configuration(client_id, runtime_configuration);
-
-
+                session_data
+                    .session_configuration
+                    .set_client_saved_configuration(client_id, config.clone());
+                session_data
+                    .session_configuration
+                    .set_client_runtime_configuration(client_id, runtime_configuration);
 
                 let default_input_mode = config.options.default_mode.unwrap_or_default();
                 session_data
@@ -636,7 +654,9 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     default_mode,
                     &attrs,
                     session_data.capabilities,
-                    &session_data.session_configuration.get_client_keybinds(&client_id),
+                    &session_data
+                        .session_configuration
+                        .get_client_keybinds(&client_id),
                     Some(default_mode),
                 );
                 session_data
@@ -982,7 +1002,11 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .unwrap()
                     .change_mode_for_all_clients(input_mode);
             },
-            ServerInstruction::Reconfigure{client_id, config, write_config_to_disk } => {
+            ServerInstruction::Reconfigure {
+                client_id,
+                config,
+                write_config_to_disk,
+            } => {
                 let (new_config, runtime_config_changed) = session_data
                     .write()
                     .unwrap()
@@ -991,15 +1015,15 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .session_configuration
                     .reconfigure_runtime_config(&client_id, config);
 
-
                 if let Some(new_config) = new_config {
-
                     if write_config_to_disk {
                         let clear_defaults = true;
                         send_to_client!(
                             client_id,
                             os_input,
-                            ServerToClientMsg::WriteConfigToDisk{config: new_config.to_string(clear_defaults)},
+                            ServerToClientMsg::WriteConfigToDisk {
+                                config: new_config.to_string(clear_defaults)
+                            },
                             session_state
                         );
                     }
@@ -1040,7 +1064,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .unwrap()
                     .session_configuration
                     .new_saved_config(client_id, new_config);
-            }
+            },
             ServerInstruction::FailedToWriteConfigToDisk(client_id, file_path) => {
                 session_data
                     .write()
@@ -1048,11 +1072,9 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .as_ref()
                     .unwrap()
                     .senders
-                    .send_to_plugin(PluginInstruction::FailedToWriteConfigToDisk {
-                        file_path
-                    })
+                    .send_to_plugin(PluginInstruction::FailedToWriteConfigToDisk { file_path })
                     .unwrap();
-            }
+            },
         }
     }
 
@@ -1296,16 +1318,12 @@ fn init_session(
 
 fn setup_wizard_floating_pane() -> FloatingPaneLayout {
     let mut setup_wizard_pane = FloatingPaneLayout::new();
-    let configuration = BTreeMap::from_iter(
-        [("is_setup_wizard".to_owned(), "true".to_owned())]
-    );
-    setup_wizard_pane.run = Some(
-        Run::Plugin(
-            RunPluginOrAlias::Alias(
-                PluginAlias::new("configuration", &Some(configuration), None)
-            )
-        )
-    );
+    let configuration = BTreeMap::from_iter([("is_setup_wizard".to_owned(), "true".to_owned())]);
+    setup_wizard_pane.run = Some(Run::Plugin(RunPluginOrAlias::Alias(PluginAlias::new(
+        "configuration",
+        &Some(configuration),
+        None,
+    ))));
     setup_wizard_pane
 }
 
