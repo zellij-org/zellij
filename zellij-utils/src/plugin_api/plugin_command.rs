@@ -11,9 +11,9 @@ pub use super::generated_api::api::{
         MovePayload, NewPluginArgs as ProtobufNewPluginArgs, NewTabsWithLayoutInfoPayload,
         OpenCommandPanePayload, OpenFilePayload, PaneId as ProtobufPaneId,
         PaneType as ProtobufPaneType, PluginCommand as ProtobufPluginCommand, PluginMessagePayload,
-        ReconfigurePayload, RequestPluginPermissionPayload, ResizePayload, RunCommandPayload,
-        RerunCommandPanePayload, SubscribePayload, UnsubscribePayload, SwitchTabToPayload, SetTimeoutPayload,
-        SwitchSessionPayload, WebRequestPayload, ShowPaneWithIdPayload
+        ReconfigurePayload, RequestPluginPermissionPayload, RerunCommandPanePayload, ResizePayload,
+        RunCommandPayload, SetTimeoutPayload, ShowPaneWithIdPayload, SubscribePayload,
+        SwitchSessionPayload, SwitchTabToPayload, UnsubscribePayload, WebRequestPayload,
     },
     plugin_permission::PermissionType as ProtobufPermissionType,
     resize::ResizeAction as ProtobufResizeAction,
