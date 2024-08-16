@@ -1,0 +1,25 @@
+---
+source: zellij-utils/src/kdl/mod.rs
+assertion_line: 2788
+expression: serialized.to_string()
+---
+keybinds clear-defaults=true {
+    shared {
+        bind "Ctrl n" {
+            NewPane
+            SwitchToMode "locked"
+            MessagePlugin "zellij:session-manager" {
+                name "message_name"
+                cwd "/tmp"
+                payload "message_payload"
+                launch_new true
+                skip_cache true
+                floating true
+                title "plugin_title"
+                config_key_1 "config_value_1"
+                config_key_2 "config_value_2"
+            }
+        }
+    }
+}
+

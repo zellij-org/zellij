@@ -148,6 +148,9 @@ pub enum PluginInstruction {
         keybinds: Option<Keybinds>,
         default_mode: Option<InputMode>,
     },
+    FailedToWriteConfigToDisk {
+        file_path: Option<PathBuf>,
+    },
     WatchFilesystem,
     Exit,
 }
@@ -189,6 +192,9 @@ impl From<&PluginInstruction> for PluginContext {
             PluginInstruction::KeybindPipe { .. } => PluginContext::KeybindPipe,
             PluginInstruction::DumpLayoutToPlugin(..) => PluginContext::DumpLayoutToPlugin,
             PluginInstruction::Reconfigure { .. } => PluginContext::Reconfigure,
+            PluginInstruction::FailedToWriteConfigToDisk { .. } => {
+                PluginContext::FailedToWriteConfigToDisk
+            },
         }
     }
 }
@@ -206,6 +212,7 @@ pub(crate) fn plugin_thread_main(
     default_shell: Option<TerminalAction>,
     plugin_aliases: Box<PluginAliases>,
     default_mode: InputMode,
+    default_keybinds: Keybinds,
 ) -> Result<()> {
     info!("Wasm main thread starts");
     let plugin_dir = data_dir.join("plugins/");
@@ -228,6 +235,7 @@ pub(crate) fn plugin_thread_main(
         layout.clone(),
         layout_dir,
         default_mode,
+        default_keybinds,
     );
 
     loop {
@@ -762,6 +770,16 @@ pub(crate) fn plugin_thread_main(
             } => {
                 wasm_bridge
                     .reconfigure(client_id, keybinds, default_mode)
+                    .non_fatal();
+            },
+            PluginInstruction::FailedToWriteConfigToDisk { file_path } => {
+                let updates = vec![(
+                    None,
+                    None,
+                    Event::FailedToWriteConfigToDisk(file_path.map(|f| f.display().to_string())),
+                )];
+                wasm_bridge
+                    .update_plugins(updates, shutdown_send.clone())
                     .non_fatal();
             },
             PluginInstruction::WatchFilesystem => {
