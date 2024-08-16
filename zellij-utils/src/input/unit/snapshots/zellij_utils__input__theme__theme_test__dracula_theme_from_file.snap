@@ -1,5 +1,6 @@
 ---
 source: zellij-utils/src/input/./unit/theme_test.rs
+assertion_line: 15
 expression: "format!(\"{:#?}\", theme)"
 ---
 {
@@ -103,5 +104,6 @@ expression: "format!(\"{:#?}\", theme)"
                 0,
             ),
         },
+        sourced_from_external_file: true,
     },
 }

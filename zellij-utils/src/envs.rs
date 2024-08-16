@@ -64,4 +64,7 @@ impl EnvironmentVariables {
             set_var(k, v);
         }
     }
+    pub fn inner(&self) -> &HashMap<String, String> {
+        &self.env
+    }
 }

@@ -1,0 +1,17 @@
+---
+source: zellij-utils/src/kdl/mod.rs
+assertion_line: 2757
+expression: serialized.to_string()
+---
+keybinds clear-defaults=true {
+    shared_among "normal" "locked" {
+        bind "Ctrl n" { NewPane; SwitchToMode "locked"; }
+    }
+    shared_except "locked" "pane" {
+        bind "Ctrl f" { TogglePaneEmbedOrFloating; }
+    }
+    shared_among "locked" "pane" {
+        bind "Ctrl p" { WriteChars "foo"; }
+    }
+}
+

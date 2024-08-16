@@ -1,0 +1,11 @@
+---
+source: zellij-utils/src/kdl/mod.rs
+assertion_line: 2575
+expression: serialized.to_string()
+---
+keybinds {
+    normal {
+        bind "Ctrl g" { SwitchToMode "locked"; }
+    }
+}
+

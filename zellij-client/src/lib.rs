@@ -12,6 +12,7 @@ use log::info;
 use std::env::current_exe;
 use std::io::{self, Write};
 use std::path::Path;
+use std::path::PathBuf;
 use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -53,6 +54,7 @@ pub(crate) enum ClientInstruction {
     UnblockCliPipeInput(String),   // String -> pipe name
     CliPipeOutput(String, String), // String -> pipe name, String -> output
     QueryTerminalSize,
+    WriteConfigToDisk { config: String },
 }
 
 impl From<ServerToClientMsg> for ClientInstruction {
@@ -75,6 +77,9 @@ impl From<ServerToClientMsg> for ClientInstruction {
                 ClientInstruction::CliPipeOutput(pipe_name, output)
             },
             ServerToClientMsg::QueryTerminalSize => ClientInstruction::QueryTerminalSize,
+            ServerToClientMsg::WriteConfigToDisk { config } => {
+                ClientInstruction::WriteConfigToDisk { config }
+            },
         }
     }
 }
@@ -97,6 +102,7 @@ impl From<&ClientInstruction> for ClientContext {
             ClientInstruction::UnblockCliPipeInput(..) => ClientContext::UnblockCliPipeInput,
             ClientInstruction::CliPipeOutput(..) => ClientContext::CliPipeOutput,
             ClientInstruction::QueryTerminalSize => ClientContext::QueryTerminalSize,
+            ClientInstruction::WriteConfigToDisk { .. } => ClientContext::WriteConfigToDisk,
         }
     }
 }
@@ -158,8 +164,8 @@ pub(crate) enum InputInstruction {
 pub fn start_client(
     mut os_input: Box<dyn ClientOsApi>,
     opts: CliArgs,
-    config: Config,
-    config_options: Options,
+    config: Config,          // saved to disk (or default?)
+    config_options: Options, // CLI options merged into (getting priority over) saved config options
     info: ClientInfo,
     layout: Option<Layout>,
     tab_position_to_focus: Option<usize>,
@@ -218,7 +224,6 @@ pub fn start_client(
             rounded_corners: config.ui.pane_frames.rounded_corners,
             hide_session_name: config.ui.pane_frames.hide_session_name,
         },
-        keybinds: config.keybinds.clone(),
     };
 
     let create_ipc_pipe = || -> std::path::PathBuf {
@@ -238,7 +243,8 @@ pub fn start_client(
             (
                 ClientToServerMsg::AttachClient(
                     client_attributes,
-                    config_options,
+                    config.clone(),
+                    config_options.clone(),
                     tab_position_to_focus,
                     pane_id_to_focus,
                 ),
@@ -251,14 +257,25 @@ pub fn start_client(
             let ipc_pipe = create_ipc_pipe();
 
             spawn_server(&*ipc_pipe, opts.debug).unwrap();
+            let successfully_written_config =
+                Config::write_config_to_disk_if_it_does_not_exist(config.to_string(true), &opts);
+            // if we successfully wrote the config to disk, it means two things:
+            // 1. It did not exist beforehand
+            // 2. The config folder is writeable
+            //
+            // If these two are true, we should launch the setup wizard, if even one of them is
+            // false, we should never launch it.
+            let should_launch_setup_wizard = successfully_written_config;
 
             (
                 ClientToServerMsg::NewClient(
                     client_attributes,
-                    Box::new(opts),
+                    Box::new(opts.clone()),
+                    Box::new(config.clone()),
                     Box::new(config_options.clone()),
                     Box::new(layout.unwrap()),
                     Box::new(config.plugins.clone()),
+                    should_launch_setup_wizard,
                 ),
                 ipc_pipe,
             )
@@ -522,6 +539,23 @@ pub fn start_client(
                     os_input.get_terminal_size_using_fd(0),
                 ));
             },
+            ClientInstruction::WriteConfigToDisk { config } => {
+                match Config::write_config_to_disk(config, &opts) {
+                    Ok(written_config) => {
+                        let _ = os_input
+                            .send_to_server(ClientToServerMsg::ConfigWrittenToDisk(written_config));
+                    },
+                    Err(e) => {
+                        let error_path = e
+                            .as_ref()
+                            .map(|p| p.display().to_string())
+                            .unwrap_or_else(String::new);
+                        log::error!("Failed to write config to disk: {}", error_path);
+                        let _ = os_input
+                            .send_to_server(ClientToServerMsg::FailedToWriteConfigToDisk(e));
+                    },
+                }
+            },
             _ => {},
         }
     }
@@ -584,7 +618,6 @@ pub fn start_server_detached(
             rounded_corners: config.ui.pane_frames.rounded_corners,
             hide_session_name: config.ui.pane_frames.hide_session_name,
         },
-        keybinds: config.keybinds.clone(),
     };
 
     let create_ipc_pipe = || -> std::path::PathBuf {
@@ -602,14 +635,18 @@ pub fn start_server_detached(
             let ipc_pipe = create_ipc_pipe();
 
             spawn_server(&*ipc_pipe, opts.debug).unwrap();
+            let should_launch_setup_wizard = false; // no setup wizard when starting a detached
+                                                    // server
 
             (
                 ClientToServerMsg::NewClient(
                     client_attributes,
                     Box::new(opts),
+                    Box::new(config.clone()),
                     Box::new(config_options.clone()),
                     Box::new(layout.unwrap()),
                     Box::new(config.plugins.clone()),
+                    should_launch_setup_wizard,
                 ),
                 ipc_pipe,
             )

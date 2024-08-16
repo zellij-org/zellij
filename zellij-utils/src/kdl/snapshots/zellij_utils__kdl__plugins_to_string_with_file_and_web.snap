@@ -1,0 +1,11 @@
+---
+source: zellij-utils/src/kdl/mod.rs
+assertion_line: 3891
+expression: serialized.to_string()
+---
+plugins {
+    filepicker location="file:/path/to/my/plugin.wasm" {
+        cwd "/"
+    }
+    tab-bar location="https://foo.com/plugin.wasm"
+}

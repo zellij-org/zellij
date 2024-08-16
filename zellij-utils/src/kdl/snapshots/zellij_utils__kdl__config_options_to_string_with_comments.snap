@@ -1,0 +1,175 @@
+---
+source: zellij-utils/src/kdl/mod.rs
+assertion_line: 4987
+expression: fake_document.to_string()
+---
+ 
+// Use a simplified UI without special fonts (arrow glyphs)
+// Options:
+//   - true
+//   - false (Default)
+// 
+simplified_ui true
+ 
+// Choose the theme that is specified in the themes section.
+// Default: default
+// 
+theme "dracula"
+ 
+// Choose the base input mode of zellij.
+// Default: normal
+// 
+default_mode "locked"
+ 
+// Choose the path to the default shell that zellij will use for opening new panes
+// Default: $SHELL
+// 
+default_shell "fish"
+ 
+// Choose the path to override cwd that zellij will use for opening new panes
+// 
+default_cwd "/tmp/foo"
+ 
+// The name of the default layout to load on startup
+// Default: "default"
+// 
+default_layout "compact"
+ 
+// The folder in which Zellij will look for layouts
+// 
+layout_dir "/tmp/layouts"
+ 
+// The folder in which Zellij will look for themes
+// 
+theme_dir "/tmp/themes"
+ 
+// Toggle enabling the mouse mode.
+// On certain configurations, or terminals this could
+// potentially interfere with copying text.
+// Options:
+//   - true (default)
+//   - false
+// 
+mouse_mode false
+ 
+// Toggle having pane frames around the panes
+// Options:
+//   - true (default, enabled)
+//   - false
+// 
+pane_frames false
+ 
+// When attaching to an existing session with other users,
+// should the session be mirrored (true)
+// or should each user have their own cursor (false)
+// Default: false
+// 
+mirror_session true
+ 
+// Choose what to do when zellij receives SIGTERM, SIGINT, SIGQUIT or SIGHUP
+// eg. when terminal window with an active zellij session is closed
+// Options:
+//   - detach (Default)
+//   - quit
+// 
+on_force_close "quit"
+ 
+// Configure the scroll back buffer size
+// This is the number of lines zellij stores for each pane in the scroll back
+// buffer. Excess number of lines are discarded in a FIFO fashion.
+// Valid values: positive integers
+// Default value: 10000
+// 
+scroll_buffer_size 100
+ 
+// Provide a command to execute when copying text. The text will be piped to
+// the stdin of the program to perform the copy. This can be used with
+// terminal emulators which do not support the OSC 52 ANSI control sequence
+// that will be used by default if this option is not set.
+// Examples:
+//
+// copy_command "xclip -selection clipboard" // x11
+// copy_command "wl-copy"                    // wayland
+// copy_command "pbcopy"                     // osx
+// 
+copy_command "pbcopy"
+ 
+// Choose the destination for copied text
+// Allows using the primary selection buffer (on x11/wayland) instead of the system clipboard.
+// Does not apply when using copy_command.
+// Options:
+//   - system (default)
+//   - primary
+// 
+copy_clipboard "system"
+ 
+// Enable automatic copying (and clearing) of selection when releasing mouse
+// Default: true
+// 
+copy_on_select false
+ 
+// Path to the default editor to use to edit pane scrollbuffer
+// Default: $EDITOR or $VISUAL
+scrollback_editor "vim"
+ 
+// A fixed name to always give the Zellij session.
+// Consider also setting `attach_to_session true,`
+// otherwise this will error if such a session exists.
+// Default: <RANDOM>
+// 
+session_name "my_cool_session"
+ 
+// When `session_name` is provided, attaches to that session
+// if it is already running or creates it otherwise.
+// Default: false
+// 
+attach_to_session false
+ 
+// Toggle between having Zellij lay out panes according to a predefined set of layouts whenever possible
+// Options:
+//   - true (default)
+//   - false
+// 
+auto_layout false
+ 
+// Whether sessions should be serialized to the cache folder (including their tabs/panes, cwds and running commands) so that they can later be resurrected
+// Options:
+//   - true (default)
+//   - false
+// 
+session_serialization true
+ 
+// Whether pane viewports are serialized along with the session, default is false
+// Options:
+//   - true
+//   - false (default)
+// 
+serialize_pane_viewport false
+ 
+// Scrollback lines to serialize along with the pane viewport when serializing sessions, 0
+// defaults to the scrollback size. If this number is higher than the scrollback size, it will
+// also default to the scrollback size. This does nothing if `serialize_pane_viewport` is not true.
+// 
+scrollback_lines_to_serialize 1000
+ 
+// Enable or disable the rendering of styled and colored underlines (undercurl).
+// May need to be disabled for certain unsupported terminals
+// Default: true
+// 
+styled_underlines false
+ 
+// How often in seconds sessions are serialized
+// 
+serialization_interval 1
+ 
+// Enable or disable writing of session metadata to disk (if disabled, other sessions might not know
+// metadata info on this session)
+// Default: false
+// 
+disable_session_metadata true
+ 
+// Enable or disable support for the enhanced Kitty Keyboard Protocol (the host terminal must also support it)
+// Default: true (if the host terminal supports it)
+// 
+support_kitty_keyboard_protocol false
+
