@@ -27,6 +27,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat(plugins): new API to open command panes in the background (https://github.com/zellij-org/zellij/pull/3530)
 * fix(plugins): properly set cwd for floating_panes in tab_layout (https://github.com/zellij-org/zellij/pull/3545)
 * feat(plugins): new API to rerun command the command in an existing command pane (https://github.com/zellij-org/zellij/pull/3546)
+* feat(ux): first run setup wizard (https://github.com/zellij-org/zellij/pull/3556)
 
 ## [0.40.1] - 2024-05-02
 * fix(sessions): issue where sessions would occasionally become unresponsive (https://github.com/zellij-org/zellij/pull/3281)
