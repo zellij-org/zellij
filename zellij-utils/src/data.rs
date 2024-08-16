@@ -120,7 +120,7 @@ impl fmt::Display for KeyWithModifier {
                     .iter()
                     .map(|m| m.to_string())
                     .collect::<Vec<_>>()
-                    .join("-"),
+                    .join(" "),
                 self.bare_key
             )
         }
@@ -920,6 +920,7 @@ pub enum Event {
     EditPaneOpened(u32, Context),              // u32 - terminal_pane_id
     EditPaneExited(u32, Option<i32>, Context), // u32 - terminal_pane_id, Option<i32> - exit code
     CommandPaneReRun(u32, Context),            // u32 - terminal_pane_id, Option<i32> -
+    FailedToWriteConfigToDisk(Option<String>), // String -> the file path we failed to write
 }
 
 #[derive(
@@ -1799,7 +1800,8 @@ pub enum PluginCommand {
     DumpSessionLayout,
     CloseSelf,
     NewTabsWithLayoutInfo(LayoutInfo),
-    Reconfigure(String), // String -> stringified configuration
+    Reconfigure(String, bool), // String -> stringified configuration, bool -> save configuration
+    // file to disk
     HidePaneWithId(PaneId),
     ShowPaneWithId(PaneId, bool), // bool -> should_float_if_hidden
     OpenCommandPaneBackground(CommandToRun, Context),

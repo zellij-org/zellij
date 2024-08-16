@@ -11,7 +11,7 @@ pub struct Event {
     pub name: i32,
     #[prost(
         oneof = "event::Payload",
-        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21"
+        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22"
     )]
     pub payload: ::core::option::Option<event::Payload>,
 }
@@ -60,7 +60,15 @@ pub mod event {
         EditPaneExitedPayload(super::EditPaneExitedPayload),
         #[prost(message, tag = "21")]
         CommandPaneRerunPayload(super::CommandPaneReRunPayload),
+        #[prost(message, tag = "22")]
+        FailedToWriteConfigToDiskPayload(super::FailedToWriteConfigToDiskPayload),
     }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct FailedToWriteConfigToDiskPayload {
+    #[prost(string, optional, tag = "1")]
+    pub file_path: ::core::option::Option<::prost::alloc::string::String>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -426,6 +434,7 @@ pub enum EventType {
     EditPaneOpened = 22,
     EditPaneExited = 23,
     CommandPaneReRun = 24,
+    FailedToWriteConfigToDisk = 25,
 }
 impl EventType {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -459,6 +468,7 @@ impl EventType {
             EventType::EditPaneOpened => "EditPaneOpened",
             EventType::EditPaneExited => "EditPaneExited",
             EventType::CommandPaneReRun => "CommandPaneReRun",
+            EventType::FailedToWriteConfigToDisk => "FailedToWriteConfigToDisk",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -489,6 +499,7 @@ impl EventType {
             "EditPaneOpened" => Some(Self::EditPaneOpened),
             "EditPaneExited" => Some(Self::EditPaneExited),
             "CommandPaneReRun" => Some(Self::CommandPaneReRun),
+            "FailedToWriteConfigToDisk" => Some(Self::FailedToWriteConfigToDisk),
             _ => None,
         }
     }

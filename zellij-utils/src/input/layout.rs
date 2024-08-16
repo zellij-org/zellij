@@ -504,6 +504,12 @@ impl PluginUserConfiguration {
         configuration.remove("direction");
         configuration.remove("floating");
         configuration.remove("move_to_focused_tab");
+        configuration.remove("launch_new");
+        configuration.remove("payload");
+        configuration.remove("skip_cache");
+        configuration.remove("title");
+        configuration.remove("in_place");
+        configuration.remove("skip_plugin_cache");
 
         PluginUserConfiguration(configuration)
     }
@@ -735,6 +741,19 @@ pub struct FloatingPaneLayout {
 }
 
 impl FloatingPaneLayout {
+    pub fn new() -> Self {
+        FloatingPaneLayout {
+            name: None,
+            height: None,
+            width: None,
+            x: None,
+            y: None,
+            run: None,
+            focus: None,
+            already_running: false,
+            pane_initial_contents: None,
+        }
+    }
     pub fn add_cwd_to_layout(&mut self, cwd: &PathBuf) {
         match self.run.as_mut() {
             Some(run) => run.add_cwd(cwd),

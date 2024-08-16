@@ -11,6 +11,7 @@ use zellij_utils::data::{
     PluginCapabilities,
 };
 use zellij_utils::errors::ErrorContext;
+use zellij_utils::input::keybinds::Keybinds;
 use zellij_utils::input::layout::{
     Layout, PluginAlias, PluginUserConfiguration, RunPlugin, RunPluginLocation, RunPluginOrAlias,
 };
@@ -42,6 +43,35 @@ macro_rules! log_actions_in_thread {
                         .expect("failed to receive event on channel");
                     match event {
                         $exit_event(..) => {
+                            exit_event_count += 1;
+                            log.lock().unwrap().push(event);
+                            if exit_event_count == $exit_after_count {
+                                break;
+                            }
+                        },
+                        _ => {
+                            log.lock().unwrap().push(event);
+                        },
+                    }
+                }
+            })
+            .unwrap()
+    };
+}
+
+macro_rules! log_actions_in_thread_struct {
+    ( $arc_mutex_log:expr, $exit_event:path, $receiver:expr, $exit_after_count:expr ) => {
+        std::thread::Builder::new()
+            .name("logger thread".to_string())
+            .spawn({
+                let log = $arc_mutex_log.clone();
+                let mut exit_event_count = 0;
+                move || loop {
+                    let (event, _err_ctx) = $receiver
+                        .recv()
+                        .expect("failed to receive event on channel");
+                    match event {
+                        $exit_event { .. } => {
                             exit_event_count += 1;
                             log.lock().unwrap().push(event);
                             if exit_event_count == $exit_after_count {
@@ -282,6 +312,7 @@ fn create_plugin_thread(
                 default_shell_action,
                 Box::new(plugin_aliases),
                 InputMode::Normal,
+                Keybinds::default(),
             )
             .expect("TEST")
         })
@@ -362,6 +393,7 @@ fn create_plugin_thread_with_server_receiver(
                 default_shell_action,
                 Box::new(PluginAliases::default()),
                 InputMode::Normal,
+                Keybinds::default(),
             )
             .expect("TEST");
         })
@@ -448,6 +480,7 @@ fn create_plugin_thread_with_pty_receiver(
                 default_shell_action,
                 Box::new(PluginAliases::default()),
                 InputMode::Normal,
+                Keybinds::default(),
             )
             .expect("TEST")
         })
@@ -529,6 +562,7 @@ fn create_plugin_thread_with_background_jobs_receiver(
                 default_shell_action,
                 Box::new(PluginAliases::default()),
                 InputMode::Normal,
+                Keybinds::default(),
             )
             .expect("TEST")
         })
@@ -6525,7 +6559,7 @@ pub fn reconfigure_plugin_command() {
         client_id
     );
     let received_server_instruction = Arc::new(Mutex::new(vec![]));
-    let server_thread = log_actions_in_thread!(
+    let server_thread = log_actions_in_thread_struct!(
         received_server_instruction,
         ServerInstruction::Reconfigure,
         server_receiver,
@@ -6561,7 +6595,7 @@ pub fn reconfigure_plugin_command() {
         .iter()
         .rev()
         .find_map(|i| {
-            if let ServerInstruction::Reconfigure(..) = i {
+            if let ServerInstruction::Reconfigure { .. } = i {
                 Some(i.clone())
             } else {
                 None

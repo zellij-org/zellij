@@ -1,0 +1,11 @@
+---
+source: zellij-utils/src/kdl/mod.rs
+assertion_line: 3932
+expression: serialized.to_string()
+---
+ui {
+    pane_frames {
+        rounded_corners true
+        hide_session_name true
+    }
+}

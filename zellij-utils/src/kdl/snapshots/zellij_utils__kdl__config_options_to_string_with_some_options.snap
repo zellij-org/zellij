@@ -1,0 +1,7 @@
+---
+source: zellij-utils/src/kdl/mod.rs
+assertion_line: 4211
+expression: fake_document.to_string()
+---
+default_layout "compact"
+

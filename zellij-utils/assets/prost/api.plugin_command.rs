@@ -118,8 +118,8 @@ pub mod plugin_command {
         ScanHostFolderPayload(::prost::alloc::string::String),
         #[prost(message, tag = "62")]
         NewTabsWithLayoutInfoPayload(super::NewTabsWithLayoutInfoPayload),
-        #[prost(string, tag = "63")]
-        ReconfigurePayload(::prost::alloc::string::String),
+        #[prost(message, tag = "63")]
+        ReconfigurePayload(super::ReconfigurePayload),
         #[prost(message, tag = "64")]
         HidePaneWithIdPayload(super::HidePaneWithIdPayload),
         #[prost(message, tag = "65")]
@@ -129,6 +129,14 @@ pub mod plugin_command {
         #[prost(message, tag = "67")]
         RerunCommandPanePayload(super::RerunCommandPanePayload),
     }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ReconfigurePayload {
+    #[prost(string, tag = "1")]
+    pub config: ::prost::alloc::string::String,
+    #[prost(bool, tag = "2")]
+    pub write_to_disk: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

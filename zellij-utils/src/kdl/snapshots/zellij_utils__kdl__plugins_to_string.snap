@@ -1,0 +1,18 @@
+---
+source: zellij-utils/src/kdl/mod.rs
+assertion_line: 3874
+expression: serialized.to_string()
+---
+plugins {
+    compact-bar location="zellij:compact-bar"
+    filepicker location="zellij:strider" {
+        cwd "/"
+    }
+    session-manager location="zellij:session-manager"
+    status-bar location="zellij:status-bar"
+    strider location="zellij:strider"
+    tab-bar location="zellij:tab-bar"
+    welcome-screen location="zellij:session-manager" {
+        welcome_screen true
+    }
+}

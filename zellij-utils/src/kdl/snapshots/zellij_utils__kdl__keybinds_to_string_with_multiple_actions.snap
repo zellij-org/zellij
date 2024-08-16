@@ -1,0 +1,11 @@
+---
+source: zellij-utils/src/kdl/mod.rs
+assertion_line: 2576
+expression: serialized.to_string()
+---
+keybinds clear-defaults=true {
+    normal {
+        bind "Ctrl n" { NewPane; SwitchToMode "locked"; }
+    }
+}
+
