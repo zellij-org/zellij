@@ -1349,6 +1349,7 @@ fn check_event_permission(
         | Event::EditPaneOpened(..)
         | Event::EditPaneExited(..)
         | Event::FailedToWriteConfigToDisk(..)
+        | Event::CommandPaneReRun(..)
         | Event::InputReceived => PermissionType::ReadApplicationState,
         _ => return (PermissionStatus::Granted, None),
     };

@@ -269,6 +269,9 @@ fn host_run_plugin_command(caller: Caller<'_, PluginEnv>) {
                     PluginCommand::OpenCommandPaneBackground(command_to_run, context) => {
                         open_command_pane_background(env, command_to_run, context)
                     },
+                    PluginCommand::RerunCommandPane(terminal_pane_id) => {
+                        rerun_command_pane(env, terminal_pane_id)
+                    },
                 },
                 (PermissionStatus::Denied, permission) => {
                     log::error!(
@@ -662,7 +665,10 @@ fn open_command_pane_background(
     context: BTreeMap<String, String>,
 ) {
     let command = command_to_run.path;
-    let cwd = command_to_run.cwd.map(|cwd| env.plugin_cwd.join(cwd));
+    let cwd = command_to_run
+        .cwd
+        .map(|cwd| env.plugin_cwd.join(cwd))
+        .or_else(|| Some(env.plugin_cwd.clone()));
     let args = command_to_run.args;
     let direction = None;
     let hold_on_close = true;
@@ -691,6 +697,12 @@ fn open_command_pane_background(
         start_suppressed,
         ClientTabIndexOrPaneId::ClientId(env.client_id),
     ));
+}
+
+fn rerun_command_pane(env: &PluginEnv, terminal_pane_id: u32) {
+    let _ = env
+        .senders
+        .send_to_screen(ScreenInstruction::RerunCommandPane(terminal_pane_id));
 }
 
 fn switch_tab_to(env: &PluginEnv, tab_idx: u32) {
@@ -1557,6 +1569,7 @@ fn check_command_permission(
         | PluginCommand::DisconnectOtherClients
         | PluginCommand::ShowPaneWithId(..)
         | PluginCommand::HidePaneWithId(..)
+        | PluginCommand::RerunCommandPane(..)
         | PluginCommand::KillSessions(..) => PermissionType::ChangeApplicationState,
         PluginCommand::UnblockCliPipeInput(..)
         | PluginCommand::BlockCliPipeInput(..)

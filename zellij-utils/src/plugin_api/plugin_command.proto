@@ -102,6 +102,7 @@ enum CommandName {
   HidePaneWithId = 88;
   ShowPaneWithId = 89;
   OpenCommandPaneBackground = 90;
+  RerunCommandPane = 91;
 }
 
 message PluginCommand {
@@ -163,12 +164,17 @@ message PluginCommand {
     HidePaneWithIdPayload hide_pane_with_id_payload = 64;
     ShowPaneWithIdPayload show_pane_with_id_payload = 65;
     OpenCommandPanePayload open_command_pane_background_payload = 66;
+    RerunCommandPanePayload rerun_command_pane_payload = 67;
   }
 }
 
 message ReconfigurePayload {
   string config = 1;
   bool write_to_disk = 2;
+}
+
+message RerunCommandPanePayload {
+  uint32 terminal_pane_id = 1;
 }
 
 message HidePaneWithIdPayload {

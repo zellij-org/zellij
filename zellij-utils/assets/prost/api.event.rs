@@ -11,7 +11,7 @@ pub struct Event {
     pub name: i32,
     #[prost(
         oneof = "event::Payload",
-        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21"
+        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22"
     )]
     pub payload: ::core::option::Option<event::Payload>,
 }
@@ -59,6 +59,8 @@ pub mod event {
         #[prost(message, tag = "20")]
         EditPaneExitedPayload(super::EditPaneExitedPayload),
         #[prost(message, tag = "21")]
+        CommandPaneRerunPayload(super::CommandPaneReRunPayload),
+        #[prost(message, tag = "22")]
         FailedToWriteConfigToDiskPayload(super::FailedToWriteConfigToDiskPayload),
     }
 }
@@ -67,6 +69,14 @@ pub mod event {
 pub struct FailedToWriteConfigToDiskPayload {
     #[prost(string, optional, tag = "1")]
     pub file_path: ::core::option::Option<::prost::alloc::string::String>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CommandPaneReRunPayload {
+    #[prost(uint32, tag = "1")]
+    pub terminal_pane_id: u32,
+    #[prost(message, repeated, tag = "3")]
+    pub context: ::prost::alloc::vec::Vec<ContextItem>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -423,7 +433,8 @@ pub enum EventType {
     PaneClosed = 21,
     EditPaneOpened = 22,
     EditPaneExited = 23,
-    FailedToWriteConfigToDisk = 24,
+    CommandPaneReRun = 24,
+    FailedToWriteConfigToDisk = 25,
 }
 impl EventType {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -456,6 +467,7 @@ impl EventType {
             EventType::PaneClosed => "PaneClosed",
             EventType::EditPaneOpened => "EditPaneOpened",
             EventType::EditPaneExited => "EditPaneExited",
+            EventType::CommandPaneReRun => "CommandPaneReRun",
             EventType::FailedToWriteConfigToDisk => "FailedToWriteConfigToDisk",
         }
     }
@@ -486,6 +498,7 @@ impl EventType {
             "PaneClosed" => Some(Self::PaneClosed),
             "EditPaneOpened" => Some(Self::EditPaneOpened),
             "EditPaneExited" => Some(Self::EditPaneExited),
+            "CommandPaneReRun" => Some(Self::CommandPaneReRun),
             "FailedToWriteConfigToDisk" => Some(Self::FailedToWriteConfigToDisk),
             _ => None,
         }

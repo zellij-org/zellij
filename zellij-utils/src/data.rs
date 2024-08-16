@@ -919,6 +919,7 @@ pub enum Event {
     PaneClosed(PaneId),
     EditPaneOpened(u32, Context),              // u32 - terminal_pane_id
     EditPaneExited(u32, Option<i32>, Context), // u32 - terminal_pane_id, Option<i32> - exit code
+    CommandPaneReRun(u32, Context),            // u32 - terminal_pane_id, Option<i32> -
     FailedToWriteConfigToDisk(Option<String>), // String -> the file path we failed to write
 }
 
@@ -1804,4 +1805,5 @@ pub enum PluginCommand {
     HidePaneWithId(PaneId),
     ShowPaneWithId(PaneId, bool), // bool -> should_float_if_hidden
     OpenCommandPaneBackground(CommandToRun, Context),
+    RerunCommandPane(u32), // u32  - terminal pane id
 }

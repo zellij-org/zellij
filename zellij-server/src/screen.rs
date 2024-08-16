@@ -369,6 +369,7 @@ pub enum ScreenInstruction {
         keybinds: Option<Keybinds>,
         default_mode: Option<InputMode>,
     },
+    RerunCommandPane(u32), // u32 - terminal pane id
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -554,6 +555,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::RenameSession(..) => ScreenContext::RenameSession,
             ScreenInstruction::ListClientsMetadata(..) => ScreenContext::ListClientsMetadata,
             ScreenInstruction::Reconfigure { .. } => ScreenContext::Reconfigure,
+            ScreenInstruction::RerunCommandPane { .. } => ScreenContext::RerunCommandPane,
         }
     }
 }
@@ -1978,6 +1980,22 @@ impl Screen {
             },
         };
         Ok(())
+    }
+    pub fn rerun_command_pane_with_id(&mut self, terminal_pane_id: u32) {
+        let mut found = false;
+        for tab in self.tabs.values_mut() {
+            if tab.has_pane_with_pid(&PaneId::Terminal(terminal_pane_id)) {
+                tab.rerun_terminal_pane_with_id(terminal_pane_id);
+                found = true;
+                break;
+            }
+        }
+        if !found {
+            log::error!(
+                "Failed to find terminal pane with id: {} to run",
+                terminal_pane_id
+            );
+        }
     }
     pub fn break_pane(
         &mut self,
@@ -4068,6 +4086,9 @@ pub(crate) fn screen_thread_main(
                 screen
                     .reconfigure_mode_info(keybinds, default_mode, client_id)
                     .non_fatal();
+            },
+            ScreenInstruction::RerunCommandPane(terminal_pane_id) => {
+                screen.rerun_command_pane_with_id(terminal_pane_id)
             },
         }
     }
