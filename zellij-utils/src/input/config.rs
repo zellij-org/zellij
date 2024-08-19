@@ -234,7 +234,7 @@ impl Config {
         self.env = self.env.merge(other.env);
         Ok(())
     }
-    fn config_file_path(opts: &CliArgs) -> Option<PathBuf> {
+    pub fn config_file_path(opts: &CliArgs) -> Option<PathBuf> {
         opts.config_dir
             .clone()
             .or_else(home::find_default_config_dir)
