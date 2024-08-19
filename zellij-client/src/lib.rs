@@ -17,12 +17,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use zellij_utils::errors::FatalError;
 
-use zellij_utils::notify_debouncer_full::notify::{
-    self,
-    Event,
-    RecursiveMode,
-    Watcher,
-};
+use zellij_utils::notify_debouncer_full::notify::{self, Event, RecursiveMode, Watcher};
 use zellij_utils::setup::Setup;
 
 use crate::stdin_ansi_parser::{AnsiStdinInstruction, StdinAnsiParser, SyncOutput};
