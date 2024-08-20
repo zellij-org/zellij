@@ -18,7 +18,7 @@ use crate::{
 };
 use stacked_panes::StackedPanes;
 use zellij_utils::{
-    data::{Direction, ModeInfo, PaneInfo, ResizeStrategy, Style},
+    data::{Direction, ModeInfo, Palette, PaneInfo, ResizeStrategy, Style},
     errors::prelude::*,
     input::{
         command::RunCommand,
@@ -1765,6 +1765,12 @@ impl TiledPanes {
             pane_infos.push(pane_info_for_pane);
         }
         pane_infos
+    }
+    pub fn update_pane_themes(&mut self, theme: Palette) {
+        self.style.colors = theme;
+        for pane in self.panes.values_mut() {
+            pane.update_theme(theme);
+        }
     }
 }
 

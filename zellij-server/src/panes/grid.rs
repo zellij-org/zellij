@@ -2155,6 +2155,9 @@ impl Grid {
     pub fn unlock_renders(&mut self) {
         self.lock_renders = false;
     }
+    pub fn update_theme(&mut self, theme: Palette) {
+        self.style.colors = theme.clone();
+    }
 }
 
 impl Perform for Grid {
