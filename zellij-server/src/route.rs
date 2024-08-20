@@ -10,6 +10,8 @@ use crate::{
     screen::ScreenInstruction,
     ServerInstruction, SessionMetaData, SessionState,
 };
+use std::thread;
+use std::time::Duration;
 use uuid::Uuid;
 use zellij_utils::{
     channels::SenderWithContext,
@@ -1218,13 +1220,18 @@ pub(crate) fn route_thread_main(
                     }
                     Ok(should_break)
                 };
+                let mut repeat_retries = VecDeque::new();
                 while let Some(instruction_to_retry) = retry_queue.pop_front() {
                     log::warn!("Server ready, retrying sending instruction.");
-                    let should_break = handle_instruction(instruction_to_retry, None)?;
+                    thread::sleep(Duration::from_millis(5));
+                    let should_break =
+                        handle_instruction(instruction_to_retry, Some(&mut repeat_retries))?;
                     if should_break {
                         break 'route_loop;
                     }
                 }
+                // retry on loop around
+                retry_queue.append(&mut repeat_retries);
                 let should_break = handle_instruction(instruction, Some(&mut retry_queue))?;
                 if should_break {
                     break 'route_loop;
