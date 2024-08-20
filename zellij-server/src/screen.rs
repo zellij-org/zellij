@@ -367,6 +367,7 @@ pub enum ScreenInstruction {
         client_id: ClientId,
         keybinds: Option<Keybinds>,
         default_mode: Option<InputMode>,
+        theme: Option<Palette>,
     },
     RerunCommandPane(u32), // u32 - terminal pane id
 }
@@ -1732,11 +1733,13 @@ impl Screen {
         if mode_info.session_name.as_ref() != Some(&self.session_name) {
             mode_info.session_name = Some(self.session_name.clone());
         }
-        let previous_mode = self
+
+        let previous_mode_info = self
             .mode_info
             .get(&client_id)
-            .unwrap_or(&self.default_mode_info)
-            .mode;
+            .unwrap_or(&self.default_mode_info);
+        let previous_mode = previous_mode_info.mode;
+        mode_info.style = previous_mode_info.style;
 
         let err_context = || {
             format!(
@@ -2180,10 +2183,22 @@ impl Screen {
         &mut self,
         new_keybinds: Option<Keybinds>,
         new_default_mode: Option<InputMode>,
+        theme: Option<Palette>,
         client_id: ClientId,
     ) -> Result<()> {
+        let should_update_mode_info =
+            new_keybinds.is_some() || new_default_mode.is_some() || theme.is_some();
+
+        // themes are currently global and not per-client
+        if let Some(theme) = theme {
+            self.default_mode_info.update_theme(theme);
+            for tab in self.tabs.values_mut() {
+                tab.update_theme(theme);
+            }
+        }
+
+        // client specific configuration
         if self.connected_clients_contains(&client_id) {
-            let should_update_mode_info = new_keybinds.is_some() || new_default_mode.is_some();
             let mode_info = self
                 .mode_info
                 .entry(client_id)
@@ -2194,15 +2209,21 @@ impl Screen {
             if let Some(new_default_mode) = new_default_mode {
                 mode_info.update_default_mode(new_default_mode);
             }
+            if let Some(theme) = theme {
+                mode_info.update_theme(theme);
+            }
             if should_update_mode_info {
                 for tab in self.tabs.values_mut() {
                     tab.change_mode_info(mode_info.clone(), client_id);
                     tab.mark_active_pane_for_rerender(client_id);
-                    tab.update_input_modes()?;
                 }
             }
-        } else {
-            log::error!("Could not find client_id {client_id} to rebind keys");
+        }
+
+        if should_update_mode_info {
+            for tab in self.tabs.values_mut() {
+                tab.update_input_modes()?;
+            }
         }
         Ok(())
     }
@@ -4069,9 +4090,10 @@ pub(crate) fn screen_thread_main(
                 client_id,
                 keybinds,
                 default_mode,
+                theme,
             } => {
                 screen
-                    .reconfigure_mode_info(keybinds, default_mode, client_id)
+                    .reconfigure_mode_info(keybinds, default_mode, theme, client_id)
                     .non_fatal();
             },
             ScreenInstruction::RerunCommandPane(terminal_pane_id) => {

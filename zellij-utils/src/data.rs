@@ -1175,6 +1175,9 @@ impl ModeInfo {
     pub fn update_default_mode(&mut self, new_default_mode: InputMode) {
         self.base_mode = Some(new_default_mode);
     }
+    pub fn update_theme(&mut self, theme: Palette) {
+        self.style.colors = theme;
+    }
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize, Serialize)]
