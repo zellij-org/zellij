@@ -93,23 +93,6 @@ pub(crate) fn route_action(
         },
         Action::SwitchToMode(mode) => {
             let attrs = &client_attributes;
-            // TODO: use the palette from the client and remove it from the server os api
-            // this is left here as a stop gap measure until we shift some code around
-            // to allow for this
-            // TODO: Need access to `ClientAttributes` here
-            senders
-                .send_to_plugin(PluginInstruction::Update(vec![(
-                    None,
-                    Some(client_id),
-                    Event::ModeUpdate(get_mode_info(
-                        mode,
-                        attrs,
-                        capabilities,
-                        &client_keybinds,
-                        Some(default_mode),
-                    )),
-                )]))
-                .with_context(err_context)?;
             senders
                 .send_to_server(ServerInstruction::ChangeMode(client_id, mode))
                 .with_context(err_context)?;

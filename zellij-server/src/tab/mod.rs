@@ -492,6 +492,7 @@ pub trait Pane {
     fn rerun(&mut self) -> Option<RunCommand> {
         None
     } // only relevant to terminal panes
+    fn update_theme(&mut self, _theme: Palette) {}
 }
 
 #[derive(Clone, Debug)]
@@ -3949,6 +3950,14 @@ impl Tab {
                     terminal_pane_id
                 );
             },
+        }
+    }
+    pub fn update_theme(&mut self, theme: Palette) {
+        self.style.colors = theme;
+        self.floating_panes.update_pane_themes(theme);
+        self.tiled_panes.update_pane_themes(theme);
+        for (_, pane) in self.suppressed_panes.values_mut() {
+            pane.update_theme(theme);
         }
     }
 }
