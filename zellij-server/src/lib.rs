@@ -55,6 +55,7 @@ use zellij_utils::{
         plugins::PluginAliases,
     },
     ipc::{ClientAttributes, ExitReason, ServerToClientMsg},
+    shared::default_palette,
 };
 
 pub type ClientId = u16;
@@ -267,6 +268,9 @@ impl SessionMetaData {
                     client_id,
                     keybinds: Some(new_config.keybinds.clone()),
                     default_mode: new_config.options.default_mode,
+                    theme: new_config
+                        .theme_config(new_config.options.theme.as_ref())
+                        .or_else(|| Some(default_palette())),
                 })
                 .unwrap();
             self.senders

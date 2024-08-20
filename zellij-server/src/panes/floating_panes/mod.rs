@@ -22,7 +22,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::rc::Rc;
 use std::time::Instant;
 use zellij_utils::{
-    data::{ModeInfo, Style},
+    data::{ModeInfo, Palette, Style},
     errors::prelude::*,
     input::command::RunCommand,
     input::layout::{FloatingPaneLayout, Run, RunPluginOrAlias},
@@ -911,6 +911,12 @@ impl FloatingPanes {
             None => {
                 log::error!("Failed to find pane with run: {:?}", run);
             },
+        }
+    }
+    pub fn update_pane_themes(&mut self, theme: Palette) {
+        self.style.colors = theme;
+        for pane in self.panes.values_mut() {
+            pane.update_theme(theme);
         }
     }
 }

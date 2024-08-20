@@ -215,7 +215,7 @@ pub fn start_client(
     config.env.set_vars();
 
     let palette = config
-        .theme_config(&config_options)
+        .theme_config(config_options.theme.as_ref())
         .unwrap_or_else(|| os_input.load_palette());
 
     let full_screen_ws = os_input.get_terminal_size_using_fd(0);
@@ -615,7 +615,7 @@ pub fn start_server_detached(
     config.env.set_vars();
 
     let palette = config
-        .theme_config(&config_options)
+        .theme_config(config_options.theme.as_ref())
         .unwrap_or_else(|| os_input.load_palette());
 
     let client_attributes = ClientAttributes {

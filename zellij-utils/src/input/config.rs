@@ -163,8 +163,8 @@ impl TryFrom<&CliArgs> for Config {
 }
 
 impl Config {
-    pub fn theme_config(&self, opts: &Options) -> Option<Palette> {
-        match &opts.theme {
+    pub fn theme_config(&self, theme_name: Option<&String>) -> Option<Palette> {
+        match &theme_name {
             Some(theme_name) => self.themes.get_theme(theme_name).map(|theme| theme.palette),
             None => self.themes.get_theme("default").map(|theme| theme.palette),
         }

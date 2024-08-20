@@ -790,6 +790,14 @@ impl Pane for TerminalPane {
             run_command.clone()
         })
     }
+    fn update_theme(&mut self, theme: Palette) {
+        self.style.colors = theme.clone();
+        self.grid.update_theme(theme);
+        if self.banner.is_some() {
+            // we do this so that the banner will be updated with the new theme colors
+            self.render_first_run_banner();
+        }
+    }
 }
 
 impl TerminalPane {

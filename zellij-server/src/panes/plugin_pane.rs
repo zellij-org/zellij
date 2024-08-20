@@ -675,6 +675,12 @@ impl Pane for PluginPane {
         self.pane_name = String::from_utf8_lossy(&buf).to_string();
         self.set_should_render(true);
     }
+    fn update_theme(&mut self, theme: Palette) {
+        self.style.colors = theme.clone();
+        for grid in self.grids.values_mut() {
+            grid.update_theme(theme.clone());
+        }
+    }
 }
 
 impl PluginPane {
