@@ -921,12 +921,13 @@ pub(crate) fn route_action(
             cwd,
             pane_title,
             launch_new,
+            plugin_id,
             ..
         } => {
             if let Some(name) = name.take() {
                 let should_open_in_place = in_place.unwrap_or(false);
                 let pane_id_to_replace = if should_open_in_place { pane_id } else { None };
-                if launch_new {
+                if launch_new && plugin_id.is_none() {
                     // we do this to make sure the plugin is unique (has a unique configuration parameter)
                     configuration
                         .get_or_insert_with(BTreeMap::new)
@@ -945,6 +946,7 @@ pub(crate) fn route_action(
                         pane_title,
                         skip_cache,
                         cli_client_id: client_id,
+                        plugin_and_client_id: plugin_id.map(|plugin_id| (plugin_id, client_id)),
                     })
                     .with_context(err_context)?;
             } else {
