@@ -134,6 +134,7 @@ pub enum PluginInstruction {
         cwd: Option<PathBuf>,
         skip_cache: bool,
         cli_client_id: ClientId,
+        plugin_and_client_id: Option<(u32, ClientId)>,
     },
     CachePluginEvents {
         plugin_id: PluginId,
@@ -624,42 +625,52 @@ pub(crate) fn plugin_thread_main(
                 cwd,
                 skip_cache,
                 cli_client_id,
+                plugin_and_client_id,
             } => {
                 let should_float = floating.unwrap_or(true);
                 let mut pipe_messages = vec![];
-                match plugin {
-                    Some(plugin_url) => {
-                        // send to specific plugin(s)
-                        pipe_to_specific_plugins(
-                            PipeSource::Keybind,
-                            &plugin_url,
-                            &configuration,
-                            &cwd,
-                            skip_cache,
-                            should_float,
-                            &pane_id_to_replace,
-                            &pane_title,
-                            Some(cli_client_id),
-                            &mut pipe_messages,
-                            &name,
-                            &payload,
-                            &args,
-                            &bus,
-                            &mut wasm_bridge,
-                            &plugin_aliases,
-                        );
-                    },
-                    None => {
-                        // no specific destination, send to all plugins
-                        pipe_to_all_plugins(
-                            PipeSource::Keybind,
-                            &name,
-                            &payload,
-                            &args,
-                            &mut wasm_bridge,
-                            &mut pipe_messages,
-                        );
-                    },
+                if let Some((plugin_id, client_id)) = plugin_and_client_id {
+                    let is_private = true;
+                    pipe_messages.push((
+                        Some(plugin_id),
+                        Some(client_id),
+                        PipeMessage::new(PipeSource::Keybind, name, &payload, &args, is_private),
+                    ));
+                } else {
+                    match plugin {
+                        Some(plugin_url) => {
+                            // send to specific plugin(s)
+                            pipe_to_specific_plugins(
+                                PipeSource::Keybind,
+                                &plugin_url,
+                                &configuration,
+                                &cwd,
+                                skip_cache,
+                                should_float,
+                                &pane_id_to_replace,
+                                &pane_title,
+                                Some(cli_client_id),
+                                &mut pipe_messages,
+                                &name,
+                                &payload,
+                                &args,
+                                &bus,
+                                &mut wasm_bridge,
+                                &plugin_aliases,
+                            );
+                        },
+                        None => {
+                            // no specific destination, send to all plugins
+                            pipe_to_all_plugins(
+                                PipeSource::Keybind,
+                                &name,
+                                &payload,
+                                &args,
+                                &mut wasm_bridge,
+                                &mut pipe_messages,
+                            );
+                        },
+                    }
                 }
                 wasm_bridge.pipe_messages(pipe_messages, shutdown_send.clone())?;
             },
@@ -768,6 +779,8 @@ pub(crate) fn plugin_thread_main(
                 keybinds,
                 default_mode,
             } => {
+                // TODO: notify plugins that this happened so that they can eg. rebind temporary keys that
+                // were lost
                 wasm_bridge
                     .reconfigure(client_id, keybinds, default_mode)
                     .non_fatal();
