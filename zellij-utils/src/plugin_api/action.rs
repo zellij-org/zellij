@@ -691,6 +691,7 @@ impl TryFrom<ProtobufAction> for Action {
                     in_place: None,
                     cwd: None,
                     pane_title: None,
+                    plugin_id: None,
                 }),
             },
             _ => Err("Unknown Action"),

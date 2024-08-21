@@ -363,6 +363,27 @@ pub fn kdl_arguments_that_are_strings<'a>(
     Ok(args)
 }
 
+pub fn kdl_arguments_that_are_digits<'a>(
+    arguments: impl Iterator<Item = &'a KdlEntry>,
+) -> Result<Vec<i64>, ConfigError> {
+    let mut args: Vec<i64> = vec![];
+    for kdl_entry in arguments {
+        match kdl_entry.value().as_i64() {
+            Some(digit_value) => {
+                args.push(digit_value);
+            },
+            None => {
+                return Err(ConfigError::new_kdl_error(
+                    format!("Argument must be a digit"),
+                    kdl_entry.span().offset(),
+                    kdl_entry.span().len(),
+                ));
+            },
+        }
+    }
+    Ok(args)
+}
+
 pub fn kdl_child_string_value_for_entry<'a>(
     command_metadata: &'a KdlDocument,
     entry_name: &'a str,
@@ -1010,7 +1031,12 @@ impl Action {
                 in_place,
                 cwd,
                 pane_title,
+                plugin_id,
             } => {
+                if plugin_id.is_some() {
+                    log::warn!("Not serializing temporary keybinding MessagePluginId");
+                    return None;
+                }
                 let mut node = KdlNode::new("MessagePlugin");
                 let mut node_children = KdlDocument::new();
                 if let Some(plugin) = plugin {
@@ -1678,6 +1704,46 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                     in_place: None, // TODO: support this
                     cwd,
                     pane_title: title,
+                    plugin_id: None,
+                })
+            },
+            "MessagePluginId" => {
+                let arguments = action_arguments.iter().copied();
+                let mut args = kdl_arguments_that_are_digits(arguments)?;
+                let plugin_id = if args.is_empty() {
+                    None
+                } else {
+                    Some(args.remove(0) as u32)
+                };
+
+                let command_metadata = action_children.iter().next();
+                let launch_new = false;
+                let skip_cache = false;
+                let name = command_metadata
+                    .and_then(|c_m| kdl_child_string_value_for_entry(c_m, "name"))
+                    .map(|n| n.to_owned());
+                let payload = command_metadata
+                    .and_then(|c_m| kdl_child_string_value_for_entry(c_m, "payload"))
+                    .map(|p| p.to_owned());
+                let configuration = None;
+
+                let name = name
+                    // if no name is provided, we use a uuid to at least have some sort of identifier for this message
+                    .or_else(|| Some(Uuid::new_v4().to_string()));
+
+                Ok(Action::KeybindPipe {
+                    name,
+                    payload,
+                    args: None, // TODO: consider supporting this if there's a need
+                    plugin: None,
+                    configuration,
+                    launch_new,
+                    skip_cache,
+                    floating: None,
+                    in_place: None, // TODO: support this
+                    cwd: None,
+                    pane_title: None,
+                    plugin_id,
                 })
             },
             _ => Err(ConfigError::new_kdl_error(
