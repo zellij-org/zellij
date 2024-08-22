@@ -371,6 +371,7 @@ pub enum ScreenInstruction {
         theme: Option<Palette>,
         simplified_ui: Option<bool>,
         default_shell: Option<PathBuf>,
+        pane_frames: Option<bool>,
     },
     RerunCommandPane(u32), // u32 - terminal pane id
 }
@@ -2192,6 +2193,7 @@ impl Screen {
         theme: Option<Palette>,
         simplified_ui: Option<bool>,
         default_shell: Option<PathBuf>,
+        pane_frames: Option<bool>,
         client_id: ClientId,
     ) -> Result<()> {
         let should_update_mode_info =
@@ -2208,6 +2210,13 @@ impl Screen {
         self.default_shell = default_shell.clone();
         for tab in self.tabs.values_mut() {
             tab.update_default_shell(default_shell.clone());
+        }
+        
+        if let Some(pane_frames) = pane_frames {
+            self.draw_pane_frames = pane_frames;
+            for tab in self.tabs.values_mut() {
+                tab.set_pane_frames(pane_frames);
+            }
         }
 
         if let Some(simplified_ui) = simplified_ui {
@@ -4128,9 +4137,10 @@ pub(crate) fn screen_thread_main(
                 theme,
                 simplified_ui,
                 default_shell,
+                pane_frames
             } => {
                 screen
-                    .reconfigure(keybinds, default_mode, theme, simplified_ui, default_shell, client_id)
+                    .reconfigure(keybinds, default_mode, theme, simplified_ui, default_shell, pane_frames, client_id)
                     .non_fatal();
             },
             ScreenInstruction::RerunCommandPane(terminal_pane_id) => {

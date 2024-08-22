@@ -280,6 +280,7 @@ impl SessionMetaData {
                         .or_else(|| Some(default_palette())),
                     simplified_ui: new_config.options.simplified_ui.or(Some(false)),
                     default_shell: new_config.options.default_shell,
+                    pane_frames: new_config.options.pane_frames.or(Some(true)),
                 })
                 .unwrap();
             self.senders
