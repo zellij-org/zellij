@@ -1,6 +1,6 @@
 ---
 source: zellij-utils/src/kdl/mod.rs
-assertion_line: 4987
+assertion_line: 5361
 expression: fake_document.to_string()
 ---
  
@@ -68,6 +68,7 @@ mirror_session true
  
 // Choose what to do when zellij receives SIGTERM, SIGINT, SIGQUIT or SIGHUP
 // eg. when terminal window with an active zellij session is closed
+// (Requires restart)
 // Options:
 //   - detach (Default)
 //   - quit

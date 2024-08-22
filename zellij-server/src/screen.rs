@@ -369,6 +369,7 @@ pub enum ScreenInstruction {
         keybinds: Option<Keybinds>,
         default_mode: Option<InputMode>,
         theme: Option<Palette>,
+        simplified_ui: Option<bool>,
     },
     RerunCommandPane(u32), // u32 - terminal pane id
 }
@@ -1743,6 +1744,7 @@ impl Screen {
             .unwrap_or(&self.default_mode_info);
         let previous_mode = previous_mode_info.mode;
         mode_info.style = previous_mode_info.style;
+        mode_info.capabilities = previous_mode_info.capabilities;
 
         let err_context = || {
             format!(
@@ -2187,16 +2189,25 @@ impl Screen {
         new_keybinds: Option<Keybinds>,
         new_default_mode: Option<InputMode>,
         theme: Option<Palette>,
+        simplified_ui: Option<bool>,
         client_id: ClientId,
     ) -> Result<()> {
         let should_update_mode_info =
-            new_keybinds.is_some() || new_default_mode.is_some() || theme.is_some();
+            new_keybinds.is_some() || new_default_mode.is_some() || theme.is_some() || simplified_ui.is_some();
 
         // themes are currently global and not per-client
         if let Some(theme) = theme {
             self.default_mode_info.update_theme(theme);
             for tab in self.tabs.values_mut() {
                 tab.update_theme(theme);
+            }
+        }
+
+        if let Some(simplified_ui) = simplified_ui {
+            let should_support_arrow_fonts = !simplified_ui;
+            self.default_mode_info.update_arrow_fonts(should_support_arrow_fonts);
+            for tab in self.tabs.values_mut() {
+                tab.update_arrow_fonts(should_support_arrow_fonts);
             }
         }
 
@@ -2214,6 +2225,10 @@ impl Screen {
             }
             if let Some(theme) = theme {
                 mode_info.update_theme(theme);
+            }
+            if let Some(simplified_ui) = simplified_ui {
+                let should_support_arrow_fonts = !simplified_ui;
+                mode_info.update_arrow_fonts(should_support_arrow_fonts);
             }
             if should_update_mode_info {
                 for tab in self.tabs.values_mut() {
@@ -4104,9 +4119,10 @@ pub(crate) fn screen_thread_main(
                 keybinds,
                 default_mode,
                 theme,
+                simplified_ui,
             } => {
                 screen
-                    .reconfigure_mode_info(keybinds, default_mode, theme, client_id)
+                    .reconfigure_mode_info(keybinds, default_mode, theme, simplified_ui, client_id)
                     .non_fatal();
             },
             ScreenInstruction::RerunCommandPane(terminal_pane_id) => {

@@ -1,6 +1,6 @@
 ---
 source: zellij-utils/src/kdl/mod.rs
-assertion_line: 5069
+assertion_line: 5422
 expression: fake_config_stringified
 ---
 keybinds clear-defaults=true {
@@ -302,6 +302,7 @@ plugins {
  
 // Choose what to do when zellij receives SIGTERM, SIGINT, SIGQUIT or SIGHUP
 // eg. when terminal window with an active zellij session is closed
+// (Requires restart)
 // Options:
 //   - detach (Default)
 //   - quit

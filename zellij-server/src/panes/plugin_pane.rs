@@ -681,6 +681,13 @@ impl Pane for PluginPane {
             grid.update_theme(theme.clone());
         }
     }
+    fn update_arrow_fonts(&mut self, should_support_arrow_fonts: bool) {
+        self.arrow_fonts = should_support_arrow_fonts;
+        for grid in self.grids.values_mut() {
+            grid.update_arrow_fonts(should_support_arrow_fonts);
+        }
+        self.set_should_render(true);
+    }
 }
 
 impl PluginPane {

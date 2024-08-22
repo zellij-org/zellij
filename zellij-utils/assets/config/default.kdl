@@ -209,7 +209,7 @@ plugins {
 }
 
 // Choose what to do when zellij receives SIGTERM, SIGINT, SIGQUIT or SIGHUP
-// eg. when terminal window with an active zellij session is closed
+// eg. when terminal window with an active zellij session is closed (requires restart)
 // Options:
 //   - detach (Default)
 //   - quit

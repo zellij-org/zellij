@@ -271,6 +271,7 @@ impl SessionMetaData {
                     theme: new_config
                         .theme_config(new_config.options.theme.as_ref())
                         .or_else(|| Some(default_palette())),
+                    simplified_ui: new_config.options.simplified_ui.or(Some(false)),
                 })
                 .unwrap();
             self.senders

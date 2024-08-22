@@ -493,6 +493,7 @@ pub trait Pane {
         None
     } // only relevant to terminal panes
     fn update_theme(&mut self, _theme: Palette) {}
+    fn update_arrow_fonts(&mut self, should_support_arrow_fonts: bool) {}
 }
 
 #[derive(Clone, Debug)]
@@ -3958,6 +3959,14 @@ impl Tab {
         self.tiled_panes.update_pane_themes(theme);
         for (_, pane) in self.suppressed_panes.values_mut() {
             pane.update_theme(theme);
+        }
+    }
+    pub fn update_arrow_fonts(&mut self, should_support_arrow_fonts: bool) {
+        self.arrow_fonts = should_support_arrow_fonts;
+        self.floating_panes.update_pane_arrow_fonts(should_support_arrow_fonts);
+        self.tiled_panes.update_pane_arrow_fonts(should_support_arrow_fonts);
+        for (_, pane) in self.suppressed_panes.values_mut() {
+            pane.update_arrow_fonts(should_support_arrow_fonts);
         }
     }
 }

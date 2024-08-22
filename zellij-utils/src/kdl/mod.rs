@@ -2569,10 +2569,11 @@ impl Options {
     }
     fn on_force_close_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
         let comment_text = format!(
-            "{}\n{}\n{}\n{}\n{}\n{}\n{}",
+            "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
             " ",
             "// Choose what to do when zellij receives SIGTERM, SIGINT, SIGQUIT or SIGHUP",
             "// eg. when terminal window with an active zellij session is closed",
+            "// (Requires restart)",
             "// Options:",
             "//   - detach (Default)",
             "//   - quit",

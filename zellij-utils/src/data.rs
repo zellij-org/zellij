@@ -1178,6 +1178,11 @@ impl ModeInfo {
     pub fn update_theme(&mut self, theme: Palette) {
         self.style.colors = theme;
     }
+    pub fn update_arrow_fonts(&mut self, should_support_arrow_fonts: bool) {
+        // it is honestly quite baffling to me how "arrow_fonts: false" can mean "I support arrow
+        // fonts", but since this is a public API... ¯\_(ツ)_/¯
+        self.capabilities.arrow_fonts = !should_support_arrow_fonts;
+    }
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize, Serialize)]
