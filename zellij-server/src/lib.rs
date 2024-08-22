@@ -263,6 +263,13 @@ impl SessionMetaData {
     }
     pub fn propagate_configuration_changes(&mut self, config_changes: Vec<(ClientId, Config)>) {
         for (client_id, new_config) in config_changes {
+            self.default_shell = new_config.options.default_shell.as_ref().map(|shell| {
+                TerminalAction::RunCommand(RunCommand {
+                    command: shell.clone(),
+                    cwd: new_config.options.default_cwd.clone(),
+                    ..Default::default()
+                })
+            });
             self.senders
                 .send_to_screen(ScreenInstruction::Reconfigure {
                     client_id,
@@ -272,6 +279,7 @@ impl SessionMetaData {
                         .theme_config(new_config.options.theme.as_ref())
                         .or_else(|| Some(default_palette())),
                     simplified_ui: new_config.options.simplified_ui.or(Some(false)),
+                    default_shell: new_config.options.default_shell,
                 })
                 .unwrap();
             self.senders
@@ -279,6 +287,7 @@ impl SessionMetaData {
                     client_id,
                     keybinds: Some(new_config.keybinds),
                     default_mode: new_config.options.default_mode,
+                    default_shell: self.default_shell.clone(),
                 })
                 .unwrap();
         }

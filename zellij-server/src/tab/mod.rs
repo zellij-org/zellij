@@ -3969,6 +3969,9 @@ impl Tab {
             pane.update_arrow_fonts(should_support_arrow_fonts);
         }
     }
+    pub fn update_default_shell(&mut self, default_shell: Option<PathBuf>) {
+        self.default_shell = default_shell;
+    }
 }
 
 pub fn pane_info_for_pane(pane_id: &PaneId, pane: &Box<dyn Pane>) -> PaneInfo {
