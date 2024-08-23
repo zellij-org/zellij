@@ -28,7 +28,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix(plugins): properly set cwd for floating_panes in tab_layout (https://github.com/zellij-org/zellij/pull/3545)
 * feat(plugins): new API to rerun command the command in an existing command pane (https://github.com/zellij-org/zellij/pull/3546)
 * feat(ux): first run setup wizard (https://github.com/zellij-org/zellij/pull/3556)
-* feat(ux): reload config at runtime (https://github.com/zellij-org/zellij/pull/3558 and https://github.com/zellij-org/zellij/pull/3559)
+* feat(ux): reload config at runtime (https://github.com/zellij-org/zellij/pull/3558, https://github.com/zellij-org/zellij/pull/3559 and https://github.com/zellij-org/zellij/pull/3564)
 * feat(plugins): allow plugins to temporarily bind keys at runtime to pipe messages to specific plugins (https://github.com/zellij-org/zellij/pull/3561)
 
 ## [0.40.1] - 2024-05-02
