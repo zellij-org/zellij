@@ -273,20 +273,20 @@ impl SessionMetaData {
             self.senders
                 .send_to_screen(ScreenInstruction::Reconfigure {
                     client_id,
-                    keybinds: Some(new_config.keybinds.clone()),
-                    default_mode: new_config.options.default_mode,
+                    keybinds: new_config.keybinds.clone(),
+                    default_mode: new_config.options.default_mode.unwrap_or_else(Default::default),
                     theme: new_config
                         .theme_config(new_config.options.theme.as_ref())
-                        .or_else(|| Some(default_palette())),
-                    simplified_ui: new_config.options.simplified_ui.or(Some(false)),
+                        .unwrap_or_else(|| default_palette()),
+                    simplified_ui: new_config.options.simplified_ui.unwrap_or(false),
                     default_shell: new_config.options.default_shell,
-                    pane_frames: new_config.options.pane_frames.or(Some(true)),
+                    pane_frames: new_config.options.pane_frames.unwrap_or(true),
                     copy_command: new_config.options.copy_command,
                     copy_to_clipboard: new_config.options.copy_clipboard,
-                    copy_on_select: new_config.options.copy_on_select.or(Some(true)),
-                    auto_layout: new_config.options.auto_layout.or(Some(true)),
-                    rounded_corners: Some(new_config.ui.pane_frames.rounded_corners),
-                    hide_session_name: Some(new_config.ui.pane_frames.hide_session_name),
+                    copy_on_select: new_config.options.copy_on_select.unwrap_or(true),
+                    auto_layout: new_config.options.auto_layout.unwrap_or(true),
+                    rounded_corners: new_config.ui.pane_frames.rounded_corners,
+                    hide_session_name: new_config.ui.pane_frames.hide_session_name,
                 })
                 .unwrap();
             self.senders
