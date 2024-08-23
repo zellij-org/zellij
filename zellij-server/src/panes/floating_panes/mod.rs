@@ -930,5 +930,4 @@ impl FloatingPanes {
             pane.update_rounded_corners(rounded_corners);
         }
     }
-
 }

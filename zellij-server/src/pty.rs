@@ -102,7 +102,7 @@ pub enum PtyInstruction {
     ListClientsMetadata(SessionLayoutMetadata, ClientId),
     Reconfigure {
         client_id: ClientId,
-        default_editor: Option<PathBuf>
+        default_editor: Option<PathBuf>,
     },
     Exit,
 }
@@ -127,7 +127,7 @@ impl From<&PtyInstruction> for PtyContext {
             PtyInstruction::LogLayoutToHd(..) => PtyContext::LogLayoutToHd,
             PtyInstruction::FillPluginCwd(..) => PtyContext::FillPluginCwd,
             PtyInstruction::ListClientsMetadata(..) => PtyContext::ListClientsMetadata,
-            PtyInstruction::Reconfigure{..} => PtyContext::Reconfigure,
+            PtyInstruction::Reconfigure { .. } => PtyContext::Reconfigure,
             PtyInstruction::Exit => PtyContext::Exit,
         }
     }
@@ -770,9 +770,12 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     floating_pane_coordinates,
                 )?;
             },
-            PtyInstruction::Reconfigure { default_editor, client_id } => {
+            PtyInstruction::Reconfigure {
+                default_editor,
+                client_id,
+            } => {
                 pty.reconfigure(default_editor);
-            }
+            },
             PtyInstruction::Exit => break,
         }
     }

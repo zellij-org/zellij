@@ -3964,16 +3964,20 @@ impl Tab {
     }
     pub fn update_rounded_corners(&mut self, rounded_corners: bool) {
         self.style.rounded_corners = rounded_corners;
-        self.floating_panes.update_pane_rounded_corners(rounded_corners);
-        self.tiled_panes.update_pane_rounded_corners(rounded_corners);
+        self.floating_panes
+            .update_pane_rounded_corners(rounded_corners);
+        self.tiled_panes
+            .update_pane_rounded_corners(rounded_corners);
         for (_, pane) in self.suppressed_panes.values_mut() {
             pane.update_rounded_corners(rounded_corners);
         }
     }
     pub fn update_arrow_fonts(&mut self, should_support_arrow_fonts: bool) {
         self.arrow_fonts = should_support_arrow_fonts;
-        self.floating_panes.update_pane_arrow_fonts(should_support_arrow_fonts);
-        self.tiled_panes.update_pane_arrow_fonts(should_support_arrow_fonts);
+        self.floating_panes
+            .update_pane_arrow_fonts(should_support_arrow_fonts);
+        self.tiled_panes
+            .update_pane_arrow_fonts(should_support_arrow_fonts);
         for (_, pane) in self.suppressed_panes.values_mut() {
             pane.update_arrow_fonts(should_support_arrow_fonts);
         }

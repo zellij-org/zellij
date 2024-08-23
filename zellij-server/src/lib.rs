@@ -274,7 +274,10 @@ impl SessionMetaData {
                 .send_to_screen(ScreenInstruction::Reconfigure {
                     client_id,
                     keybinds: new_config.keybinds.clone(),
-                    default_mode: new_config.options.default_mode.unwrap_or_else(Default::default),
+                    default_mode: new_config
+                        .options
+                        .default_mode
+                        .unwrap_or_else(Default::default),
                     theme: new_config
                         .theme_config(new_config.options.theme.as_ref())
                         .unwrap_or_else(|| default_palette()),

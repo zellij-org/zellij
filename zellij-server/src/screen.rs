@@ -2212,14 +2212,17 @@ impl Screen {
 
         // global configuration
         self.default_mode_info.update_theme(theme);
-        self.default_mode_info.update_rounded_corners(rounded_corners);
+        self.default_mode_info
+            .update_rounded_corners(rounded_corners);
         self.default_shell = default_shell.clone();
         self.auto_layout = auto_layout;
         self.copy_options.command = copy_command.clone();
         self.copy_options.copy_on_select = copy_on_select;
         self.draw_pane_frames = pane_frames;
-        self.default_mode_info.update_arrow_fonts(should_support_arrow_fonts);
-        self.default_mode_info.update_hide_session_name(hide_session_name);
+        self.default_mode_info
+            .update_arrow_fonts(should_support_arrow_fonts);
+        self.default_mode_info
+            .update_hide_session_name(hide_session_name);
         if let Some(copy_to_clipboard) = copy_to_clipboard {
             self.copy_options.clipboard = copy_to_clipboard;
         }
@@ -2232,7 +2235,6 @@ impl Screen {
             tab.set_pane_frames(pane_frames);
             tab.update_arrow_fonts(should_support_arrow_fonts);
         }
-
 
         // client specific configuration
         if self.connected_clients_contains(&client_id) {
@@ -4143,7 +4145,21 @@ pub(crate) fn screen_thread_main(
                 hide_session_name,
             } => {
                 screen
-                    .reconfigure(keybinds, default_mode, theme, simplified_ui, default_shell, pane_frames, copy_command, copy_to_clipboard, copy_on_select, auto_layout, rounded_corners, hide_session_name, client_id)
+                    .reconfigure(
+                        keybinds,
+                        default_mode,
+                        theme,
+                        simplified_ui,
+                        default_shell,
+                        pane_frames,
+                        copy_command,
+                        copy_to_clipboard,
+                        copy_on_select,
+                        auto_layout,
+                        rounded_corners,
+                        hide_session_name,
+                        client_id,
+                    )
                     .non_fatal();
             },
             ScreenInstruction::RerunCommandPane(terminal_pane_id) => {
