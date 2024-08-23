@@ -55,7 +55,7 @@ use zellij_utils::{
         PluginCapabilities, Style, TabInfo,
     },
     errors::{ContextType, ScreenContext},
-    input::{get_mode_info, options::Options},
+    input::get_mode_info,
     ipc::{ClientAttributes, PixelDimensions, ServerToClientMsg},
 };
 
@@ -365,9 +365,18 @@ pub enum ScreenInstruction {
     ListClientsMetadata(Option<PathBuf>, ClientId), // Option<PathBuf> - default shell
     Reconfigure {
         client_id: ClientId,
-        keybinds: Option<Keybinds>,
-        default_mode: Option<InputMode>,
-        theme: Option<Palette>,
+        keybinds: Keybinds,
+        default_mode: InputMode,
+        theme: Palette,
+        simplified_ui: bool,
+        default_shell: Option<PathBuf>,
+        pane_frames: bool,
+        copy_command: Option<String>,
+        copy_to_clipboard: Option<Clipboard>,
+        copy_on_select: bool,
+        auto_layout: bool,
+        rounded_corners: bool,
+        hide_session_name: bool,
     },
     RerunCommandPane(u32), // u32 - terminal pane id
 }
@@ -1740,6 +1749,7 @@ impl Screen {
             .unwrap_or(&self.default_mode_info);
         let previous_mode = previous_mode_info.mode;
         mode_info.style = previous_mode_info.style;
+        mode_info.capabilities = previous_mode_info.capabilities;
 
         let err_context = || {
             format!(
@@ -2179,22 +2189,48 @@ impl Screen {
         }
         Ok(())
     }
-    pub fn reconfigure_mode_info(
+    pub fn reconfigure(
         &mut self,
-        new_keybinds: Option<Keybinds>,
-        new_default_mode: Option<InputMode>,
-        theme: Option<Palette>,
+        new_keybinds: Keybinds,
+        new_default_mode: InputMode,
+        theme: Palette,
+        simplified_ui: bool,
+        default_shell: Option<PathBuf>,
+        pane_frames: bool,
+        copy_command: Option<String>,
+        copy_to_clipboard: Option<Clipboard>,
+        copy_on_select: bool,
+        auto_layout: bool,
+        rounded_corners: bool,
+        hide_session_name: bool,
         client_id: ClientId,
     ) -> Result<()> {
-        let should_update_mode_info =
-            new_keybinds.is_some() || new_default_mode.is_some() || theme.is_some();
+        let should_support_arrow_fonts = !simplified_ui;
 
-        // themes are currently global and not per-client
-        if let Some(theme) = theme {
-            self.default_mode_info.update_theme(theme);
-            for tab in self.tabs.values_mut() {
-                tab.update_theme(theme);
-            }
+        // global configuration
+        self.default_mode_info.update_theme(theme);
+        self.default_mode_info
+            .update_rounded_corners(rounded_corners);
+        self.default_shell = default_shell.clone();
+        self.auto_layout = auto_layout;
+        self.copy_options.command = copy_command.clone();
+        self.copy_options.copy_on_select = copy_on_select;
+        self.draw_pane_frames = pane_frames;
+        self.default_mode_info
+            .update_arrow_fonts(should_support_arrow_fonts);
+        self.default_mode_info
+            .update_hide_session_name(hide_session_name);
+        if let Some(copy_to_clipboard) = copy_to_clipboard {
+            self.copy_options.clipboard = copy_to_clipboard;
+        }
+        for tab in self.tabs.values_mut() {
+            tab.update_theme(theme);
+            tab.update_rounded_corners(rounded_corners);
+            tab.update_default_shell(default_shell.clone());
+            tab.update_auto_layout(auto_layout);
+            tab.update_copy_options(&self.copy_options);
+            tab.set_pane_frames(pane_frames);
+            tab.update_arrow_fonts(should_support_arrow_fonts);
         }
 
         // client specific configuration
@@ -2203,27 +2239,21 @@ impl Screen {
                 .mode_info
                 .entry(client_id)
                 .or_insert_with(|| self.default_mode_info.clone());
-            if let Some(new_keybinds) = new_keybinds {
-                mode_info.update_keybinds(new_keybinds);
-            }
-            if let Some(new_default_mode) = new_default_mode {
-                mode_info.update_default_mode(new_default_mode);
-            }
-            if let Some(theme) = theme {
-                mode_info.update_theme(theme);
-            }
-            if should_update_mode_info {
-                for tab in self.tabs.values_mut() {
-                    tab.change_mode_info(mode_info.clone(), client_id);
-                    tab.mark_active_pane_for_rerender(client_id);
-                }
+            mode_info.update_keybinds(new_keybinds);
+            mode_info.update_default_mode(new_default_mode);
+            mode_info.update_theme(theme);
+            mode_info.update_arrow_fonts(should_support_arrow_fonts);
+            mode_info.update_hide_session_name(hide_session_name);
+            for tab in self.tabs.values_mut() {
+                tab.change_mode_info(mode_info.clone(), client_id);
+                tab.mark_active_pane_for_rerender(client_id);
             }
         }
 
-        if should_update_mode_info {
-            for tab in self.tabs.values_mut() {
-                tab.update_input_modes()?;
-            }
+        // this needs to be done separately at the end because it applies some of the above changes
+        // and propagates them to plugins
+        for tab in self.tabs.values_mut() {
+            tab.update_input_modes()?;
         }
         Ok(())
     }
@@ -4091,9 +4121,32 @@ pub(crate) fn screen_thread_main(
                 keybinds,
                 default_mode,
                 theme,
+                simplified_ui,
+                default_shell,
+                pane_frames,
+                copy_to_clipboard,
+                copy_command,
+                copy_on_select,
+                auto_layout,
+                rounded_corners,
+                hide_session_name,
             } => {
                 screen
-                    .reconfigure_mode_info(keybinds, default_mode, theme, client_id)
+                    .reconfigure(
+                        keybinds,
+                        default_mode,
+                        theme,
+                        simplified_ui,
+                        default_shell,
+                        pane_frames,
+                        copy_command,
+                        copy_to_clipboard,
+                        copy_on_select,
+                        auto_layout,
+                        rounded_corners,
+                        hide_session_name,
+                        client_id,
+                    )
                     .non_fatal();
             },
             ScreenInstruction::RerunCommandPane(terminal_pane_id) => {

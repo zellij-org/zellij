@@ -826,6 +826,7 @@ impl WasmBridge {
         client_id: ClientId,
         keybinds: Option<Keybinds>,
         default_mode: Option<InputMode>,
+        default_shell: Option<TerminalAction>,
     ) -> Result<()> {
         let plugins_to_reconfigure: Vec<Arc<Mutex<RunningPlugin>>> = self
             .plugin_map
@@ -848,10 +849,12 @@ impl WasmBridge {
         if let Some(keybinds) = keybinds.as_ref() {
             self.keybinds.insert(client_id, keybinds.clone());
         }
+        self.default_shell = default_shell.clone();
         for running_plugin in plugins_to_reconfigure {
             task::spawn({
                 let running_plugin = running_plugin.clone();
                 let keybinds = keybinds.clone();
+                let default_shell = default_shell.clone();
                 async move {
                     let mut running_plugin = running_plugin.lock().unwrap();
                     if let Some(keybinds) = keybinds {
@@ -860,6 +863,7 @@ impl WasmBridge {
                     if let Some(default_mode) = default_mode {
                         running_plugin.update_default_mode(default_mode);
                     }
+                    running_plugin.update_default_shell(default_shell);
                 }
             });
         }

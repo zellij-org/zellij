@@ -497,6 +497,8 @@ pub trait Pane {
         None
     } // only relevant to terminal panes
     fn update_theme(&mut self, _theme: Palette) {}
+    fn update_arrow_fonts(&mut self, _should_support_arrow_fonts: bool) {}
+    fn update_rounded_corners(&mut self, _rounded_corners: bool) {}
 }
 
 #[derive(Clone, Debug)]
@@ -3820,6 +3822,39 @@ impl Tab {
         for (_, pane) in self.suppressed_panes.values_mut() {
             pane.update_theme(theme);
         }
+    }
+    pub fn update_rounded_corners(&mut self, rounded_corners: bool) {
+        self.style.rounded_corners = rounded_corners;
+        self.floating_panes
+            .update_pane_rounded_corners(rounded_corners);
+        self.tiled_panes
+            .update_pane_rounded_corners(rounded_corners);
+        for (_, pane) in self.suppressed_panes.values_mut() {
+            pane.update_rounded_corners(rounded_corners);
+        }
+    }
+    pub fn update_arrow_fonts(&mut self, should_support_arrow_fonts: bool) {
+        self.arrow_fonts = should_support_arrow_fonts;
+        self.floating_panes
+            .update_pane_arrow_fonts(should_support_arrow_fonts);
+        self.tiled_panes
+            .update_pane_arrow_fonts(should_support_arrow_fonts);
+        for (_, pane) in self.suppressed_panes.values_mut() {
+            pane.update_arrow_fonts(should_support_arrow_fonts);
+        }
+    }
+    pub fn update_default_shell(&mut self, default_shell: Option<PathBuf>) {
+        self.default_shell = default_shell;
+    }
+    pub fn update_copy_options(&mut self, copy_options: &CopyOptions) {
+        self.clipboard_provider = match &copy_options.command {
+            Some(command) => ClipboardProvider::Command(CopyCommand::new(command.clone())),
+            None => ClipboardProvider::Osc52(copy_options.clipboard),
+        };
+        self.copy_on_select = copy_options.copy_on_select;
+    }
+    pub fn update_auto_layout(&mut self, auto_layout: bool) {
+        self.auto_layout = auto_layout;
     }
 }
 

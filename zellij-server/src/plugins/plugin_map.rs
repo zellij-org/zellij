@@ -432,4 +432,7 @@ impl RunningPlugin {
     pub fn update_default_mode(&mut self, default_mode: InputMode) {
         self.store.data_mut().default_mode = default_mode;
     }
+    pub fn update_default_shell(&mut self, default_shell: Option<TerminalAction>) {
+        self.store.data_mut().default_shell = default_shell;
+    }
 }
