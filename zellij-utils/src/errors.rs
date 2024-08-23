@@ -377,6 +377,7 @@ pub enum PtyContext {
     FillPluginCwd,
     DumpLayoutToPlugin,
     ListClientsMetadata,
+    Reconfigure,
     Exit,
 }
 

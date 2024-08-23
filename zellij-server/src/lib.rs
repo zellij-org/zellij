@@ -281,6 +281,12 @@ impl SessionMetaData {
                     simplified_ui: new_config.options.simplified_ui.or(Some(false)),
                     default_shell: new_config.options.default_shell,
                     pane_frames: new_config.options.pane_frames.or(Some(true)),
+                    copy_command: new_config.options.copy_command,
+                    copy_to_clipboard: new_config.options.copy_clipboard,
+                    copy_on_select: new_config.options.copy_on_select.or(Some(true)),
+                    auto_layout: new_config.options.auto_layout.or(Some(true)),
+                    rounded_corners: Some(new_config.ui.pane_frames.rounded_corners),
+                    hide_session_name: Some(new_config.ui.pane_frames.hide_session_name),
                 })
                 .unwrap();
             self.senders
@@ -289,6 +295,12 @@ impl SessionMetaData {
                     keybinds: Some(new_config.keybinds),
                     default_mode: new_config.options.default_mode,
                     default_shell: self.default_shell.clone(),
+                })
+                .unwrap();
+            self.senders
+                .send_to_pty(PtyInstruction::Reconfigure {
+                    client_id,
+                    default_editor: new_config.options.scrollback_editor,
                 })
                 .unwrap();
         }

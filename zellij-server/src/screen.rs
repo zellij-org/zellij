@@ -372,6 +372,12 @@ pub enum ScreenInstruction {
         simplified_ui: Option<bool>,
         default_shell: Option<PathBuf>,
         pane_frames: Option<bool>,
+        copy_command: Option<String>,
+        copy_to_clipboard: Option<Clipboard>,
+        copy_on_select: Option<bool>,
+        auto_layout: Option<bool>,
+        rounded_corners: Option<bool>,
+        hide_session_name: Option<bool>,
     },
     RerunCommandPane(u32), // u32 - terminal pane id
 }
@@ -2186,7 +2192,7 @@ impl Screen {
         }
         Ok(())
     }
-    pub fn reconfigure( // TODO: rename to just reconfigure?
+    pub fn reconfigure(
         &mut self,
         new_keybinds: Option<Keybinds>,
         new_default_mode: Option<InputMode>,
@@ -2194,10 +2200,16 @@ impl Screen {
         simplified_ui: Option<bool>,
         default_shell: Option<PathBuf>,
         pane_frames: Option<bool>,
+        copy_command: Option<String>,
+        copy_to_clipboard: Option<Clipboard>,
+        copy_on_select: Option<bool>,
+        auto_layout: Option<bool>,
+        rounded_corners: Option<bool>,
+        hide_session_name: Option<bool>,
         client_id: ClientId,
     ) -> Result<()> {
         let should_update_mode_info =
-            new_keybinds.is_some() || new_default_mode.is_some() || theme.is_some() || simplified_ui.is_some();
+            new_keybinds.is_some() || new_default_mode.is_some() || theme.is_some() || simplified_ui.is_some() || hide_session_name.is_some();
 
         // themes are currently global and not per-client
         if let Some(theme) = theme {
@@ -2207,10 +2219,36 @@ impl Screen {
             }
         }
 
+        if let Some(rounded_corners) = rounded_corners {
+            self.default_mode_info.update_rounded_corners(rounded_corners);
+            for tab in self.tabs.values_mut() {
+                tab.update_rounded_corners(rounded_corners);
+            }
+        }
+
         self.default_shell = default_shell.clone();
         for tab in self.tabs.values_mut() {
             tab.update_default_shell(default_shell.clone());
         }
+
+        if let Some(auto_layout) = auto_layout {
+            self.auto_layout = auto_layout;
+            for tab in self.tabs.values_mut() {
+                tab.update_auto_layout(auto_layout);
+            }
+        }
+
+        self.copy_options.command = copy_command.clone();
+        if let Some(clipboard) = copy_to_clipboard {
+            self.copy_options.clipboard = clipboard;
+        }
+        if let Some(copy_on_select) = copy_on_select {
+            self.copy_options.copy_on_select = copy_on_select;
+        }
+        for tab in self.tabs.values_mut() {
+            tab.update_copy_options(&self.copy_options);
+        }
+
         
         if let Some(pane_frames) = pane_frames {
             self.draw_pane_frames = pane_frames;
@@ -2225,6 +2263,10 @@ impl Screen {
             for tab in self.tabs.values_mut() {
                 tab.update_arrow_fonts(should_support_arrow_fonts);
             }
+        }
+
+        if let Some(hide_session_name) = hide_session_name {
+            self.default_mode_info.update_hide_session_name(hide_session_name);
         }
 
         // client specific configuration
@@ -2245,6 +2287,9 @@ impl Screen {
             if let Some(simplified_ui) = simplified_ui {
                 let should_support_arrow_fonts = !simplified_ui;
                 mode_info.update_arrow_fonts(should_support_arrow_fonts);
+            }
+            if let Some(hide_session_name) = hide_session_name {
+                mode_info.update_hide_session_name(hide_session_name);
             }
             if should_update_mode_info {
                 for tab in self.tabs.values_mut() {
@@ -4137,10 +4182,16 @@ pub(crate) fn screen_thread_main(
                 theme,
                 simplified_ui,
                 default_shell,
-                pane_frames
+                pane_frames,
+                copy_to_clipboard,
+                copy_command,
+                copy_on_select,
+                auto_layout,
+                rounded_corners,
+                hide_session_name,
             } => {
                 screen
-                    .reconfigure(keybinds, default_mode, theme, simplified_ui, default_shell, pane_frames, client_id)
+                    .reconfigure(keybinds, default_mode, theme, simplified_ui, default_shell, pane_frames, copy_command, copy_to_clipboard, copy_on_select, auto_layout, rounded_corners, hide_session_name, client_id)
                     .non_fatal();
             },
             ScreenInstruction::RerunCommandPane(terminal_pane_id) => {

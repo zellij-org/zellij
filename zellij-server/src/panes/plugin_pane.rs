@@ -688,6 +688,10 @@ impl Pane for PluginPane {
         }
         self.set_should_render(true);
     }
+    fn update_rounded_corners(&mut self, rounded_corners: bool) {
+        self.style.rounded_corners = rounded_corners;
+        self.frame.clear();
+    }
 }
 
 impl PluginPane {

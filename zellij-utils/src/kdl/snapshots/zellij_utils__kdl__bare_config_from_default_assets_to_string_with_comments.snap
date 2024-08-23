@@ -1,6 +1,6 @@
 ---
 source: zellij-utils/src/kdl/mod.rs
-assertion_line: 5422
+assertion_line: 5441
 expression: fake_config_stringified
 ---
 keybinds clear-defaults=true {
@@ -223,6 +223,9 @@ keybinds clear-defaults=true {
         bind "z" { ToggleFocusFullscreen; SwitchToMode "normal"; }
     }
 }
+
+// Plugin aliases - can be used to change the implementation of Zellij
+// changing these requires a restart to take effect
 plugins {
     compact-bar location="zellij:compact-bar"
     configuration location="zellij:configuration"
@@ -270,10 +273,12 @@ plugins {
 // default_layout "compact"
  
 // The folder in which Zellij will look for layouts
+// (Requires restart)
 // 
 // layout_dir "/tmp"
  
 // The folder in which Zellij will look for themes
+// (Requires restart)
 // 
 // theme_dir "/tmp"
  
@@ -296,6 +301,7 @@ plugins {
 // When attaching to an existing session with other users,
 // should the session be mirrored (true)
 // or should each user have their own cursor (false)
+// (Requires restart)
 // Default: false
 // 
 // mirror_session true
@@ -312,6 +318,7 @@ plugins {
 // Configure the scroll back buffer size
 // This is the number of lines zellij stores for each pane in the scroll back
 // buffer. Excess number of lines are discarded in a FIFO fashion.
+// (Requires restart)
 // Valid values: positive integers
 // Default value: 10000
 // 
@@ -389,6 +396,7 @@ plugins {
  
 // Enable or disable the rendering of styled and colored underlines (undercurl).
 // May need to be disabled for certain unsupported terminals
+// (Requires restart)
 // Default: true
 // 
 // styled_underlines false
@@ -399,11 +407,13 @@ plugins {
  
 // Enable or disable writing of session metadata to disk (if disabled, other sessions might not know
 // metadata info on this session)
+// (Requires restart)
 // Default: false
 // 
 // disable_session_metadata false
  
 // Enable or disable support for the enhanced Kitty Keyboard Protocol (the host terminal must also support it)
+// (Requires restart)
 // Default: true (if the host terminal supports it)
 // 
 // support_kitty_keyboard_protocol false

@@ -2427,8 +2427,11 @@ impl Options {
     }
     fn layout_dir_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
         let comment_text = format!(
-            "{}\n{}\n{}",
-            " ", "// The folder in which Zellij will look for layouts", "// ",
+            "{}\n{}\n{}\n{}",
+            " ",
+            "// The folder in which Zellij will look for layouts",
+            "// (Requires restart)",
+            "// ",
         );
 
         let create_node = |node_value: &str| -> KdlNode {
@@ -2452,8 +2455,11 @@ impl Options {
     }
     fn theme_dir_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
         let comment_text = format!(
-            "{}\n{}\n{}",
-            " ", "// The folder in which Zellij will look for themes", "// ",
+            "{}\n{}\n{}\n{}",
+            " ",
+            "// The folder in which Zellij will look for themes",
+            "// (Requires restart)",
+            "// ",
         );
 
         let create_node = |node_value: &str| -> KdlNode {
@@ -2539,11 +2545,12 @@ impl Options {
     }
     fn mirror_session_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
         let comment_text = format!(
-            "{}\n{}\n{}\n{}\n{}\n{}",
+            "{}\n{}\n{}\n{}\n{}\n{}\n{}",
             " ",
             "// When attaching to an existing session with other users,",
             "// should the session be mirrored (true)",
             "// or should each user have their own cursor (false)",
+            "// (Requires restart)",
             "// Default: false",
             "// ",
         );
@@ -2604,11 +2611,12 @@ impl Options {
     }
     fn scroll_buffer_size_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
         let comment_text = format!(
-            "{}\n{}\n{}\n{}\n{}\n{}\n{}",
+            "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
             " ",
             "// Configure the scroll back buffer size",
             "// This is the number of lines zellij stores for each pane in the scroll back",
             "// buffer. Excess number of lines are discarded in a FIFO fashion.",
+            "// (Requires restart)",
             "// Valid values: positive integers",
             "// Default value: 10000",
             "// ",
@@ -2934,10 +2942,11 @@ impl Options {
     }
     fn styled_underlines_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
         let comment_text = format!(
-            "{}\n{}\n{}\n{}\n{}",
+            "{}\n{}\n{}\n{}\n{}\n{}",
             " ",
             "// Enable or disable the rendering of styled and colored underlines (undercurl).",
             "// May need to be disabled for certain unsupported terminals",
+            "// (Requires restart)",
             "// Default: true",
             "// ",
         );
@@ -2987,10 +2996,11 @@ impl Options {
         }
     }
     fn disable_session_metadata_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
-        let comment_text = format!("{}\n{}\n{}\n{}\n{}",
+        let comment_text = format!("{}\n{}\n{}\n{}\n{}\n{}",
             " ",
             "// Enable or disable writing of session metadata to disk (if disabled, other sessions might not know",
             "// metadata info on this session)",
+            "// (Requires restart)",
             "// Default: false",
             "// ",
         );
@@ -3015,9 +3025,10 @@ impl Options {
         }
     }
     fn support_kitty_keyboard_protocol_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
-        let comment_text = format!("{}\n{}\n{}\n{}",
+        let comment_text = format!("{}\n{}\n{}\n{}\n{}",
             " ",
             "// Enable or disable support for the enhanced Kitty Keyboard Protocol (the host terminal must also support it)",
+            "// (Requires restart)",
             "// Default: true (if the host terminal supports it)",
             "// ",
         );
@@ -3626,7 +3637,7 @@ impl Config {
             document.nodes_mut().push(themes);
         }
 
-        let plugins = self.plugins.to_kdl();
+        let plugins = self.plugins.to_kdl(add_comments);
         document.nodes_mut().push(plugins);
 
         if let Some(ui_config) = self.ui.to_kdl() {
@@ -3668,7 +3679,7 @@ impl PluginAliases {
         }
         Ok(PluginAliases { aliases })
     }
-    pub fn to_kdl(&self) -> KdlNode {
+    pub fn to_kdl(&self, add_comments: bool) -> KdlNode {
         let mut plugins = KdlNode::new("plugins");
         let mut plugins_children = KdlDocument::new();
         for (alias_name, plugin_alias) in self.aliases.iter() {
@@ -3706,6 +3717,14 @@ impl PluginAliases {
             plugins_children.nodes_mut().push(plugin_alias_node);
         }
         plugins.set_children(plugins_children);
+
+        if add_comments {
+            plugins.set_leading(format!(
+                "\n{}\n{}\n",
+                "// Plugin aliases - can be used to change the implementation of Zellij",
+                "// changing these requires a restart to take effect",
+            ));
+        }
         plugins
     }
 }
@@ -5148,7 +5167,7 @@ fn plugins_to_string() {
         }"##;
     let document: KdlDocument = fake_config.parse().unwrap();
     let deserialized = PluginAliases::from_kdl(document.get("plugins").unwrap()).unwrap();
-    let serialized = PluginAliases::to_kdl(&deserialized);
+    let serialized = PluginAliases::to_kdl(&deserialized, true);
     let deserialized_from_serialized = PluginAliases::from_kdl(
         serialized
             .to_string()
@@ -5176,7 +5195,7 @@ fn plugins_to_string_with_file_and_web() {
         }"##;
     let document: KdlDocument = fake_config.parse().unwrap();
     let deserialized = PluginAliases::from_kdl(document.get("plugins").unwrap()).unwrap();
-    let serialized = PluginAliases::to_kdl(&deserialized);
+    let serialized = PluginAliases::to_kdl(&deserialized, true);
     let deserialized_from_serialized = PluginAliases::from_kdl(
         serialized
             .to_string()
