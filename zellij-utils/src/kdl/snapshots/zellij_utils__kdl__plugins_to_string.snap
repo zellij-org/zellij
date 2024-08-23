@@ -1,8 +1,11 @@
 ---
 source: zellij-utils/src/kdl/mod.rs
-assertion_line: 3874
+assertion_line: 5184
 expression: serialized.to_string()
 ---
+
+// Plugin aliases - can be used to change the implementation of Zellij
+// changing these requires a restart to take effect
 plugins {
     compact-bar location="zellij:compact-bar"
     filepicker location="zellij:strider" {

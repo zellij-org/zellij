@@ -1,6 +1,6 @@
 ---
 source: zellij-utils/src/kdl/mod.rs
-assertion_line: 4987
+assertion_line: 5380
 expression: fake_document.to_string()
 ---
  
@@ -36,10 +36,12 @@ default_cwd "/tmp/foo"
 default_layout "compact"
  
 // The folder in which Zellij will look for layouts
+// (Requires restart)
 // 
 layout_dir "/tmp/layouts"
  
 // The folder in which Zellij will look for themes
+// (Requires restart)
 // 
 theme_dir "/tmp/themes"
  
@@ -62,12 +64,14 @@ pane_frames false
 // When attaching to an existing session with other users,
 // should the session be mirrored (true)
 // or should each user have their own cursor (false)
+// (Requires restart)
 // Default: false
 // 
 mirror_session true
  
 // Choose what to do when zellij receives SIGTERM, SIGINT, SIGQUIT or SIGHUP
 // eg. when terminal window with an active zellij session is closed
+// (Requires restart)
 // Options:
 //   - detach (Default)
 //   - quit
@@ -77,6 +81,7 @@ on_force_close "quit"
 // Configure the scroll back buffer size
 // This is the number of lines zellij stores for each pane in the scroll back
 // buffer. Excess number of lines are discarded in a FIFO fashion.
+// (Requires restart)
 // Valid values: positive integers
 // Default value: 10000
 // 
@@ -154,6 +159,7 @@ scrollback_lines_to_serialize 1000
  
 // Enable or disable the rendering of styled and colored underlines (undercurl).
 // May need to be disabled for certain unsupported terminals
+// (Requires restart)
 // Default: true
 // 
 styled_underlines false
@@ -164,11 +170,13 @@ serialization_interval 1
  
 // Enable or disable writing of session metadata to disk (if disabled, other sessions might not know
 // metadata info on this session)
+// (Requires restart)
 // Default: false
 // 
 disable_session_metadata true
  
 // Enable or disable support for the enhanced Kitty Keyboard Protocol (the host terminal must also support it)
+// (Requires restart)
 // Default: true (if the host terminal supports it)
 // 
 support_kitty_keyboard_protocol false
