@@ -1178,6 +1178,17 @@ impl ModeInfo {
     pub fn update_theme(&mut self, theme: Palette) {
         self.style.colors = theme;
     }
+    pub fn update_rounded_corners(&mut self, rounded_corners: bool) {
+        self.style.rounded_corners = rounded_corners;
+    }
+    pub fn update_arrow_fonts(&mut self, should_support_arrow_fonts: bool) {
+        // it is honestly quite baffling to me how "arrow_fonts: false" can mean "I support arrow
+        // fonts", but since this is a public API... ¯\_(ツ)_/¯
+        self.capabilities.arrow_fonts = !should_support_arrow_fonts;
+    }
+    pub fn update_hide_session_name(&mut self, hide_session_name: bool) {
+        self.style.hide_session_name = hide_session_name;
+    }
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize, Serialize)]

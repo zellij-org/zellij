@@ -1772,6 +1772,17 @@ impl TiledPanes {
             pane.update_theme(theme);
         }
     }
+    pub fn update_pane_arrow_fonts(&mut self, should_support_arrow_fonts: bool) {
+        for pane in self.panes.values_mut() {
+            pane.update_arrow_fonts(should_support_arrow_fonts);
+        }
+    }
+    pub fn update_pane_rounded_corners(&mut self, rounded_corners: bool) {
+        self.style.rounded_corners = rounded_corners;
+        for pane in self.panes.values_mut() {
+            pane.update_rounded_corners(rounded_corners);
+        }
+    }
 }
 
 #[allow(clippy::borrowed_box)]

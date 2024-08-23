@@ -798,6 +798,14 @@ impl Pane for TerminalPane {
             self.render_first_run_banner();
         }
     }
+    fn update_arrow_fonts(&mut self, should_support_arrow_fonts: bool) {
+        self.arrow_fonts = should_support_arrow_fonts;
+        self.grid.update_arrow_fonts(should_support_arrow_fonts);
+    }
+    fn update_rounded_corners(&mut self, rounded_corners: bool) {
+        self.style.rounded_corners = rounded_corners;
+        self.frame.clear();
+    }
 }
 
 impl TerminalPane {

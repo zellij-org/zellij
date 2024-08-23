@@ -2158,6 +2158,9 @@ impl Grid {
     pub fn update_theme(&mut self, theme: Palette) {
         self.style.colors = theme.clone();
     }
+    pub fn update_arrow_fonts(&mut self, should_support_arrow_fonts: bool) {
+        self.arrow_fonts = should_support_arrow_fonts;
+    }
 }
 
 impl Perform for Grid {
