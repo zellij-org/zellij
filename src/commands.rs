@@ -386,19 +386,25 @@ fn attach_with_session_name(
 pub(crate) fn start_client(opts: CliArgs) {
     // look for old YAML config/layout/theme files and convert them to KDL
     convert_old_yaml_files(&opts);
-    let (config, layout, config_options, config_without_layout, config_options_without_layout) =
-        match Setup::from_cli_args(&opts) {
-            Ok(results) => results,
-            Err(e) => {
-                if let ConfigError::KdlError(error) = e {
-                    let report: Report = error.into();
-                    eprintln!("{:?}", report);
-                } else {
-                    eprintln!("{}", e);
-                }
-                process::exit(1);
-            },
-        };
+    let (
+        config,
+        layout,
+        config_options,
+        mut config_without_layout,
+        mut config_options_without_layout,
+    ) = match Setup::from_cli_args(&opts) {
+        Ok(results) => results,
+        Err(e) => {
+            if let ConfigError::KdlError(error) = e {
+                let report: Report = error.into();
+                eprintln!("{:?}", report);
+            } else {
+                eprintln!("{}", e);
+            }
+            process::exit(1);
+        },
+    };
+
     let mut reconnect_to_session: Option<ConnectToSession> = None;
     let os_input = get_os_input(get_client_os_input);
     loop {
@@ -415,6 +421,11 @@ pub(crate) fn start_client(opts: CliArgs) {
             // untested and pretty involved function
             //
             // ideally, we should write tests for this whole function and refctor it
+            reload_config_from_disk(
+                &mut config_without_layout,
+                &mut config_options_without_layout,
+                &opts,
+            );
             if reconnect_to_session.name.is_some() {
                 opts.command = Some(Command::Sessions(Sessions::Attach {
                     session_name: reconnect_to_session.name.clone(),
@@ -710,4 +721,20 @@ pub(crate) fn list_aliases(opts: CliArgs) {
         println!("{}", alias);
     }
     process::exit(0);
+}
+
+fn reload_config_from_disk(
+    config_without_layout: &mut Config,
+    config_options_without_layout: &mut Options,
+    opts: &CliArgs,
+) {
+    match Setup::from_cli_args(&opts) {
+        Ok((_, _, _, reloaded_config_without_layout, reloaded_config_options_without_layout)) => {
+            *config_without_layout = reloaded_config_without_layout;
+            *config_options_without_layout = reloaded_config_options_without_layout;
+        },
+        Err(e) => {
+            log::error!("Failed to reload config: {}", e);
+        },
+    };
 }

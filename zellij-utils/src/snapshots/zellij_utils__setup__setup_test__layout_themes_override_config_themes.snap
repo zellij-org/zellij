@@ -1,6 +1,6 @@
 ---
 source: zellij-utils/src/setup.rs
-assertion_line: 839
+assertion_line: 840
 expression: "format!(\"{:#?}\", config)"
 ---
 Config {
@@ -5671,6 +5671,7 @@ Config {
                     0,
                 ),
             },
+            sourced_from_external_file: false,
         },
         "theme-from-config": Theme {
             palette: Palette {
@@ -5772,6 +5773,7 @@ Config {
                     0,
                 ),
             },
+            sourced_from_external_file: false,
         },
         "theme-from-layout": Theme {
             palette: Palette {
@@ -5873,6 +5875,7 @@ Config {
                     0,
                 ),
             },
+            sourced_from_external_file: false,
         },
     },
     plugins: PluginAliases {

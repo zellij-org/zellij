@@ -675,6 +675,23 @@ impl Pane for PluginPane {
         self.pane_name = String::from_utf8_lossy(&buf).to_string();
         self.set_should_render(true);
     }
+    fn update_theme(&mut self, theme: Palette) {
+        self.style.colors = theme.clone();
+        for grid in self.grids.values_mut() {
+            grid.update_theme(theme.clone());
+        }
+    }
+    fn update_arrow_fonts(&mut self, should_support_arrow_fonts: bool) {
+        self.arrow_fonts = should_support_arrow_fonts;
+        for grid in self.grids.values_mut() {
+            grid.update_arrow_fonts(should_support_arrow_fonts);
+        }
+        self.set_should_render(true);
+    }
+    fn update_rounded_corners(&mut self, rounded_corners: bool) {
+        self.style.rounded_corners = rounded_corners;
+        self.frame.clear();
+    }
 }
 
 impl PluginPane {

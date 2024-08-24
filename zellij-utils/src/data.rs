@@ -120,7 +120,7 @@ impl fmt::Display for KeyWithModifier {
                     .iter()
                     .map(|m| m.to_string())
                     .collect::<Vec<_>>()
-                    .join("-"),
+                    .join(" "),
                 self.bare_key
             )
         }
@@ -919,6 +919,8 @@ pub enum Event {
     PaneClosed(PaneId),
     EditPaneOpened(u32, Context),              // u32 - terminal_pane_id
     EditPaneExited(u32, Option<i32>, Context), // u32 - terminal_pane_id, Option<i32> - exit code
+    CommandPaneReRun(u32, Context),            // u32 - terminal_pane_id, Option<i32> -
+    FailedToWriteConfigToDisk(Option<String>), // String -> the file path we failed to write
 }
 
 #[derive(
@@ -1172,6 +1174,20 @@ impl ModeInfo {
     }
     pub fn update_default_mode(&mut self, new_default_mode: InputMode) {
         self.base_mode = Some(new_default_mode);
+    }
+    pub fn update_theme(&mut self, theme: Palette) {
+        self.style.colors = theme;
+    }
+    pub fn update_rounded_corners(&mut self, rounded_corners: bool) {
+        self.style.rounded_corners = rounded_corners;
+    }
+    pub fn update_arrow_fonts(&mut self, should_support_arrow_fonts: bool) {
+        // it is honestly quite baffling to me how "arrow_fonts: false" can mean "I support arrow
+        // fonts", but since this is a public API... ¯\_(ツ)_/¯
+        self.capabilities.arrow_fonts = !should_support_arrow_fonts;
+    }
+    pub fn update_hide_session_name(&mut self, hide_session_name: bool) {
+        self.style.hide_session_name = hide_session_name;
     }
 }
 
@@ -1798,7 +1814,8 @@ pub enum PluginCommand {
     DumpSessionLayout,
     CloseSelf,
     NewTabsWithLayoutInfo(LayoutInfo),
-    Reconfigure(String), // String -> stringified configuration
+    Reconfigure(String, bool), // String -> stringified configuration, bool -> save configuration
+    // file to disk
     HidePaneWithId(PaneId),
     ShowPaneWithId(PaneId, bool), // bool -> should_float_if_hidden
     OpenCommandPaneBackground(CommandToRun, Context),

@@ -160,12 +160,17 @@ message PluginCommand {
     KillSessionsPayload kill_sessions_payload = 60;
     string scan_host_folder_payload = 61;
     NewTabsWithLayoutInfoPayload new_tabs_with_layout_info_payload = 62;
-    string reconfigure_payload = 63;
+    ReconfigurePayload reconfigure_payload = 63;
     HidePaneWithIdPayload hide_pane_with_id_payload = 64;
     ShowPaneWithIdPayload show_pane_with_id_payload = 65;
     OpenCommandPanePayload open_command_pane_background_payload = 66;
     RerunCommandPanePayload rerun_command_pane_payload = 67;
   }
+}
+
+message ReconfigurePayload {
+  string config = 1;
+  bool write_to_disk = 2;
 }
 
 message RerunCommandPanePayload {

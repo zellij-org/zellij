@@ -332,6 +332,7 @@ impl ZellijPlugin for State {
                     );
                 },
                 BareKey::Char('0') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
+                    let write_to_disk = true;
                     reconfigure(
                         "
                         keybinds {
@@ -341,6 +342,7 @@ impl ZellijPlugin for State {
                         }
                     "
                         .to_owned(),
+                        write_to_disk,
                     );
                 },
                 BareKey::Char('a') if key.has_modifiers(&[KeyModifier::Alt]) => {

@@ -1,0 +1,11 @@
+---
+source: zellij-utils/src/kdl/mod.rs
+assertion_line: 3981
+expression: serialized.to_string()
+---
+env {
+    bar "foo"
+    baz "true"
+    foo "bar"
+    thing "1"
+}

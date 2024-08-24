@@ -1,0 +1,20 @@
+---
+source: zellij-utils/src/kdl/mod.rs
+assertion_line: 3749
+expression: serialized.to_string()
+---
+themes {
+    default {
+        fg 1
+        bg 10
+        red 30
+        green 40
+        yellow 50
+        blue 60
+        magenta 70
+        orange 254
+        cyan 80
+        black 20
+        white 90
+    }
+}

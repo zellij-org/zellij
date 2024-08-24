@@ -14,6 +14,7 @@ use zellij_utils::data::{Event, Resize, Style};
 use zellij_utils::errors::{prelude::*, ErrorContext};
 use zellij_utils::input::actions::Action;
 use zellij_utils::input::command::{RunCommand, TerminalAction};
+use zellij_utils::input::config::Config;
 use zellij_utils::input::layout::{
     FloatingPaneLayout, Layout, PluginAlias, PluginUserConfiguration, Run, RunPlugin,
     RunPluginLocation, RunPluginOrAlias, SplitDirection, SplitSize, TiledPaneLayout,
@@ -114,12 +115,20 @@ fn send_cli_action_to_server(
     let get_current_dir = || PathBuf::from(".");
     let actions = Action::actions_from_cli(cli_action, Box::new(get_current_dir), None).unwrap();
     let senders = session_metadata.senders.clone();
-    let client_keybinds = session_metadata.client_keybinds.clone();
-    let default_mode = session_metadata.default_mode.clone();
     let capabilities = PluginCapabilities::default();
     let client_attributes = ClientAttributes::default();
     let default_shell = None;
     let default_layout = Box::new(Layout::default());
+    let default_mode = session_metadata
+        .session_configuration
+        .get_client_configuration(&client_id)
+        .options
+        .default_mode
+        .unwrap_or(InputMode::Normal);
+    let client_keybinds = session_metadata
+        .session_configuration
+        .get_client_keybinds(&client_id)
+        .clone();
     for action in actions {
         route_action(
             action,
@@ -131,14 +140,8 @@ fn send_cli_action_to_server(
             default_shell.clone(),
             default_layout.clone(),
             None,
-            client_keybinds
-                .get(&client_id)
-                .unwrap_or(&session_metadata.client_attributes.keybinds)
-                .clone(),
-            default_mode
-                .get(&client_id)
-                .unwrap_or(&InputMode::Normal)
-                .clone(),
+            client_keybinds.clone(),
+            default_mode,
         )
         .unwrap();
     }
@@ -307,6 +310,7 @@ struct MockScreen {
     pub client_attributes: ClientAttributes,
     pub config_options: Options,
     pub session_metadata: SessionMetaData,
+    pub config: Config,
     last_opened_tab_index: Option<usize>,
 }
 
@@ -316,7 +320,7 @@ impl MockScreen {
         initial_layout: Option<TiledPaneLayout>,
         initial_floating_panes_layout: Vec<FloatingPaneLayout>,
     ) -> std::thread::JoinHandle<()> {
-        let config_options = self.config_options.clone();
+        let config = self.config.clone();
         let client_attributes = self.client_attributes.clone();
         let screen_bus = Bus::new(
             vec![self.screen_receiver.take().unwrap()],
@@ -338,7 +342,7 @@ impl MockScreen {
                     screen_bus,
                     None,
                     client_attributes,
-                    Box::new(config_options),
+                    config,
                     debug,
                     Box::new(Layout::default()),
                 )
@@ -391,7 +395,7 @@ impl MockScreen {
         initial_layout: Option<TiledPaneLayout>,
         initial_floating_panes_layout: Vec<FloatingPaneLayout>,
     ) -> std::thread::JoinHandle<()> {
-        let config_options = self.config_options.clone();
+        let config = self.config.clone();
         let client_attributes = self.client_attributes.clone();
         let screen_bus = Bus::new(
             vec![self.screen_receiver.take().unwrap()],
@@ -413,7 +417,7 @@ impl MockScreen {
                     screen_bus,
                     None,
                     client_attributes,
-                    Box::new(config_options),
+                    config,
                     debug,
                     Box::new(Layout::default()),
                 )
@@ -522,11 +526,9 @@ impl MockScreen {
             plugin_thread: None,
             pty_writer_thread: None,
             background_jobs_thread: None,
-            config_options: Default::default(),
+            session_configuration: self.session_metadata.session_configuration.clone(),
             layout,
-            client_input_modes: HashMap::new(),
-            client_keybinds: HashMap::new(),
-            default_mode: self.session_metadata.default_mode.clone(),
+            current_input_modes: self.session_metadata.current_input_modes.clone(),
         }
     }
 }
@@ -582,11 +584,9 @@ impl MockScreen {
             plugin_thread: None,
             pty_writer_thread: None,
             background_jobs_thread: None,
-            config_options: Default::default(),
             layout,
-            client_input_modes: HashMap::new(),
-            client_keybinds: HashMap::new(),
-            default_mode: HashMap::new(),
+            session_configuration: Default::default(),
+            current_input_modes: HashMap::new(),
         };
 
         let os_input = FakeInputOutput::default();
@@ -611,6 +611,7 @@ impl MockScreen {
             config_options,
             session_metadata,
             last_opened_tab_index: None,
+            config: Config::default(),
         }
     }
 }

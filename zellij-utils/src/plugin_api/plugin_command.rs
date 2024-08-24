@@ -11,9 +11,9 @@ pub use super::generated_api::api::{
         MovePayload, NewPluginArgs as ProtobufNewPluginArgs, NewTabsWithLayoutInfoPayload,
         OpenCommandPanePayload, OpenFilePayload, PaneId as ProtobufPaneId,
         PaneType as ProtobufPaneType, PluginCommand as ProtobufPluginCommand, PluginMessagePayload,
-        RequestPluginPermissionPayload, RerunCommandPanePayload, ResizePayload, RunCommandPayload,
-        SetTimeoutPayload, ShowPaneWithIdPayload, SubscribePayload, SwitchSessionPayload,
-        SwitchTabToPayload, UnsubscribePayload, WebRequestPayload,
+        ReconfigurePayload, RequestPluginPermissionPayload, RerunCommandPanePayload, ResizePayload,
+        RunCommandPayload, SetTimeoutPayload, ShowPaneWithIdPayload, SubscribePayload,
+        SwitchSessionPayload, SwitchTabToPayload, UnsubscribePayload, WebRequestPayload,
     },
     plugin_permission::PermissionType as ProtobufPermissionType,
     resize::ResizeAction as ProtobufResizeAction,
@@ -935,7 +935,10 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
             },
             Some(CommandName::Reconfigure) => match protobuf_plugin_command.payload {
                 Some(Payload::ReconfigurePayload(reconfigure_payload)) => {
-                    Ok(PluginCommand::Reconfigure(reconfigure_payload))
+                    Ok(PluginCommand::Reconfigure(
+                        reconfigure_payload.config,
+                        reconfigure_payload.write_to_disk,
+                    ))
                 },
                 _ => Err("Mismatched payload for Reconfigure"),
             },
@@ -1558,9 +1561,12 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     )),
                 })
             },
-            PluginCommand::Reconfigure(reconfigure_payload) => Ok(ProtobufPluginCommand {
+            PluginCommand::Reconfigure(config, write_to_disk) => Ok(ProtobufPluginCommand {
                 name: CommandName::Reconfigure as i32,
-                payload: Some(Payload::ReconfigurePayload(reconfigure_payload)),
+                payload: Some(Payload::ReconfigurePayload(ReconfigurePayload {
+                    config,
+                    write_to_disk,
+                })),
             }),
             PluginCommand::HidePaneWithId(pane_id_to_hide) => Ok(ProtobufPluginCommand {
                 name: CommandName::HidePaneWithId as i32,

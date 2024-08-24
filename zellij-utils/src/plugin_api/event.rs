@@ -299,6 +299,27 @@ impl TryFrom<ProtobufEvent> for Event {
                 },
                 _ => Err("Malformed payload for the EditPaneExited Event"),
             },
+            Some(ProtobufEventType::CommandPaneReRun) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::CommandPaneRerunPayload(command_pane_rerun_payload)) => {
+                    Ok(Event::CommandPaneReRun(
+                        command_pane_rerun_payload.terminal_pane_id,
+                        command_pane_rerun_payload
+                            .context
+                            .into_iter()
+                            .map(|c_i| (c_i.name, c_i.value))
+                            .collect(),
+                    ))
+                },
+                _ => Err("Malformed payload for the CommandPaneReRun Event"),
+            },
+            Some(ProtobufEventType::FailedToWriteConfigToDisk) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::FailedToWriteConfigToDiskPayload(
+                    failed_to_write_configuration_payload,
+                )) => Ok(Event::FailedToWriteConfigToDisk(
+                    failed_to_write_configuration_payload.file_path,
+                )),
+                _ => Err("Malformed payload for the FailedToWriteConfigToDisk Event"),
+            },
             None => Err("Unknown Protobuf Event"),
         }
     }
@@ -592,6 +613,27 @@ impl TryFrom<Event> for ProtobufEvent {
                     )),
                 })
             },
+            Event::CommandPaneReRun(terminal_pane_id, context) => {
+                let command_pane_rerun_payload = CommandPaneReRunPayload {
+                    terminal_pane_id,
+                    context: context
+                        .into_iter()
+                        .map(|(name, value)| ContextItem { name, value })
+                        .collect(),
+                };
+                Ok(ProtobufEvent {
+                    name: ProtobufEventType::CommandPaneReRun as i32,
+                    payload: Some(event::Payload::CommandPaneRerunPayload(
+                        command_pane_rerun_payload,
+                    )),
+                })
+            },
+            Event::FailedToWriteConfigToDisk(file_path) => Ok(ProtobufEvent {
+                name: ProtobufEventType::FailedToWriteConfigToDisk as i32,
+                payload: Some(event::Payload::FailedToWriteConfigToDiskPayload(
+                    FailedToWriteConfigToDiskPayload { file_path },
+                )),
+            }),
         }
     }
 }
@@ -1100,6 +1142,8 @@ impl TryFrom<ProtobufEventType> for EventType {
             ProtobufEventType::PaneClosed => EventType::PaneClosed,
             ProtobufEventType::EditPaneOpened => EventType::EditPaneOpened,
             ProtobufEventType::EditPaneExited => EventType::EditPaneExited,
+            ProtobufEventType::CommandPaneReRun => EventType::CommandPaneReRun,
+            ProtobufEventType::FailedToWriteConfigToDisk => EventType::FailedToWriteConfigToDisk,
         })
     }
 }
@@ -1132,6 +1176,8 @@ impl TryFrom<EventType> for ProtobufEventType {
             EventType::PaneClosed => ProtobufEventType::PaneClosed,
             EventType::EditPaneOpened => ProtobufEventType::EditPaneOpened,
             EventType::EditPaneExited => ProtobufEventType::EditPaneExited,
+            EventType::CommandPaneReRun => ProtobufEventType::CommandPaneReRun,
+            EventType::FailedToWriteConfigToDisk => ProtobufEventType::FailedToWriteConfigToDisk,
         })
     }
 }
