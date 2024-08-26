@@ -876,6 +876,26 @@ pub fn resize_pane_with_id(resize_strategy: ResizeStrategy, pane_id: PaneId) {
     unsafe { host_run_plugin_command() };
 }
 
+/// Changes the focus to the pane with the specified id, unsuppressing it if it was suppressed and switching to its tab and layer (eg. floating/tiled).
+pub fn focus_pane_with_id(pane_id: PaneId, should_float_if_hidden: bool) {
+    let plugin_command = match pane_id {
+        PaneId::Terminal(terminal_pane_id) => PluginCommand::FocusTerminalPane(terminal_pane_id, should_float_if_hidden),
+        PaneId::Plugin(plugin_pane_id) => PluginCommand::FocusPluginPane(plugin_pane_id, should_float_if_hidden),
+    };
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+/// Edit the scrollback of the specified pane in the user's default `$EDITOR` (currently only works
+/// for terminal panes)
+pub fn edit_scrollback_for_pane_with_id(pane_id: PaneId) {
+    let plugin_command = PluginCommand::EditScrollbackForPaneWithId(pane_id);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 // Utility Functions
 
 #[allow(unused)]

@@ -265,7 +265,7 @@ pub trait Pane {
     fn pull_left(&mut self, count: usize);
     fn pull_up(&mut self, count: usize);
     fn clear_screen(&mut self);
-    fn dump_screen(&mut self, _client_id: ClientId, _full: bool) -> String {
+    fn dump_screen(&self, _full: bool) -> String {
         "".to_owned()
     }
     fn scroll_up(&mut self, count: usize, client_id: ClientId);
@@ -1181,28 +1181,7 @@ impl Tab {
 
         match pid {
             PaneId::Terminal(pid) => {
-                let next_terminal_position = self.get_next_terminal_position(); // TODO: this is not accurate in this case
-                let mut new_pane = TerminalPane::new(
-                    pid,
-                    PaneGeom::default(), // the initial size will be set later
-                    self.style,
-                    next_terminal_position,
-                    String::new(),
-                    self.link_handler.clone(),
-                    self.character_cell_size.clone(),
-                    self.sixel_image_store.clone(),
-                    self.terminal_emulator_colors.clone(),
-                    self.terminal_emulator_color_codes.clone(),
-                    None,
-                    None,
-                    self.debug,
-                    self.arrow_fonts,
-                    self.styled_underlines,
-                    self.explicitly_disable_kitty_keyboard_protocol,
-                );
-                new_pane.update_name("EDITING SCROLLBACK"); // we do this here and not in the
-                                                            // constructor so it won't be overrided
-                                                            // by the editor
+                let new_pane = self.new_scrollback_editor_pane(pid);
                 let replaced_pane = if self.floating_panes.panes_are_visible() {
                     self.floating_panes
                         .replace_active_pane(Box::new(new_pane), client_id)
@@ -1213,9 +1192,7 @@ impl Tab {
                 };
                 match replaced_pane {
                     Some(replaced_pane) => {
-                        let is_scrollback_editor = true;
-                        self.suppressed_panes
-                            .insert(PaneId::Terminal(pid), (is_scrollback_editor, replaced_pane));
+                        self.insert_scrollback_editor_replaced_pane(replaced_pane, pid);
                         self.get_active_pane(client_id)
                             .with_context(|| format!("no active pane found for client {client_id}"))
                             .and_then(|current_active_pane| {
@@ -1231,6 +1208,58 @@ impl Tab {
                     None => {
                         Err::<(), _>(anyhow!(
                             "Could not find editor pane to replace - is no pane focused?"
+                        ))
+                        .with_context(err_context)
+                        .non_fatal();
+                    },
+                }
+            },
+            PaneId::Plugin(_pid) => {
+                // TBD, currently unsupported
+            },
+        }
+        Ok(())
+    }
+    pub fn replace_pane_with_editor_pane(
+        &mut self,
+        pid: PaneId,
+        pane_id_to_replace: PaneId,
+    ) -> Result<()> {
+        // this method creates a new pane from pid and replaces it with the pane iwth the given pane_id_to_replace
+        // the pane with the given pane_id_to_replace is then suppressed (hidden and not rendered) until the current
+        // created pane is closed, in which case it will be replaced back by it
+        let err_context = || format!("failed to suppress pane");
+
+        match pid {
+            PaneId::Terminal(pid) => {
+                let new_pane = self.new_scrollback_editor_pane(pid);
+                let replaced_pane = if self.floating_panes.panes_contain(&pane_id_to_replace) {
+                    self.floating_panes
+                        .replace_pane(pane_id_to_replace, Box::new(new_pane))
+                        .ok()
+                } else if self.tiled_panes.panes_contain(&pane_id_to_replace) {
+                    self.tiled_panes
+                        .replace_pane(pane_id_to_replace, Box::new(new_pane))
+                } else if self.suppressed_panes.values().any(|s_p| s_p.1.pid() == pane_id_to_replace) {
+                    log::error!("Cannot replace suppressed pane");
+                    None
+                } else {
+                    // not a thing
+                    None
+                };
+                match replaced_pane {
+                    Some(replaced_pane) => {
+                        resize_pty!(
+                            replaced_pane,
+                            self.os_api,
+                            self.senders,
+                            self.character_cell_size
+                        );
+                        self.insert_scrollback_editor_replaced_pane(replaced_pane, pid);
+                    },
+                    None => {
+                        Err::<(), _>(anyhow!(
+                            "Could not find editor pane to replace"
                         ))
                         .with_context(err_context)
                         .non_fatal();
@@ -1492,6 +1521,11 @@ impl Tab {
                 self.tiled_panes.get_pane(ap).map(Box::as_ref)
             }
         })
+    }
+    pub fn get_pane_with_id(&self, pane_id: PaneId) -> Option<&dyn Pane> {
+        self.floating_panes.get_pane(pane_id).map(Box::as_ref)
+            .or_else(|| self.tiled_panes.get_pane(pane_id).map(Box::as_ref))
+            .or_else(|| self.suppressed_panes.get(&pane_id).map(|p| p.1.as_ref()))
     }
     pub fn get_active_pane_mut(&mut self, client_id: ClientId) -> Option<&mut Box<dyn Pane>> {
         self.get_active_pane_id(client_id).and_then(|ap| {
@@ -2754,10 +2788,25 @@ impl Tab {
             || format!("failed to dump active terminal screen for client {client_id}");
 
         if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
-            let dump = active_pane.dump_screen(client_id, full);
+            let dump = active_pane.dump_screen(full);
             self.os_api
                 .write_to_file(dump, file)
                 .with_context(err_context)?;
+        }
+        Ok(())
+    }
+    pub fn dump_terminal_screen(
+        &mut self,
+        file: Option<String>,
+        pane_id: PaneId,
+        full: bool,
+    ) -> Result<()> {
+
+        if let Some(pane) = self.get_pane_with_id(pane_id) {
+            let dump = pane.dump_screen(full);
+            self.os_api
+                .write_to_file(dump, file)
+                .non_fatal()
         }
         Ok(())
     }
@@ -2779,9 +2828,34 @@ impl Tab {
             .send_to_pty(PtyInstruction::OpenInPlaceEditor(
                 file,
                 line_number,
-                client_id,
+                ClientTabIndexOrPaneId::ClientId(client_id),
             ))
             .with_context(err_context)
+    }
+    pub fn edit_scrollback_for_pane_with_id(&mut self, pane_id: PaneId) -> Result<()> {
+
+        if let PaneId::Terminal(terminal_pane_id) = pane_id {
+            let mut file = temp_dir();
+            file.push(format!("{}.dump", Uuid::new_v4()));
+            self.dump_terminal_screen(
+                Some(String::from(file.to_string_lossy())),
+                pane_id,
+                true,
+            )
+            .non_fatal();
+            let line_number = self
+                .get_pane_with_id(pane_id)
+                .and_then(|a_t| a_t.get_line_number());
+            self.senders
+                .send_to_pty(PtyInstruction::OpenInPlaceEditor(
+                    file,
+                    line_number,
+                    ClientTabIndexOrPaneId::PaneId(pane_id),
+                ))
+        } else {
+            log::error!("Editing plugin pane scrollback is currently unsupported.");
+            Ok(())
+        }
     }
     pub fn scroll_active_terminal_up(&mut self, client_id: ClientId) {
         if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
@@ -4034,6 +4108,36 @@ impl Tab {
     }
     pub fn update_auto_layout(&mut self, auto_layout: bool) {
         self.auto_layout = auto_layout;
+    }
+    fn new_scrollback_editor_pane(&self, pid: u32) -> TerminalPane {
+        let next_terminal_position = self.get_next_terminal_position();
+        let mut new_pane = TerminalPane::new(
+            pid,
+            PaneGeom::default(), // the initial size will be set later
+            self.style,
+            next_terminal_position,
+            String::new(),
+            self.link_handler.clone(),
+            self.character_cell_size.clone(),
+            self.sixel_image_store.clone(),
+            self.terminal_emulator_colors.clone(),
+            self.terminal_emulator_color_codes.clone(),
+            None,
+            None,
+            self.debug,
+            self.arrow_fonts,
+            self.styled_underlines,
+            self.explicitly_disable_kitty_keyboard_protocol,
+        );
+        new_pane.update_name("EDITING SCROLLBACK"); // we do this here and not in the
+                                                    // constructor so it won't be overrided
+                                                    // by the editor
+        new_pane
+    }
+    fn insert_scrollback_editor_replaced_pane(&mut self, replaced_pane: Box<dyn Pane>, terminal_pane_id: u32) {
+        let is_scrollback_editor = true;
+        self.suppressed_panes
+            .insert(PaneId::Terminal(terminal_pane_id), (is_scrollback_editor, replaced_pane));
     }
 }
 

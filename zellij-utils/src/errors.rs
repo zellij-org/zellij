@@ -356,6 +356,7 @@ pub enum ScreenContext {
     Reconfigure,
     RerunCommandPane,
     ResizePaneWithId,
+    EditScrollbackForPaneWithId,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.

@@ -104,6 +104,7 @@ enum CommandName {
   OpenCommandPaneBackground = 90;
   RerunCommandPane = 91;
   ResizePaneIdWithDirection = 92;
+  EditScrollbackForPaneWithId = 93;
 }
 
 message PluginCommand {
@@ -167,7 +168,12 @@ message PluginCommand {
     OpenCommandPanePayload open_command_pane_background_payload = 66;
     RerunCommandPanePayload rerun_command_pane_payload = 67;
     ResizePaneIdWithDirectionPayload resize_pane_id_with_direction_payload = 68;
+    EditScrollbackForPaneWithIdPayload edit_scrollback_for_pane_with_id_payload = 69;
   }
+}
+
+message EditScrollbackForPaneWithIdPayload {
+  PaneId pane_id = 1;
 }
 
 message ResizePaneIdWithDirectionPayload {

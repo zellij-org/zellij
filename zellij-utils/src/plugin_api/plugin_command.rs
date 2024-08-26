@@ -13,7 +13,8 @@ pub use super::generated_api::api::{
         PaneType as ProtobufPaneType, PluginCommand as ProtobufPluginCommand, PluginMessagePayload,
         ReconfigurePayload, RequestPluginPermissionPayload, RerunCommandPanePayload, ResizePayload,
         RunCommandPayload, SetTimeoutPayload, ShowPaneWithIdPayload, SubscribePayload,
-        SwitchSessionPayload, SwitchTabToPayload, UnsubscribePayload, WebRequestPayload, ResizePaneIdWithDirectionPayload
+        SwitchSessionPayload, SwitchTabToPayload, UnsubscribePayload, WebRequestPayload,
+        ResizePaneIdWithDirectionPayload, EditScrollbackForPaneWithIdPayload
     },
     plugin_permission::PermissionType as ProtobufPermissionType,
     resize::ResizeAction as ProtobufResizeAction,
@@ -1000,6 +1001,15 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 },
                 _ => Err("Mismatched payload for Resize"),
             },
+            Some(CommandName::EditScrollbackForPaneWithId) => match protobuf_plugin_command.payload {
+                Some(Payload::EditScrollbackForPaneWithIdPayload(edit_scrollback_for_pane_with_id_payload)) => {
+                    match edit_scrollback_for_pane_with_id_payload.pane_id {
+                        Some(pane_id) => Ok(PluginCommand::EditScrollbackForPaneWithId(pane_id.try_into()?)),
+                        _ => Err("Malformed edit_scrollback_for_pane_with_id payload"),
+                    }
+                },
+                _ => Err("Mismatched payload for Resize"),
+            },
             None => Err("Unrecognized plugin command"),
         }
     }
@@ -1618,6 +1628,12 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                 name: CommandName::ResizePaneIdWithDirection as i32,
                 payload: Some(Payload::ResizePaneIdWithDirectionPayload(ResizePaneIdWithDirectionPayload {
                     resize: Some(resize.try_into()?),
+                    pane_id: Some(pane_id.try_into()?),
+                })),
+            }),
+            PluginCommand::EditScrollbackForPaneWithId(pane_id) => Ok(ProtobufPluginCommand {
+                name: CommandName::EditScrollbackForPaneWithId as i32,
+                payload: Some(Payload::EditScrollbackForPaneWithIdPayload(EditScrollbackForPaneWithIdPayload {
                     pane_id: Some(pane_id.try_into()?),
                 })),
             }),

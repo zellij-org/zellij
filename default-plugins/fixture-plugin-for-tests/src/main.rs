@@ -367,6 +367,9 @@ impl ZellijPlugin for State {
                 BareKey::Char('e') if key.has_modifiers(&[KeyModifier::Alt]) => {
                     resize_pane_with_id(ResizeStrategy::new(Resize::Increase, Some(Direction::Left)), PaneId::Terminal(2));
                 },
+                BareKey::Char('f') if key.has_modifiers(&[KeyModifier::Alt]) => {
+                    edit_scrollback_for_pane_with_id(PaneId::Terminal(2));
+                },
                 _ => {},
             },
             Event::CustomMessage(message, payload) => {

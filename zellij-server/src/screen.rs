@@ -156,7 +156,7 @@ pub enum ScreenInstruction {
         bool, // start suppressed
         ClientTabIndexOrPaneId,
     ),
-    OpenInPlaceEditor(PaneId, ClientId),
+    OpenInPlaceEditor(PaneId, ClientTabIndexOrPaneId),
     TogglePaneEmbedOrFloating(ClientId),
     ToggleFloatingPanes(ClientId, Option<TerminalAction>),
     HorizontalSplit(PaneId, Option<InitialTitle>, HoldForCommand, ClientId),
@@ -381,6 +381,7 @@ pub enum ScreenInstruction {
     },
     RerunCommandPane(u32), // u32 - terminal pane id
     ResizePaneWithId(ResizeStrategy, PaneId),
+    EditScrollbackForPaneWithId(PaneId),
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -568,6 +569,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::Reconfigure { .. } => ScreenContext::Reconfigure,
             ScreenInstruction::RerunCommandPane { .. } => ScreenContext::RerunCommandPane,
             ScreenInstruction::ResizePaneWithId(..) => ScreenContext::ResizePaneWithId,
+            ScreenInstruction::EditScrollbackForPaneWithId(..) => ScreenContext::EditScrollbackForPaneWithId,
         }
     }
 }
@@ -2604,11 +2606,32 @@ pub(crate) fn screen_thread_main(
 
                 screen.render(None)?;
             },
-            ScreenInstruction::OpenInPlaceEditor(pid, client_id) => {
-                active_tab!(screen, client_id, |tab: &mut Tab| tab
-                    .replace_active_pane_with_editor_pane(pid, client_id), ?);
-                screen.unblock_input()?;
-                screen.log_and_report_session_state()?;
+            ScreenInstruction::OpenInPlaceEditor(pid, client_tab_index_or_pane_id) => {
+                match client_tab_index_or_pane_id {
+                    ClientTabIndexOrPaneId::ClientId(client_id) => {
+                        active_tab!(screen, client_id, |tab: &mut Tab| tab
+                            .replace_active_pane_with_editor_pane(pid, client_id), ?);
+                        screen.unblock_input()?;
+                        screen.log_and_report_session_state()?;
+                    }
+                    ClientTabIndexOrPaneId::TabIndex(tab_index) => {
+                        log::error!("Cannot OpenInPlaceEditor with a TabIndex");
+                    }
+                    ClientTabIndexOrPaneId::PaneId(pane_id_to_replace) => {
+                        let mut found = false;
+                        let all_tabs = screen.get_tabs_mut();
+                        for tab in all_tabs.values_mut() {
+                            if tab.has_pane_with_pid(&pane_id_to_replace) {
+                                tab.replace_pane_with_editor_pane(pid, pane_id_to_replace);
+                                found = true;
+                                break;
+                            }
+                        }
+                        if !found {
+                            log::error!("Could not find pane with id {:?} to replace", pane_id_to_replace);
+                        }
+                    }
+                }
 
                 screen.render(None)?;
             },
@@ -4185,6 +4208,16 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::ResizePaneWithId(resize, pane_id) => {
                 screen.resize_pane_with_id(resize, pane_id)
+            },
+            ScreenInstruction::EditScrollbackForPaneWithId(pane_id) => {
+                let all_tabs = screen.get_tabs_mut();
+                for tab in all_tabs.values_mut() {
+                    if tab.has_pane_with_pid(&pane_id) {
+                        tab.edit_scrollback_for_pane_with_id(pane_id);
+                        break;
+                    }
+                }
+                screen.render(None)?;
             },
         }
     }
