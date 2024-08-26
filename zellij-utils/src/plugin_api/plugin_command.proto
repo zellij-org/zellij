@@ -103,6 +103,7 @@ enum CommandName {
   ShowPaneWithId = 89;
   OpenCommandPaneBackground = 90;
   RerunCommandPane = 91;
+  ResizePaneIdWithDirection = 92;
 }
 
 message PluginCommand {
@@ -165,7 +166,13 @@ message PluginCommand {
     ShowPaneWithIdPayload show_pane_with_id_payload = 65;
     OpenCommandPanePayload open_command_pane_background_payload = 66;
     RerunCommandPanePayload rerun_command_pane_payload = 67;
+    ResizePaneIdWithDirectionPayload resize_pane_id_with_direction_payload = 68;
   }
+}
+
+message ResizePaneIdWithDirectionPayload {
+  resize.Resize resize = 1;
+  PaneId pane_id = 2;
 }
 
 message ReconfigurePayload {

@@ -3954,6 +3954,46 @@ impl Tab {
             },
         }
     }
+    pub fn resize_pane_with_id(&mut self, strategy: ResizeStrategy, pane_id: PaneId) -> Result<()> {
+        let err_context = || format!("unable to resize pane");
+        if self.floating_panes.panes_contain(&pane_id) {
+            let successfully_resized = self
+                .floating_panes
+                .resize_pane_with_id(strategy, pane_id)
+                .with_context(err_context)?;
+            if successfully_resized {
+                self.swap_layouts.set_is_floating_damaged();
+                self.swap_layouts.set_is_tiled_damaged();
+                self.set_force_render(); // we force render here to make sure the panes under the floating pane render and don't leave "garbage" in case of a decrease
+            }
+        } else if self.tiled_panes.panes_contain(&pane_id) {
+            match self.tiled_panes.resize_pane_with_id(strategy, pane_id) {
+                Ok(_) => {},
+                Err(err) => match err.downcast_ref::<ZellijError>() {
+                    Some(ZellijError::CantResizeFixedPanes { pane_ids }) => {
+                        let mut pane_ids_to_error = vec![];
+                        for (id, is_terminal) in pane_ids {
+                            if *is_terminal {
+                                pane_ids_to_error.push(PaneId::Terminal(*id));
+                            } else {
+                                pane_ids_to_error.push(PaneId::Plugin(*id));
+                            };
+                        }
+                        self.senders
+                            .send_to_background_jobs(BackgroundJob::DisplayPaneError(
+                                pane_ids_to_error,
+                                "FIXED!".into(),
+                            ))
+                            .with_context(err_context)?;
+                    },
+                    _ => Err::<(), _>(err).fatal(),
+                },
+            }
+        } else if self.suppressed_panes.values().any(|s_p| s_p.1.pid() == pane_id) {
+            log::error!("Cannot resize suppressed panes");
+        }
+        Ok(())
+    }
     pub fn update_theme(&mut self, theme: Palette) {
         self.style.colors = theme;
         self.floating_panes.update_pane_themes(theme);

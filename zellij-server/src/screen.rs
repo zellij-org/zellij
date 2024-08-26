@@ -380,6 +380,7 @@ pub enum ScreenInstruction {
         hide_session_name: bool,
     },
     RerunCommandPane(u32), // u32 - terminal pane id
+    ResizePaneWithId(ResizeStrategy, PaneId),
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -566,6 +567,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::ListClientsMetadata(..) => ScreenContext::ListClientsMetadata,
             ScreenInstruction::Reconfigure { .. } => ScreenContext::Reconfigure,
             ScreenInstruction::RerunCommandPane { .. } => ScreenContext::RerunCommandPane,
+            ScreenInstruction::ResizePaneWithId(..) => ScreenContext::ResizePaneWithId,
         }
     }
 }
@@ -2007,6 +2009,22 @@ impl Screen {
             log::error!(
                 "Failed to find terminal pane with id: {} to run",
                 terminal_pane_id
+            );
+        }
+    }
+    pub fn resize_pane_with_id(&mut self, resize: ResizeStrategy, pane_id: PaneId) {
+        let mut found = false;
+        for tab in self.tabs.values_mut() {
+            if tab.has_pane_with_pid(&pane_id) {
+                tab.resize_pane_with_id(resize, pane_id);
+                found = true;
+                break;
+            }
+        }
+        if !found {
+            log::error!(
+                "Failed to find pane with id: {:?} to resize",
+                pane_id
             );
         }
     }
@@ -4164,6 +4182,9 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::RerunCommandPane(terminal_pane_id) => {
                 screen.rerun_command_pane_with_id(terminal_pane_id)
+            },
+            ScreenInstruction::ResizePaneWithId(resize, pane_id) => {
+                screen.resize_pane_with_id(resize, pane_id)
             },
         }
     }

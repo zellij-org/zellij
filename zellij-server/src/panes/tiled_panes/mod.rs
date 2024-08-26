@@ -837,52 +837,59 @@ impl TiledPanes {
             || format!("failed to {strategy} for active tiled pane for client {client_id}");
 
         if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
-            let mut pane_grid = TiledPaneGrid::new(
-                &mut self.panes,
-                &self.panes_to_hide,
-                *self.display_area.borrow(),
-                *self.viewport.borrow(),
-            );
-
-            match pane_grid
-                .change_pane_size(&active_pane_id, strategy, (RESIZE_PERCENT, RESIZE_PERCENT))
-                .with_context(err_context)
-            {
-                Ok(_) => {},
-                Err(err) => match err.downcast_ref::<ZellijError>() {
-                    Some(ZellijError::PaneSizeUnchanged) => {
-                        // try once more with double the resize percent, but let's keep it at that
-                        match pane_grid
-                            .change_pane_size(
-                                &active_pane_id,
-                                strategy,
-                                (RESIZE_PERCENT * 2.0, RESIZE_PERCENT * 2.0),
-                            )
-                            .with_context(err_context)
-                        {
-                            Ok(_) => {},
-                            Err(err) => match err.downcast_ref::<ZellijError>() {
-                                Some(ZellijError::PaneSizeUnchanged) => {
-                                    Err::<(), _>(err).non_fatal()
-                                },
-                                _ => {
-                                    return Err(err);
-                                },
-                            },
-                        }
-                    },
-                    _ => {
-                        return Err(err);
-                    },
-                },
-            }
-
-            for pane in self.panes.values_mut() {
-                resize_pty!(pane, self.os_api, self.senders, self.character_cell_size).unwrap();
-            }
-            self.reset_boundaries();
+            self.resize_pane_with_id(*strategy, active_pane_id)?;
         }
 
+        Ok(())
+    }
+    pub fn resize_pane_with_id(&mut self, strategy: ResizeStrategy, pane_id: PaneId) -> Result<()> {
+        let err_context =
+            || format!("failed to resize pand with id: {:?}", pane_id);
+
+        let mut pane_grid = TiledPaneGrid::new(
+            &mut self.panes,
+            &self.panes_to_hide,
+            *self.display_area.borrow(),
+            *self.viewport.borrow(),
+        );
+
+        match pane_grid
+            .change_pane_size(&pane_id, &strategy, (RESIZE_PERCENT, RESIZE_PERCENT))
+            .with_context(err_context)
+        {
+            Ok(_) => {},
+            Err(err) => match err.downcast_ref::<ZellijError>() {
+                Some(ZellijError::PaneSizeUnchanged) => {
+                    // try once more with double the resize percent, but let's keep it at that
+                    match pane_grid
+                        .change_pane_size(
+                            &pane_id,
+                            &strategy,
+                            (RESIZE_PERCENT * 2.0, RESIZE_PERCENT * 2.0),
+                        )
+                        .with_context(err_context)
+                    {
+                        Ok(_) => {},
+                        Err(err) => match err.downcast_ref::<ZellijError>() {
+                            Some(ZellijError::PaneSizeUnchanged) => {
+                                Err::<(), _>(err).non_fatal()
+                            },
+                            _ => {
+                                return Err(err);
+                            },
+                        },
+                    }
+                },
+                _ => {
+                    return Err(err);
+                },
+            },
+        }
+
+        for pane in self.panes.values_mut() {
+            resize_pty!(pane, self.os_api, self.senders, self.character_cell_size).unwrap();
+        }
+        self.reset_boundaries();
         Ok(())
     }
 

@@ -13,7 +13,7 @@ pub use super::generated_api::api::{
         PaneType as ProtobufPaneType, PluginCommand as ProtobufPluginCommand, PluginMessagePayload,
         ReconfigurePayload, RequestPluginPermissionPayload, RerunCommandPanePayload, ResizePayload,
         RunCommandPayload, SetTimeoutPayload, ShowPaneWithIdPayload, SubscribePayload,
-        SwitchSessionPayload, SwitchTabToPayload, UnsubscribePayload, WebRequestPayload,
+        SwitchSessionPayload, SwitchTabToPayload, UnsubscribePayload, WebRequestPayload, ResizePaneIdWithDirectionPayload
     },
     plugin_permission::PermissionType as ProtobufPermissionType,
     resize::ResizeAction as ProtobufResizeAction,
@@ -991,6 +991,15 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 ),
                 _ => Err("Mismatched payload for RerunCommandPane"),
             },
+            Some(CommandName::ResizePaneIdWithDirection) => match protobuf_plugin_command.payload {
+                Some(Payload::ResizePaneIdWithDirectionPayload(resize_with_direction_payload)) => {
+                    match (resize_with_direction_payload.resize, resize_with_direction_payload.pane_id) {
+                        (Some(resize), Some(pane_id)) => Ok(PluginCommand::ResizePaneIdWithDirection(resize.try_into()?, pane_id.try_into()?)),
+                        _ => Err("Malformed resize_pane_with_id payload"),
+                    }
+                },
+                _ => Err("Mismatched payload for Resize"),
+            },
             None => Err("Unrecognized plugin command"),
         }
     }
@@ -1603,6 +1612,13 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                 name: CommandName::RerunCommandPane as i32,
                 payload: Some(Payload::RerunCommandPanePayload(RerunCommandPanePayload {
                     terminal_pane_id,
+                })),
+            }),
+            PluginCommand::ResizePaneIdWithDirection(resize, pane_id) => Ok(ProtobufPluginCommand {
+                name: CommandName::ResizePaneIdWithDirection as i32,
+                payload: Some(Payload::ResizePaneIdWithDirectionPayload(ResizePaneIdWithDirectionPayload {
+                    resize: Some(resize.try_into()?),
+                    pane_id: Some(pane_id.try_into()?),
                 })),
             }),
         }

@@ -857,6 +857,25 @@ pub fn rerun_command_pane(terminal_pane_id: u32) {
     unsafe { host_run_plugin_command() };
 }
 
+/// Sugar for close_terminal_pane and close_plugin_pane
+pub fn close_pane_with_id(pane_id: PaneId) {
+    let plugin_command = match pane_id {
+        PaneId::Terminal(terminal_pane_id) => PluginCommand::CloseTerminalPane(terminal_pane_id),
+        PaneId::Plugin(plugin_pane_id) => PluginCommand::ClosePluginPane(plugin_pane_id),
+    };
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+/// Resize the specified pane (increase/decrease) with an optional direction (left/right/up/down)
+pub fn resize_pane_with_id(resize_strategy: ResizeStrategy, pane_id: PaneId) {
+    let plugin_command = PluginCommand::ResizePaneIdWithDirection(resize_strategy, pane_id);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 // Utility Functions
 
 #[allow(unused)]

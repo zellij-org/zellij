@@ -408,34 +408,36 @@ impl FloatingPanes {
         strategy: &ResizeStrategy,
     ) -> Result<bool> {
         // true => successfully resized
-        let err_context =
-            || format!("failed to {strategy} for active floating pane for client {client_id}");
-
-        let display_area = *self.display_area.borrow();
-        let viewport = *self.viewport.borrow();
         if let Some(active_floating_pane_id) = self.active_panes.get(&client_id) {
-            let mut floating_pane_grid = FloatingPaneGrid::new(
-                &mut self.panes,
-                &mut self.desired_pane_positions,
-                display_area,
-                viewport,
-            );
-            floating_pane_grid
-                .change_pane_size(
-                    active_floating_pane_id,
-                    strategy,
-                    (RESIZE_INCREMENT_WIDTH, RESIZE_INCREMENT_HEIGHT),
-                )
-                .with_context(err_context)?;
-
-            for pane in self.panes.values_mut() {
-                resize_pty!(pane, os_api, self.senders, self.character_cell_size)
-                    .with_context(err_context)?;
-            }
-            self.set_force_render();
-            return Ok(true);
+            return self.resize_pane_with_id(*strategy, *active_floating_pane_id);
         }
         Ok(false)
+    }
+    pub fn resize_pane_with_id(&mut self, strategy: ResizeStrategy, pane_id: PaneId) -> Result<bool> {
+        // true => successfully resized
+        let err_context = || format!("Failed to resize pane with id: {:?}", pane_id);
+        let display_area = *self.display_area.borrow();
+        let viewport = *self.viewport.borrow();
+        let mut floating_pane_grid = FloatingPaneGrid::new(
+            &mut self.panes,
+            &mut self.desired_pane_positions,
+            display_area,
+            viewport,
+        );
+        floating_pane_grid
+            .change_pane_size(
+                &pane_id,
+                &strategy,
+                (RESIZE_INCREMENT_WIDTH, RESIZE_INCREMENT_HEIGHT),
+            )
+            .with_context(err_context)?;
+
+        for pane in self.panes.values_mut() {
+            resize_pty!(pane, os_api, self.senders, self.character_cell_size)
+                .with_context(err_context)?;
+        }
+        self.set_force_render();
+        Ok(true)
     }
 
     fn set_pane_active_at(&mut self, pane_id: PaneId) {

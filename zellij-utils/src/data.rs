@@ -1820,4 +1820,5 @@ pub enum PluginCommand {
     ShowPaneWithId(PaneId, bool), // bool -> should_float_if_hidden
     OpenCommandPaneBackground(CommandToRun, Context),
     RerunCommandPane(u32), // u32  - terminal pane id
+    ResizePaneIdWithDirection(ResizeStrategy, PaneId), // u32  - terminal pane id
 }

@@ -272,6 +272,9 @@ fn host_run_plugin_command(caller: Caller<'_, PluginEnv>) {
                     PluginCommand::RerunCommandPane(terminal_pane_id) => {
                         rerun_command_pane(env, terminal_pane_id)
                     },
+                    PluginCommand::ResizePaneIdWithDirection(resize, pane_id) => {
+                        resize_pane_with_id(env, resize, pane_id.into())
+                    },
                 },
                 (PermissionStatus::Denied, permission) => {
                     log::error!(
@@ -1442,6 +1445,13 @@ fn scan_host_folder(env: &PluginEnv, folder_to_scan: PathBuf) {
     }
 }
 
+fn resize_pane_with_id(env: &PluginEnv, resize: ResizeStrategy, pane_id: PaneId) {
+    let _ = env.senders.send_to_screen(ScreenInstruction::ResizePaneWithId(
+        resize,
+        pane_id,
+    ));
+}
+
 // Custom panic handler for plugins.
 //
 // This is called when a panic occurs in a plugin. Since most panics will likely originate in the
@@ -1570,6 +1580,7 @@ fn check_command_permission(
         | PluginCommand::ShowPaneWithId(..)
         | PluginCommand::HidePaneWithId(..)
         | PluginCommand::RerunCommandPane(..)
+        | PluginCommand::ResizePaneIdWithDirection(..)
         | PluginCommand::KillSessions(..) => PermissionType::ChangeApplicationState,
         PluginCommand::UnblockCliPipeInput(..)
         | PluginCommand::BlockCliPipeInput(..)
