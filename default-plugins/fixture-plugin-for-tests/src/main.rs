@@ -370,6 +370,12 @@ impl ZellijPlugin for State {
                 BareKey::Char('f') if key.has_modifiers(&[KeyModifier::Alt]) => {
                     edit_scrollback_for_pane_with_id(PaneId::Terminal(2));
                 },
+                BareKey::Char('g') if key.has_modifiers(&[KeyModifier::Alt]) => {
+                    write_to_pane_id(vec![102, 111, 111], PaneId::Terminal(2));
+                },
+                BareKey::Char('h') if key.has_modifiers(&[KeyModifier::Alt]) => {
+                    write_chars_to_pane_id("foo\n", PaneId::Terminal(2));
+                }
                 _ => {},
             },
             Event::CustomMessage(message, payload) => {

@@ -896,6 +896,22 @@ pub fn edit_scrollback_for_pane_with_id(pane_id: PaneId) {
     unsafe { host_run_plugin_command() };
 }
 
+/// Write bytes to the `STDIN` of the specified pane
+pub fn write_to_pane_id(bytes: Vec<u8>, pane_id: PaneId) {
+    let plugin_command = PluginCommand::WriteToPaneId(bytes, pane_id);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+/// Write characters to the `STDIN` of the specified pane
+pub fn write_chars_to_pane_id(chars: &str, pane_id: PaneId) {
+    let plugin_command = PluginCommand::WriteCharsToPaneId(chars.to_owned(), pane_id);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 // Utility Functions
 
 #[allow(unused)]

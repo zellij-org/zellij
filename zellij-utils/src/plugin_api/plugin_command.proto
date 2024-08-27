@@ -105,6 +105,8 @@ enum CommandName {
   RerunCommandPane = 91;
   ResizePaneIdWithDirection = 92;
   EditScrollbackForPaneWithId = 93;
+  WriteToPaneId = 94;
+  WriteCharsToPaneId = 95;
 }
 
 message PluginCommand {
@@ -169,7 +171,19 @@ message PluginCommand {
     RerunCommandPanePayload rerun_command_pane_payload = 67;
     ResizePaneIdWithDirectionPayload resize_pane_id_with_direction_payload = 68;
     EditScrollbackForPaneWithIdPayload edit_scrollback_for_pane_with_id_payload = 69;
+    WriteToPaneIdPayload write_to_pane_id_payload = 70;
+    WriteCharsToPaneIdPayload write_chars_to_pane_id_payload = 71;
   }
+}
+
+message WriteCharsToPaneIdPayload {
+  string chars_to_write = 1;
+  PaneId pane_id = 2;
+}
+
+message WriteToPaneIdPayload {
+  bytes bytes_to_write = 1;
+  PaneId pane_id = 2;
 }
 
 message EditScrollbackForPaneWithIdPayload {

@@ -14,7 +14,7 @@ pub use super::generated_api::api::{
         ReconfigurePayload, RequestPluginPermissionPayload, RerunCommandPanePayload, ResizePayload,
         RunCommandPayload, SetTimeoutPayload, ShowPaneWithIdPayload, SubscribePayload,
         SwitchSessionPayload, SwitchTabToPayload, UnsubscribePayload, WebRequestPayload,
-        ResizePaneIdWithDirectionPayload, EditScrollbackForPaneWithIdPayload
+        ResizePaneIdWithDirectionPayload, EditScrollbackForPaneWithIdPayload, WriteToPaneIdPayload, WriteCharsToPaneIdPayload
     },
     plugin_permission::PermissionType as ProtobufPermissionType,
     resize::ResizeAction as ProtobufResizeAction,
@@ -1008,7 +1008,25 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                         _ => Err("Malformed edit_scrollback_for_pane_with_id payload"),
                     }
                 },
-                _ => Err("Mismatched payload for Resize"),
+                _ => Err("Mismatched payload for EditScrollback"),
+            },
+            Some(CommandName::WriteToPaneId) => match protobuf_plugin_command.payload {
+                Some(Payload::WriteToPaneIdPayload(write_to_pane_id_payload)) => {
+                    match write_to_pane_id_payload.pane_id {
+                        Some(pane_id) => Ok(PluginCommand::WriteToPaneId(write_to_pane_id_payload.bytes_to_write, pane_id.try_into()?)),
+                        _ => Err("Malformed write_to_pane_id payload"),
+                    }
+                },
+                _ => Err("Mismatched payload for WriteToPaneId"),
+            },
+            Some(CommandName::WriteCharsToPaneId) => match protobuf_plugin_command.payload {
+                Some(Payload::WriteCharsToPaneIdPayload(write_chars_to_pane_id_payload)) => {
+                    match write_chars_to_pane_id_payload.pane_id {
+                        Some(pane_id) => Ok(PluginCommand::WriteCharsToPaneId(write_chars_to_pane_id_payload.chars_to_write, pane_id.try_into()?)),
+                        _ => Err("Malformed write_chars_to_pane_id payload"),
+                    }
+                },
+                _ => Err("Mismatched payload for WriteCharsCharsToPaneId"),
             },
             None => Err("Unrecognized plugin command"),
         }
@@ -1634,6 +1652,20 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
             PluginCommand::EditScrollbackForPaneWithId(pane_id) => Ok(ProtobufPluginCommand {
                 name: CommandName::EditScrollbackForPaneWithId as i32,
                 payload: Some(Payload::EditScrollbackForPaneWithIdPayload(EditScrollbackForPaneWithIdPayload {
+                    pane_id: Some(pane_id.try_into()?),
+                })),
+            }),
+            PluginCommand::WriteToPaneId(bytes_to_write, pane_id) => Ok(ProtobufPluginCommand {
+                name: CommandName::WriteToPaneId as i32,
+                payload: Some(Payload::WriteToPaneIdPayload(WriteToPaneIdPayload {
+                    bytes_to_write,
+                    pane_id: Some(pane_id.try_into()?),
+                })),
+            }),
+            PluginCommand::WriteCharsToPaneId(chars_to_write, pane_id) => Ok(ProtobufPluginCommand {
+                name: CommandName::WriteCharsToPaneId as i32,
+                payload: Some(Payload::WriteCharsToPaneIdPayload(WriteCharsToPaneIdPayload {
+                    chars_to_write,
                     pane_id: Some(pane_id.try_into()?),
                 })),
             }),

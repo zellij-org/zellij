@@ -367,14 +367,14 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                         line_number,
                         None,
                     ))),
-                    ClientTabIndexOrPaneId::ClientId(client_id),
+                    client_tab_index_or_pane_id,
                 ) {
                     Ok((pid, _starts_held)) => {
                         pty.bus
                             .senders
                             .send_to_screen(ScreenInstruction::OpenInPlaceEditor(
                                 PaneId::Terminal(pid),
-                                client_id,
+                                client_tab_index_or_pane_id,
                             ))
                             .with_context(err_context)?;
                     },

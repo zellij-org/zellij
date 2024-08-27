@@ -276,6 +276,8 @@ fn host_run_plugin_command(caller: Caller<'_, PluginEnv>) {
                         resize_pane_with_id(env, resize, pane_id.into())
                     },
                     PluginCommand::EditScrollbackForPaneWithId(pane_id) => edit_scrollback_for_pane_with_id(env, pane_id.into()),
+                    PluginCommand::WriteToPaneId(bytes, pane_id) => write_to_pane_id(env, bytes, pane_id.into()),
+                    PluginCommand::WriteCharsToPaneId(chars, pane_id) => write_chars_to_pane_id(env, chars, pane_id.into()),
                 },
                 (PermissionStatus::Denied, permission) => {
                     log::error!(
@@ -1459,6 +1461,21 @@ fn edit_scrollback_for_pane_with_id(env: &PluginEnv, pane_id: PaneId) {
     ));
 }
 
+fn write_to_pane_id(env: &PluginEnv, bytes: Vec<u8>, pane_id: PaneId) {
+    let _ = env.senders.send_to_screen(ScreenInstruction::WriteToPaneId(
+        bytes,
+        pane_id,
+    ));
+}
+
+fn write_chars_to_pane_id(env: &PluginEnv, mut chars: String, pane_id: PaneId) {
+    let bytes = chars.into_bytes();
+    let _ = env.senders.send_to_screen(ScreenInstruction::WriteToPaneId(
+        bytes,
+        pane_id,
+    ));
+}
+
 // Custom panic handler for plugins.
 //
 // This is called when a panic occurs in a plugin. Since most panics will likely originate in the
@@ -1533,7 +1550,10 @@ fn check_command_permission(
         | PluginCommand::RunCommand(..)
         | PluginCommand::ExecCmd(..) => PermissionType::RunCommands,
         PluginCommand::WebRequest(..) => PermissionType::WebAccess,
-        PluginCommand::Write(..) | PluginCommand::WriteChars(..) => PermissionType::WriteToStdin,
+        PluginCommand::Write(..)
+        | PluginCommand::WriteChars(..)
+        | PluginCommand::WriteToPaneId(..)
+        | PluginCommand::WriteCharsToPaneId(..) => PermissionType::WriteToStdin,
         PluginCommand::SwitchTabTo(..)
         | PluginCommand::SwitchToMode(..)
         | PluginCommand::NewTabsWithLayout(..)

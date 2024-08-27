@@ -1822,4 +1822,6 @@ pub enum PluginCommand {
     RerunCommandPane(u32), // u32  - terminal pane id
     ResizePaneIdWithDirection(ResizeStrategy, PaneId),
     EditScrollbackForPaneWithId(PaneId),
+    WriteToPaneId(Vec<u8>, PaneId),
+    WriteCharsToPaneId(String, PaneId),
 }

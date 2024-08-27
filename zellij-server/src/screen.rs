@@ -382,6 +382,7 @@ pub enum ScreenInstruction {
     RerunCommandPane(u32), // u32 - terminal pane id
     ResizePaneWithId(ResizeStrategy, PaneId),
     EditScrollbackForPaneWithId(PaneId),
+    WriteToPaneId(Vec<u8>, PaneId),
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -570,6 +571,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::RerunCommandPane { .. } => ScreenContext::RerunCommandPane,
             ScreenInstruction::ResizePaneWithId(..) => ScreenContext::ResizePaneWithId,
             ScreenInstruction::EditScrollbackForPaneWithId(..) => ScreenContext::EditScrollbackForPaneWithId,
+            ScreenInstruction::WriteToPaneId(..) => ScreenContext::WriteToPaneId,
         }
     }
 }
@@ -4213,7 +4215,17 @@ pub(crate) fn screen_thread_main(
                 let all_tabs = screen.get_tabs_mut();
                 for tab in all_tabs.values_mut() {
                     if tab.has_pane_with_pid(&pane_id) {
-                        tab.edit_scrollback_for_pane_with_id(pane_id);
+                        tab.edit_scrollback_for_pane_with_id(pane_id).non_fatal();
+                        break;
+                    }
+                }
+                screen.render(None)?;
+            },
+            ScreenInstruction::WriteToPaneId(bytes, pane_id) => {
+                let all_tabs = screen.get_tabs_mut();
+                for tab in all_tabs.values_mut() {
+                    if tab.has_pane_with_pid(&pane_id) {
+                        tab.write_to_pane_id(&None, bytes, false, pane_id, None).non_fatal();
                         break;
                     }
                 }
