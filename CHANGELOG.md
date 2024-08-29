@@ -30,6 +30,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat(ux): first run setup wizard (https://github.com/zellij-org/zellij/pull/3556)
 * feat(ux): reload config at runtime (https://github.com/zellij-org/zellij/pull/3558, https://github.com/zellij-org/zellij/pull/3559 and https://github.com/zellij-org/zellij/pull/3564)
 * feat(plugins): allow plugins to temporarily bind keys at runtime to pipe messages to specific plugins (https://github.com/zellij-org/zellij/pull/3561)
+* feat(plugins): new APIs to control other panes (https://github.com/zellij-org/zellij/pull/3576)
 
 ## [0.40.1] - 2024-05-02
 * fix(sessions): issue where sessions would occasionally become unresponsive (https://github.com/zellij-org/zellij/pull/3281)
