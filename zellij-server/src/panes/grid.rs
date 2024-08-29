@@ -386,6 +386,7 @@ pub enum MouseTracking {
     Off,
     Normal,
     ButtonEventTracking,
+    AnyEventTracking,
 }
 
 impl Default for MouseTracking {
@@ -1980,30 +1981,36 @@ impl Grid {
         value
     }
     pub fn mouse_event_signal(&self, event: &MouseEvent) -> Option<String> {
-        match &self.mouse_mode {
-            MouseMode::NoEncoding | MouseMode::Utf8 => {
+        let emit = match (&self.mouse_tracking, event.event_type) {
+            (MouseTracking::Off, _) => false,
+            (MouseTracking::AnyEventTracking, _) => true,
+            (_, MouseEventType::Press | MouseEventType::Release) => true,
+            (MouseTracking::ButtonEventTracking, MouseEventType::Motion) => {
+                event.left | event.right | event.middle | event.wheel_up | event.wheel_down
+            },
+            (_, _) => false,
+        };
+
+        match (emit, &self.mouse_mode) {
+            (true, MouseMode::NoEncoding | MouseMode::Utf8) => {
                 let mut msg: Vec<u8> = vec![27, b'[', b'M', self.mouse_buttons_value_x10(event)];
                 msg.append(&mut utf8_mouse_coordinates(
-                    // AZL: Why is event.position not staying 0-based
-                    // on both axes?
-                    event.position.column(),
-                    event.position.line() - 1,
+                    event.position.column() + 1,
+                    event.position.line() + 1,
                 ));
                 Some(String::from_utf8_lossy(&msg).into())
             },
-            MouseMode::Sgr => Some(format!(
+            (true, MouseMode::Sgr) => Some(format!(
                 "\u{1b}[<{:?};{:?};{:?}{}",
                 self.mouse_buttons_value_sgr(event),
-                // AZL: Why is event.position not staying 0-based on
-                // both axes?
-                event.position.column(),
-                event.position.line() - 1,
+                event.position.column() + 1,
+                event.position.line() + 1,
                 match event.event_type {
                     MouseEventType::Press => 'M',
                     _ => 'm',
                 }
             )),
-            _ => None,
+            (_, _) => None,
         }
     }
     pub fn mouse_left_click_signal(&self, position: &Position, is_held: bool) -> Option<String> {
@@ -2675,7 +2682,7 @@ impl Perform for Grid {
                             self.mouse_tracking = MouseTracking::Off;
                         },
                         1003 => {
-                            // TBD: any-even mouse tracking
+                            self.mouse_tracking = MouseTracking::Off;
                         },
                         1004 => {
                             self.focus_event_tracking = false;
@@ -2778,7 +2785,7 @@ impl Perform for Grid {
                             self.mouse_tracking = MouseTracking::ButtonEventTracking;
                         },
                         1003 => {
-                            // TBD: any-even mouse tracking
+                            self.mouse_tracking = MouseTracking::AnyEventTracking;
                         },
                         1004 => {
                             self.focus_event_tracking = true;

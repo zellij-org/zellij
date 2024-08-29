@@ -3023,9 +3023,19 @@ impl Tab {
             || format!("failed to handle mouse event {event:?} for client {client_id}");
         let active_pane = self.get_active_pane_or_floating_pane_mut(client_id);
         if let Some(active_pane) = active_pane {
-            if let Some(mouse_event) = active_pane.mouse_event(&event) {
-                self.write_to_active_terminal(&None, mouse_event.into_bytes(), false, client_id)
+            let relative_position = active_pane.relative_position(&event.position);
+            let mut pass_event = *event;
+            pass_event.position = relative_position;
+            if let Some(mouse_event) = active_pane.mouse_event(&pass_event) {
+                if !active_pane.position_is_on_frame(&event.position) {
+                    self.write_to_active_terminal(
+                        &None,
+                        mouse_event.into_bytes(),
+                        false,
+                        client_id,
+                    )
                     .with_context(err_context)?;
+                }
             }
         }
         Ok(())
