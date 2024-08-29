@@ -364,6 +364,57 @@ impl ZellijPlugin for State {
                 BareKey::Char('d') if key.has_modifiers(&[KeyModifier::Alt]) => {
                     rerun_command_pane(1);
                 },
+                BareKey::Char('e') if key.has_modifiers(&[KeyModifier::Alt]) => {
+                    resize_pane_with_id(
+                        ResizeStrategy::new(Resize::Increase, Some(Direction::Left)),
+                        PaneId::Terminal(2),
+                    );
+                },
+                BareKey::Char('f') if key.has_modifiers(&[KeyModifier::Alt]) => {
+                    edit_scrollback_for_pane_with_id(PaneId::Terminal(2));
+                },
+                BareKey::Char('g') if key.has_modifiers(&[KeyModifier::Alt]) => {
+                    write_to_pane_id(vec![102, 111, 111], PaneId::Terminal(2));
+                },
+                BareKey::Char('h') if key.has_modifiers(&[KeyModifier::Alt]) => {
+                    write_chars_to_pane_id("foo\n", PaneId::Terminal(2));
+                },
+                BareKey::Char('i') if key.has_modifiers(&[KeyModifier::Alt]) => {
+                    move_pane_with_pane_id(PaneId::Terminal(2));
+                },
+                BareKey::Char('j') if key.has_modifiers(&[KeyModifier::Alt]) => {
+                    move_pane_with_pane_id_in_direction(PaneId::Terminal(2), Direction::Left);
+                },
+                BareKey::Char('k') if key.has_modifiers(&[KeyModifier::Alt]) => {
+                    clear_screen_for_pane_id(PaneId::Terminal(2));
+                },
+                BareKey::Char('l') if key.has_modifiers(&[KeyModifier::Alt]) => {
+                    scroll_up_in_pane_id(PaneId::Terminal(2));
+                },
+                BareKey::Char('m') if key.has_modifiers(&[KeyModifier::Alt]) => {
+                    scroll_down_in_pane_id(PaneId::Terminal(2));
+                },
+                BareKey::Char('n') if key.has_modifiers(&[KeyModifier::Alt]) => {
+                    scroll_to_top_in_pane_id(PaneId::Terminal(2));
+                },
+                BareKey::Char('o') if key.has_modifiers(&[KeyModifier::Alt]) => {
+                    scroll_to_bottom_in_pane_id(PaneId::Terminal(2));
+                },
+                BareKey::Char('p') if key.has_modifiers(&[KeyModifier::Alt]) => {
+                    page_scroll_up_in_pane_id(PaneId::Terminal(2));
+                },
+                BareKey::Char('q') if key.has_modifiers(&[KeyModifier::Alt]) => {
+                    page_scroll_down_in_pane_id(PaneId::Terminal(2));
+                },
+                BareKey::Char('r') if key.has_modifiers(&[KeyModifier::Alt]) => {
+                    toggle_pane_id_fullscreen(PaneId::Terminal(2));
+                },
+                BareKey::Char('s') if key.has_modifiers(&[KeyModifier::Alt]) => {
+                    toggle_pane_embed_or_eject_for_pane_id(PaneId::Terminal(2));
+                },
+                BareKey::Char('t') if key.has_modifiers(&[KeyModifier::Alt]) => {
+                    close_tab_with_index(2);
+                },
                 _ => {},
             },
             Event::CustomMessage(message, payload) => {

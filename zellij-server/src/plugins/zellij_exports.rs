@@ -272,6 +272,54 @@ fn host_run_plugin_command(caller: Caller<'_, PluginEnv>) {
                     PluginCommand::RerunCommandPane(terminal_pane_id) => {
                         rerun_command_pane(env, terminal_pane_id)
                     },
+                    PluginCommand::ResizePaneIdWithDirection(resize, pane_id) => {
+                        resize_pane_with_id(env, resize, pane_id.into())
+                    },
+                    PluginCommand::EditScrollbackForPaneWithId(pane_id) => {
+                        edit_scrollback_for_pane_with_id(env, pane_id.into())
+                    },
+                    PluginCommand::WriteToPaneId(bytes, pane_id) => {
+                        write_to_pane_id(env, bytes, pane_id.into())
+                    },
+                    PluginCommand::WriteCharsToPaneId(chars, pane_id) => {
+                        write_chars_to_pane_id(env, chars, pane_id.into())
+                    },
+                    PluginCommand::MovePaneWithPaneId(pane_id) => {
+                        move_pane_with_pane_id(env, pane_id.into())
+                    },
+                    PluginCommand::MovePaneWithPaneIdInDirection(pane_id, direction) => {
+                        move_pane_with_pane_id_in_direction(env, pane_id.into(), direction)
+                    },
+                    PluginCommand::ClearScreenForPaneId(pane_id) => {
+                        clear_screen_for_pane_id(env, pane_id.into())
+                    },
+                    PluginCommand::ScrollUpInPaneId(pane_id) => {
+                        scroll_up_in_pane_id(env, pane_id.into())
+                    },
+                    PluginCommand::ScrollDownInPaneId(pane_id) => {
+                        scroll_down_in_pane_id(env, pane_id.into())
+                    },
+                    PluginCommand::ScrollToTopInPaneId(pane_id) => {
+                        scroll_to_top_in_pane_id(env, pane_id.into())
+                    },
+                    PluginCommand::ScrollToBottomInPaneId(pane_id) => {
+                        scroll_to_bottom_in_pane_id(env, pane_id.into())
+                    },
+                    PluginCommand::PageScrollUpInPaneId(pane_id) => {
+                        page_scroll_up_in_pane_id(env, pane_id.into())
+                    },
+                    PluginCommand::PageScrollDownInPaneId(pane_id) => {
+                        page_scroll_down_in_pane_id(env, pane_id.into())
+                    },
+                    PluginCommand::TogglePaneIdFullscreen(pane_id) => {
+                        toggle_pane_id_fullscreen(env, pane_id.into())
+                    },
+                    PluginCommand::TogglePaneEmbedOrEjectForPaneId(pane_id) => {
+                        toggle_pane_embed_or_eject_for_pane_id(env, pane_id.into())
+                    },
+                    PluginCommand::CloseTabWithIndex(tab_index) => {
+                        close_tab_with_index(env, tab_index)
+                    },
                 },
                 (PermissionStatus::Denied, permission) => {
                     log::error!(
@@ -1442,6 +1490,105 @@ fn scan_host_folder(env: &PluginEnv, folder_to_scan: PathBuf) {
     }
 }
 
+fn resize_pane_with_id(env: &PluginEnv, resize: ResizeStrategy, pane_id: PaneId) {
+    let _ = env
+        .senders
+        .send_to_screen(ScreenInstruction::ResizePaneWithId(resize, pane_id));
+}
+
+fn edit_scrollback_for_pane_with_id(env: &PluginEnv, pane_id: PaneId) {
+    let _ = env
+        .senders
+        .send_to_screen(ScreenInstruction::EditScrollbackForPaneWithId(pane_id));
+}
+
+fn write_to_pane_id(env: &PluginEnv, bytes: Vec<u8>, pane_id: PaneId) {
+    let _ = env
+        .senders
+        .send_to_screen(ScreenInstruction::WriteToPaneId(bytes, pane_id));
+}
+
+fn write_chars_to_pane_id(env: &PluginEnv, chars: String, pane_id: PaneId) {
+    let bytes = chars.into_bytes();
+    let _ = env
+        .senders
+        .send_to_screen(ScreenInstruction::WriteToPaneId(bytes, pane_id));
+}
+
+fn move_pane_with_pane_id(env: &PluginEnv, pane_id: PaneId) {
+    let _ = env
+        .senders
+        .send_to_screen(ScreenInstruction::MovePaneWithPaneId(pane_id));
+}
+
+fn move_pane_with_pane_id_in_direction(env: &PluginEnv, pane_id: PaneId, direction: Direction) {
+    let _ = env
+        .senders
+        .send_to_screen(ScreenInstruction::MovePaneWithPaneIdInDirection(
+            pane_id, direction,
+        ));
+}
+
+fn clear_screen_for_pane_id(env: &PluginEnv, pane_id: PaneId) {
+    let _ = env
+        .senders
+        .send_to_screen(ScreenInstruction::ClearScreenForPaneId(pane_id));
+}
+
+fn scroll_up_in_pane_id(env: &PluginEnv, pane_id: PaneId) {
+    let _ = env
+        .senders
+        .send_to_screen(ScreenInstruction::ScrollUpInPaneId(pane_id));
+}
+
+fn scroll_down_in_pane_id(env: &PluginEnv, pane_id: PaneId) {
+    let _ = env
+        .senders
+        .send_to_screen(ScreenInstruction::ScrollDownInPaneId(pane_id));
+}
+
+fn scroll_to_top_in_pane_id(env: &PluginEnv, pane_id: PaneId) {
+    let _ = env
+        .senders
+        .send_to_screen(ScreenInstruction::ScrollToTopInPaneId(pane_id));
+}
+
+fn scroll_to_bottom_in_pane_id(env: &PluginEnv, pane_id: PaneId) {
+    let _ = env
+        .senders
+        .send_to_screen(ScreenInstruction::ScrollToBottomInPaneId(pane_id));
+}
+
+fn page_scroll_up_in_pane_id(env: &PluginEnv, pane_id: PaneId) {
+    let _ = env
+        .senders
+        .send_to_screen(ScreenInstruction::PageScrollUpInPaneId(pane_id));
+}
+
+fn page_scroll_down_in_pane_id(env: &PluginEnv, pane_id: PaneId) {
+    let _ = env
+        .senders
+        .send_to_screen(ScreenInstruction::PageScrollDownInPaneId(pane_id));
+}
+
+fn toggle_pane_id_fullscreen(env: &PluginEnv, pane_id: PaneId) {
+    let _ = env
+        .senders
+        .send_to_screen(ScreenInstruction::TogglePaneIdFullscreen(pane_id));
+}
+
+fn toggle_pane_embed_or_eject_for_pane_id(env: &PluginEnv, pane_id: PaneId) {
+    let _ = env
+        .senders
+        .send_to_screen(ScreenInstruction::TogglePaneEmbedOrEjectForPaneId(pane_id));
+}
+
+fn close_tab_with_index(env: &PluginEnv, tab_index: usize) {
+    let _ = env
+        .senders
+        .send_to_screen(ScreenInstruction::CloseTabWithIndex(tab_index));
+}
+
 // Custom panic handler for plugins.
 //
 // This is called when a panic occurs in a plugin. Since most panics will likely originate in the
@@ -1516,7 +1663,10 @@ fn check_command_permission(
         | PluginCommand::RunCommand(..)
         | PluginCommand::ExecCmd(..) => PermissionType::RunCommands,
         PluginCommand::WebRequest(..) => PermissionType::WebAccess,
-        PluginCommand::Write(..) | PluginCommand::WriteChars(..) => PermissionType::WriteToStdin,
+        PluginCommand::Write(..)
+        | PluginCommand::WriteChars(..)
+        | PluginCommand::WriteToPaneId(..)
+        | PluginCommand::WriteCharsToPaneId(..) => PermissionType::WriteToStdin,
         PluginCommand::SwitchTabTo(..)
         | PluginCommand::SwitchToMode(..)
         | PluginCommand::NewTabsWithLayout(..)
@@ -1531,19 +1681,31 @@ fn check_command_permission(
         | PluginCommand::MoveFocusOrTab(..)
         | PluginCommand::Detach
         | PluginCommand::EditScrollback
+        | PluginCommand::EditScrollbackForPaneWithId(..)
         | PluginCommand::ToggleTab
         | PluginCommand::MovePane
         | PluginCommand::MovePaneWithDirection(..)
+        | PluginCommand::MovePaneWithPaneId(..)
+        | PluginCommand::MovePaneWithPaneIdInDirection(..)
         | PluginCommand::ClearScreen
+        | PluginCommand::ClearScreenForPaneId(..)
         | PluginCommand::ScrollUp
+        | PluginCommand::ScrollUpInPaneId(..)
         | PluginCommand::ScrollDown
+        | PluginCommand::ScrollDownInPaneId(..)
         | PluginCommand::ScrollToTop
+        | PluginCommand::ScrollToTopInPaneId(..)
         | PluginCommand::ScrollToBottom
+        | PluginCommand::ScrollToBottomInPaneId(..)
         | PluginCommand::PageScrollUp
+        | PluginCommand::PageScrollUpInPaneId(..)
         | PluginCommand::PageScrollDown
+        | PluginCommand::PageScrollDownInPaneId(..)
         | PluginCommand::ToggleFocusFullscreen
+        | PluginCommand::TogglePaneIdFullscreen(..)
         | PluginCommand::TogglePaneFrames
         | PluginCommand::TogglePaneEmbedOrEject
+        | PluginCommand::TogglePaneEmbedOrEjectForPaneId(..)
         | PluginCommand::UndoRenamePane
         | PluginCommand::CloseFocus
         | PluginCommand::ToggleActiveTabSync
@@ -1570,6 +1732,8 @@ fn check_command_permission(
         | PluginCommand::ShowPaneWithId(..)
         | PluginCommand::HidePaneWithId(..)
         | PluginCommand::RerunCommandPane(..)
+        | PluginCommand::ResizePaneIdWithDirection(..)
+        | PluginCommand::CloseTabWithIndex(..)
         | PluginCommand::KillSessions(..) => PermissionType::ChangeApplicationState,
         PluginCommand::UnblockCliPipeInput(..)
         | PluginCommand::BlockCliPipeInput(..)

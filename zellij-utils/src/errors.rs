@@ -353,6 +353,21 @@ pub enum ScreenContext {
     ListClientsMetadata,
     Reconfigure,
     RerunCommandPane,
+    ResizePaneWithId,
+    EditScrollbackForPaneWithId,
+    WriteToPaneId,
+    MovePaneWithPaneId,
+    MovePaneWithPaneIdInDirection,
+    ClearScreenForPaneId,
+    ScrollUpInPaneId,
+    ScrollDownInPaneId,
+    ScrollToTopInPaneId,
+    ScrollToBottomInPaneId,
+    PageScrollUpInPaneId,
+    PageScrollDownInPaneId,
+    TogglePaneIdFullscreen,
+    TogglePaneEmbedOrEjectForPaneId,
+    CloseTabWithIndex,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.
