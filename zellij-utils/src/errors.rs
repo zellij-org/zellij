@@ -358,6 +358,18 @@ pub enum ScreenContext {
     ResizePaneWithId,
     EditScrollbackForPaneWithId,
     WriteToPaneId,
+    MovePaneWithPaneId,
+    MovePaneWithPaneIdInDirection,
+    ClearScreenForPaneId,
+    ScrollUpInPaneId,
+    ScrollDownInPaneId,
+    ScrollToTopInPaneId,
+    ScrollToBottomInPaneId,
+    PageScrollUpInPaneId,
+    PageScrollDownInPaneId,
+    TogglePaneIdFullscreen,
+    TogglePaneEmbedOrEjectForPaneId,
+    CloseTabWithIndex,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.

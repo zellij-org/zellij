@@ -1,0 +1,10 @@
+---
+source: zellij-server/src/plugins/./unit/plugin_tests.rs
+assertion_line: 8121
+expression: "format!(\"{:#?}\", screen_instruction)"
+---
+Some(
+    CloseTabWithIndex(
+        2,
+    ),
+)

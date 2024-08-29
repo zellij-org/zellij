@@ -547,60 +547,72 @@ impl FloatingPanes {
     }
 
     pub fn move_active_pane_down(&mut self, client_id: ClientId) {
+        if let Some(active_pane_id) = self.active_panes.get(&client_id) {
+            self.move_pane_down(*active_pane_id);
+        }
+    }
+    pub fn move_pane_down(&mut self, pane_id: PaneId) {
         let display_area = *self.display_area.borrow();
         let viewport = *self.viewport.borrow();
-        if let Some(active_pane_id) = self.active_panes.get(&client_id) {
-            let mut floating_pane_grid = FloatingPaneGrid::new(
-                &mut self.panes,
-                &mut self.desired_pane_positions,
-                display_area,
-                viewport,
-            );
-            floating_pane_grid.move_pane_down(active_pane_id).unwrap();
-            self.set_force_render();
-        }
+        let mut floating_pane_grid = FloatingPaneGrid::new(
+            &mut self.panes,
+            &mut self.desired_pane_positions,
+            display_area,
+            viewport,
+        );
+        floating_pane_grid.move_pane_down(&pane_id).non_fatal();
+        self.set_force_render();
     }
     pub fn move_active_pane_up(&mut self, client_id: ClientId) {
+        if let Some(active_pane_id) = self.active_panes.get(&client_id) {
+            self.move_pane_up(*active_pane_id);
+        }
+    }
+    pub fn move_pane_up(&mut self, pane_id: PaneId) {
         let display_area = *self.display_area.borrow();
         let viewport = *self.viewport.borrow();
-        if let Some(active_pane_id) = self.active_panes.get(&client_id) {
-            let mut floating_pane_grid = FloatingPaneGrid::new(
-                &mut self.panes,
-                &mut self.desired_pane_positions,
-                display_area,
-                viewport,
-            );
-            floating_pane_grid.move_pane_up(active_pane_id).unwrap();
-            self.set_force_render();
-        }
+        let mut floating_pane_grid = FloatingPaneGrid::new(
+            &mut self.panes,
+            &mut self.desired_pane_positions,
+            display_area,
+            viewport,
+        );
+        floating_pane_grid.move_pane_up(&pane_id).non_fatal();
+        self.set_force_render();
     }
     pub fn move_active_pane_left(&mut self, client_id: ClientId) {
-        let display_area = *self.display_area.borrow();
-        let viewport = *self.viewport.borrow();
         if let Some(active_pane_id) = self.active_panes.get(&client_id) {
-            let mut floating_pane_grid = FloatingPaneGrid::new(
-                &mut self.panes,
-                &mut self.desired_pane_positions,
-                display_area,
-                viewport,
-            );
-            floating_pane_grid.move_pane_left(active_pane_id).unwrap();
-            self.set_force_render();
+            self.move_pane_left(*active_pane_id);
         }
     }
-    pub fn move_active_pane_right(&mut self, client_id: ClientId) {
+    pub fn move_pane_left(&mut self, pane_id: PaneId) {
         let display_area = *self.display_area.borrow();
         let viewport = *self.viewport.borrow();
+        let mut floating_pane_grid = FloatingPaneGrid::new(
+            &mut self.panes,
+            &mut self.desired_pane_positions,
+            display_area,
+            viewport,
+        );
+        floating_pane_grid.move_pane_left(&pane_id).unwrap();
+        self.set_force_render();
+    }
+    pub fn move_active_pane_right(&mut self, client_id: ClientId) {
         if let Some(active_pane_id) = self.active_panes.get(&client_id) {
-            let mut floating_pane_grid = FloatingPaneGrid::new(
-                &mut self.panes,
-                &mut self.desired_pane_positions,
-                display_area,
-                viewport,
-            );
-            floating_pane_grid.move_pane_right(active_pane_id).unwrap();
-            self.set_force_render();
+            self.move_pane_right(*active_pane_id);
         }
+    }
+    pub fn move_pane_right(&mut self, pane_id: PaneId) {
+        let display_area = *self.display_area.borrow();
+        let viewport = *self.viewport.borrow();
+        let mut floating_pane_grid = FloatingPaneGrid::new(
+            &mut self.panes,
+            &mut self.desired_pane_positions,
+            display_area,
+            viewport,
+        );
+        floating_pane_grid.move_pane_right(&pane_id).unwrap();
+        self.set_force_render();
     }
     pub fn move_active_pane(
         &mut self,
@@ -609,6 +621,13 @@ impl FloatingPanes {
         client_id: ClientId,
     ) {
         let active_pane_id = self.get_active_pane_id(client_id).unwrap();
+        self.move_pane(search_backwards, active_pane_id)
+    }
+    pub fn move_pane(
+        &mut self,
+        search_backwards: bool,
+        pane_id: PaneId,
+    ) {
 
         let new_position_id = {
             let pane_grid = FloatingPaneGrid::new(
@@ -618,13 +637,13 @@ impl FloatingPanes {
                 *self.viewport.borrow(),
             );
             if search_backwards {
-                pane_grid.previous_selectable_pane_id(&active_pane_id)
+                pane_grid.previous_selectable_pane_id(&pane_id)
             } else {
-                pane_grid.next_selectable_pane_id(&active_pane_id)
+                pane_grid.next_selectable_pane_id(&pane_id)
             }
         };
         if let Some(new_position_id) = new_position_id {
-            let current_position = self.panes.get(&active_pane_id).unwrap();
+            let current_position = self.panes.get(&pane_id).unwrap();
             let prev_geom = current_position.position_and_size();
             let prev_geom_override = current_position.geom_override();
 
@@ -637,7 +656,7 @@ impl FloatingPanes {
             }
             new_position.set_should_render(true);
 
-            let current_position = self.panes.get_mut(&active_pane_id).unwrap();
+            let current_position = self.panes.get_mut(&pane_id).unwrap();
             current_position.set_geom(next_geom);
             if let Some(geom) = next_geom_override {
                 current_position.set_geom_override(geom);

@@ -5,7 +5,7 @@ pub struct PluginCommand {
     pub name: i32,
     #[prost(
         oneof = "plugin_command::Payload",
-        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71"
+        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83"
     )]
     pub payload: ::core::option::Option<plugin_command::Payload>,
 }
@@ -136,7 +136,109 @@ pub mod plugin_command {
         WriteToPaneIdPayload(super::WriteToPaneIdPayload),
         #[prost(message, tag = "71")]
         WriteCharsToPaneIdPayload(super::WriteCharsToPaneIdPayload),
+        #[prost(message, tag = "72")]
+        MovePaneWithPaneIdPayload(super::MovePaneWithPaneIdPayload),
+        #[prost(message, tag = "73")]
+        MovePaneWithPaneIdInDirectionPayload(
+            super::MovePaneWithPaneIdInDirectionPayload,
+        ),
+        #[prost(message, tag = "74")]
+        ClearScreenForPaneIdPayload(super::ClearScreenForPaneIdPayload),
+        #[prost(message, tag = "75")]
+        ScrollUpInPaneIdPayload(super::ScrollUpInPaneIdPayload),
+        #[prost(message, tag = "76")]
+        ScrollDownInPaneIdPayload(super::ScrollDownInPaneIdPayload),
+        #[prost(message, tag = "77")]
+        ScrollToTopInPaneIdPayload(super::ScrollToTopInPaneIdPayload),
+        #[prost(message, tag = "78")]
+        ScrollToBottomInPaneIdPayload(super::ScrollToBottomInPaneIdPayload),
+        #[prost(message, tag = "79")]
+        PageScrollUpInPaneIdPayload(super::PageScrollUpInPaneIdPayload),
+        #[prost(message, tag = "80")]
+        PageScrollDownInPaneIdPayload(super::PageScrollDownInPaneIdPayload),
+        #[prost(message, tag = "81")]
+        TogglePaneIdFullscreenPayload(super::TogglePaneIdFullscreenPayload),
+        #[prost(message, tag = "82")]
+        TogglePaneEmbedOrEjectForPaneIdPayload(
+            super::TogglePaneEmbedOrEjectForPaneIdPayload,
+        ),
+        #[prost(message, tag = "83")]
+        CloseTabWithIndexPayload(super::CloseTabWithIndexPayload),
     }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MovePaneWithPaneIdPayload {
+    #[prost(message, optional, tag = "1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MovePaneWithPaneIdInDirectionPayload {
+    #[prost(message, optional, tag = "1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+    #[prost(message, optional, tag = "2")]
+    pub direction: ::core::option::Option<super::resize::MoveDirection>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ClearScreenForPaneIdPayload {
+    #[prost(message, optional, tag = "1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ScrollUpInPaneIdPayload {
+    #[prost(message, optional, tag = "1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ScrollDownInPaneIdPayload {
+    #[prost(message, optional, tag = "1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ScrollToTopInPaneIdPayload {
+    #[prost(message, optional, tag = "1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ScrollToBottomInPaneIdPayload {
+    #[prost(message, optional, tag = "1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PageScrollUpInPaneIdPayload {
+    #[prost(message, optional, tag = "1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PageScrollDownInPaneIdPayload {
+    #[prost(message, optional, tag = "1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct TogglePaneIdFullscreenPayload {
+    #[prost(message, optional, tag = "1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct TogglePaneEmbedOrEjectForPaneIdPayload {
+    #[prost(message, optional, tag = "1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CloseTabWithIndexPayload {
+    #[prost(uint32, tag = "1")]
+    pub tab_index: u32,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -520,6 +622,18 @@ pub enum CommandName {
     EditScrollbackForPaneWithId = 93,
     WriteToPaneId = 94,
     WriteCharsToPaneId = 95,
+    MovePaneWithPaneId = 96,
+    MovePaneWithPaneIdInDirection = 97,
+    ClearScreenForPaneId = 98,
+    ScrollUpInPaneId = 99,
+    ScrollDownInPaneId = 100,
+    ScrollToTopInPaneId = 101,
+    ScrollToBottomInPaneId = 102,
+    PageScrollUpInPaneId = 103,
+    PageScrollDownInPaneId = 104,
+    TogglePaneIdFullscreen = 105,
+    TogglePaneEmbedOrEjectForPaneId = 106,
+    CloseTabWithIndex = 107,
 }
 impl CommandName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -624,6 +738,20 @@ impl CommandName {
             CommandName::EditScrollbackForPaneWithId => "EditScrollbackForPaneWithId",
             CommandName::WriteToPaneId => "WriteToPaneId",
             CommandName::WriteCharsToPaneId => "WriteCharsToPaneId",
+            CommandName::MovePaneWithPaneId => "MovePaneWithPaneId",
+            CommandName::MovePaneWithPaneIdInDirection => "MovePaneWithPaneIdInDirection",
+            CommandName::ClearScreenForPaneId => "ClearScreenForPaneId",
+            CommandName::ScrollUpInPaneId => "ScrollUpInPaneId",
+            CommandName::ScrollDownInPaneId => "ScrollDownInPaneId",
+            CommandName::ScrollToTopInPaneId => "ScrollToTopInPaneId",
+            CommandName::ScrollToBottomInPaneId => "ScrollToBottomInPaneId",
+            CommandName::PageScrollUpInPaneId => "PageScrollUpInPaneId",
+            CommandName::PageScrollDownInPaneId => "PageScrollDownInPaneId",
+            CommandName::TogglePaneIdFullscreen => "TogglePaneIdFullscreen",
+            CommandName::TogglePaneEmbedOrEjectForPaneId => {
+                "TogglePaneEmbedOrEjectForPaneId"
+            }
+            CommandName::CloseTabWithIndex => "CloseTabWithIndex",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -725,6 +853,20 @@ impl CommandName {
             "EditScrollbackForPaneWithId" => Some(Self::EditScrollbackForPaneWithId),
             "WriteToPaneId" => Some(Self::WriteToPaneId),
             "WriteCharsToPaneId" => Some(Self::WriteCharsToPaneId),
+            "MovePaneWithPaneId" => Some(Self::MovePaneWithPaneId),
+            "MovePaneWithPaneIdInDirection" => Some(Self::MovePaneWithPaneIdInDirection),
+            "ClearScreenForPaneId" => Some(Self::ClearScreenForPaneId),
+            "ScrollUpInPaneId" => Some(Self::ScrollUpInPaneId),
+            "ScrollDownInPaneId" => Some(Self::ScrollDownInPaneId),
+            "ScrollToTopInPaneId" => Some(Self::ScrollToTopInPaneId),
+            "ScrollToBottomInPaneId" => Some(Self::ScrollToBottomInPaneId),
+            "PageScrollUpInPaneId" => Some(Self::PageScrollUpInPaneId),
+            "PageScrollDownInPaneId" => Some(Self::PageScrollDownInPaneId),
+            "TogglePaneIdFullscreen" => Some(Self::TogglePaneIdFullscreen),
+            "TogglePaneEmbedOrEjectForPaneId" => {
+                Some(Self::TogglePaneEmbedOrEjectForPaneId)
+            }
+            "CloseTabWithIndex" => Some(Self::CloseTabWithIndex),
             _ => None,
         }
     }
