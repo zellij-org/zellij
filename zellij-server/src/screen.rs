@@ -582,10 +582,14 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::Reconfigure { .. } => ScreenContext::Reconfigure,
             ScreenInstruction::RerunCommandPane { .. } => ScreenContext::RerunCommandPane,
             ScreenInstruction::ResizePaneWithId(..) => ScreenContext::ResizePaneWithId,
-            ScreenInstruction::EditScrollbackForPaneWithId(..) => ScreenContext::EditScrollbackForPaneWithId,
+            ScreenInstruction::EditScrollbackForPaneWithId(..) => {
+                ScreenContext::EditScrollbackForPaneWithId
+            },
             ScreenInstruction::WriteToPaneId(..) => ScreenContext::WriteToPaneId,
             ScreenInstruction::MovePaneWithPaneId(..) => ScreenContext::MovePaneWithPaneId,
-            ScreenInstruction::MovePaneWithPaneIdInDirection(..) => ScreenContext::MovePaneWithPaneIdInDirection,
+            ScreenInstruction::MovePaneWithPaneIdInDirection(..) => {
+                ScreenContext::MovePaneWithPaneIdInDirection
+            },
             ScreenInstruction::ClearScreenForPaneId(..) => ScreenContext::ClearScreenForPaneId,
             ScreenInstruction::ScrollUpInPaneId(..) => ScreenContext::ScrollUpInPaneId,
             ScreenInstruction::ScrollDownInPaneId(..) => ScreenContext::ScrollDownInPaneId,
@@ -594,7 +598,9 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::PageScrollUpInPaneId(..) => ScreenContext::PageScrollUpInPaneId,
             ScreenInstruction::PageScrollDownInPaneId(..) => ScreenContext::PageScrollDownInPaneId,
             ScreenInstruction::TogglePaneIdFullscreen(..) => ScreenContext::TogglePaneIdFullscreen,
-            ScreenInstruction::TogglePaneEmbedOrEjectForPaneId(..) => ScreenContext::TogglePaneEmbedOrEjectForPaneId,
+            ScreenInstruction::TogglePaneEmbedOrEjectForPaneId(..) => {
+                ScreenContext::TogglePaneEmbedOrEjectForPaneId
+            },
             ScreenInstruction::CloseTabWithIndex(..) => ScreenContext::CloseTabWithIndex,
         }
     }
@@ -2050,10 +2056,7 @@ impl Screen {
             }
         }
         if !found {
-            log::error!(
-                "Failed to find pane with id: {:?} to resize",
-                pane_id
-            );
+            log::error!("Failed to find pane with id: {:?} to resize", pane_id);
         }
     }
     pub fn break_pane(
@@ -2639,10 +2642,10 @@ pub(crate) fn screen_thread_main(
                             .replace_active_pane_with_editor_pane(pid, client_id), ?);
                         screen.unblock_input()?;
                         screen.log_and_report_session_state()?;
-                    }
+                    },
                     ClientTabIndexOrPaneId::TabIndex(tab_index) => {
                         log::error!("Cannot OpenInPlaceEditor with a TabIndex");
-                    }
+                    },
                     ClientTabIndexOrPaneId::PaneId(pane_id_to_replace) => {
                         let mut found = false;
                         let all_tabs = screen.get_tabs_mut();
@@ -2654,9 +2657,12 @@ pub(crate) fn screen_thread_main(
                             }
                         }
                         if !found {
-                            log::error!("Could not find pane with id {:?} to replace", pane_id_to_replace);
+                            log::error!(
+                                "Could not find pane with id {:?} to replace",
+                                pane_id_to_replace
+                            );
                         }
-                    }
+                    },
                 }
 
                 screen.render(None)?;
@@ -4249,7 +4255,8 @@ pub(crate) fn screen_thread_main(
                 let all_tabs = screen.get_tabs_mut();
                 for tab in all_tabs.values_mut() {
                     if tab.has_pane_with_pid(&pane_id) {
-                        tab.write_to_pane_id(&None, bytes, false, pane_id, None).non_fatal();
+                        tab.write_to_pane_id(&None, bytes, false, pane_id, None)
+                            .non_fatal();
                         break;
                     }
                 }
@@ -4264,7 +4271,7 @@ pub(crate) fn screen_thread_main(
                     }
                 }
                 screen.render(None)?;
-            }
+            },
             ScreenInstruction::MovePaneWithPaneIdInDirection(pane_id, direction) => {
                 let all_tabs = screen.get_tabs_mut();
                 for tab in all_tabs.values_mut() {
@@ -4279,7 +4286,7 @@ pub(crate) fn screen_thread_main(
                     }
                 }
                 screen.render(None)?;
-            }
+            },
             ScreenInstruction::ClearScreenForPaneId(pane_id) => {
                 let all_tabs = screen.get_tabs_mut();
                 for tab in all_tabs.values_mut() {
@@ -4289,7 +4296,7 @@ pub(crate) fn screen_thread_main(
                     }
                 }
                 screen.render(None)?;
-            }
+            },
             ScreenInstruction::ScrollUpInPaneId(pane_id) => {
                 let all_tabs = screen.get_tabs_mut();
                 for tab in all_tabs.values_mut() {
@@ -4299,13 +4306,15 @@ pub(crate) fn screen_thread_main(
                         } else {
                             // this is because to do this with plugins, we need the client_id -
                             // which we do not have (yet?) in this context...
-                            log::error!("Currently only terminal panes are supported for scrolling up");
+                            log::error!(
+                                "Currently only terminal panes are supported for scrolling up"
+                            );
                         }
                         break;
                     }
                 }
                 screen.render(None)?;
-            }
+            },
             ScreenInstruction::ScrollDownInPaneId(pane_id) => {
                 let all_tabs = screen.get_tabs_mut();
                 for tab in all_tabs.values_mut() {
@@ -4315,13 +4324,15 @@ pub(crate) fn screen_thread_main(
                         } else {
                             // this is because to do this with plugins, we need the client_id -
                             // which we do not have (yet?) in this context...
-                            log::error!("Currently only terminal panes are supported for scrolling down");
+                            log::error!(
+                                "Currently only terminal panes are supported for scrolling down"
+                            );
                         }
                         break;
                     }
                 }
                 screen.render(None)?;
-            }
+            },
             ScreenInstruction::ScrollToTopInPaneId(pane_id) => {
                 let all_tabs = screen.get_tabs_mut();
                 for tab in all_tabs.values_mut() {
@@ -4331,13 +4342,15 @@ pub(crate) fn screen_thread_main(
                         } else {
                             // this is because to do this with plugins, we need the client_id -
                             // which we do not have (yet?) in this context...
-                            log::error!("Currently only terminal panes are supported for scrolling to top");
+                            log::error!(
+                                "Currently only terminal panes are supported for scrolling to top"
+                            );
                         }
                         break;
                     }
                 }
                 screen.render(None)?;
-            }
+            },
             ScreenInstruction::ScrollToBottomInPaneId(pane_id) => {
                 let all_tabs = screen.get_tabs_mut();
                 for tab in all_tabs.values_mut() {
@@ -4353,7 +4366,7 @@ pub(crate) fn screen_thread_main(
                     }
                 }
                 screen.render(None)?;
-            }
+            },
             ScreenInstruction::PageScrollUpInPaneId(pane_id) => {
                 let all_tabs = screen.get_tabs_mut();
                 for tab in all_tabs.values_mut() {
@@ -4363,13 +4376,15 @@ pub(crate) fn screen_thread_main(
                         } else {
                             // this is because to do this with plugins, we need the client_id -
                             // which we do not have (yet?) in this context...
-                            log::error!("Currently only terminal panes are supported for scrolling");
+                            log::error!(
+                                "Currently only terminal panes are supported for scrolling"
+                            );
                         }
                         break;
                     }
                 }
                 screen.render(None)?;
-            }
+            },
             ScreenInstruction::PageScrollDownInPaneId(pane_id) => {
                 let all_tabs = screen.get_tabs_mut();
                 for tab in all_tabs.values_mut() {
@@ -4379,13 +4394,15 @@ pub(crate) fn screen_thread_main(
                         } else {
                             // this is because to do this with plugins, we need the client_id -
                             // which we do not have (yet?) in this context...
-                            log::error!("Currently only terminal panes are supported for scrolling");
+                            log::error!(
+                                "Currently only terminal panes are supported for scrolling"
+                            );
                         }
                         break;
                     }
                 }
                 screen.render(None)?;
-            }
+            },
             ScreenInstruction::TogglePaneIdFullscreen(pane_id) => {
                 let all_tabs = screen.get_tabs_mut();
                 for tab in all_tabs.values_mut() {
@@ -4395,20 +4412,21 @@ pub(crate) fn screen_thread_main(
                     }
                 }
                 screen.render(None)?;
-            }
+            },
             ScreenInstruction::TogglePaneEmbedOrEjectForPaneId(pane_id) => {
                 let all_tabs = screen.get_tabs_mut();
                 for tab in all_tabs.values_mut() {
                     if tab.has_pane_with_pid(&pane_id) {
-                        tab.toggle_pane_embed_or_floating_for_pane_id(pane_id).non_fatal();
+                        tab.toggle_pane_embed_or_floating_for_pane_id(pane_id)
+                            .non_fatal();
                         break;
                     }
                 }
                 screen.render(None)?;
-            }
+            },
             ScreenInstruction::CloseTabWithIndex(tab_index) => {
                 screen.close_tab_at_index(tab_index).non_fatal()
-            }
+            },
         }
     }
     Ok(())

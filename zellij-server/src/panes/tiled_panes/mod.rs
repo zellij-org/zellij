@@ -833,7 +833,6 @@ impl TiledPanes {
         client_id: ClientId,
         strategy: &ResizeStrategy,
     ) -> Result<()> {
-
         if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
             self.resize_pane_with_id(*strategy, active_pane_id)?;
         }
@@ -841,8 +840,7 @@ impl TiledPanes {
         Ok(())
     }
     pub fn resize_pane_with_id(&mut self, strategy: ResizeStrategy, pane_id: PaneId) -> Result<()> {
-        let err_context =
-            || format!("failed to resize pand with id: {:?}", pane_id);
+        let err_context = || format!("failed to resize pand with id: {:?}", pane_id);
 
         let mut pane_grid = TiledPaneGrid::new(
             &mut self.panes,
@@ -869,9 +867,7 @@ impl TiledPanes {
                     {
                         Ok(_) => {},
                         Err(err) => match err.downcast_ref::<ZellijError>() {
-                            Some(ZellijError::PaneSizeUnchanged) => {
-                                Err::<(), _>(err).non_fatal()
-                            },
+                            Some(ZellijError::PaneSizeUnchanged) => Err::<(), _>(err).non_fatal(),
                             _ => {
                                 return Err(err);
                             },
@@ -1650,10 +1646,7 @@ impl TiledPanes {
                     .copied()
                     .into_iter()
                     .filter(|id| {
-                        !is_inside_viewport(
-                            &*self.viewport.borrow(),
-                            self.get_pane(*id).unwrap(),
-                        )
+                        !is_inside_viewport(&*self.viewport.borrow(), self.get_pane(*id).unwrap())
                     })
                     .collect();
                 for pid in viewport_pane_ids {

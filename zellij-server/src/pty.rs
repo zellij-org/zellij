@@ -10,11 +10,7 @@ use crate::{
 };
 use async_std::task::{self, JoinHandle};
 use std::sync::Arc;
-use std::{
-    collections::HashMap,
-    os::unix::io::RawFd,
-    path::PathBuf,
-};
+use std::{collections::HashMap, os::unix::io::RawFd, path::PathBuf};
 use zellij_utils::nix::unistd::Pid;
 use zellij_utils::{
     async_std,
@@ -357,9 +353,12 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     },
                 }
             },
-            PtyInstruction::OpenInPlaceEditor(temp_file, line_number, client_tab_index_or_pane_id) => {
-                let err_context =
-                    || format!("failed to open in-place editor for client");
+            PtyInstruction::OpenInPlaceEditor(
+                temp_file,
+                line_number,
+                client_tab_index_or_pane_id,
+            ) => {
+                let err_context = || format!("failed to open in-place editor for client");
 
                 match pty.spawn_terminal(
                     Some(TerminalAction::OpenFile(OpenFilePayload::new(

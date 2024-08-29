@@ -29,7 +29,10 @@ use std::env::set_var;
 use std::os::unix::io::RawFd;
 use std::sync::{Arc, Mutex};
 
-use crate::{plugins::PluginInstruction, pty::{PtyInstruction, ClientTabIndexOrPaneId}};
+use crate::{
+    plugins::PluginInstruction,
+    pty::{ClientTabIndexOrPaneId, PtyInstruction},
+};
 use zellij_utils::ipc::PixelDimensions;
 
 use zellij_utils::{

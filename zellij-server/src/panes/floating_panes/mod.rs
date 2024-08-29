@@ -413,7 +413,11 @@ impl FloatingPanes {
         }
         Ok(false)
     }
-    pub fn resize_pane_with_id(&mut self, strategy: ResizeStrategy, pane_id: PaneId) -> Result<bool> {
+    pub fn resize_pane_with_id(
+        &mut self,
+        strategy: ResizeStrategy,
+        pane_id: PaneId,
+    ) -> Result<bool> {
         // true => successfully resized
         let err_context = || format!("Failed to resize pane with id: {:?}", pane_id);
         let display_area = *self.display_area.borrow();
@@ -623,12 +627,7 @@ impl FloatingPanes {
         let active_pane_id = self.get_active_pane_id(client_id).unwrap();
         self.move_pane(search_backwards, active_pane_id)
     }
-    pub fn move_pane(
-        &mut self,
-        search_backwards: bool,
-        pane_id: PaneId,
-    ) {
-
+    pub fn move_pane(&mut self, search_backwards: bool, pane_id: PaneId) {
         let new_position_id = {
             let pane_grid = FloatingPaneGrid::new(
                 &mut self.panes,

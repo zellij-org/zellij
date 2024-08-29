@@ -879,8 +879,12 @@ pub fn resize_pane_with_id(resize_strategy: ResizeStrategy, pane_id: PaneId) {
 /// Changes the focus to the pane with the specified id, unsuppressing it if it was suppressed and switching to its tab and layer (eg. floating/tiled).
 pub fn focus_pane_with_id(pane_id: PaneId, should_float_if_hidden: bool) {
     let plugin_command = match pane_id {
-        PaneId::Terminal(terminal_pane_id) => PluginCommand::FocusTerminalPane(terminal_pane_id, should_float_if_hidden),
-        PaneId::Plugin(plugin_pane_id) => PluginCommand::FocusPluginPane(plugin_pane_id, should_float_if_hidden),
+        PaneId::Terminal(terminal_pane_id) => {
+            PluginCommand::FocusTerminalPane(terminal_pane_id, should_float_if_hidden)
+        },
+        PaneId::Plugin(plugin_pane_id) => {
+            PluginCommand::FocusPluginPane(plugin_pane_id, should_float_if_hidden)
+        },
     };
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
@@ -1014,8 +1018,12 @@ where
     S: ToString,
 {
     let plugin_command = match pane_id {
-        PaneId::Terminal(terminal_pane_id) => PluginCommand::RenameTerminalPane(terminal_pane_id, new_name.to_string()),
-        PaneId::Plugin(plugin_pane_id) => PluginCommand::RenamePluginPane(plugin_pane_id, new_name.to_string()),
+        PaneId::Terminal(terminal_pane_id) => {
+            PluginCommand::RenameTerminalPane(terminal_pane_id, new_name.to_string())
+        },
+        PaneId::Plugin(plugin_pane_id) => {
+            PluginCommand::RenamePluginPane(plugin_pane_id, new_name.to_string())
+        },
     };
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
