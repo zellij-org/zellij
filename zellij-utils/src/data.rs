@@ -1820,4 +1820,20 @@ pub enum PluginCommand {
     ShowPaneWithId(PaneId, bool), // bool -> should_float_if_hidden
     OpenCommandPaneBackground(CommandToRun, Context),
     RerunCommandPane(u32), // u32  - terminal pane id
+    ResizePaneIdWithDirection(ResizeStrategy, PaneId),
+    EditScrollbackForPaneWithId(PaneId),
+    WriteToPaneId(Vec<u8>, PaneId),
+    WriteCharsToPaneId(String, PaneId),
+    MovePaneWithPaneId(PaneId),
+    MovePaneWithPaneIdInDirection(PaneId, Direction),
+    ClearScreenForPaneId(PaneId),
+    ScrollUpInPaneId(PaneId),
+    ScrollDownInPaneId(PaneId),
+    ScrollToTopInPaneId(PaneId),
+    ScrollToBottomInPaneId(PaneId),
+    PageScrollUpInPaneId(PaneId),
+    PageScrollDownInPaneId(PaneId),
+    TogglePaneIdFullscreen(PaneId),
+    TogglePaneEmbedOrEjectForPaneId(PaneId),
+    CloseTabWithIndex(usize), // usize - tab_index
 }
