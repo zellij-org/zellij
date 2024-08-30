@@ -1,15 +1,23 @@
 //! IPC stuff for starting to split things into a client and server model.
 
 #[cfg(windows)]
-use crate::windows_utils::named_pipe::{PipeStream, Pipe};
+use crate::windows_utils::named_pipe::{Pipe, PipeStream};
 use crate::{
     cli::CliArgs,
     data::{ClientId, ConnectToSession, InputMode, Style},
     errors::{get_current_ctx, prelude::*, ErrorContext},
-    input::{actions::Action, keybinds::Keybinds, layout::Layout, options::Options, plugins::PluginsConfig},
+    input::{
+        actions::Action, keybinds::Keybinds, layout::Layout, options::Options,
+        plugins::PluginsConfig,
+    },
     pane_size::{Size, SizeInPixels},
 };
-use interprocess::{local_socket::LocalSocketStream, os::windows::named_pipe::DuplexBytePipeStream};
+
+#[cfg(unix)]
+use crate::shared::set_permissions;
+
+#[cfg(unix)]
+use interprocess::local_socket::{LocalSocketListener, LocalSocketStream};
 use log::warn;
 
 #[cfg(unix)]
@@ -19,7 +27,8 @@ use serde::{Deserialize, Serialize};
 use std::{
     fmt::{Display, Error, Formatter},
     io::{self, Read, Write},
-    marker::PhantomData, path::Path,
+    marker::PhantomData,
+    path::Path,
 };
 
 #[cfg(unix)]
@@ -258,7 +267,6 @@ impl<T: Serialize> IpcSenderWithContext<T> {
         let socket = unsafe { LocalSocketStream::from_raw_fd(dup_sock) };
         IpcReceiverWithContext::new(socket)
     }
-
 }
 
 #[cfg(windows)]
@@ -303,7 +311,6 @@ impl<T: Serialize> IpcSenderWithContext<T> {
 
 /// Receives messages on a stream socket, along with an [`ErrorContext`].
 pub struct IpcReceiverWithContext<T> {
-
     #[cfg(unix)]
     receiver: io::BufReader<IpcSocketStream>,
     #[cfg(windows)]
