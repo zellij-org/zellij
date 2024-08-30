@@ -61,7 +61,9 @@ struct EventedOverlapped(OVERLAPPED);
 impl Drop for EventedOverlapped {
     fn drop(&mut self) {
         if (!self.0.hEvent.is_null()) {
-            unsafe { CloseHandle(self.0.hEvent); }
+            unsafe {
+                CloseHandle(self.0.hEvent);
+            }
         }
     }
 }
@@ -233,7 +235,7 @@ impl PipeStream {
         .map(|_| Self::from(dup_handle))
     }
 
-    pub fn connect(path: impl AsRef<OsStr>)  -> io::Result<Self> {
+    pub fn connect(path: impl AsRef<OsStr>) -> io::Result<Self> {
         Pipe::new(path).connect()
     }
 }

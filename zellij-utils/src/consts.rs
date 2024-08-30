@@ -155,11 +155,11 @@ pub use windows_only::*;
 #[cfg(windows)]
 mod windows_only {
     use super::*;
-    use std::{path::PathBuf, fs, env::temp_dir};
+    use std::{env::temp_dir, fs, path::PathBuf};
 
     use lazy_static::lazy_static;
 
-    use crate::{shared::set_permissions, envs};
+    use crate::{envs, shared::set_permissions};
 
     fn get_username() -> String {
         use std::ptr;
@@ -196,7 +196,8 @@ mod windows_only {
             sock_dir.push(envs::get_session_name().unwrap());
             sock_dir
         };
-        pub static ref ZELLIJ_TMP_DIR: PathBuf = temp_dir().join(format!("zellij-{}", USERNAME.as_str()));
+        pub static ref ZELLIJ_TMP_DIR: PathBuf =
+            temp_dir().join(format!("zellij-{}", USERNAME.as_str()));
         pub static ref ZELLIJ_TMP_LOG_DIR: PathBuf = ZELLIJ_TMP_DIR.join("zellij-log");
         pub static ref ZELLIJ_TMP_LOG_FILE: PathBuf = ZELLIJ_TMP_LOG_DIR.join("zellij.log");
         pub static ref ZELLIJ_SOCK_DIR: PathBuf = {

@@ -890,9 +890,9 @@ pub(crate) fn route_thread_main(
                                         ))
                                     })
                                     .and_then(|min_size| {
-                                        rlocked_sessions
-                                            .senders
-                                            .send_to_screen(ScreenInstruction::TerminalResize(min_size))
+                                        rlocked_sessions.senders.send_to_screen(
+                                            ScreenInstruction::TerminalResize(min_size),
+                                        )
                                     })
                                     .with_context(err_context)?;
                             }
@@ -1011,9 +1011,7 @@ pub(crate) fn route_thread_main(
                 }
             },
             None => {
-                log::error!(
-                    "Error receiving Message from client, logging client out."
-                );
+                log::error!("Error receiving Message from client, logging client out.");
                 let _ = os_input.send_to_client(
                     client_id,
                     ServerToClientMsg::Exit(ExitReason::Error(
