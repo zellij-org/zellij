@@ -1,0 +1,12 @@
+---
+source: zellij-server/src/plugins/./unit/plugin_tests.rs
+assertion_line: 7766
+expression: "format!(\"{:#?}\", screen_instruction)"
+---
+Some(
+    ScrollToBottomInPaneId(
+        Terminal(
+            2,
+        ),
+    ),
+)

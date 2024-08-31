@@ -10,11 +10,7 @@ use crate::{
 };
 use async_std::task::{self, JoinHandle};
 use std::sync::Arc;
-use std::{
-    collections::{BTreeMap, HashMap},
-    os::unix::io::RawFd,
-    path::PathBuf,
-};
+use std::{collections::HashMap, os::unix::io::RawFd, path::PathBuf};
 use zellij_utils::nix::unistd::Pid;
 use zellij_utils::{
     async_std,
@@ -32,7 +28,7 @@ use zellij_utils::{
 pub type VteBytes = Vec<u8>;
 pub type TabIndex = u32;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ClientTabIndexOrPaneId {
     ClientId(ClientId),
     TabIndex(usize),
@@ -51,7 +47,7 @@ pub enum PtyInstruction {
         ClientTabIndexOrPaneId,
     ), // bool (if Some) is
     // should_float, String is an optional pane name
-    OpenInPlaceEditor(PathBuf, Option<usize>, ClientId), // Option<usize> is the optional line number
+    OpenInPlaceEditor(PathBuf, Option<usize>, ClientTabIndexOrPaneId), // Option<usize> is the optional line number
     SpawnTerminalVertically(Option<TerminalAction>, Option<String>, ClientId), // String is an
     // optional pane
     // name
@@ -357,9 +353,12 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     },
                 }
             },
-            PtyInstruction::OpenInPlaceEditor(temp_file, line_number, client_id) => {
-                let err_context =
-                    || format!("failed to open in-place editor for client {}", client_id);
+            PtyInstruction::OpenInPlaceEditor(
+                temp_file,
+                line_number,
+                client_tab_index_or_pane_id,
+            ) => {
+                let err_context = || format!("failed to open in-place editor for client");
 
                 match pty.spawn_terminal(
                     Some(TerminalAction::OpenFile(OpenFilePayload::new(
@@ -367,14 +366,14 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                         line_number,
                         None,
                     ))),
-                    ClientTabIndexOrPaneId::ClientId(client_id),
+                    client_tab_index_or_pane_id,
                 ) {
                     Ok((pid, _starts_held)) => {
                         pty.bus
                             .senders
                             .send_to_screen(ScreenInstruction::OpenInPlaceEditor(
                                 PaneId::Terminal(pid),
-                                client_id,
+                                client_tab_index_or_pane_id,
                             ))
                             .with_context(err_context)?;
                     },

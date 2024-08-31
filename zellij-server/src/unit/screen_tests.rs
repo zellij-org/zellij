@@ -29,7 +29,10 @@ use std::env::set_var;
 use std::os::unix::io::RawFd;
 use std::sync::{Arc, Mutex};
 
-use crate::{plugins::PluginInstruction, pty::PtyInstruction};
+use crate::{
+    plugins::PluginInstruction,
+    pty::{ClientTabIndexOrPaneId, PtyInstruction},
+};
 use zellij_utils::ipc::PixelDimensions;
 
 use zellij_utils::{
@@ -1699,7 +1702,7 @@ pub fn send_cli_edit_scrollback_action() {
         {
             assert_eq!(scrollback_contents_file, &PathBuf::from(&dumped_file_name));
             assert_eq!(terminal_id, &Some(1));
-            assert_eq!(client_id, &1);
+            assert_eq!(client_id, &ClientTabIndexOrPaneId::ClientId(1));
             found_instruction = true;
         }
     }
