@@ -1,6 +1,6 @@
 //! Definition of the actions that can be bound to keys.
 
-use super::command::{OpenFilePayload, RunCommandAction};
+use super::command::{OpenFilePayload, RunCommandAction, TerminalAction};
 use super::layout::{
     FloatingPaneLayout, Layout, PluginAlias, RunPlugin, RunPluginLocation, RunPluginOrAlias,
     SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,
@@ -18,6 +18,7 @@ use uuid::Uuid;
 
 use std::path::PathBuf;
 use std::str::FromStr;
+use crate::input::command::RunCommand;
 
 use crate::position::Position;
 
@@ -190,11 +191,13 @@ pub enum Action {
     UndoRenamePane,
     /// Create a new tab, optionally with a specified tab layout.
     NewTab(
+        Option<PathBuf>, // cwd
+        Option<TerminalAction>, // initial command or file to edit
         Option<TiledPaneLayout>,
         Vec<FloatingPaneLayout>,
         Option<Vec<SwapTiledLayout>>,
         Option<Vec<SwapFloatingLayout>>,
-        Option<String>,
+        Option<String>, // tab name
     ), // the String is the tab name
     /// Do nothing.
     NoOp,
@@ -522,11 +525,25 @@ impl Action {
                 layout,
                 layout_dir,
                 cwd,
+                run,
+                args,
+                edit,
             } => {
                 let current_dir = get_current_dir();
                 let cwd = cwd
                     .map(|cwd| current_dir.join(cwd))
                     .or_else(|| Some(current_dir));
+
+
+                let action = run.map(|command| TerminalAction::RunCommand(RunCommand {
+                    command,
+                    args: args.unwrap_or_else(|| vec![]),
+                    cwd: cwd.clone(),
+                    hold_on_close: false,
+                    hold_on_start: false,
+                    originating_plugin: None,
+                })).or_else(|| edit.map(|path| TerminalAction::OpenFile(OpenFilePayload::new(path, None, cwd.clone()))));
+
                 if let Some(layout_path) = layout {
                     let layout_dir = layout_dir
                         .or_else(|| config.and_then(|c| c.options.layout_dir))
@@ -550,7 +567,7 @@ impl Action {
                         Layout::stringified_from_path_or_default(Some(&layout_path), layout_dir)
                             .map_err(|e| format!("Failed to load layout: {}", e))?
                     };
-                    let layout = Layout::from_str(&raw_layout, path_to_raw_layout, swap_layouts.as_ref().map(|(f, p)| (f.as_str(), p.as_str())), cwd).map_err(|e| {
+                    let layout = Layout::from_str(&raw_layout, path_to_raw_layout, swap_layouts.as_ref().map(|(f, p)| (f.as_str(), p.as_str())), cwd.clone()).map_err(|e| {
                         let stringified_error = match e {
                             ConfigError::KdlError(kdl_error) => {
                                 let error = kdl_error.add_src(layout_path.as_path().as_os_str().to_string_lossy().to_string(), String::from(raw_layout));
@@ -592,6 +609,8 @@ impl Action {
                             tabs.drain(..).next().unwrap();
                         let name = tab_name.or(name);
                         Ok(vec![Action::NewTab(
+                            cwd,
+                            action,
                             Some(layout),
                             floating_panes_layout,
                             swap_tiled_layouts,
@@ -603,6 +622,8 @@ impl Action {
                         let swap_floating_layouts = Some(layout.swap_floating_layouts.clone());
                         let (layout, floating_panes_layout) = layout.new_tab();
                         Ok(vec![Action::NewTab(
+                            cwd,
+                            action,
                             Some(layout),
                             floating_panes_layout,
                             swap_tiled_layouts,
@@ -611,7 +632,7 @@ impl Action {
                         )])
                     }
                 } else {
-                    Ok(vec![Action::NewTab(None, vec![], None, None, name)])
+                    Ok(vec![Action::NewTab(cwd, action, None, vec![], None, None, name)])
                 }
             },
             CliAction::PreviousSwapLayout => Ok(vec![Action::PreviousSwapLayout]),
