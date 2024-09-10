@@ -1,0 +1,17 @@
+// https://github.com/atelierbram/atelier-schemes-terminal
+
+themes {
+    atelier-sulphurpool {
+        bg "#293256"
+        fg "#979db4"
+        red "#c94922"
+        green "#ac9739"
+        yellow "#c08b30"
+        blue "#3d8fd1"
+        magenta "#9c637a"
+        orange "#c76b29"
+        cyan "#22a2c9"
+        black "#202746"
+        white "#f5f7ff"
+    }
+}
