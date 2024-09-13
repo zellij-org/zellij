@@ -1,7 +1,7 @@
 //! Handles cli and configuration options
 use crate::cli::Command;
 use crate::data::InputMode;
-use clap::{ValueEnum, Args};
+use clap::{Args, ValueEnum};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::str::FromStr;

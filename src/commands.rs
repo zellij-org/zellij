@@ -147,7 +147,7 @@ fn get_os_input<OsInputOutput>(
         Err(e) => {
             eprintln!("failed to open terminal:\n{:?}", e);
             process::exit(1);
-        }
+        },
     }
 }
 

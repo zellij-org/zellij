@@ -221,11 +221,15 @@ impl ClientOsApi for ClientOsInputOutput {
 
     #[cfg(windows)]
     fn set_raw_mode(&mut self, handle: u32, enable_mode: u32, disable_mode: u32) {
+        use windows_sys::Win32::System::Console::{SetConsoleCP, SetConsoleOutputCP};
+
         let mut consolemode = 0 as u32;
         let fd = unsafe { GetStdHandle(handle) };
         unsafe { GetConsoleMode(fd, &mut consolemode) };
         consolemode = (consolemode & !disable_mode) | enable_mode;
         unsafe { SetConsoleMode(fd, consolemode) };
+        unsafe { SetConsoleCP(65001) }; // Set Input CP to UTF8 (https://learn.microsoft.com/de-de/windows/win32/intl/code-page-identifiers)
+        unsafe { SetConsoleOutputCP(65001) };
     }
 
     #[cfg(unix)]
@@ -297,9 +301,10 @@ impl ClientOsApi for ClientOsInputOutput {
                             windows_sys::Win32::System::Console::KEY_EVENT => {
                                 // SAFETY: We just matched the tag
                                 let args = unsafe { event.Event.KeyEvent };
-                                if args.bKeyDown == 1 && args.dwControlKeyState == 0 {
-                                    // SAFETY: ASCII is a subset of UTF16 and we called ReadConsoleInputA (the ascii version of the function)
-                                    read_bytes.push(unsafe { args.uChar.AsciiChar });
+                                // SAFETY: we called ReadConsoleInputA (the ascii version of the function)
+                                let char = unsafe { args.uChar.AsciiChar };
+                                if args.bKeyDown == 1 && char != 0 {
+                                    read_bytes.push(char);
                                 }
                                 Ok(())
                             },

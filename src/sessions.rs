@@ -168,7 +168,8 @@ fn assert_socket(name: &str) -> bool {
         Ok(stream) => {
             let mut receiver = IpcReceiverWithContext::new(stream);
             let mut sender = receiver.get_sender();
-            sender.send(ClientToServerMsg::ConnStatus)
+            sender
+                .send(ClientToServerMsg::ConnStatus)
                 .with_context(|| "Query connection status")
                 .non_fatal();
             let _ = sender.send(ClientToServerMsg::ConnStatus);
