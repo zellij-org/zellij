@@ -119,6 +119,7 @@ enum CommandName {
   TogglePaneIdFullscreen = 105;
   TogglePaneEmbedOrEjectForPaneId = 106;
   CloseTabWithIndex = 107;
+  BreakPanesToNewTab = 108;
 }
 
 message PluginCommand {
@@ -197,7 +198,12 @@ message PluginCommand {
     TogglePaneIdFullscreenPayload toggle_pane_id_fullscreen_payload = 81;
     TogglePaneEmbedOrEjectForPaneIdPayload toggle_pane_embed_or_eject_for_pane_id_payload = 82;
     CloseTabWithIndexPayload close_tab_with_index_payload = 83;
+    BreakPanesToNewTabPayload break_panes_to_new_tab_payload = 84;
   }
+}
+
+message BreakPanesToNewTabPayload {
+  repeated PaneId pane_ids = 1;
 }
 
 message MovePaneWithPaneIdPayload {

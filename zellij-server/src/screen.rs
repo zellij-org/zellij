@@ -395,6 +395,7 @@ pub enum ScreenInstruction {
     TogglePaneIdFullscreen(PaneId),
     TogglePaneEmbedOrEjectForPaneId(PaneId),
     CloseTabWithIndex(usize),
+    BreakPanesToNewTab(Vec<PaneId>, Option<TerminalAction>, ClientId),
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -602,6 +603,7 @@ impl From<&ScreenInstruction> for ScreenContext {
                 ScreenContext::TogglePaneEmbedOrEjectForPaneId
             },
             ScreenInstruction::CloseTabWithIndex(..) => ScreenContext::CloseTabWithIndex,
+            ScreenInstruction::BreakPanesToNewTab(..) => ScreenContext::BreakPanesToNewTab,
         }
     }
 }
@@ -1379,6 +1381,9 @@ impl Screen {
                 if let Some(drained_clients) = drained_clients {
                     tab.add_multiple_clients(drained_clients)?;
                 }
+                tab.resize_whole_tab(self.size)
+                    .with_context(err_context)?;
+                tab.set_force_render();
                 Ok(())
             })
             .with_context(err_context)?;
@@ -2120,6 +2125,57 @@ impl Screen {
                 .with_context(err_context)?;
             self.unblock_input()?;
         }
+        Ok(())
+    }
+    pub fn break_multiple_panes_to_new_tab(
+        &mut self,
+        pane_ids: Vec<PaneId>,
+        default_shell: Option<TerminalAction>,
+        client_id: ClientId,
+    ) -> Result<()> {
+        log::info!("default_layout break_multiple_panes_to_new_tab: {:#?}", self.default_layout);
+        let err_context = || "failed break multiple panes to a new tab".to_string();
+
+        let all_tabs = self.get_tabs_mut();
+        let mut extracted_panes = vec![];
+        for pane_id in pane_ids {
+            for tab in all_tabs.values_mut() {
+                // here we pass None instead of the client_id we have because we do not need to
+                // necessarily trigger a relayout for this tab
+                if let Some(pane) = tab.extract_pane(pane_id, true, None).take() {
+                    extracted_panes.push(pane);
+                    break;
+                }
+            }
+        }
+
+        let (
+            mut tiled_panes_layout,
+            floating_panes_layout
+        ) = self.default_layout.new_tab();
+        let tab_index = self.get_new_tab_index();
+        let swap_layouts = (
+            self.default_layout.swap_tiled_layouts.clone(),
+            self.default_layout.swap_floating_layouts.clone(),
+        );
+        self.new_tab(tab_index, swap_layouts, None, client_id)?;
+        let tab = self.tabs.get_mut(&tab_index).with_context(err_context)?;
+        for pane in extracted_panes {
+            let run_instruction = pane.invoked_with().clone();
+            let pane_id = pane.pid();
+            // here we pass None instead of the ClientId, because we do not want this pane to be
+            // necessarily focused
+            tab.add_tiled_pane(pane, pane_id, None)?;
+            tiled_panes_layout.ignore_run_instruction(run_instruction.clone());
+        }
+        self.bus.senders.send_to_plugin(PluginInstruction::NewTab(
+            None,
+            default_shell,
+            Some(tiled_panes_layout),
+            floating_panes_layout,
+            tab_index,
+            client_id,
+        ))?;
         Ok(())
     }
     pub fn break_pane_to_new_tab(
@@ -4426,6 +4482,9 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::CloseTabWithIndex(tab_index) => {
                 screen.close_tab_at_index(tab_index).non_fatal()
+            },
+            ScreenInstruction::BreakPanesToNewTab(pane_ids, default_shell, client_id) => {
+                screen.break_multiple_panes_to_new_tab(pane_ids, default_shell, client_id)?;
             },
         }
     }

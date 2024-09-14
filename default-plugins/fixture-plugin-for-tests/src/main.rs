@@ -415,6 +415,9 @@ impl ZellijPlugin for State {
                 BareKey::Char('t') if key.has_modifiers(&[KeyModifier::Alt]) => {
                     close_tab_with_index(2);
                 },
+                BareKey::Char('u') if key.has_modifiers(&[KeyModifier::Alt]) => {
+                    break_panes_to_new_tab(&[PaneId::Terminal(1), PaneId::Plugin(2)]);
+                },
                 _ => {},
             },
             Event::CustomMessage(message, payload) => {

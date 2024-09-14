@@ -19,7 +19,7 @@ pub use super::generated_api::api::{
         ScrollToTopInPaneIdPayload, ScrollUpInPaneIdPayload, SetTimeoutPayload,
         ShowPaneWithIdPayload, SubscribePayload, SwitchSessionPayload, SwitchTabToPayload,
         TogglePaneEmbedOrEjectForPaneIdPayload, TogglePaneIdFullscreenPayload, UnsubscribePayload,
-        WebRequestPayload, WriteCharsToPaneIdPayload, WriteToPaneIdPayload,
+        WebRequestPayload, WriteCharsToPaneIdPayload, WriteToPaneIdPayload, BreakPanesToNewTabPayload
     },
     plugin_permission::PermissionType as ProtobufPermissionType,
     resize::ResizeAction as ProtobufResizeAction,
@@ -1174,6 +1174,12 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 ),
                 _ => Err("Mismatched payload for CloseTabWithIndex"),
             },
+            Some(CommandName::BreakPanesToNewTab) => match protobuf_plugin_command.payload {
+                Some(Payload::BreakPanesToNewTabPayload(break_panes_to_new_tab_payload)) => Ok(
+                    PluginCommand::BreakPanesToNewTab(break_panes_to_new_tab_payload.pane_ids.into_iter().filter_map(|p_id| p_id.try_into().ok()).collect()),
+                ),
+                _ => Err("Mismatched payload for CloseTabWithIndex"),
+            },
             None => Err("Unrecognized plugin command"),
         }
     }
@@ -1919,6 +1925,14 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                 payload: Some(Payload::CloseTabWithIndexPayload(
                     CloseTabWithIndexPayload {
                         tab_index: tab_index as u32,
+                    },
+                )),
+            }),
+            PluginCommand::BreakPanesToNewTab(pane_ids) => Ok(ProtobufPluginCommand {
+                name: CommandName::BreakPanesToNewTab as i32,
+                payload: Some(Payload::BreakPanesToNewTabPayload(
+                    BreakPanesToNewTabPayload {
+                        pane_ids: pane_ids.into_iter().filter_map(|p_id| p_id.try_into().ok()).collect()
                     },
                 )),
             }),
