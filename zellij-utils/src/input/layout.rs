@@ -938,7 +938,16 @@ impl TiledPaneLayout {
                 .len()
                 .saturating_sub(successfully_ignored)
             {
-                if let Some(position) = run_instructions.iter().position(|i| i == &None) {
+                if let Some(position) = run_instructions.iter().position(|i| {
+                    match i {
+                        // this is because a bare CWD instruction should be overidden by a terminal
+                        // in run_instructions_to_ignore (for cases where the cwd for example comes
+                        // from a global layout cwd and the pane is actually just a bare pane that
+                        // wants to be overidden)
+                        Some(Run::Cwd(_)) | None => true,
+                        _ => false
+                    }
+                }) {
                     run_instructions.remove(position);
                 }
             }
