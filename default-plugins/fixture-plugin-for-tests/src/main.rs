@@ -416,10 +416,12 @@ impl ZellijPlugin for State {
                     close_tab_with_index(2);
                 },
                 BareKey::Char('u') if key.has_modifiers(&[KeyModifier::Alt]) => {
-                    break_panes_to_new_tab(&[PaneId::Terminal(1), PaneId::Plugin(2)]);
+                    let should_change_focus_to_new_tab = true;
+                    break_panes_to_new_tab(&[PaneId::Terminal(1), PaneId::Plugin(2)], should_change_focus_to_new_tab);
                 },
                 BareKey::Char('v') if key.has_modifiers(&[KeyModifier::Alt]) => {
-                    break_panes_to_tab_with_index(&[PaneId::Terminal(1), PaneId::Plugin(2)], 2);
+                    let should_change_focus_to_target_tab = true;
+                    break_panes_to_tab_with_index(&[PaneId::Terminal(1), PaneId::Plugin(2)], 2, should_change_focus_to_target_tab);
                 },
                 _ => {},
             },

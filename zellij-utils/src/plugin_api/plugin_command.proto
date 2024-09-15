@@ -207,10 +207,12 @@ message PluginCommand {
 message BreakPanesToTabWithIndexPayload {
   repeated PaneId pane_ids = 1;
   uint32 tab_index = 2;
+  bool should_change_focus_to_target_tab = 3;
 }
 
 message BreakPanesToNewTabPayload {
   repeated PaneId pane_ids = 1;
+  bool should_change_focus_to_new_tab = 2;
 }
 
 message MovePaneWithPaneIdPayload {

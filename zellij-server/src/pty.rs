@@ -64,6 +64,7 @@ pub enum PtyInstruction {
         Vec<FloatingPaneLayout>,
         usize,                               // tab_index
         HashMap<RunPluginOrAlias, Vec<u32>>, // plugin_ids
+        bool, // should change focus to new tab
         ClientId,
     ), // the String is the tab name
     ClosePane(PaneId),
@@ -542,6 +543,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                 floating_panes_layout,
                 tab_index,
                 plugin_ids,
+                should_change_focus_to_new_tab,
                 client_id,
             ) => {
                 let err_context = || format!("failed to open new tab for client {}", client_id);
@@ -558,6 +560,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     terminal_action.clone(),
                     plugin_ids,
                     tab_index,
+                    should_change_focus_to_new_tab,
                     client_id,
                 )
                 .with_context(err_context)?;
@@ -1015,6 +1018,7 @@ impl Pty {
         default_shell: Option<TerminalAction>,
         plugin_ids: HashMap<RunPluginOrAlias, Vec<u32>>,
         tab_index: usize,
+        should_change_focus_to_new_tab: bool,
         client_id: ClientId,
     ) -> Result<()> {
         let err_context = || format!("failed to spawn terminals for layout for client {client_id}");
@@ -1079,6 +1083,7 @@ impl Pty {
                 new_tab_floating_pane_ids,
                 plugin_ids,
                 tab_index,
+                should_change_focus_to_new_tab,
                 client_id,
             ))
             .with_context(err_context)?;

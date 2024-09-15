@@ -177,12 +177,16 @@ pub struct BreakPanesToTabWithIndexPayload {
     pub pane_ids: ::prost::alloc::vec::Vec<PaneId>,
     #[prost(uint32, tag = "2")]
     pub tab_index: u32,
+    #[prost(bool, tag = "3")]
+    pub should_change_focus_to_target_tab: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct BreakPanesToNewTabPayload {
     #[prost(message, repeated, tag = "1")]
     pub pane_ids: ::prost::alloc::vec::Vec<PaneId>,
+    #[prost(bool, tag = "2")]
+    pub should_change_focus_to_new_tab: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

@@ -1176,7 +1176,10 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
             },
             Some(CommandName::BreakPanesToNewTab) => match protobuf_plugin_command.payload {
                 Some(Payload::BreakPanesToNewTabPayload(break_panes_to_new_tab_payload)) => Ok(
-                    PluginCommand::BreakPanesToNewTab(break_panes_to_new_tab_payload.pane_ids.into_iter().filter_map(|p_id| p_id.try_into().ok()).collect()),
+                    PluginCommand::BreakPanesToNewTab(
+                        break_panes_to_new_tab_payload.pane_ids.into_iter().filter_map(|p_id| p_id.try_into().ok()).collect(),
+                        break_panes_to_new_tab_payload.should_change_focus_to_new_tab,
+                    ),
                 ),
                 _ => Err("Mismatched payload for BreakPanesToNewTab"),
             },
@@ -1185,6 +1188,7 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                     PluginCommand::BreakPanesToTabWithIndex(
                         break_panes_to_tab_with_index_payload.pane_ids.into_iter().filter_map(|p_id| p_id.try_into().ok()).collect(),
                         break_panes_to_tab_with_index_payload.tab_index as usize,
+                        break_panes_to_tab_with_index_payload.should_change_focus_to_target_tab,
                     ),
                 ),
                 _ => Err("Mismatched payload for BreakPanesToTabWithIndex"),
@@ -1937,20 +1941,22 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     },
                 )),
             }),
-            PluginCommand::BreakPanesToNewTab(pane_ids) => Ok(ProtobufPluginCommand {
+            PluginCommand::BreakPanesToNewTab(pane_ids, should_change_focus_to_new_tab) => Ok(ProtobufPluginCommand {
                 name: CommandName::BreakPanesToNewTab as i32,
                 payload: Some(Payload::BreakPanesToNewTabPayload(
                     BreakPanesToNewTabPayload {
-                        pane_ids: pane_ids.into_iter().filter_map(|p_id| p_id.try_into().ok()).collect()
+                        pane_ids: pane_ids.into_iter().filter_map(|p_id| p_id.try_into().ok()).collect(),
+                        should_change_focus_to_new_tab,
                     },
                 )),
             }),
-            PluginCommand::BreakPanesToTabWithIndex(pane_ids, tab_index) => Ok(ProtobufPluginCommand {
+            PluginCommand::BreakPanesToTabWithIndex(pane_ids, tab_index, should_change_focus_to_target_tab) => Ok(ProtobufPluginCommand {
                 name: CommandName::BreakPanesToTabWithIndex as i32,
                 payload: Some(Payload::BreakPanesToTabWithIndexPayload(
                     BreakPanesToTabWithIndexPayload {
                         pane_ids: pane_ids.into_iter().filter_map(|p_id| p_id.try_into().ok()).collect(),
                         tab_index: tab_index as u32,
+                        should_change_focus_to_target_tab,
                     },
                 )),
             }),
