@@ -19,7 +19,7 @@ pub use super::generated_api::api::{
         ScrollToTopInPaneIdPayload, ScrollUpInPaneIdPayload, SetTimeoutPayload,
         ShowPaneWithIdPayload, SubscribePayload, SwitchSessionPayload, SwitchTabToPayload,
         TogglePaneEmbedOrEjectForPaneIdPayload, TogglePaneIdFullscreenPayload, UnsubscribePayload,
-        WebRequestPayload, WriteCharsToPaneIdPayload, WriteToPaneIdPayload, BreakPanesToNewTabPayload
+        WebRequestPayload, WriteCharsToPaneIdPayload, WriteToPaneIdPayload, BreakPanesToNewTabPayload, BreakPanesToTabWithIndexPayload
     },
     plugin_permission::PermissionType as ProtobufPermissionType,
     resize::ResizeAction as ProtobufResizeAction,
@@ -1178,7 +1178,16 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 Some(Payload::BreakPanesToNewTabPayload(break_panes_to_new_tab_payload)) => Ok(
                     PluginCommand::BreakPanesToNewTab(break_panes_to_new_tab_payload.pane_ids.into_iter().filter_map(|p_id| p_id.try_into().ok()).collect()),
                 ),
-                _ => Err("Mismatched payload for CloseTabWithIndex"),
+                _ => Err("Mismatched payload for BreakPanesToNewTab"),
+            },
+            Some(CommandName::BreakPanesToTabWithIndex) => match protobuf_plugin_command.payload {
+                Some(Payload::BreakPanesToTabWithIndexPayload(break_panes_to_tab_with_index_payload)) => Ok(
+                    PluginCommand::BreakPanesToTabWithIndex(
+                        break_panes_to_tab_with_index_payload.pane_ids.into_iter().filter_map(|p_id| p_id.try_into().ok()).collect(),
+                        break_panes_to_tab_with_index_payload.tab_index as usize,
+                    ),
+                ),
+                _ => Err("Mismatched payload for BreakPanesToTabWithIndex"),
             },
             None => Err("Unrecognized plugin command"),
         }
@@ -1933,6 +1942,15 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                 payload: Some(Payload::BreakPanesToNewTabPayload(
                     BreakPanesToNewTabPayload {
                         pane_ids: pane_ids.into_iter().filter_map(|p_id| p_id.try_into().ok()).collect()
+                    },
+                )),
+            }),
+            PluginCommand::BreakPanesToTabWithIndex(pane_ids, tab_index) => Ok(ProtobufPluginCommand {
+                name: CommandName::BreakPanesToTabWithIndex as i32,
+                payload: Some(Payload::BreakPanesToTabWithIndexPayload(
+                    BreakPanesToTabWithIndexPayload {
+                        pane_ids: pane_ids.into_iter().filter_map(|p_id| p_id.try_into().ok()).collect(),
+                        tab_index: tab_index as u32,
                     },
                 )),
             }),

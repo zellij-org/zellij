@@ -1038,6 +1038,14 @@ pub fn break_panes_to_new_tab(pane_ids: &[PaneId]) {
     unsafe { host_run_plugin_command() };
 }
 
+/// Create a new tab that includes the specified pane ids
+pub fn break_panes_to_tab_with_index(pane_ids: &[PaneId], tab_index: usize) {
+    let plugin_command = PluginCommand::BreakPanesToTabWithIndex(pane_ids.to_vec(), tab_index);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 // Utility Functions
 
 #[allow(unused)]

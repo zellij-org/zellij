@@ -323,6 +323,9 @@ fn host_run_plugin_command(caller: Caller<'_, PluginEnv>) {
                     PluginCommand::BreakPanesToNewTab(pane_ids) => {
                         break_panes_to_new_tab(env, pane_ids.into_iter().map(|p_id| p_id.into()).collect())
                     },
+                    PluginCommand::BreakPanesToTabWithIndex(pane_ids, tab_index) => {
+                        break_panes_to_tab_with_index(env, pane_ids.into_iter().map(|p_id| p_id.into()).collect(), tab_index)
+                    },
                 },
                 (PermissionStatus::Denied, permission) => {
                     log::error!(
@@ -1604,6 +1607,12 @@ fn break_panes_to_new_tab(env: &PluginEnv, pane_ids: Vec<PaneId>) {
         .send_to_screen(ScreenInstruction::BreakPanesToNewTab(pane_ids, Some(default_shell), env.client_id));
 }
 
+fn break_panes_to_tab_with_index(env: &PluginEnv, pane_ids: Vec<PaneId>, tab_index: usize) {
+    let _ = env
+        .senders
+        .send_to_screen(ScreenInstruction::BreakPanesToTabWithIndex{pane_ids, tab_index, client_id: env.client_id});
+}
+
 // Custom panic handler for plugins.
 //
 // This is called when a panic occurs in a plugin. Since most panics will likely originate in the
@@ -1750,6 +1759,7 @@ fn check_command_permission(
         | PluginCommand::ResizePaneIdWithDirection(..)
         | PluginCommand::CloseTabWithIndex(..)
         | PluginCommand::BreakPanesToNewTab(..)
+        | PluginCommand::BreakPanesToTabWithIndex(..)
         | PluginCommand::KillSessions(..) => PermissionType::ChangeApplicationState,
         PluginCommand::UnblockCliPipeInput(..)
         | PluginCommand::BlockCliPipeInput(..)

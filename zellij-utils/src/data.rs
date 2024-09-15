@@ -1837,4 +1837,5 @@ pub enum PluginCommand {
     TogglePaneEmbedOrEjectForPaneId(PaneId),
     CloseTabWithIndex(usize), // usize - tab_index
     BreakPanesToNewTab(Vec<PaneId>),
+    BreakPanesToTabWithIndex(Vec<PaneId>, usize), // usize - tab_index
 }

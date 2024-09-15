@@ -396,6 +396,9 @@ pub enum ScreenInstruction {
     TogglePaneEmbedOrEjectForPaneId(PaneId),
     CloseTabWithIndex(usize),
     BreakPanesToNewTab(Vec<PaneId>, Option<TerminalAction>, ClientId),
+    BreakPanesToTabWithIndex {
+        pane_ids: Vec<PaneId>, tab_index: usize, client_id: ClientId
+    },
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -604,6 +607,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             },
             ScreenInstruction::CloseTabWithIndex(..) => ScreenContext::CloseTabWithIndex,
             ScreenInstruction::BreakPanesToNewTab(..) => ScreenContext::BreakPanesToNewTab,
+            ScreenInstruction::BreakPanesToTabWithIndex{..} => ScreenContext::BreakPanesToTabWithIndex,
         }
     }
 }
@@ -1171,7 +1175,8 @@ impl Screen {
             }
         }
         for tab_index in tabs_to_close {
-            self.close_tab_at_index(tab_index).context(err_context)?;
+            // cleanup as needed
+            self.close_tab_at_index(tab_index).context(err_context).non_fatal();
         }
         if output.is_dirty() {
             let serialized_output = output.serialize().context(err_context)?;
@@ -2133,7 +2138,6 @@ impl Screen {
         default_shell: Option<TerminalAction>,
         client_id: ClientId,
     ) -> Result<()> {
-        log::info!("default_layout break_multiple_panes_to_new_tab: {:#?}", self.default_layout);
         let err_context = || "failed break multiple panes to a new tab".to_string();
 
         let all_tabs = self.get_tabs_mut();
@@ -2238,6 +2242,48 @@ impl Screen {
         }
         self.unblock_input()?;
         self.render(None)?;
+        Ok(())
+    }
+    pub fn break_multiple_panes_to_tab_with_index(
+        &mut self,
+        pane_ids: Vec<PaneId>,
+        tab_index: usize,
+        client_id: ClientId,
+    ) -> Result<()> {
+        let all_tabs = self.get_tabs_mut();
+        let has_tab_with_index = all_tabs.values().find(|t| t.position == tab_index).is_some();
+        if !has_tab_with_index {
+            log::error!("Cannot find tab with index: {tab_index}");
+            return Ok(());
+        }
+        let mut extracted_panes = vec![];
+        for pane_id in pane_ids {
+            for tab in all_tabs.values_mut() {
+                if tab.position == tab_index {
+                    continue;
+                }
+                // here we pass None instead of the client_id we have because we do not need to
+                // necessarily trigger a relayout for this tab
+                if let Some(pane) = tab.extract_pane(pane_id, true, None).take() {
+                    extracted_panes.push(pane);
+                    break;
+                }
+            }
+        }
+        if extracted_panes.is_empty() {
+            // nothing to do here...
+            return Ok(());
+        }
+
+        self.go_to_tab(tab_index + 1, client_id)?;
+        let new_active_tab = self.get_active_tab_mut(client_id)?;
+        for pane in extracted_panes {
+            let pane_id = pane.pid();
+            // here we pass None instead of the ClientId, because we do not want this pane to be
+            // necessarily focused
+            new_active_tab.add_tiled_pane(pane, pane_id, None)?;
+        }
+        self.log_and_report_session_state()?;
         Ok(())
     }
     pub fn replace_pane(
@@ -4485,6 +4531,9 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::BreakPanesToNewTab(pane_ids, default_shell, client_id) => {
                 screen.break_multiple_panes_to_new_tab(pane_ids, default_shell, client_id)?;
+            },
+            ScreenInstruction::BreakPanesToTabWithIndex{pane_ids, tab_index, client_id} => {
+                screen.break_multiple_panes_to_tab_with_index(pane_ids, tab_index, client_id)?;
             },
         }
     }

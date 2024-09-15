@@ -120,6 +120,7 @@ enum CommandName {
   TogglePaneEmbedOrEjectForPaneId = 106;
   CloseTabWithIndex = 107;
   BreakPanesToNewTab = 108;
+  BreakPanesToTabWithIndex = 109;
 }
 
 message PluginCommand {
@@ -199,7 +200,13 @@ message PluginCommand {
     TogglePaneEmbedOrEjectForPaneIdPayload toggle_pane_embed_or_eject_for_pane_id_payload = 82;
     CloseTabWithIndexPayload close_tab_with_index_payload = 83;
     BreakPanesToNewTabPayload break_panes_to_new_tab_payload = 84;
+    BreakPanesToTabWithIndexPayload break_panes_to_tab_with_index_payload = 85;
   }
+}
+
+message BreakPanesToTabWithIndexPayload {
+  repeated PaneId pane_ids = 1;
+  uint32 tab_index = 2;
 }
 
 message BreakPanesToNewTabPayload {
