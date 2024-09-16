@@ -1836,4 +1836,10 @@ pub enum PluginCommand {
     TogglePaneIdFullscreen(PaneId),
     TogglePaneEmbedOrEjectForPaneId(PaneId),
     CloseTabWithIndex(usize), // usize - tab_index
+    BreakPanesToNewTab(Vec<PaneId>, Option<String>, bool), // bool -
+    // should_change_focus_to_new_tab,
+    // Option<String> - optional name for
+    // the new tab
+    BreakPanesToTabWithIndex(Vec<PaneId>, usize, bool), // usize - tab_index, bool -
+                                                        // should_change_focus_to_new_tab
 }

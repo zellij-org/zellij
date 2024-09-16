@@ -368,6 +368,8 @@ pub enum ScreenContext {
     TogglePaneIdFullscreen,
     TogglePaneEmbedOrEjectForPaneId,
     CloseTabWithIndex,
+    BreakPanesToNewTab,
+    BreakPanesToTabWithIndex,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.

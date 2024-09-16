@@ -550,7 +550,7 @@ impl Tab {
         auto_layout: bool,
         connected_clients_in_app: Rc<RefCell<HashSet<ClientId>>>,
         session_is_mirrored: bool,
-        client_id: ClientId,
+        client_id: Option<ClientId>,
         copy_options: CopyOptions,
         terminal_emulator_colors: Rc<RefCell<Palette>>,
         terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
@@ -568,7 +568,9 @@ impl Tab {
         };
 
         let mut connected_clients = HashSet::new();
-        connected_clients.insert(client_id);
+        if let Some(client_id) = client_id {
+            connected_clients.insert(client_id);
+        }
         let viewport: Viewport = display_area.into();
         let viewport = Rc::new(RefCell::new(viewport));
         let display_area = Rc::new(RefCell::new(display_area));
