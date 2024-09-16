@@ -74,6 +74,7 @@ pub enum PluginInstruction {
         Option<TiledPaneLayout>,
         Vec<FloatingPaneLayout>,
         usize, // tab_index
+        bool,  // should change focus to new tab
         ClientId,
     ),
     ApplyCachedEvents {
@@ -377,6 +378,7 @@ pub(crate) fn plugin_thread_main(
                 mut tab_layout,
                 mut floating_panes_layout,
                 tab_index,
+                should_change_focus_to_new_tab,
                 client_id,
             ) => {
                 // prefer connected clients so as to avoid opening plugins in the background for
@@ -444,6 +446,7 @@ pub(crate) fn plugin_thread_main(
                     floating_panes_layout,
                     tab_index,
                     plugin_ids,
+                    should_change_focus_to_new_tab,
                     client_id,
                 )));
             },
