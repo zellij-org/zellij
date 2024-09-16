@@ -253,7 +253,7 @@ macro_rules! grant_permissions_and_log_actions_in_thread_struct_variant {
                         .recv()
                         .expect("failed to receive event on channel");
                     match event {
-                        $exit_event { .. }=> {
+                        $exit_event { .. } => {
                             exit_event_count += 1;
                             log.lock().unwrap().push(event);
                             if exit_event_count == $exit_after_count {
@@ -8236,7 +8236,7 @@ pub fn break_panes_to_new_tab_plugin_command() {
         .unwrap()
         .iter()
         .find_map(|i| {
-            if let ScreenInstruction::BreakPanesToNewTab{..} = i {
+            if let ScreenInstruction::BreakPanesToNewTab { .. } = i {
                 Some(i.clone())
             } else {
                 None
@@ -8307,7 +8307,7 @@ pub fn break_panes_to_tab_with_index_plugin_command() {
         .unwrap()
         .iter()
         .find_map(|i| {
-            if let ScreenInstruction::BreakPanesToTabWithIndex{..} = i {
+            if let ScreenInstruction::BreakPanesToTabWithIndex { .. } = i {
                 Some(i.clone())
             } else {
                 None

@@ -64,7 +64,7 @@ pub enum PtyInstruction {
         Vec<FloatingPaneLayout>,
         usize,                               // tab_index
         HashMap<RunPluginOrAlias, Vec<u32>>, // plugin_ids
-        bool, // should change focus to new tab
+        bool,                                // should change focus to new tab
         ClientId,
     ), // the String is the tab name
     ClosePane(PaneId),

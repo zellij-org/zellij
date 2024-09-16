@@ -256,9 +256,12 @@ impl<'a> LayoutApplier<'a> {
                     position_and_size,
                     layout.borderless,
                 );
-            } else if let Some(position) = positions_in_layout
-                .iter()
-                .position(|(layout, _position_and_size)| Run::is_terminal(&layout.run) && Run::is_terminal(&run_instruction))
+            } else if let Some(position) =
+                positions_in_layout
+                    .iter()
+                    .position(|(layout, _position_and_size)| {
+                        Run::is_terminal(&layout.run) && Run::is_terminal(&run_instruction)
+                    })
             {
                 let (layout, position_and_size) = positions_in_layout.remove(position);
                 self.tiled_panes.set_geom_for_pane_with_run(

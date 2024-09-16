@@ -74,7 +74,7 @@ pub enum PluginInstruction {
         Option<TiledPaneLayout>,
         Vec<FloatingPaneLayout>,
         usize, // tab_index
-        bool, // should change focus to new tab
+        bool,  // should change focus to new tab
         ClientId,
     ),
     ApplyCachedEvents {

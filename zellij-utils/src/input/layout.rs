@@ -945,7 +945,7 @@ impl TiledPaneLayout {
                         // from a global layout cwd and the pane is actually just a bare pane that
                         // wants to be overidden)
                         Some(Run::Cwd(_)) | None => true,
-                        _ => false
+                        _ => false,
                     }
                 }) {
                     run_instructions.remove(position);
