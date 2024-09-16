@@ -25,7 +25,10 @@ Some(
                 },
             ),
         ),
-        should_change_focus_to_new_tab: false,
+        should_change_focus_to_new_tab: true,
+        new_tab_name: Some(
+            "new_tab_name",
+        ),
         client_id: 1,
     },
 )

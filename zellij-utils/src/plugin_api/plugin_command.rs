@@ -1178,6 +1178,7 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 Some(Payload::BreakPanesToNewTabPayload(break_panes_to_new_tab_payload)) => Ok(
                     PluginCommand::BreakPanesToNewTab(
                         break_panes_to_new_tab_payload.pane_ids.into_iter().filter_map(|p_id| p_id.try_into().ok()).collect(),
+                        break_panes_to_new_tab_payload.new_tab_name,
                         break_panes_to_new_tab_payload.should_change_focus_to_new_tab,
                     ),
                 ),
@@ -1941,12 +1942,13 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     },
                 )),
             }),
-            PluginCommand::BreakPanesToNewTab(pane_ids, should_change_focus_to_new_tab) => Ok(ProtobufPluginCommand {
+            PluginCommand::BreakPanesToNewTab(pane_ids, new_tab_name, should_change_focus_to_new_tab) => Ok(ProtobufPluginCommand {
                 name: CommandName::BreakPanesToNewTab as i32,
                 payload: Some(Payload::BreakPanesToNewTabPayload(
                     BreakPanesToNewTabPayload {
                         pane_ids: pane_ids.into_iter().filter_map(|p_id| p_id.try_into().ok()).collect(),
                         should_change_focus_to_new_tab,
+                        new_tab_name,
                     },
                 )),
             }),

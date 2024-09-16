@@ -187,6 +187,8 @@ pub struct BreakPanesToNewTabPayload {
     pub pane_ids: ::prost::alloc::vec::Vec<PaneId>,
     #[prost(bool, tag = "2")]
     pub should_change_focus_to_new_tab: bool,
+    #[prost(string, optional, tag = "3")]
+    pub new_tab_name: ::core::option::Option<::prost::alloc::string::String>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

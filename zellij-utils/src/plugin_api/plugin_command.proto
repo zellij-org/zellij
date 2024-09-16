@@ -213,6 +213,7 @@ message BreakPanesToTabWithIndexPayload {
 message BreakPanesToNewTabPayload {
   repeated PaneId pane_ids = 1;
   bool should_change_focus_to_new_tab = 2;
+  optional string new_tab_name = 3;
 }
 
 message MovePaneWithPaneIdPayload {

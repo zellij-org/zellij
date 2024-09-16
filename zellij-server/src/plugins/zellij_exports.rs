@@ -320,8 +320,8 @@ fn host_run_plugin_command(caller: Caller<'_, PluginEnv>) {
                     PluginCommand::CloseTabWithIndex(tab_index) => {
                         close_tab_with_index(env, tab_index)
                     },
-                    PluginCommand::BreakPanesToNewTab(pane_ids, should_change_focus_to_new_tab) => {
-                        break_panes_to_new_tab(env, pane_ids.into_iter().map(|p_id| p_id.into()).collect(), should_change_focus_to_new_tab)
+                    PluginCommand::BreakPanesToNewTab(pane_ids, new_tab_name, should_change_focus_to_new_tab) => {
+                        break_panes_to_new_tab(env, pane_ids.into_iter().map(|p_id| p_id.into()).collect(), new_tab_name, should_change_focus_to_new_tab)
                     },
                     PluginCommand::BreakPanesToTabWithIndex(pane_ids, should_change_focus_to_new_tab, tab_index) => {
                         break_panes_to_tab_with_index(env, pane_ids.into_iter().map(|p_id| p_id.into()).collect(), tab_index, should_change_focus_to_new_tab)
@@ -1595,7 +1595,7 @@ fn close_tab_with_index(env: &PluginEnv, tab_index: usize) {
         .send_to_screen(ScreenInstruction::CloseTabWithIndex(tab_index));
 }
 
-fn break_panes_to_new_tab(env: &PluginEnv, pane_ids: Vec<PaneId>, should_change_focus_to_new_tab: bool) {
+fn break_panes_to_new_tab(env: &PluginEnv, pane_ids: Vec<PaneId>, new_tab_name: Option<String>, should_change_focus_to_new_tab: bool) {
     let default_shell = env.default_shell.clone().or_else(|| {
         Some(TerminalAction::RunCommand(RunCommand {
             command: env.path_to_default_shell.clone(),
@@ -1604,7 +1604,7 @@ fn break_panes_to_new_tab(env: &PluginEnv, pane_ids: Vec<PaneId>, should_change_
     });
     let _ = env
         .senders
-        .send_to_screen(ScreenInstruction::BreakPanesToNewTab{pane_ids, default_shell, should_change_focus_to_new_tab, client_id: env.client_id});
+        .send_to_screen(ScreenInstruction::BreakPanesToNewTab{pane_ids, default_shell, new_tab_name, should_change_focus_to_new_tab, client_id: env.client_id});
 }
 
 fn break_panes_to_tab_with_index(env: &PluginEnv, pane_ids: Vec<PaneId>, should_change_focus_to_new_tab: bool, tab_index: usize) {

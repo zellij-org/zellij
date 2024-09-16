@@ -14,7 +14,7 @@ Some(
             ),
         ],
         tab_index: 2,
-        should_change_focus_to_new_tab: false,
+        should_change_focus_to_new_tab: true,
         client_id: 1,
     },
 )

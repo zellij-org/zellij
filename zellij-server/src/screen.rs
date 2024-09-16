@@ -400,6 +400,7 @@ pub enum ScreenInstruction {
         pane_ids: Vec<PaneId>, 
         default_shell: Option<TerminalAction>,
         should_change_focus_to_new_tab: bool,
+        new_tab_name: Option<String>,
         client_id: ClientId
     },
     BreakPanesToTabWithIndex {
@@ -2155,6 +2156,7 @@ impl Screen {
         pane_ids: Vec<PaneId>,
         default_shell: Option<TerminalAction>,
         should_change_focus_to_new_tab: bool,
+        new_tab_name: Option<String>,
         client_id: ClientId,
     ) -> Result<()> {
         let err_context = || "failed break multiple panes to a new tab".to_string();
@@ -2186,8 +2188,10 @@ impl Screen {
         } else {
             self.new_tab(tab_index, swap_layouts, None, None)?;
         }
-        let tab = self.tabs.get_mut(&tab_index).with_context(err_context)?;
-
+        let mut tab = self.tabs.get_mut(&tab_index).with_context(err_context)?;
+        if let Some(new_tab_name) = new_tab_name {
+            tab.name = new_tab_name.clone();
+        }
         for pane in extracted_panes {
             let run_instruction = pane.invoked_with().clone();
             let pane_id = pane.pid();
@@ -4566,8 +4570,8 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::CloseTabWithIndex(tab_index) => {
                 screen.close_tab_at_index(tab_index).non_fatal()
             },
-            ScreenInstruction::BreakPanesToNewTab{pane_ids, default_shell, should_change_focus_to_new_tab, client_id} => {
-                screen.break_multiple_panes_to_new_tab(pane_ids, default_shell, should_change_focus_to_new_tab, client_id)?;
+            ScreenInstruction::BreakPanesToNewTab{pane_ids, default_shell, should_change_focus_to_new_tab, new_tab_name, client_id} => {
+                screen.break_multiple_panes_to_new_tab(pane_ids, default_shell, should_change_focus_to_new_tab, new_tab_name, client_id)?;
             },
             ScreenInstruction::BreakPanesToTabWithIndex{pane_ids, tab_index, should_change_focus_to_new_tab, client_id} => {
                 screen.break_multiple_panes_to_tab_with_index(pane_ids, tab_index, should_change_focus_to_new_tab, client_id)?;
