@@ -8199,7 +8199,7 @@ pub fn break_panes_to_new_tab_plugin_command() {
         rows: 20,
     };
     let received_screen_instructions = Arc::new(Mutex::new(vec![]));
-    let screen_thread = grant_permissions_and_log_actions_in_thread!(
+    let screen_thread = grant_permissions_and_log_actions_in_thread_struct_variant!(
         received_screen_instructions,
         ScreenInstruction::BreakPanesToNewTab,
         screen_receiver,
@@ -8236,7 +8236,7 @@ pub fn break_panes_to_new_tab_plugin_command() {
         .unwrap()
         .iter()
         .find_map(|i| {
-            if let ScreenInstruction::BreakPanesToNewTab(..) = i {
+            if let ScreenInstruction::BreakPanesToNewTab{..} = i {
                 Some(i.clone())
             } else {
                 None

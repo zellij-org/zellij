@@ -387,6 +387,7 @@ impl MockScreen {
             floating_pane_ids,
             plugin_ids,
             tab_index,
+            true,
             self.main_client_id,
         ));
         self.last_opened_tab_index = Some(tab_index);
@@ -471,6 +472,7 @@ impl MockScreen {
             floating_pane_ids,
             plugin_ids,
             tab_index,
+            true,
             self.main_client_id,
         ));
         self.last_opened_tab_index = Some(tab_index);
@@ -502,6 +504,7 @@ impl MockScreen {
             vec![], // floating panes ids
             plugin_ids,
             0,
+            true,
             self.main_client_id,
         ));
         self.last_opened_tab_index = Some(tab_index);
@@ -649,7 +652,7 @@ fn new_tab(screen: &mut Screen, pid: u32, tab_index: usize) {
     let new_terminal_ids = vec![(pid, None)];
     let new_plugin_ids = HashMap::new();
     screen
-        .new_tab(tab_index, (vec![], vec![]), None, client_id)
+        .new_tab(tab_index, (vec![], vec![]), None, Some(client_id))
         .expect("TEST");
     screen
         .apply_layout(
@@ -659,6 +662,7 @@ fn new_tab(screen: &mut Screen, pid: u32, tab_index: usize) {
             vec![], // new floating terminal ids
             new_plugin_ids,
             tab_index,
+            true,
             client_id,
         )
         .expect("TEST");
@@ -3248,6 +3252,7 @@ pub fn screen_can_break_pane_to_a_new_tab() {
         vec![], // floating panes ids
         Default::default(),
         1,
+        true,
         1,
     ));
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -3349,6 +3354,7 @@ pub fn screen_can_break_floating_pane_to_a_new_tab() {
         vec![], // floating panes ids
         Default::default(),
         1,
+        true,
         1,
     ));
     std::thread::sleep(std::time::Duration::from_millis(200));
@@ -3418,6 +3424,7 @@ pub fn screen_can_break_plugin_pane_to_a_new_tab() {
         vec![], // floating panes ids
         Default::default(),
         1,
+        true,
         1,
     ));
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -3491,6 +3498,7 @@ pub fn screen_can_break_floating_plugin_pane_to_a_new_tab() {
         vec![], // floating panes ids
         Default::default(),
         1,
+        true,
         1,
     ));
     std::thread::sleep(std::time::Duration::from_millis(100));

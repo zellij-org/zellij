@@ -2296,20 +2296,23 @@ impl Screen {
                 }
             }
         }
-        if extracted_panes.is_empty() {
-            // nothing to do here...
-            return Ok(());
-        }
 
         if should_change_focus_to_new_tab {
             self.go_to_tab(tab_index + 1, client_id)?;
         }
-        let new_active_tab = self.get_active_tab_mut(client_id)?;
-        for pane in extracted_panes {
-            let pane_id = pane.pid();
-            // here we pass None instead of the ClientId, because we do not want this pane to be
-            // necessarily focused
-            new_active_tab.add_tiled_pane(pane, pane_id, None)?;
+        if extracted_panes.is_empty() {
+            // nothing to do here...
+            return Ok(());
+        }
+        if let Some(new_active_tab) = self.get_indexed_tab_mut(tab_index) {
+            for pane in extracted_panes {
+                let pane_id = pane.pid();
+                // here we pass None instead of the ClientId, because we do not want this pane to be
+                // necessarily focused
+                new_active_tab.add_tiled_pane(pane, pane_id, None)?;
+            }
+        } else {
+            log::error!("Could not find tab with index: {:?}", tab_index);
         }
         self.log_and_report_session_state()?;
         Ok(())
