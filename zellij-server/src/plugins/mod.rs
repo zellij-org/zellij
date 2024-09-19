@@ -33,7 +33,7 @@ use zellij_utils::{
         command::TerminalAction,
         keybinds::Keybinds,
         layout::{FloatingPaneLayout, Layout, Run, RunPlugin, RunPluginOrAlias, TiledPaneLayout},
-        plugins::PluginAliases,
+        plugins::{PluginAliases, PluginConfig},
     },
     ipc::ClientAttributes,
     pane_size::Size,
@@ -216,6 +216,12 @@ pub(crate) fn plugin_thread_main(
     plugin_aliases: Box<PluginAliases>,
     default_mode: InputMode,
     default_keybinds: Keybinds,
+    background_plugins: HashSet<RunPluginOrAlias>,
+    // the client id that started the session,
+    // we need it here because the thread's own list of connected clients might not yet be updated
+    // on session start when we need to load the background plugins, and so we must have an
+    // explicit client_id that has started the session
+    initiating_client_id: ClientId,
 ) -> Result<()> {
     info!("Wasm main thread starts");
     let plugin_dir = data_dir.join("plugins/");
@@ -240,6 +246,16 @@ pub(crate) fn plugin_thread_main(
         default_mode,
         default_keybinds,
     );
+
+    for mut run_plugin_or_alias in background_plugins {
+        load_background_plugin(
+            run_plugin_or_alias,
+            &mut wasm_bridge,
+            &bus,
+            &plugin_aliases,
+            initiating_client_id,
+        );
+    }
 
     loop {
         let (event, mut err_ctx) = bus.recv().expect("failed to receive event on channel");
@@ -929,6 +945,47 @@ fn pipe_to_specific_plugins(
             None => {
                 log::error!("Failed to parse plugin url: {}", e);
             },
+        },
+    }
+}
+
+fn load_background_plugin(mut run_plugin_or_alias: RunPluginOrAlias, wasm_bridge: &mut WasmBridge, bus: &Bus<PluginInstruction>, plugin_aliases: &PluginAliases, client_id: ClientId) {
+    run_plugin_or_alias.populate_run_plugin_if_needed(&plugin_aliases);
+    let cwd = run_plugin_or_alias.get_initial_cwd();
+    let run_plugin = run_plugin_or_alias.get_run_plugin();
+    let size = Size::default();
+    let skip_cache = false;
+    match wasm_bridge.load_plugin(
+        &run_plugin,
+        None,
+        size,
+        cwd.clone(),
+        skip_cache,
+        Some(client_id),
+        None,
+    ) {
+        Ok((plugin_id, client_id)) => {
+            let should_float = None;
+            let should_be_open_in_place = false;
+            let pane_title = None;
+            let pane_id_to_replace = None;
+            let start_suppressed = true;
+            drop(bus.senders.send_to_screen(ScreenInstruction::AddPlugin(
+                should_float,
+                should_be_open_in_place,
+                run_plugin_or_alias,
+                pane_title,
+                None,
+                plugin_id,
+                pane_id_to_replace,
+                cwd,
+                start_suppressed,
+                // None,
+                Some(client_id),
+            )));
+        },
+        Err(e) => {
+            log::error!("Failed to load plugin: {e}");
         },
     }
 }

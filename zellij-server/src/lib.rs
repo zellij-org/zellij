@@ -550,6 +550,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     },
                     *config.clone(),
                     plugin_aliases,
+                    client_id,
                 );
                 let mut runtime_configuration = config.clone();
                 runtime_configuration.options = *runtime_config_options.clone();
@@ -1138,6 +1139,7 @@ fn init_session(
     options: SessionOptions,
     mut config: Config,
     plugin_aliases: Box<PluginAliases>,
+    client_id: ClientId,
 ) -> SessionMetaData {
     let SessionOptions {
         opts,
@@ -1224,7 +1226,8 @@ fn init_session(
         .spawn({
             let screen_bus = Bus::new(
                 vec![screen_receiver, bounded_screen_receiver],
-                None,
+                Some(&to_screen), // there are certain occasions (eg. caching) where the screen
+                                  // needs to send messages to itself
                 Some(&to_pty),
                 Some(&to_plugin),
                 Some(&to_server),
@@ -1237,6 +1240,7 @@ fn init_session(
             let client_attributes_clone = client_attributes.clone();
             let debug = opts.debug;
             let layout = layout.clone();
+            let config = config.clone();
             move || {
                 screen_thread_main(
                     screen_bus,
@@ -1272,6 +1276,7 @@ fn init_session(
             let default_shell = default_shell.clone();
             let capabilities = capabilities.clone();
             let layout_dir = config_options.layout_dir.clone();
+            let background_plugins = config.background_plugins.clone();
             move || {
                 plugin_thread_main(
                     plugin_bus,
@@ -1287,6 +1292,8 @@ fn init_session(
                     plugin_aliases,
                     default_mode,
                     default_keybinds,
+                    background_plugins,
+                    client_id,
                 )
                 .fatal()
             }

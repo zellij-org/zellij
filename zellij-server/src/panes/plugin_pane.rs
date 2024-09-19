@@ -99,6 +99,7 @@ pub(crate) struct PluginPane {
     debug: bool,
     arrow_fonts: bool,
     styled_underlines: bool,
+    should_be_suppressed: bool,
 }
 
 impl PluginPane {
@@ -152,6 +153,7 @@ impl PluginPane {
             debug,
             arrow_fonts,
             styled_underlines,
+            should_be_suppressed: false,
         };
         for client_id in currently_connected_clients {
             plugin.handle_plugin_bytes(client_id, initial_loading_message.as_bytes().to_vec());
@@ -691,6 +693,12 @@ impl Pane for PluginPane {
     fn update_rounded_corners(&mut self, rounded_corners: bool) {
         self.style.rounded_corners = rounded_corners;
         self.frame.clear();
+    }
+    fn set_should_be_suppressed(&mut self, should_be_suppressed: bool) {
+        self.should_be_suppressed = should_be_suppressed;
+    }
+    fn query_should_be_suppressed(&self) -> bool {
+        self.should_be_suppressed
     }
 }
 

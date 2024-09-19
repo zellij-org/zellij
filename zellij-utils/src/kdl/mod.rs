@@ -3616,6 +3616,10 @@ impl Config {
             let config_plugins = PluginAliases::from_kdl(kdl_plugin_aliases)?;
             config.plugins.merge(config_plugins);
         }
+        if let Some(kdl_load_plugins) = kdl_config.get("load_plugins") {
+            let load_plugins = load_plugins_from_kdl(kdl_load_plugins)?;
+            config.background_plugins = load_plugins;
+        }
         if let Some(kdl_ui_config) = kdl_config.get("ui") {
             let config_ui = UiConfig::from_kdl(&kdl_ui_config)?;
             config.ui = config.ui.merge(config_ui);
@@ -3727,6 +3731,35 @@ impl PluginAliases {
         }
         plugins
     }
+}
+
+fn load_plugins_from_kdl(kdl_load_plugins: &KdlNode) -> Result<HashSet<RunPluginOrAlias>, ConfigError> {
+    let mut load_plugins: HashSet<RunPluginOrAlias> = HashSet::new();
+    if let Some(kdl_load_plugins) = kdl_children_nodes!(kdl_load_plugins) {
+        for plugin_block in kdl_load_plugins {
+            let url_node = plugin_block.name();
+            let string_url = url_node.value();
+            let configuration = KdlLayoutParser::parse_plugin_user_configuration(&plugin_block)?;
+            let cwd =
+                kdl_get_string_property_or_child_value!(&plugin_block, "cwd").map(|s| PathBuf::from(s));
+            let run_plugin_or_alias = RunPluginOrAlias::from_url(
+                &string_url,
+                &Some(configuration.inner().clone()),
+                None,
+                cwd.clone(),
+            )
+            .map_err(|e| {
+                ConfigError::new_kdl_error(
+                    format!("Failed to parse plugin: {}", e),
+                    url_node.span().offset(),
+                    url_node.span().len(),
+                )
+            })?
+            .with_initial_cwd(cwd);
+            load_plugins.insert(run_plugin_or_alias);
+        }
+    }
+    Ok(load_plugins)
 }
 
 impl UiConfig {

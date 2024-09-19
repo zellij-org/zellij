@@ -424,7 +424,6 @@ fn request_permission(env: &PluginEnv, permissions: Vec<PermissionType>) -> Resu
     if PermissionCache::from_path_or_default(None)
         .check_permissions(env.plugin.location.to_string(), &permissions)
     {
-        log::info!("PermissionRequestResult 1");
         return env
             .senders
             .send_to_plugin(PluginInstruction::PermissionRequestResult(
