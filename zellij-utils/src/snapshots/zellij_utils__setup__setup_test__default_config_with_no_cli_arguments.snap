@@ -1,6 +1,6 @@
 ---
 source: zellij-utils/src/setup.rs
-assertion_line: 753
+assertion_line: 754
 expression: "format!(\"{:#?}\", config)"
 ---
 Config {
@@ -5682,4 +5682,5 @@ Config {
         },
     },
     env: {},
+    background_plugins: {},
 }

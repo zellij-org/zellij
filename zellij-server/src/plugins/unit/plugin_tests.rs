@@ -301,6 +301,7 @@ fn create_plugin_thread(
     Box<dyn FnOnce()>,
 ) {
     let zellij_cwd = zellij_cwd.unwrap_or_else(|| PathBuf::from("."));
+    let initiating_client_id = 1;
     let (to_server, _server_receiver): ChannelWithContext<ServerInstruction> =
         channels::bounded(50);
     let to_server = SenderWithContext::new(to_server);
@@ -367,6 +368,8 @@ fn create_plugin_thread(
                 Box::new(plugin_aliases),
                 InputMode::Normal,
                 Keybinds::default(),
+                Default::default(),
+                initiating_client_id,
             )
             .expect("TEST")
         })
@@ -430,6 +433,7 @@ fn create_plugin_thread_with_server_receiver(
     let plugin_capabilities = PluginCapabilities::default();
     let client_attributes = ClientAttributes::default();
     let default_shell_action = None; // TODO: change me
+    let initiating_client_id = 1;
     let plugin_thread = std::thread::Builder::new()
         .name("plugin_thread".to_string())
         .spawn(move || {
@@ -448,6 +452,8 @@ fn create_plugin_thread_with_server_receiver(
                 Box::new(PluginAliases::default()),
                 InputMode::Normal,
                 Keybinds::default(),
+                Default::default(),
+                initiating_client_id,
             )
             .expect("TEST");
         })
@@ -517,6 +523,7 @@ fn create_plugin_thread_with_pty_receiver(
     let plugin_capabilities = PluginCapabilities::default();
     let client_attributes = ClientAttributes::default();
     let default_shell_action = None; // TODO: change me
+    let initiating_client_id = 1;
     let plugin_thread = std::thread::Builder::new()
         .name("plugin_thread".to_string())
         .spawn(move || {
@@ -535,6 +542,8 @@ fn create_plugin_thread_with_pty_receiver(
                 Box::new(PluginAliases::default()),
                 InputMode::Normal,
                 Keybinds::default(),
+                Default::default(),
+                initiating_client_id,
             )
             .expect("TEST")
         })
@@ -599,6 +608,7 @@ fn create_plugin_thread_with_background_jobs_receiver(
     let plugin_capabilities = PluginCapabilities::default();
     let client_attributes = ClientAttributes::default();
     let default_shell_action = None; // TODO: change me
+    let initiating_client_id = 1;
     let plugin_thread = std::thread::Builder::new()
         .name("plugin_thread".to_string())
         .spawn(move || {
@@ -617,6 +627,8 @@ fn create_plugin_thread_with_background_jobs_receiver(
                 Box::new(PluginAliases::default()),
                 InputMode::Normal,
                 Keybinds::default(),
+                Default::default(),
+                initiating_client_id,
             )
             .expect("TEST")
         })
