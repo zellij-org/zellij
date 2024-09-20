@@ -14,6 +14,7 @@ use zellij_utils::data::{Event, Resize, Style};
 use zellij_utils::errors::{prelude::*, ErrorContext};
 use zellij_utils::input::actions::Action;
 use zellij_utils::input::command::{RunCommand, TerminalAction};
+use zellij_utils::input::config::Config;
 use zellij_utils::input::layout::{
     FloatingPaneLayout, Layout, PluginAlias, PluginUserConfiguration, Run, RunPlugin,
     RunPluginLocation, RunPluginOrAlias, SplitDirection, SplitSize, TiledPaneLayout,
@@ -28,7 +29,10 @@ use std::env::set_var;
 use std::os::unix::io::RawFd;
 use std::sync::{Arc, Mutex};
 
-use crate::{plugins::PluginInstruction, pty::PtyInstruction};
+use crate::{
+    plugins::PluginInstruction,
+    pty::{ClientTabIndexOrPaneId, PtyInstruction},
+};
 use zellij_utils::ipc::PixelDimensions;
 
 use zellij_utils::{
@@ -70,6 +74,7 @@ fn take_snapshots_and_cursor_coordinates_from_render_events<'a>(
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut grid = Grid::new(
         screen_size.rows,
         screen_size.cols,
@@ -82,6 +87,7 @@ fn take_snapshots_and_cursor_coordinates_from_render_events<'a>(
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     let snapshots: Vec<(Option<(usize, usize)>, String)> = all_events
         .filter_map(|server_instruction| {
@@ -116,6 +122,16 @@ fn send_cli_action_to_server(
     let client_attributes = ClientAttributes::default();
     let default_shell = None;
     let default_layout = Box::new(Layout::default());
+    let default_mode = session_metadata
+        .session_configuration
+        .get_client_configuration(&client_id)
+        .options
+        .default_mode
+        .unwrap_or(InputMode::Normal);
+    let client_keybinds = session_metadata
+        .session_configuration
+        .get_client_keybinds(&client_id)
+        .clone();
     for action in actions {
         route_action(
             action,
@@ -127,6 +143,8 @@ fn send_cli_action_to_server(
             default_shell.clone(),
             default_layout.clone(),
             None,
+            client_keybinds.clone(),
+            default_mode,
         )
         .unwrap();
     }
@@ -252,6 +270,7 @@ fn create_new_screen(size: Size) -> Screen {
     let debug = false;
     let styled_underlines = true;
     let arrow_fonts = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let screen = Screen::new(
         bus,
         &client_attributes,
@@ -271,6 +290,7 @@ fn create_new_screen(size: Size) -> Screen {
         styled_underlines,
         arrow_fonts,
         layout_dir,
+        explicitly_disable_kitty_keyboard_protocol,
     );
     screen
 }
@@ -293,6 +313,7 @@ struct MockScreen {
     pub client_attributes: ClientAttributes,
     pub config_options: Options,
     pub session_metadata: SessionMetaData,
+    pub config: Config,
     last_opened_tab_index: Option<usize>,
 }
 
@@ -302,7 +323,7 @@ impl MockScreen {
         initial_layout: Option<TiledPaneLayout>,
         initial_floating_panes_layout: Vec<FloatingPaneLayout>,
     ) -> std::thread::JoinHandle<()> {
-        let config_options = self.config_options.clone();
+        let config = self.config.clone();
         let client_attributes = self.client_attributes.clone();
         let screen_bus = Bus::new(
             vec![self.screen_receiver.take().unwrap()],
@@ -324,7 +345,7 @@ impl MockScreen {
                     screen_bus,
                     None,
                     client_attributes,
-                    Box::new(config_options),
+                    config,
                     debug,
                     Box::new(Layout::default()),
                 )
@@ -366,6 +387,7 @@ impl MockScreen {
             floating_pane_ids,
             plugin_ids,
             tab_index,
+            true,
             self.main_client_id,
         ));
         self.last_opened_tab_index = Some(tab_index);
@@ -377,7 +399,7 @@ impl MockScreen {
         initial_layout: Option<TiledPaneLayout>,
         initial_floating_panes_layout: Vec<FloatingPaneLayout>,
     ) -> std::thread::JoinHandle<()> {
-        let config_options = self.config_options.clone();
+        let config = self.config.clone();
         let client_attributes = self.client_attributes.clone();
         let screen_bus = Bus::new(
             vec![self.screen_receiver.take().unwrap()],
@@ -399,7 +421,7 @@ impl MockScreen {
                     screen_bus,
                     None,
                     client_attributes,
-                    Box::new(config_options),
+                    config,
                     debug,
                     Box::new(Layout::default()),
                 )
@@ -450,6 +472,7 @@ impl MockScreen {
             floating_pane_ids,
             plugin_ids,
             tab_index,
+            true,
             self.main_client_id,
         ));
         self.last_opened_tab_index = Some(tab_index);
@@ -481,6 +504,7 @@ impl MockScreen {
             vec![], // floating panes ids
             plugin_ids,
             0,
+            true,
             self.main_client_id,
         ));
         self.last_opened_tab_index = Some(tab_index);
@@ -508,8 +532,9 @@ impl MockScreen {
             plugin_thread: None,
             pty_writer_thread: None,
             background_jobs_thread: None,
-            config_options: Default::default(),
+            session_configuration: self.session_metadata.session_configuration.clone(),
             layout,
+            current_input_modes: self.session_metadata.current_input_modes.clone(),
         }
     }
 }
@@ -565,8 +590,9 @@ impl MockScreen {
             plugin_thread: None,
             pty_writer_thread: None,
             background_jobs_thread: None,
-            config_options: Default::default(),
             layout,
+            session_configuration: Default::default(),
+            current_input_modes: HashMap::new(),
         };
 
         let os_input = FakeInputOutput::default();
@@ -591,6 +617,7 @@ impl MockScreen {
             config_options,
             session_metadata,
             last_opened_tab_index: None,
+            config: Config::default(),
         }
     }
 }
@@ -625,7 +652,7 @@ fn new_tab(screen: &mut Screen, pid: u32, tab_index: usize) {
     let new_terminal_ids = vec![(pid, None)];
     let new_plugin_ids = HashMap::new();
     screen
-        .new_tab(tab_index, (vec![], vec![]), None, client_id)
+        .new_tab(tab_index, (vec![], vec![]), None, Some(client_id))
         .expect("TEST");
     screen
         .apply_layout(
@@ -635,6 +662,7 @@ fn new_tab(screen: &mut Screen, pid: u32, tab_index: usize) {
             vec![], // new floating terminal ids
             new_plugin_ids,
             tab_index,
+            true,
             client_id,
         )
         .expect("TEST");
@@ -1146,7 +1174,7 @@ fn switch_to_tab_with_fullscreen() {
     {
         let active_tab = screen.get_active_tab_mut(1).unwrap();
         active_tab
-            .new_pane(PaneId::Terminal(2), None, None, None, None, Some(1))
+            .new_pane(PaneId::Terminal(2), None, None, None, None, false, Some(1))
             .unwrap();
         active_tab.toggle_active_pane_fullscreen(1);
     }
@@ -1261,7 +1289,7 @@ fn attach_after_first_tab_closed() {
     {
         let active_tab = screen.get_active_tab_mut(1).unwrap();
         active_tab
-            .new_pane(PaneId::Terminal(2), None, None, None, None, Some(1))
+            .new_pane(PaneId::Terminal(2), None, None, None, None, false, Some(1))
             .unwrap();
         active_tab.toggle_active_pane_fullscreen(1);
     }
@@ -1295,6 +1323,7 @@ fn open_new_floating_pane_with_custom_coordinates() {
                 width: Some(SplitSize::Percent(1)),
                 height: Some(SplitSize::Fixed(2)),
             }),
+            false,
             Some(1),
         )
         .unwrap();
@@ -1328,6 +1357,7 @@ fn open_new_floating_pane_with_custom_coordinates_exceeding_viewport() {
                 width: Some(SplitSize::Fixed(10)),
                 height: Some(SplitSize::Fixed(10)),
             }),
+            false,
             Some(1),
         )
         .unwrap();
@@ -1676,7 +1706,7 @@ pub fn send_cli_edit_scrollback_action() {
         {
             assert_eq!(scrollback_contents_file, &PathBuf::from(&dumped_file_name));
             assert_eq!(terminal_id, &Some(1));
-            assert_eq!(client_id, &1);
+            assert_eq!(client_id, &ClientTabIndexOrPaneId::ClientId(1));
             found_instruction = true;
         }
     }
@@ -2445,31 +2475,41 @@ pub fn send_cli_edit_action_with_split_direction() {
 
 #[test]
 pub fn send_cli_switch_mode_action() {
-    let size = Size {
-        cols: 121,
-        rows: 20,
-    };
+    let size = Size { cols: 80, rows: 10 };
     let client_id = 10; // fake client id should not appear in the screen's state
-    let mut mock_screen = MockScreen::new(size);
-    let session_metadata = mock_screen.clone_session_metadata();
     let mut initial_layout = TiledPaneLayout::default();
     initial_layout.children_split_direction = SplitDirection::Vertical;
     initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
+    let mut mock_screen = MockScreen::new(size);
+    let session_metadata = mock_screen.clone_session_metadata();
     let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_instruction = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+
     let cli_switch_mode = CliAction::SwitchMode {
         input_mode: InputMode::Locked,
     };
     send_cli_action_to_server(&session_metadata, cli_switch_mode, client_id);
-    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
-    mock_screen.teardown(vec![screen_thread]);
-    assert_snapshot!(format!(
-        "{:?}",
-        *mock_screen
-            .os_input
-            .server_to_client_messages
-            .lock()
-            .unwrap()
-    ));
+
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![server_instruction, screen_thread]);
+
+    let switch_mode_action = received_server_instructions
+        .lock()
+        .unwrap()
+        .iter()
+        .find(|instruction| match instruction {
+            ServerInstruction::ChangeModeForAllClients(..) => true,
+            _ => false,
+        })
+        .cloned();
+
+    assert_snapshot!(format!("{:?}", switch_mode_action));
 }
 
 #[test]
@@ -3212,6 +3252,7 @@ pub fn screen_can_break_pane_to_a_new_tab() {
         vec![], // floating panes ids
         Default::default(),
         1,
+        true,
         1,
     ));
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -3313,6 +3354,7 @@ pub fn screen_can_break_floating_pane_to_a_new_tab() {
         vec![], // floating panes ids
         Default::default(),
         1,
+        true,
         1,
     ));
     std::thread::sleep(std::time::Duration::from_millis(200));
@@ -3382,6 +3424,7 @@ pub fn screen_can_break_plugin_pane_to_a_new_tab() {
         vec![], // floating panes ids
         Default::default(),
         1,
+        true,
         1,
     ));
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -3455,6 +3498,7 @@ pub fn screen_can_break_floating_plugin_pane_to_a_new_tab() {
         vec![], // floating panes ids
         Default::default(),
         1,
+        true,
         1,
     ));
     std::thread::sleep(std::time::Duration::from_millis(100));

@@ -1,60 +1,89 @@
 ---
 source: zellij-utils/src/setup.rs
-assertion_line: 798
+assertion_line: 854
 expression: "format!(\"{:#?}\", config)"
 ---
 Config {
     keybinds: {
         Normal: {
-            Char(
-                'b',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    'b',
+                ),
+                key_modifiers: {},
+            }: [
                 SwitchToMode(
                     Session,
                 ),
             ],
-            Ctrl(
-                'b',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    'b',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
                 SwitchToMode(
                     Resize,
                 ),
             ],
-            Ctrl(
-                'c',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    'c',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
                 SwitchToMode(
                     Resize,
                 ),
             ],
         },
         Resize: {
-            Char(
-                'b',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    'b',
+                ),
+                key_modifiers: {},
+            }: [
                 SwitchToMode(
                     Locked,
                 ),
             ],
-            Ctrl(
-                'c',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    'c',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
                 SwitchToMode(
                     Resize,
                 ),
             ],
         },
         Scroll: {
-            Char(
-                'b',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    'b',
+                ),
+                key_modifiers: {},
+            }: [
                 SwitchToMode(
                     Locked,
                 ),
             ],
-            Ctrl(
-                'c',
-            ): [
+            KeyWithModifier {
+                bare_key: Char(
+                    'c',
+                ),
+                key_modifiers: {
+                    Ctrl,
+                },
+            }: [
                 SwitchToMode(
                     Resize,
                 ),
@@ -88,6 +117,7 @@ Config {
         styled_underlines: None,
         serialization_interval: None,
         disable_session_metadata: None,
+        support_kitty_keyboard_protocol: None,
     },
     themes: {},
     plugins: PluginAliases {
@@ -97,6 +127,18 @@ Config {
                 location: Zellij(
                     PluginTag(
                         "compact-bar",
+                    ),
+                ),
+                configuration: PluginUserConfiguration(
+                    {},
+                ),
+                initial_cwd: None,
+            },
+            "configuration": RunPlugin {
+                _allow_exec_host_cmd: false,
+                location: Zellij(
+                    PluginTag(
+                        "configuration",
                     ),
                 ),
                 configuration: PluginUserConfiguration(
@@ -189,4 +231,5 @@ Config {
         },
     },
     env: {},
+    background_plugins: {},
 }

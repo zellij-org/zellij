@@ -6,7 +6,8 @@ pub use super::generated_api::api::{
         EventType as ProtobufEventType, FileMetadata as ProtobufFileMetadata,
         InputModeKeybinds as ProtobufInputModeKeybinds, KeyBind as ProtobufKeyBind,
         LayoutInfo as ProtobufLayoutInfo, ModeUpdatePayload as ProtobufModeUpdatePayload,
-        PaneInfo as ProtobufPaneInfo, PaneManifest as ProtobufPaneManifest,
+        PaneId as ProtobufPaneId, PaneInfo as ProtobufPaneInfo,
+        PaneManifest as ProtobufPaneManifest, PaneType as ProtobufPaneType,
         ResurrectableSession as ProtobufResurrectableSession,
         SessionManifest as ProtobufSessionManifest, TabInfo as ProtobufTabInfo, *,
     },
@@ -16,8 +17,9 @@ pub use super::generated_api::api::{
 };
 #[allow(hidden_glob_reexports)]
 use crate::data::{
-    CopyDestination, Event, EventType, FileMetadata, InputMode, Key, LayoutInfo, ModeInfo, Mouse,
-    PaneInfo, PaneManifest, PermissionStatus, PluginCapabilities, SessionInfo, Style, TabInfo,
+    CopyDestination, Event, EventType, FileMetadata, InputMode, KeyWithModifier, LayoutInfo,
+    ModeInfo, Mouse, PaneId, PaneInfo, PaneManifest, PermissionStatus, PluginCapabilities,
+    SessionInfo, Style, TabInfo,
 };
 
 use crate::errors::prelude::*;
@@ -233,6 +235,90 @@ impl TryFrom<ProtobufEvent> for Event {
                     ))
                 },
                 _ => Err("Malformed payload for the WebRequestResult Event"),
+            },
+            Some(ProtobufEventType::CommandPaneOpened) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::CommandPaneOpenedPayload(
+                    command_pane_opened_payload,
+                )) => Ok(Event::CommandPaneOpened(
+                    command_pane_opened_payload.terminal_pane_id,
+                    command_pane_opened_payload
+                        .context
+                        .into_iter()
+                        .map(|c_i| (c_i.name, c_i.value))
+                        .collect(),
+                )),
+                _ => Err("Malformed payload for the CommandPaneOpened Event"),
+            },
+            Some(ProtobufEventType::CommandPaneExited) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::CommandPaneExitedPayload(
+                    command_pane_exited_payload,
+                )) => Ok(Event::CommandPaneExited(
+                    command_pane_exited_payload.terminal_pane_id,
+                    command_pane_exited_payload.exit_code,
+                    command_pane_exited_payload
+                        .context
+                        .into_iter()
+                        .map(|c_i| (c_i.name, c_i.value))
+                        .collect(),
+                )),
+                _ => Err("Malformed payload for the CommandPaneExited Event"),
+            },
+            Some(ProtobufEventType::PaneClosed) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::PaneClosedPayload(pane_closed_payload)) => {
+                    let pane_id = pane_closed_payload
+                        .pane_id
+                        .ok_or("Malformed payload for the PaneClosed Event")?;
+                    Ok(Event::PaneClosed(PaneId::try_from(pane_id)?))
+                },
+                _ => Err("Malformed payload for the PaneClosed Event"),
+            },
+            Some(ProtobufEventType::EditPaneOpened) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::EditPaneOpenedPayload(command_pane_opened_payload)) => {
+                    Ok(Event::EditPaneOpened(
+                        command_pane_opened_payload.terminal_pane_id,
+                        command_pane_opened_payload
+                            .context
+                            .into_iter()
+                            .map(|c_i| (c_i.name, c_i.value))
+                            .collect(),
+                    ))
+                },
+                _ => Err("Malformed payload for the EditPaneOpened Event"),
+            },
+            Some(ProtobufEventType::EditPaneExited) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::EditPaneExitedPayload(command_pane_exited_payload)) => {
+                    Ok(Event::EditPaneExited(
+                        command_pane_exited_payload.terminal_pane_id,
+                        command_pane_exited_payload.exit_code,
+                        command_pane_exited_payload
+                            .context
+                            .into_iter()
+                            .map(|c_i| (c_i.name, c_i.value))
+                            .collect(),
+                    ))
+                },
+                _ => Err("Malformed payload for the EditPaneExited Event"),
+            },
+            Some(ProtobufEventType::CommandPaneReRun) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::CommandPaneRerunPayload(command_pane_rerun_payload)) => {
+                    Ok(Event::CommandPaneReRun(
+                        command_pane_rerun_payload.terminal_pane_id,
+                        command_pane_rerun_payload
+                            .context
+                            .into_iter()
+                            .map(|c_i| (c_i.name, c_i.value))
+                            .collect(),
+                    ))
+                },
+                _ => Err("Malformed payload for the CommandPaneReRun Event"),
+            },
+            Some(ProtobufEventType::FailedToWriteConfigToDisk) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::FailedToWriteConfigToDiskPayload(
+                    failed_to_write_configuration_payload,
+                )) => Ok(Event::FailedToWriteConfigToDisk(
+                    failed_to_write_configuration_payload.file_path,
+                )),
+                _ => Err("Malformed payload for the FailedToWriteConfigToDisk Event"),
             },
             None => Err("Unknown Protobuf Event"),
         }
@@ -459,6 +545,95 @@ impl TryFrom<Event> for ProtobufEvent {
                     )),
                 })
             },
+            Event::CommandPaneOpened(terminal_pane_id, context) => {
+                let command_pane_opened_payload = CommandPaneOpenedPayload {
+                    terminal_pane_id,
+                    context: context
+                        .into_iter()
+                        .map(|(name, value)| ContextItem { name, value })
+                        .collect(),
+                };
+                Ok(ProtobufEvent {
+                    name: ProtobufEventType::CommandPaneOpened as i32,
+                    payload: Some(event::Payload::CommandPaneOpenedPayload(
+                        command_pane_opened_payload,
+                    )),
+                })
+            },
+            Event::CommandPaneExited(terminal_pane_id, exit_code, context) => {
+                let command_pane_exited_payload = CommandPaneExitedPayload {
+                    terminal_pane_id,
+                    exit_code,
+                    context: context
+                        .into_iter()
+                        .map(|(name, value)| ContextItem { name, value })
+                        .collect(),
+                };
+                Ok(ProtobufEvent {
+                    name: ProtobufEventType::CommandPaneExited as i32,
+                    payload: Some(event::Payload::CommandPaneExitedPayload(
+                        command_pane_exited_payload,
+                    )),
+                })
+            },
+            Event::PaneClosed(pane_id) => Ok(ProtobufEvent {
+                name: ProtobufEventType::PaneClosed as i32,
+                payload: Some(event::Payload::PaneClosedPayload(PaneClosedPayload {
+                    pane_id: Some(pane_id.try_into()?),
+                })),
+            }),
+            Event::EditPaneOpened(terminal_pane_id, context) => {
+                let command_pane_opened_payload = EditPaneOpenedPayload {
+                    terminal_pane_id,
+                    context: context
+                        .into_iter()
+                        .map(|(name, value)| ContextItem { name, value })
+                        .collect(),
+                };
+                Ok(ProtobufEvent {
+                    name: ProtobufEventType::EditPaneOpened as i32,
+                    payload: Some(event::Payload::EditPaneOpenedPayload(
+                        command_pane_opened_payload,
+                    )),
+                })
+            },
+            Event::EditPaneExited(terminal_pane_id, exit_code, context) => {
+                let command_pane_exited_payload = EditPaneExitedPayload {
+                    terminal_pane_id,
+                    exit_code,
+                    context: context
+                        .into_iter()
+                        .map(|(name, value)| ContextItem { name, value })
+                        .collect(),
+                };
+                Ok(ProtobufEvent {
+                    name: ProtobufEventType::EditPaneExited as i32,
+                    payload: Some(event::Payload::EditPaneExitedPayload(
+                        command_pane_exited_payload,
+                    )),
+                })
+            },
+            Event::CommandPaneReRun(terminal_pane_id, context) => {
+                let command_pane_rerun_payload = CommandPaneReRunPayload {
+                    terminal_pane_id,
+                    context: context
+                        .into_iter()
+                        .map(|(name, value)| ContextItem { name, value })
+                        .collect(),
+                };
+                Ok(ProtobufEvent {
+                    name: ProtobufEventType::CommandPaneReRun as i32,
+                    payload: Some(event::Payload::CommandPaneRerunPayload(
+                        command_pane_rerun_payload,
+                    )),
+                })
+            },
+            Event::FailedToWriteConfigToDisk(file_path) => Ok(ProtobufEvent {
+                name: ProtobufEventType::FailedToWriteConfigToDisk as i32,
+                payload: Some(event::Payload::FailedToWriteConfigToDiskPayload(
+                    FailedToWriteConfigToDiskPayload { file_path },
+                )),
+            }),
         }
     }
 }
@@ -549,6 +724,10 @@ impl TryFrom<LayoutInfo> for ProtobufLayoutInfo {
                 source: "url".to_owned(),
                 name,
             }),
+            LayoutInfo::Stringified(stringified_layout) => Ok(ProtobufLayoutInfo {
+                source: "stringified".to_owned(),
+                name: stringified_layout.clone(),
+            }),
         }
     }
 }
@@ -560,6 +739,7 @@ impl TryFrom<ProtobufLayoutInfo> for LayoutInfo {
             "file" => Ok(LayoutInfo::File(protobuf_layout_info.name)),
             "built-in" => Ok(LayoutInfo::BuiltIn(protobuf_layout_info.name)),
             "url" => Ok(LayoutInfo::Url(protobuf_layout_info.name)),
+            "stringified" => Ok(LayoutInfo::Stringified(protobuf_layout_info.name)),
             _ => Err("Unknown source for layout"),
         }
     }
@@ -812,29 +992,33 @@ impl TryFrom<ProtobufModeUpdatePayload> for ModeInfo {
             ProtobufInputMode::from_i32(protobuf_mode_update_payload.current_mode)
                 .ok_or("Malformed InputMode in the ModeUpdate Event")?
                 .try_into()?;
-        let keybinds: Vec<(InputMode, Vec<(Key, Vec<Action>)>)> = protobuf_mode_update_payload
-            .keybinds
-            .iter_mut()
-            .filter_map(|k| {
-                let input_mode: InputMode = ProtobufInputMode::from_i32(k.mode)
-                    .ok_or("Malformed InputMode in the ModeUpdate Event")
-                    .ok()?
-                    .try_into()
-                    .ok()?;
-                let mut keybinds: Vec<(Key, Vec<Action>)> = vec![];
-                for mut protobuf_keybind in k.key_bind.drain(..) {
-                    let key: Key = protobuf_keybind.key.unwrap().try_into().ok()?;
-                    let mut actions: Vec<Action> = vec![];
-                    for action in protobuf_keybind.action.drain(..) {
-                        if let Ok(action) = action.try_into() {
-                            actions.push(action);
+        let base_mode: Option<InputMode> = protobuf_mode_update_payload
+            .base_mode
+            .and_then(|b_m| ProtobufInputMode::from_i32(b_m)?.try_into().ok());
+        let keybinds: Vec<(InputMode, Vec<(KeyWithModifier, Vec<Action>)>)> =
+            protobuf_mode_update_payload
+                .keybinds
+                .iter_mut()
+                .filter_map(|k| {
+                    let input_mode: InputMode = ProtobufInputMode::from_i32(k.mode)
+                        .ok_or("Malformed InputMode in the ModeUpdate Event")
+                        .ok()?
+                        .try_into()
+                        .ok()?;
+                    let mut keybinds: Vec<(KeyWithModifier, Vec<Action>)> = vec![];
+                    for mut protobuf_keybind in k.key_bind.drain(..) {
+                        let key: KeyWithModifier = protobuf_keybind.key.unwrap().try_into().ok()?;
+                        let mut actions: Vec<Action> = vec![];
+                        for action in protobuf_keybind.action.drain(..) {
+                            if let Ok(action) = action.try_into() {
+                                actions.push(action);
+                            }
                         }
+                        keybinds.push((key, actions));
                     }
-                    keybinds.push((key, actions));
-                }
-                Some((input_mode, keybinds))
-            })
-            .collect();
+                    Some((input_mode, keybinds))
+                })
+                .collect();
         let style: Style = protobuf_mode_update_payload
             .style
             .and_then(|m| m.try_into().ok())
@@ -849,6 +1033,7 @@ impl TryFrom<ProtobufModeUpdatePayload> for ModeInfo {
             style,
             capabilities,
             session_name,
+            base_mode,
         };
         Ok(mode_info)
     }
@@ -858,6 +1043,9 @@ impl TryFrom<ModeInfo> for ProtobufModeUpdatePayload {
     type Error = &'static str;
     fn try_from(mode_info: ModeInfo) -> Result<Self, &'static str> {
         let current_mode: ProtobufInputMode = mode_info.mode.try_into()?;
+        let base_mode: Option<ProtobufInputMode> = mode_info
+            .base_mode
+            .and_then(|mode| ProtobufInputMode::try_from(mode).ok());
         let style: ProtobufStyle = mode_info.style.try_into()?;
         let arrow_fonts_support: bool = mode_info.capabilities.arrow_fonts;
         let session_name = mode_info.session_name;
@@ -891,6 +1079,7 @@ impl TryFrom<ModeInfo> for ProtobufModeUpdatePayload {
             keybinds: protobuf_input_mode_keybinds,
             arrow_fonts_support,
             session_name,
+            base_mode: base_mode.map(|b_m| b_m as i32),
         })
     }
 }
@@ -948,6 +1137,13 @@ impl TryFrom<ProtobufEventType> for EventType {
             ProtobufEventType::SessionUpdate => EventType::SessionUpdate,
             ProtobufEventType::RunCommandResult => EventType::RunCommandResult,
             ProtobufEventType::WebRequestResult => EventType::WebRequestResult,
+            ProtobufEventType::CommandPaneOpened => EventType::CommandPaneOpened,
+            ProtobufEventType::CommandPaneExited => EventType::CommandPaneExited,
+            ProtobufEventType::PaneClosed => EventType::PaneClosed,
+            ProtobufEventType::EditPaneOpened => EventType::EditPaneOpened,
+            ProtobufEventType::EditPaneExited => EventType::EditPaneExited,
+            ProtobufEventType::CommandPaneReRun => EventType::CommandPaneReRun,
+            ProtobufEventType::FailedToWriteConfigToDisk => EventType::FailedToWriteConfigToDisk,
         })
     }
 }
@@ -975,6 +1171,13 @@ impl TryFrom<EventType> for ProtobufEventType {
             EventType::SessionUpdate => ProtobufEventType::SessionUpdate,
             EventType::RunCommandResult => ProtobufEventType::RunCommandResult,
             EventType::WebRequestResult => ProtobufEventType::WebRequestResult,
+            EventType::CommandPaneOpened => ProtobufEventType::CommandPaneOpened,
+            EventType::CommandPaneExited => ProtobufEventType::CommandPaneExited,
+            EventType::PaneClosed => ProtobufEventType::PaneClosed,
+            EventType::EditPaneOpened => ProtobufEventType::EditPaneOpened,
+            EventType::EditPaneExited => ProtobufEventType::EditPaneExited,
+            EventType::CommandPaneReRun => ProtobufEventType::CommandPaneReRun,
+            EventType::FailedToWriteConfigToDisk => ProtobufEventType::FailedToWriteConfigToDisk,
         })
     }
 }
@@ -1047,7 +1250,7 @@ fn serialize_mode_update_event() {
 
 #[test]
 fn serialize_mode_update_event_with_non_default_values() {
-    use crate::data::{Direction, Palette, PaletteColor, ThemeHue};
+    use crate::data::{BareKey, Palette, PaletteColor, ThemeHue};
     use prost::Message;
     let mode_update_event = Event::ModeUpdate(ModeInfo {
         mode: InputMode::Locked,
@@ -1055,14 +1258,14 @@ fn serialize_mode_update_event_with_non_default_values() {
             (
                 InputMode::Locked,
                 vec![(
-                    Key::Alt(crate::data::CharOrArrow::Char('b')),
+                    KeyWithModifier::new(BareKey::Char('b')).with_alt_modifier(),
                     vec![Action::SwitchToMode(InputMode::Normal)],
                 )],
             ),
             (
                 InputMode::Tab,
                 vec![(
-                    Key::Alt(crate::data::CharOrArrow::Direction(Direction::Up)),
+                    KeyWithModifier::new(BareKey::Up).with_alt_modifier(),
                     vec![Action::SwitchToMode(InputMode::Pane)],
                 )],
             ),
@@ -1070,13 +1273,16 @@ fn serialize_mode_update_event_with_non_default_values() {
                 InputMode::Pane,
                 vec![
                     (
-                        Key::Ctrl('b'),
+                        KeyWithModifier::new(BareKey::Char('b')).with_ctrl_modifier(),
                         vec![
                             Action::SwitchToMode(InputMode::Tmux),
-                            Action::Write(vec![10]),
+                            Action::Write(None, vec![10], false),
                         ],
                     ),
-                    (Key::Char('a'), vec![Action::WriteChars("foo".to_owned())]),
+                    (
+                        KeyWithModifier::new(BareKey::Char('a')),
+                        vec![Action::WriteChars("foo".to_owned())],
+                    ),
                 ],
             ),
         ],
@@ -1107,6 +1313,7 @@ fn serialize_mode_update_event_with_non_default_values() {
         },
         capabilities: PluginCapabilities { arrow_fonts: false },
         session_name: Some("my awesome test session".to_owned()),
+        base_mode: Some(InputMode::Locked),
     });
     let protobuf_event: ProtobufEvent = mode_update_event.clone().try_into().unwrap();
     let serialized_protobuf_event = protobuf_event.encode_to_vec();
@@ -1192,8 +1399,9 @@ fn serialize_pane_update_event() {
 
 #[test]
 fn serialize_key_event() {
+    use crate::data::BareKey;
     use prost::Message;
-    let key_event = Event::Key(Key::Ctrl('a'));
+    let key_event = Event::Key(KeyWithModifier::new(BareKey::Char('a')).with_ctrl_modifier());
     let protobuf_event: ProtobufEvent = key_event.clone().try_into().unwrap();
     let serialized_protobuf_event = protobuf_event.encode_to_vec();
     let deserialized_protobuf_event: ProtobufEvent =
@@ -1533,4 +1741,37 @@ fn serialize_session_update_event_with_non_default_values() {
         session_update_event, deserialized_event,
         "Event properly serialized/deserialized without change"
     );
+}
+
+// note: ProtobufPaneId and ProtobufPaneType are not the same as the ones defined in plugin_command.rs
+// this is a duplicate type - we are forced to do this because protobuffs do not support recursive
+// imports
+impl TryFrom<ProtobufPaneId> for PaneId {
+    type Error = &'static str;
+    fn try_from(protobuf_pane_id: ProtobufPaneId) -> Result<Self, &'static str> {
+        match ProtobufPaneType::from_i32(protobuf_pane_id.pane_type) {
+            Some(ProtobufPaneType::Terminal) => Ok(PaneId::Terminal(protobuf_pane_id.id)),
+            Some(ProtobufPaneType::Plugin) => Ok(PaneId::Plugin(protobuf_pane_id.id)),
+            None => Err("Failed to convert PaneId"),
+        }
+    }
+}
+
+// note: ProtobufPaneId and ProtobufPaneType are not the same as the ones defined in plugin_command.rs
+// this is a duplicate type - we are forced to do this because protobuffs do not support recursive
+// imports
+impl TryFrom<PaneId> for ProtobufPaneId {
+    type Error = &'static str;
+    fn try_from(pane_id: PaneId) -> Result<Self, &'static str> {
+        match pane_id {
+            PaneId::Terminal(id) => Ok(ProtobufPaneId {
+                pane_type: ProtobufPaneType::Terminal as i32,
+                id,
+            }),
+            PaneId::Plugin(id) => Ok(ProtobufPaneId {
+                pane_type: ProtobufPaneType::Plugin as i32,
+                id,
+            }),
+        }
+    }
 }

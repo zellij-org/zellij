@@ -1,11 +1,12 @@
 ---
 source: src/tests/e2e/cases.rs
-assertion_line: 305
+assertion_line: 323
 expression: last_snapshot
 ---
  Zellij (e2e-test)  Tab #1 
-┌ Pane #1 ─────────────────────────────────────────────────┐┌ Pane #2 ─────────────────────────────────── SCROLL:  1/4 ┐
-│$                                                         ││line3                                                     │
+┌ Pane #1 ─────────────────────────────────────────────────┐┌ Pane #2 ─────────────────────────────────── SCROLL:  1/3 ┐
+│$                                                         ││line2                                                     │
+│                                                          ││line3                                                     │
 │                                                          ││line4                                                     │
 │                                                          ││line5                                                     │
 │                                                          ││line6                                                     │
@@ -25,5 +26,4 @@ expression: last_snapshot
 │                                                          ││line20                                                    │
 │                                                          ││li█e21                                                    │
 └──────────────────────────────────────────────────────────┘└──────────────────────────────────────────────────────────┘
- Ctrl + <g> LOCK  <p> PANE  <t> TAB  <n> RESIZE  <h> MOVE  <s> SEARCH  <o> SESSION  <q> QUIT 
- <s> Search / <↓↑> Scroll / <PgDn|PgUp> Scroll / <d|u> Scroll / <e> Edit / <ENTER> Select                               
+ Ctrl + <s> SEARCH   s  Search  ↓↑  Scroll  PgDn|PgUp  Scroll  d|u  Scroll  e  Edit  ENTER  Select     

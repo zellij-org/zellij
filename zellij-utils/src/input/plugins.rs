@@ -35,8 +35,6 @@ impl PluginAliases {
 pub struct PluginConfig {
     /// Path of the plugin, see resolve_wasm_bytes for resolution semantics
     pub path: PathBuf,
-    /// Plugin type
-    pub run: PluginType,
     /// Allow command execution from plugin
     pub _allow_exec_host_cmd: bool,
     /// Original location of the
@@ -52,7 +50,6 @@ impl PluginConfig {
         match &run_plugin.location {
             RunPluginLocation::File(path) => Some(PluginConfig {
                 path: path.clone(),
-                run: PluginType::Pane(None),
                 _allow_exec_host_cmd: run_plugin._allow_exec_host_cmd,
                 location: run_plugin.location.clone(),
                 userspace_configuration: run_plugin.configuration.clone(),
@@ -65,10 +62,10 @@ impl PluginConfig {
                     || tag == "compact-bar"
                     || tag == "strider"
                     || tag == "session-manager"
+                    || tag == "configuration"
                 {
                     Some(PluginConfig {
                         path: PathBuf::from(&tag),
-                        run: PluginType::Pane(None),
                         _allow_exec_host_cmd: run_plugin._allow_exec_host_cmd,
                         location: RunPluginLocation::parse(&format!("zellij:{}", tag), None)
                             .ok()?,
@@ -81,7 +78,6 @@ impl PluginConfig {
             },
             RunPluginLocation::Remote(_) => Some(PluginConfig {
                 path: PathBuf::new(),
-                run: PluginType::Pane(None),
                 _allow_exec_host_cmd: run_plugin._allow_exec_host_cmd,
                 location: run_plugin.location.clone(),
                 userspace_configuration: run_plugin.configuration.clone(),
@@ -186,38 +182,8 @@ impl PluginConfig {
         return last_err;
     }
 
-    /// Sets the tab index inside of the plugin type of the run field.
-    pub fn set_tab_index(&mut self, tab_index: usize) {
-        match self.run {
-            PluginType::Pane(..) => {
-                self.run = PluginType::Pane(Some(tab_index));
-            },
-            PluginType::Headless => {},
-        }
-    }
-
     pub fn is_builtin(&self) -> bool {
         matches!(self.location, RunPluginLocation::Zellij(_))
-    }
-}
-
-/// Type of the plugin. Defaults to Pane.
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize, Hash, Eq)]
-#[serde(rename_all = "kebab-case")]
-pub enum PluginType {
-    // TODO: A plugin with output that's cloned across every pane in a tab, or across the entire
-    // application might be useful
-    // Tab
-    // Static
-    /// Starts immediately when Zellij is started and runs without a visible pane
-    Headless,
-    /// Runs once per pane declared inside a layout file
-    Pane(Option<usize>), // tab_index
-}
-
-impl Default for PluginType {
-    fn default() -> Self {
-        Self::Pane(None)
     }
 }
 

@@ -1,14 +1,14 @@
 use std::collections::{BTreeMap, HashMap};
 
 use super::actions::Action;
-use crate::data::{InputMode, Key, KeybindsVec};
+use crate::data::{InputMode, KeyWithModifier, KeybindsVec};
 
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
 /// Used in the config struct
 #[derive(Clone, PartialEq, Deserialize, Serialize, Default)]
-pub struct Keybinds(pub HashMap<InputMode, HashMap<Key, Vec<Action>>>);
+pub struct Keybinds(pub HashMap<InputMode, HashMap<KeyWithModifier, Vec<Action>>>);
 
 impl fmt::Debug for Keybinds {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -25,7 +25,11 @@ impl fmt::Debug for Keybinds {
 }
 
 impl Keybinds {
-    pub fn get_actions_for_key_in_mode(&self, mode: &InputMode, key: &Key) -> Option<&Vec<Action>> {
+    pub fn get_actions_for_key_in_mode(
+        &self,
+        mode: &InputMode,
+        key: &KeyWithModifier,
+    ) -> Option<&Vec<Action>> {
         self.0
             .get(mode)
             .and_then(|normal_mode_keybindings| normal_mode_keybindings.get(key))
@@ -33,21 +37,40 @@ impl Keybinds {
     pub fn get_actions_for_key_in_mode_or_default_action(
         &self,
         mode: &InputMode,
-        key: &Key,
+        key_with_modifier: &KeyWithModifier,
         raw_bytes: Vec<u8>,
+        key_is_kitty_protocol: bool,
     ) -> Vec<Action> {
         self.0
             .get(mode)
-            .and_then(|normal_mode_keybindings| normal_mode_keybindings.get(key))
+            .and_then(|normal_mode_keybindings| normal_mode_keybindings.get(key_with_modifier))
             .cloned()
-            .unwrap_or_else(|| vec![self.default_action_for_mode(mode, raw_bytes)])
+            .unwrap_or_else(|| {
+                vec![self.default_action_for_mode(
+                    mode,
+                    Some(key_with_modifier),
+                    raw_bytes,
+                    key_is_kitty_protocol,
+                )]
+            })
     }
-    pub fn get_input_mode_mut(&mut self, input_mode: &InputMode) -> &mut HashMap<Key, Vec<Action>> {
+    pub fn get_input_mode_mut(
+        &mut self,
+        input_mode: &InputMode,
+    ) -> &mut HashMap<KeyWithModifier, Vec<Action>> {
         self.0.entry(*input_mode).or_insert_with(HashMap::new)
     }
-    pub fn default_action_for_mode(&self, mode: &InputMode, raw_bytes: Vec<u8>) -> Action {
+    pub fn default_action_for_mode(
+        &self,
+        mode: &InputMode,
+        key_with_modifier: Option<&KeyWithModifier>,
+        raw_bytes: Vec<u8>,
+        key_is_kitty_protocol: bool,
+    ) -> Action {
         match *mode {
-            InputMode::Normal | InputMode::Locked => Action::Write(raw_bytes),
+            InputMode::Normal | InputMode::Locked => {
+                Action::Write(key_with_modifier.cloned(), raw_bytes, key_is_kitty_protocol)
+            },
             InputMode::RenameTab => Action::TabNameInput(raw_bytes),
             InputMode::RenamePane => Action::PaneNameInput(raw_bytes),
             InputMode::EnterSearch => Action::SearchInput(raw_bytes),
@@ -57,7 +80,7 @@ impl Keybinds {
     pub fn to_keybinds_vec(&self) -> KeybindsVec {
         let mut ret = vec![];
         for (mode, mode_binds) in &self.0 {
-            let mut mode_binds_vec: Vec<(Key, Vec<Action>)> = vec![];
+            let mut mode_binds_vec: Vec<(KeyWithModifier, Vec<Action>)> = vec![];
             for (key, actions) in mode_binds {
                 mode_binds_vec.push((key.clone(), actions.clone()));
             }

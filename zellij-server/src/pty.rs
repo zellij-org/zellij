@@ -9,15 +9,16 @@ use crate::{
     ClientId, ServerInstruction,
 };
 use async_std::task::{self, JoinHandle};
+use std::sync::Arc;
 use std::{collections::HashMap, os::unix::io::RawFd, path::PathBuf};
 use zellij_utils::nix::unistd::Pid;
 use zellij_utils::{
     async_std,
-    data::FloatingPaneCoordinates,
+    data::{Event, FloatingPaneCoordinates, OriginatingPlugin},
     errors::prelude::*,
     errors::{ContextType, PtyContext},
     input::{
-        command::{RunCommand, TerminalAction},
+        command::{OpenFilePayload, RunCommand, TerminalAction},
         layout::{FloatingPaneLayout, Layout, Run, RunPluginOrAlias, TiledPaneLayout},
     },
     pane_size::Size,
@@ -27,7 +28,7 @@ use zellij_utils::{
 pub type VteBytes = Vec<u8>;
 pub type TabIndex = u32;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ClientTabIndexOrPaneId {
     ClientId(ClientId),
     TabIndex(usize),
@@ -42,13 +43,15 @@ pub enum PtyInstruction {
         Option<bool>,
         Option<String>,
         Option<FloatingPaneCoordinates>,
+        bool, // start suppressed
         ClientTabIndexOrPaneId,
     ), // bool (if Some) is
     // should_float, String is an optional pane name
-    OpenInPlaceEditor(PathBuf, Option<usize>, ClientId), // Option<usize> is the optional line number
+    OpenInPlaceEditor(PathBuf, Option<usize>, ClientTabIndexOrPaneId), // Option<usize> is the optional line number
     SpawnTerminalVertically(Option<TerminalAction>, Option<String>, ClientId), // String is an
     // optional pane
     // name
+    // bool is start_suppressed
     SpawnTerminalHorizontally(Option<TerminalAction>, Option<String>, ClientId), // String is an
     // optional pane
     // name
@@ -61,6 +64,7 @@ pub enum PtyInstruction {
         Vec<FloatingPaneLayout>,
         usize,                               // tab_index
         HashMap<RunPluginOrAlias, Vec<u32>>, // plugin_ids
+        bool,                                // should change focus to new tab
         ClientId,
     ), // the String is the tab name
     ClosePane(PaneId),
@@ -93,6 +97,10 @@ pub enum PtyInstruction {
         Option<FloatingPaneCoordinates>,
     ),
     ListClientsMetadata(SessionLayoutMetadata, ClientId),
+    Reconfigure {
+        client_id: ClientId,
+        default_editor: Option<PathBuf>,
+    },
     Exit,
 }
 
@@ -116,6 +124,7 @@ impl From<&PtyInstruction> for PtyContext {
             PtyInstruction::LogLayoutToHd(..) => PtyContext::LogLayoutToHd,
             PtyInstruction::FillPluginCwd(..) => PtyContext::FillPluginCwd,
             PtyInstruction::ListClientsMetadata(..) => PtyContext::ListClientsMetadata,
+            PtyInstruction::Reconfigure { .. } => PtyContext::Reconfigure,
             PtyInstruction::Exit => PtyContext::Exit,
         }
     }
@@ -125,6 +134,7 @@ pub(crate) struct Pty {
     pub active_panes: HashMap<ClientId, PaneId>,
     pub bus: Bus<PtyInstruction>,
     pub id_to_child_pid: HashMap<u32, RawFd>, // terminal_id => child raw fd
+    originating_plugins: HashMap<u32, OriginatingPlugin>,
     debug_to_file: bool,
     task_handles: HashMap<u32, JoinHandle<()>>, // terminal_id to join-handle
     default_editor: Option<PathBuf>,
@@ -140,29 +150,36 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                 should_float,
                 name,
                 floating_pane_coordinates,
+                start_suppressed,
                 client_or_tab_index,
             ) => {
                 let err_context =
                     || format!("failed to spawn terminal for {:?}", client_or_tab_index);
 
-                let (hold_on_close, run_command, pane_title) = match &terminal_action {
-                    Some(TerminalAction::RunCommand(run_command)) => (
-                        run_command.hold_on_close,
-                        Some(run_command.clone()),
-                        Some(name.unwrap_or_else(|| run_command.to_string())),
-                    ),
-                    _ => (false, None, name),
-                };
-                let invoked_with =
+                let (hold_on_close, run_command, pane_title, open_file_payload) =
                     match &terminal_action {
-                        Some(TerminalAction::RunCommand(run_command)) => {
-                            Some(Run::Command(run_command.clone()))
-                        },
-                        Some(TerminalAction::OpenFile(file, line_number, cwd)) => Some(
-                            Run::EditFile(file.clone(), line_number.clone(), cwd.clone()),
+                        Some(TerminalAction::RunCommand(run_command)) => (
+                            run_command.hold_on_close,
+                            Some(run_command.clone()),
+                            Some(name.unwrap_or_else(|| run_command.to_string())),
+                            None,
                         ),
-                        _ => None,
+                        Some(TerminalAction::OpenFile(open_file_payload)) => {
+                            (false, None, name, Some(open_file_payload.clone()))
+                        },
+                        _ => (false, None, name, None),
                     };
+                let invoked_with = match &terminal_action {
+                    Some(TerminalAction::RunCommand(run_command)) => {
+                        Some(Run::Command(run_command.clone()))
+                    },
+                    Some(TerminalAction::OpenFile(payload)) => Some(Run::EditFile(
+                        payload.path.clone(),
+                        payload.line_number.clone(),
+                        payload.cwd.clone(),
+                    )),
+                    _ => None,
+                };
                 match pty
                     .spawn_terminal(terminal_action, client_or_tab_index)
                     .with_context(err_context)
@@ -173,6 +190,40 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                         } else {
                             None
                         };
+
+                        // if this command originated in a plugin, we send the plugin back an event
+                        // to let it know the command started and which pane_id it has
+                        if let Some(originating_plugin) =
+                            run_command.and_then(|r| r.originating_plugin)
+                        {
+                            pty.originating_plugins
+                                .insert(pid, originating_plugin.clone());
+                            let update_event =
+                                Event::CommandPaneOpened(pid, originating_plugin.context.clone());
+                            pty.bus
+                                .senders
+                                .send_to_plugin(PluginInstruction::Update(vec![(
+                                    Some(originating_plugin.plugin_id),
+                                    Some(originating_plugin.client_id),
+                                    update_event,
+                                )]))
+                                .with_context(err_context)?;
+                        }
+                        if let Some(originating_plugin) =
+                            open_file_payload.and_then(|o| o.originating_plugin)
+                        {
+                            let update_event =
+                                Event::EditPaneOpened(pid, originating_plugin.context.clone());
+                            pty.bus
+                                .senders
+                                .send_to_plugin(PluginInstruction::Update(vec![(
+                                    Some(originating_plugin.plugin_id),
+                                    Some(originating_plugin.client_id),
+                                    update_event,
+                                )]))
+                                .with_context(err_context)?;
+                        }
+
                         pty.bus
                             .senders
                             .send_to_screen(ScreenInstruction::NewPane(
@@ -182,6 +233,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                                 hold_for_command,
                                 invoked_with,
                                 floating_pane_coordinates,
+                                start_suppressed,
                                 client_or_tab_index,
                             ))
                             .with_context(err_context)?;
@@ -199,6 +251,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                                         hold_for_command,
                                         invoked_with,
                                         floating_pane_coordinates,
+                                        start_suppressed,
                                         client_or_tab_index,
                                     ))
                                     .with_context(err_context)?;
@@ -240,16 +293,17 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     ),
                     _ => (false, None, name),
                 };
-                let invoked_with =
-                    match &terminal_action {
-                        Some(TerminalAction::RunCommand(run_command)) => {
-                            Some(Run::Command(run_command.clone()))
-                        },
-                        Some(TerminalAction::OpenFile(file, line_number, cwd)) => Some(
-                            Run::EditFile(file.clone(), line_number.clone(), cwd.clone()),
-                        ),
-                        _ => None,
-                    };
+                let invoked_with = match &terminal_action {
+                    Some(TerminalAction::RunCommand(run_command)) => {
+                        Some(Run::Command(run_command.clone()))
+                    },
+                    Some(TerminalAction::OpenFile(payload)) => Some(Run::EditFile(
+                        payload.path.clone(),
+                        payload.line_number.clone(),
+                        payload.cwd.clone(),
+                    )),
+                    _ => None,
+                };
                 match pty
                     .spawn_terminal(terminal_action, client_id_tab_index_or_pane_id)
                     .with_context(err_context)
@@ -300,20 +354,27 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     },
                 }
             },
-            PtyInstruction::OpenInPlaceEditor(temp_file, line_number, client_id) => {
-                let err_context =
-                    || format!("failed to open in-place editor for client {}", client_id);
+            PtyInstruction::OpenInPlaceEditor(
+                temp_file,
+                line_number,
+                client_tab_index_or_pane_id,
+            ) => {
+                let err_context = || format!("failed to open in-place editor for client");
 
                 match pty.spawn_terminal(
-                    Some(TerminalAction::OpenFile(temp_file, line_number, None)),
-                    ClientTabIndexOrPaneId::ClientId(client_id),
+                    Some(TerminalAction::OpenFile(OpenFilePayload::new(
+                        temp_file,
+                        line_number,
+                        None,
+                    ))),
+                    client_tab_index_or_pane_id,
                 ) {
                     Ok((pid, _starts_held)) => {
                         pty.bus
                             .senders
                             .send_to_screen(ScreenInstruction::OpenInPlaceEditor(
                                 PaneId::Terminal(pid),
-                                client_id,
+                                client_tab_index_or_pane_id,
                             ))
                             .with_context(err_context)?;
                     },
@@ -482,6 +543,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                 floating_panes_layout,
                 tab_index,
                 plugin_ids,
+                should_change_focus_to_new_tab,
                 client_id,
             ) => {
                 let err_context = || format!("failed to open new tab for client {}", client_id);
@@ -498,6 +560,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     terminal_action.clone(),
                     plugin_ids,
                     tab_index,
+                    should_change_focus_to_new_tab,
                     client_id,
                 )
                 .with_context(err_context)?;
@@ -664,20 +727,22 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
             PtyInstruction::LogLayoutToHd(mut session_layout_metadata) => {
                 let err_context = || format!("Failed to dump layout");
                 pty.populate_session_layout_metadata(&mut session_layout_metadata);
-                match session_serialization::serialize_session_layout(
-                    session_layout_metadata.into(),
-                ) {
-                    Ok(kdl_layout_and_pane_contents) => {
-                        pty.bus
-                            .senders
-                            .send_to_background_jobs(BackgroundJob::ReportLayoutInfo(
-                                kdl_layout_and_pane_contents,
-                            ))
-                            .with_context(err_context)?;
-                    },
-                    Err(e) => {
-                        log::error!("Failed to log layout to HD: {}", e);
-                    },
+                if session_layout_metadata.is_dirty() {
+                    match session_serialization::serialize_session_layout(
+                        session_layout_metadata.into(),
+                    ) {
+                        Ok(kdl_layout_and_pane_contents) => {
+                            pty.bus
+                                .senders
+                                .send_to_background_jobs(BackgroundJob::ReportLayoutInfo(
+                                    kdl_layout_and_pane_contents,
+                                ))
+                                .with_context(err_context)?;
+                        },
+                        Err(e) => {
+                            log::error!("Failed to log layout to HD: {}", e);
+                        },
+                    }
                 }
             },
             PtyInstruction::FillPluginCwd(
@@ -707,6 +772,12 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     floating_pane_coordinates,
                 )?;
             },
+            PtyInstruction::Reconfigure {
+                default_editor,
+                client_id,
+            } => {
+                pty.reconfigure(default_editor);
+            },
             PtyInstruction::Exit => break,
         }
     }
@@ -726,6 +797,7 @@ impl Pty {
             debug_to_file,
             task_handles: HashMap::new(),
             default_editor,
+            originating_plugins: HashMap::new(),
         }
     }
     pub fn get_default_terminal(
@@ -740,13 +812,13 @@ impl Pty {
                         TerminalAction::RunCommand(ref mut command) => {
                             command.cwd = Some(cwd);
                         },
-                        TerminalAction::OpenFile(ref _file, _line_number, ref mut edit_cwd) => {
-                            match edit_cwd.as_mut() {
+                        TerminalAction::OpenFile(ref mut payload) => {
+                            match payload.cwd.as_mut() {
                                 Some(edit_cwd) => {
                                     *edit_cwd = cwd.join(&edit_cwd);
                                 },
                                 None => {
-                                    let _ = edit_cwd.insert(cwd.clone());
+                                    let _ = payload.cwd.insert(cwd.clone());
                                 },
                             };
                         },
@@ -762,6 +834,7 @@ impl Pty {
                     cwd, // note: this might also be filled by the calling function, eg. spawn_terminal
                     hold_on_close: false,
                     hold_on_start: false,
+                    ..Default::default()
                 })
             },
         }
@@ -825,12 +898,22 @@ impl Pty {
                 terminal_action
             },
         };
-        let (hold_on_start, hold_on_close) = match &terminal_action {
-            TerminalAction::RunCommand(run_command) => {
-                (run_command.hold_on_start, run_command.hold_on_close)
-            },
-            _ => (false, false),
-        };
+        let (hold_on_start, hold_on_close, originating_command_plugin, originating_edit_plugin) =
+            match &terminal_action {
+                TerminalAction::RunCommand(run_command) => (
+                    run_command.hold_on_start,
+                    run_command.hold_on_close,
+                    run_command.originating_plugin.clone(),
+                    None,
+                ),
+                TerminalAction::OpenFile(open_file_payload) => (
+                    false,
+                    false,
+                    None,
+                    open_file_payload.originating_plugin.clone(),
+                ),
+                _ => (false, false, None, None),
+            };
 
         if hold_on_start {
             // we don't actually open a terminal in this case, just wait for the user to run it
@@ -845,9 +928,40 @@ impl Pty {
             return Ok((terminal_id, starts_held));
         }
 
+        let originating_command_plugin = Arc::new(originating_command_plugin.clone());
+        let originating_edit_plugin = Arc::new(originating_edit_plugin.clone());
         let quit_cb = Box::new({
             let senders = self.bus.senders.clone();
             move |pane_id, exit_status, command| {
+                // if this command originated in a plugin, we send the plugin an event letting it
+                // know the command exited and some other useful information
+                if let PaneId::Terminal(pane_id) = pane_id {
+                    if let Some(originating_command_plugin) = originating_command_plugin.as_ref() {
+                        let update_event = Event::CommandPaneExited(
+                            pane_id,
+                            exit_status,
+                            originating_command_plugin.context.clone(),
+                        );
+                        let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
+                            Some(originating_command_plugin.plugin_id),
+                            Some(originating_command_plugin.client_id),
+                            update_event,
+                        )]));
+                    }
+                    if let Some(originating_edit_plugin) = originating_edit_plugin.as_ref() {
+                        let update_event = Event::EditPaneExited(
+                            pane_id,
+                            exit_status,
+                            originating_edit_plugin.context.clone(),
+                        );
+                        let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
+                            Some(originating_edit_plugin.plugin_id),
+                            Some(originating_edit_plugin.client_id),
+                            update_event,
+                        )]));
+                    }
+                }
+
                 if hold_on_close {
                     let _ = senders.send_to_screen(ScreenInstruction::HoldPane(
                         pane_id,
@@ -904,6 +1018,7 @@ impl Pty {
         default_shell: Option<TerminalAction>,
         plugin_ids: HashMap<RunPluginOrAlias, Vec<u32>>,
         tab_index: usize,
+        should_change_focus_to_new_tab: bool,
         client_id: ClientId,
     ) -> Result<()> {
         let err_context = || format!("failed to spawn terminals for layout for client {client_id}");
@@ -968,6 +1083,7 @@ impl Pty {
                 new_tab_floating_pane_ids,
                 plugin_ids,
                 tab_index,
+                should_change_focus_to_new_tab,
                 client_id,
             ))
             .with_context(err_context)?;
@@ -1158,7 +1274,11 @@ impl Pty {
                     .context("no OS I/O interface found")
                     .with_context(err_context)?
                     .spawn_terminal(
-                        TerminalAction::OpenFile(path_to_file, line_number, cwd),
+                        TerminalAction::OpenFile(OpenFilePayload::new(
+                            path_to_file,
+                            line_number,
+                            cwd,
+                        )),
                         quit_cb,
                         self.default_editor.clone(),
                     )
@@ -1251,19 +1371,37 @@ impl Pty {
     pub fn rerun_command_in_pane(
         &mut self,
         pane_id: PaneId,
-        run_command: RunCommand,
+        mut run_command: RunCommand,
     ) -> Result<()> {
         let err_context = || format!("failed to rerun command in pane {:?}", pane_id);
 
         match pane_id {
             PaneId::Terminal(id) => {
+                if let Some(originating_plugins) = self.originating_plugins.get(&id) {
+                    run_command.originating_plugin = Some(originating_plugins.clone());
+                }
                 let _ = self.task_handles.remove(&id); // if all is well, this shouldn't be here
                 let _ = self.id_to_child_pid.remove(&id); // if all is wlel, this shouldn't be here
 
                 let hold_on_close = run_command.hold_on_close;
+                let originating_plugin = Arc::new(run_command.originating_plugin.clone());
                 let quit_cb = Box::new({
                     let senders = self.bus.senders.clone();
                     move |pane_id, exit_status, command| {
+                        if let PaneId::Terminal(pane_id) = pane_id {
+                            if let Some(originating_plugin) = originating_plugin.as_ref() {
+                                let update_event = Event::CommandPaneExited(
+                                    pane_id,
+                                    exit_status,
+                                    originating_plugin.context.clone(),
+                                );
+                                let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
+                                    Some(originating_plugin.plugin_id),
+                                    Some(originating_plugin.client_id),
+                                    update_event,
+                                )]));
+                            }
+                        }
                         if hold_on_close {
                             let _ = senders.send_to_screen(ScreenInstruction::HoldPane(
                                 pane_id,
@@ -1310,6 +1448,16 @@ impl Pty {
 
                 self.task_handles.insert(id, terminal_bytes);
                 self.id_to_child_pid.insert(id, child_fd);
+                if let Some(originating_plugin) = self.originating_plugins.get(&id) {
+                    self.bus
+                        .senders
+                        .send_to_plugin(PluginInstruction::Update(vec![(
+                            Some(originating_plugin.plugin_id),
+                            Some(originating_plugin.client_id),
+                            Event::CommandPaneReRun(id, originating_plugin.context.clone()),
+                        )]))
+                        .with_context(err_context)?;
+                }
                 Ok(())
             },
             _ => Err(anyhow!("cannot respawn plugin panes")).with_context(err_context),
@@ -1411,6 +1559,9 @@ impl Pty {
             skip_cache,
         ))?;
         Ok(())
+    }
+    pub fn reconfigure(&mut self, default_editor: Option<PathBuf>) {
+        self.default_editor = default_editor;
     }
 }
 

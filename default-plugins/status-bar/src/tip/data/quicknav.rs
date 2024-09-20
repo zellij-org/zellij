@@ -62,7 +62,7 @@ struct Keygroups<'a> {
 
 fn add_keybinds(help: &ModeInfo) -> Keygroups {
     let normal_keymap = help.get_mode_keybinds();
-    let new_pane_keys = action_key(&normal_keymap, &[Action::NewPane(None, None)]);
+    let new_pane_keys = action_key(&normal_keymap, &[Action::NewPane(None, None, false)]);
     let new_pane = if new_pane_keys.is_empty() {
         vec![Style::new().bold().paint("UNBOUND")]
     } else {
@@ -76,10 +76,10 @@ fn add_keybinds(help: &ModeInfo) -> Keygroups {
             &[Action::Resize(Resize::Decrease, None)],
         ],
     );
-    if resize_keys.contains(&Key::Alt(CharOrArrow::Char('=')))
-        && resize_keys.contains(&Key::Alt(CharOrArrow::Char('+')))
+    if resize_keys.contains(&KeyWithModifier::new(BareKey::Char('=')).with_alt_modifier())
+        && resize_keys.contains(&KeyWithModifier::new(BareKey::Char('+')).with_alt_modifier())
     {
-        resize_keys.retain(|k| k != &Key::Alt(CharOrArrow::Char('=')));
+        resize_keys.retain(|k| k != &KeyWithModifier::new(BareKey::Char('=')).with_alt_modifier())
     }
     let resize = if resize_keys.is_empty() {
         vec![Style::new().bold().paint("UNBOUND")]

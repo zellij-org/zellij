@@ -98,6 +98,29 @@ enum CommandName {
   DumpSessionLayout = 84;
   CloseSelf = 85;
   NewTabsWithLayoutInfo = 86;
+  Reconfigure = 87;
+  HidePaneWithId = 88;
+  ShowPaneWithId = 89;
+  OpenCommandPaneBackground = 90;
+  RerunCommandPane = 91;
+  ResizePaneIdWithDirection = 92;
+  EditScrollbackForPaneWithId = 93;
+  WriteToPaneId = 94;
+  WriteCharsToPaneId = 95;
+  MovePaneWithPaneId = 96;
+  MovePaneWithPaneIdInDirection = 97;
+  ClearScreenForPaneId = 98;
+  ScrollUpInPaneId = 99;
+  ScrollDownInPaneId = 100;
+  ScrollToTopInPaneId = 101;
+  ScrollToBottomInPaneId = 102;
+  PageScrollUpInPaneId = 103;
+  PageScrollDownInPaneId = 104;
+  TogglePaneIdFullscreen = 105;
+  TogglePaneEmbedOrEjectForPaneId = 106;
+  CloseTabWithIndex = 107;
+  BreakPanesToNewTab = 108;
+  BreakPanesToTabWithIndex = 109;
 }
 
 message PluginCommand {
@@ -155,8 +178,129 @@ message PluginCommand {
     KillSessionsPayload kill_sessions_payload = 60;
     string scan_host_folder_payload = 61;
     NewTabsWithLayoutInfoPayload new_tabs_with_layout_info_payload = 62;
-    WatchFilesystemPayload watch_filesystem = 63;
+    ReconfigurePayload reconfigure_payload = 63;
+    HidePaneWithIdPayload hide_pane_with_id_payload = 64;
+    ShowPaneWithIdPayload show_pane_with_id_payload = 65;
+    OpenCommandPanePayload open_command_pane_background_payload = 66;
+    RerunCommandPanePayload rerun_command_pane_payload = 67;
+    ResizePaneIdWithDirectionPayload resize_pane_id_with_direction_payload = 68;
+    EditScrollbackForPaneWithIdPayload edit_scrollback_for_pane_with_id_payload = 69;
+    WriteToPaneIdPayload write_to_pane_id_payload = 70;
+    WriteCharsToPaneIdPayload write_chars_to_pane_id_payload = 71;
+    MovePaneWithPaneIdPayload move_pane_with_pane_id_payload = 72;
+    MovePaneWithPaneIdInDirectionPayload move_pane_with_pane_id_in_direction_payload = 73;
+    ClearScreenForPaneIdPayload clear_screen_for_pane_id_payload = 74;
+    ScrollUpInPaneIdPayload scroll_up_in_pane_id_payload = 75;
+    ScrollDownInPaneIdPayload scroll_down_in_pane_id_payload = 76;
+    ScrollToTopInPaneIdPayload scroll_to_top_in_pane_id_payload = 77;
+    ScrollToBottomInPaneIdPayload scroll_to_bottom_in_pane_id_payload = 78;
+    PageScrollUpInPaneIdPayload page_scroll_up_in_pane_id_payload = 79;
+    PageScrollDownInPaneIdPayload page_scroll_down_in_pane_id_payload = 80;
+    TogglePaneIdFullscreenPayload toggle_pane_id_fullscreen_payload = 81;
+    TogglePaneEmbedOrEjectForPaneIdPayload toggle_pane_embed_or_eject_for_pane_id_payload = 82;
+    CloseTabWithIndexPayload close_tab_with_index_payload = 83;
+    BreakPanesToNewTabPayload break_panes_to_new_tab_payload = 84;
+    BreakPanesToTabWithIndexPayload break_panes_to_tab_with_index_payload = 85;
+    WatchFilesystemPayload watch_filesystem = 86;
   }
+}
+
+message BreakPanesToTabWithIndexPayload {
+  repeated PaneId pane_ids = 1;
+  uint32 tab_index = 2;
+  bool should_change_focus_to_target_tab = 3;
+}
+
+message BreakPanesToNewTabPayload {
+  repeated PaneId pane_ids = 1;
+  bool should_change_focus_to_new_tab = 2;
+  optional string new_tab_name = 3;
+}
+
+message MovePaneWithPaneIdPayload {
+  PaneId pane_id = 1;
+}
+
+message MovePaneWithPaneIdInDirectionPayload {
+  PaneId pane_id = 1;
+  resize.MoveDirection direction = 2;
+}
+
+message ClearScreenForPaneIdPayload {
+  PaneId pane_id = 1;
+}
+
+message ScrollUpInPaneIdPayload {
+  PaneId pane_id = 1;
+}
+
+message ScrollDownInPaneIdPayload {
+  PaneId pane_id = 1;
+}
+
+message ScrollToTopInPaneIdPayload {
+  PaneId pane_id = 1;
+}
+
+message ScrollToBottomInPaneIdPayload {
+  PaneId pane_id = 1;
+}
+
+message PageScrollUpInPaneIdPayload {
+  PaneId pane_id = 1;
+}
+
+message PageScrollDownInPaneIdPayload {
+  PaneId pane_id = 1;
+}
+
+message TogglePaneIdFullscreenPayload {
+  PaneId pane_id = 1;
+}
+
+message TogglePaneEmbedOrEjectForPaneIdPayload {
+  PaneId pane_id = 1;
+}
+
+message CloseTabWithIndexPayload {
+  uint32 tab_index = 1;
+}
+
+message WriteCharsToPaneIdPayload {
+  string chars_to_write = 1;
+  PaneId pane_id = 2;
+}
+
+message WriteToPaneIdPayload {
+  bytes bytes_to_write = 1;
+  PaneId pane_id = 2;
+}
+
+message EditScrollbackForPaneWithIdPayload {
+  PaneId pane_id = 1;
+}
+
+message ResizePaneIdWithDirectionPayload {
+  resize.Resize resize = 1;
+  PaneId pane_id = 2;
+}
+
+message ReconfigurePayload {
+  string config = 1;
+  bool write_to_disk = 2;
+}
+
+message RerunCommandPanePayload {
+  uint32 terminal_pane_id = 1;
+}
+
+message HidePaneWithIdPayload {
+  PaneId pane_id = 1;
+}
+
+message ShowPaneWithIdPayload {
+  PaneId pane_id = 1;
+  bool should_float_if_hidden = 2;
 }
 
 message WatchFilesystemPayload {
@@ -228,11 +372,13 @@ message UnsubscribePayload {
 message OpenFilePayload {
   file.File file_to_open = 1;
   optional FloatingPaneCoordinates floating_pane_coordinates = 2;
+  repeated ContextItem context = 3;
 }
 
 message OpenCommandPanePayload {
   command.Command command_to_run = 1;
   optional FloatingPaneCoordinates floating_pane_coordinates = 2;
+  repeated ContextItem context = 3;
 }
 
 message SwitchTabToPayload {

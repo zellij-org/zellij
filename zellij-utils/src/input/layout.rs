@@ -504,6 +504,12 @@ impl PluginUserConfiguration {
         configuration.remove("direction");
         configuration.remove("floating");
         configuration.remove("move_to_focused_tab");
+        configuration.remove("launch_new");
+        configuration.remove("payload");
+        configuration.remove("skip_cache");
+        configuration.remove("title");
+        configuration.remove("in_place");
+        configuration.remove("skip_plugin_cache");
 
         PluginUserConfiguration(configuration)
     }
@@ -735,6 +741,19 @@ pub struct FloatingPaneLayout {
 }
 
 impl FloatingPaneLayout {
+    pub fn new() -> Self {
+        FloatingPaneLayout {
+            name: None,
+            height: None,
+            width: None,
+            x: None,
+            y: None,
+            run: None,
+            focus: None,
+            already_running: false,
+            pane_initial_contents: None,
+        }
+    }
     pub fn add_cwd_to_layout(&mut self, cwd: &PathBuf) {
         match self.run.as_mut() {
             Some(run) => run.add_cwd(cwd),
@@ -919,7 +938,16 @@ impl TiledPaneLayout {
                 .len()
                 .saturating_sub(successfully_ignored)
             {
-                if let Some(position) = run_instructions.iter().position(|i| i == &None) {
+                if let Some(position) = run_instructions.iter().position(|i| {
+                    match i {
+                        // this is because a bare CWD instruction should be overidden by a terminal
+                        // in run_instructions_to_ignore (for cases where the cwd for example comes
+                        // from a global layout cwd and the pane is actually just a bare pane that
+                        // wants to be overidden)
+                        Some(Run::Cwd(_)) | None => true,
+                        _ => false,
+                    }
+                }) {
                     run_instructions.remove(position);
                 }
             }
@@ -1121,6 +1149,7 @@ impl Layout {
         available_layouts.push(LayoutInfo::BuiltIn("strider".to_owned()));
         available_layouts.push(LayoutInfo::BuiltIn("disable-status-bar".to_owned()));
         available_layouts.push(LayoutInfo::BuiltIn("compact".to_owned()));
+        available_layouts.push(LayoutInfo::BuiltIn("classic".to_owned()));
         available_layouts.sort_by(|a, b| {
             let a_name = a.name();
             let b_name = b.name();
@@ -1141,15 +1170,20 @@ impl Layout {
         let (path_to_raw_layout, raw_layout, raw_swap_layouts) = match layout_info {
             LayoutInfo::File(layout_name_without_extension) => {
                 let layout_dir = layout_dir.clone().or_else(|| default_layout_dir());
-                Self::stringified_from_dir(
-                    &PathBuf::from(layout_name_without_extension),
-                    layout_dir.as_ref(),
-                )?
+                let (path_to_layout, stringified_layout, swap_layouts) =
+                    Self::stringified_from_dir(
+                        &PathBuf::from(layout_name_without_extension),
+                        layout_dir.as_ref(),
+                    )?;
+                (Some(path_to_layout), stringified_layout, swap_layouts)
             },
             LayoutInfo::BuiltIn(layout_name) => {
-                Self::stringified_from_default_assets(&PathBuf::from(layout_name))?
+                let (path_to_layout, stringified_layout, swap_layouts) =
+                    Self::stringified_from_default_assets(&PathBuf::from(layout_name))?;
+                (Some(path_to_layout), stringified_layout, swap_layouts)
             },
-            LayoutInfo::Url(url) => (url.clone(), Self::stringified_from_url(&url)?, None),
+            LayoutInfo::Url(url) => (Some(url.clone()), Self::stringified_from_url(&url)?, None),
+            LayoutInfo::Stringified(stringified_layout) => (None, stringified_layout, None),
         };
         Layout::from_kdl(
             &raw_layout,
@@ -1207,7 +1241,7 @@ impl Layout {
             Layout::stringified_from_path_or_default(layout_path, layout_dir)?;
         let layout = Layout::from_kdl(
             &raw_layout,
-            path_to_raw_layout,
+            Some(path_to_raw_layout),
             raw_swap_layouts
                 .as_ref()
                 .map(|(r, f)| (r.as_str(), f.as_str())),
@@ -1225,8 +1259,16 @@ impl Layout {
                 Err(e) => Err(ConfigError::DownloadError(format!("{}", e))),
             }
         })?;
-        let layout = Layout::from_kdl(&raw_layout, url.into(), None, None)?;
+        let layout = Layout::from_kdl(&raw_layout, Some(url.into()), None, None)?;
         let config = Config::from_kdl(&raw_layout, Some(config))?; // this merges the two config, with
+        Ok((layout, config))
+    }
+    pub fn from_stringified_layout(
+        stringified_layout: &str,
+        config: Config,
+    ) -> Result<(Layout, Config), ConfigError> {
+        let layout = Layout::from_kdl(&stringified_layout, None, None, None)?;
+        let config = Config::from_kdl(&stringified_layout, Some(config))?; // this merges the two config, with
         Ok((layout, config))
     }
     #[cfg(target_family = "wasm")]
@@ -1243,7 +1285,7 @@ impl Layout {
             Layout::stringified_from_path_or_default(layout_path, layout_dir)?;
         let layout = Layout::from_kdl(
             &raw_layout,
-            path_to_raw_layout,
+            Some(path_to_raw_layout),
             raw_swap_layouts
                 .as_ref()
                 .map(|(r, f)| (r.as_str(), f.as_str())),
@@ -1260,7 +1302,7 @@ impl Layout {
             Layout::stringified_from_default_assets(layout_name)?;
         let layout = Layout::from_kdl(
             &raw_layout,
-            path_to_raw_layout,
+            Some(path_to_raw_layout),
             raw_swap_layouts
                 .as_ref()
                 .map(|(r, f)| (r.as_str(), f.as_str())),
@@ -1275,7 +1317,7 @@ impl Layout {
         swap_layouts: Option<(&str, &str)>, // Option<path_to_swap_layout, stringified_swap_layout>
         cwd: Option<PathBuf>,
     ) -> Result<Layout, ConfigError> {
-        Layout::from_kdl(raw, path_to_raw_layout, swap_layouts, cwd)
+        Layout::from_kdl(raw, Some(path_to_raw_layout), swap_layouts, cwd)
     }
     pub fn stringified_from_dir(
         layout: &PathBuf,
@@ -1359,6 +1401,14 @@ impl Layout {
                     Self::stringified_compact_swap_from_assets()?,
                 )),
             )),
+            Some("classic") => Ok((
+                "Classic layout".into(),
+                Self::stringified_classic_from_assets()?,
+                Some((
+                    "Classiclayout swap".into(),
+                    Self::stringified_classic_swap_from_assets()?,
+                )),
+            )),
             Some("welcome") => Ok((
                 "Welcome screen layout".into(),
                 Self::stringified_welcome_from_assets()?,
@@ -1393,6 +1443,14 @@ impl Layout {
 
     pub fn stringified_compact_swap_from_assets() -> Result<String, ConfigError> {
         Ok(String::from_utf8(setup::COMPACT_BAR_SWAP_LAYOUT.to_vec())?)
+    }
+
+    pub fn stringified_classic_from_assets() -> Result<String, ConfigError> {
+        Ok(String::from_utf8(setup::CLASSIC_LAYOUT.to_vec())?)
+    }
+
+    pub fn stringified_classic_swap_from_assets() -> Result<String, ConfigError> {
+        Ok(String::from_utf8(setup::CLASSIC_SWAP_LAYOUT.to_vec())?)
     }
 
     pub fn stringified_welcome_from_assets() -> Result<String, ConfigError> {
@@ -1480,6 +1538,22 @@ impl Layout {
                 floating_pane.add_cwd_to_layout(&cwd);
             }
         }
+    }
+    pub fn pane_count(&self) -> usize {
+        let mut pane_count = 0;
+        if let Some((tiled_pane_layout, floating_panes)) = self.template.as_ref() {
+            pane_count += tiled_pane_layout.pane_count();
+            for _ in floating_panes {
+                pane_count += 1;
+            }
+        }
+        for (_, tiled_pane_layout, floating_panes) in &self.tabs {
+            pane_count += tiled_pane_layout.pane_count();
+            for _ in floating_panes {
+                pane_count += 1;
+            }
+        }
+        pane_count
     }
 }
 

@@ -18,12 +18,20 @@ pub struct LinePart {
     tab_index: Option<usize>,
 }
 
+impl LinePart {
+    pub fn append(&mut self, to_append: &LinePart) {
+        self.part.push_str(&to_append.part);
+        self.len += to_append.len;
+    }
+}
+
 #[derive(Default)]
 struct State {
     tabs: Vec<TabInfo>,
     active_tab_idx: usize,
     mode_info: ModeInfo,
     tab_line: Vec<LinePart>,
+    hide_swap_layout_indication: bool,
 }
 
 static ARROW_SEPARATOR: &str = "";
@@ -31,7 +39,11 @@ static ARROW_SEPARATOR: &str = "";
 register_plugin!(State);
 
 impl ZellijPlugin for State {
-    fn load(&mut self, _configuration: BTreeMap<String, String>) {
+    fn load(&mut self, configuration: BTreeMap<String, String>) {
+        self.hide_swap_layout_indication = configuration
+            .get("hide_swap_layout_indication")
+            .map(|s| s == "true")
+            .unwrap_or(false);
         set_selectable(false);
         subscribe(&[
             EventType::TabUpdate,
@@ -120,6 +132,9 @@ impl ZellijPlugin for State {
             self.mode_info.style.colors,
             self.mode_info.capabilities,
             self.mode_info.style.hide_session_name,
+            self.tabs.iter().find(|t| t.active),
+            &self.mode_info,
+            self.hide_swap_layout_indication,
         );
 
         let output = self

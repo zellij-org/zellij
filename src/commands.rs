@@ -3,9 +3,10 @@ use std::{fs::File, io::prelude::*, path::PathBuf, process, time::Duration};
 
 use crate::sessions::{
     assert_dead_session, assert_session, assert_session_ne, delete_session as delete_session_impl,
-    get_active_session, get_name_generator, get_resurrectable_sessions, get_sessions,
-    get_sessions_sorted_by_mtime, kill_session as kill_session_impl, match_session_name,
-    print_sessions, print_sessions_with_index, resurrection_layout, session_exists, ActiveSession,
+    get_active_session, get_name_generator, get_resurrectable_session_names,
+    get_resurrectable_sessions, get_sessions, get_sessions_sorted_by_mtime,
+    kill_session as kill_session_impl, match_session_name, print_sessions,
+    print_sessions_with_index, resurrection_layout, session_exists, ActiveSession,
     SessionNameMatch,
 };
 use zellij_client::{
@@ -385,19 +386,25 @@ fn attach_with_session_name(
 pub(crate) fn start_client(opts: CliArgs) {
     // look for old YAML config/layout/theme files and convert them to KDL
     convert_old_yaml_files(&opts);
-    let (config, layout, config_options, config_without_layout, config_options_without_layout) =
-        match Setup::from_cli_args(&opts) {
-            Ok(results) => results,
-            Err(e) => {
-                if let ConfigError::KdlError(error) = e {
-                    let report: Report = error.into();
-                    eprintln!("{:?}", report);
-                } else {
-                    eprintln!("{}", e);
-                }
-                process::exit(1);
-            },
-        };
+    let (
+        config,
+        layout,
+        config_options,
+        mut config_without_layout,
+        mut config_options_without_layout,
+    ) = match Setup::from_cli_args(&opts) {
+        Ok(results) => results,
+        Err(e) => {
+            if let ConfigError::KdlError(error) = e {
+                let report: Report = error.into();
+                eprintln!("{:?}", report);
+            } else {
+                eprintln!("{}", e);
+            }
+            process::exit(1);
+        },
+    };
+
     let mut reconnect_to_session: Option<ConnectToSession> = None;
     let os_input = get_os_input(get_client_os_input);
     loop {
@@ -414,6 +421,11 @@ pub(crate) fn start_client(opts: CliArgs) {
             // untested and pretty involved function
             //
             // ideally, we should write tests for this whole function and refctor it
+            reload_config_from_disk(
+                &mut config_without_layout,
+                &mut config_options_without_layout,
+                &opts,
+            );
             if reconnect_to_session.name.is_some() {
                 opts.command = Some(Command::Sessions(Sessions::Attach {
                     session_name: reconnect_to_session.name.clone(),
@@ -445,6 +457,10 @@ pub(crate) fn start_client(opts: CliArgs) {
                         config_without_layout.clone(),
                     ),
                     LayoutInfo::Url(url) => Layout::from_url(&url, config_without_layout.clone()),
+                    LayoutInfo::Stringified(stringified_layout) => Layout::from_stringified_layout(
+                        &stringified_layout,
+                        config_without_layout.clone(),
+                    ),
                 };
                 match new_session_layout {
                     Ok(new_session_layout) => {
@@ -669,10 +685,7 @@ fn generate_unique_session_name() -> String {
             .map(|s| s.0.clone())
             .collect::<Vec<String>>()
     });
-    let dead_sessions: Vec<String> = get_resurrectable_sessions()
-        .iter()
-        .map(|(s, _, _)| s.clone())
-        .collect();
+    let dead_sessions = get_resurrectable_session_names();
     let Ok(sessions) = sessions else {
         eprintln!("Failed to list existing sessions: {:?}", sessions);
         process::exit(1);
@@ -708,4 +721,20 @@ pub(crate) fn list_aliases(opts: CliArgs) {
         println!("{}", alias);
     }
     process::exit(0);
+}
+
+fn reload_config_from_disk(
+    config_without_layout: &mut Config,
+    config_options_without_layout: &mut Options,
+    opts: &CliArgs,
+) {
+    match Setup::from_cli_args(&opts) {
+        Ok((_, _, _, reloaded_config_without_layout, reloaded_config_options_without_layout)) => {
+            *config_without_layout = reloaded_config_without_layout;
+            *config_options_without_layout = reloaded_config_options_without_layout;
+        },
+        Err(e) => {
+            log::error!("Failed to reload config: {}", e);
+        },
+    };
 }

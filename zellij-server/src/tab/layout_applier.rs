@@ -41,6 +41,7 @@ pub struct LayoutApplier<'a> {
     debug: bool,
     arrow_fonts: bool,
     styled_underlines: bool,
+    explicitly_disable_kitty_keyboard_protocol: bool,
 }
 
 impl<'a> LayoutApplier<'a> {
@@ -63,6 +64,7 @@ impl<'a> LayoutApplier<'a> {
         debug: bool,
         arrow_fonts: bool,
         styled_underlines: bool,
+        explicitly_disable_kitty_keyboard_protocol: bool,
     ) -> Self {
         let viewport = viewport.clone();
         let senders = senders.clone();
@@ -94,6 +96,7 @@ impl<'a> LayoutApplier<'a> {
             debug,
             arrow_fonts,
             styled_underlines,
+            explicitly_disable_kitty_keyboard_protocol,
         }
     }
     pub fn apply_layout(
@@ -253,6 +256,19 @@ impl<'a> LayoutApplier<'a> {
                     position_and_size,
                     layout.borderless,
                 );
+            } else if let Some(position) =
+                positions_in_layout
+                    .iter()
+                    .position(|(layout, _position_and_size)| {
+                        Run::is_terminal(&layout.run) && Run::is_terminal(&run_instruction)
+                    })
+            {
+                let (layout, position_and_size) = positions_in_layout.remove(position);
+                self.tiled_panes.set_geom_for_pane_with_run(
+                    run_instruction,
+                    position_and_size,
+                    layout.borderless,
+                );
             } else {
                 log::error!(
                     "Failed to find room for run instruction: {:?}",
@@ -330,6 +346,7 @@ impl<'a> LayoutApplier<'a> {
                         self.debug,
                         self.arrow_fonts,
                         self.styled_underlines,
+                        self.explicitly_disable_kitty_keyboard_protocol,
                     );
                     if let Some(pane_initial_contents) = &layout.pane_initial_contents {
                         new_pane.handle_pty_bytes(pane_initial_contents.as_bytes().into());
@@ -395,7 +412,7 @@ impl<'a> LayoutApplier<'a> {
                         .with_context(err_context)?
                         .clone(),
                     pane_title,
-                    layout_name.clone().unwrap_or_default(),
+                    floating_pane_layout.name.clone().unwrap_or_default(),
                     self.sixel_image_store.clone(),
                     self.terminal_emulator_colors.clone(),
                     self.terminal_emulator_color_codes.clone(),
@@ -448,6 +465,7 @@ impl<'a> LayoutApplier<'a> {
                     self.debug,
                     self.arrow_fonts,
                     self.styled_underlines,
+                    self.explicitly_disable_kitty_keyboard_protocol,
                 );
                 if let Some(pane_initial_contents) = &floating_pane_layout.pane_initial_contents {
                     new_pane.handle_pty_bytes(pane_initial_contents.as_bytes().into());

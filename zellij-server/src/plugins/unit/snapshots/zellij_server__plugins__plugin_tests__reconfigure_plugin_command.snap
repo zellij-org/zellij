@@ -1,0 +1,12 @@
+---
+source: zellij-server/src/plugins/./unit/plugin_tests.rs
+assertion_line: 6605
+expression: "format!(\"{:#?}\", reconfigure_event)"
+---
+Some(
+    Reconfigure {
+        client_id: 1,
+        config: "\n                        keybinds {\n                            locked {\n                                bind \"a\" { NewTab; }\n                            }\n                        }\n                    ",
+        write_config_to_disk: true,
+    },
+)

@@ -1,0 +1,11 @@
+---
+source: zellij-server/src/plugins/./unit/plugin_tests.rs
+assertion_line: 6566
+expression: "format!(\"{:#?}\", rebind_keys_event)"
+---
+Some(
+    RebindKeys(
+        1,
+        "\n                        keybinds {\n                            locked {\n                                bind \"a\" { NewTab; }\n                            }\n                        }\n                    ",
+    ),
+)

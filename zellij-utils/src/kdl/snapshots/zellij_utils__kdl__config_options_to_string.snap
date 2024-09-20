@@ -1,0 +1,33 @@
+---
+source: zellij-utils/src/kdl/mod.rs
+assertion_line: 4182
+expression: fake_document.to_string()
+---
+simplified_ui true
+theme "dracula"
+default_mode "locked"
+default_shell "fish"
+default_cwd "/tmp/foo"
+default_layout "compact"
+layout_dir "/tmp/layouts"
+theme_dir "/tmp/themes"
+mouse_mode false
+pane_frames false
+mirror_session true
+on_force_close "quit"
+scroll_buffer_size 100
+copy_command "pbcopy"
+copy_clipboard "system"
+copy_on_select false
+scrollback_editor "vim"
+session_name "my_cool_session"
+attach_to_session false
+auto_layout false
+session_serialization true
+serialize_pane_viewport false
+scrollback_lines_to_serialize 1000
+styled_underlines false
+serialization_interval 1
+disable_session_metadata true
+support_kitty_keyboard_protocol false
+

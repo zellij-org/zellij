@@ -3,7 +3,6 @@ use crate::plugins::plugin_map::RunningPlugin;
 use crate::plugins::wasm_bridge::PluginRenderAsset;
 use crate::plugins::zellij_exports::{wasi_read_string, wasi_write_object};
 use std::collections::{HashMap, HashSet};
-use wasmer::Value;
 use zellij_utils::data::{PipeMessage, PipeSource};
 use zellij_utils::plugin_api::pipe_message::ProtobufPipeMessage;
 
@@ -147,7 +146,6 @@ pub fn apply_pipe_message_to_plugin(
     senders: &ThreadSenders,
 ) -> Result<()> {
     let instance = &running_plugin.instance;
-    let plugin_env = &running_plugin.plugin_env;
     let rows = running_plugin.rows;
     let columns = running_plugin.columns;
 
@@ -156,31 +154,24 @@ pub fn apply_pipe_message_to_plugin(
         .clone()
         .try_into()
         .map_err(|e| anyhow!("Failed to convert to protobuf: {:?}", e))?;
-    match instance.exports.get_function("pipe") {
+    match instance.get_typed_func::<(), i32>(&mut running_plugin.store, "pipe") {
         Ok(pipe) => {
-            wasi_write_object(&plugin_env.wasi_env, &protobuf_pipe_message.encode_to_vec())
+            wasi_write_object(
+                running_plugin.store.data(),
+                &protobuf_pipe_message.encode_to_vec(),
+            )
+            .with_context(err_context)?;
+            let should_render = pipe
+                .call(&mut running_plugin.store, ())
                 .with_context(err_context)?;
-            let pipe_return = pipe
-                .call(&mut running_plugin.store, &[])
-                .with_context(err_context)?;
-            let should_render = match pipe_return.get(0) {
-                Some(Value::I32(n)) => *n == 1,
-                _ => false,
-            };
+            let should_render = should_render == 1;
             if rows > 0 && columns > 0 && should_render {
                 let rendered_bytes = instance
-                    .exports
-                    .get_function("render")
-                    .map_err(anyError::new)
+                    .get_typed_func::<(i32, i32), ()>(&mut running_plugin.store, "render")
                     .and_then(|render| {
-                        render
-                            .call(
-                                &mut running_plugin.store,
-                                &[Value::I32(rows as i32), Value::I32(columns as i32)],
-                            )
-                            .map_err(anyError::new)
+                        render.call(&mut running_plugin.store, (rows as i32, columns as i32))
                     })
-                    .and_then(|_| wasi_read_string(&plugin_env.wasi_env))
+                    .and_then(|_| wasi_read_string(running_plugin.store.data()))
                     .with_context(err_context)?;
                 let pipes_to_block_or_unblock =
                     pipes_to_block_or_unblock(running_plugin, Some(&pipe_message.source));
@@ -230,14 +221,16 @@ pub fn pipes_to_block_or_unblock(
 ) -> HashMap<String, PipeStateChange> {
     let mut pipe_state_changes = HashMap::new();
     let mut input_pipes_to_unblock: HashSet<String> = running_plugin
-        .plugin_env
+        .store
+        .data()
         .input_pipes_to_unblock
         .lock()
         .unwrap()
         .drain()
         .collect();
     let mut input_pipes_to_block: HashSet<String> = running_plugin
-        .plugin_env
+        .store
+        .data()
         .input_pipes_to_block
         .lock()
         .unwrap()

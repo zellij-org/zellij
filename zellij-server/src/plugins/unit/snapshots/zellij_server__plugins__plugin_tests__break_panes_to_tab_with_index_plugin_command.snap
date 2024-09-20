@@ -1,0 +1,20 @@
+---
+source: zellij-server/src/plugins/./unit/plugin_tests.rs
+assertion_line: 8317
+expression: "format!(\"{:#?}\", screen_instruction)"
+---
+Some(
+    BreakPanesToTabWithIndex {
+        pane_ids: [
+            Terminal(
+                1,
+            ),
+            Plugin(
+                2,
+            ),
+        ],
+        tab_index: 2,
+        should_change_focus_to_new_tab: true,
+        client_id: 1,
+    },
+)

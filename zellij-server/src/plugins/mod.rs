@@ -10,10 +10,9 @@ use std::{
     collections::{BTreeMap, HashMap, HashSet},
     fs,
     path::PathBuf,
-    sync::{Arc, Mutex},
     time::Duration,
 };
-use wasmer::Store;
+use wasmtime::Engine;
 
 use crate::panes::PaneId;
 use crate::screen::ScreenInstruction;
@@ -26,14 +25,15 @@ use wasm_bridge::WasmBridge;
 use zellij_utils::{
     async_std::{channel, future::timeout, task},
     data::{
-        Event, EventType, MessageToPlugin, PermissionStatus, PermissionType, PipeMessage,
-        PipeSource, PluginCapabilities,
+        Event, EventType, InputMode, MessageToPlugin, PermissionStatus, PermissionType,
+        PipeMessage, PipeSource, PluginCapabilities,
     },
     errors::{prelude::*, ContextType, PluginContext},
     input::{
         command::TerminalAction,
+        keybinds::Keybinds,
         layout::{FloatingPaneLayout, Layout, Run, RunPlugin, RunPluginOrAlias, TiledPaneLayout},
-        plugins::PluginAliases,
+        plugins::{PluginAliases, PluginConfig},
     },
     ipc::ClientAttributes,
     pane_size::Size,
@@ -74,6 +74,7 @@ pub enum PluginInstruction {
         Option<TiledPaneLayout>,
         Vec<FloatingPaneLayout>,
         usize, // tab_index
+        bool,  // should change focus to new tab
         ClientId,
     ),
     ApplyCachedEvents {
@@ -134,6 +135,7 @@ pub enum PluginInstruction {
         cwd: Option<PathBuf>,
         skip_cache: bool,
         cli_client_id: ClientId,
+        plugin_and_client_id: Option<(u32, ClientId)>,
     },
     CachePluginEvents {
         plugin_id: PluginId,
@@ -143,6 +145,15 @@ pub enum PluginInstruction {
         message: MessageToPlugin,
     },
     UnblockCliPipes(Vec<PluginRenderAsset>),
+    Reconfigure {
+        client_id: ClientId,
+        keybinds: Option<Keybinds>,
+        default_mode: Option<InputMode>,
+        default_shell: Option<TerminalAction>,
+    },
+    FailedToWriteConfigToDisk {
+        file_path: Option<PathBuf>,
+    },
     WatchFilesystem(HashMap<PathBuf, bool>),
     Exit,
 }
@@ -183,13 +194,17 @@ impl From<&PluginInstruction> for PluginContext {
             PluginInstruction::WatchFilesystem { .. } => PluginContext::WatchFilesystem,
             PluginInstruction::KeybindPipe { .. } => PluginContext::KeybindPipe,
             PluginInstruction::DumpLayoutToPlugin(..) => PluginContext::DumpLayoutToPlugin,
+            PluginInstruction::Reconfigure { .. } => PluginContext::Reconfigure,
+            PluginInstruction::FailedToWriteConfigToDisk { .. } => {
+                PluginContext::FailedToWriteConfigToDisk
+            },
         }
     }
 }
 
 pub(crate) fn plugin_thread_main(
     bus: Bus<PluginInstruction>,
-    store: Store,
+    engine: Engine,
     data_dir: PathBuf,
     mut layout: Box<Layout>,
     layout_dir: Option<PathBuf>,
@@ -199,12 +214,19 @@ pub(crate) fn plugin_thread_main(
     client_attributes: ClientAttributes,
     default_shell: Option<TerminalAction>,
     plugin_aliases: Box<PluginAliases>,
+    default_mode: InputMode,
+    default_keybinds: Keybinds,
+    background_plugins: HashSet<RunPluginOrAlias>,
+    // the client id that started the session,
+    // we need it here because the thread's own list of connected clients might not yet be updated
+    // on session start when we need to load the background plugins, and so we must have an
+    // explicit client_id that has started the session
+    initiating_client_id: ClientId,
 ) -> Result<()> {
     info!("Wasm main thread starts");
     let plugin_dir = data_dir.join("plugins/");
     let plugin_global_data_dir = plugin_dir.join("data");
     layout.populate_plugin_aliases_in_layout(&plugin_aliases);
-    let store = Arc::new(Mutex::new(store));
 
     // use this channel to ensure that tasks spawned from this thread terminate before exiting
     // https://tokio.rs/tokio/topics/shutdown#waiting-for-things-to-finish-shutting-down
@@ -212,7 +234,7 @@ pub(crate) fn plugin_thread_main(
 
     let mut wasm_bridge = WasmBridge::new(
         bus.senders.clone(),
-        store,
+        engine,
         plugin_dir,
         path_to_default_shell,
         zellij_cwd,
@@ -221,7 +243,19 @@ pub(crate) fn plugin_thread_main(
         default_shell,
         layout.clone(),
         layout_dir,
+        default_mode,
+        default_keybinds,
     );
+
+    for mut run_plugin_or_alias in background_plugins {
+        load_background_plugin(
+            run_plugin_or_alias,
+            &mut wasm_bridge,
+            &bus,
+            &plugin_aliases,
+            initiating_client_id,
+        );
+    }
 
     loop {
         let (event, mut err_ctx) = bus.recv().expect("failed to receive event on channel");
@@ -242,6 +276,7 @@ pub(crate) fn plugin_thread_main(
                 run_plugin_or_alias.populate_run_plugin_if_needed(&plugin_aliases);
                 let cwd = run_plugin_or_alias.get_initial_cwd().or(cwd);
                 let run_plugin = run_plugin_or_alias.get_run_plugin();
+                let start_suppressed = false;
                 match wasm_bridge.load_plugin(
                     &run_plugin,
                     Some(tab_index),
@@ -261,6 +296,7 @@ pub(crate) fn plugin_thread_main(
                             plugin_id,
                             pane_id_to_replace,
                             cwd,
+                            start_suppressed,
                             Some(client_id),
                         )));
                     },
@@ -300,6 +336,7 @@ pub(crate) fn plugin_thread_main(
                                     // we intentionally do not provide the client_id here because it belongs to
                                     // the cli who spawned the command and is not an existing client_id
                                     let skip_cache = true; // when reloading we always skip cache
+                                    let start_suppressed = false;
                                     match wasm_bridge.load_plugin(
                                         &Some(run_plugin),
                                         Some(tab_index),
@@ -321,6 +358,7 @@ pub(crate) fn plugin_thread_main(
                                                     plugin_id,
                                                     None,
                                                     None,
+                                                    start_suppressed,
                                                     None,
                                                 ),
                                             ));
@@ -356,8 +394,19 @@ pub(crate) fn plugin_thread_main(
                 mut tab_layout,
                 mut floating_panes_layout,
                 tab_index,
+                should_change_focus_to_new_tab,
                 client_id,
             ) => {
+                // prefer connected clients so as to avoid opening plugins in the background for
+                // CLI clients unless no-one else is connected
+                let client_id = if wasm_bridge.client_is_connected(&client_id) {
+                    client_id
+                } else if let Some(first_client_id) = wasm_bridge.get_first_client_id() {
+                    first_client_id
+                } else {
+                    client_id
+                };
+
                 let mut plugin_ids: HashMap<RunPluginOrAlias, Vec<PluginId>> = HashMap::new();
                 tab_layout = tab_layout.or_else(|| Some(layout.new_tab().0));
                 tab_layout
@@ -413,6 +462,7 @@ pub(crate) fn plugin_thread_main(
                     floating_panes_layout,
                     tab_index,
                     plugin_ids,
+                    should_change_focus_to_new_tab,
                     client_id,
                 )));
             },
@@ -595,42 +645,52 @@ pub(crate) fn plugin_thread_main(
                 cwd,
                 skip_cache,
                 cli_client_id,
+                plugin_and_client_id,
             } => {
                 let should_float = floating.unwrap_or(true);
                 let mut pipe_messages = vec![];
-                match plugin {
-                    Some(plugin_url) => {
-                        // send to specific plugin(s)
-                        pipe_to_specific_plugins(
-                            PipeSource::Keybind,
-                            &plugin_url,
-                            &configuration,
-                            &cwd,
-                            skip_cache,
-                            should_float,
-                            &pane_id_to_replace,
-                            &pane_title,
-                            Some(cli_client_id),
-                            &mut pipe_messages,
-                            &name,
-                            &payload,
-                            &args,
-                            &bus,
-                            &mut wasm_bridge,
-                            &plugin_aliases,
-                        );
-                    },
-                    None => {
-                        // no specific destination, send to all plugins
-                        pipe_to_all_plugins(
-                            PipeSource::Keybind,
-                            &name,
-                            &payload,
-                            &args,
-                            &mut wasm_bridge,
-                            &mut pipe_messages,
-                        );
-                    },
+                if let Some((plugin_id, client_id)) = plugin_and_client_id {
+                    let is_private = true;
+                    pipe_messages.push((
+                        Some(plugin_id),
+                        Some(client_id),
+                        PipeMessage::new(PipeSource::Keybind, name, &payload, &args, is_private),
+                    ));
+                } else {
+                    match plugin {
+                        Some(plugin_url) => {
+                            // send to specific plugin(s)
+                            pipe_to_specific_plugins(
+                                PipeSource::Keybind,
+                                &plugin_url,
+                                &configuration,
+                                &cwd,
+                                skip_cache,
+                                should_float,
+                                &pane_id_to_replace,
+                                &pane_title,
+                                Some(cli_client_id),
+                                &mut pipe_messages,
+                                &name,
+                                &payload,
+                                &args,
+                                &bus,
+                                &mut wasm_bridge,
+                                &plugin_aliases,
+                            );
+                        },
+                        None => {
+                            // no specific destination, send to all plugins
+                            pipe_to_all_plugins(
+                                PipeSource::Keybind,
+                                &name,
+                                &payload,
+                                &args,
+                                &mut wasm_bridge,
+                                &mut pipe_messages,
+                            );
+                        },
+                    }
                 }
                 wasm_bridge.pipe_messages(pipe_messages, shutdown_send.clone())?;
             },
@@ -733,6 +793,28 @@ pub(crate) fn plugin_thread_main(
                         .send_to_server(ServerInstruction::UnblockCliPipeInput(pipe_name))
                         .context("failed to unblock input pipe");
                 }
+            },
+            PluginInstruction::Reconfigure {
+                client_id,
+                keybinds,
+                default_mode,
+                default_shell,
+            } => {
+                // TODO: notify plugins that this happened so that they can eg. rebind temporary keys that
+                // were lost
+                wasm_bridge
+                    .reconfigure(client_id, keybinds, default_mode, default_shell)
+                    .non_fatal();
+            },
+            PluginInstruction::FailedToWriteConfigToDisk { file_path } => {
+                let updates = vec![(
+                    None,
+                    None,
+                    Event::FailedToWriteConfigToDisk(file_path.map(|f| f.display().to_string())),
+                )];
+                wasm_bridge
+                    .update_plugins(updates, shutdown_send.clone())
+                    .non_fatal();
             },
             PluginInstruction::WatchFilesystem(files) => {
                 wasm_bridge.start_fs_watcher_if_not_started(&files);
@@ -863,6 +945,53 @@ fn pipe_to_specific_plugins(
             None => {
                 log::error!("Failed to parse plugin url: {}", e);
             },
+        },
+    }
+}
+
+fn load_background_plugin(
+    mut run_plugin_or_alias: RunPluginOrAlias,
+    wasm_bridge: &mut WasmBridge,
+    bus: &Bus<PluginInstruction>,
+    plugin_aliases: &PluginAliases,
+    client_id: ClientId,
+) {
+    run_plugin_or_alias.populate_run_plugin_if_needed(&plugin_aliases);
+    let cwd = run_plugin_or_alias.get_initial_cwd();
+    let run_plugin = run_plugin_or_alias.get_run_plugin();
+    let size = Size::default();
+    let skip_cache = false;
+    match wasm_bridge.load_plugin(
+        &run_plugin,
+        None,
+        size,
+        cwd.clone(),
+        skip_cache,
+        Some(client_id),
+        None,
+    ) {
+        Ok((plugin_id, client_id)) => {
+            let should_float = None;
+            let should_be_open_in_place = false;
+            let pane_title = None;
+            let pane_id_to_replace = None;
+            let start_suppressed = true;
+            drop(bus.senders.send_to_screen(ScreenInstruction::AddPlugin(
+                should_float,
+                should_be_open_in_place,
+                run_plugin_or_alias,
+                pane_title,
+                None,
+                plugin_id,
+                pane_id_to_replace,
+                cwd,
+                start_suppressed,
+                // None,
+                Some(client_id),
+            )));
+        },
+        Err(e) => {
+            log::error!("Failed to load plugin: {e}");
         },
     }
 }

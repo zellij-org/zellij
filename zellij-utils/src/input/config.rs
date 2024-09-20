@@ -1,5 +1,7 @@
 use crate::data::Palette;
 use miette::{Diagnostic, LabeledSpan, NamedSource, SourceCode};
+use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::fs::File;
 use std::io::{self, Read};
 use std::path::PathBuf;
@@ -8,6 +10,7 @@ use thiserror::Error;
 use std::convert::TryFrom;
 
 use super::keybinds::Keybinds;
+use super::layout::{RunPlugin, RunPluginOrAlias};
 use super::options::Options;
 use super::plugins::{PluginAliases, PluginsConfigError};
 use super::theme::{Themes, UiConfig};
@@ -20,7 +23,7 @@ const DEFAULT_CONFIG_FILE_NAME: &str = "config.kdl";
 type ConfigResult = Result<Config, ConfigError>;
 
 /// Main configuration.
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct Config {
     pub keybinds: Keybinds,
     pub options: Options,
@@ -28,6 +31,7 @@ pub struct Config {
     pub plugins: PluginAliases,
     pub ui: UiConfig,
     pub env: EnvironmentVariables,
+    pub background_plugins: HashSet<RunPluginOrAlias>,
 }
 
 #[derive(Error, Debug)]
@@ -162,8 +166,8 @@ impl TryFrom<&CliArgs> for Config {
 }
 
 impl Config {
-    pub fn theme_config(&self, opts: &Options) -> Option<Palette> {
-        match &opts.theme {
+    pub fn theme_config(&self, theme_name: Option<&String>) -> Option<Palette> {
+        match &theme_name {
             Some(theme_name) => self.themes.get_theme(theme_name).map(|theme| theme.palette),
             None => self.themes.get_theme("default").map(|theme| theme.palette),
         }
@@ -233,6 +237,164 @@ impl Config {
         self.env = self.env.merge(other.env);
         Ok(())
     }
+    pub fn config_file_path(opts: &CliArgs) -> Option<PathBuf> {
+        opts.config_dir
+            .clone()
+            .or_else(home::find_default_config_dir)
+            .map(|config_dir| config_dir.join(DEFAULT_CONFIG_FILE_NAME))
+    }
+    pub fn write_config_to_disk(config: String, opts: &CliArgs) -> Result<Config, Option<PathBuf>> {
+        // if we fail, try to return the PathBuf of the file we were not able to write to
+        Config::from_kdl(&config, None)
+            .map_err(|e| {
+                log::error!("Failed to parse config: {}", e);
+                None
+            })
+            .and_then(|parsed_config| {
+                let backed_up_file_name = Config::backup_current_config(&opts)?;
+                let config_file_path = Config::config_file_path(&opts).ok_or_else(|| {
+                    log::error!("Config file path not found");
+                    None
+                })?;
+                let config = match backed_up_file_name {
+                    Some(backed_up_file_name) => {
+                        format!(
+                            "{}{}",
+                            Config::autogen_config_message(backed_up_file_name),
+                            config
+                        )
+                    },
+                    None => config,
+                };
+                std::fs::write(&config_file_path, config.as_bytes()).map_err(|e| {
+                    log::error!("Failed to write config: {}", e);
+                    Some(config_file_path.clone())
+                })?;
+                let written_config = std::fs::read_to_string(&config_file_path).map_err(|e| {
+                    log::error!("Failed to read written config: {}", e);
+                    Some(config_file_path.clone())
+                })?;
+                let parsed_written_config =
+                    Config::from_kdl(&written_config, None).map_err(|e| {
+                        log::error!("Failed to parse written config: {}", e);
+                        None
+                    })?;
+                if parsed_written_config == parsed_config {
+                    Ok(parsed_config)
+                } else {
+                    log::error!("Configuration corrupted when writing to disk");
+                    Err(Some(config_file_path))
+                }
+            })
+    }
+    // returns true if the config was not previouly written to disk and we successfully wrote it
+    pub fn write_config_to_disk_if_it_does_not_exist(config: String, opts: &CliArgs) -> bool {
+        match Config::config_file_path(opts) {
+            Some(config_file_path) => {
+                if config_file_path.exists() {
+                    false
+                } else {
+                    if let Err(e) = std::fs::write(&config_file_path, config.as_bytes()) {
+                        log::error!("Failed to write config to disk: {}", e);
+                        return false;
+                    }
+                    match std::fs::read_to_string(&config_file_path) {
+                        Ok(written_config) => written_config == config,
+                        Err(e) => {
+                            log::error!("Failed to read written config: {}", e);
+                            false
+                        },
+                    }
+                }
+            },
+            None => false,
+        }
+    }
+    fn find_free_backup_file_name(config_file_path: &PathBuf) -> Option<PathBuf> {
+        let mut backup_config_path = None;
+        let config_file_name = config_file_path
+            .file_name()
+            .and_then(|f| f.to_str())
+            .unwrap_or_else(|| DEFAULT_CONFIG_FILE_NAME);
+        for i in 0..100 {
+            let new_file_name = if i == 0 {
+                format!("{}.bak", config_file_name)
+            } else {
+                format!("{}.bak.{}", config_file_name, i)
+            };
+            let mut potential_config_path = config_file_path.clone();
+            potential_config_path.set_file_name(new_file_name);
+            if !potential_config_path.exists() {
+                backup_config_path = Some(potential_config_path);
+                break;
+            }
+        }
+        backup_config_path
+    }
+    fn backup_config_with_written_content_confirmation(
+        current_config: &str,
+        current_config_file_path: &PathBuf,
+        backup_config_path: &PathBuf,
+    ) -> bool {
+        let _ = std::fs::copy(current_config_file_path, &backup_config_path);
+        match std::fs::read_to_string(&backup_config_path) {
+            Ok(backed_up_config) => current_config == &backed_up_config,
+            Err(e) => {
+                log::error!(
+                    "Failed to back up config file {}: {:?}",
+                    backup_config_path.display(),
+                    e
+                );
+                false
+            },
+        }
+    }
+    fn backup_current_config(opts: &CliArgs) -> Result<Option<PathBuf>, Option<PathBuf>> {
+        // if we fail, try to return the PathBuf of the file we were not able to write to
+        if let Some(config_file_path) = Config::config_file_path(&opts) {
+            match std::fs::read_to_string(&config_file_path) {
+                Ok(current_config) => {
+                    let Some(backup_config_path) =
+                        Config::find_free_backup_file_name(&config_file_path)
+                    else {
+                        log::error!("Failed to find a file name to back up the configuration to, ran out of files.");
+                        return Err(None);
+                    };
+                    if Config::backup_config_with_written_content_confirmation(
+                        &current_config,
+                        &config_file_path,
+                        &backup_config_path,
+                    ) {
+                        Ok(Some(backup_config_path))
+                    } else {
+                        log::error!(
+                            "Failed to back up config file: {}",
+                            backup_config_path.display()
+                        );
+                        Err(Some(backup_config_path))
+                    }
+                },
+                Err(e) => {
+                    if e.kind() == std::io::ErrorKind::NotFound {
+                        Ok(None)
+                    } else {
+                        log::error!(
+                            "Failed to read current config {}: {}",
+                            config_file_path.display(),
+                            e
+                        );
+                        Err(Some(config_file_path))
+                    }
+                },
+            }
+        } else {
+            log::error!("No config file path found?");
+            Err(None)
+        }
+    }
+    fn autogen_config_message(backed_up_file_name: PathBuf) -> String {
+        format!("//\n// THIS FILE WAS AUTOGENERATED BY ZELLIJ, THE PREVIOUS FILE AT THIS LOCATION WAS COPIED TO: {}\n//\n\n", backed_up_file_name.display())
+    }
 }
 
 #[cfg(test)]
@@ -241,7 +403,7 @@ mod config_test {
     use crate::data::{InputMode, Palette, PaletteColor, PluginTag};
     use crate::input::layout::{RunPlugin, RunPluginLocation};
     use crate::input::options::{Clipboard, OnForceClose};
-    use crate::input::plugins::{PluginConfig, PluginType};
+    use crate::input::plugins::PluginConfig;
     use crate::input::theme::{FrameConfig, Theme, Themes, UiConfig};
     use std::collections::{BTreeMap, HashMap};
     use std::io::Write;
@@ -463,6 +625,7 @@ mod config_test {
                     white: PaletteColor::Rgb((255, 255, 255)),
                     ..Default::default()
                 },
+                sourced_from_external_file: false,
             },
         );
         let expected_themes = Themes::from_data(expected_themes);
@@ -520,6 +683,7 @@ mod config_test {
                     white: PaletteColor::Rgb((255, 255, 255)),
                     ..Default::default()
                 },
+                sourced_from_external_file: false,
             },
         );
         expected_themes.insert(
@@ -539,6 +703,7 @@ mod config_test {
                     orange: PaletteColor::Rgb((208, 135, 112)),
                     ..Default::default()
                 },
+                sourced_from_external_file: false,
             },
         );
         let expected_themes = Themes::from_data(expected_themes);
@@ -583,6 +748,7 @@ mod config_test {
                     white: PaletteColor::EightBit(255),
                     ..Default::default()
                 },
+                sourced_from_external_file: false,
             },
         );
         let expected_themes = Themes::from_data(expected_themes);

@@ -362,6 +362,9 @@ pub struct Grid {
     debug: bool,
     arrow_fonts: bool,
     styled_underlines: bool,
+    pub supports_kitty_keyboard_protocol: bool, // has the app requested kitty keyboard support?
+    explicitly_disable_kitty_keyboard_protocol: bool, // has kitty keyboard support been explicitly
+                                                // disabled by user config?
 }
 
 #[derive(Clone, Debug)]
@@ -450,6 +453,7 @@ impl Grid {
         debug: bool,
         arrow_fonts: bool,
         styled_underlines: bool,
+        explicitly_disable_kitty_keyboard_protocol: bool,
     ) -> Self {
         let sixel_grid = SixelGrid::new(character_cell_size.clone(), sixel_image_store);
         // make sure this is initialized as it is used internally
@@ -505,6 +509,8 @@ impl Grid {
             arrow_fonts,
             styled_underlines,
             lock_renders: false,
+            supports_kitty_keyboard_protocol: false,
+            explicitly_disable_kitty_keyboard_protocol,
         }
     }
     pub fn render_full_viewport(&mut self) {
@@ -1136,6 +1142,9 @@ impl Grid {
             Some((self.cursor.x, self.cursor.y))
         }
     }
+    pub fn is_mid_frame(&self) -> bool {
+        self.lock_renders
+    }
     /// Clears all buffers with text for a current screen
     pub fn clear_screen(&mut self) {
         if self.alternate_screen_state.is_some() {
@@ -1146,7 +1155,7 @@ impl Grid {
         self.mark_for_rerender();
     }
     /// Dumps all lines above terminal vieport and the viewport itself to a string
-    pub fn dump_screen(&mut self, full: bool) -> String {
+    pub fn dump_screen(&self, full: bool) -> String {
         let viewport: String = dump_screen!(self.viewport);
         if !full {
             return viewport;
@@ -1567,7 +1576,7 @@ impl Grid {
         self.cursor_is_hidden = false;
     }
     pub fn set_scroll_region(&mut self, top_line_index: usize, bottom_line_index: Option<usize>) {
-        let bottom_line_index = bottom_line_index.unwrap_or(self.height);
+        let bottom_line_index = bottom_line_index.unwrap_or(self.height.saturating_sub(1));
         self.scroll_region = Some((top_line_index, bottom_line_index));
         let mut pad_character = EMPTY_TERMINAL_CHARACTER;
         pad_character.styles = self.cursor.pending_styles.clone();
@@ -2146,6 +2155,12 @@ impl Grid {
     pub fn unlock_renders(&mut self) {
         self.lock_renders = false;
     }
+    pub fn update_theme(&mut self, theme: Palette) {
+        self.style.colors = theme.clone();
+    }
+    pub fn update_arrow_fonts(&mut self, should_support_arrow_fonts: bool) {
+        self.arrow_fonts = should_support_arrow_fonts;
+    }
 }
 
 impl Perform for Grid {
@@ -2543,6 +2558,7 @@ impl Perform for Grid {
                                     &mut self.viewport,
                                     &mut self.cursor,
                                     &mut self.sixel_grid,
+                                    &mut self.supports_kitty_keyboard_protocol,
                                 );
                             }
                             self.alternate_screen_state = None;
@@ -2636,6 +2652,10 @@ impl Perform for Grid {
                                 &mut self.cursor,
                                 Cursor::new(0, 0, self.styled_underlines),
                             );
+                            let current_supports_kitty_keyboard_protocol = std::mem::replace(
+                                &mut self.supports_kitty_keyboard_protocol,
+                                false,
+                            );
                             let sixel_image_store = self.sixel_grid.sixel_image_store.clone();
                             let alternate_sixelgrid = std::mem::replace(
                                 &mut self.sixel_grid,
@@ -2646,6 +2666,7 @@ impl Perform for Grid {
                                 current_viewport,
                                 current_cursor,
                                 alternate_sixelgrid,
+                                current_supports_kitty_keyboard_protocol,
                             ));
                             self.clear_viewport_before_rendering = true;
                             self.scrollback_buffer_lines =
@@ -2730,7 +2751,9 @@ impl Perform for Grid {
                     .next()
                     .map(|param| param[0] as usize)
                     .filter(|&param| param != 0)
-                    .map(|bottom| bottom.saturating_sub(1));
+                    .map(|bottom| {
+                        std::cmp::min(self.height.saturating_sub(1), bottom.saturating_sub(1))
+                    });
                 self.set_scroll_region(top, bottom);
                 if self.erasure_mode {
                     self.move_cursor_to_line(top, EMPTY_TERMINAL_CHARACTER);
@@ -2740,13 +2763,21 @@ impl Perform for Grid {
                 self.clear_scroll_region();
             }
         } else if c == 'M' {
-            // delete lines if currently inside scroll region
+            // delete lines if currently inside scroll region, or otherwise
+            // delete lines in the entire viewport
+            if self.scroll_region.is_none() {
+                self.set_scroll_region_to_viewport_size();
+            }
             let line_count_to_delete = next_param_or(1);
             let mut pad_character = EMPTY_TERMINAL_CHARACTER;
             pad_character.styles = self.cursor.pending_styles.clone();
             self.delete_lines_in_scroll_region(line_count_to_delete, pad_character);
         } else if c == 'L' {
-            // insert blank lines if inside scroll region
+            // insert blank lines if inside scroll region, or otherwise insert
+            // blank lines in the entire viewport
+            if self.scroll_region.is_none() {
+                self.set_scroll_region_to_viewport_size();
+            }
             let line_count_to_add = next_param_or(1);
             let mut pad_character = EMPTY_TERMINAL_CHARACTER;
             pad_character.styles = self.cursor.pending_styles.clone();
@@ -2825,6 +2856,27 @@ impl Perform for Grid {
             }
         } else if c == 's' {
             self.save_cursor_position();
+        } else if c == 'u' && intermediates == &[b'>'] {
+            // Zellij only supports the first "progressive enhancement" layer of the kitty keyboard
+            // protocol
+            if !self.explicitly_disable_kitty_keyboard_protocol {
+                self.supports_kitty_keyboard_protocol = true;
+            }
+        } else if c == 'u' && intermediates == &[b'<'] {
+            // Zellij only supports the first "progressive enhancement" layer of the kitty keyboard
+            // protocol
+            if !self.explicitly_disable_kitty_keyboard_protocol {
+                self.supports_kitty_keyboard_protocol = false;
+            }
+        } else if c == 'u' && intermediates == &[b'?'] {
+            // Zellij only supports the first "progressive enhancement" layer of the kitty keyboard
+            // protocol
+            let reply = if self.supports_kitty_keyboard_protocol {
+                "\u{1b}[?1u"
+            } else {
+                "\u{1b}[?0u"
+            };
+            self.pending_messages_to_pty.push(reply.as_bytes().to_vec());
         } else if c == 'u' {
             self.restore_cursor_position();
         } else if c == '@' {
@@ -3084,6 +3136,7 @@ pub struct AlternateScreenState {
     viewport: Vec<Row>,
     cursor: Cursor,
     sixel_grid: SixelGrid,
+    supports_kitty_keyboard_protocol: bool,
 }
 impl AlternateScreenState {
     pub fn new(
@@ -3091,12 +3144,14 @@ impl AlternateScreenState {
         viewport: Vec<Row>,
         cursor: Cursor,
         sixel_grid: SixelGrid,
+        supports_kitty_keyboard_protocol: bool,
     ) -> Self {
         AlternateScreenState {
             lines_above,
             viewport,
             cursor,
             sixel_grid,
+            supports_kitty_keyboard_protocol,
         }
     }
     pub fn apply_contents_to(
@@ -3105,11 +3160,16 @@ impl AlternateScreenState {
         viewport: &mut Vec<Row>,
         cursor: &mut Cursor,
         sixel_grid: &mut SixelGrid,
+        supports_kitty_keyboard_protocol: &mut bool,
     ) {
         std::mem::swap(&mut self.lines_above, lines_above);
         std::mem::swap(&mut self.viewport, viewport);
         std::mem::swap(&mut self.cursor, cursor);
         std::mem::swap(&mut self.sixel_grid, sixel_grid);
+        std::mem::swap(
+            &mut self.supports_kitty_keyboard_protocol,
+            supports_kitty_keyboard_protocol,
+        );
     }
 }
 

@@ -1,0 +1,39 @@
+---
+source: zellij-server/src/plugins/./unit/plugin_tests.rs
+assertion_line: 6878
+expression: "format!(\"{:#?}\",\n        new_tab_event).replace(&format!(\"{:?}\", temp_folder.path()),\n    \"\\\"CWD\\\"\")"
+---
+Some(
+    SpawnTerminal(
+        Some(
+            RunCommand(
+                RunCommand {
+                    command: "/path/to/my/file.rs",
+                    args: [
+                        "arg1",
+                        "arg2",
+                    ],
+                    cwd: Some(
+                        "CWD",
+                    ),
+                    hold_on_close: true,
+                    hold_on_start: false,
+                    originating_plugin: Some(
+                        OriginatingPlugin {
+                            plugin_id: 0,
+                            client_id: 1,
+                            context: {},
+                        },
+                    ),
+                },
+            ),
+        ),
+        None,
+        None,
+        None,
+        true,
+        ClientId(
+            1,
+        ),
+    ),
+)

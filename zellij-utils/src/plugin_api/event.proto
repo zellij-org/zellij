@@ -42,6 +42,13 @@ enum EventType {
     SessionUpdate = 16;
     RunCommandResult = 17;
     WebRequestResult = 18;
+    CommandPaneOpened = 19;
+    CommandPaneExited = 20;
+    PaneClosed = 21;
+    EditPaneOpened = 22;
+    EditPaneExited = 23;
+    CommandPaneReRun = 24;
+    FailedToWriteConfigToDisk = 25;
 }
 
 message EventNameList {
@@ -65,7 +72,61 @@ message Event {
     SessionUpdatePayload session_update_payload = 13;
     RunCommandResultPayload run_command_result_payload = 14;
     WebRequestResultPayload web_request_result_payload = 15;
+    CommandPaneOpenedPayload command_pane_opened_payload = 16;
+    CommandPaneExitedPayload command_pane_exited_payload = 17;
+    PaneClosedPayload pane_closed_payload = 18;
+    EditPaneOpenedPayload edit_pane_opened_payload = 19;
+    EditPaneExitedPayload edit_pane_exited_payload = 20;
+    CommandPaneReRunPayload command_pane_rerun_payload = 21;
+    FailedToWriteConfigToDiskPayload failed_to_write_config_to_disk_payload = 22;
   }
+}
+
+message FailedToWriteConfigToDiskPayload {
+  optional string file_path = 1;
+}
+
+message CommandPaneReRunPayload {
+  uint32 terminal_pane_id = 1;
+  repeated ContextItem context = 3;
+}
+
+message PaneClosedPayload {
+  PaneId pane_id = 1;
+}
+
+// duplicate of plugin_command.PaneId because protobuffs don't like recursive imports
+message PaneId {
+  PaneType pane_type = 1;
+  uint32 id = 2;
+}
+
+// duplicate of plugin_command.PaneType because protobuffs don't like recursive imports
+enum PaneType {
+  Terminal = 0;
+  Plugin = 1;
+}
+
+message CommandPaneOpenedPayload {
+  uint32 terminal_pane_id = 1;
+  repeated ContextItem context = 2;
+}
+
+message EditPaneOpenedPayload {
+  uint32 terminal_pane_id = 1;
+  repeated ContextItem context = 2;
+}
+
+message CommandPaneExitedPayload {
+  uint32 terminal_pane_id = 1;
+  optional int32 exit_code = 2;
+  repeated ContextItem context = 3;
+}
+
+message EditPaneExitedPayload {
+  uint32 terminal_pane_id = 1;
+  optional int32 exit_code = 2;
+  repeated ContextItem context = 3;
 }
 
 message SessionUpdatePayload {
@@ -218,6 +279,7 @@ message ModeUpdatePayload {
   style.Style style = 3;
   bool arrow_fonts_support = 4;
   optional string session_name = 5;
+  optional input_mode.InputMode base_mode = 6;
 }
 
 message InputModeKeybinds {

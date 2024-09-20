@@ -74,7 +74,8 @@ fn get_default_themes() -> Themes {
     let mut themes = Themes::default();
     for file in ZELLIJ_DEFAULT_THEMES.files() {
         if let Some(content) = file.contents_utf8() {
-            match Themes::from_string(&content.to_string()) {
+            let sourced_from_external_file = true;
+            match Themes::from_string(&content.to_string(), sourced_from_external_file) {
                 Ok(theme) => themes = themes.merge(theme),
                 Err(_) => {},
             }
@@ -167,6 +168,18 @@ pub const COMPACT_BAR_SWAP_LAYOUT: &[u8] = include_bytes!(concat!(
     "assets/layouts/compact.swap.kdl"
 ));
 
+pub const CLASSIC_LAYOUT: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/",
+    "assets/layouts/classic.kdl"
+));
+
+pub const CLASSIC_SWAP_LAYOUT: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/",
+    "assets/layouts/classic.swap.kdl"
+));
+
 pub const WELCOME_LAYOUT: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/",
@@ -230,6 +243,7 @@ pub fn dump_specified_layout(layout: &str) -> std::io::Result<()> {
         "default" => dump_asset(DEFAULT_LAYOUT),
         "compact" => dump_asset(COMPACT_BAR_LAYOUT),
         "disable-status" => dump_asset(NO_STATUS_LAYOUT),
+        "classic" => dump_asset(CLASSIC_LAYOUT),
         custom => {
             info!("Dump {custom} layout");
             let custom = add_layout_ext(custom);
@@ -256,6 +270,7 @@ pub fn dump_specified_swap_layout(swap_layout: &str) -> std::io::Result<()> {
         "strider" => dump_asset(STRIDER_SWAP_LAYOUT),
         "default" => dump_asset(DEFAULT_SWAP_LAYOUT),
         "compact" => dump_asset(COMPACT_BAR_SWAP_LAYOUT),
+        "classic" => dump_asset(CLASSIC_SWAP_LAYOUT),
         not_found => Err(std::io::Error::new(
             std::io::ErrorKind::Other,
             format!("Swap Layout not found for: {}", not_found),

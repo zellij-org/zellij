@@ -3,6 +3,7 @@ pub mod os_input_output;
 pub mod cli_client;
 mod command_is_executing;
 mod input_handler;
+mod keyboard_parser;
 pub mod old_config_converter;
 mod stdin_ansi_parser;
 mod stdin_handler;
@@ -16,6 +17,9 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use zellij_utils::errors::FatalError;
 
+use zellij_utils::notify_debouncer_full::notify::{self, Event, RecursiveMode, Watcher};
+use zellij_utils::setup::Setup;
+
 use crate::stdin_ansi_parser::{AnsiStdinInstruction, StdinAnsiParser, SyncOutput};
 use crate::{
     command_is_executing::CommandIsExecuting, input_handler::input_loop,
@@ -24,7 +28,7 @@ use crate::{
 use zellij_utils::{
     channels::{self, ChannelWithContext, SenderWithContext},
     consts::{set_permissions, ZELLIJ_SOCK_DIR},
-    data::{ClientId, ConnectToSession, InputMode, Style},
+    data::{ClientId, ConnectToSession, KeyWithModifier, Style},
     envs,
     errors::{ClientContext, ContextType, ErrorInstruction},
     input::{config::Config, options::Options},
@@ -41,7 +45,6 @@ pub(crate) enum ClientInstruction {
     Render(String),
     UnblockInputThread,
     Exit(ExitReason),
-    SwitchToMode(InputMode),
     Connected,
     ActiveClients(Vec<ClientId>),
     StartedParsingStdinQuery,
@@ -53,6 +56,7 @@ pub(crate) enum ClientInstruction {
     UnblockCliPipeInput(String),   // String -> pipe name
     CliPipeOutput(String, String), // String -> pipe name, String -> output
     QueryTerminalSize,
+    WriteConfigToDisk { config: String },
 }
 
 impl From<ServerToClientMsg> for ClientInstruction {
@@ -61,9 +65,6 @@ impl From<ServerToClientMsg> for ClientInstruction {
             ServerToClientMsg::Exit(e) => ClientInstruction::Exit(e),
             ServerToClientMsg::Render(buffer) => ClientInstruction::Render(buffer),
             ServerToClientMsg::UnblockInputThread => ClientInstruction::UnblockInputThread,
-            ServerToClientMsg::SwitchToMode(input_mode) => {
-                ClientInstruction::SwitchToMode(input_mode)
-            },
             ServerToClientMsg::Connected => ClientInstruction::Connected,
             ServerToClientMsg::ActiveClients(clients) => ClientInstruction::ActiveClients(clients),
             ServerToClientMsg::Log(log_lines) => ClientInstruction::Log(log_lines),
@@ -78,6 +79,9 @@ impl From<ServerToClientMsg> for ClientInstruction {
                 ClientInstruction::CliPipeOutput(pipe_name, output)
             },
             ServerToClientMsg::QueryTerminalSize => ClientInstruction::QueryTerminalSize,
+            ServerToClientMsg::WriteConfigToDisk { config } => {
+                ClientInstruction::WriteConfigToDisk { config }
+            },
         }
     }
 }
@@ -89,7 +93,6 @@ impl From<&ClientInstruction> for ClientContext {
             ClientInstruction::Error(_) => ClientContext::Error,
             ClientInstruction::Render(_) => ClientContext::Render,
             ClientInstruction::UnblockInputThread => ClientContext::UnblockInputThread,
-            ClientInstruction::SwitchToMode(_) => ClientContext::SwitchToMode,
             ClientInstruction::Connected => ClientContext::Connected,
             ClientInstruction::ActiveClients(_) => ClientContext::ActiveClients,
             ClientInstruction::Log(_) => ClientContext::Log,
@@ -101,6 +104,7 @@ impl From<&ClientInstruction> for ClientContext {
             ClientInstruction::UnblockCliPipeInput(..) => ClientContext::UnblockCliPipeInput,
             ClientInstruction::CliPipeOutput(..) => ClientContext::CliPipeOutput,
             ClientInstruction::QueryTerminalSize => ClientContext::QueryTerminalSize,
+            ClientInstruction::WriteConfigToDisk { .. } => ClientContext::WriteConfigToDisk,
         }
     }
 }
@@ -152,7 +156,7 @@ impl ClientInfo {
 #[derive(Debug, Clone)]
 pub(crate) enum InputInstruction {
     KeyEvent(InputEvent, Vec<u8>),
-    SwitchToMode(InputMode),
+    KeyWithModifierEvent(KeyWithModifier, Vec<u8>),
     AnsiStdinInstructions(Vec<AnsiStdinInstruction>),
     StartedParsing,
     DoneParsing,
@@ -162,8 +166,8 @@ pub(crate) enum InputInstruction {
 pub fn start_client(
     mut os_input: Box<dyn ClientOsApi>,
     opts: CliArgs,
-    config: Config,
-    config_options: Options,
+    config: Config,          // saved to disk (or default?)
+    config_options: Options, // CLI options merged into (getting priority over) saved config options
     info: ClientInfo,
     layout: Option<Layout>,
     tab_position_to_focus: Option<usize>,
@@ -177,16 +181,21 @@ pub fn start_client(
     }
     info!("Starting Zellij client!");
 
+    let explicitly_disable_kitty_keyboard_protocol = config_options
+        .support_kitty_keyboard_protocol
+        .map(|e| !e)
+        .unwrap_or(false);
     let mut reconnect_to_session = None;
     let clear_client_terminal_attributes = "\u{1b}[?1l\u{1b}=\u{1b}[r\u{1b}[?1000l\u{1b}[?1002l\u{1b}[?1003l\u{1b}[?1005l\u{1b}[?1006l\u{1b}[?12l";
     let take_snapshot = "\u{1b}[?1049h";
     let bracketed_paste = "\u{1b}[?2004h";
+    let enter_kitty_keyboard_mode = "\u{1b}[>1u";
     os_input.unset_raw_mode(0).unwrap();
 
     if !is_a_reconnect {
         // we don't do this for a reconnect because our controlling terminal already has the
         // attributes we want from it, and some terminals don't treat these atomically (looking at
-        // your Windows Terminal...)
+        // you Windows Terminal...)
         let _ = os_input
             .get_stdout_writer()
             .write(take_snapshot.as_bytes())
@@ -195,12 +204,18 @@ pub fn start_client(
             .get_stdout_writer()
             .write(clear_client_terminal_attributes.as_bytes())
             .unwrap();
+        if !explicitly_disable_kitty_keyboard_protocol {
+            let _ = os_input
+                .get_stdout_writer()
+                .write(enter_kitty_keyboard_mode.as_bytes())
+                .unwrap();
+        }
     }
     envs::set_zellij("0".to_string());
     config.env.set_vars();
 
     let palette = config
-        .theme_config(&config_options)
+        .theme_config(config_options.theme.as_ref())
         .unwrap_or_else(|| os_input.load_palette());
 
     let full_screen_ws = os_input.get_terminal_size_using_fd(0);
@@ -211,7 +226,6 @@ pub fn start_client(
             rounded_corners: config.ui.pane_frames.rounded_corners,
             hide_session_name: config.ui.pane_frames.hide_session_name,
         },
-        keybinds: config.keybinds.clone(),
     };
 
     let create_ipc_pipe = || -> std::path::PathBuf {
@@ -231,7 +245,8 @@ pub fn start_client(
             (
                 ClientToServerMsg::AttachClient(
                     client_attributes,
-                    config_options,
+                    config.clone(),
+                    config_options.clone(),
                     tab_position_to_focus,
                     pane_id_to_focus,
                 ),
@@ -244,14 +259,25 @@ pub fn start_client(
             let ipc_pipe = create_ipc_pipe();
 
             spawn_server(&*ipc_pipe, opts.debug).unwrap();
+            let successfully_written_config =
+                Config::write_config_to_disk_if_it_does_not_exist(config.to_string(true), &opts);
+            // if we successfully wrote the config to disk, it means two things:
+            // 1. It did not exist beforehand
+            // 2. The config folder is writeable
+            //
+            // If these two are true, we should launch the setup wizard, if even one of them is
+            // false, we should never launch it.
+            let should_launch_setup_wizard = successfully_written_config;
 
             (
                 ClientToServerMsg::NewClient(
                     client_attributes,
-                    Box::new(opts),
+                    Box::new(opts.clone()),
+                    Box::new(config.clone()),
                     Box::new(config_options.clone()),
                     Box::new(layout.unwrap()),
                     Box::new(config.plugins.clone()),
+                    should_launch_setup_wizard,
                 ),
                 ipc_pipe,
             )
@@ -299,7 +325,14 @@ pub fn start_client(
             let os_input = os_input.clone();
             let send_input_instructions = send_input_instructions.clone();
             let stdin_ansi_parser = stdin_ansi_parser.clone();
-            move || stdin_loop(os_input, send_input_instructions, stdin_ansi_parser)
+            move || {
+                stdin_loop(
+                    os_input,
+                    send_input_instructions,
+                    stdin_ansi_parser,
+                    explicitly_disable_kitty_keyboard_protocol,
+                )
+            }
         });
 
     let _input_thread = thread::Builder::new()
@@ -326,7 +359,13 @@ pub fn start_client(
         .name("signal_listener".to_string())
         .spawn({
             let os_input = os_input.clone();
+            let opts = opts.clone();
             move || {
+                // we keep the config_file_watcher here so that it is only dropped when this thread
+                // exits (which is when the client disconnects/detaches), once it's dropped it
+                // stops watching and we want it to keep watching the config file path for changes
+                // as long as the client is alive
+                let _config_file_watcher = report_changes_in_config_file(&opts, &os_input);
                 os_input.handle_signals(
                     Box::new({
                         let os_api = os_input.clone();
@@ -485,11 +524,6 @@ pub fn start_client(
             ClientInstruction::UnblockInputThread => {
                 command_is_executing.unblock_input_thread();
             },
-            ClientInstruction::SwitchToMode(input_mode) => {
-                send_input_instructions
-                    .send(InputInstruction::SwitchToMode(input_mode))
-                    .unwrap();
-            },
             ClientInstruction::Log(lines_to_log) => {
                 for line in lines_to_log {
                     log::info!("{line}");
@@ -513,6 +547,23 @@ pub fn start_client(
                     os_input.get_terminal_size_using_fd(0),
                 ));
             },
+            ClientInstruction::WriteConfigToDisk { config } => {
+                match Config::write_config_to_disk(config, &opts) {
+                    Ok(written_config) => {
+                        let _ = os_input
+                            .send_to_server(ClientToServerMsg::ConfigWrittenToDisk(written_config));
+                    },
+                    Err(e) => {
+                        let error_path = e
+                            .as_ref()
+                            .map(|p| p.display().to_string())
+                            .unwrap_or_else(String::new);
+                        log::error!("Failed to write config to disk: {}", error_path);
+                        let _ = os_input
+                            .send_to_server(ClientToServerMsg::FailedToWriteConfigToDisk(e));
+                    },
+                }
+            },
             _ => {},
         }
     }
@@ -533,6 +584,11 @@ pub fn start_client(
         info!("{}", exit_msg);
         os_input.unset_raw_mode(0).unwrap();
         let mut stdout = os_input.get_stdout_writer();
+        let exit_kitty_keyboard_mode = "\u{1b}[<1u";
+        if !explicitly_disable_kitty_keyboard_protocol {
+            let _ = stdout.write(exit_kitty_keyboard_mode.as_bytes()).unwrap();
+            stdout.flush().unwrap();
+        }
         let _ = stdout.write(goodbye_message.as_bytes()).unwrap();
         stdout.flush().unwrap();
     } else {
@@ -559,7 +615,7 @@ pub fn start_server_detached(
     config.env.set_vars();
 
     let palette = config
-        .theme_config(&config_options)
+        .theme_config(config_options.theme.as_ref())
         .unwrap_or_else(|| os_input.load_palette());
 
     let client_attributes = ClientAttributes {
@@ -570,7 +626,6 @@ pub fn start_server_detached(
             rounded_corners: config.ui.pane_frames.rounded_corners,
             hide_session_name: config.ui.pane_frames.hide_session_name,
         },
-        keybinds: config.keybinds.clone(),
     };
 
     let create_ipc_pipe = || -> std::path::PathBuf {
@@ -588,14 +643,18 @@ pub fn start_server_detached(
             let ipc_pipe = create_ipc_pipe();
 
             spawn_server(&*ipc_pipe, opts.debug).unwrap();
+            let should_launch_setup_wizard = false; // no setup wizard when starting a detached
+                                                    // server
 
             (
                 ClientToServerMsg::NewClient(
                     client_attributes,
                     Box::new(opts),
+                    Box::new(config.clone()),
                     Box::new(config_options.clone()),
                     Box::new(layout.unwrap()),
                     Box::new(config.plugins.clone()),
+                    should_launch_setup_wizard,
                 ),
                 ipc_pipe,
             )
@@ -610,6 +669,56 @@ pub fn start_server_detached(
     os_input.send_to_server(first_msg);
 }
 
-#[cfg(test)]
-#[path = "./unit/stdin_tests.rs"]
-mod stdin_tests;
+fn report_changes_in_config_file(
+    opts: &CliArgs,
+    os_input: &Box<dyn ClientOsApi>,
+) -> Option<Box<dyn Watcher>> {
+    match Config::config_file_path(&opts) {
+        Some(config_file_path) => {
+            let mut watcher = notify::recommended_watcher({
+                let os_input = os_input.clone();
+                let opts = opts.clone();
+                let config_file_path = config_file_path.clone();
+                move |res: Result<Event, _>| match res {
+                    Ok(event)
+                        if (event.kind.is_create() || event.kind.is_modify())
+                            && event.paths.contains(&config_file_path) =>
+                    {
+                        match Setup::from_cli_args(&opts) {
+                            Ok((
+                                new_config,
+                                _layout,
+                                _config_options,
+                                _config_without_layout,
+                                _config_options_without_layout,
+                            )) => {
+                                os_input.send_to_server(ClientToServerMsg::ConfigWrittenToDisk(
+                                    new_config,
+                                ));
+                            },
+                            Err(e) => {
+                                log::error!("Failed to reload config: {}", e);
+                            },
+                        }
+                    },
+                    Err(e) => log::error!("watch error: {:?}", e),
+                    _ => {},
+                }
+            })
+            .unwrap();
+            if let Some(config_file_parent_folder) = config_file_path.parent() {
+                watcher
+                    .watch(&config_file_parent_folder, RecursiveMode::Recursive)
+                    .unwrap();
+                Some(Box::new(watcher))
+            } else {
+                log::error!("Could not find config parent folder");
+                None
+            }
+        },
+        None => {
+            log::error!("Failed to find config path");
+            None
+        },
+    }
+}

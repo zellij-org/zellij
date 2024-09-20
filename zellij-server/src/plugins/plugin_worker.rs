@@ -1,6 +1,6 @@
 use crate::plugins::plugin_map::PluginEnv;
 use crate::plugins::zellij_exports::wasi_write_object;
-use wasmer::{Instance, Store};
+use wasmtime::{Instance, Store};
 
 use zellij_utils::async_channel::{unbounded, Receiver, Sender};
 use zellij_utils::async_std::task;
@@ -13,24 +13,21 @@ pub struct RunningWorker {
     pub instance: Instance,
     pub name: String,
     pub plugin_config: PluginConfig,
-    pub plugin_env: PluginEnv,
-    store: Store,
+    pub store: Store<PluginEnv>,
 }
 
 impl RunningWorker {
     pub fn new(
-        store: Store,
+        store: Store<PluginEnv>,
         instance: Instance,
         name: &str,
         plugin_config: PluginConfig,
-        plugin_env: PluginEnv,
     ) -> Self {
         RunningWorker {
             store,
             instance,
             name: name.into(),
             plugin_config,
-            plugin_env,
         }
     }
     pub fn send_message(&mut self, message: String, payload: String) -> Result<()> {
@@ -43,12 +40,11 @@ impl RunningWorker {
         let protobuf_bytes = protobuf_message.encode_to_vec();
         let work_function = self
             .instance
-            .exports
-            .get_function(&self.name)
+            .get_typed_func::<(), ()>(&mut self.store, &self.name)
             .with_context(err_context)?;
-        wasi_write_object(&self.plugin_env.wasi_env, &protobuf_bytes).with_context(err_context)?;
+        wasi_write_object(self.store.data(), &protobuf_bytes).with_context(err_context)?;
         work_function
-            .call(&mut self.store, &[])
+            .call(&mut self.store, ())
             .with_context(err_context)?;
         Ok(())
     }

@@ -31,6 +31,7 @@ fn create_pane() -> TerminalPane {
     let debug = false;
     let arrow_fonts = true;
     let styled_underlines = true;
+    let explicitly_disable_kitty_keyboard_protocol = false;
     let mut terminal_pane = TerminalPane::new(
         pid,
         fake_win_size,
@@ -47,6 +48,7 @@ fn create_pane() -> TerminalPane {
         debug,
         arrow_fonts,
         styled_underlines,
+        explicitly_disable_kitty_keyboard_protocol,
     ); // 0 is the pane index
     let content = read_fixture();
     terminal_pane.handle_pty_bytes(content);

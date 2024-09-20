@@ -1,12 +1,12 @@
 //! Definition of the actions that can be bound to keys.
 
-use super::command::RunCommandAction;
+use super::command::{OpenFilePayload, RunCommandAction};
 use super::layout::{
     FloatingPaneLayout, Layout, PluginAlias, RunPlugin, RunPluginLocation, RunPluginOrAlias,
     SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,
 };
 use crate::cli::CliAction;
-use crate::data::{Direction, Resize};
+use crate::data::{Direction, KeyWithModifier, Resize};
 use crate::data::{FloatingPaneCoordinates, InputMode};
 use crate::home::{find_default_config_dir, get_layout_dir};
 use crate::input::config::{Config, ConfigError, KdlError};
@@ -102,7 +102,7 @@ pub enum Action {
     /// Quit Zellij.
     Quit,
     /// Write to the terminal.
-    Write(Vec<u8>),
+    Write(Option<KeyWithModifier>, Vec<u8>, bool), // bool -> is_kitty_keyboard_protocol
     /// Write Characters to the terminal.
     WriteChars(String),
     /// Switch to the specified input mode.
@@ -157,17 +157,17 @@ pub enum Action {
     ToggleActiveSyncTab,
     /// Open a new pane in the specified direction (relative to focus).
     /// If no direction is specified, will try to use the biggest available space.
-    NewPane(Option<Direction>, Option<String>), // String is an optional pane name
-    /// Open the file in a new pane using the default editor
+    NewPane(Option<Direction>, Option<String>, bool), // String is an optional pane name
+    /// Open the file in a new pane using the default editor, bool -> start suppressed
     EditFile(
-        PathBuf,
-        Option<usize>,
-        Option<PathBuf>,
+        OpenFilePayload,
         Option<Direction>,
         bool,
         bool,
+        bool,
         Option<FloatingPaneCoordinates>,
-    ), // usize is an optional line number, Option<PathBuf> is an optional cwd, bool is floating true/false, second bool is in_place
+    ), // bool is floating true/false, second bool is in_place
+    // third bool is start_suppressed
     /// Open a new floating pane
     NewFloatingPane(
         Option<RunCommandAction>,
@@ -289,6 +289,7 @@ pub enum Action {
         payload: Option<String>,
         args: Option<BTreeMap<String, String>>,
         plugin: Option<String>,
+        plugin_id: Option<u32>, // supercedes plugin if present
         configuration: Option<BTreeMap<String, String>>,
         launch_new: bool,
         skip_cache: bool,
@@ -317,7 +318,7 @@ impl Action {
         config: Option<Config>,
     ) -> Result<Vec<Action>, String> {
         match cli_action {
-            CliAction::Write { bytes } => Ok(vec![Action::Write(bytes)]),
+            CliAction::Write { bytes } => Ok(vec![Action::Write(None, bytes, false)]),
             CliAction::WriteChars { chars } => Ok(vec![Action::WriteChars(chars)]),
             CliAction::Resize { resize, direction } => Ok(vec![Action::Resize(resize, direction)]),
             CliAction::FocusNextPane => Ok(vec![Action::FocusNextPane]),
@@ -432,6 +433,7 @@ impl Action {
                         direction,
                         hold_on_close,
                         hold_on_start,
+                        ..Default::default()
                     };
                     if floating {
                         Ok(vec![Action::NewFloatingPane(
@@ -484,13 +486,13 @@ impl Action {
                         file = cwd.join(file);
                     }
                 }
+                let start_suppressed = false;
                 Ok(vec![Action::EditFile(
-                    file,
-                    line_number,
-                    cwd,
+                    OpenFilePayload::new(file, line_number, cwd),
                     direction,
                     floating,
                     in_place,
+                    start_suppressed,
                     FloatingPaneCoordinates::new(x, y, width, height),
                 )])
             },
@@ -707,6 +709,27 @@ impl Action {
                 }])
             },
             CliAction::ListClients => Ok(vec![Action::ListClients]),
+        }
+    }
+    pub fn launches_plugin(&self, plugin_url: &str) -> bool {
+        match self {
+            Action::LaunchPlugin(run_plugin_or_alias, ..) => {
+                &run_plugin_or_alias.location_string() == plugin_url
+            },
+            Action::LaunchOrFocusPlugin(run_plugin_or_alias, ..) => {
+                log::info!(
+                    "2: {:?} == {:?}",
+                    run_plugin_or_alias.location_string(),
+                    plugin_url
+                );
+                eprintln!(
+                    "2: {:?} == {:?}",
+                    run_plugin_or_alias.location_string(),
+                    plugin_url
+                );
+                &run_plugin_or_alias.location_string() == plugin_url
+            },
+            _ => false,
         }
     }
 }
