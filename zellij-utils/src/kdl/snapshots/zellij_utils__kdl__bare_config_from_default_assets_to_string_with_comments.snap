@@ -1,6 +1,6 @@
 ---
 source: zellij-utils/src/kdl/mod.rs
-assertion_line: 5441
+assertion_line: 5537
 expression: fake_config_stringified
 ---
 keybinds clear-defaults=true {
@@ -239,6 +239,12 @@ plugins {
     welcome-screen location="zellij:session-manager" {
         welcome_screen true
     }
+}
+
+// Plugins to load in the background when a new session starts
+// eg. "file:/path/to/my-plugin.wasm"
+// eg. "https://example.com/my-plugin.wasm"
+load_plugins {
 }
  
 // Use a simplified UI without special fonts (arrow glyphs)

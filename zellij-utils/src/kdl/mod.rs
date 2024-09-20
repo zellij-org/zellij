@@ -3644,6 +3644,9 @@ impl Config {
         let plugins = self.plugins.to_kdl(add_comments);
         document.nodes_mut().push(plugins);
 
+        let load_plugins = load_plugins_to_kdl(&self.background_plugins, add_comments);
+        document.nodes_mut().push(load_plugins);
+
         if let Some(ui_config) = self.ui.to_kdl() {
             document.nodes_mut().push(ui_config);
         }
@@ -3731,6 +3734,66 @@ impl PluginAliases {
         }
         plugins
     }
+}
+
+pub fn load_plugins_to_kdl(background_plugins: &HashSet<RunPluginOrAlias>, add_comments: bool) -> KdlNode {
+    let mut load_plugins = KdlNode::new("load_plugins");
+    let mut load_plugins_children = KdlDocument::new();
+    for run_plugin_or_alias in background_plugins.iter() {
+        log::info!("run_plugin_or_alias: {:#?}", run_plugin_or_alias);
+        let mut background_plugin_node = KdlNode::new(run_plugin_or_alias.location_string());
+        let mut background_plugin_children = KdlDocument::new();
+
+        let cwd = match run_plugin_or_alias {
+            RunPluginOrAlias::RunPlugin(run_plugin) => run_plugin.initial_cwd.clone(),
+            RunPluginOrAlias::Alias(plugin_alias) => plugin_alias.initial_cwd.clone(),
+        };
+        let mut has_children = false;
+        if let Some(cwd) = cwd.as_ref() {
+            log::info!("can has cwd");
+            has_children = true;
+            let mut cwd_node = KdlNode::new("cwd");
+            cwd_node.push(cwd.display().to_string());
+            background_plugin_children.nodes_mut().push(cwd_node);
+        }
+        let configuration = match run_plugin_or_alias {
+            RunPluginOrAlias::RunPlugin(run_plugin) => Some(run_plugin.configuration.inner().clone()),
+            RunPluginOrAlias::Alias(plugin_alias) => plugin_alias.configuration.as_ref().map(|c| c.inner().clone()),
+        };
+        if let Some(configuration) = configuration {
+            log::info!("can has configuration");
+            if !configuration.is_empty() {
+                log::info!("can has non-empty configuration");
+                has_children = true;
+                for (config_key, config_value) in configuration {
+                    let mut node = KdlNode::new(config_key.to_owned());
+                    if config_value == "true" {
+                        node.push(KdlValue::Bool(true));
+                    } else if config_value == "false" {
+                        node.push(KdlValue::Bool(false));
+                    } else {
+                        node.push(config_value.to_string());
+                    }
+                    background_plugin_children.nodes_mut().push(node);
+                }
+            }
+        }
+        if has_children {
+            background_plugin_node.set_children(background_plugin_children);
+        }
+        load_plugins_children.nodes_mut().push(background_plugin_node);
+    }
+    load_plugins.set_children(load_plugins_children);
+
+    if add_comments {
+        load_plugins.set_leading(format!(
+            "\n{}\n{}\n{}\n",
+            "// Plugins to load in the background when a new session starts",
+            "// eg. \"file:/path/to/my-plugin.wasm\"",
+            "// eg. \"https://example.com/my-plugin.wasm\"",
+        ));
+    }
+    load_plugins
 }
 
 fn load_plugins_from_kdl(kdl_load_plugins: &KdlNode) -> Result<HashSet<RunPluginOrAlias>, ConfigError> {
