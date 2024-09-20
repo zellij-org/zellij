@@ -1,6 +1,7 @@
 use crate::data::Palette;
 use miette::{Diagnostic, LabeledSpan, NamedSource, SourceCode};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::fs::File;
 use std::io::{self, Read};
 use std::path::PathBuf;
@@ -9,6 +10,7 @@ use thiserror::Error;
 use std::convert::TryFrom;
 
 use super::keybinds::Keybinds;
+use super::layout::{RunPlugin, RunPluginOrAlias};
 use super::options::Options;
 use super::plugins::{PluginAliases, PluginsConfigError};
 use super::theme::{Themes, UiConfig};
@@ -29,6 +31,7 @@ pub struct Config {
     pub plugins: PluginAliases,
     pub ui: UiConfig,
     pub env: EnvironmentVariables,
+    pub background_plugins: HashSet<RunPluginOrAlias>,
 }
 
 #[derive(Error, Debug)]
@@ -400,7 +403,7 @@ mod config_test {
     use crate::data::{InputMode, Palette, PaletteColor, PluginTag};
     use crate::input::layout::{RunPlugin, RunPluginLocation};
     use crate::input::options::{Clipboard, OnForceClose};
-    use crate::input::plugins::{PluginConfig, PluginType};
+    use crate::input::plugins::PluginConfig;
     use crate::input::theme::{FrameConfig, Theme, Themes, UiConfig};
     use std::collections::{BTreeMap, HashMap};
     use std::io::Write;

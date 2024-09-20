@@ -3616,6 +3616,10 @@ impl Config {
             let config_plugins = PluginAliases::from_kdl(kdl_plugin_aliases)?;
             config.plugins.merge(config_plugins);
         }
+        if let Some(kdl_load_plugins) = kdl_config.get("load_plugins") {
+            let load_plugins = load_plugins_from_kdl(kdl_load_plugins)?;
+            config.background_plugins = load_plugins;
+        }
         if let Some(kdl_ui_config) = kdl_config.get("ui") {
             let config_ui = UiConfig::from_kdl(&kdl_ui_config)?;
             config.ui = config.ui.merge(config_ui);
@@ -3639,6 +3643,9 @@ impl Config {
 
         let plugins = self.plugins.to_kdl(add_comments);
         document.nodes_mut().push(plugins);
+
+        let load_plugins = load_plugins_to_kdl(&self.background_plugins, add_comments);
+        document.nodes_mut().push(load_plugins);
 
         if let Some(ui_config) = self.ui.to_kdl() {
             document.nodes_mut().push(ui_config);
@@ -3727,6 +3734,103 @@ impl PluginAliases {
         }
         plugins
     }
+}
+
+pub fn load_plugins_to_kdl(
+    background_plugins: &HashSet<RunPluginOrAlias>,
+    add_comments: bool,
+) -> KdlNode {
+    let mut load_plugins = KdlNode::new("load_plugins");
+    let mut load_plugins_children = KdlDocument::new();
+    for run_plugin_or_alias in background_plugins.iter() {
+        let mut background_plugin_node = KdlNode::new(run_plugin_or_alias.location_string());
+        let mut background_plugin_children = KdlDocument::new();
+
+        let cwd = match run_plugin_or_alias {
+            RunPluginOrAlias::RunPlugin(run_plugin) => run_plugin.initial_cwd.clone(),
+            RunPluginOrAlias::Alias(plugin_alias) => plugin_alias.initial_cwd.clone(),
+        };
+        let mut has_children = false;
+        if let Some(cwd) = cwd.as_ref() {
+            has_children = true;
+            let mut cwd_node = KdlNode::new("cwd");
+            cwd_node.push(cwd.display().to_string());
+            background_plugin_children.nodes_mut().push(cwd_node);
+        }
+        let configuration = match run_plugin_or_alias {
+            RunPluginOrAlias::RunPlugin(run_plugin) => {
+                Some(run_plugin.configuration.inner().clone())
+            },
+            RunPluginOrAlias::Alias(plugin_alias) => plugin_alias
+                .configuration
+                .as_ref()
+                .map(|c| c.inner().clone()),
+        };
+        if let Some(configuration) = configuration {
+            if !configuration.is_empty() {
+                has_children = true;
+                for (config_key, config_value) in configuration {
+                    let mut node = KdlNode::new(config_key.to_owned());
+                    if config_value == "true" {
+                        node.push(KdlValue::Bool(true));
+                    } else if config_value == "false" {
+                        node.push(KdlValue::Bool(false));
+                    } else {
+                        node.push(config_value.to_string());
+                    }
+                    background_plugin_children.nodes_mut().push(node);
+                }
+            }
+        }
+        if has_children {
+            background_plugin_node.set_children(background_plugin_children);
+        }
+        load_plugins_children
+            .nodes_mut()
+            .push(background_plugin_node);
+    }
+    load_plugins.set_children(load_plugins_children);
+
+    if add_comments {
+        load_plugins.set_leading(format!(
+            "\n{}\n{}\n{}\n",
+            "// Plugins to load in the background when a new session starts",
+            "// eg. \"file:/path/to/my-plugin.wasm\"",
+            "// eg. \"https://example.com/my-plugin.wasm\"",
+        ));
+    }
+    load_plugins
+}
+
+fn load_plugins_from_kdl(
+    kdl_load_plugins: &KdlNode,
+) -> Result<HashSet<RunPluginOrAlias>, ConfigError> {
+    let mut load_plugins: HashSet<RunPluginOrAlias> = HashSet::new();
+    if let Some(kdl_load_plugins) = kdl_children_nodes!(kdl_load_plugins) {
+        for plugin_block in kdl_load_plugins {
+            let url_node = plugin_block.name();
+            let string_url = url_node.value();
+            let configuration = KdlLayoutParser::parse_plugin_user_configuration(&plugin_block)?;
+            let cwd = kdl_get_string_property_or_child_value!(&plugin_block, "cwd")
+                .map(|s| PathBuf::from(s));
+            let run_plugin_or_alias = RunPluginOrAlias::from_url(
+                &string_url,
+                &Some(configuration.inner().clone()),
+                None,
+                cwd.clone(),
+            )
+            .map_err(|e| {
+                ConfigError::new_kdl_error(
+                    format!("Failed to parse plugin: {}", e),
+                    url_node.span().offset(),
+                    url_node.span().len(),
+                )
+            })?
+            .with_initial_cwd(cwd);
+            load_plugins.insert(run_plugin_or_alias);
+        }
+    }
+    Ok(load_plugins)
 }
 
 impl UiConfig {

@@ -836,9 +836,6 @@ impl<'a> PluginLoader<'a> {
             )))));
         let wasi_ctx = wasi_ctx_builder.build_p1();
         let mut mut_plugin = self.plugin.clone();
-        if let Some(tab_index) = self.tab_index {
-            mut_plugin.set_tab_index(tab_index);
-        }
         let plugin_env = PluginEnv {
             plugin_id: self.plugin_id,
             client_id: self.client_id,
