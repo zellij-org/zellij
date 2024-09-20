@@ -40,7 +40,7 @@ use crate::{
     panes::PaneId,
     plugins::{PluginId, PluginInstruction, PluginRenderAsset},
     pty::{ClientTabIndexOrPaneId, PtyInstruction, VteBytes},
-    tab::{Tab, SuppressedPanes},
+    tab::{SuppressedPanes, Tab},
     thread_bus::Bus,
     ui::{
         loading_indication::LoadingIndication,
@@ -822,7 +822,10 @@ impl Screen {
         Ok(())
     }
 
-    fn move_suppressed_panes_from_closed_tab(&mut self, suppressed_panes: SuppressedPanes) -> Result<()> {
+    fn move_suppressed_panes_from_closed_tab(
+        &mut self,
+        suppressed_panes: SuppressedPanes,
+    ) -> Result<()> {
         // TODO: this is not entirely accurate, these also sometimes contain a pane who's
         // scrollback is being edited - in this case we need to close it or to move it to the
         // appropriate tab
@@ -838,7 +841,6 @@ impl Screen {
             .with_context(err_context)?
             .add_suppressed_panes(suppressed_panes);
         Ok(())
-
     }
 
     fn move_clients_between_tabs(
@@ -3475,11 +3477,7 @@ pub(crate) fn screen_thread_main(
                 }
 
                 for event in pending_events_waiting_for_client.drain(..) {
-                    screen
-                        .bus
-                        .senders
-                        .send_to_screen(event)
-                        .non_fatal();
+                    screen.bus.senders.send_to_screen(event).non_fatal();
                 }
 
                 screen.unblock_input()?;
@@ -3709,11 +3707,7 @@ pub(crate) fn screen_thread_main(
                     screen.go_to_tab(tab_position_to_focus, client_id)?;
                 }
                 for event in pending_events_waiting_for_client.drain(..) {
-                    screen
-                        .bus
-                        .senders
-                        .send_to_screen(event)
-                        .non_fatal();
+                    screen.bus.senders.send_to_screen(event).non_fatal();
                 }
                 screen.log_and_report_session_state()?;
                 screen.render(None)?;
@@ -3985,7 +3979,6 @@ pub(crate) fn screen_thread_main(
                 start_suppressed,
                 client_id,
             ) => {
-
                 if screen.active_tab_indices.is_empty() && tab_index.is_none() {
                     pending_events_waiting_for_client.push(ScreenInstruction::AddPlugin(
                         should_float,
@@ -4312,11 +4305,10 @@ pub(crate) fn screen_thread_main(
                 });
 
                 if !found {
-                    log::error!(
-                        "PluginId '{}' not found - caching request",
-                        plugin_id
+                    log::error!("PluginId '{}' not found - caching request", plugin_id);
+                    pending_events_waiting_for_client.push(
+                        ScreenInstruction::RequestPluginPermissions(plugin_id, plugin_permission),
                     );
-                    pending_events_waiting_for_client.push(ScreenInstruction::RequestPluginPermissions(plugin_id, plugin_permission));
                 }
             },
             ScreenInstruction::BreakPane(default_layout, default_shell, client_id) => {

@@ -949,7 +949,13 @@ fn pipe_to_specific_plugins(
     }
 }
 
-fn load_background_plugin(mut run_plugin_or_alias: RunPluginOrAlias, wasm_bridge: &mut WasmBridge, bus: &Bus<PluginInstruction>, plugin_aliases: &PluginAliases, client_id: ClientId) {
+fn load_background_plugin(
+    mut run_plugin_or_alias: RunPluginOrAlias,
+    wasm_bridge: &mut WasmBridge,
+    bus: &Bus<PluginInstruction>,
+    plugin_aliases: &PluginAliases,
+    client_id: ClientId,
+) {
     run_plugin_or_alias.populate_run_plugin_if_needed(&plugin_aliases);
     let cwd = run_plugin_or_alias.get_initial_cwd();
     let run_plugin = run_plugin_or_alias.get_run_plugin();

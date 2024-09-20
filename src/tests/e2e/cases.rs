@@ -2384,8 +2384,8 @@ pub fn load_plugins_in_background_on_startup() {
     let mut test_timed_out = false;
     let last_snapshot = loop {
         RemoteRunner::kill_running_sessions(fake_win_size);
-        let mut runner = RemoteRunner::new_with_config(fake_win_size, config_file_name)
-            .add_step(Step {
+        let mut runner =
+            RemoteRunner::new_with_config(fake_win_size, config_file_name).add_step(Step {
                 name: "Wait for plugin to load and request permissions",
                 instruction: |mut remote_terminal: RemoteTerminal| -> bool {
                     let mut step_is_complete = false;
@@ -2417,6 +2417,9 @@ pub fn load_plugins_in_background_on_startup() {
         }
     };
     let last_snapshot = account_for_races_in_snapshot(last_snapshot);
-    assert!(!test_timed_out, "Test timed out, possibly waiting for permission request");
+    assert!(
+        !test_timed_out,
+        "Test timed out, possibly waiting for permission request"
+    );
     assert_snapshot!(last_snapshot);
 }

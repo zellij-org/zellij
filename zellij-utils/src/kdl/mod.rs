@@ -3736,11 +3736,13 @@ impl PluginAliases {
     }
 }
 
-pub fn load_plugins_to_kdl(background_plugins: &HashSet<RunPluginOrAlias>, add_comments: bool) -> KdlNode {
+pub fn load_plugins_to_kdl(
+    background_plugins: &HashSet<RunPluginOrAlias>,
+    add_comments: bool,
+) -> KdlNode {
     let mut load_plugins = KdlNode::new("load_plugins");
     let mut load_plugins_children = KdlDocument::new();
     for run_plugin_or_alias in background_plugins.iter() {
-        log::info!("run_plugin_or_alias: {:#?}", run_plugin_or_alias);
         let mut background_plugin_node = KdlNode::new(run_plugin_or_alias.location_string());
         let mut background_plugin_children = KdlDocument::new();
 
@@ -3750,20 +3752,22 @@ pub fn load_plugins_to_kdl(background_plugins: &HashSet<RunPluginOrAlias>, add_c
         };
         let mut has_children = false;
         if let Some(cwd) = cwd.as_ref() {
-            log::info!("can has cwd");
             has_children = true;
             let mut cwd_node = KdlNode::new("cwd");
             cwd_node.push(cwd.display().to_string());
             background_plugin_children.nodes_mut().push(cwd_node);
         }
         let configuration = match run_plugin_or_alias {
-            RunPluginOrAlias::RunPlugin(run_plugin) => Some(run_plugin.configuration.inner().clone()),
-            RunPluginOrAlias::Alias(plugin_alias) => plugin_alias.configuration.as_ref().map(|c| c.inner().clone()),
+            RunPluginOrAlias::RunPlugin(run_plugin) => {
+                Some(run_plugin.configuration.inner().clone())
+            },
+            RunPluginOrAlias::Alias(plugin_alias) => plugin_alias
+                .configuration
+                .as_ref()
+                .map(|c| c.inner().clone()),
         };
         if let Some(configuration) = configuration {
-            log::info!("can has configuration");
             if !configuration.is_empty() {
-                log::info!("can has non-empty configuration");
                 has_children = true;
                 for (config_key, config_value) in configuration {
                     let mut node = KdlNode::new(config_key.to_owned());
@@ -3781,7 +3785,9 @@ pub fn load_plugins_to_kdl(background_plugins: &HashSet<RunPluginOrAlias>, add_c
         if has_children {
             background_plugin_node.set_children(background_plugin_children);
         }
-        load_plugins_children.nodes_mut().push(background_plugin_node);
+        load_plugins_children
+            .nodes_mut()
+            .push(background_plugin_node);
     }
     load_plugins.set_children(load_plugins_children);
 
@@ -3796,15 +3802,17 @@ pub fn load_plugins_to_kdl(background_plugins: &HashSet<RunPluginOrAlias>, add_c
     load_plugins
 }
 
-fn load_plugins_from_kdl(kdl_load_plugins: &KdlNode) -> Result<HashSet<RunPluginOrAlias>, ConfigError> {
+fn load_plugins_from_kdl(
+    kdl_load_plugins: &KdlNode,
+) -> Result<HashSet<RunPluginOrAlias>, ConfigError> {
     let mut load_plugins: HashSet<RunPluginOrAlias> = HashSet::new();
     if let Some(kdl_load_plugins) = kdl_children_nodes!(kdl_load_plugins) {
         for plugin_block in kdl_load_plugins {
             let url_node = plugin_block.name();
             let string_url = url_node.value();
             let configuration = KdlLayoutParser::parse_plugin_user_configuration(&plugin_block)?;
-            let cwd =
-                kdl_get_string_property_or_child_value!(&plugin_block, "cwd").map(|s| PathBuf::from(s));
+            let cwd = kdl_get_string_property_or_child_value!(&plugin_block, "cwd")
+                .map(|s| PathBuf::from(s));
             let run_plugin_or_alias = RunPluginOrAlias::from_url(
                 &string_url,
                 &Some(configuration.inner().clone()),

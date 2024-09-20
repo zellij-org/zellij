@@ -497,7 +497,9 @@ pub trait Pane {
     fn update_arrow_fonts(&mut self, _should_support_arrow_fonts: bool) {}
     fn update_rounded_corners(&mut self, _rounded_corners: bool) {}
     fn set_should_be_suppressed(&mut self, _should_be_suppressed: bool) {}
-    fn query_should_be_suppressed(&self) -> bool { false }
+    fn query_should_be_suppressed(&self) -> bool {
+        false
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -1870,8 +1872,7 @@ impl Tab {
         // However if the terminal is part of a tab-sync, we need to
         // check if the terminal should receive input or not (depending on its
         // 'exclude_from_sync' configuration).
-        let should_not_write_to_terminal =
-            is_sync_panes_active && active_pane.exclude_from_sync();
+        let should_not_write_to_terminal = is_sync_panes_active && active_pane.exclude_from_sync();
 
         if should_not_write_to_terminal {
             return Ok(should_update_ui);
@@ -4120,10 +4121,7 @@ impl Tab {
                 None => Ok(()),
             })
     }
-    pub fn focus_suppressed_pane_for_all_clients(
-        &mut self,
-        pane_id: PaneId,
-    ) {
+    pub fn focus_suppressed_pane_for_all_clients(&mut self, pane_id: PaneId) {
         match self.suppressed_panes.remove(&pane_id) {
             Some(pane) => {
                 self.show_floating_panes();
@@ -4132,7 +4130,7 @@ impl Tab {
             },
             None => {
                 log::error!("Could not find suppressed pane wiht id: {:?}", pane_id);
-            }
+            },
         }
     }
     pub fn suppress_pane(&mut self, pane_id: PaneId, client_id: Option<ClientId>) {
@@ -4233,7 +4231,8 @@ impl Tab {
             .get_pane_mut(PaneId::Plugin(pid))
             .or_else(|| self.floating_panes.get_pane_mut(PaneId::Plugin(pid)))
             .or_else(|| {
-                let mut suppressed_pane = self.suppressed_panes
+                let mut suppressed_pane = self
+                    .suppressed_panes
                     .values_mut()
                     .find(|s_p| s_p.1.pid() == PaneId::Plugin(pid))
                     .map(|s_p| &mut s_p.1);

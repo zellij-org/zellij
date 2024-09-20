@@ -1227,7 +1227,7 @@ fn init_session(
             let screen_bus = Bus::new(
                 vec![screen_receiver, bounded_screen_receiver],
                 Some(&to_screen), // there are certain occasions (eg. caching) where the screen
-                                  // needs to send messages to itself
+                // needs to send messages to itself
                 Some(&to_pty),
                 Some(&to_plugin),
                 Some(&to_server),
