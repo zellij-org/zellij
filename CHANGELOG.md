@@ -31,6 +31,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat(ux): reload config at runtime (https://github.com/zellij-org/zellij/pull/3558, https://github.com/zellij-org/zellij/pull/3559 and https://github.com/zellij-org/zellij/pull/3564)
 * feat(plugins): allow plugins to temporarily bind keys at runtime to pipe messages to specific plugins (https://github.com/zellij-org/zellij/pull/3561)
 * feat(plugins): new APIs to control other panes (https://github.com/zellij-org/zellij/pull/3576 and https://github.com/zellij-org/zellij/pull/3610)
+* feat(plugins): allow loading plugins in the background on startup (https://github.com/zellij-org/zellij/pull/3616)
 
 ## [0.40.1] - 2024-05-02
 * fix(sessions): issue where sessions would occasionally become unresponsive (https://github.com/zellij-org/zellij/pull/3281)
