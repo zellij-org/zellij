@@ -2371,3 +2371,52 @@ pub fn send_command_through_the_cli() {
     let last_snapshot = account_for_races_in_snapshot(last_snapshot);
     assert_snapshot!(last_snapshot);
 }
+
+#[test]
+#[ignore]
+pub fn load_plugins_in_background_on_startup() {
+    let fake_win_size = Size {
+        cols: 120,
+        rows: 24,
+    };
+    let config_file_name = "load_background_plugins.kdl";
+    let mut test_attempts = 10;
+    let mut test_timed_out = false;
+    let last_snapshot = loop {
+        RemoteRunner::kill_running_sessions(fake_win_size);
+        let mut runner = RemoteRunner::new_with_config(fake_win_size, config_file_name)
+            .add_step(Step {
+                name: "Wait for plugin to load and request permissions",
+                instruction: |mut remote_terminal: RemoteTerminal| -> bool {
+                    let mut step_is_complete = false;
+                    if remote_terminal.snapshot_contains("Allow? (y/n)") {
+                        std::thread::sleep(std::time::Duration::from_millis(100));
+                        remote_terminal.send_key("y".as_bytes());
+                        step_is_complete = true;
+                    }
+                    step_is_complete
+                },
+            });
+        runner.run_all_steps();
+        let last_snapshot = runner.take_snapshot_after(Step {
+            name: "Wait for plugin to disappear after permissions were granted",
+            instruction: |mut remote_terminal: RemoteTerminal| -> bool {
+                let mut step_is_complete = false;
+                if !remote_terminal.snapshot_contains("Allow? (y/n)") {
+                    step_is_complete = true;
+                }
+                step_is_complete
+            },
+        });
+        if runner.test_timed_out && test_attempts > 0 {
+            test_attempts -= 1;
+            continue;
+        } else {
+            test_timed_out = runner.test_timed_out;
+            break last_snapshot;
+        }
+    };
+    let last_snapshot = account_for_races_in_snapshot(last_snapshot);
+    assert!(!test_timed_out, "Test timed out, possibly waiting for permission request");
+    assert_snapshot!(last_snapshot);
+}

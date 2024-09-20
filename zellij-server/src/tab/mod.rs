@@ -496,7 +496,7 @@ pub trait Pane {
     fn update_theme(&mut self, _theme: Palette) {}
     fn update_arrow_fonts(&mut self, _should_support_arrow_fonts: bool) {}
     fn update_rounded_corners(&mut self, _rounded_corners: bool) {}
-    fn set_should_be_suppressed(&mut self, should_be_suppressed: bool) {}
+    fn set_should_be_suppressed(&mut self, _should_be_suppressed: bool) {}
     fn query_should_be_suppressed(&self) -> bool { false }
 }
 
