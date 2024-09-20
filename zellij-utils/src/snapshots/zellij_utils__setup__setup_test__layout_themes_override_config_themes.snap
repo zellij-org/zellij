@@ -5989,4 +5989,5 @@ Config {
         },
     },
     env: {},
+    background_plugins: {},
 }

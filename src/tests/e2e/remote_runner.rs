@@ -67,8 +67,12 @@ fn stop_zellij(channel: &mut ssh2::Channel) {
     channel.write_all(b"rm -rf /tmp/*\n").unwrap(); // remove temporary artifacts from previous
                                                     // tests
     channel.write_all(b"rm -rf /tmp/*\n").unwrap(); // remove temporary artifacts from previous
+    channel.write_all(b"rm -rf /tmp/*\n").unwrap(); // remove temporary artifacts from previous
     channel
         .write_all(b"rm -rf ~/.cache/zellij/*/session_info\n")
+        .unwrap();
+    channel
+        .write_all(b"rm -rf ~/.cache/zellij/permissions.kdl\n")
         .unwrap();
 }
 

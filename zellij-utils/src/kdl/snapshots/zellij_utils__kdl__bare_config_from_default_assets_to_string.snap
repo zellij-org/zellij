@@ -1,6 +1,6 @@
 ---
 source: zellij-utils/src/kdl/mod.rs
-assertion_line: 5060
+assertion_line: 5525
 expression: fake_config_stringified
 ---
 keybinds clear-defaults=true {
@@ -236,5 +236,7 @@ plugins {
     welcome-screen location="zellij:session-manager" {
         welcome_screen true
     }
+}
+load_plugins {
 }
 

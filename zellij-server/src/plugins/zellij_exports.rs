@@ -41,7 +41,6 @@ use zellij_utils::{
         actions::Action,
         command::{OpenFilePayload, RunCommand, RunCommandAction, TerminalAction},
         layout::{Layout, RunPluginOrAlias},
-        plugins::PluginType,
     },
     plugin_api::{
         plugin_command::ProtobufPluginCommand,
@@ -406,38 +405,25 @@ fn unsubscribe(env: &PluginEnv, event_list: HashSet<EventType>) -> Result<()> {
 }
 
 fn set_selectable(env: &PluginEnv, selectable: bool) {
-    match env.plugin.run {
-        PluginType::Pane(Some(tab_index)) => {
-            // let selectable = selectable != 0;
-            env.senders
-                .send_to_screen(ScreenInstruction::SetSelectable(
-                    PaneId::Plugin(env.plugin_id),
-                    selectable,
-                    tab_index,
-                ))
-                .with_context(|| {
-                    format!(
-                        "failed to set plugin {} selectable from plugin {}",
-                        selectable,
-                        env.name()
-                    )
-                })
-                .non_fatal();
-        },
-        _ => {
-            debug!(
-                "{} - Calling method 'set_selectable' does nothing for headless plugins",
-                env.plugin.location
+    env.senders
+        .send_to_screen(ScreenInstruction::SetSelectable(
+            PaneId::Plugin(env.plugin_id),
+            selectable,
+        ))
+        .with_context(|| {
+            format!(
+                "failed to set plugin {} selectable from plugin {}",
+                selectable,
+                env.name()
             )
-        },
-    }
+        })
+        .non_fatal();
 }
 
 fn request_permission(env: &PluginEnv, permissions: Vec<PermissionType>) -> Result<()> {
     if PermissionCache::from_path_or_default(None)
         .check_permissions(env.plugin.location.to_string(), &permissions)
     {
-        log::info!("PermissionRequestResult 1");
         return env
             .senders
             .send_to_plugin(PluginInstruction::PermissionRequestResult(

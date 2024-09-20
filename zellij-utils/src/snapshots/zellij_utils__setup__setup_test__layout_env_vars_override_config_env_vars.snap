@@ -1,6 +1,6 @@
 ---
 source: zellij-utils/src/setup.rs
-assertion_line: 811
+assertion_line: 812
 expression: "format!(\"{:#?}\", config)"
 ---
 Config {
@@ -5686,4 +5686,5 @@ Config {
         "LAYOUT_ENV_VAR": "make sure I'm also here",
         "MY_ENV_VAR": "from layout",
     },
+    background_plugins: {},
 }

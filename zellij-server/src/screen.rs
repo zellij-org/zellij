@@ -41,7 +41,7 @@ use crate::{
     panes::PaneId,
     plugins::{PluginId, PluginInstruction, PluginRenderAsset},
     pty::{ClientTabIndexOrPaneId, PtyInstruction, VteBytes},
-    tab::Tab,
+    tab::{SuppressedPanes, Tab},
     thread_bus::Bus,
     ui::{
         loading_indication::LoadingIndication,
@@ -201,7 +201,7 @@ pub enum ScreenInstruction {
     CloseFocusedPane(ClientId),
     ToggleActiveTerminalFullscreen(ClientId),
     TogglePaneFrames,
-    SetSelectable(PaneId, bool, usize),
+    SetSelectable(PaneId, bool),
     ClosePane(PaneId, Option<ClientId>),
     HoldPane(
         PaneId,
@@ -819,6 +819,27 @@ impl Screen {
         Ok(())
     }
 
+    fn move_suppressed_panes_from_closed_tab(
+        &mut self,
+        suppressed_panes: SuppressedPanes,
+    ) -> Result<()> {
+        // TODO: this is not entirely accurate, these also sometimes contain a pane who's
+        // scrollback is being edited - in this case we need to close it or to move it to the
+        // appropriate tab
+        let err_context = || "Failed to move suppressed panes from closed tab";
+        let first_tab_index = *self
+            .tabs
+            .keys()
+            .next()
+            .context("screen contains no tabs")
+            .with_context(err_context)?;
+        self.tabs
+            .get_mut(&first_tab_index)
+            .with_context(err_context)?
+            .add_suppressed_panes(suppressed_panes);
+        Ok(())
+    }
+
     fn move_clients_between_tabs(
         &mut self,
         source_tab_index: usize,
@@ -1050,7 +1071,16 @@ impl Screen {
         let err_context = || format!("failed to close tab at index {tab_index:?}");
 
         let mut tab_to_close = self.tabs.remove(&tab_index).with_context(err_context)?;
-        let pane_ids = tab_to_close.get_all_pane_ids();
+        let mut pane_ids = tab_to_close.get_all_pane_ids();
+
+        // here we extract the suppressed panes (these are background panes that don't care which
+        // tab they are in, and in the future we should probably make them global to screen rather
+        // than to each tab) and move them to another tab if there is one
+        let suppressed_panes = tab_to_close.extract_suppressed_panes();
+        for suppressed_pane_id in suppressed_panes.keys() {
+            pane_ids.retain(|p| p != suppressed_pane_id);
+        }
+
         // below we don't check the result of sending the CloseTab instruction to the pty thread
         // because this might be happening when the app is closing, at which point the pty thread
         // has already closed and this would result in an error
@@ -1067,6 +1097,8 @@ impl Screen {
         } else {
             let client_mode_infos_in_closed_tab = tab_to_close.drain_connected_clients(None);
             self.move_clients_from_closed_tab(client_mode_infos_in_closed_tab)
+                .with_context(err_context)?;
+            self.move_suppressed_panes_from_closed_tab(suppressed_panes)
                 .with_context(err_context)?;
             let visible_tab_indices: HashSet<usize> =
                 self.active_tab_indices.values().copied().collect();
@@ -2673,7 +2705,7 @@ pub(crate) fn screen_thread_main(
     let mut pending_tab_ids: HashSet<usize> = HashSet::new();
     let mut pending_tab_switches: HashSet<(usize, ClientId)> = HashSet::new(); // usize is the
                                                                                // tab_index
-
+    let mut pending_events_waiting_for_client: Vec<ScreenInstruction> = vec![];
     let mut plugin_loading_message_cache = HashMap::new();
     loop {
         let (event, mut err_ctx) = screen
@@ -3260,18 +3292,14 @@ pub(crate) fn screen_thread_main(
                 screen.unblock_input()?;
                 screen.log_and_report_session_state()?;
             },
-            ScreenInstruction::SetSelectable(id, selectable, tab_index) => {
-                screen.get_indexed_tab_mut(tab_index).map_or_else(
-                    || {
-                        log::warn!(
-                            "Tab index #{} not found, could not set selectable for plugin #{:?}.",
-                            tab_index,
-                            id
-                        )
-                    },
-                    |tab| tab.set_pane_selectable(id, selectable),
-                );
-
+            ScreenInstruction::SetSelectable(pid, selectable) => {
+                let all_tabs = screen.get_tabs_mut();
+                for tab in all_tabs.values_mut() {
+                    if tab.has_pane_with_pid(&pid) {
+                        tab.set_pane_selectable(pid, selectable);
+                        break;
+                    }
+                }
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
             },
@@ -3443,6 +3471,10 @@ pub(crate) fn screen_thread_main(
                             screen.render(None)?;
                         }
                     }
+                }
+
+                for event in pending_events_waiting_for_client.drain(..) {
+                    screen.bus.senders.send_to_screen(event).non_fatal();
                 }
 
                 screen.unblock_input()?;
@@ -3660,6 +3692,9 @@ pub(crate) fn screen_thread_main(
                     screen.focus_pane_with_id(pane_id, true, client_id)?;
                 } else if let Some(tab_position_to_focus) = tab_position_to_focus {
                     screen.go_to_tab(tab_position_to_focus, client_id)?;
+                }
+                for event in pending_events_waiting_for_client.drain(..) {
+                    screen.bus.senders.send_to_screen(event).non_fatal();
                 }
                 screen.log_and_report_session_state()?;
                 screen.render(None)?;
@@ -3931,6 +3966,21 @@ pub(crate) fn screen_thread_main(
                 start_suppressed,
                 client_id,
             ) => {
+                if screen.active_tab_indices.is_empty() && tab_index.is_none() {
+                    pending_events_waiting_for_client.push(ScreenInstruction::AddPlugin(
+                        should_float,
+                        should_be_in_place,
+                        run_plugin_or_alias,
+                        pane_title,
+                        tab_index,
+                        plugin_id,
+                        pane_id_to_replace,
+                        cwd,
+                        start_suppressed,
+                        client_id,
+                    ));
+                    continue;
+                }
                 let pane_title = pane_title.unwrap_or_else(|| {
                     format!(
                         "({}) - {}",
@@ -4195,7 +4245,7 @@ pub(crate) fn screen_thread_main(
                 let all_tabs = screen.get_tabs_mut();
                 for tab in all_tabs.values_mut() {
                     if tab.has_non_suppressed_pane_with_pid(&pane_id) {
-                        tab.suppress_pane(pane_id, client_id);
+                        tab.suppress_pane(pane_id, Some(client_id));
                         drop(screen.render(None));
                         break;
                     }
@@ -4242,9 +4292,9 @@ pub(crate) fn screen_thread_main(
                 });
 
                 if !found {
-                    log::error!(
-                        "PluginId '{}' not found - cannot request permissions",
-                        plugin_id
+                    log::error!("PluginId '{}' not found - caching request", plugin_id);
+                    pending_events_waiting_for_client.push(
+                        ScreenInstruction::RequestPluginPermissions(plugin_id, plugin_permission),
                     );
                 }
             },
