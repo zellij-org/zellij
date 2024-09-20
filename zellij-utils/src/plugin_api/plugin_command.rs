@@ -11,7 +11,7 @@ pub use super::generated_api::api::{
         FloatingPaneCoordinates as ProtobufFloatingPaneCoordinates, HidePaneWithIdPayload,
         HttpVerb as ProtobufHttpVerb, IdAndNewName, KillSessionsPayload, MessageToPluginPayload,
         MovePaneWithPaneIdInDirectionPayload, MovePaneWithPaneIdPayload, MovePayload,
-        NewPluginArgs as ProtobufNewPluginArgs, NewTabsWithLayoutInfoPayload,
+        NewPluginArgs as ProtobufNewPluginArgs, NewTabsWithLayoutInfoPayload, WatchFilesystemPayload,
         OpenCommandPanePayload, OpenFilePayload, PageScrollDownInPaneIdPayload,
         PageScrollUpInPaneIdPayload, PaneId as ProtobufPaneId, PaneType as ProtobufPaneType,
         PluginCommand as ProtobufPluginCommand, PluginMessagePayload, ReconfigurePayload,
@@ -32,7 +32,7 @@ use crate::data::{
 };
 use crate::input::layout::SplitSize;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::convert::TryFrom;
 use std::path::PathBuf;
 
@@ -916,8 +916,11 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 _ => Err("Mismatched payload for ScanHostFolder"),
             },
             Some(CommandName::WatchFilesystem) => match protobuf_plugin_command.payload {
-                Some(_) => Err("WatchFilesystem should have no payload, found a payload"),
-                None => Ok(PluginCommand::WatchFilesystem),
+                Some(Payload::WatchFilesystemPayload(WatchFilesystemPayload {files} )) => {
+                    let files_watch: HashMap<PathBuf, bool> = files.iter().map(|(key,value)| (PathBuf::from(key), value.clone())).collect();
+                    Ok(PluginCommand::WatchFilesystem(files_watch))
+                },
+                _ => Err("Mismatched payload for WatchFiles."),
             },
             Some(CommandName::DumpSessionLayout) => match protobuf_plugin_command.payload {
                 Some(_) => Err("DumpSessionLayout should have no payload, found a payload"),
@@ -1751,9 +1754,13 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     folder_to_scan.display().to_string(),
                 )),
             }),
-            PluginCommand::WatchFilesystem => Ok(ProtobufPluginCommand {
+            PluginCommand::WatchFilesystem(watch_files) => Ok(ProtobufPluginCommand {
                 name: CommandName::WatchFilesystem as i32,
-                payload: None,
+                payload: Some(Payload::WatchFilesystemPayload(
+                    WatchFilesystemPayload {
+                        files: watch_files.iter().map(|(key, value)| (String::from(key.to_str().unwrap()), value.clone())).collect(),
+                    }
+                )),
             }),
             PluginCommand::DumpSessionLayout => Ok(ProtobufPluginCommand {
                 name: CommandName::DumpSessionLayout as i32,

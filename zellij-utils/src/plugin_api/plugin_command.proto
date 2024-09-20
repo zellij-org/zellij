@@ -201,6 +201,7 @@ message PluginCommand {
     CloseTabWithIndexPayload close_tab_with_index_payload = 83;
     BreakPanesToNewTabPayload break_panes_to_new_tab_payload = 84;
     BreakPanesToTabWithIndexPayload break_panes_to_tab_with_index_payload = 85;
+    WatchFilesystemPayload watch_filesystem = 86;
   }
 }
 
@@ -300,6 +301,10 @@ message HidePaneWithIdPayload {
 message ShowPaneWithIdPayload {
   PaneId pane_id = 1;
   bool should_float_if_hidden = 2;
+}
+
+message WatchFilesystemPayload {
+  map<string, bool> files = 1;
 }
 
 message NewTabsWithLayoutInfoPayload {

@@ -154,7 +154,7 @@ pub enum PluginInstruction {
     FailedToWriteConfigToDisk {
         file_path: Option<PathBuf>,
     },
-    WatchFilesystem,
+    WatchFilesystem(HashMap<PathBuf, bool>),
     Exit,
 }
 
@@ -191,7 +191,7 @@ impl From<&PluginInstruction> for PluginContext {
             PluginInstruction::CachePluginEvents { .. } => PluginContext::CachePluginEvents,
             PluginInstruction::MessageFromPlugin { .. } => PluginContext::MessageFromPlugin,
             PluginInstruction::UnblockCliPipes { .. } => PluginContext::UnblockCliPipes,
-            PluginInstruction::WatchFilesystem => PluginContext::WatchFilesystem,
+            PluginInstruction::WatchFilesystem { .. } => PluginContext::WatchFilesystem,
             PluginInstruction::KeybindPipe { .. } => PluginContext::KeybindPipe,
             PluginInstruction::DumpLayoutToPlugin(..) => PluginContext::DumpLayoutToPlugin,
             PluginInstruction::Reconfigure { .. } => PluginContext::Reconfigure,
@@ -816,8 +816,8 @@ pub(crate) fn plugin_thread_main(
                     .update_plugins(updates, shutdown_send.clone())
                     .non_fatal();
             },
-            PluginInstruction::WatchFilesystem => {
-                wasm_bridge.start_fs_watcher_if_not_started();
+            PluginInstruction::WatchFilesystem(files) => {
+                wasm_bridge.start_fs_watcher_if_not_started(&files);
             },
             PluginInstruction::Exit => {
                 break;
