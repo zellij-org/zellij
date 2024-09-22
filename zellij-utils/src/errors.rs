@@ -503,6 +503,7 @@ pub enum BackgroundJobContext {
     ReportLayoutInfo,
     RunCommand,
     WebRequest,
+    ReportPluginList,
     Exit,
 }
 

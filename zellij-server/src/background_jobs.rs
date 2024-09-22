@@ -3,6 +3,7 @@ use zellij_utils::consts::{
     session_info_cache_file_name, session_info_folder_for_session, session_layout_cache_file_name,
     ZELLIJ_SESSION_INFO_CACHE_DIR, ZELLIJ_SOCK_DIR,
 };
+use zellij_utils::input::layout::RunPlugin;
 use zellij_utils::data::{Event, HttpVerb, SessionInfo};
 use zellij_utils::errors::{prelude::*, BackgroundJobContext, ContextType};
 use zellij_utils::surf::{
@@ -34,6 +35,7 @@ pub enum BackgroundJob {
     StopPluginLoadingAnimation(u32),                      // u32 - plugin_id
     ReadAllSessionInfosOnMachine,                         // u32 - plugin_id
     ReportSessionInfo(String, SessionInfo),               // String - session name
+    ReportPluginList(BTreeMap<PluginId, RunPlugin>),               // String - session name
     ReportLayoutInfo((String, BTreeMap<String, String>)), // BTreeMap<file_name, pane_contents>
     RunCommand(
         PluginId,
@@ -71,6 +73,7 @@ impl From<&BackgroundJob> for BackgroundJobContext {
             BackgroundJob::ReportLayoutInfo(..) => BackgroundJobContext::ReportLayoutInfo,
             BackgroundJob::RunCommand(..) => BackgroundJobContext::RunCommand,
             BackgroundJob::WebRequest(..) => BackgroundJobContext::WebRequest,
+            BackgroundJob::ReportPluginList(..) => BackgroundJobContext::ReportPluginList,
             BackgroundJob::Exit => BackgroundJobContext::Exit,
         }
     }
@@ -91,6 +94,7 @@ pub(crate) fn background_jobs_main(
     let mut loading_plugins: HashMap<u32, Arc<AtomicBool>> = HashMap::new(); // u32 - plugin_id
     let current_session_name = Arc::new(Mutex::new(String::default()));
     let current_session_info = Arc::new(Mutex::new(SessionInfo::default()));
+    let current_session_plugin_list: Arc<Mutex<BTreeMap<PluginId, RunPlugin>>> = Arc::new(Mutex::new(BTreeMap::new()));
     let current_session_layout = Arc::new(Mutex::new((String::new(), BTreeMap::new())));
     let last_serialization_time = Arc::new(Mutex::new(Instant::now()));
     let serialization_interval = serialization_interval.map(|s| s * 1000); // convert to
@@ -152,6 +156,9 @@ pub(crate) fn background_jobs_main(
                 *current_session_name.lock().unwrap() = session_name;
                 *current_session_info.lock().unwrap() = session_info;
             },
+            BackgroundJob::ReportPluginList(plugin_list) => {
+                *current_session_plugin_list.lock().unwrap() = plugin_list;
+            },
             BackgroundJob::ReportLayoutInfo(session_layout) => {
                 *current_session_layout.lock().unwrap() = session_layout;
             },
@@ -168,6 +175,7 @@ pub(crate) fn background_jobs_main(
                     let current_session_info = current_session_info.clone();
                     let current_session_name = current_session_name.clone();
                     let current_session_layout = current_session_layout.clone();
+                    let current_session_plugin_list = current_session_plugin_list.clone();
                     let last_serialization_time = last_serialization_time.clone();
                     async move {
                         loop {
@@ -183,8 +191,14 @@ pub(crate) fn background_jobs_main(
                                     current_session_layout,
                                 );
                             }
-                            let session_infos_on_machine =
+                            let mut session_infos_on_machine =
                                 read_other_live_session_states(&current_session_name);
+                            for (session_name, session_info) in session_infos_on_machine.iter_mut() {
+                                if session_name == &current_session_name {
+                                    let current_session_plugin_list = current_session_plugin_list.lock().unwrap().clone();
+                                    session_info.populate_plugin_list(current_session_plugin_list);
+                                }
+                            }
                             let resurrectable_sessions =
                                 find_resurrectable_sessions(&session_infos_on_machine);
                             let _ = senders.send_to_screen(ScreenInstruction::UpdateSessionInfos(

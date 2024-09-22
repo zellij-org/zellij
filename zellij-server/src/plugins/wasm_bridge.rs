@@ -10,7 +10,7 @@ use crate::plugins::zellij_exports::{wasi_read_string, wasi_write_object};
 use highway::{HighwayHash, PortableHash};
 use log::info;
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{HashMap, HashSet, BTreeMap},
     path::PathBuf,
     str::FromStr,
     sync::{Arc, Mutex},
@@ -258,7 +258,7 @@ impl WasmBridge {
                             plugin_cache,
                             senders.clone(),
                             engine,
-                            plugin_map,
+                            plugin_map.clone(),
                             size,
                             connected_clients.clone(),
                             &mut loading_indication,
@@ -273,7 +273,10 @@ impl WasmBridge {
                             default_mode,
                             keybinds,
                         ) {
-                            Ok(_) => handle_plugin_successful_loading(&senders, plugin_id),
+                            Ok(_) => {
+                                let plugin_list = plugin_map.lock().unwrap().list_plugins();
+                                handle_plugin_successful_loading(&senders, plugin_id, plugin_list);
+                            }
                             Err(e) => handle_plugin_loading_failure(
                                 &senders,
                                 plugin_id,
@@ -386,7 +389,8 @@ impl WasmBridge {
                     &keybinds,
                 ) {
                     Ok(_) => {
-                        handle_plugin_successful_loading(&senders, first_plugin_id);
+                        let plugin_list = plugin_map.lock().unwrap().list_plugins();
+                        handle_plugin_successful_loading(&senders, first_plugin_id, plugin_list);
                         for plugin_id in &plugin_ids {
                             if plugin_id == &first_plugin_id {
                                 // no need to reload the plugin we just reloaded
@@ -412,7 +416,10 @@ impl WasmBridge {
                                 &base_modes,
                                 &keybinds,
                             ) {
-                                Ok(_) => handle_plugin_successful_loading(&senders, *plugin_id),
+                                Ok(_) => {
+                                    let plugin_list = plugin_map.lock().unwrap().list_plugins();
+                                    handle_plugin_successful_loading(&senders, *plugin_id, plugin_list);
+                                }
                                 Err(e) => handle_plugin_loading_failure(
                                     &senders,
                                     *plugin_id,
@@ -1303,9 +1310,11 @@ impl WasmBridge {
     }
 }
 
-fn handle_plugin_successful_loading(senders: &ThreadSenders, plugin_id: PluginId) {
+fn handle_plugin_successful_loading(senders: &ThreadSenders, plugin_id: PluginId, plugin_list: BTreeMap<PluginId, RunPlugin>) {
     let _ = senders.send_to_background_jobs(BackgroundJob::StopPluginLoadingAnimation(plugin_id));
     let _ = senders.send_to_screen(ScreenInstruction::RequestStateUpdateForPlugins);
+    let _ = senders.send_to_background_jobs(BackgroundJob::ReportPluginList(plugin_list));
+
 }
 
 fn handle_plugin_loading_failure(

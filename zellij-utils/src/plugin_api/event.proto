@@ -223,6 +223,13 @@ message SessionManifest {
   uint32 connected_clients = 4;
   bool is_current_session = 5;
   repeated LayoutInfo available_layouts = 6;
+  repeated PluginInfo plugins = 7;
+}
+
+message PluginInfo {
+  uint32 plugin_id = 1;
+  string plugin_url = 2;
+  repeated ContextItem plugin_config = 3;
 }
 
 message LayoutInfo {

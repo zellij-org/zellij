@@ -1,7 +1,7 @@
 use crate::input::actions::Action;
 use crate::input::config::ConversionError;
 use crate::input::keybinds::Keybinds;
-use crate::input::layout::SplitSize;
+use crate::input::layout::{SplitSize, RunPlugin};
 use clap::ArgEnum;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
@@ -1199,6 +1199,22 @@ pub struct SessionInfo {
     pub connected_clients: usize,
     pub is_current_session: bool,
     pub available_layouts: Vec<LayoutInfo>,
+    pub plugins: BTreeMap<u32, PluginInfo>
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct PluginInfo {
+    pub location: String,
+    pub configuration: BTreeMap<String, String>,
+}
+
+impl From<RunPlugin> for PluginInfo {
+    fn from(run_plugin: RunPlugin) -> Self {
+        PluginInfo {
+            location: run_plugin.location.display(),
+            configuration: run_plugin.configuration.inner().clone(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -1252,6 +1268,13 @@ impl SessionInfo {
     }
     pub fn update_connected_clients(&mut self, new_connected_clients: usize) {
         self.connected_clients = new_connected_clients;
+    }
+    pub fn populate_plugin_list(&mut self, plugins: BTreeMap<u32, RunPlugin>) { // u32 - plugin_id
+        let mut plugin_list = BTreeMap::new();
+        for (plugin_id, run_plugin) in plugins {
+            plugin_list.insert(plugin_id, run_plugin.into());
+        }
+        self.plugins = plugin_list;
     }
 }
 

@@ -15,6 +15,7 @@ use std::{
 use wasmtime::Engine;
 
 use crate::panes::PaneId;
+use crate::background_jobs::BackgroundJob;
 use crate::screen::ScreenInstruction;
 use crate::session_layout_metadata::SessionLayoutMetadata;
 use crate::{pty::PtyInstruction, thread_bus::Bus, ClientId, ServerInstruction};
@@ -248,6 +249,15 @@ pub(crate) fn plugin_thread_main(
     );
 
     for mut run_plugin_or_alias in background_plugins {
+        // TODO:
+        // * add a list of plugins with their plugin_id and run_plugin to session_info - DONE
+        // * when this happens, send a BackgroundJob::ReportPluginList to background jobs with all
+        // the plugins so that it adds it to the session info - DONE
+        // * test this with a simple rust-plugin-example that will print the session-info and then
+        // try to load some background plugins - DONE
+        // * also when unloading plugins <= CONTINUE HERE
+        // * create a built-in plugin that will list these plugins, then also consider having it
+        // load/unload plugins
         load_background_plugin(
             run_plugin_or_alias,
             &mut wasm_bridge,
@@ -256,6 +266,7 @@ pub(crate) fn plugin_thread_main(
             initiating_client_id,
         );
     }
+
 
     loop {
         let (event, mut err_ctx) = bus.recv().expect("failed to receive event on channel");
