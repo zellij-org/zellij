@@ -547,12 +547,15 @@ pub fn get_cli_client_os_input() -> Result<ClientOsInputOutput, ()> {
 pub const DEFAULT_STDIN_POLL_TIMEOUT_MS: u64 = 10;
 
 pub struct StdinPoller {
+    #[cfg(unix)]
     poll: Poll,
+    #[cfg(unix)]
     events: Events,
     timeout: time::Duration,
 }
 
 impl StdinPoller {
+    #[cfg(unix)]
     // use mio poll to check if stdin is readable without blocking
     pub fn ready(&mut self) -> bool {
         self.poll
@@ -565,19 +568,55 @@ impl StdinPoller {
         }
         false
     }
+
+    #[cfg(windows)]
+    pub fn ready(&mut self) -> bool {
+        use windows_sys::Win32::Foundation::FALSE;
+        use windows_sys::Win32::System::Console::{
+            GetNumberOfConsoleInputEvents, STD_INPUT_HANDLE,
+        };
+        use windows_sys::Win32::System::Threading::WaitForSingleObjectEx;
+        let mut pending_events = 0u32;
+        let stdin_handle = unsafe { GetStdHandle(STD_INPUT_HANDLE) };
+
+        let success =
+            unsafe { GetNumberOfConsoleInputEvents(stdin_handle, &mut pending_events as _) };
+        if success == FALSE {
+            log::error!("Could not query the number of input events from stdin");
+            return false;
+        }
+
+        if pending_events > 0 {
+            return true;
+        } else {
+            let result = unsafe {
+                WaitForSingleObjectEx(
+                    stdin_handle,
+                    self.timeout
+                        .as_millis()
+                        .clamp(1, u32::MAX.into())
+                        .try_into()
+                        .unwrap(),
+                    FALSE,
+                )
+            };
+            match result {
+                0 => return true,    // wait object is ready to fetch
+                102 => return false, // timeout occured
+                x => return false, // something else happened see https://learn.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-waitforsingleobjectex#return-value
+            }
+        }
+    }
 }
 
 impl Default for StdinPoller {
+    #[cfg(unix)]
     fn default() -> Self {
         #[cfg(unix)]
         let stdin = 0;
-        #[cfg(windows)]
-        let stdin = windows_sys::Win32::System::Console::STD_INPUT_HANDLE;
 
         #[cfg(unix)]
         let mut stdin_fd = SourceFd(&stdin);
-        #[cfg(windows)]
-        let mut stdin_fd = unsafe { NamedPipe::from_raw_handle(GetStdHandle(stdin) as RawHandle) };
         let events = Events::with_capacity(128);
         let poll = Poll::new().unwrap();
         poll.registry()
@@ -591,5 +630,12 @@ impl Default for StdinPoller {
             events,
             timeout,
         }
+    }
+
+    #[cfg(windows)]
+    fn default() -> Self {
+        let timeout = time::Duration::from_millis(DEFAULT_STDIN_POLL_TIMEOUT_MS);
+
+        Self { timeout }
     }
 }
