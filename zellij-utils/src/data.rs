@@ -1865,4 +1865,11 @@ pub enum PluginCommand {
     // the new tab
     BreakPanesToTabWithIndex(Vec<PaneId>, usize, bool), // usize - tab_index, bool -
                                                         // should_change_focus_to_new_tab
+    ReloadPlugin(u32), // u32 - plugin pane id
+    LoadNewPlugin {
+        url: String,
+        config: BTreeMap<String, String>,
+        load_in_background: bool,
+        skip_plugin_cache: bool
+    },
 }
