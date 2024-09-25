@@ -386,7 +386,7 @@ fn write_session_state_to_disk(
 
 fn read_other_live_session_states(current_session_name: &str) -> BTreeMap<String, SessionInfo> {
     let mut other_session_names: Vec<String> = vec![];
-    let mut session_infos_on_machine = BTreeMap::new();
+    let session_infos_on_machine = BTreeMap::new();
     // we do this so that the session infos will be actual and we're
     // reasonably sure their session is running
     if let Ok(files) = fs::read_dir(&*ZELLIJ_SOCK_DIR) {

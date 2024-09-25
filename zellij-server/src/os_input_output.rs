@@ -1,8 +1,7 @@
 use crate::{panes::PaneId, ClientId};
 
-use async_std::{fs::File as AsyncFile, io::ReadExt};
+use async_std::io::ReadExt;
 
-use interprocess::local_socket::LocalSocketStream;
 
 use std::ffi::OsString;
 use std::io::Error;
@@ -14,13 +13,11 @@ use zellij_utils::{
     data::Palette,
     errors::prelude::*,
     input::command::{RunCommand, TerminalAction},
-    interprocess,
     ipc::{
         ClientToServerMsg, ExitReason, IpcReceiverWithContext, IpcSenderWithContext,
         IpcSocketStream, ServerToClientMsg,
     },
     shared::default_palette,
-    signal_hook,
     tempfile::tempfile,
 };
 
@@ -102,7 +99,7 @@ fn handle_command_exit(mut child: Child) -> Result<Option<i32>> {
     };
 
     // returns the exit status, if any
-    let mut should_exit = false;
+    let should_exit = false;
     let mut attempts = 3;
     #[cfg(unix)]
     let mut signals =
