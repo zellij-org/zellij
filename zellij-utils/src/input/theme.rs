@@ -74,8 +74,8 @@ impl Themes {
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct Theme {
-    #[serde(flatten)]
     pub sourced_from_external_file: bool,
+    #[serde(flatten)]
     pub palette: Styling,
 }
 
