@@ -1514,7 +1514,7 @@ impl ModeInfo {
     pub fn update_default_mode(&mut self, new_default_mode: InputMode) {
         self.base_mode = Some(new_default_mode);
     }
-    pub fn update_theme(&mut self, theme: Palette) {
+    pub fn update_theme(&mut self, theme: Styling) {
         self.style.colors = theme.into();
     }
     pub fn update_rounded_corners(&mut self, rounded_corners: bool) {

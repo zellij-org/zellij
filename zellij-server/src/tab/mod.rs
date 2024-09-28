@@ -48,7 +48,9 @@ use std::{
     str,
 };
 use zellij_utils::{
-    data::{Event, FloatingPaneCoordinates, InputMode, ModeInfo, Palette, PaletteColor, Style},
+    data::{
+        Event, FloatingPaneCoordinates, InputMode, ModeInfo, Palette, PaletteColor, Style, Styling,
+    },
     input::{
         command::TerminalAction,
         layout::{
@@ -200,7 +202,7 @@ pub(crate) struct TabData {
     pub name: String,
     pub active: bool,
     pub mode_info: ModeInfo,
-    pub colors: Palette,
+    pub colors: Styling,
 }
 
 // FIXME: Use a struct that has a pane_type enum, to reduce all of the duplication
@@ -493,7 +495,7 @@ pub trait Pane {
     fn rerun(&mut self) -> Option<RunCommand> {
         None
     } // only relevant to terminal panes
-    fn update_theme(&mut self, _theme: Palette) {}
+    fn update_theme(&mut self, _theme: Styling) {}
     fn update_arrow_fonts(&mut self, _should_support_arrow_fonts: bool) {}
     fn update_rounded_corners(&mut self, _rounded_corners: bool) {}
     fn set_should_be_suppressed(&mut self, _should_be_suppressed: bool) {}
@@ -4327,7 +4329,7 @@ impl Tab {
         }
         Ok(())
     }
-    pub fn update_theme(&mut self, theme: Palette) {
+    pub fn update_theme(&mut self, theme: Styling) {
         self.style.colors = theme;
         self.floating_panes.update_pane_themes(theme);
         self.tiled_panes.update_pane_themes(theme);
