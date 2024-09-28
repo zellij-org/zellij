@@ -4166,7 +4166,9 @@ impl Themes {
             }
             has_themes = true;
             let mut current_theme_node = KdlNode::new(theme_name.clone());
+            let mut current_theme_node_styling = KdlNode::new("styling");
             let mut current_theme_node_children = KdlDocument::new();
+            let mut current_theme_node_styling_children = KdlDocument::new();
             current_theme_node_children
                 .nodes_mut()
                 .push(theme.palette.text_unselected.to_kdl("text_unselected"));
@@ -4215,7 +4217,11 @@ impl Themes {
             current_theme_node_children
                 .nodes_mut()
                 .push(theme.palette.multiplayer_user_colors.to_kdl());
-            current_theme_node.set_children(current_theme_node_children);
+            current_theme_node_styling.set_children(current_theme_node_children);
+            current_theme_node_styling_children
+                .nodes_mut()
+                .push(current_theme_node_styling);
+            current_theme_node.set_children(current_theme_node_styling_children);
             themes.nodes_mut().push(current_theme_node);
         }
         if has_themes {
