@@ -9,18 +9,19 @@ pub use super::generated_api::api::{
         FixedOrPercent as ProtobufFixedOrPercent,
         FixedOrPercentValue as ProtobufFixedOrPercentValue,
         FloatingPaneCoordinates as ProtobufFloatingPaneCoordinates, HidePaneWithIdPayload,
-        HttpVerb as ProtobufHttpVerb, IdAndNewName, KillSessionsPayload, MessageToPluginPayload,
-        MovePaneWithPaneIdInDirectionPayload, MovePaneWithPaneIdPayload, MovePayload,
-        NewPluginArgs as ProtobufNewPluginArgs, NewTabsWithLayoutInfoPayload,
+        HttpVerb as ProtobufHttpVerb, IdAndNewName, KillSessionsPayload, LoadNewPluginPayload,
+        MessageToPluginPayload, MovePaneWithPaneIdInDirectionPayload, MovePaneWithPaneIdPayload,
+        MovePayload, NewPluginArgs as ProtobufNewPluginArgs, NewTabsWithLayoutInfoPayload,
         OpenCommandPanePayload, OpenFilePayload, PageScrollDownInPaneIdPayload,
         PageScrollUpInPaneIdPayload, PaneId as ProtobufPaneId, PaneType as ProtobufPaneType,
         PluginCommand as ProtobufPluginCommand, PluginMessagePayload, ReconfigurePayload,
-        RequestPluginPermissionPayload, RerunCommandPanePayload, ResizePaneIdWithDirectionPayload,
-        ResizePayload, RunCommandPayload, ScrollDownInPaneIdPayload, ScrollToBottomInPaneIdPayload,
-        ScrollToTopInPaneIdPayload, ScrollUpInPaneIdPayload, SetTimeoutPayload,
-        ShowPaneWithIdPayload, SubscribePayload, SwitchSessionPayload, SwitchTabToPayload,
-        TogglePaneEmbedOrEjectForPaneIdPayload, TogglePaneIdFullscreenPayload, UnsubscribePayload,
-        WebRequestPayload, WriteCharsToPaneIdPayload, WriteToPaneIdPayload,
+        ReloadPluginPayload, RequestPluginPermissionPayload, RerunCommandPanePayload,
+        ResizePaneIdWithDirectionPayload, ResizePayload, RunCommandPayload,
+        ScrollDownInPaneIdPayload, ScrollToBottomInPaneIdPayload, ScrollToTopInPaneIdPayload,
+        ScrollUpInPaneIdPayload, SetTimeoutPayload, ShowPaneWithIdPayload, SubscribePayload,
+        SwitchSessionPayload, SwitchTabToPayload, TogglePaneEmbedOrEjectForPaneIdPayload,
+        TogglePaneIdFullscreenPayload, UnsubscribePayload, WebRequestPayload,
+        WriteCharsToPaneIdPayload, WriteToPaneIdPayload,
     },
     plugin_permission::PermissionType as ProtobufPermissionType,
     resize::ResizeAction as ProtobufResizeAction,
@@ -1203,6 +1204,28 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 )),
                 _ => Err("Mismatched payload for BreakPanesToTabWithIndex"),
             },
+            Some(CommandName::ReloadPlugin) => match protobuf_plugin_command.payload {
+                Some(Payload::ReloadPluginPayload(reload_plugin_payload)) => {
+                    Ok(PluginCommand::ReloadPlugin(reload_plugin_payload.plugin_id))
+                },
+                _ => Err("Mismatched payload for ReloadPlugin"),
+            },
+            Some(CommandName::LoadNewPlugin) => match protobuf_plugin_command.payload {
+                Some(Payload::LoadNewPluginPayload(load_new_plugin_payload)) => {
+                    Ok(PluginCommand::LoadNewPlugin {
+                        url: load_new_plugin_payload.plugin_url,
+                        config: load_new_plugin_payload
+                            .plugin_config
+                            .into_iter()
+                            .map(|e| (e.name, e.value))
+                            .collect(),
+                        load_in_background: load_new_plugin_payload
+                            .should_load_plugin_in_background,
+                        skip_plugin_cache: load_new_plugin_payload.should_skip_plugin_cache,
+                    })
+                },
+                _ => Err("Mismatched payload for LoadNewPlugin"),
+            },
             None => Err("Unrecognized plugin command"),
         }
     }
@@ -1984,6 +2007,29 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                         should_change_focus_to_target_tab,
                     },
                 )),
+            }),
+            PluginCommand::ReloadPlugin(plugin_id) => Ok(ProtobufPluginCommand {
+                name: CommandName::ReloadPlugin as i32,
+                payload: Some(Payload::ReloadPluginPayload(ReloadPluginPayload {
+                    plugin_id,
+                })),
+            }),
+            PluginCommand::LoadNewPlugin {
+                url,
+                config,
+                load_in_background,
+                skip_plugin_cache,
+            } => Ok(ProtobufPluginCommand {
+                name: CommandName::LoadNewPlugin as i32,
+                payload: Some(Payload::LoadNewPluginPayload(LoadNewPluginPayload {
+                    plugin_url: url,
+                    plugin_config: config
+                        .into_iter()
+                        .map(|(name, value)| ContextItem { name, value })
+                        .collect(),
+                    should_skip_plugin_cache: skip_plugin_cache,
+                    should_load_plugin_in_background: load_in_background,
+                })),
             }),
         }
     }

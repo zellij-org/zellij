@@ -270,6 +270,18 @@ pub struct SessionManifest {
     pub is_current_session: bool,
     #[prost(message, repeated, tag = "6")]
     pub available_layouts: ::prost::alloc::vec::Vec<LayoutInfo>,
+    #[prost(message, repeated, tag = "7")]
+    pub plugins: ::prost::alloc::vec::Vec<PluginInfo>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PluginInfo {
+    #[prost(uint32, tag = "1")]
+    pub plugin_id: u32,
+    #[prost(string, tag = "2")]
+    pub plugin_url: ::prost::alloc::string::String,
+    #[prost(message, repeated, tag = "3")]
+    pub plugin_config: ::prost::alloc::vec::Vec<ContextItem>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

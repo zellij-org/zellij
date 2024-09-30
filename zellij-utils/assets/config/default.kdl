@@ -127,6 +127,13 @@ keybinds {
             };
             SwitchToMode "Normal"
         }
+        bind "p" {
+            LaunchOrFocusPlugin "plugin-manager" {
+                floating true
+                move_to_focused_tab true
+            };
+            SwitchToMode "Normal"
+        }
     }
     tmux {
         bind "[" { SwitchToMode "Scroll"; }
@@ -208,6 +215,7 @@ plugins {
         cwd "/"
     }
     configuration location="zellij:configuration"
+    plugin-manager location="zellij:plugin-manager"
 }
 
 // Plugins to load in the background when a new session starts

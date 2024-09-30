@@ -10,7 +10,7 @@ use crate::plugins::zellij_exports::{wasi_read_string, wasi_write_object};
 use highway::{HighwayHash, PortableHash};
 use log::info;
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     path::PathBuf,
     str::FromStr,
     sync::{Arc, Mutex},
@@ -258,7 +258,7 @@ impl WasmBridge {
                             plugin_cache,
                             senders.clone(),
                             engine,
-                            plugin_map,
+                            plugin_map.clone(),
                             size,
                             connected_clients.clone(),
                             &mut loading_indication,
@@ -273,7 +273,10 @@ impl WasmBridge {
                             default_mode,
                             keybinds,
                         ) {
-                            Ok(_) => handle_plugin_successful_loading(&senders, plugin_id),
+                            Ok(_) => {
+                                let plugin_list = plugin_map.lock().unwrap().list_plugins();
+                                handle_plugin_successful_loading(&senders, plugin_id, plugin_list);
+                            },
                             Err(e) => handle_plugin_loading_failure(
                                 &senders,
                                 plugin_id,
@@ -327,6 +330,84 @@ impl WasmBridge {
                 .send_to_server(ServerInstruction::UnblockCliPipeInput(pipe_name))
                 .context("failed to unblock input pipe");
         }
+        let plugin_list = plugin_map.list_plugins();
+        let _ = self
+            .senders
+            .send_to_background_jobs(BackgroundJob::ReportPluginList(plugin_list));
+        Ok(())
+    }
+    pub fn reload_plugin_with_id(&mut self, plugin_id: u32) -> Result<()> {
+        let Some(run_plugin) = self.run_plugin_of_plugin_id(plugin_id).map(|r| r.clone()) else {
+            log::error!("Failed to find plugin with id: {}", plugin_id);
+            return Ok(());
+        };
+
+        let (rows, columns) = self.size_of_plugin_id(plugin_id).unwrap_or((0, 0));
+        self.cached_events_for_pending_plugins
+            .insert(plugin_id, vec![]);
+        self.cached_resizes_for_pending_plugins
+            .insert(plugin_id, (rows, columns));
+
+        let mut loading_indication = LoadingIndication::new(run_plugin.location.to_string());
+        self.start_plugin_loading_indication(&[plugin_id], &loading_indication);
+        let load_plugin_task = task::spawn({
+            let plugin_dir = self.plugin_dir.clone();
+            let plugin_cache = self.plugin_cache.clone();
+            let senders = self.senders.clone();
+            let engine = self.engine.clone();
+            let plugin_map = self.plugin_map.clone();
+            let connected_clients = self.connected_clients.clone();
+            let path_to_default_shell = self.path_to_default_shell.clone();
+            let zellij_cwd = self.zellij_cwd.clone();
+            let capabilities = self.capabilities.clone();
+            let client_attributes = self.client_attributes.clone();
+            let default_shell = self.default_shell.clone();
+            let default_layout = self.default_layout.clone();
+            let layout_dir = self.layout_dir.clone();
+            let base_modes = self.base_modes.clone();
+            let keybinds = self.keybinds.clone();
+            async move {
+                match PluginLoader::reload_plugin(
+                    plugin_id,
+                    plugin_dir.clone(),
+                    plugin_cache.clone(),
+                    senders.clone(),
+                    engine.clone(),
+                    plugin_map.clone(),
+                    connected_clients.clone(),
+                    &mut loading_indication,
+                    path_to_default_shell.clone(),
+                    zellij_cwd.clone(),
+                    capabilities.clone(),
+                    client_attributes.clone(),
+                    default_shell.clone(),
+                    default_layout.clone(),
+                    layout_dir.clone(),
+                    &base_modes,
+                    &keybinds,
+                ) {
+                    Ok(_) => {
+                        let plugin_list = plugin_map.lock().unwrap().list_plugins();
+                        handle_plugin_successful_loading(&senders, plugin_id, plugin_list);
+                    },
+                    Err(e) => {
+                        handle_plugin_loading_failure(
+                            &senders,
+                            plugin_id,
+                            &mut loading_indication,
+                            &e,
+                            None,
+                        );
+                    },
+                }
+                let _ = senders.send_to_plugin(PluginInstruction::ApplyCachedEvents {
+                    plugin_ids: vec![plugin_id],
+                    done_receiving_permissions: false,
+                });
+            }
+        });
+        self.loading_plugins
+            .insert((plugin_id, run_plugin.clone()), load_plugin_task);
         Ok(())
     }
     pub fn reload_plugin(&mut self, run_plugin: &RunPlugin) -> Result<()> {
@@ -386,7 +467,8 @@ impl WasmBridge {
                     &keybinds,
                 ) {
                     Ok(_) => {
-                        handle_plugin_successful_loading(&senders, first_plugin_id);
+                        let plugin_list = plugin_map.lock().unwrap().list_plugins();
+                        handle_plugin_successful_loading(&senders, first_plugin_id, plugin_list);
                         for plugin_id in &plugin_ids {
                             if plugin_id == &first_plugin_id {
                                 // no need to reload the plugin we just reloaded
@@ -412,7 +494,14 @@ impl WasmBridge {
                                 &base_modes,
                                 &keybinds,
                             ) {
-                                Ok(_) => handle_plugin_successful_loading(&senders, *plugin_id),
+                                Ok(_) => {
+                                    let plugin_list = plugin_map.lock().unwrap().list_plugins();
+                                    handle_plugin_successful_loading(
+                                        &senders,
+                                        *plugin_id,
+                                        plugin_list,
+                                    );
+                                },
                                 Err(e) => handle_plugin_loading_failure(
                                     &senders,
                                     *plugin_id,
@@ -1303,9 +1392,14 @@ impl WasmBridge {
     }
 }
 
-fn handle_plugin_successful_loading(senders: &ThreadSenders, plugin_id: PluginId) {
+fn handle_plugin_successful_loading(
+    senders: &ThreadSenders,
+    plugin_id: PluginId,
+    plugin_list: BTreeMap<PluginId, RunPlugin>,
+) {
     let _ = senders.send_to_background_jobs(BackgroundJob::StopPluginLoadingAnimation(plugin_id));
     let _ = senders.send_to_screen(ScreenInstruction::RequestStateUpdateForPlugins);
+    let _ = senders.send_to_background_jobs(BackgroundJob::ReportPluginList(plugin_list));
 }
 
 fn handle_plugin_loading_failure(

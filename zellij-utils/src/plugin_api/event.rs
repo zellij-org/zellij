@@ -8,7 +8,7 @@ pub use super::generated_api::api::{
         LayoutInfo as ProtobufLayoutInfo, ModeUpdatePayload as ProtobufModeUpdatePayload,
         PaneId as ProtobufPaneId, PaneInfo as ProtobufPaneInfo,
         PaneManifest as ProtobufPaneManifest, PaneType as ProtobufPaneType,
-        ResurrectableSession as ProtobufResurrectableSession,
+        PluginInfo as ProtobufPluginInfo, ResurrectableSession as ProtobufResurrectableSession,
         SessionManifest as ProtobufSessionManifest, TabInfo as ProtobufTabInfo, *,
     },
     input_mode::InputMode as ProtobufInputMode,
@@ -19,13 +19,13 @@ pub use super::generated_api::api::{
 use crate::data::{
     CopyDestination, Event, EventType, FileMetadata, InputMode, KeyWithModifier, LayoutInfo,
     ModeInfo, Mouse, PaneId, PaneInfo, PaneManifest, PermissionStatus, PluginCapabilities,
-    SessionInfo, Style, TabInfo,
+    PluginInfo, SessionInfo, Style, TabInfo,
 };
 
 use crate::errors::prelude::*;
 use crate::input::actions::Action;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::convert::TryFrom;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -667,7 +667,26 @@ impl TryFrom<SessionInfo> for ProtobufSessionManifest {
                 .into_iter()
                 .filter_map(|l| ProtobufLayoutInfo::try_from(l).ok())
                 .collect(),
+            plugins: session_info
+                .plugins
+                .into_iter()
+                .map(|p| ProtobufPluginInfo::from(p))
+                .collect(),
         })
+    }
+}
+
+impl From<(u32, PluginInfo)> for ProtobufPluginInfo {
+    fn from((plugin_id, plugin_info): (u32, PluginInfo)) -> ProtobufPluginInfo {
+        ProtobufPluginInfo {
+            plugin_id,
+            plugin_url: plugin_info.location,
+            plugin_config: plugin_info
+                .configuration
+                .into_iter()
+                .map(|(name, value)| ContextItem { name, value })
+                .collect(),
+        }
     }
 }
 
@@ -689,6 +708,20 @@ impl TryFrom<ProtobufSessionManifest> for SessionInfo {
         let panes = PaneManifest {
             panes: pane_manifest,
         };
+        let mut plugins = BTreeMap::new();
+        for plugin_info in protobuf_session_manifest.plugins.into_iter() {
+            let mut configuration = BTreeMap::new();
+            for context_item in plugin_info.plugin_config.into_iter() {
+                configuration.insert(context_item.name, context_item.value);
+            }
+            plugins.insert(
+                plugin_info.plugin_id,
+                PluginInfo {
+                    location: plugin_info.plugin_url,
+                    configuration,
+                },
+            );
+        }
         Ok(SessionInfo {
             name: protobuf_session_manifest.name,
             tabs: protobuf_session_manifest
@@ -704,6 +737,7 @@ impl TryFrom<ProtobufSessionManifest> for SessionInfo {
                 .into_iter()
                 .filter_map(|l| LayoutInfo::try_from(l).ok())
                 .collect(),
+            plugins,
         })
     }
 }
@@ -1702,6 +1736,16 @@ fn serialize_session_update_event_with_non_default_values() {
         },
     ];
     panes.insert(0, panes_list);
+    let mut plugins = BTreeMap::new();
+    let mut plugin_configuration = BTreeMap::new();
+    plugin_configuration.insert("config_key".to_owned(), "config_value".to_owned());
+    plugins.insert(
+        1,
+        PluginInfo {
+            location: "https://example.com/my-plugin.wasm".to_owned(),
+            configuration: plugin_configuration,
+        },
+    );
     let session_info_1 = SessionInfo {
         name: "session 1".to_owned(),
         tabs: tab_infos,
@@ -1713,6 +1757,7 @@ fn serialize_session_update_event_with_non_default_values() {
             LayoutInfo::BuiltIn("layout2".to_owned()),
             LayoutInfo::File("layout3".to_owned()),
         ],
+        plugins,
     };
     let session_info_2 = SessionInfo {
         name: "session 2".to_owned(),
@@ -1727,6 +1772,7 @@ fn serialize_session_update_event_with_non_default_values() {
             LayoutInfo::BuiltIn("layout2".to_owned()),
             LayoutInfo::File("layout3".to_owned()),
         ],
+        plugins: Default::default(),
     };
     let session_infos = vec![session_info_1, session_info_2];
     let resurrectable_sessions = vec![];

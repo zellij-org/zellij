@@ -1612,6 +1612,7 @@ impl Screen {
             connected_clients: self.active_tab_indices.keys().len(),
             is_current_session: true,
             available_layouts,
+            plugins: Default::default(), // these are filled in by the wasm thread
         };
         self.bus
             .senders

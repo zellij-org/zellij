@@ -121,6 +121,8 @@ enum CommandName {
   CloseTabWithIndex = 107;
   BreakPanesToNewTab = 108;
   BreakPanesToTabWithIndex = 109;
+  ReloadPlugin = 110;
+  LoadNewPlugin = 111;
 }
 
 message PluginCommand {
@@ -201,7 +203,20 @@ message PluginCommand {
     CloseTabWithIndexPayload close_tab_with_index_payload = 83;
     BreakPanesToNewTabPayload break_panes_to_new_tab_payload = 84;
     BreakPanesToTabWithIndexPayload break_panes_to_tab_with_index_payload = 85;
+    ReloadPluginPayload reload_plugin_payload = 86;
+    LoadNewPluginPayload load_new_plugin_payload = 87;
   }
+}
+
+message LoadNewPluginPayload {
+  string plugin_url = 1;
+  repeated ContextItem plugin_config = 2;
+  bool should_load_plugin_in_background = 3;
+  bool should_skip_plugin_cache = 4;
+}
+
+message ReloadPluginPayload {
+  uint32 plugin_id = 1;
 }
 
 message BreakPanesToTabWithIndexPayload {

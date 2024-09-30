@@ -63,6 +63,7 @@ impl PluginConfig {
                     || tag == "strider"
                     || tag == "session-manager"
                     || tag == "configuration"
+                    || tag == "plugin-manager"
                 {
                     Some(PluginConfig {
                         path: PathBuf::from(&tag),
