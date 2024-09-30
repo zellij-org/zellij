@@ -127,7 +127,7 @@ keybinds {
             };
             SwitchToMode "Normal"
         }
-        bind "c" {
+        bind "p" {
             LaunchOrFocusPlugin "plugin-manager" {
                 floating true
                 move_to_focused_tab true
