@@ -402,10 +402,12 @@ pub enum PtyContext {
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum PluginContext {
     Load,
+    LoadBackgroundPlugin,
     Update,
     Render,
     Unload,
     Reload,
+    ReloadPluginWithId,
     Resize,
     Exit,
     AddClient,
@@ -503,6 +505,7 @@ pub enum BackgroundJobContext {
     ReportLayoutInfo,
     RunCommand,
     WebRequest,
+    ReportPluginList,
     Exit,
 }
 

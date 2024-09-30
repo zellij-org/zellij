@@ -1,6 +1,6 @@
 ---
 source: zellij-utils/src/kdl/mod.rs
-assertion_line: 5537
+assertion_line: 5547
 expression: fake_config_stringified
 ---
 keybinds clear-defaults=true {
@@ -107,6 +107,13 @@ keybinds clear-defaults=true {
             SwitchToMode "normal"
         }
         bind "Ctrl o" { SwitchToMode "normal"; }
+        bind "p" {
+            LaunchOrFocusPlugin "plugin-manager" {
+                floating true
+                move_to_focused_tab true
+            }
+            SwitchToMode "normal"
+        }
         bind "w" {
             LaunchOrFocusPlugin "session-manager" {
                 floating true
@@ -232,6 +239,7 @@ plugins {
     filepicker location="zellij:strider" {
         cwd "/"
     }
+    plugin-manager location="zellij:plugin-manager"
     session-manager location="zellij:session-manager"
     status-bar location="zellij:status-bar"
     strider location="zellij:strider"

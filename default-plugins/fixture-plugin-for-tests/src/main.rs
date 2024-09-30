@@ -431,6 +431,20 @@ impl ZellijPlugin for State {
                         should_change_focus_to_target_tab,
                     );
                 },
+                BareKey::Char('w') if key.has_modifiers(&[KeyModifier::Alt]) => {
+                    reload_plugin_with_id(0);
+                },
+                BareKey::Char('x') if key.has_modifiers(&[KeyModifier::Alt]) => {
+                    let config = BTreeMap::new();
+                    let load_in_background = true;
+                    let skip_plugin_cache = true;
+                    load_new_plugin(
+                        "zellij:OWN_URL",
+                        config,
+                        load_in_background,
+                        skip_plugin_cache,
+                    )
+                },
                 _ => {},
             },
             Event::CustomMessage(message, payload) => {

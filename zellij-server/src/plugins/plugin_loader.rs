@@ -422,6 +422,8 @@ impl<'a> PluginLoader<'a> {
             rows: running_plugin.rows,
             cols: running_plugin.columns,
         };
+        let keybinds = running_plugin.store.data().keybinds.clone();
+        let default_mode = running_plugin.store.data().default_mode;
         let plugin_config = running_plugin.store.data().plugin.clone();
         loading_indication.set_name(running_plugin.store.data().name());
         PluginLoader::new(

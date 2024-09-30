@@ -5,7 +5,7 @@ pub struct PluginCommand {
     pub name: i32,
     #[prost(
         oneof = "plugin_command::Payload",
-        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85"
+        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87"
     )]
     pub payload: ::core::option::Option<plugin_command::Payload>,
 }
@@ -168,7 +168,29 @@ pub mod plugin_command {
         BreakPanesToNewTabPayload(super::BreakPanesToNewTabPayload),
         #[prost(message, tag = "85")]
         BreakPanesToTabWithIndexPayload(super::BreakPanesToTabWithIndexPayload),
+        #[prost(message, tag = "86")]
+        ReloadPluginPayload(super::ReloadPluginPayload),
+        #[prost(message, tag = "87")]
+        LoadNewPluginPayload(super::LoadNewPluginPayload),
     }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct LoadNewPluginPayload {
+    #[prost(string, tag = "1")]
+    pub plugin_url: ::prost::alloc::string::String,
+    #[prost(message, repeated, tag = "2")]
+    pub plugin_config: ::prost::alloc::vec::Vec<ContextItem>,
+    #[prost(bool, tag = "3")]
+    pub should_load_plugin_in_background: bool,
+    #[prost(bool, tag = "4")]
+    pub should_skip_plugin_cache: bool,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ReloadPluginPayload {
+    #[prost(uint32, tag = "1")]
+    pub plugin_id: u32,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -660,6 +682,8 @@ pub enum CommandName {
     CloseTabWithIndex = 107,
     BreakPanesToNewTab = 108,
     BreakPanesToTabWithIndex = 109,
+    ReloadPlugin = 110,
+    LoadNewPlugin = 111,
 }
 impl CommandName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -780,6 +804,8 @@ impl CommandName {
             CommandName::CloseTabWithIndex => "CloseTabWithIndex",
             CommandName::BreakPanesToNewTab => "BreakPanesToNewTab",
             CommandName::BreakPanesToTabWithIndex => "BreakPanesToTabWithIndex",
+            CommandName::ReloadPlugin => "ReloadPlugin",
+            CommandName::LoadNewPlugin => "LoadNewPlugin",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -897,6 +923,8 @@ impl CommandName {
             "CloseTabWithIndex" => Some(Self::CloseTabWithIndex),
             "BreakPanesToNewTab" => Some(Self::BreakPanesToNewTab),
             "BreakPanesToTabWithIndex" => Some(Self::BreakPanesToTabWithIndex),
+            "ReloadPlugin" => Some(Self::ReloadPlugin),
+            "LoadNewPlugin" => Some(Self::LoadNewPlugin),
             _ => None,
         }
     }
