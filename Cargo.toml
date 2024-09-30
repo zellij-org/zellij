@@ -38,6 +38,7 @@ members = [
     "default-plugins/fixture-plugin-for-tests",
     "default-plugins/session-manager",
     "default-plugins/configuration",
+    "default-plugins/plugin-manager",
     "zellij-client",
     "zellij-server",
     "zellij-utils",
