@@ -8,8 +8,8 @@ pub use super::generated_api::api::{
         LayoutInfo as ProtobufLayoutInfo, ModeUpdatePayload as ProtobufModeUpdatePayload,
         PaneId as ProtobufPaneId, PaneInfo as ProtobufPaneInfo,
         PaneManifest as ProtobufPaneManifest, PaneType as ProtobufPaneType,
-        ResurrectableSession as ProtobufResurrectableSession,
-        SessionManifest as ProtobufSessionManifest, TabInfo as ProtobufTabInfo, PluginInfo as ProtobufPluginInfo, *,
+        PluginInfo as ProtobufPluginInfo, ResurrectableSession as ProtobufResurrectableSession,
+        SessionManifest as ProtobufSessionManifest, TabInfo as ProtobufTabInfo, *,
     },
     input_mode::InputMode as ProtobufInputMode,
     key::Key as ProtobufKey,
@@ -19,13 +19,13 @@ pub use super::generated_api::api::{
 use crate::data::{
     CopyDestination, Event, EventType, FileMetadata, InputMode, KeyWithModifier, LayoutInfo,
     ModeInfo, Mouse, PaneId, PaneInfo, PaneManifest, PermissionStatus, PluginCapabilities,
-    SessionInfo, Style, TabInfo, PluginInfo
+    PluginInfo, SessionInfo, Style, TabInfo,
 };
 
 use crate::errors::prelude::*;
 use crate::input::actions::Action;
 
-use std::collections::{HashMap, HashSet, BTreeMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::convert::TryFrom;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -685,7 +685,7 @@ impl From<(u32, PluginInfo)> for ProtobufPluginInfo {
                 .configuration
                 .into_iter()
                 .map(|(name, value)| ContextItem { name, value })
-                .collect()
+                .collect(),
         }
     }
 }
@@ -714,10 +714,13 @@ impl TryFrom<ProtobufSessionManifest> for SessionInfo {
             for context_item in plugin_info.plugin_config.into_iter() {
                 configuration.insert(context_item.name, context_item.value);
             }
-            plugins.insert(plugin_info.plugin_id, PluginInfo {
-                location: plugin_info.plugin_url,
-                configuration,
-            });
+            plugins.insert(
+                plugin_info.plugin_id,
+                PluginInfo {
+                    location: plugin_info.plugin_url,
+                    configuration,
+                },
+            );
         }
         Ok(SessionInfo {
             name: protobuf_session_manifest.name,
@@ -1736,10 +1739,13 @@ fn serialize_session_update_event_with_non_default_values() {
     let mut plugins = BTreeMap::new();
     let mut plugin_configuration = BTreeMap::new();
     plugin_configuration.insert("config_key".to_owned(), "config_value".to_owned());
-    plugins.insert(1, PluginInfo {
-        location: "https://example.com/my-plugin.wasm".to_owned(),
-        configuration: plugin_configuration,
-    });
+    plugins.insert(
+        1,
+        PluginInfo {
+            location: "https://example.com/my-plugin.wasm".to_owned(),
+            configuration: plugin_configuration,
+        },
+    );
     let session_info_1 = SessionInfo {
         name: "session 1".to_owned(),
         tabs: tab_infos,

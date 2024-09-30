@@ -3,7 +3,7 @@ use crate::plugins::PluginId;
 use bytes::Bytes;
 use std::io::Write;
 use std::{
-    collections::{HashMap, HashSet, VecDeque, BTreeMap},
+    collections::{BTreeMap, HashMap, HashSet, VecDeque},
     path::PathBuf,
     sync::{Arc, Mutex},
 };

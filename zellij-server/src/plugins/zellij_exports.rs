@@ -339,24 +339,13 @@ fn host_run_plugin_command(caller: Caller<'_, PluginEnv>) {
                         tab_index,
                         should_change_focus_to_new_tab,
                     ),
-                    PluginCommand::ReloadPlugin(
-                        plugin_id,
-                    ) => reload_plugin(
-                        env,
-                        plugin_id,
-                    ),
+                    PluginCommand::ReloadPlugin(plugin_id) => reload_plugin(env, plugin_id),
                     PluginCommand::LoadNewPlugin {
                         url,
                         config,
                         load_in_background,
                         skip_plugin_cache,
-                    } => load_new_plugin(
-                        env,
-                        url,
-                        config,
-                        load_in_background,
-                        skip_plugin_cache,
-                    ),
+                    } => load_new_plugin(env, url, config, load_in_background, skip_plugin_cache),
                 },
                 (PermissionStatus::Denied, permission) => {
                     log::error!(
@@ -1366,7 +1355,9 @@ fn close_terminal_pane(env: &PluginEnv, terminal_pane_id: u32) {
     let action = Action::CloseTerminalPane(terminal_pane_id);
     apply_action!(action, error_msg, env);
     env.senders
-        .send_to_pty(PtyInstruction::ClosePane(PaneId::Terminal(terminal_pane_id)))
+        .send_to_pty(PtyInstruction::ClosePane(PaneId::Terminal(
+            terminal_pane_id,
+        )))
         .non_fatal();
 }
 
@@ -1658,10 +1649,7 @@ fn break_panes_to_tab_with_index(
         });
 }
 
-fn reload_plugin(
-    env: &PluginEnv,
-    plugin_id: u32,
-) {
+fn reload_plugin(env: &PluginEnv, plugin_id: u32) {
     let _ = env
         .senders
         .send_to_plugin(PluginInstruction::ReloadPluginWithId(plugin_id));
@@ -1672,7 +1660,7 @@ fn load_new_plugin(
     url: String,
     config: BTreeMap<String, String>,
     load_in_background: bool,
-    skip_plugin_cache: bool
+    skip_plugin_cache: bool,
 ) {
     let url = if &url == "zellij:OWN_URL" {
         env.plugin.location.display()
@@ -1691,7 +1679,7 @@ fn load_new_plugin(
             },
             Err(e) => {
                 log::error!("Failed to load new plugin: {:?}", e);
-            }
+            },
         }
     } else {
         let should_float = Some(true);
@@ -1705,24 +1693,22 @@ fn load_new_plugin(
         let skip_cache = skip_plugin_cache;
         match RunPluginOrAlias::from_url(&url, &Some(config), None, Some(env.plugin_cwd.clone())) {
             Ok(run_plugin_or_alias) => {
-                let _ = env
-                    .senders
-                    .send_to_plugin(PluginInstruction::Load(
-                        should_float,
-                        should_be_open_in_place,
-                        pane_title,
-                        run_plugin_or_alias,
-                        tab_index,
-                        pane_id_to_replace,
-                        client_id,
-                        size,
-                        cwd,
-                        skip_cache,
-                    ));
+                let _ = env.senders.send_to_plugin(PluginInstruction::Load(
+                    should_float,
+                    should_be_open_in_place,
+                    pane_title,
+                    run_plugin_or_alias,
+                    tab_index,
+                    pane_id_to_replace,
+                    client_id,
+                    size,
+                    cwd,
+                    skip_cache,
+                ));
             },
             Err(e) => {
                 log::error!("Failed to load new plugin: {:?}", e);
-            }
+            },
         }
     }
 }
@@ -1875,7 +1861,7 @@ fn check_command_permission(
         | PluginCommand::BreakPanesToNewTab(..)
         | PluginCommand::BreakPanesToTabWithIndex(..)
         | PluginCommand::ReloadPlugin(..)
-        | PluginCommand::LoadNewPlugin{..}
+        | PluginCommand::LoadNewPlugin { .. }
         | PluginCommand::KillSessions(..) => PermissionType::ChangeApplicationState,
         PluginCommand::UnblockCliPipeInput(..)
         | PluginCommand::BlockCliPipeInput(..)

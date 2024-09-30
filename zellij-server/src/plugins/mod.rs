@@ -14,8 +14,8 @@ use std::{
 };
 use wasmtime::Engine;
 
-use crate::panes::PaneId;
 use crate::background_jobs::BackgroundJob;
+use crate::panes::PaneId;
 use crate::screen::ScreenInstruction;
 use crate::session_layout_metadata::SessionLayoutMetadata;
 use crate::{pty::PtyInstruction, thread_bus::Bus, ClientId, ServerInstruction};
@@ -50,7 +50,7 @@ pub enum PluginInstruction {
         bool,           // should be opened in place
         Option<String>, // pane title
         RunPluginOrAlias,
-        Option<usize>,          // tab index
+        Option<usize>,  // tab index
         Option<PaneId>, // pane id to replace if this is to be opened "in-place"
         ClientId,
         Size,
@@ -262,7 +262,6 @@ pub(crate) fn plugin_thread_main(
         );
     }
 
-
     loop {
         let (event, mut err_ctx) = bus.recv().expect("failed to receive event on channel");
         err_ctx.add_call(ContextType::Plugin((&event).into()));
@@ -319,7 +318,7 @@ pub(crate) fn plugin_thread_main(
                     &plugin_aliases,
                     client_id,
                 );
-            }
+            },
             PluginInstruction::Update(updates) => {
                 wasm_bridge.update_plugins(updates, shutdown_send.clone())?;
             },
