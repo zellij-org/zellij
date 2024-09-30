@@ -4127,6 +4127,7 @@ impl SessionInfo {
             connected_clients,
             is_current_session,
             available_layouts,
+            plugins: Default::default(), // we do not serialize plugin information
         })
     }
     pub fn to_string(&self) -> String {
@@ -4662,6 +4663,7 @@ fn serialize_and_deserialize_session_info_with_data() {
             LayoutInfo::BuiltIn("layout2".to_owned()),
             LayoutInfo::File("layout3".to_owned()),
         ],
+        plugins: Default::default(),
     };
     let serialized = session_info.to_string();
     let deserealized = SessionInfo::from_string(&serialized, "not this session").unwrap();

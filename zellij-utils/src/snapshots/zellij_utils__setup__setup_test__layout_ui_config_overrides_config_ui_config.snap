@@ -4140,6 +4140,34 @@ Config {
                 bare_key: Char(
                     'p',
                 ),
+                key_modifiers: {},
+            }: [
+                LaunchOrFocusPlugin(
+                    Alias(
+                        PluginAlias {
+                            name: "plugin-manager",
+                            configuration: Some(
+                                PluginUserConfiguration(
+                                    {},
+                                ),
+                            ),
+                            initial_cwd: None,
+                            run_plugin: None,
+                        },
+                    ),
+                    true,
+                    true,
+                    false,
+                    false,
+                ),
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'p',
+                ),
                 key_modifiers: {
                     Ctrl,
                 },
@@ -5610,6 +5638,18 @@ Config {
                 initial_cwd: Some(
                     "/",
                 ),
+            },
+            "plugin-manager": RunPlugin {
+                _allow_exec_host_cmd: false,
+                location: Zellij(
+                    PluginTag(
+                        "plugin-manager",
+                    ),
+                ),
+                configuration: PluginUserConfiguration(
+                    {},
+                ),
+                initial_cwd: None,
             },
             "session-manager": RunPlugin {
                 _allow_exec_host_cmd: false,

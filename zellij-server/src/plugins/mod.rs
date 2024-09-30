@@ -14,6 +14,7 @@ use std::{
 };
 use wasmtime::Engine;
 
+use crate::background_jobs::BackgroundJob;
 use crate::panes::PaneId;
 use crate::screen::ScreenInstruction;
 use crate::session_layout_metadata::SessionLayoutMetadata;
@@ -49,13 +50,14 @@ pub enum PluginInstruction {
         bool,           // should be opened in place
         Option<String>, // pane title
         RunPluginOrAlias,
-        usize,          // tab index
+        Option<usize>,  // tab index
         Option<PaneId>, // pane id to replace if this is to be opened "in-place"
         ClientId,
         Size,
         Option<PathBuf>, // cwd
         bool,            // skip cache
     ),
+    LoadBackgroundPlugin(RunPluginOrAlias, ClientId),
     Update(Vec<(Option<PluginId>, Option<ClientId>, Event)>), // Focused plugin / broadcast, client_id, event data
     Unload(PluginId),                                         // plugin_id
     Reload(
@@ -65,6 +67,7 @@ pub enum PluginInstruction {
         usize, // tab index
         Size,
     ),
+    ReloadPluginWithId(u32),
     Resize(PluginId, usize, usize), // plugin_id, columns, rows
     AddClient(ClientId),
     RemoveClient(ClientId),
@@ -162,9 +165,11 @@ impl From<&PluginInstruction> for PluginContext {
     fn from(plugin_instruction: &PluginInstruction) -> Self {
         match *plugin_instruction {
             PluginInstruction::Load(..) => PluginContext::Load,
+            PluginInstruction::LoadBackgroundPlugin(..) => PluginContext::LoadBackgroundPlugin,
             PluginInstruction::Update(..) => PluginContext::Update,
             PluginInstruction::Unload(..) => PluginContext::Unload,
             PluginInstruction::Reload(..) => PluginContext::Reload,
+            PluginInstruction::ReloadPluginWithId(..) => PluginContext::ReloadPluginWithId,
             PluginInstruction::Resize(..) => PluginContext::Resize,
             PluginInstruction::Exit => PluginContext::Exit,
             PluginInstruction::AddClient(_) => PluginContext::AddClient,
@@ -279,7 +284,7 @@ pub(crate) fn plugin_thread_main(
                 let start_suppressed = false;
                 match wasm_bridge.load_plugin(
                     &run_plugin,
-                    Some(tab_index),
+                    tab_index,
                     size,
                     cwd.clone(),
                     skip_cache,
@@ -292,7 +297,7 @@ pub(crate) fn plugin_thread_main(
                             should_be_open_in_place,
                             run_plugin_or_alias,
                             pane_title,
-                            Some(tab_index),
+                            tab_index,
                             plugin_id,
                             pane_id_to_replace,
                             cwd,
@@ -304,6 +309,15 @@ pub(crate) fn plugin_thread_main(
                         log::error!("Failed to load plugin: {e}");
                     },
                 }
+            },
+            PluginInstruction::LoadBackgroundPlugin(run_plugin_or_alias, client_id) => {
+                load_background_plugin(
+                    run_plugin_or_alias,
+                    &mut wasm_bridge,
+                    &bus,
+                    &plugin_aliases,
+                    client_id,
+                );
             },
             PluginInstruction::Update(updates) => {
                 wasm_bridge.update_plugins(updates, shutdown_send.clone())?;
@@ -378,6 +392,9 @@ pub(crate) fn plugin_thread_main(
                         log::error!("Failed to find plugin info for: {:?}", run_plugin_or_alias)
                     },
                 }
+            },
+            PluginInstruction::ReloadPluginWithId(plugin_id) => {
+                wasm_bridge.reload_plugin_with_id(plugin_id).non_fatal();
             },
             PluginInstruction::Resize(pid, new_columns, new_rows) => {
                 wasm_bridge.resize_plugin(pid, new_columns, new_rows, shutdown_send.clone())?;
