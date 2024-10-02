@@ -1,0 +1,10 @@
+---
+source: zellij-utils/src/session_serialization.rs
+assertion_line: 1641
+expression: kdl.0
+---
+layout {
+    tab name="my \"tab \\name" {
+    }
+}
+
