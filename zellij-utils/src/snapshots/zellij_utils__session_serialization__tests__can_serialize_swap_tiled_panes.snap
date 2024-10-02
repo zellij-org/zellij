@@ -1,0 +1,44 @@
+---
+source: zellij-utils/src/session_serialization.rs
+assertion_line: 2079
+expression: kdl.0
+---
+layout {
+    swap_tiled_layout {
+        tab max_panes=1 {
+            pane
+            pane
+        }
+        tab min_panes=1 {
+            pane
+            pane
+        }
+        tab exact_panes=1 {
+            pane
+            pane
+        }
+        tab {
+            pane
+            pane
+        }
+    }
+    swap_tiled_layout name="swap_tiled_layout_2" {
+        tab max_panes=2 {
+            pane
+            pane
+        }
+        tab min_panes=2 {
+            pane
+            pane
+        }
+        tab exact_panes=2 {
+            pane
+            pane
+        }
+        tab {
+            pane
+            pane
+        }
+    }
+}
+
