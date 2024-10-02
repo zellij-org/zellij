@@ -1,14 +1,15 @@
+use kdl::{KdlDocument, KdlEntry, KdlNode, KdlValue};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
-use kdl::{KdlDocument, KdlEntry, KdlNode, KdlValue};
 
 use crate::{
+    input::command::RunCommand,
     input::layout::PluginUserConfiguration,
     input::layout::{
-        FloatingPaneLayout, Layout, PercentOrFixed, Run, RunPluginOrAlias, SplitDirection,
-        SplitSize, SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout, LayoutConstraint, RunPlugin
+        FloatingPaneLayout, Layout, LayoutConstraint, PercentOrFixed, Run, RunPlugin,
+        RunPluginOrAlias, SplitDirection, SplitSize, SwapFloatingLayout, SwapTiledLayout,
+        TiledPaneLayout,
     },
-    input::command::RunCommand,
     pane_size::{Constraint, PaneGeom},
 };
 
@@ -50,16 +51,15 @@ pub fn serialize_session_layout(
     if let Some(global_cwd) = serialize_global_cwd(&global_layout_manifest.global_cwd) {
         layout_node_children.nodes_mut().push(global_cwd);
     }
-    match serialize_multiple_tabs(
-        global_layout_manifest.tabs,
-        &mut pane_contents,
-    ) {
+    match serialize_multiple_tabs(global_layout_manifest.tabs, &mut pane_contents) {
         Ok(mut serialized_tabs) => {
-            layout_node_children.nodes_mut().append(&mut serialized_tabs);
-        }
+            layout_node_children
+                .nodes_mut()
+                .append(&mut serialized_tabs);
+        },
         Err(e) => {
             return Err(e);
-        }
+        },
     }
     serialize_new_tab_template(
         global_layout_manifest.default_layout.template,
@@ -103,15 +103,27 @@ fn serialize_tab(
             } else {
                 tiled_panes_layout.children
             };
-            serialized_tab.entries_mut().push(KdlEntry::new_prop("name", tab_name));
+            serialized_tab
+                .entries_mut()
+                .push(KdlEntry::new_prop("name", tab_name));
             if is_focused {
-                serialized_tab.entries_mut().push(KdlEntry::new_prop("focus", KdlValue::Bool(true)));
+                serialized_tab
+                    .entries_mut()
+                    .push(KdlEntry::new_prop("focus", KdlValue::Bool(true)));
             }
             if hide_floating_panes {
-                serialized_tab.entries_mut().push(KdlEntry::new_prop("hide_floating_panes", KdlValue::Bool(true)));
+                serialized_tab.entries_mut().push(KdlEntry::new_prop(
+                    "hide_floating_panes",
+                    KdlValue::Bool(true),
+                ));
             }
 
-            serialize_tiled_and_floating_panes(&tiled_panes, floating_panes_layout, pane_contents, &mut serialized_tab_children);
+            serialize_tiled_and_floating_panes(
+                &tiled_panes,
+                floating_panes_layout,
+                pane_contents,
+                &mut serialized_tab_children,
+            );
 
             serialized_tab.set_children(serialized_tab_children);
             Some(serialized_tab)
@@ -141,7 +153,9 @@ fn serialize_tiled_and_floating_panes(
             floating_panes_node_children.nodes_mut().push(pane_node);
         }
         floating_panes_node.set_children(floating_panes_node_children);
-        serialized_tab_children.nodes_mut().push(floating_panes_node);
+        serialized_tab_children
+            .nodes_mut()
+            .push(floating_panes_node);
     }
 }
 
@@ -181,11 +195,15 @@ fn serialize_tiled_pane(
         serialize_start_suspended(&command, &mut tiled_pane_node_children);
         serialize_plugin(plugin, plugin_config, &mut tiled_pane_node_children);
         if layout.children.is_empty() && layout.external_children_index.is_some() {
-            tiled_pane_node_children.nodes_mut().push(KdlNode::new("children"));
+            tiled_pane_node_children
+                .nodes_mut()
+                .push(KdlNode::new("children"));
         }
         for (i, pane) in layout.children.iter().enumerate() {
             if Some(i) == layout.external_children_index {
-                tiled_pane_node_children.nodes_mut().push(KdlNode::new("children"));
+                tiled_pane_node_children
+                    .nodes_mut()
+                    .push(KdlNode::new("children"));
             } else {
                 let ignore_size = layout.children_are_stacked;
                 let child_pane_node = serialize_tiled_pane(&pane, ignore_size, pane_contents);
@@ -246,30 +264,41 @@ fn serialize_pane_title_and_attributes(
     initial_pane_contents: &Option<String>,
     pane_contents: &mut BTreeMap<String, String>,
     has_children: bool,
-    kdl_node: &mut KdlNode
+    kdl_node: &mut KdlNode,
 ) {
-
     match (&command, &edit) {
-        (Some(command), _) => kdl_node.entries_mut().push(KdlEntry::new_prop("command", command.to_owned())),
-        (None, Some(edit)) => kdl_node.entries_mut().push(KdlEntry::new_prop("edit", edit.to_owned())),
-        _ => {}
+        (Some(command), _) => kdl_node
+            .entries_mut()
+            .push(KdlEntry::new_prop("command", command.to_owned())),
+        (None, Some(edit)) => kdl_node
+            .entries_mut()
+            .push(KdlEntry::new_prop("edit", edit.to_owned())),
+        _ => {},
     };
     if let Some(name) = name {
-        kdl_node.entries_mut().push(KdlEntry::new_prop("name", name.to_owned()));
+        kdl_node
+            .entries_mut()
+            .push(KdlEntry::new_prop("name", name.to_owned()));
     }
     if let Some(cwd) = cwd {
         let path = cwd.display().to_string();
         if !path.is_empty() && !has_children {
-            kdl_node.entries_mut().push(KdlEntry::new_prop("cwd", path.to_owned()));
+            kdl_node
+                .entries_mut()
+                .push(KdlEntry::new_prop("cwd", path.to_owned()));
         }
     }
     if focus.unwrap_or(false) {
-        kdl_node.entries_mut().push(KdlEntry::new_prop("focus", KdlValue::Bool(true)));
+        kdl_node
+            .entries_mut()
+            .push(KdlEntry::new_prop("focus", KdlValue::Bool(true)));
     }
     if let Some(initial_pane_contents) = initial_pane_contents.as_ref() {
         if command.is_none() && edit.is_none() {
             let file_name = format!("initial_contents_{}", pane_contents.keys().len() + 1);
-            kdl_node.entries_mut().push(KdlEntry::new_prop("contents_file", file_name.clone()));
+            kdl_node
+                .entries_mut()
+                .push(KdlEntry::new_prop("contents_file", file_name.clone()));
 
             pane_contents.insert(file_name, initial_pane_contents.clone());
         }
@@ -293,14 +322,18 @@ fn serialize_plugin(
 ) {
     if let Some(plugin) = plugin {
         let mut plugin_node = KdlNode::new("plugin");
-        plugin_node.entries_mut().push(KdlEntry::new_prop("location", plugin.to_owned()));
+        plugin_node
+            .entries_mut()
+            .push(KdlEntry::new_prop("location", plugin.to_owned()));
         if let Some(plugin_config) =
             plugin_config.and_then(|p| if p.inner().is_empty() { None } else { Some(p) })
         {
             let mut plugin_node_children = KdlDocument::new();
             for (config_key, config_value) in plugin_config.inner() {
                 let mut config_node = KdlNode::new(config_key.to_owned());
-                config_node.entries_mut().push(KdlEntry::new(config_value.to_owned()));
+                config_node
+                    .entries_mut()
+                    .push(KdlEntry::new(config_value.to_owned()));
                 plugin_node_children.nodes_mut().push(config_node);
             }
             plugin_node.set_children(plugin_node_children);
@@ -316,39 +349,56 @@ fn serialize_tiled_layout_attributes(
 ) {
     if !ignore_size {
         match layout.split_size {
-            Some(SplitSize::Fixed(size)) => kdl_node.entries_mut().push(KdlEntry::new_prop("size", KdlValue::Base10(size as i64))),
-            Some(SplitSize::Percent(size)) => kdl_node.entries_mut().push(KdlEntry::new_prop("size", format!("{size}%"))),
+            Some(SplitSize::Fixed(size)) => kdl_node
+                .entries_mut()
+                .push(KdlEntry::new_prop("size", KdlValue::Base10(size as i64))),
+            Some(SplitSize::Percent(size)) => kdl_node
+                .entries_mut()
+                .push(KdlEntry::new_prop("size", format!("{size}%"))),
             None => (),
         };
     }
     if layout.borderless {
-        kdl_node.entries_mut().push(KdlEntry::new_prop("borderless", KdlValue::Bool(true)));
+        kdl_node
+            .entries_mut()
+            .push(KdlEntry::new_prop("borderless", KdlValue::Bool(true)));
     }
     if layout.children_are_stacked {
-        kdl_node.entries_mut().push(KdlEntry::new_prop("stacked", KdlValue::Bool(true)));
+        kdl_node
+            .entries_mut()
+            .push(KdlEntry::new_prop("stacked", KdlValue::Bool(true)));
     }
     if layout.is_expanded_in_stack {
-        kdl_node.entries_mut().push(KdlEntry::new_prop("expanded", KdlValue::Bool(true)));
+        kdl_node
+            .entries_mut()
+            .push(KdlEntry::new_prop("expanded", KdlValue::Bool(true)));
     }
     if layout.children_split_direction != SplitDirection::default() {
         let direction = match layout.children_split_direction {
             SplitDirection::Horizontal => "horizontal",
             SplitDirection::Vertical => "vertical",
         };
-        kdl_node.entries_mut().push(KdlEntry::new_prop("split_direction", direction));
+        kdl_node
+            .entries_mut()
+            .push(KdlEntry::new_prop("split_direction", direction));
     }
 }
 
-fn serialize_floating_layout_attributes(layout: &FloatingPaneLayout, pane_node_children: &mut KdlDocument) {
+fn serialize_floating_layout_attributes(
+    layout: &FloatingPaneLayout,
+    pane_node_children: &mut KdlDocument,
+) {
     match layout.height {
         Some(PercentOrFixed::Fixed(fixed_height)) => {
             let mut node = KdlNode::new("height");
-            node.entries_mut().push(KdlEntry::new(KdlValue::Base10(fixed_height as i64)));
+            node.entries_mut()
+                .push(KdlEntry::new(KdlValue::Base10(fixed_height as i64)));
             pane_node_children.nodes_mut().push(node);
         },
         Some(PercentOrFixed::Percent(percent)) => {
             let mut node = KdlNode::new("height");
-            node.entries_mut().push(KdlEntry::new(format!("{}%", percent)));
+            node.entries_mut()
+                .push(KdlEntry::new(format!("{}%", percent)));
             pane_node_children.nodes_mut().push(node);
         },
         None => {},
@@ -356,12 +406,14 @@ fn serialize_floating_layout_attributes(layout: &FloatingPaneLayout, pane_node_c
     match layout.width {
         Some(PercentOrFixed::Fixed(fixed_width)) => {
             let mut node = KdlNode::new("width");
-            node.entries_mut().push(KdlEntry::new(KdlValue::Base10(fixed_width as i64)));
+            node.entries_mut()
+                .push(KdlEntry::new(KdlValue::Base10(fixed_width as i64)));
             pane_node_children.nodes_mut().push(node);
         },
         Some(PercentOrFixed::Percent(percent)) => {
             let mut node = KdlNode::new("width");
-            node.entries_mut().push(KdlEntry::new(format!("{}%", percent)));
+            node.entries_mut()
+                .push(KdlEntry::new(format!("{}%", percent)));
             pane_node_children.nodes_mut().push(node);
         },
         None => {},
@@ -369,12 +421,14 @@ fn serialize_floating_layout_attributes(layout: &FloatingPaneLayout, pane_node_c
     match layout.x {
         Some(PercentOrFixed::Fixed(fixed_x)) => {
             let mut node = KdlNode::new("x");
-            node.entries_mut().push(KdlEntry::new(KdlValue::Base10(fixed_x as i64)));
+            node.entries_mut()
+                .push(KdlEntry::new(KdlValue::Base10(fixed_x as i64)));
             pane_node_children.nodes_mut().push(node);
         },
         Some(PercentOrFixed::Percent(percent)) => {
             let mut node = KdlNode::new("x");
-            node.entries_mut().push(KdlEntry::new(format!("{}%", percent)));
+            node.entries_mut()
+                .push(KdlEntry::new(format!("{}%", percent)));
             pane_node_children.nodes_mut().push(node);
         },
         None => {},
@@ -382,12 +436,14 @@ fn serialize_floating_layout_attributes(layout: &FloatingPaneLayout, pane_node_c
     match layout.y {
         Some(PercentOrFixed::Fixed(fixed_y)) => {
             let mut node = KdlNode::new("y");
-            node.entries_mut().push(KdlEntry::new(KdlValue::Base10(fixed_y as i64)));
+            node.entries_mut()
+                .push(KdlEntry::new(KdlValue::Base10(fixed_y as i64)));
             pane_node_children.nodes_mut().push(node);
         },
         Some(PercentOrFixed::Percent(percent)) => {
             let mut node = KdlNode::new("y");
-            node.entries_mut().push(KdlEntry::new(format!("{}%", percent)));
+            node.entries_mut()
+                .push(KdlEntry::new(format!("{}%", percent)));
             pane_node_children.nodes_mut().push(node);
         },
         None => {},
@@ -397,7 +453,9 @@ fn serialize_floating_layout_attributes(layout: &FloatingPaneLayout, pane_node_c
 fn serialize_start_suspended(command: &Option<String>, pane_node_children: &mut KdlDocument) {
     if command.is_some() {
         let mut start_suspended_node = KdlNode::new("start_suspended");
-        start_suspended_node.entries_mut().push(KdlEntry::new(KdlValue::Bool(true)));
+        start_suspended_node
+            .entries_mut()
+            .push(KdlEntry::new(KdlValue::Bool(true)));
         pane_node_children.nodes_mut().push(start_suspended_node);
     }
 }
@@ -424,7 +482,12 @@ fn serialize_new_tab_template(
         let mut new_tab_template_node = KdlNode::new("new_tab_template");
         let mut new_tab_template_children = KdlDocument::new();
 
-        serialize_tiled_and_floating_panes(&tiled_panes, floating_panes, pane_contents, &mut new_tab_template_children);
+        serialize_tiled_and_floating_panes(
+            &tiled_panes,
+            floating_panes,
+            pane_contents,
+            &mut new_tab_template_children,
+        );
         new_tab_template_node.set_children(new_tab_template_children);
         layout_children_node.nodes_mut().push(new_tab_template_node);
     }
@@ -440,36 +503,57 @@ fn serialize_swap_tiled_layouts(
         let mut swap_tiled_layout_node_children = KdlDocument::new();
         let swap_tiled_layout_name = swap_tiled_layout.1;
         if let Some(name) = swap_tiled_layout_name {
-            swap_tiled_layout_node.entries_mut().push(KdlEntry::new_prop("name", name.to_owned()));
+            swap_tiled_layout_node
+                .entries_mut()
+                .push(KdlEntry::new_prop("name", name.to_owned()));
         }
 
         for (layout_constraint, tiled_panes_layout) in swap_tiled_layout.0 {
-            let tiled_panes_layout = if &tiled_panes_layout.children_split_direction != &SplitDirection::default() {
-                vec![tiled_panes_layout]
-            } else {
-                tiled_panes_layout.children
-            };
+            let tiled_panes_layout =
+                if &tiled_panes_layout.children_split_direction != &SplitDirection::default() {
+                    vec![tiled_panes_layout]
+                } else {
+                    tiled_panes_layout.children
+                };
             let mut layout_step_node = KdlNode::new("tab");
             let mut layout_step_node_children = KdlDocument::new();
             if let Some(layout_constraint_entry) = serialize_layout_constraint(layout_constraint) {
                 layout_step_node.entries_mut().push(layout_constraint_entry);
             }
 
-            serialize_tiled_and_floating_panes(&tiled_panes_layout, vec![], pane_contents, &mut layout_step_node_children);
+            serialize_tiled_and_floating_panes(
+                &tiled_panes_layout,
+                vec![],
+                pane_contents,
+                &mut layout_step_node_children,
+            );
             layout_step_node.set_children(layout_step_node_children);
-            swap_tiled_layout_node_children.nodes_mut().push(layout_step_node);
+            swap_tiled_layout_node_children
+                .nodes_mut()
+                .push(layout_step_node);
         }
         swap_tiled_layout_node.set_children(swap_tiled_layout_node_children);
-        layout_node_children.nodes_mut().push(swap_tiled_layout_node);
+        layout_node_children
+            .nodes_mut()
+            .push(swap_tiled_layout_node);
     }
 }
 
 fn serialize_layout_constraint(layout_constraint: LayoutConstraint) -> Option<KdlEntry> {
     match layout_constraint {
-        LayoutConstraint::MaxPanes(max_panes) => Some(KdlEntry::new_prop("max_panes", KdlValue::Base10(max_panes as i64))),
-        LayoutConstraint::MinPanes(min_panes) => Some(KdlEntry::new_prop("min_panes", KdlValue::Base10(min_panes as i64))),
-        LayoutConstraint::ExactPanes(exact_panes) => Some(KdlEntry::new_prop("exact_panes", KdlValue::Base10(exact_panes as i64))),
-        LayoutConstraint::NoConstraint => None
+        LayoutConstraint::MaxPanes(max_panes) => Some(KdlEntry::new_prop(
+            "max_panes",
+            KdlValue::Base10(max_panes as i64),
+        )),
+        LayoutConstraint::MinPanes(min_panes) => Some(KdlEntry::new_prop(
+            "min_panes",
+            KdlValue::Base10(min_panes as i64),
+        )),
+        LayoutConstraint::ExactPanes(exact_panes) => Some(KdlEntry::new_prop(
+            "exact_panes",
+            KdlValue::Base10(exact_panes as i64),
+        )),
+        LayoutConstraint::NoConstraint => None,
     }
 }
 
@@ -483,7 +567,9 @@ fn serialize_swap_floating_layouts(
         let mut swap_floating_layout_node_children = KdlDocument::new();
         let swap_floating_layout_name = swap_floating_layout.1;
         if let Some(name) = swap_floating_layout_name {
-            swap_floating_layout_node.entries_mut().push(KdlEntry::new_prop("name", name.to_owned()));
+            swap_floating_layout_node
+                .entries_mut()
+                .push(KdlEntry::new_prop("name", name.to_owned()));
         }
 
         for (layout_constraint, floating_panes_layout) in swap_floating_layout.0 {
@@ -494,14 +580,21 @@ fn serialize_swap_floating_layouts(
             }
 
             for floating_pane_layout in floating_panes_layout {
-                let floating_pane_node = serialize_floating_pane(&floating_pane_layout, pane_contents);
-                layout_step_node_children.nodes_mut().push(floating_pane_node);
+                let floating_pane_node =
+                    serialize_floating_pane(&floating_pane_layout, pane_contents);
+                layout_step_node_children
+                    .nodes_mut()
+                    .push(floating_pane_node);
             }
             layout_step_node.set_children(layout_step_node_children);
-            swap_floating_layout_node_children.nodes_mut().push(layout_step_node);
+            swap_floating_layout_node_children
+                .nodes_mut()
+                .push(layout_step_node);
         }
         swap_floating_layout_node.set_children(swap_floating_layout_node_children);
-        layout_children_node.nodes_mut().push(swap_floating_layout_node);
+        layout_children_node
+            .nodes_mut()
+            .push(swap_floating_layout_node);
     }
 }
 
@@ -904,9 +997,9 @@ mod tests {
     use super::*;
     use crate::pane_size::Dimension;
     use expect_test::expect;
+    use insta::assert_snapshot;
     use serde_json::Value;
     use std::collections::HashMap;
-    use insta::assert_snapshot;
     const PANEGEOMS_JSON: &[&[&str]] = &[
         &[
             r#"{ "x": 0, "y": 1, "rows": { "constraint": "Percent(100.0)", "inner": 43 }, "cols": { "constraint": "Percent(100.0)", "inner": 211 }, "is_stacked": false }"#,
@@ -1116,7 +1209,6 @@ mod tests {
         .assert_eq(&kdl.0);
     }
 
-
     #[test]
     fn global_cwd() {
         let global_layout_manifest = GlobalLayoutManifest {
@@ -1175,7 +1267,7 @@ mod tests {
                         y: 0,
                         rows: Dimension::fixed(10),
                         cols: Dimension::fixed(10),
-                        is_stacked: false
+                        is_stacked: false,
                     },
                     ..Default::default()
                 },
@@ -1186,18 +1278,22 @@ mod tests {
                         y: 10,
                         rows: Dimension::fixed(10),
                         cols: Dimension::fixed(10),
-                        is_stacked: false
+                        is_stacked: false,
                     },
                     ..Default::default()
                 },
                 PaneLayoutManifest {
-                    run: Some(Run::EditFile(PathBuf::from("/tmp/\"my/cool cwd/my-file"), None, None)),
+                    run: Some(Run::EditFile(
+                        PathBuf::from("/tmp/\"my/cool cwd/my-file"),
+                        None,
+                        None,
+                    )),
                     geom: PaneGeom {
                         x: 0,
                         y: 20,
                         rows: Dimension::fixed(10),
                         cols: Dimension::fixed(10),
-                        is_stacked: false
+                        is_stacked: false,
                     },
                     ..Default::default()
                 },
@@ -1211,14 +1307,18 @@ mod tests {
                         y: 30,
                         rows: Dimension::fixed(10),
                         cols: Dimension::fixed(10),
-                        is_stacked: false
+                        is_stacked: false,
                     },
                     ..Default::default()
                 },
                 PaneLayoutManifest {
                     run: Some(Run::Command(RunCommand {
                         command: PathBuf::from("/tmp/\"my/cool cwd/command.sh"),
-                        args: vec!["--arg1".to_owned(), "arg\"2".to_owned(), "arg > \\3".to_owned()],
+                        args: vec![
+                            "--arg1".to_owned(),
+                            "arg\"2".to_owned(),
+                            "arg > \\3".to_owned(),
+                        ],
                         ..Default::default()
                     })),
                     geom: PaneGeom {
@@ -1226,35 +1326,35 @@ mod tests {
                         y: 40,
                         rows: Dimension::fixed(10),
                         cols: Dimension::fixed(10),
-                        is_stacked: false
+                        is_stacked: false,
                     },
                     ..Default::default()
                 },
                 PaneLayoutManifest {
                     run: Some(Run::Plugin(RunPluginOrAlias::RunPlugin(
-                        RunPlugin::from_url("file:/tmp/\"my/cool cwd/plugin.wasm").unwrap()
+                        RunPlugin::from_url("file:/tmp/\"my/cool cwd/plugin.wasm").unwrap(),
                     ))),
                     geom: PaneGeom {
                         x: 0,
                         y: 50,
                         rows: Dimension::fixed(10),
                         cols: Dimension::fixed(10),
-                        is_stacked: false
+                        is_stacked: false,
                     },
                     ..Default::default()
                 },
                 PaneLayoutManifest {
                     run: Some(Run::Plugin(RunPluginOrAlias::RunPlugin(
                         RunPlugin::from_url("file:/tmp/\"my/cool cwd/plugin.wasm")
-                        .unwrap()
-                        .with_configuration(plugin_configuration)
+                            .unwrap()
+                            .with_configuration(plugin_configuration),
                     ))),
                     geom: PaneGeom {
                         x: 0,
                         y: 60,
                         rows: Dimension::fixed(10),
                         cols: Dimension::fixed(10),
-                        is_stacked: false
+                        is_stacked: false,
                     },
                     ..Default::default()
                 },
@@ -1265,7 +1365,7 @@ mod tests {
                         y: 70,
                         rows: Dimension::fixed(10),
                         cols: Dimension::fixed(10),
-                        is_stacked: false
+                        is_stacked: false,
                     },
                     ..Default::default()
                 },
@@ -1278,7 +1378,7 @@ mod tests {
                         y: 80,
                         rows: Dimension::fixed(10),
                         cols: Dimension::fixed(10),
-                        is_stacked: false
+                        is_stacked: false,
                     },
                     ..Default::default()
                 },
@@ -1305,7 +1405,7 @@ mod tests {
                         y: 0,
                         rows: Dimension::fixed(10),
                         cols: Dimension::fixed(10),
-                        is_stacked: false
+                        is_stacked: false,
                     },
                     ..Default::default()
                 },
@@ -1316,18 +1416,22 @@ mod tests {
                         y: 10,
                         rows: Dimension::fixed(10),
                         cols: Dimension::fixed(10),
-                        is_stacked: false
+                        is_stacked: false,
                     },
                     ..Default::default()
                 },
                 PaneLayoutManifest {
-                    run: Some(Run::EditFile(PathBuf::from("/tmp/\"my/cool cwd/my-file"), None, None)),
+                    run: Some(Run::EditFile(
+                        PathBuf::from("/tmp/\"my/cool cwd/my-file"),
+                        None,
+                        None,
+                    )),
                     geom: PaneGeom {
                         x: 0,
                         y: 20,
                         rows: Dimension::fixed(10),
                         cols: Dimension::fixed(10),
-                        is_stacked: false
+                        is_stacked: false,
                     },
                     ..Default::default()
                 },
@@ -1341,14 +1445,18 @@ mod tests {
                         y: 30,
                         rows: Dimension::fixed(10),
                         cols: Dimension::fixed(10),
-                        is_stacked: false
+                        is_stacked: false,
                     },
                     ..Default::default()
                 },
                 PaneLayoutManifest {
                     run: Some(Run::Command(RunCommand {
                         command: PathBuf::from("/tmp/\"my/cool cwd/command.sh"),
-                        args: vec!["--arg1".to_owned(), "arg\"2".to_owned(), "arg > \\3".to_owned()],
+                        args: vec![
+                            "--arg1".to_owned(),
+                            "arg\"2".to_owned(),
+                            "arg > \\3".to_owned(),
+                        ],
                         ..Default::default()
                     })),
                     geom: PaneGeom {
@@ -1356,35 +1464,35 @@ mod tests {
                         y: 40,
                         rows: Dimension::fixed(10),
                         cols: Dimension::fixed(10),
-                        is_stacked: false
+                        is_stacked: false,
                     },
                     ..Default::default()
                 },
                 PaneLayoutManifest {
                     run: Some(Run::Plugin(RunPluginOrAlias::RunPlugin(
-                        RunPlugin::from_url("file:/tmp/\"my/cool cwd/plugin.wasm").unwrap()
+                        RunPlugin::from_url("file:/tmp/\"my/cool cwd/plugin.wasm").unwrap(),
                     ))),
                     geom: PaneGeom {
                         x: 0,
                         y: 50,
                         rows: Dimension::fixed(10),
                         cols: Dimension::fixed(10),
-                        is_stacked: false
+                        is_stacked: false,
                     },
                     ..Default::default()
                 },
                 PaneLayoutManifest {
                     run: Some(Run::Plugin(RunPluginOrAlias::RunPlugin(
                         RunPlugin::from_url("file:/tmp/\"my/cool cwd/plugin.wasm")
-                        .unwrap()
-                        .with_configuration(plugin_configuration)
+                            .unwrap()
+                            .with_configuration(plugin_configuration),
                     ))),
                     geom: PaneGeom {
                         x: 0,
                         y: 60,
                         rows: Dimension::fixed(10),
                         cols: Dimension::fixed(10),
-                        is_stacked: false
+                        is_stacked: false,
                     },
                     ..Default::default()
                 },
@@ -1397,7 +1505,7 @@ mod tests {
                         y: 70,
                         rows: Dimension::fixed(10),
                         cols: Dimension::fixed(10),
-                        is_stacked: false
+                        is_stacked: false,
                     },
                     ..Default::default()
                 },
@@ -1410,7 +1518,7 @@ mod tests {
                         y: 80,
                         rows: Dimension::fixed(10),
                         cols: Dimension::fixed(10),
-                        is_stacked: false
+                        is_stacked: false,
                     },
                     ..Default::default()
                 },
@@ -1418,7 +1526,10 @@ mod tests {
             ..Default::default()
         };
         let global_layout_manifest = GlobalLayoutManifest {
-            tabs: vec![("Tab with \"floating panes\"".to_owned(), tab_layout_manifest)],
+            tabs: vec![(
+                "Tab with \"floating panes\"".to_owned(),
+                tab_layout_manifest,
+            )],
             ..Default::default()
         };
         let kdl = serialize_session_layout(global_layout_manifest).unwrap();
@@ -1434,7 +1545,7 @@ mod tests {
                         y: 0,
                         rows: Dimension::fixed(1),
                         cols: Dimension::fixed(10),
-                        is_stacked: true
+                        is_stacked: true,
                     },
                     ..Default::default()
                 },
@@ -1444,7 +1555,7 @@ mod tests {
                         y: 1,
                         rows: Dimension::fixed(10),
                         cols: Dimension::fixed(10),
-                        is_stacked: true
+                        is_stacked: true,
                     },
                     ..Default::default()
                 },
@@ -1454,7 +1565,7 @@ mod tests {
                         y: 11,
                         rows: Dimension::fixed(1),
                         cols: Dimension::fixed(10),
-                        is_stacked: true
+                        is_stacked: true,
                     },
                     ..Default::default()
                 },
@@ -1471,18 +1582,16 @@ mod tests {
     #[test]
     fn can_serialize_multiple_tabs() {
         let tab_1_layout_manifest = TabLayoutManifest {
-            tiled_panes: vec![
-                PaneLayoutManifest {
-                    geom: PaneGeom {
-                        x: 0,
-                        y: 0,
-                        rows: Dimension::percent(100.0),
-                        cols: Dimension::percent(100.0),
-                        is_stacked: false
-                    },
-                    ..Default::default()
+            tiled_panes: vec![PaneLayoutManifest {
+                geom: PaneGeom {
+                    x: 0,
+                    y: 0,
+                    rows: Dimension::percent(100.0),
+                    cols: Dimension::percent(100.0),
+                    is_stacked: false,
                 },
-            ],
+                ..Default::default()
+            }],
             ..Default::default()
         };
         let tab_2_layout_manifest = TabLayoutManifest {
@@ -1493,7 +1602,7 @@ mod tests {
                         y: 0,
                         rows: Dimension::fixed(10),
                         cols: Dimension::fixed(10),
-                        is_stacked: false
+                        is_stacked: false,
                     },
                     ..Default::default()
                 },
@@ -1503,7 +1612,7 @@ mod tests {
                         y: 0,
                         rows: Dimension::fixed(10),
                         cols: Dimension::fixed(10),
-                        is_stacked: false
+                        is_stacked: false,
                     },
                     ..Default::default()
                 },
@@ -1513,7 +1622,7 @@ mod tests {
         let global_layout_manifest = GlobalLayoutManifest {
             tabs: vec![
                 ("First tab".to_owned(), tab_1_layout_manifest),
-                ("Second tab".to_owned(), tab_2_layout_manifest)
+                ("Second tab".to_owned(), tab_2_layout_manifest),
             ],
             ..Default::default()
         };
@@ -1575,7 +1684,6 @@ mod tests {
     }
     #[test]
     fn can_serialize_swap_floating_panes() {
-
         let floating_panes_layout = vec![
             FloatingPaneLayout::default(),
             FloatingPaneLayout::default(),
@@ -1586,16 +1694,31 @@ mod tests {
         let mut swap_floating_layout_2 = BTreeMap::new();
         swap_floating_layout_1.insert(LayoutConstraint::MaxPanes(1), floating_panes_layout.clone());
         swap_floating_layout_1.insert(LayoutConstraint::MinPanes(1), floating_panes_layout.clone());
-        swap_floating_layout_1.insert(LayoutConstraint::ExactPanes(1), floating_panes_layout.clone());
-        swap_floating_layout_1.insert(LayoutConstraint::NoConstraint, floating_panes_layout.clone());
+        swap_floating_layout_1.insert(
+            LayoutConstraint::ExactPanes(1),
+            floating_panes_layout.clone(),
+        );
+        swap_floating_layout_1.insert(
+            LayoutConstraint::NoConstraint,
+            floating_panes_layout.clone(),
+        );
         swap_floating_layout_2.insert(LayoutConstraint::MaxPanes(2), floating_panes_layout.clone());
         swap_floating_layout_2.insert(LayoutConstraint::MinPanes(2), floating_panes_layout.clone());
-        swap_floating_layout_2.insert(LayoutConstraint::ExactPanes(2), floating_panes_layout.clone());
-        swap_floating_layout_2.insert(LayoutConstraint::NoConstraint, floating_panes_layout.clone());
+        swap_floating_layout_2.insert(
+            LayoutConstraint::ExactPanes(2),
+            floating_panes_layout.clone(),
+        );
+        swap_floating_layout_2.insert(
+            LayoutConstraint::NoConstraint,
+            floating_panes_layout.clone(),
+        );
 
         let swap_floating_layouts = vec![
             (swap_floating_layout_1, None),
-            (swap_floating_layout_2, Some("swap_floating_layout_2".to_owned())),
+            (
+                swap_floating_layout_2,
+                Some("swap_floating_layout_2".to_owned()),
+            ),
         ];
         default_layout.swap_floating_layouts = swap_floating_layouts;
         let default_layout = Box::new(default_layout);
@@ -1606,7 +1729,6 @@ mod tests {
         let kdl = serialize_session_layout(global_layout_manifest).unwrap();
         assert_snapshot!(kdl.0);
     }
-
 
     // utility functions
     fn parse_panegeom_from_json(data_str: &str) -> PaneGeom {
