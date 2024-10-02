@@ -1,0 +1,9 @@
+---
+source: zellij-utils/src/session_serialization.rs
+assertion_line: 1168
+expression: kdl.0
+---
+layout {
+    cwd "/path/to/m\"y/global cwd"
+}
+

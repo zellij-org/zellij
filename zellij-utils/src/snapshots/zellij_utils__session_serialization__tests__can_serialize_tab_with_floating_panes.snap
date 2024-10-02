@@ -1,0 +1,74 @@
+---
+source: zellij-utils/src/session_serialization.rs
+assertion_line: 1929
+expression: kdl.0
+---
+layout {
+    tab name="Tab with \"floating panes\"" {
+        floating_panes {
+            pane {
+                height 10
+                width 10
+                x 0
+                y 0
+            }
+            pane cwd="/tmp/\"my/cool cwd" {
+                height 10
+                width 10
+                x 0
+                y 10
+            }
+            pane edit="/tmp/\"my/cool cwd/my-file" {
+                height 10
+                width 10
+                x 0
+                y 20
+            }
+            pane command="/tmp/\"my/cool cwd/command.sh" {
+                start_suspended true
+                height 10
+                width 10
+                x 0
+                y 30
+            }
+            pane command="/tmp/\"my/cool cwd/command.sh" {
+                start_suspended true
+                height 10
+                width 10
+                x 0
+                y 40
+                args "--arg1" "arg\"2" "arg > \\3"
+            }
+            pane {
+                height 10
+                width 10
+                x 0
+                y 50
+                plugin location="file:/tmp/\"my/cool cwd/plugin.wasm"
+            }
+            pane {
+                height 10
+                width 10
+                x 0
+                y 60
+                plugin location="file:/tmp/\"my/cool cwd/plugin.wasm" {
+                    "key 1\"\\" "val 1\"\\"
+                    "key 2\"\\" "val 2\"\\"
+                }
+            }
+            pane {
+                height 10
+                width 10
+                x 0
+                y 70
+            }
+            pane name="my cool \\ \"pane_title\"" focus=true contents_file="initial_contents_1" {
+                height 10
+                width 10
+                x 0
+                y 80
+            }
+        }
+    }
+}
+
