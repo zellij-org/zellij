@@ -6,10 +6,10 @@ use zellij_utils::consts::{
 use zellij_utils::data::{Event, HttpVerb, SessionInfo};
 use zellij_utils::errors::{prelude::*, BackgroundJobContext, ContextType};
 use zellij_utils::input::layout::RunPlugin;
-use zellij_utils::surf::{
-    http::{Method, Url},
-    RequestBuilder,
-};
+
+use zellij_utils::isahc::prelude::*;
+use zellij_utils::isahc::AsyncReadResponseExt;
+use zellij_utils::isahc::{config::RedirectPolicy, HttpClient, Request};
 
 use std::collections::{BTreeMap, HashMap};
 use std::fs;
@@ -100,6 +100,12 @@ pub(crate) fn background_jobs_main(
     let last_serialization_time = Arc::new(Mutex::new(Instant::now()));
     let serialization_interval = serialization_interval.map(|s| s * 1000); // convert to
                                                                            // milliseconds
+
+    let http_client = HttpClient::builder()
+        // TODO: timeout?
+        .redirect_policy(RedirectPolicy::Follow)
+        .build()
+        .ok();
 
     loop {
         let (event, mut err_ctx) = bus.recv().with_context(err_context)?;
@@ -275,41 +281,60 @@ pub(crate) fn background_jobs_main(
             BackgroundJob::WebRequest(plugin_id, client_id, url, verb, headers, body, context) => {
                 task::spawn({
                     let senders = bus.senders.clone();
+                    let http_client = http_client.clone();
                     async move {
                         async fn web_request(
                             url: String,
                             verb: HttpVerb,
                             headers: BTreeMap<String, String>,
                             body: Vec<u8>,
+                            http_client: HttpClient,
                         ) -> Result<
                             (u16, BTreeMap<String, String>, Vec<u8>), // status_code, headers, body
-                            zellij_utils::surf::Error,
+                            zellij_utils::isahc::Error,
                         > {
-                            let url = Url::parse(&url)?;
-                            let http_method = match verb {
-                                HttpVerb::Get => Method::Get,
-                                HttpVerb::Post => Method::Post,
-                                HttpVerb::Put => Method::Put,
-                                HttpVerb::Delete => Method::Delete,
+                            let mut request = match verb {
+                                HttpVerb::Get => Request::get(url),
+                                HttpVerb::Post => Request::post(url),
+                                HttpVerb::Put => Request::put(url),
+                                HttpVerb::Delete => Request::delete(url),
                             };
-                            let mut req = RequestBuilder::new(http_method, url);
-                            if !body.is_empty() {
-                                req = req.body(body);
-                            }
                             for (header, value) in headers {
-                                req = req.header(header.as_str(), value);
+                                request = request.header(header.as_str(), value);
                             }
-                            let mut res = req.await?;
+                            let mut res = if !body.is_empty() {
+                                let req = request.body(body)?;
+                                http_client.send_async(req).await?
+                            } else {
+                                let req = request.body(())?;
+                                http_client.send_async(req).await?
+                            };
+
                             let status_code = res.status();
                             let headers: BTreeMap<String, String> = res
+                                .headers()
                                 .iter()
-                                .map(|(name, value)| (name.to_string(), value.to_string()))
+                                .filter_map(|(name, value)| match value.to_str() {
+                                    Ok(value) => Some((name.to_string(), value.to_string())),
+                                    Err(e) => {
+                                        log::error!(
+                                            "Failed to convert header {:?} to string: {:?}",
+                                            name,
+                                            e
+                                        );
+                                        None
+                                    },
+                                })
                                 .collect();
-                            let body = res.take_body().into_bytes().await?;
-                            Ok((status_code as u16, headers, body))
+                            let body = res.bytes().await?;
+                            Ok((status_code.as_u16(), headers, body))
                         }
+                        let Some(http_client) = http_client else {
+                            log::error!("Cannot perform http request, likely due to a misconfigured http client");
+                            return;
+                        };
 
-                        match web_request(url, verb, headers, body).await {
+                        match web_request(url, verb, headers, body, http_client).await {
                             Ok((status, headers, body)) => {
                                 let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
                                     Some(plugin_id),
