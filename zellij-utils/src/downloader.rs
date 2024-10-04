@@ -3,15 +3,18 @@ use async_std::{
     io::{ReadExt, WriteExt},
     stream::StreamExt,
 };
+use isahc::prelude::*;
+use isahc::{config::RedirectPolicy, HttpClient, Request};
 use std::path::PathBuf;
-use surf::Client;
 use thiserror::Error;
 use url::Url;
 
 #[derive(Error, Debug)]
 pub enum DownloaderError {
     #[error("RequestError: {0}")]
-    Request(surf::Error),
+    Request(#[from] isahc::Error),
+    #[error("HttpError: {0}")]
+    HttpError(#[from] isahc::http::Error),
     #[error("IoError: {0}")]
     Io(#[source] std::io::Error),
     #[error("File name cannot be found in URL: {0}")]
@@ -22,14 +25,18 @@ pub enum DownloaderError {
 
 #[derive(Debug)]
 pub struct Downloader {
-    client: Client,
+    client: Option<HttpClient>,
     location: PathBuf,
 }
 
 impl Default for Downloader {
     fn default() -> Self {
         Self {
-            client: surf::client().with(surf::middleware::Redirect::default()),
+            client: HttpClient::builder()
+                // TODO: timeout?
+                .redirect_policy(RedirectPolicy::Follow)
+                .build()
+                .ok(),
             location: PathBuf::from(""),
         }
     }
@@ -38,7 +45,11 @@ impl Default for Downloader {
 impl Downloader {
     pub fn new(location: PathBuf) -> Self {
         Self {
-            client: surf::client().with(surf::middleware::Redirect::default()),
+            client: HttpClient::builder()
+                // TODO: timeout?
+                .redirect_policy(RedirectPolicy::Follow)
+                .build()
+                .ok(),
             location,
         }
     }
@@ -48,17 +59,19 @@ impl Downloader {
         url: &str,
         file_name: Option<&str>,
     ) -> Result<(), DownloaderError> {
+        let Some(client) = &self.client else {
+            log::error!("No Http client found, cannot perform requests - this is likely a misconfiguration of isahc::HttpClient");
+            return Ok(());
+        };
         let file_name = match file_name {
             Some(name) => name.to_string(),
             None => self.parse_name(url)?,
         };
-
         let file_path = self.location.join(file_name.as_str());
         if file_path.exists() {
             log::debug!("File already exists: {:?}", file_path);
             return Ok(());
         }
-
         let file_part_path = self.location.join(format!("{}.part", file_name));
         let (mut target, file_part_size) = {
             if file_part_path.exists() {
@@ -86,16 +99,13 @@ impl Downloader {
                 (file_part, 0)
             }
         };
-
-        let res = self
-            .client
-            .get(url)
+        let request = Request::get(url)
             .header("Content-Type", "application/octet-stream")
             .header("Range", format!("bytes={}-", file_part_size))
-            .await
-            .map_err(|e| DownloaderError::Request(e))?;
-
-        let mut stream = res.bytes();
+            .body(())?;
+        let mut res = client.send_async(request).await?;
+        let body = res.body_mut();
+        let mut stream = body.bytes();
         while let Some(byte) = stream.next().await {
             let byte = byte.map_err(|e| DownloaderError::Io(e))?;
             target
@@ -113,17 +123,19 @@ impl Downloader {
         Ok(())
     }
     pub async fn download_without_cache(url: &str) -> Result<String, DownloaderError> {
-        // result is the stringified body
-        let client = surf::client().with(surf::middleware::Redirect::default());
-
-        let res = client
-            .get(url)
+        let request = Request::get(url)
             .header("Content-Type", "application/octet-stream")
-            .await
-            .map_err(|e| DownloaderError::Request(e))?;
+            .body(())?;
+        let client = HttpClient::builder()
+            // TODO: timeout?
+            .redirect_policy(RedirectPolicy::Follow)
+            .build()?;
+
+        let mut res = client.send_async(request).await?;
 
         let mut downloaded_bytes: Vec<u8> = vec![];
-        let mut stream = res.bytes();
+        let body = res.body_mut();
+        let mut stream = body.bytes();
         while let Some(byte) = stream.next().await {
             let byte = byte.map_err(|e| DownloaderError::Io(e))?;
             downloaded_bytes.push(byte);
